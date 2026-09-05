@@ -14,6 +14,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_SCRIPT="$SCRIPT_DIR/../deploy-linux.sh"
 FAILED=0
 
+# W-169b: EPIPE from an early-exiting grep/head must not fail the pipeline
+# under `set -o pipefail` — on Linux, printf writing a large string into a
+# pipe that its reader (grep -q/head) closes early gets SIGPIPE and a
+# non-zero exit, which pipefail then propagates as a false assertion.
+emit() { printf '%s' "$1" 2>/dev/null || true; }
+emitn() { printf '%s\n' "$1" 2>/dev/null || true; }
+
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAILED=1; }
 skip() { echo "SKIP: $1"; }
@@ -367,10 +374,10 @@ else
   cat /tmp/deploy-test-1.log
 fi
 WEB_START_CMD9="$(sed -n "${START_LINE9}p" /tmp/deploy-test-1.log)"
-if printf '%s' "$WEB_START_CMD9" | grep -qE 'release=.*current$|release=/'; then
+if emit "$WEB_START_CMD9" | grep -qE 'release=.*current$|release=/'; then
   # The realpath is whatever mktemp produced for TARGET1 (case 1) — assert
   # the logged 'release=' path is a real, existing directory, not a label.
-  RELEASE_PATH9="$(printf '%s' "$WEB_START_CMD9" | sed -n 's/.*release=\(.*\))$/\1/p')"
+  RELEASE_PATH9="$(emit "$WEB_START_CMD9" | sed -n 's/.*release=\(.*\))$/\1/p')"
   if [ -n "$RELEASE_PATH9" ] && [ -d "$RELEASE_PATH9" ]; then
     pass "case 9: logged 'release=' path is the real release directory ($RELEASE_PATH9)"
   else
@@ -400,8 +407,8 @@ fi
 # numbers below are computed against the same consistently-numbered stream
 # and the "before/after" comparison is apples-to-apples.
 STRIPPED9E="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
-UNSET_LINE9E="$(printf '%s\n' "$STRIPPED9E" | grep -n '^[[:space:]]*unset RUNNER_TRACKING_ID' | head -1 | cut -d: -f1)"
-FIRST_PM2_LINE9E="$(printf '%s\n' "$STRIPPED9E" | grep -n -E '\bpm2 (stop|delete|start|describe|jlist|list|save)\b' | head -1 | cut -d: -f1)"
+UNSET_LINE9E="$(emitn "$STRIPPED9E" | grep -n '^[[:space:]]*unset RUNNER_TRACKING_ID' | head -1 | cut -d: -f1)"
+FIRST_PM2_LINE9E="$(emitn "$STRIPPED9E" | grep -n -E '\bpm2 (stop|delete|start|describe|jlist|list|save)\b' | head -1 | cut -d: -f1)"
 if [ -n "$UNSET_LINE9E" ] && [ -n "$FIRST_PM2_LINE9E" ] && [ "$UNSET_LINE9E" -lt "$FIRST_PM2_LINE9E" ]; then
   pass "case 9e: 'unset RUNNER_TRACKING_ID' appears before the first pm2 stop/delete/start/describe/jlist/list/save call (unset_line=$UNSET_LINE9E, first_pm2_line=$FIRST_PM2_LINE9E)"
 else
@@ -426,7 +433,7 @@ else
   cat /tmp/deploy-test-8-2.log
 fi
 WEB_START_CMD10="$(sed -n "${START_LINE10}p" /tmp/deploy-test-8-2.log)"
-ROLLBACK_RELEASE_PATH10="$(printf '%s' "$WEB_START_CMD10" | sed -n 's/.*release=\(.*\))$/\1/p')"
+ROLLBACK_RELEASE_PATH10="$(emit "$WEB_START_CMD10" | sed -n 's/.*release=\(.*\))$/\1/p')"
 if [ "$ROLLBACK_RELEASE_PATH10" = "$GOOD_RELEASE" ]; then
   pass "case 10: rollback dry-run 'pm2 start' targets the previous good release ($GOOD_RELEASE)"
 else
@@ -1153,8 +1160,8 @@ STRIPPED16="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
 # "<venv>/bin/pip" (a moved venv's pip shebang would still point at its OLD
 # path — see setup_python_venv()'s atomic-swap comment) — match on that
 # shape rather than a literal venv-dir variable name.
-PIP_INSTALL_LINE16="$(printf '%s\n' "$STRIPPED16" | grep -n -E '/bin/python" -m pip install .*-r "\$req_file"' | head -1 | cut -d: -f1 || true)"
-RESTART_SCRAPER_START_LINE16="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' | tail -1 | cut -d: -f1 || true)"
+PIP_INSTALL_LINE16="$(emitn "$STRIPPED16" | grep -n -E '/bin/python" -m pip install .*-r "\$req_file"' | head -1 | cut -d: -f1 || true)"
+RESTART_SCRAPER_START_LINE16="$(emitn "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' | tail -1 | cut -d: -f1 || true)"
 
 if [ -n "$PIP_INSTALL_LINE16" ] && [ -n "$RESTART_SCRAPER_START_LINE16" ] && [ "$PIP_INSTALL_LINE16" -lt "$RESTART_SCRAPER_START_LINE16" ]; then
   pass "case 16: venv 'pip install -r requirements.txt' (setup_python_venv) appears before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
@@ -1162,9 +1169,9 @@ else
   fail "case 16: expected the venv pip-install step before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
 fi
 
-SCRAPER_START_LINES16="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' || true)"
-SCRAPER_START_COUNT16="$(printf '%s\n' "$SCRAPER_START_LINES16" | grep -c . || true)"
-SCRAPER_START_WITH_PYTHON_BIN16="$(printf '%s\n' "$SCRAPER_START_LINES16" | grep -c 'PYTHON_BIN=' || true)"
+SCRAPER_START_LINES16="$(emitn "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' || true)"
+SCRAPER_START_COUNT16="$(emitn "$SCRAPER_START_LINES16" | grep -c . || true)"
+SCRAPER_START_WITH_PYTHON_BIN16="$(emitn "$SCRAPER_START_LINES16" | grep -c 'PYTHON_BIN=' || true)"
 SCRAPER_START_COUNT16="${SCRAPER_START_COUNT16:-0}"
 SCRAPER_START_WITH_PYTHON_BIN16="${SCRAPER_START_WITH_PYTHON_BIN16:-0}"
 
@@ -1179,7 +1186,7 @@ fi
 # --- (numpy/onnxruntime/opencv-python/...) can't silently drift on a      -
 # --- fresh venv build the way the direct rapidocr pin already guards      -
 # --- against (W-112). Source-level: same shape as case 16.
-if printf '%s\n' "$STRIPPED16" | grep -q -E '/bin/python" -m pip install .*-r "\$req_file" -c "\$constraints_file"'; then
+if emitn "$STRIPPED16" | grep -q -E '/bin/python" -m pip install .*-r "\$req_file" -c "\$constraints_file"'; then
   pass "case 17: pip install passes both -r \$req_file and -c \$constraints_file (transitive deps pinned)"
 else
   fail "case 17: expected the pip install line to pass -r \$req_file -c \$constraints_file"
@@ -1194,8 +1201,8 @@ fi
 # --- Case 18: W-111 round 2 hole 2 — import smoke check runs before the ---
 # --- venv is swapped in, and covers every third-party module the         -
 # --- extractor scripts actually import.
-SMOKE_LINE18="$(printf '%s\n' "$STRIPPED16" | grep -n 'import pdfplumber' | head -1 | cut -d: -f1 || true)"
-SWAP_LINE18="$(printf '%s\n' "$STRIPPED16" | grep -n 'mv "\$new_dir" "\$PYTHON_VENV_DIR"' | head -1 | cut -d: -f1 || true)"
+SMOKE_LINE18="$(emitn "$STRIPPED16" | grep -n 'import pdfplumber' | head -1 | cut -d: -f1 || true)"
+SWAP_LINE18="$(emitn "$STRIPPED16" | grep -n 'mv "\$new_dir" "\$PYTHON_VENV_DIR"' | head -1 | cut -d: -f1 || true)"
 if [ -n "$SMOKE_LINE18" ] && [ -n "$SWAP_LINE18" ] && [ "$SMOKE_LINE18" -lt "$SWAP_LINE18" ]; then
   pass "case 18: import smoke check (line $SMOKE_LINE18) runs before the venv swap (line $SWAP_LINE18)"
 else
@@ -1203,14 +1210,14 @@ else
 fi
 
 for mod in pdfplumber pypdfium2 rapidocr_onnxruntime onnxruntime cv2 numpy; do
-  if printf '%s\n' "$STRIPPED16" | grep -q "import $mod"; then
+  if emitn "$STRIPPED16" | grep -q "import $mod"; then
     pass "case 18: smoke check imports '$mod'"
   else
     fail "case 18: expected the smoke check to import '$mod'"
   fi
 done
 
-if printf '%s\n' "$STRIPPED16" | grep -q 'PINNED_RAPIDOCR_VERSION'; then
+if emitn "$STRIPPED16" | grep -q 'PINNED_RAPIDOCR_VERSION'; then
   pass "case 18: smoke check asserts the installed rapidocr-onnxruntime version against requirements.txt's own pin"
 else
   fail "case 18: expected the smoke check to cross-check the installed rapidocr-onnxruntime version"
@@ -1228,13 +1235,13 @@ fi
 # --- '.new' dir and swapped only after a clean smoke test; a failed build -
 # --- never destroys the last-good venv, and no rm -rf can escape          -
 # --- $ROOT/shared/venv/.
-if printf '%s\n' "$STRIPPED16" | grep -q -E 'local new_dir="\$PYTHON_VENV_DIR\.new"'; then
+if emitn "$STRIPPED16" | grep -q -E 'local new_dir="\$PYTHON_VENV_DIR\.new"'; then
   pass "case 20: setup_python_venv() builds into a sibling '.new' directory"
 else
   fail "case 20: expected setup_python_venv() to build into \$PYTHON_VENV_DIR.new"
 fi
 
-if printf '%s\n' "$STRIPPED16" | grep -q -E 'safe_rm_venv_dir\(\)'; then
+if emitn "$STRIPPED16" | grep -q -E 'safe_rm_venv_dir\(\)'; then
   pass "case 20: a safe_rm_venv_dir() guard wraps rm -rf calls in the venv build/swap"
 else
   fail "case 20: expected a safe_rm_venv_dir() guard around the venv build/swap rm -rf calls"
@@ -1244,7 +1251,7 @@ fi
 # `set -e` ON for the rest of this script (documented at case 14) — a bare
 # assignment whose grep finds NO match (the expected/passing outcome here)
 # would otherwise abort the whole test run instead of just yielding empty.
-RM_RF_LINES20="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'rm -rf "\$(new_dir|old_dir)"' || true)"
+RM_RF_LINES20="$(emitn "$STRIPPED16" | grep -n -E 'rm -rf "\$(new_dir|old_dir)"' || true)"
 if [ -z "$RM_RF_LINES20" ]; then
   pass "case 20: no bare 'rm -rf \"\$new_dir\"'/'rm -rf \"\$old_dir\"' outside the safe_rm_venv_dir() guard"
 else
@@ -1255,13 +1262,13 @@ fi
 # --- PYTHON_BIN_PATH is missing/not executable, and still starts the      -
 # --- scraper with PYTHON_BIN set (no silent switch to system python).
 RESUME_FN_BODY21="$(awk '/^resume_scraper\(\) \{/,/^\}/' "$DEPLOY_SCRIPT")"
-if printf '%s\n' "$RESUME_FN_BODY21" | grep -q -E '\[ ! -x "\$PYTHON_BIN_PATH" \]'; then
+if emitn "$RESUME_FN_BODY21" | grep -q -E '\[ ! -x "\$PYTHON_BIN_PATH" \]'; then
   pass "case 21: resume_scraper() checks whether \$PYTHON_BIN_PATH is executable"
 else
   fail "case 21: expected resume_scraper() to check [ ! -x \"\$PYTHON_BIN_PATH\" ]"
 fi
 
-if printf '%s\n' "$RESUME_FN_BODY21" | grep -q -E 'warn .*PYTHON_BIN.*venv missing'; then
+if emitn "$RESUME_FN_BODY21" | grep -q -E 'warn .*PYTHON_BIN.*venv missing'; then
   pass "case 21: resume_scraper() emits a loud warn naming PYTHON_BIN + 'venv missing' when the venv is absent"
 else
   fail "case 21: expected a warn line in resume_scraper() containing PYTHON_BIN and 'venv missing'"
@@ -1284,41 +1291,41 @@ if [ -z "$SETUP_FN_BODY22" ]; then
   fail "case 22: could not extract setup_python_venv() from $DEPLOY_SCRIPT — function renamed?"
 else
   # (i) both mv calls are guarded, never bare/unchecked.
-  if printf '%s\n' "$SETUP_FN_BODY22" | grep -q -E '(if ! mv "\$PYTHON_VENV_DIR" "\$old_dir"|mv "\$PYTHON_VENV_DIR" "\$old_dir".*\|\|)'; then
+  if emitn "$SETUP_FN_BODY22" | grep -q -E '(if ! mv "\$PYTHON_VENV_DIR" "\$old_dir"|mv "\$PYTHON_VENV_DIR" "\$old_dir".*\|\|)'; then
     pass "case 22: mv \"\$PYTHON_VENV_DIR\" \"\$old_dir\" is guarded (checked, not bare)"
   else
     fail "case 22: expected mv \"\$PYTHON_VENV_DIR\" \"\$old_dir\" to be guarded (if ! mv ... / mv ... || ...)"
   fi
 
-  if printf '%s\n' "$SETUP_FN_BODY22" | grep -q -E '(if ! mv "\$new_dir" "\$PYTHON_VENV_DIR"|mv "\$new_dir" "\$PYTHON_VENV_DIR".*\|\|)'; then
+  if emitn "$SETUP_FN_BODY22" | grep -q -E '(if ! mv "\$new_dir" "\$PYTHON_VENV_DIR"|mv "\$new_dir" "\$PYTHON_VENV_DIR".*\|\|)'; then
     pass "case 22: mv \"\$new_dir\" \"\$PYTHON_VENV_DIR\" is guarded (checked, not bare)"
   else
     fail "case 22: expected mv \"\$new_dir\" \"\$PYTHON_VENV_DIR\" to be guarded (if ! mv ... / mv ... || ...)"
   fi
 
   # (ii) a restore-from-.old path exists (moves $old_dir back to $PYTHON_VENV_DIR).
-  if printf '%s\n' "$SETUP_FN_BODY22" | grep -q -E 'mv "\$old_dir" "\$PYTHON_VENV_DIR"'; then
+  if emitn "$SETUP_FN_BODY22" | grep -q -E 'mv "\$old_dir" "\$PYTHON_VENV_DIR"'; then
     pass "case 22: a restore-from-.old path exists (mv \"\$old_dir\" \"\$PYTHON_VENV_DIR\")"
   else
     fail "case 22: expected a restore path moving \$old_dir back to \$PYTHON_VENV_DIR when the second mv fails"
   fi
 
   # (iii) the function ends with an explicit `return 0`, only after a final -x check.
-  LAST_LINES22="$(printf '%s\n' "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -6 || true)"
-  LAST_NONCOMMENT_LINE22="$(printf '%s\n' "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -1 || true)"
+  LAST_LINES22="$(emitn "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -6 || true)"
+  LAST_NONCOMMENT_LINE22="$(emitn "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -1 || true)"
   # The extracted body includes the closing '}' as its last awk-matched line;
   # drop it to find the last real statement.
   if [ "$LAST_NONCOMMENT_LINE22" = "}" ]; then
-    LAST_NONCOMMENT_LINE22="$(printf '%s\n' "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -2 | head -1 || true)"
+    LAST_NONCOMMENT_LINE22="$(emitn "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -2 | head -1 || true)"
   fi
 
-  if [ "$(printf '%s' "$LAST_NONCOMMENT_LINE22" | sed -E 's/^\s+|\s+$//g')" = "return 0" ]; then
+  if [ "$(emit "$LAST_NONCOMMENT_LINE22" | sed -E 's/^\s+|\s+$//g')" = "return 0" ]; then
     pass "case 22: setup_python_venv()'s last non-comment statement is 'return 0'"
   else
     fail "case 22: expected setup_python_venv() to end with an explicit 'return 0', found: '$LAST_NONCOMMENT_LINE22'"
   fi
 
-  if printf '%s\n' "$LAST_LINES22" | grep -q -E '\[ -x "\$PYTHON_VENV_DIR/bin/python" \]'; then
+  if emitn "$LAST_LINES22" | grep -q -E '\[ -x "\$PYTHON_VENV_DIR/bin/python" \]'; then
     pass "case 22: the final 'return 0' is preceded by a -x check on \$PYTHON_VENV_DIR/bin/python"
   else
     fail "case 22: expected a [ -x \"\$PYTHON_VENV_DIR/bin/python\" ] check immediately before the final return 0"
@@ -1332,20 +1339,20 @@ fi
 # --- an empty string and the mismatch branch never runs. Fix: use          -
 # --- importlib.metadata.version(...) and FAIL when it differs from the    -
 # --- pin, and FAIL when the pin itself is empty (parsing broke).
-if printf '%s\n' "$STRIPPED16" | grep -q -E 'importlib\.metadata\.version\("rapidocr-onnxruntime"\)'; then
+if emitn "$STRIPPED16" | grep -q -E 'importlib\.metadata\.version\("rapidocr-onnxruntime"\)'; then
   pass "case 23: smoke check reads the installed version via importlib.metadata.version(), not the (nonexistent) __version__ attribute"
 else
   fail "case 23: expected the smoke check to use importlib.metadata.version(\"rapidocr-onnxruntime\") to read the installed version"
 fi
 
 EMPTY_PIN_BLOCK23="$(awk '/^if not expected:/,/^actual = /' "$DEPLOY_SCRIPT")"
-if printf '%s\n' "$EMPTY_PIN_BLOCK23" | grep -q 'sys.exit(1)'; then
+if emitn "$EMPTY_PIN_BLOCK23" | grep -q 'sys.exit(1)'; then
   pass "case 23: smoke check fails (sys.exit(1)) when the pin (expected) itself is empty/unparsed"
 else
   fail "case 23: expected the smoke check to sys.exit(1) when 'expected' (the pin read from requirements.txt) is empty"
 fi
 
-if printf '%s\n' "$STRIPPED16" | grep -q -E 'actual != expected'; then
+if emitn "$STRIPPED16" | grep -q -E 'actual != expected'; then
   pass "case 23: smoke check still compares installed vs pinned version and fails on mismatch"
 else
   fail "case 23: expected the smoke check to compare the installed version against the pin and fail on mismatch"
@@ -1365,13 +1372,13 @@ else
   fail "case 24: expected scraper/scripts/ocr_pages.py to exist"
 fi
 
-if printf '%s\n' "$STRIPPED16" | grep -q -E 'from rapidocr_onnxruntime import RapidOCR'; then
+if emitn "$STRIPPED16" | grep -q -E 'from rapidocr_onnxruntime import RapidOCR'; then
   pass "case 24: smoke check imports RapidOCR by name (from rapidocr_onnxruntime import RapidOCR)"
 else
   fail "case 24: expected the smoke check to 'from rapidocr_onnxruntime import RapidOCR'"
 fi
 
-if printf '%s\n' "$STRIPPED16" | grep -q -E 'RapidOCR\(\)'; then
+if emitn "$STRIPPED16" | grep -q -E 'RapidOCR\(\)'; then
   pass "case 24: smoke check actually constructs RapidOCR()"
 else
   fail "case 24: expected the smoke check to construct RapidOCR()"
@@ -1382,14 +1389,14 @@ for attr in text_recognizer text_detector load_img sorted_boxes get_crop_img_lis
     # attribute list drifted from ocr_pages.py's real usage — not this case's job to fix ocr_pages.py, just flag it.
     :
   fi
-  if printf '%s\n' "$STRIPPED16" | grep -q "$attr"; then
+  if emitn "$STRIPPED16" | grep -q "$attr"; then
     pass "case 24: smoke check asserts hasattr(...) (or equivalent) for '$attr' (used by ocr_pages.py)"
   else
     fail "case 24: expected the smoke check to assert the '$attr' attribute ocr_pages.py relies on"
   fi
 done
 
-if printf '%s\n' "$STRIPPED16" | grep -q -E '^import PIL|^from PIL'; then
+if emitn "$STRIPPED16" | grep -q -E '^import PIL|^from PIL'; then
   pass "case 24: smoke check imports PIL"
 else
   fail "case 24: expected the smoke check to import PIL"
@@ -1402,7 +1409,7 @@ SAFE_RM_FN_BODY25="$(awk '/^safe_rm_venv_dir\(\) \{/,/^\}/' "$DEPLOY_SCRIPT")"
 if [ -z "$SAFE_RM_FN_BODY25" ]; then
   fail "case 25: could not extract safe_rm_venv_dir() from $DEPLOY_SCRIPT — function renamed?"
 else
-  if printf '%s\n' "$SAFE_RM_FN_BODY25" | grep -q -E '\*\.\.\*|case "\$dir" in.*\.\.'; then
+  if emitn "$SAFE_RM_FN_BODY25" | grep -q -E '\*\.\.\*|case "\$dir" in.*\.\.'; then
     pass "case 25: safe_rm_venv_dir() rejects paths containing '..'"
   else
     fail "case 25: expected safe_rm_venv_dir() to explicitly reject any path containing '..'"
@@ -1475,28 +1482,28 @@ else
   # (verified: mutating line 786 to drop setsid left this PASS). Anchor to
   # the exact line that starts the probe (contains both "npm run start" and
   # PORT="$PROBE_PORT") and require setsid on THAT line specifically.
-  PROBE_START_LINE27="$(printf '%s\n' "$PROBE_FN_BODY27" | grep -E 'npm run start' | grep -F 'PORT="$PROBE_PORT"' | head -n1)"
+  PROBE_START_LINE27="$(emitn "$PROBE_FN_BODY27" | grep -E 'npm run start' | grep -F 'PORT="$PROBE_PORT"' | head -n1)"
   if [ -z "$PROBE_START_LINE27" ]; then
     fail "case 27: could not find the probe start line (npm run start + PORT=\"\$PROBE_PORT\") — probe_release() restructured?"
-  elif printf '%s' "$PROBE_START_LINE27" | grep -q -E '\bsetsid\b'; then
+  elif emit "$PROBE_START_LINE27" | grep -q -E '\bsetsid\b'; then
     pass "case 27: probe_release() starts the probe under setsid (own process group)"
   else
     fail "case 27: expected the probe start line to run under setsid so kill can target the whole group — line: $PROBE_START_LINE27"
   fi
 
-  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E '\bkill\b.*-TERM.*-- -"?\$'; then
+  if emitn "$PROBE_FN_BODY27" | grep -q -E '\bkill\b.*-TERM.*-- -"?\$'; then
     pass "case 27: cleanup_probe() sends TERM to a NEGATIVE pgid (whole process group)"
   else
     fail "case 27: expected cleanup_probe() to kill -- -\$pgid (negative pgid = whole group), not just \$pid"
   fi
 
-  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'ss .*sport|fuser .*PROBE_PORT|fuser .*\$PROBE_PORT'; then
+  if emitn "$PROBE_FN_BODY27" | grep -q -E 'ss .*sport|fuser .*PROBE_PORT|fuser .*\$PROBE_PORT'; then
     pass "case 27: cleanup_probe() verifies PROBE_PORT is actually free after the kill"
   else
     fail "case 27: expected a post-kill listener check on \$PROBE_PORT (ss/fuser), not a bare kill-and-hope"
   fi
 
-  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'already in use|port.*in use|held by pid|fuser -n tcp "\$PROBE_PORT"'; then
+  if emitn "$PROBE_FN_BODY27" | grep -q -E 'already in use|port.*in use|held by pid|fuser -n tcp "\$PROBE_PORT"'; then
     pass "case 27: probe_release() checks PROBE_PORT is free BEFORE starting the probe"
   else
     fail "case 27: expected probe_release() to refuse starting when \$PROBE_PORT is already held by a stale process"
@@ -1505,8 +1512,8 @@ else
   # MINOR(a) round 2: the pre-start "already in use" check must prefer
   # `ss -ltnp` (LISTENING sockets only) over `fuser -n tcp` (which also
   # matches OUTBOUND connections to a remote :$PROBE_PORT — a false-fatal).
-  PROBE_PRESTART_BLOCK27="$(printf '%s\n' "$PROBE_FN_BODY27" | awk '/already holding the/,/^  local pidfile=/')"
-  if printf '%s\n' "$PROBE_PRESTART_BLOCK27" | grep -q -E '\bss\b .*-ltnp.*sport'; then
+  PROBE_PRESTART_BLOCK27="$(emitn "$PROBE_FN_BODY27" | awk '/already holding the/,/^  local pidfile=/')"
+  if emitn "$PROBE_PRESTART_BLOCK27" | grep -q -E '\bss\b .*-ltnp.*sport'; then
     pass "case 27 MINOR(a): pre-start listener check uses ss -ltnp (listening sockets only), not fuser"
   else
     fail "case 27 MINOR(a): expected the pre-start check to use ss -ltnp before falling back to fuser"
@@ -1514,7 +1521,7 @@ else
 
   # MINOR(c) round 2: PROBE_PORT must be checked against the web app's own
   # live PORT (from WEB_ENV_FILE) before the probe ever starts.
-  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'PROBE_PORT.*=.*web_port|web_port.*PORT='; then
+  if emitn "$PROBE_FN_BODY27" | grep -q -E 'PROBE_PORT.*=.*web_port|web_port.*PORT='; then
     pass "case 27 MINOR(c): probe_release() guards PROBE_PORT against the web app's own PORT"
   else
     fail "case 27 MINOR(c): expected probe_release() to refuse when PROBE_PORT equals the web app's live PORT"
@@ -1668,10 +1675,10 @@ FAKEFUSER
   # 28a: child listener outlives the leader by ~3s -> cleaned by the PORT
   # wait, no fuser fallback, INFO "free after" line printed.
   OUT28A="$(run_cleanup_probe_28 a 45001 3 8 0.2 yes 2>&1)"
-  if printf '%s' "$OUT28A" | grep -q 'probe port 45001 free after' \
-     && ! printf '%s' "$OUT28A" | grep -qi 'attempting fuser' \
-     && ! printf '%s' "$OUT28A" | grep -qi 'FATAL' \
-     && printf '%s' "$OUT28A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+  if emit "$OUT28A" | grep -q 'probe port 45001 free after' \
+     && ! emit "$OUT28A" | grep -qi 'attempting fuser' \
+     && ! emit "$OUT28A" | grep -qi 'FATAL' \
+     && emit "$OUT28A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28a: child listener outlives leader by ~3s -> cleaned by the port wait, no fuser fallback"
   else
     fail "case 28a: expected a clean port-wait resolution with an INFO 'free after' line and no fuser fallback — got: $OUT28A"
@@ -1684,10 +1691,10 @@ FAKEFUSER
   # observes a recorded -KILL, so this genuinely proves the escalation
   # fired (see the mutation-proof step right after this case).
   OUT28B="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" killaware 45002 0 2 0.2 yes 2>&1)"
-  if printf '%s' "$OUT28B" | grep -q 'probe port 45002 free after' \
-     && ! printf '%s' "$OUT28B" | grep -qi 'attempting fuser' \
-     && ! printf '%s' "$OUT28B" | grep -qi 'FATAL' \
-     && printf '%s' "$OUT28B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+  if emit "$OUT28B" | grep -q 'probe port 45002 free after' \
+     && ! emit "$OUT28B" | grep -qi 'attempting fuser' \
+     && ! emit "$OUT28B" | grep -qi 'FATAL' \
+     && emit "$OUT28B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28b: port survives the initial wait -> KILL escalation clears it, no fuser fallback"
   else
     fail "case 28b: expected KILL escalation to resolve it with an INFO 'free after' line and no fuser fallback — got: $OUT28B"
@@ -1703,12 +1710,12 @@ FAKEFUSER
   sed 's/kill -KILL -- -"\$pgid" 2>\/dev\/null || kill -KILL "\$pid" 2>\/dev\/null || true/: # MUTATED for the mutation-proof test: escalation removed/' \
     "$DEPLOY_SCRIPT" > "$MUTANT_SCRIPT_28"
   MUTANT_FN_28="$(awk '/^  cleanup_probe\(\) \{/,/^  \}$/' "$MUTANT_SCRIPT_28")"
-  if printf '%s\n' "$MUTANT_FN_28" | grep -qE 'kill -KILL -- -"$pgid"'; then
+  if emitn "$MUTANT_FN_28" | grep -qE 'kill -KILL -- -"$pgid"'; then
     fail "case 28b mutation-proof: the sed mutation did not actually remove the -KILL escalation from the extracted body — mutation setup is broken"
   else
     MUT_OUT28B="$(run_cleanup_probe_28_body "$MUTANT_FN_28" killaware 45012 0 2 0.2 yes 2>&1)"
-    if printf '%s' "$MUT_OUT28B" | grep -q 'probe port 45012 free after' \
-       && ! printf '%s' "$MUT_OUT28B" | grep -qi 'attempting fuser'; then
+    if emit "$MUT_OUT28B" | grep -q 'probe port 45012 free after' \
+       && ! emit "$MUT_OUT28B" | grep -qi 'attempting fuser'; then
       fail "case 28b mutation-proof: removing the KILL escalation should have broken case 28b's assertions, but the mutant still passed — the test does not actually depend on the escalation"
     else
       pass "case 28b mutation-proof: removing the KILL escalation correctly makes case 28b's pass condition fail (mutant output: $MUT_OUT28B)"
@@ -1720,10 +1727,10 @@ FAKEFUSER
   # fallback log line, and does not hang/crash (leader dies quickly so
   # the fallback loop exits well before PROBE_CLEANUP_WAIT_SECS).
   OUT28C="$(run_cleanup_probe_28 c 45003 3 3 0.3 no 2>&1)"
-  if printf '%s' "$OUT28C" | grep -qi 'ss not found' \
-     && printf '%s' "$OUT28C" | grep -qi 'leader-only wait' \
-     && ! printf '%s' "$OUT28C" | grep -qi 'FATAL' \
-     && printf '%s' "$OUT28C" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+  if emit "$OUT28C" | grep -qi 'ss not found' \
+     && emit "$OUT28C" | grep -qi 'leader-only wait' \
+     && ! emit "$OUT28C" | grep -qi 'FATAL' \
+     && emit "$OUT28C" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28c: ss absent -> leader-only wait with the fallback log line, no crash"
   else
     fail "case 28c: expected the ss-absent fallback WARN + leader-only wait, no crash — got: $OUT28C"
@@ -1734,9 +1741,9 @@ FAKEFUSER
   # listener -> falls through to the EXISTING fuser -k last resort,
   # which (in this fake) actually frees it -> no FATAL.
   OUT28D="$(run_cleanup_probe_28 d 45004 999999 2 0.2 yes 2>&1)"
-  if printf '%s' "$OUT28D" | grep -qi 'attempting fuser -k' \
-     && ! printf '%s' "$OUT28D" | grep -qi 'FATAL' \
-     && printf '%s' "$OUT28D" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+  if emit "$OUT28D" | grep -qi 'attempting fuser -k' \
+     && ! emit "$OUT28D" | grep -qi 'FATAL' \
+     && emit "$OUT28D" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28d: existing fuser-last-resort still fires and clears a truly stubborn listener"
   else
     fail "case 28d: expected the fuser -k last resort to fire and succeed with no FATAL — got: $OUT28D"
@@ -1748,10 +1755,10 @@ FAKEFUSER
   # a bogus "free after 0s"/"free after 1s" line fired during the error
   # polls, before the port has actually had time to free.
   OUT28E="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" error 45005 2 6 0.2 yes 2 2>&1)"
-  if printf '%s' "$OUT28E" | grep -qE 'free after [2-9][0-9]*s' \
-     && ! printf '%s' "$OUT28E" | grep -qE 'free after [01]s' \
-     && ! printf '%s' "$OUT28E" | grep -qi 'FATAL' \
-     && printf '%s' "$OUT28E" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+  if emit "$OUT28E" | grep -qE 'free after [2-9][0-9]*s' \
+     && ! emit "$OUT28E" | grep -qE 'free after [01]s' \
+     && ! emit "$OUT28E" | grep -qi 'FATAL' \
+     && emit "$OUT28E" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28e: ss exiting non-zero is treated as UNKNOWN (kept waiting), not falsely reported as free"
   else
     fail "case 28e: expected ss errors to be treated as unknown/keep-waiting, not an immediate false 'free after 0s/1s' — got: $OUT28E"
@@ -1761,10 +1768,10 @@ FAKEFUSER
   # integer -> logs a WARN and falls back to the 10s default instead of
   # crashing or misbehaving (e.g. an unbounded/negative loop bound).
   OUT28F="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" time 45006 1 "not-a-number" 0.2 yes 0 2>&1)"
-  if printf '%s' "$OUT28F" | grep -qi "PROBE_CLEANUP_WAIT_SECS='not-a-number' is not a non-negative integer" \
-     && printf '%s' "$OUT28F" | grep -q 'probe port 45006 free after' \
-     && ! printf '%s' "$OUT28F" | grep -qi 'FATAL' \
-     && printf '%s' "$OUT28F" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+  if emit "$OUT28F" | grep -qi "PROBE_CLEANUP_WAIT_SECS='not-a-number' is not a non-negative integer" \
+     && emit "$OUT28F" | grep -q 'probe port 45006 free after' \
+     && ! emit "$OUT28F" | grep -qi 'FATAL' \
+     && emit "$OUT28F" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28f: an invalid PROBE_CLEANUP_WAIT_SECS logs a WARN and falls back to the 10s default"
   else
     fail "case 28f: expected a WARN + fallback to the 10s default for a non-integer PROBE_CLEANUP_WAIT_SECS — got: $OUT28F"
@@ -1886,10 +1893,10 @@ FAKEPS29
   # child) -> freed by the direct TERM, no old-fuser fallback reached, INFO
   # "free after ... (direct listener kill)" line printed.
   OUT29A="$(run_cleanup_probe_29 '( sleep 30 )' 45101 self "node /app/web/node_modules/.bin/next-server" 2>&1)"
-  if printf '%s' "$OUT29A" | grep -q 'free after.*direct listener kill' \
-     && ! printf '%s' "$OUT29A" | grep -qi 'surviving pid' \
-     && ! printf '%s' "$OUT29A" | grep -qi 'FATAL' \
-     && printf '%s' "$OUT29A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+  if emit "$OUT29A" | grep -q 'free after.*direct listener kill' \
+     && ! emit "$OUT29A" | grep -qi 'surviving pid' \
+     && ! emit "$OUT29A" | grep -qi 'FATAL' \
+     && emit "$OUT29A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 29a: listener outside the group dies on direct TERM -> freed, no fuser, 'free after' printed"
   else
     fail "case 29a: expected a clean direct-TERM resolution with no fuser fallback -- got: $OUT29A"
@@ -1905,10 +1912,10 @@ FAKEPS29
   # where the pr-gate `deploy-script-tests` job runs this suite for real.
   if [ "$(uname -s 2>/dev/null)" = "Linux" ]; then
     OUT29B="$(run_cleanup_probe_29 '( trap "" TERM; sleep 30 )' 45102 self "node /app/web/node_modules/.bin/next-server" 2>&1)"
-    if printf '%s' "$OUT29B" | grep -q 'free after.*direct listener kill' \
-       && printf '%s\n' "$OUT29B" | grep -Eq -- '-KILL [0-9]+' \
-       && ! printf '%s' "$OUT29B" | grep -qi 'FATAL' \
-       && printf '%s' "$OUT29B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    if emit "$OUT29B" | grep -q 'free after.*direct listener kill' \
+       && emitn "$OUT29B" | grep -Eq -- '-KILL [0-9]+' \
+       && ! emit "$OUT29B" | grep -qi 'FATAL' \
+       && emit "$OUT29B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
       pass "case 29b: listener ignores TERM -> direct KILL escalation frees it"
     else
       fail "case 29b: expected TERM to fail and a direct KILL to free the listener -- got: $OUT29B"
@@ -1922,11 +1929,11 @@ FAKEPS29
   # W-169 round 3: actually assert kill-calls.log has no -TERM/-KILL entry
   # for this pid (the comment used to claim this without checking it).
   OUT29C="$(run_cleanup_probe_29 '( sleep 30 )' 45103 self "PM2 v5.3.0: God Daemon (/root/.pm2)" 2>&1)"
-  LPID29C="$(printf '%s\n' "$OUT29C" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
+  LPID29C="$(emitn "$OUT29C" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
   if [ -n "$LPID29C" ] \
-     && printf '%s' "$OUT29C" | grep -qi 'pm2-managed' \
-     && printf '%s' "$OUT29C" | grep -qi 'left to pm2, NOT killed' \
-     && ! printf '%s\n' "$OUT29C" | grep -qE -- "-(TERM|KILL) $LPID29C\$"; then
+     && emit "$OUT29C" | grep -qi 'pm2-managed' \
+     && emit "$OUT29C" | grep -qi 'left to pm2, NOT killed' \
+     && ! emitn "$OUT29C" | grep -qE -- "-(TERM|KILL) $LPID29C\$"; then
     pass "case 29c: pm2-managed listener is WARN'd and never signaled directly (kill-calls.log verified)"
   else
     fail "case 29c: expected a pm2-managed listener to be WARN'd, left unsignaled, and absent from kill-calls.log -- got: $OUT29C"
@@ -1936,10 +1943,10 @@ FAKEPS29
   # process that merely happens to be bound to PROBE_PORT) -> WARN'd and
   # left alone, no -TERM/-KILL issued for it.
   OUT29D="$(run_cleanup_probe_29 '( sleep 30 )' 45104 self "node /app/web/node_modules/.bin/next-server" old 2>&1)"
-  LPID29D="$(printf '%s\n' "$OUT29D" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
+  LPID29D="$(emitn "$OUT29D" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
   if [ -n "$LPID29D" ] \
-     && printf '%s' "$OUT29D" | grep -qi 'started before this probe' \
-     && ! printf '%s\n' "$OUT29D" | grep -qE -- "-(TERM|KILL) $LPID29D\$"; then
+     && emit "$OUT29D" | grep -qi 'started before this probe' \
+     && ! emitn "$OUT29D" | grep -qE -- "-(TERM|KILL) $LPID29D\$"; then
     pass "case 29d: listener predating the probe is WARN'd and left unsignaled"
   else
     fail "case 29d: expected a pre-existing listener to be WARN'd (started before this probe) and left unsignaled -- got: $OUT29D"
@@ -1949,12 +1956,12 @@ FAKEPS29
   # guard must FAIL SAFE (skip + WARN naming the pid and raw lstart), not
   # fail open and kill it.
   OUT29E="$(run_cleanup_probe_29 '( sleep 30 )' 45105 self "node /app/web/node_modules/.bin/next-server" bad 2>&1)"
-  LPID29E="$(printf '%s\n' "$OUT29E" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
+  LPID29E="$(emitn "$OUT29E" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
   if [ -n "$LPID29E" ] \
-     && printf '%s' "$OUT29E" | grep -qi 'unparseable/unknown start time' \
-     && printf '%s' "$OUT29E" | grep -q "pid=$LPID29E" \
-     && printf '%s' "$OUT29E" | grep -q "lstart='not-a-real-date'" \
-     && ! printf '%s\n' "$OUT29E" | grep -qE -- "-(TERM|KILL) $LPID29E\$"; then
+     && emit "$OUT29E" | grep -qi 'unparseable/unknown start time' \
+     && emit "$OUT29E" | grep -q "pid=$LPID29E" \
+     && emit "$OUT29E" | grep -q "lstart='not-a-real-date'" \
+     && ! emitn "$OUT29E" | grep -qE -- "-(TERM|KILL) $LPID29E\$"; then
     pass "case 29e: unparseable lstart is skipped fail-safe with a WARN naming the pid and raw lstart"
   else
     fail "case 29e: expected an unparseable lstart to fail safe (skip + WARN naming pid+lstart), not fail open -- got: $OUT29E"
