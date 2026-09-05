@@ -1633,6 +1633,7 @@ FAKEFUSER
   # still green).
   run_cleanup_probe_28_body() {
     local fn_body="$1" mode="$2" port="$3" free_after="$4" wait_secs="$5" leaderdelay="$6" use_fakes="$7" errlimit="${8:-0}"
+    local NOSS_FAKEBIN28=""
     local statedir; statedir="$(mktemp -d)"
     date +%s > "$statedir/start-$port"
     echo "$free_after" > "$statedir/free-after-$port"
@@ -1688,7 +1689,8 @@ exec "%s" "$@"
       echo "PROBE_CLEANUP_FAILED=$PROBE_CLEANUP_FAILED"
     )
     rm -rf "$statedir"
-    [ -n "${NOSS_FAKEBIN28:-}" ] && rm -rf "$NOSS_FAKEBIN28"
+    if [ -n "$NOSS_FAKEBIN28" ]; then rm -rf "$NOSS_FAKEBIN28"; fi
+    return 0
   }
   run_cleanup_probe_28() {
     local name="$1" port="$2" free_after="$3" wait_secs="$4" leaderdelay="$5" use_fakes="$6"
