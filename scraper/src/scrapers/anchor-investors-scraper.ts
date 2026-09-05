@@ -396,8 +396,22 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
     logger.error(`[Anchor Investors] ${reason}`);
     return { ok: false, kind: 'hard_failure', reason };
   }
+  // Round 3 (regression of the W-137 outage fix). `spawnSync` runs python
+  // WITHOUT a shell, so the kernel OOM-killer leaves `status: null,
+  // signal: 'SIGKILL', error: undefined` and NO stderr at all — the "Killed"
+  // text `isMemoryAbortStderr` matches is printed by a SHELL, which is not in
+  // this pipeline. That is the exact live W-137 shape (an OOM kill that took
+  // pm2 down with it), so it must keep the 24h hard-failure floor rather than
+  // fall through to an ordinary hourly retry. A SIGKILL we did not ask for
+  // (no `error.code`; the timeout path already returned above) is therefore
+  // classified as a hard failure.
+  if (res.status === null && res.signal === 'SIGKILL' && !(res.error as { code?: string } | undefined)?.code) {
+    const reason = 'anchor sidecar killed by SIGKILL (kernel OOM or external kill), no stderr';
+    logger.error(`[Anchor Investors] ${reason}`);
+    return { ok: false, kind: 'hard_failure', reason };
+  }
   if (res.status === null) {
-    // Killed by a signal with no memory signature: real, but not a memory
+    // Any other signal, with no memory signature: real, but not a memory
     // ceiling. Ordinary FAILED + backoff, with the signal named.
     const reason = `anchor sidecar killed (signal ${String(res.signal ?? 'unknown')}): ${stderr.slice(0, 300)}`;
     logger.error(`[Anchor Investors] ${reason}`);

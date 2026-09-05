@@ -70,7 +70,29 @@ describe('MAJOR-2 — a timed-out sidecar is not a memory abort', () => {
     expect((extractPageTexts('C:/store/x.pdf') as { kind: string }).kind).toBe('hard_failure');
   });
 
-  it('a signal kill with no memory signature is an ordinary failure naming the signal', () => {
+  it('a bare SIGKILL (kernel OOM, no shell, no stderr) keeps the W-137 hard-failure floor', () => {
+    // The live W-137 shape: spawnSync runs python with NO shell, so the
+    // OOM-killer leaves status null / signal SIGKILL / no error / no stderr —
+    // the "Killed" line isMemoryAbortStderr matches is printed by a shell.
+    spawnSyncMock.mockReturnValue({ status: null, signal: 'SIGKILL', stdout: '', stderr: '' });
+    const result = extractPageTexts('C:/store/x.pdf');
+    expect((result as { kind: string }).kind).toBe('hard_failure');
+    expect((result as { reason: string }).reason).toContain('SIGKILL');
+  });
+
+  it('a SIGKILL that came from OUR OWN timeout is still the ordinary timeout path', () => {
+    spawnSyncMock.mockReturnValue({
+      status: null,
+      signal: 'SIGKILL',
+      stdout: '',
+      stderr: '',
+      error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
+    });
+    const result = extractPageTexts('C:/store/x.pdf');
+    expect((result as { kind: string }).kind).toBe('sidecar_error');
+  });
+
+  it('another signal with no memory signature is an ordinary failure naming the signal', () => {
     spawnSyncMock.mockReturnValue({ status: null, signal: 'SIGSEGV', stdout: '', stderr: '' });
     const result = extractPageTexts('C:/store/x.pdf');
     expect((result as { kind: string }).kind).toBe('sidecar_error');
