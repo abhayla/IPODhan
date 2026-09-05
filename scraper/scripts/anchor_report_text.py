@@ -39,6 +39,7 @@ import sys
 # `ocr_pages` — see memory_guard.py's module-level `_pin_blas_thread_env()`.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memory_guard  # noqa: E402
+from json_safe import strip_nul_bytes  # noqa: E402
 
 import pdfplumber  # noqa: E402
 
@@ -550,7 +551,7 @@ def main():
             return memory_guard.EXIT_MEMORY_CEILING
         print(json.dumps({"error": "%s: %s" % (type(exc).__name__, exc)}))
         return 1
-    print(json.dumps({"pages": pages}))
+    print(json.dumps(strip_nul_bytes({"pages": pages})))
     return 0
 
 
