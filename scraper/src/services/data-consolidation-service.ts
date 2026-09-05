@@ -42,6 +42,7 @@ import { confidenceFor } from '../config/source-confidence';
 import type { ConflictSeverity } from '../config/source-confidence';
 import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
 import logger from '../utils/logger.js';
+import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 
 /**
  * Result of field consolidation
@@ -162,9 +163,10 @@ const MAX_LISTING_GAP_DAYS: Record<string, number> = {
 };
 
 function toEpochDay(value: any): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 86400000);
+  // W-160b: was `new Date(value).getTime()` — a bound local-TZ parse of a
+  // raw date string (T-327 class); `toUtcEpochDay` computes the UTC
+  // calendar day explicitly and never re-parses via `new Date(rawString)`.
+  return toUtcEpochDay(value);
 }
 
 /**
@@ -236,6 +238,18 @@ function datesFullySatisfyInvariant(
 const HOLD_CONFLICT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
+ * W-160b: is a `data_conflicts.detected_at` value within `HOLD_CONFLICT_MAX_AGE_MS`
+ * of `now`? Uses `toUtcEpochMs` (Date passthrough / explicit UTC parse) instead of
+ * `new Date(row.detectedAt).getTime()` (T-327 ratchet class). An unparseable
+ * `detectedAt` can't be judged fresh, so it fails closed (treated as stale).
+ */
+function isDetectedAtStillFresh(detectedAt: unknown, now: number): boolean {
+  const detectedAtMs = toUtcEpochMs(detectedAt);
+  if (detectedAtMs === null) return false;
+  return now - detectedAtMs <= HOLD_CONFLICT_MAX_AGE_MS;
+}
+
+/**
  * W-60: terminal `ipo_status` values (commit 4a96ab7d). Once an IPO is
  * WITHDRAWN or POSTPONED, the web updater's own `TERMINAL_STATUSES` guard
  * (`web/lib/services/status-updater-service.ts`) refuses to move it back —
@@ -275,11 +289,14 @@ function resolveTzSignatureTiebreak(
   if (existingSource !== 'NSE' && incomingSource !== 'NSE') return null;
   if (existingSource === incomingSource) return null;
 
-  const existingDate = new Date(existingValue);
-  const incomingDate = new Date(incomingValue);
-  if (Number.isNaN(existingDate.getTime()) || Number.isNaN(incomingDate.getTime())) return null;
+  // W-160b: was `new Date(existingValue/incomingValue)` — a bound local-TZ
+  // parse of raw date strings (T-327 class); `toUtcEpochMs` computes the
+  // UTC instant explicitly and never re-parses via `new Date(rawString)`.
+  const existingMs = toUtcEpochMs(existingValue);
+  const incomingMs = toUtcEpochMs(incomingValue);
+  if (existingMs === null || incomingMs === null) return null;
 
-  const deltaDays = Math.abs(existingDate.getTime() - incomingDate.getTime()) / (24 * 60 * 60 * 1000);
+  const deltaDays = Math.abs(existingMs - incomingMs) / (24 * 60 * 60 * 1000);
   if (Math.abs(deltaDays - 1) > 1e-6) return null;
 
   // Prefer whichever side is NOT NSE.
@@ -1306,7 +1323,13 @@ export class DataConsolidationService {
             row.value2 !== null &&
             areEquivalent(normalize(fieldName, row.value2, rules), normalizedIncoming) &&
             row.detectedAt !== undefined &&
-            now - new Date(row.detectedAt).getTime() <= HOLD_CONFLICT_MAX_AGE_MS
+            // W-160b: was `new Date(row.detectedAt).getTime()` — matches the
+            // T-327 ratchet's inline risky-chain shape even though
+            // `detectedAt` is already a Drizzle `timestamp()` Date; route
+            // through `toUtcEpochMs` (Date passthrough, no re-parse) instead.
+            // A null (unparseable) detectedAt can't judge "still fresh", so
+            // it fails the freshness check rather than passing by accident.
+            isDetectedAtStillFresh(row.detectedAt, now)
         );
         if (priorAgreement) {
           if (!this.currentShadowMode) {
