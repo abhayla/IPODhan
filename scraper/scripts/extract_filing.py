@@ -2063,7 +2063,336 @@ def extract_risk_factors(page_texts, limit=480):
     return out, first_page
 
 
-def extract_rhp(page_texts, emit, issue_size_rupees=None):
+# --------------------------------------------------------------------------- #
+# W-147: the OFFERING HEADLINE off an RHP / PROSPECTUS / DRHP COVER
+# --------------------------------------------------------------------------- #
+# The price band advertisement is the only document `extract_price_band_ad`
+# reads, and it is the only emitter of the offering headline (issue size, price,
+# face value, lot size, fresh vs OFS legs). Mainboard issues almost always
+# publish one; SME issues (107 BSE SME + 60 NSE Emerge live on prod) frequently
+# do NOT — so for those the headline could never come from a filing at all.
+#
+# Every SEBI ICDR cover carries the same block: the "DETAILS OF THE ISSUE" table
+# and, one or two pages later, the all-caps offer sentence ("INITIAL PUBLIC
+# OFFER OF UP TO <n> EQUITY SHARES OF FACE VALUE Rs 10 EACH ... AT A PRICE OF
+# Rs <p> PER EQUITY SHARE ... AGGREGATING TO Rs <a> LAKHS"). That sentence is
+# the source read here.
+#
+# UNITS (the W-109 trap): the cover states its own unit ("Lakhs") next to each
+# amount, while `filing-persister.ts` multiplies every money field by the
+# DOCUMENT-level unit (`extraction.unit`, from `_find_unit` over every page —
+# typically the financial statements' unit). Emitting the cover's lakh figure
+# raw would be multiplied as if it were millions or crores. So every amount here
+# is converted from ITS OWN printed unit into the document unit with exact
+# integer factors, and is emitted as null when either unit is unknown.
+
+_COVER_PAGES = 3
+_CV_CCY = r"(?:rs\.?|inr|rupees?)?"
+
+FIXED_PRICE_RX = re.compile(r"fixed\s+price\s+(?:issue|offer|process)", re.I)
+BOOK_BUILT_RX = re.compile(r"book[\s-]*(?:built|building)\s+(?:issue|offer|process)", re.I)
+COVER_FACE_VALUE_RX = re.compile(
+    r"FACE\s+VALUE\s+(?:OF\s+)?" + _CV_CCY + r"\s*([\d,]+(?:\.\d+)?)", re.I)
+COVER_PRICE_RX = re.compile(
+    r"AT\s+(?:A|AN)\s+(?:ISSUE\s+)?PRICE\s+OF\s+" + _CV_CCY +
+    r"\s*([\d,]+(?:\.\d+)?)\s*/?\s*-?\s*PER\s+EQUITY\s+SHARE", re.I)
+COVER_BAND_RX = re.compile(
+    r"PRICE\s+BAND\s*(?:OF|:)?\s*" + _CV_CCY + r"\s*([\d,]+(?:\.\d+)?)\s*(?:TO|[-–])\s*"
+    + _CV_CCY + r"\s*([\d,]+(?:\.\d+)?)\s*(?:/?\s*-?\s*)?PER\s+EQUITY\s+SHARE", re.I)
+COVER_OFFER_SHARES_RX = re.compile(
+    r"(?:INITIAL\s+PUBLIC\s+(?:OFFER(?:ING)?|ISSUE)|PUBLIC\s+(?:OFFER(?:ING)?|ISSUE)"
+    r"|THE\s+ISSUE|THE\s+OFFER)\s+OF\s+(?:UP\s*TO\s+)?([\d,]+)\s+EQUITY\s+SHARES", re.I)
+COVER_AGGREGATING_RX = re.compile(
+    r"AGGREGAT(?:ING|E|ES)\s+(?:UP\s*TO|UPTO|TO)?\s*" + _CV_CCY +
+    # W-147 round 2 / MINOR-1: covers print the unit half a dozen ways —
+    # "Lakh(s)", "Lac(s)", "Crore(s)", "Cr"/"Cr.", "Million(s)", "Mn". All six
+    # spellings convert identically; recognising only three silently dropped the
+    # aggregate on the rest.
+    r"\s*([\d,]+(?:\.\d+)?)\s*/?\s*-?\s*"
+    r"(LAKHS?|LACS?|CRORES?|CRS?\.?|MILLIONS?|MN\.?)(?![A-Z])", re.I)
+COVER_LOT_RX = re.compile(
+    r"MINIMUM\s+(?:BID\s+)?LOT(?:\s+SIZE)?\s+(?:IS|OF|WILL\s+BE)\s+([\d,]+)\s+EQUITY\s+SHARES",
+    re.I)
+# Everything after these phrases restates a SUBSET of the offer (the market maker
+# reservation, the net issue), at its own share count and its own amount. Reading
+# past them publishes the market-maker slice as the issue size.
+COVER_OFFER_TAIL_RX = re.compile(
+    r"\bOF\s+WHICH\b|\bWILL\s+BE\s+RESERVED\b|\bTHE\s+(?:ISSUE|OFFER)\s+LESS\b"
+    r"|\bNET\s+(?:ISSUE|OFFER)\b|\bRESERVATION\s+PORTION\b", re.I)
+COVER_NO_OFS_RX = re.compile(
+    r"ENTIRE\s+(?:ISSUE|OFFER)\s+CONSTITUTES\s+(?:A\s+)?FRESH\s+ISSUE", re.I)
+# The second wording for a nil OFS: the cover's offer-for-sale block prints
+# "Not Applicable" / "Nil" instead of a sentence (VAHH Chemicals). Only trusted
+# together with COVER_OFS_PRESENT_RX below finding no OFS share count anywhere on
+# the cover, and with the shares x price == aggregate identity holding — which is
+# itself independent evidence that the printed aggregate IS the whole offer.
+COVER_OFS_NIL_RX = re.compile(
+    r"(?:OFFER|ISSUE)\s+FOR\s+SALE\b.{0,400}?\b(?:NOT\s+APPLICABLE|NIL)\b", re.I | re.S)
+COVER_OFS_PRESENT_RX = re.compile(
+    r"OFFER\s+FOR\s+SALE\s+OF\s+(?:UP\s*TO\s+)?[\d,]+\s+EQUITY\s+SHARES", re.I)
+
+_UNIT_RUPEES = {"lakhs": 1e5, "millions": 1e6, "crores": 1e7}
+# Sane issue size per segment, in INR crore. An SME issue is bounded by the SEBI
+# ICDR Chapter IX post-issue-capital limit; a mainboard issue below Rs 10 crore
+# would not clear Rule 19(2)(b).
+_SEGMENT_ISSUE_CRORE = {"SME": (1.0, 500.0), "MAINBOARD": (10.0, 50000.0)}
+_TYPICAL_FACE_VALUES = (1.0, 2.0, 5.0, 10.0)
+
+
+def _canon_unit(word):
+    w = (word or "").lower().rstrip(".")
+    if w.startswith("lakh") or w.startswith("lac"):
+        return "lakhs"
+    if w.startswith("cror") or w in ("cr", "crs"):
+        return "crores"
+    if w.startswith("million") or w == "mn":
+        return "millions"
+    return None
+
+
+def _convert_amount(value, from_unit, to_unit):
+    """Exact integer-factor conversion between published units, or None when
+    either unit is unknown — never a default."""
+    if value is None or from_unit not in _UNIT_RUPEES or to_unit not in _UNIT_RUPEES:
+        return None
+    return value * _UNIT_RUPEES[from_unit] / _UNIT_RUPEES[to_unit]
+
+
+def check_cover_arithmetic(shares, price, amount, amount_unit, tol=0.05):
+    """shares x price must reproduce the printed aggregate within +/-5% (W-147
+    §3). This is the ONE identity that REJECTS a cover value: the three figures
+    are printed side by side in the same sentence, so if they do not multiply
+    out at least one was misread and there is no way to tell which."""
+    if None in (shares, price, amount) or amount_unit not in _UNIT_RUPEES or amount == 0:
+        return None, "not checkable (shares, price, amount or unit missing)"
+    computed = shares * price
+    printed = amount * _UNIT_RUPEES[amount_unit]
+    drift = abs(computed - printed) / abs(printed)
+    if drift > tol:
+        return False, "%s x %s = %.2f vs printed %.2f (%.2f%%)" % (
+            shares, price, computed, printed, drift * 100)
+    return True, "%.2f ~= %.2f (%.2f%%)" % (computed, printed, drift * 100)
+
+
+def check_cover_issue_size(amount, amount_unit, segment):
+    """Issue size inside the segment's sane band, in INR crore (W-147 §3). WARN
+    level: an out-of-band size is still published, with the range in the detail —
+    only the arithmetic identity rejects."""
+    if amount is None or amount_unit not in _UNIT_RUPEES:
+        return False, "issue size or unit missing"
+    crore = amount * _UNIT_RUPEES[amount_unit] / 1e7
+    lo, hi = _SEGMENT_ISSUE_CRORE.get(segment, _SEGMENT_ISSUE_CRORE["MAINBOARD"])
+    if not lo <= crore <= hi:
+        return True, "WARN: %.2f crore outside the %s range %s-%s crore" % (
+            crore, segment, lo, hi)
+    return True, "%.2f crore within the %s range %s-%s crore" % (crore, segment, lo, hi)
+
+
+def check_cover_price(price):
+    if price is None:
+        return False, "price not printed on the cover"
+    if not 1 <= price <= 100000:
+        return False, "price %s outside 1-100000 rupees" % price
+    return True, "%s" % price
+
+
+def check_cover_lot(lot):
+    if lot is None:
+        return False, "lot size not printed on the cover"
+    if not 1 <= lot <= 100000:
+        return False, "lot size %s outside 1-100000 shares" % lot
+    return True, "%s" % lot
+
+
+def check_cover_face_value(face):
+    if face is None:
+        return False, "face value not printed on the cover"
+    if face <= 0:
+        return False, "face value %s not positive" % face
+    if face not in _TYPICAL_FACE_VALUES:
+        return True, "WARN: %s is not one of %s" % (face, list(_TYPICAL_FACE_VALUES))
+    return True, "%s" % face
+
+
+def check_cover_share_count(shares):
+    if shares is None:
+        return False, "share count not printed on the cover"
+    if not 1000 <= shares <= 1e10:
+        return False, "share count %s outside 1e3-1e10" % shares
+    return True, "%s" % shares
+
+
+def _cover_lines(page_texts):
+    """(joined blob, per-line list, page index per line) for the cover pages,
+    rupee glyphs stripped so the currency token in every pattern is optional."""
+    lines, pages = [], []
+    for idx, text in page_texts[:_COVER_PAGES]:
+        for ln in re.sub(r"[`₹’]", " ", text or "").split("\n"):
+            lines.append(_normalize_numbers(ln))
+            pages.append(idx)
+    return " \n".join(lines), lines, pages
+
+
+def _offer_sentence(blob):
+    """The offer sentence's HEAD — from the offer-share count up to the first
+    phrase that starts restating a subset of the offer. (text, None) or
+    (None, reason)."""
+    m = COVER_OFFER_SHARES_RX.search(blob)
+    if not m:
+        return None, "no 'issue/offer of N equity shares' sentence on the cover"
+    window = blob[m.start():m.start() + 2000]
+    tail = COVER_OFFER_TAIL_RX.search(window, m.end() - m.start())
+    return (window[:tail.start()] if tail else window), None
+
+
+_HEADLINE_MONEY_FIELDS = ("fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap",
+                          "total_offer_amount_at_cap")
+
+
+def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=None):
+    """The SEBI ICDR cover-page offering headline, emitted under the SAME field
+    names and units `extract_price_band_ad` uses, plus `issue_price_type` and the
+    `headline_source` marker the persister ranks below a price band ad."""
+    blob, _lines, pages = _cover_lines(page_texts)
+    cover_page = pages[0] if pages else None
+
+    emit.put("headline_source", "PROSPECTUS_COVER", cover_page, "headline_read_from_cover",
+             (True, "cover pages 0-%d" % (_COVER_PAGES - 1)))
+
+    # ---- issue price type: the cover names the process in words -------------
+    fixed = bool(FIXED_PRICE_RX.search(blob))
+    book = bool(BOOK_BUILT_RX.search(blob))
+    if fixed and not book:
+        price_type = "FIXED_PRICE"
+    elif book and not fixed:
+        price_type = "BOOK_BUILDING"
+    else:
+        price_type = None
+    emit.put("issue_price_type", price_type, cover_page, "issue_process_named_on_cover",
+             (price_type is not None,
+              price_type or ("both 'fixed price' and 'book built' on the cover"
+                             if fixed and book else "neither wording on the cover")))
+
+    sentence, why = _offer_sentence(blob)
+    if sentence is None:
+        for name in (("price_band_floor", "price_band_cap", "face_value", "lot_size",
+                      "shares_at_floor", "shares_at_cap", "ofs_shares",
+                      "total_offer_shares_at_cap", "issue_structure")
+                     + _HEADLINE_MONEY_FIELDS):
+            emit.null(name, why, cover_page)
+        return
+
+    # ---- face value, price / band, share count, aggregate -------------------
+    fm = COVER_FACE_VALUE_RX.search(sentence)
+    face = _num(fm.group(1)) if fm else None
+
+    bm = COVER_BAND_RX.search(blob)
+    pm = COVER_PRICE_RX.search(sentence)
+    if bm:
+        floor, cap = _num(bm.group(1)), _num(bm.group(2))
+    elif pm:
+        # A fixed-price issue has ONE price; floor == cap is its true shape, not
+        # a degenerate band (data-validation.ts exempts FIXED_PRICE from the
+        # zero-width-band rejection on exactly this basis).
+        floor = cap = _num(pm.group(1))
+    else:
+        floor = cap = None
+
+    sm = COVER_OFFER_SHARES_RX.search(sentence)
+    shares = _num(sm.group(1)) if sm else None
+
+    am = COVER_AGGREGATING_RX.search(sentence)
+    amount = _num(am.group(1)) if am else None
+    amount_unit = _canon_unit(am.group(2)) if am else None
+
+    # The identity is checked at the CAP: an "aggregating up to Rs X" figure is
+    # the offer at the highest price in the band (for a fixed price issue floor
+    # == cap, so this is the same number).
+    arithmetic_ok, arithmetic_detail = check_cover_arithmetic(shares, cap, amount, amount_unit)
+    if arithmetic_ok is False:
+        shares = amount = None
+        floor = cap = None
+
+    if floor is None:
+        price_check = check_cover_price(floor)
+    else:
+        price_check = _combine(
+            check_cover_price(floor),
+            ((cap is not None and floor <= cap), "%s-%s" % (floor, cap)))
+    emit.put("price_band_floor", floor, cover_page, "cover_price_within_bounds", price_check)
+    emit.put("price_band_cap", cap, cover_page, "cover_price_within_bounds", price_check)
+    emit.put("face_value", face, cover_page, "cover_face_value_plausible",
+             check_cover_face_value(face))
+
+    lm = COVER_LOT_RX.search(blob)
+    lot = _num(lm.group(1)) if lm else None
+    emit.put("lot_size", lot, cover_page, "cover_lot_within_bounds", check_cover_lot(lot))
+
+    # ---- fresh vs OFS legs --------------------------------------------------
+    # Only a cover that states the offer is ENTIRELY fresh gets its legs split
+    # here. A mixed fresh+OFS cover prints the two legs in a table this reader
+    # does not parse; guessing the split would understate or overstate a leg, so
+    # both are nulled with the reason instead.
+    stated_nil = bool(COVER_NO_OFS_RX.search(blob)) or bool(COVER_OFS_NIL_RX.search(blob))
+    entirely_fresh = stated_nil and not COVER_OFS_PRESENT_RX.search(blob)
+    # W-147 round 2 / MAJOR-1: an UNCHECKED identity is not a passed identity.
+    # Round 1 treated `arithmetic_ok is None` (price or share count unparseable —
+    # e.g. a cover printing "AT A PRICE OF Rs [*]" beside a real aggregate) as
+    # good enough, and published the aggregate on no evidence at all. A money
+    # field is written ONLY when shares x cap price actually reproduced it.
+    arith_check = ((arithmetic_ok is True), arithmetic_detail)
+    doc_amount = _convert_amount(amount, amount_unit, doc_unit) if arithmetic_ok is True else None
+    uncheckable = arithmetic_ok is None
+    nil_ofs = (True, "the cover states the entire issue is a fresh issue")
+
+    if not entirely_fresh:
+        for name in _HEADLINE_MONEY_FIELDS + ("ofs_shares",):
+            emit.null(name, "cover does not state the offer is entirely a fresh issue",
+                      cover_page)
+        emit.null("issue_structure", "fresh/OFS split not readable from the cover", cover_page)
+    elif doc_amount is None:
+        if uncheckable and amount is not None:
+            reason = "aggregate withheld: identity uncheckable (no price/shares)"
+        elif doc_unit is None or amount_unit is None:
+            reason = "unit_unknown"
+        else:
+            reason = "no aggregate amount printed on the cover (price not yet determined)"
+        for name in _HEADLINE_MONEY_FIELDS:
+            emit.null(name, reason, cover_page)
+        emit.put("ofs_shares", 0.0, cover_page, "cover_states_offer_is_entirely_fresh", nil_ofs)
+        emit.put("issue_structure", "FRESH_ONLY", cover_page,
+                 "cover_states_offer_is_entirely_fresh", nil_ofs)
+    else:
+        full = _combine(arith_check, check_cover_issue_size(amount, amount_unit, segment))
+        emit.put("fresh_issue_amount", doc_amount, cover_page,
+                 "cover_shares_x_price_equals_aggregate", full)
+        emit.put("total_offer_amount_at_cap", doc_amount, cover_page,
+                 "cover_shares_x_price_equals_aggregate", full)
+        # A stated-nil OFS leg is a PRESENT leg worth 0 — filing-persister.ts
+        # refuses to write ipos.issue_size from one leg alone.
+        emit.put("ofs_amount", 0.0, cover_page, "cover_states_offer_is_entirely_fresh", nil_ofs)
+        emit.put("ofs_amount_at_cap", 0.0, cover_page,
+                 "cover_states_offer_is_entirely_fresh", nil_ofs)
+        emit.put("ofs_shares", 0.0, cover_page, "cover_states_offer_is_entirely_fresh", nil_ofs)
+        emit.put("issue_structure", "FRESH_ONLY", cover_page,
+                 "cover_states_offer_is_entirely_fresh", nil_ofs)
+
+    share_check = check_cover_share_count(shares)
+    # At a single fixed price the floor and cap legs are the same share count, and
+    # a book-built cover prints one count too (the per-price-point split is the
+    # price band ad's table, not the cover's).
+    fresh_shares = shares if entirely_fresh else None
+    fresh_check = share_check if entirely_fresh else (
+        False, "cover does not state the offer is entirely a fresh issue")
+    emit.put("shares_at_floor", fresh_shares, cover_page, "cover_share_count_plausible",
+             fresh_check)
+    emit.put("shares_at_cap", fresh_shares, cover_page, "cover_share_count_plausible",
+             fresh_check)
+    emit.put("total_offer_shares_at_cap", shares, cover_page, "cover_share_count_plausible",
+             share_check)
+
+
+def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD"):
     # Strip the rupee glyphs before the shared core: prospectuses write
     # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
     # match across the glyph, so it would silently fall back to the SME default.
@@ -2073,7 +2402,10 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None):
     # issue size) backs the shared core's net_worth_vs_issue_size and
     # unit_matches_magnitude checks. None when not supplied — those checks then
     # report passed=None (not evaluated), never a false rejection.
-    pnl = extract_pnl_from_texts(cleaned, issue_size_rupees=issue_size_rupees)
+    # W-148: the segment decides the year-on-year plausibility band — an SME
+    # issuer legitimately grows far faster than the mainboard band allows.
+    pnl = extract_pnl_from_texts(cleaned, issue_size_rupees=issue_size_rupees,
+                                 segment=segment)
     fiscal_years = pnl.get("annualYears") or []
     metrics = pnl.get("metrics") or {}
     # MAJOR-1 (C7): do NOT trust `pnl["unit"]` — the shared module's own detector
@@ -2087,6 +2419,15 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None):
              check_fy_series({str(y): 0 for y in fiscal_years}, fiscal_years))
     emit.put("unit", unit, unit_page, "unit_not_stated",
              (unit is not None, "%s" % unit if unit else "no explicit unit line found"))
+
+    # W-147: the offering headline off the COVER. An RHP/PROSPECTUS/DRHP reached
+    # this function for its financials, objects, risks and CIN only, so an issue
+    # with no price band advertisement (most SME issues) had no filing source for
+    # its issue size, price, face value, lot size or fresh/OFS legs at all.
+    # `unit` (the document-level unit the persister multiplies by) is passed in so
+    # the cover's own lakh/crore figures are converted into it exactly.
+    extract_offering_headline(page_texts, emit, segment, unit)
+
     for key, name in (("revenue", "revenue_by_fy"), ("totalIncome", "total_income_by_fy"),
                       ("profit", "pat_by_fy"), ("eps", "eps_basic_by_fy"),
                       ("ebitda", "ebitda_by_fy"), ("netWorth", "net_worth_by_fy")):
@@ -2185,7 +2526,8 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
     if doc_type == "PRICE_BAND_AD":
         meta = extract_price_band_ad(page_texts, emit, segment)
     else:
-        meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees)
+        meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees,
+                           segment=segment)
 
     # W-133 MAJOR-3: fold the shared core's own financial-completeness verdict
     # (pnl["status"], surfaced above as meta["financial_status"]) into the
