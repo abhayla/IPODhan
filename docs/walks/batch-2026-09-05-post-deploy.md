@@ -7,7 +7,7 @@ Total: 11 PRs, ~7,000 lines, 11 gate runs (~5 min each). Docs commits on local m
 
 | # | Branch | Head | Tier / review evidence | Size |
 |---|---|---|---|---|
-| 1 | ci/w159-pytest-in-pr-gate | b76671c4 | A: Opus (pending at write time) | 56 |
+| 1 | ci/w159-pytest-in-pr-gate | 5ae90eea | A: Opus r1 + round 2 (ceiling opt-out, 60 MB trip cap); 112 pass local | 60 |
 | 2 | chore/d18b-quote-rule-paths (= D-18 + D-18c) | c568c948 | C: self-check; docs/rules only | 113 |
 | 3 | chore/w141-release-branch-gate | 4a8072de | A: Opus r1 + Sonnet r2 PASS; mutation 2 red | 568 |
 | 4 | fix/w136b-probe-cleanup-wait | ade94864 | A: Opus r1 + built-in mutation proof; 112 PASS | 327 |
