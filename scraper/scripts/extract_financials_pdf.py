@@ -33,6 +33,9 @@ import json
 import tempfile
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from json_safe import strip_nul_bytes  # noqa: E402
+
 # A money token: optional sign/paren, digit run with thousands commas, optional
 # decimals. Unlike the old 2-decimals-only form, this also matches whole-number
 # money (mainboard RHPs report "in millions" with NO decimals, e.g. "17,538").
@@ -918,7 +921,7 @@ def main():
             page_texts = [(int(p[0]), p[1]) for p in pages]
             data = extract_from_texts(page_texts)
             data["pages"] = len(page_texts)
-            print(json.dumps(data))
+            print(json.dumps(strip_nul_bytes(data)))
             sys.exit(0)
         except MemoryError:
             print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
@@ -955,7 +958,7 @@ def main():
         else:
             path = src
         data = extract(path)
-        print(json.dumps(data))
+        print(json.dumps(strip_nul_bytes(data)))
     except Exception as e:  # noqa: BLE001 — sidecar must always emit JSON, never crash the caller
         # MAJOR-2 (W-137 round 2): round 1 caught only `MemoryError` here; a
         # C-extension allocation failure under the same RLIMIT_AS ceiling

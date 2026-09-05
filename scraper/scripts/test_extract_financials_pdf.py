@@ -537,3 +537,30 @@ def test_w133_deepa_mainboard_fixture_stays_partial_no_networth():
     names = {c["name"] for c in r["checks"]}
     assert "kpi_vs_pnl_agreement" not in names
     assert r["status"] == "PARTIAL"
+
+
+def test_strip_nul_bytes_backstop_cleans_a_real_shaped_result():
+    """W-138: a misencoded font glyph can hand `detect_unit_detail` a raw
+    page-text phrase containing a NUL byte (`unitPhrase` is the one field in
+    this extractor's output that carries verbatim page text). Postgres
+    refuses a NUL byte in text/jsonb outright (22P05), so it must never
+    reach the printed JSON. Simulate the misencoding on a real, fully-shaped
+    result (the Anubhav Plast fixture) rather than a synthetic dict, so the
+    test proves the shared backstop is safe on the actual output shape this
+    script emits."""
+    r = efp.extract_from_texts(load_pages())
+    r["unitPhrase"] = "in \x00 lakhs"
+    cleaned = efp.strip_nul_bytes(r)
+    assert "\x00" not in cleaned["unitPhrase"]
+    assert cleaned["unitPhrase"] == "in  lakhs"
+    # every other field survives untouched
+    assert cleaned["metrics"] == r["metrics"]
+    assert cleaned["annualYears"] == r["annualYears"]
+
+
+def test_strip_nul_bytes_is_wired_at_both_emission_points():
+    """Guards against the wrapper being un-wired by a future edit: both
+    `print(json.dumps(...))` call sites in main() must route through
+    strip_nul_bytes."""
+    src = open(os.path.join(HERE, "extract_financials_pdf.py"), encoding="utf-8").read()
+    assert src.count("print(json.dumps(strip_nul_bytes(") >= 2
