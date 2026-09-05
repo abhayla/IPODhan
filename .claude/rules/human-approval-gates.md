@@ -1,4 +1,10 @@
-# Scope: global
+---
+globs:
+  - "web/**"
+  - "scraper/**"
+  - "packages/**"
+---
+# Scope: path (globs above)
 
 # Human Approval Gates — the product checkpoints a pipeline MUST pause for
 

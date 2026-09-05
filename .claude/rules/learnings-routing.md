@@ -1,4 +1,10 @@
-# Scope: global
+---
+globs:
+  - ".claude/**"
+  - "CLAUDE.md"
+  - "docs/**"
+---
+# Scope: path (globs above)
 
 # Learnings Routing — one canonical home, typed before filed
 
