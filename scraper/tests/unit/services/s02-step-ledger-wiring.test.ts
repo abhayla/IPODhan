@@ -71,7 +71,8 @@ vi.mock('../../../src/config/feature-flags.js', () => ({
   FEATURE_FLAGS: { ENABLE_DATA_CONSOLIDATION: true, ENABLE_SOURCE_TRACKING: true },
   shouldUseFeature: () => false,
 }));
-vi.mock('../../../src/services/data-consolidation-service.js', () => ({
+vi.mock('../../../src/services/data-consolidation-service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/data-consolidation-service.js')>()),
   DataConsolidationService: vi.fn(),
 }));
 

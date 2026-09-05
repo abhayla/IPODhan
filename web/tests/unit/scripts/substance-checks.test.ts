@@ -11,6 +11,9 @@ import {
   checkLotSize,
   checkPriceBand,
   checkIssueSize,
+  checkIssueSizeSegmentFloor,
+  MAINBOARD_ISSUE_SIZE_FLOOR,
+  SME_ISSUE_SIZE_FLOOR,
   checkIsinFormat,
   checkNameQuality,
   checkListingPerformance,
@@ -109,6 +112,88 @@ describe('checkIssueSize', () => {
 
   it('fails for a non-positive issue size', () => {
     expect(checkIssueSize({ issue_size: 0 })).toMatch(/issue_size/);
+  });
+});
+
+describe('checkIssueSizeSegmentFloor (W-177: shanti-inorganics-ltd / ashutosh-fibre-ltd shape)', () => {
+  it('flags an SME issue_size holding a share count (below the SME floor) when a band is present', () => {
+    expect(
+      checkIssueSizeSegmentFloor({
+        segment: 'SME',
+        issue_size: 5_691_200, // shanti-inorganics-ltd's actual polluted value
+        price_range_min: 79,
+        price_range_max: 83,
+      })
+    ).toMatch(/issue_size \(5691200\) is below the SME floor/);
+  });
+
+  it('flags a MAINBOARD issue_size below Rs10 Cr when a band is present', () => {
+    expect(
+      checkIssueSizeSegmentFloor({
+        segment: 'MAINBOARD',
+        issue_size: 8_00_00_000, // Rs8 Cr — below the Rs10 Cr mainboard floor
+        price_range_min: 100,
+        price_range_max: 110,
+      })
+    ).toMatch(/issue_size \(80000000\) is below the MAINBOARD floor/);
+  });
+
+  it('passes a plausible SME issue_size (Rs47.2 Cr)', () => {
+    expect(
+      checkIssueSizeSegmentFloor({
+        segment: 'SME',
+        issue_size: 47_20_00_000,
+        price_range_min: 79,
+        price_range_max: 83,
+      })
+    ).toBeNull();
+  });
+
+  it('passes a plausible MAINBOARD issue_size (Rs150 Cr)', () => {
+    expect(
+      checkIssueSizeSegmentFloor({
+        segment: 'MAINBOARD',
+        issue_size: 150_00_00_000,
+        price_range_min: 100,
+        price_range_max: 110,
+      })
+    ).toBeNull();
+  });
+
+  it('passes when no band is on record (nothing to bound the size against yet)', () => {
+    expect(
+      checkIssueSizeSegmentFloor({
+        segment: 'SME',
+        issue_size: 5_691_200,
+        price_range_min: null,
+        price_range_max: null,
+      })
+    ).toBeNull();
+  });
+
+  it('passes when segment is null/RIGHTS-shaped (floor does not apply)', () => {
+    expect(
+      checkIssueSizeSegmentFloor({
+        segment: null,
+        issue_size: 5_691_200,
+        price_range_min: 79,
+        price_range_max: 83,
+      })
+    ).toBeNull();
+  });
+
+  it('passes when issue_size is null or non-positive (checkIssueSize already flags it)', () => {
+    expect(
+      checkIssueSizeSegmentFloor({ segment: 'SME', issue_size: null, price_range_min: 79, price_range_max: 83 })
+    ).toBeNull();
+    expect(
+      checkIssueSizeSegmentFloor({ segment: 'SME', issue_size: 0, price_range_min: 79, price_range_max: 83 })
+    ).toBeNull();
+  });
+
+  it('floor constants match the scraper-side T-329/W-177 guard values', () => {
+    expect(MAINBOARD_ISSUE_SIZE_FLOOR).toBe(10_00_00_000);
+    expect(SME_ISSUE_SIZE_FLOOR).toBe(1_00_00_000);
   });
 });
 
@@ -234,7 +319,7 @@ describe('checkDegenerateBookbuildingBand (T-308, round-6 P1: gabion-technologie
 
 describe('SUBSTANCE_CHECKS registry', () => {
   it('exposes one entry per predicate with key/name/predicate', () => {
-    expect(SUBSTANCE_CHECKS).toHaveLength(10);
+    expect(SUBSTANCE_CHECKS).toHaveLength(11);
     for (const c of SUBSTANCE_CHECKS) {
       expect(typeof c.key).toBe('string');
       expect(typeof c.name).toBe('string');

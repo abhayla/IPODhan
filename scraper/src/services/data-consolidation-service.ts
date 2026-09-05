@@ -524,8 +524,8 @@ export function collectDegenerateBandFieldsToWiden(
  * `ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND`) via the same reject-in-place
  * pattern as `collectDegeneratePriceBandFields` above.
  */
-const MAINBOARD_ISSUE_SIZE_FLOOR = 10_00_00_000; // Rs10 Cr
-const SME_ISSUE_SIZE_FLOOR = 1_00_00_000; // Rs1 Cr
+export const MAINBOARD_ISSUE_SIZE_FLOOR = 10_00_00_000; // Rs10 Cr
+export const SME_ISSUE_SIZE_FLOOR = 1_00_00_000; // Rs1 Cr
 const ISSUE_SIZE_COHERENCE_TOLERANCE = 0.25; // 25% slack below the floor-priced net offer
 const ISSUE_SIZE_COHERENCE_CEILING_MULTIPLIER = 1.5; // full offer at cap + room for anchor share
 

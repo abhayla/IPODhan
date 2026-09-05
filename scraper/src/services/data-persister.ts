@@ -19,7 +19,7 @@ import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
-import { DataConsolidationService } from './data-consolidation-service.js';
+import { DataConsolidationService, collectImplausibleIssueSizeFields, MAINBOARD_ISSUE_SIZE_FLOOR, SME_ISSUE_SIZE_FLOOR } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
@@ -733,7 +733,65 @@ export async function upsertIPO(
         }
       });
       // issue_size: 0 means "unknown", not a real value — store NULL, never 0 (#A.5).
-      const safeIssueSize = coercePositiveOrNull(scrapedIPO.issueSize);
+      let safeIssueSize = coercePositiveOrNull(scrapedIPO.issueSize);
+
+      // W-177: the T-329 segment-floor / shares-x-band plausibility guard
+      // (`collectImplausibleIssueSizeFields`) was wired only into the
+      // consolidation UPDATE path (`consolidateIPOData`), not here — the
+      // CREATE path and the legacy non-destructive-fallback UPDATE path both
+      // build `ipoData.issueSize` from `safeIssueSize` alone, so a fresh SME
+      // row created straight from a source's raw share count (e.g.
+      // CHITTORGARH, the matrix winner for SME) never passed through the
+      // check at all. Re-run the SAME helper here — never a re-derived
+      // threshold — so every write door rejects an implausible value the
+      // same way: never written, loud WARN with the segment floor / shares-x-
+      // band figure for whoever reviews the log.
+      //
+      // W-177 round 2 (MAJOR-1): `ScrapedIPO` (validators.ts `ScrapedIPOSchema`)
+      // has NO `sharesOffered`/`noOfSharesOffered` field at all — that name
+      // belongs to `ScrapedSubscriptionSchema`, a different payload entirely.
+      // No IPO-main scraper/adapter currently sets either key on the object
+      // reaching this door (NSE's `computeNSEIssueSizeRupees` reads
+      // `noOfSharesOffered` off the RAW API response and converts it to
+      // rupees internally — the share count itself never survives onto
+      // `ScrapedIPO`), so the coherence (shares x band) arm of
+      // `collectImplausibleIssueSizeFields` is currently a no-op on this
+      // path: it only fires once some scraper actually populates one of
+      // these keys. `?? noOfSharesOffered` matches the helper's own
+      // preference order so the day a source starts supplying it, this door
+      // and the consolidation orchestrator agree with no further change.
+      if (safeIssueSize !== null) {
+        const effectiveSegment = scrapedIPO.segment ?? existingIPO?.segment ?? null;
+        const implausible = collectImplausibleIssueSizeFields(
+          {
+            issueSize: safeIssueSize,
+            segment: effectiveSegment,
+            sharesOffered: (scrapedIPO as any).noOfSharesOffered ?? (scrapedIPO as any).sharesOffered,
+            priceRangeMin: scrapedIPO.priceRangeMin,
+            priceRangeMax: scrapedIPO.priceRangeMax,
+          },
+          existingIPO
+            ? { segment: existingIPO.segment, priceRangeMin: existingIPO.priceRangeMin, priceRangeMax: existingIPO.priceRangeMax }
+            : null,
+          source
+        );
+        if (implausible.fields.has('issueSize')) {
+          logger.warn({
+            ipoId: existingIPO?.id ?? null,
+            companyName: scrapedIPO.companyName,
+            source,
+            path: existingIPO ? 'legacy-fallback-update' : 'create',
+            rejectedIssueSize: safeIssueSize,
+            segment: effectiveSegment,
+            segmentFloor: effectiveSegment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : effectiveSegment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null,
+            sharesOffered: (scrapedIPO as any).noOfSharesOffered ?? (scrapedIPO as any).sharesOffered ?? null,
+            priceRangeMin: scrapedIPO.priceRangeMin ?? existingIPO?.priceRangeMin ?? null,
+            priceRangeMax: scrapedIPO.priceRangeMax ?? existingIPO?.priceRangeMax ?? null,
+            reason: implausible.reason,
+          }, '[IssueSizePlausibility] rejected implausible issueSize at the create/legacy-fallback write door (W-177)');
+          safeIssueSize = null;
+        }
+      }
 
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
