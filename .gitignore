@@ -336,3 +336,4 @@ IPODhan-t*/
 
 # T-403 acceptance-run scratch store (PDFs downloaded from the exchanges) — never commit
 .prospectus-acceptance/
+.scratch/
