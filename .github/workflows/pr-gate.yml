@@ -287,6 +287,7 @@ jobs:
   deploy-script-tests:
     name: Deploy Script Tests (W-136/W-136b/W-169)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

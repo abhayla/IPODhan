@@ -1834,17 +1834,27 @@ FAKEPS29
   #   $1 listener_cmd (spawns the stand-in listener)  $2 port
   #   $3 pgid-for-listener  $4 cmd-for-pgid (drives the pm2 guard)
   run_cleanup_probe_29() {
-    local listener_cmd="$1" port="$2" lpgid_marker="$3" lcmd="$4"
+    local listener_cmd="$1" port="$2" lpgid_marker="$3" lcmd="$4" lstart_mode="${5:-recent}"
     local statedir; statedir="$(mktemp -d)"
+    # W-169 round 3: probe_start_ts is now real "now" (not a pinned 0) so
+    # case 29d's "old" lstart (year 2000) is genuinely BEFORE it -- a
+    # hardcoded probe_start_ts=0 made every real lstart look "newer",
+    # which would silently defeat the age guard's skip path.
+    local probe_start_ts_val; probe_start_ts_val="$(date +%s)"
     eval "$listener_cmd" &
     local lpid=$!
+    echo "LISTENER_PID=$lpid"
     local real_lpgid="$lpid"
     [ "$lpgid_marker" = "self" ] && real_lpgid="$lpid"
     echo "$lpid" > "$statedir/lpid-$port"
     echo "$real_lpgid" > "$statedir/pgid-$lpid"
     echo 1 > "$statedir/ppid-$lpid"
     echo "$lcmd" > "$statedir/cmd-$real_lpgid"
-    date '+%a %b %e %H:%M:%S %Y' > "$statedir/lstart-$lpid"
+    case "$lstart_mode" in
+      old) echo "Mon Jan  1 00:00:00 2000" > "$statedir/lstart-$lpid" ;;
+      bad) echo "not-a-real-date" > "$statedir/lstart-$lpid" ;;
+      *) date '+%a %b %e %H:%M:%S %Y' > "$statedir/lstart-$lpid" ;;
+    esac
     ( sleep 0.2 ) &
     local leaderpid=$!
     (
@@ -1853,7 +1863,7 @@ FAKEPS29
       pid="$leaderpid"
       PROBE_CLEANUP_FAILED=0
       PROBE_CLEANUP_WAIT_SECS=2
-      probe_start_ts=0
+      probe_start_ts="$probe_start_ts_val"
       export CLEANUP_TEST_STATE_DIR29="$statedir"
       kill() {
         printf '%s\n' "$*" >> "$CLEANUP_TEST_STATE_DIR29/kill-calls.log"
@@ -1864,6 +1874,8 @@ FAKEPS29
       cleanup_probe
       echo "PROBE_CLEANUP_FAILED=$PROBE_CLEANUP_FAILED"
     )
+    echo "--- kill-calls.log ---"
+    cat "$statedir/kill-calls.log" 2>/dev/null || true
     kill -KILL "$lpid" 2>/dev/null || true
     wait "$lpid" 2>/dev/null || true
     rm -rf "$statedir"
@@ -1906,17 +1918,46 @@ FAKEPS29
   fi
 
   # 29c: listener's process-group leader cmdline names pm2 (the PM2 God
-  # Daemon shape) -> WARN'd and left alone, NEVER signaled with TERM/KILL
-  # (only the harness's own final `kill -KILL "$lpid"` teardown touches it,
-  # which is asserted separately as absent from the DIRECT-kill loop's own
-  # signals), regardless of what the old fallback does afterward (unchanged
-  # FATAL/fuser path -- not re-asserted here).
+  # Daemon shape) -> WARN'd and left alone, NEVER signaled with TERM/KILL.
+  # W-169 round 3: actually assert kill-calls.log has no -TERM/-KILL entry
+  # for this pid (the comment used to claim this without checking it).
   OUT29C="$(run_cleanup_probe_29 '( sleep 30 )' 45103 self "PM2 v5.3.0: God Daemon (/root/.pm2)" 2>&1)"
-  if printf '%s' "$OUT29C" | grep -qi 'pm2-managed' \
-     && printf '%s' "$OUT29C" | grep -qi 'left to pm2, NOT killed'; then
-    pass "case 29c: pm2-managed listener is WARN'd and never signaled directly"
+  LPID29C="$(printf '%s\n' "$OUT29C" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
+  if [ -n "$LPID29C" ] \
+     && printf '%s' "$OUT29C" | grep -qi 'pm2-managed' \
+     && printf '%s' "$OUT29C" | grep -qi 'left to pm2, NOT killed' \
+     && ! printf '%s\n' "$OUT29C" | grep -qE -- "-(TERM|KILL) $LPID29C\$"; then
+    pass "case 29c: pm2-managed listener is WARN'd and never signaled directly (kill-calls.log verified)"
   else
-    fail "case 29c: expected a pm2-managed listener to be WARN'd and left unsignaled -- got: $OUT29C"
+    fail "case 29c: expected a pm2-managed listener to be WARN'd, left unsignaled, and absent from kill-calls.log -- got: $OUT29C"
+  fi
+
+  # 29d: listener's lstart predates this probe (an unrelated, pre-existing
+  # process that merely happens to be bound to PROBE_PORT) -> WARN'd and
+  # left alone, no -TERM/-KILL issued for it.
+  OUT29D="$(run_cleanup_probe_29 '( sleep 30 )' 45104 self "node /app/web/node_modules/.bin/next-server" old 2>&1)"
+  LPID29D="$(printf '%s\n' "$OUT29D" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
+  if [ -n "$LPID29D" ] \
+     && printf '%s' "$OUT29D" | grep -qi 'started before this probe' \
+     && ! printf '%s\n' "$OUT29D" | grep -qE -- "-(TERM|KILL) $LPID29D\$"; then
+    pass "case 29d: listener predating the probe is WARN'd and left unsignaled"
+  else
+    fail "case 29d: expected a pre-existing listener to be WARN'd (started before this probe) and left unsignaled -- got: $OUT29D"
+  fi
+
+  # 29e: listener's lstart is unparseable (`date -d` fails) -> the age
+  # guard must FAIL SAFE (skip + WARN naming the pid and raw lstart), not
+  # fail open and kill it.
+  OUT29E="$(run_cleanup_probe_29 '( sleep 30 )' 45105 self "node /app/web/node_modules/.bin/next-server" bad 2>&1)"
+  LPID29E="$(printf '%s\n' "$OUT29E" | grep -oE 'LISTENER_PID=[0-9]+' | head -1 | cut -d= -f2)"
+  if [ -n "$LPID29E" ] \
+     && printf '%s' "$OUT29E" | grep -qi 'unparseable/unknown start time' \
+     && printf '%s' "$OUT29E" | grep -q "pid=$LPID29E" \
+     && printf '%s' "$OUT29E" | grep -q "lstart='not-a-real-date'" \
+     && ! printf '%s\n' "$OUT29E" | grep -qE -- "-(TERM|KILL) $LPID29E\$"; then
+    pass "case 29e: unparseable lstart is skipped fail-safe with a WARN naming the pid and raw lstart"
+  else
+    fail "case 29e: expected an unparseable lstart to fail safe (skip + WARN naming pid+lstart), not fail open -- got: $OUT29E"
   fi
 
   rm -rf "$FAKEBIN29"

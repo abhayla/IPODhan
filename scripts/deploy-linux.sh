@@ -813,7 +813,7 @@ probe_release() {
   rm -f "$pidfile"
   # W-169: recorded so cleanup_probe()'s port-listener escalation can refuse
   # to kill a pre-existing process that merely happens to be listening on
-  # PROBE_PORT (see the start-time guard below) — only a listener that
+  # PROBE_PORT (see the start-time guard below) ï¿½ only a listener that
   # started at/after this probe is ever a direct-kill target.
   local probe_start_ts; probe_start_ts="$(date +%s)"
   if command -v setsid >/dev/null 2>&1; then
@@ -968,10 +968,21 @@ probe_release() {
           # probe -- it is an unrelated process that merely happens to be
           # bound to PROBE_PORT (e.g. a stale orphan a human is already
           # investigating), not the probe's own escaped child.
+          #
+          # W-169 round 3: this must FAIL SAFE. An empty/unparseable
+          # lstart_ts (ps lookup failed, or `date -d` could not parse the
+          # lstart format on this host) previously fell through the
+          # `[ -n "$lstart_ts" ]` guard and got killed anyway -- an
+          # unknown age must be treated the same as "too old to touch",
+          # not "young enough to kill".
           local lstart lstart_ts
           lstart="$(ps -o lstart= -p "$lpid" 2>/dev/null || true)"
           lstart_ts="$( [ -n "$lstart" ] && date -d "$lstart" +%s 2>/dev/null || true)"
-          if [ -n "$lstart_ts" ] && [ "$lstart_ts" -lt "$probe_start_ts" ]; then
+          if [ -z "$lstart_ts" ]; then
+            echo "WARN: PROBE_PORT $PROBE_PORT listener pid=$lpid has an unparseable/unknown start time (lstart='$lstart') -- left alone, NOT killed (fail-safe)." >&2
+            continue
+          fi
+          if [ "$lstart_ts" -lt "$probe_start_ts" ]; then
             echo "WARN: PROBE_PORT $PROBE_PORT listener pid=$lpid started before this probe (lstart=$lstart) -- left alone, NOT killed." >&2
             continue
           fi
