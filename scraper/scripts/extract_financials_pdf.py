@@ -258,8 +258,13 @@ def detect_unit(text):
 def extract(pdf_path, issue_size_rupees=None):
     import pdfplumber
 
+    page_texts = []
     with pdfplumber.open(pdf_path) as pdf:
-        page_texts = [(i, p.extract_text() or "") for i, p in enumerate(pdf.pages)]
+        # W-137: release each page's pdfplumber cache as we go rather than
+        # holding the whole document's char/object cache alive at once.
+        for i, p in enumerate(pdf.pages):
+            page_texts.append((i, p.extract_text() or ""))
+            p.close()
     out = extract_from_texts(page_texts, issue_size_rupees=issue_size_rupees)
     out["pages"] = len(page_texts)
     return out
@@ -897,6 +902,9 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
 
 
 def main():
+    import memory_guard
+    memory_guard.install_memory_ceiling()
+
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     keep = "--keep" in sys.argv
 
@@ -912,6 +920,9 @@ def main():
             data["pages"] = len(page_texts)
             print(json.dumps(data))
             sys.exit(0)
+        except MemoryError:
+            print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
+            sys.exit(memory_guard.EXIT_MEMORY_CEILING)
         except Exception as e:  # noqa: BLE001 — sidecar must always emit JSON
             print(json.dumps({"error": str(e)}))
             sys.exit(2)
@@ -946,6 +957,14 @@ def main():
         data = extract(path)
         print(json.dumps(data))
     except Exception as e:  # noqa: BLE001 — sidecar must always emit JSON, never crash the caller
+        # MAJOR-2 (W-137 round 2): round 1 caught only `MemoryError` here; a
+        # C-extension allocation failure under the same RLIMIT_AS ceiling
+        # (pdfplumber's deps) instead raises OSError/RuntimeError, which fell
+        # through to the generic branch below as an ordinary (soft) failure.
+        # `is_memory_exhaustion` recognizes both shapes.
+        if memory_guard.is_memory_exhaustion(e):
+            print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
+            sys.exit(memory_guard.EXIT_MEMORY_CEILING)
         print(json.dumps({"error": str(e)}))
         sys.exit(2)
     finally:

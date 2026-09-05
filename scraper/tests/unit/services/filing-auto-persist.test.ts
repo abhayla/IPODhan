@@ -51,6 +51,12 @@ import {
   EXTRACTOR_VERSION,
   MAX_EXTRACTION_ATTEMPTS,
   EXTRACTION_BLOCKED_ERROR,
+  EXTRACTOR_MEMORY_CEILING_EXIT,
+  HARD_FAILURE_MARKER,
+  HARD_FAILURE_MIN_BACKOFF_MS,
+  parseHardFailureCount,
+  markHardFailure,
+  isMemoryAbortStderr,
   DEFAULT_MAX_SPAWNS_PER_CYCLE as DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL,
   EXTRACT_TIMEOUT_MS as EXTRACT_TIMEOUT_MS_REAL,
   type AutoPersistDeps,
@@ -120,6 +126,41 @@ afterEach(() => {
   delete process.env.ENABLE_FILING_AUTO_PERSIST;
   MOCK_FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = false;
   MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = false;
+});
+
+// ------------------------------------------------------ MEMORY_ABORT_STDERR_RE
+
+describe('isMemoryAbortStderr — round 5 MINOR-1 (Killed word-boundary anchor)', () => {
+  it('matches the shell OOM-killer message', () => {
+    expect(isMemoryAbortStderr('Killed')).toBe(true);
+    expect(isMemoryAbortStderr('some output\nKilled\n')).toBe(true);
+  });
+
+  it('does NOT match unrelated stderr text merely containing "skilled" or lowercase "killed" in prose', () => {
+    // Previously unanchored + case-insensitive: the old single regex was
+    // `/…|Killed/i`, which matched "skilled" (contains the substring
+    // "killed" is false lexically, but the old pattern had no word boundary
+    // so it matched inside "skilled" too) and lowercase "killed" inside
+    // unrelated prose (e.g. a worker-pool log line) — both are the
+    // adversarial repros named in the brief and must not match at all.
+    expect(isMemoryAbortStderr('warning: this route reassigns the skilled worker pool')).toBe(false);
+    expect(isMemoryAbortStderr('note: previously killed by user via CTRL+C, retrying')).toBe(false);
+  });
+
+  it('does NOT match an incidental mention of MemoryError inside a comment/log line, only an actual exception line', () => {
+    expect(
+      isMemoryAbortStderr(
+        'Traceback (most recent call last):\n  # NOTE: this branch previously mentions MemoryError in a comment, not a real exception\n  ValueError: bad input\n'
+      )
+    ).toBe(false);
+    expect(isMemoryAbortStderr('Traceback (most recent call last):\nMemoryError: \n')).toBe(true);
+    expect(isMemoryAbortStderr('MemoryError')).toBe(true);
+  });
+
+  it('matches a real Python traceback ending with a bare or colon-suffixed MemoryError line followed by a trailing newline', () => {
+    expect(isMemoryAbortStderr('Traceback (most recent call last):\n  ...\nMemoryError\n')).toBe(true);
+    expect(isMemoryAbortStderr('Traceback (most recent call last):\n  ...\nMemoryError: x\n')).toBe(true);
+  });
 });
 
 // --------------------------------------------------------------------- flag
@@ -538,6 +579,212 @@ describe('documentExtractionBlocked — pure per-document gate logic', () => {
       documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: twentyMinAgo }, V1, now)
         .blocked
     ).toBe(false);
+  });
+
+  // W-137: a document that has been killed/hit the memory ceiling TWICE must
+  // not be retried an hour later just because the normal exponential curve
+  // (2^attempts x 15 min, capped at 6h) says it is due.
+  it('W-137 — 2 consecutive hard failures back off at least 24h, past the normal 6h cap', () => {
+    const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60_000);
+    const twentyFiveHoursAgo = new Date(now.getTime() - 25 * 60 * 60_000);
+    const twoHardFailures = `${HARD_FAILURE_MARKER}:2:extractor exited null: killed`;
+
+    // Ordinary exponential backoff at retryCount 5 is already capped at 6h,
+    // so 20h later it would normally be clear — the hard-failure floor must
+    // still hold it.
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyHoursAgo, extractionError: twoHardFailures },
+        V1,
+        now
+      ).blocked
+    ).toBe(true);
+
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyFiveHoursAgo, extractionError: twoHardFailures },
+        V1,
+        now
+      ).blocked
+    ).toBe(false);
+  });
+
+  it('W-137 — a SINGLE hard failure still uses the normal exponential backoff (no 24h floor yet)', () => {
+    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
+    const oneHardFailure = `${HARD_FAILURE_MARKER}:1:extractor exited null: killed`;
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 1, updatedAt: twentyMinAgo, extractionError: oneHardFailure },
+        V1,
+        now
+      ).blocked
+    ).toBe(false);
+  });
+});
+
+describe('parseHardFailureCount / markHardFailure — W-137 hard-failure marker', () => {
+  it('parses the count out of a marked error', () => {
+    expect(parseHardFailureCount(`${HARD_FAILURE_MARKER}:3:extractor exited null: boom`)).toBe(3);
+  });
+
+  it('returns 0 for null, undefined, and an ordinary (non-marked) error', () => {
+    expect(parseHardFailureCount(null)).toBe(0);
+    expect(parseHardFailureCount(undefined)).toBe(0);
+    expect(parseHardFailureCount('extractor: some parse error')).toBe(0);
+  });
+
+  it('markHardFailure starts at 1 with no prior marker, and increments an existing one', () => {
+    expect(markHardFailure(null, 'extractor exited null: killed')).toBe(
+      `${HARD_FAILURE_MARKER}:1:extractor exited null: killed`
+    );
+    expect(markHardFailure(`${HARD_FAILURE_MARKER}:1:extractor exited null: killed`, 'extractor exited 3: killed again')).toBe(
+      `${HARD_FAILURE_MARKER}:2:extractor exited 3: killed again`
+    );
+  });
+});
+
+describe('defaultExtractorRunner — W-137 hard-failure classification', () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+    delete process.env.PYTHON_BIN;
+  });
+
+  it('a signal-killed process (status null) is reported as a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: null, signal: 'SIGKILL', stdout: '', stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(true);
+    expect((result as { error: string }).error).toContain('SIGKILL');
+  });
+
+  it('exit code EXTRACTOR_MEMORY_CEILING_EXIT (3) is reported as a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({
+      status: EXTRACTOR_MEMORY_CEILING_EXIT,
+      stdout: '',
+      stderr: JSON.stringify({ error: 'memory ceiling exceeded (2500 MB)' }),
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(true);
+  });
+
+  it('an ordinary non-zero exit (e.g. bad doc type) is NOT a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 2, stdout: '', stderr: 'unknown doc type' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(false);
+  });
+
+  it('round 4: a C-level OpenBLAS abort (ordinary exit 1, EMPTY stdout) is still a hard failure — stderr is the only signal', () => {
+    spawnSyncMock.mockReturnValueOnce({
+      status: 1,
+      stdout: '',
+      stderr: 'OpenBLAS error: Memory allocation still failed after 10 retries, giving up.',
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(true);
+  });
+
+  it('round 4: an ordinary exit 1 with unrelated stderr stays a SOFT failure', () => {
+    spawnSyncMock.mockReturnValueOnce({
+      status: 1,
+      stdout: '',
+      stderr: 'Traceback (most recent call last):\n  File "extract_filing.py", line 42\nValueError: unknown doc type XYZ',
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(false);
+  });
+});
+
+describe('processPendingFilings — round 4: a C-level memory abort is written as a hard failure', () => {
+  it('an OpenBLAS-abort run (exit 1, empty stdout) reaches setDocumentExtractionState with the HARD_FAILURE marker', async () => {
+    const d = deps({
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'extractor exited 1: OpenBLAS error: Memory allocation still failed after 10 retries, giving up.',
+        hardFailure: true,
+      })),
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.failed).toBe(1);
+    const failedCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failedCall[0].error).toContain(HARD_FAILURE_MARKER);
+  });
+});
+
+describe('processPendingFilings — W-137 hard-failure marker written end to end (MAJOR-1)', () => {
+  /**
+   * MAJOR-1 (round 2 review): the pure-function tests above prove
+   * `markHardFailure`/`documentExtractionBlocked` are correct in isolation, but
+   * nothing proved the SERVICE actually calls `markHardFailure` at the real
+   * write site and that a THIRD attempt is refused by the 24h floor. Deleting
+   * the `markHardFailure` call at its only call site (~941-943) left every
+   * other test in this file green — this test is red against that deletion.
+   */
+  it('two signal-killed extractions on the same document write HARD_FAILURE:1 then HARD_FAILURE:2, and a third attempt is refused by the 24h floor', async () => {
+    const makeKilledRunner = () =>
+      vi.fn(() => ({ ok: false as const, error: 'extractor exited null (signal SIGKILL): ', hardFailure: true }));
+
+    // --- attempt 1: fresh PENDING document, first hard failure -----------
+    const d1 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [doc()]) });
+    const r1 = await processPendingFilings(IPO, d1);
+    expect(r1.spawned).toBe(1);
+    const failed1 = (d1.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failed1[0].error).toBe(`${HARD_FAILURE_MARKER}:1:extractor: extractor exited null (signal SIGKILL): `);
+
+    // --- attempt 2: document now FAILED with the 1st hard-failure marker,
+    // updated 20 minutes ago — clear of the ordinary exponential backoff
+    // (retryCount 1 -> 15 min) but still only ONE hard failure, so it is
+    // NOT yet held by the 24h floor and the extractor runs again. ---------
+    const twentyMinAgo = new Date(Date.now() - 20 * 60_000);
+    const docAfterFirstHardFailure = doc({
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      extractionError: failed1[0].error,
+      updatedAt: twentyMinAgo,
+    });
+    const d2 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [docAfterFirstHardFailure]) });
+    const r2 = await processPendingFilings(IPO, d2);
+    expect(r2.spawned).toBe(1);
+    const failed2 = (d2.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failed2[0].error).toBe(`${HARD_FAILURE_MARKER}:2:extractor: extractor exited null (signal SIGKILL): `);
+
+    // --- attempt 3: document now carries its 2nd hard-failure marker,
+    // updated 20 hours ago — clear of the normal exponential cap (6h) but
+    // still inside the W-137 24h hard-failure floor. The extractor MUST NOT
+    // be spawned a third time, and the refusal reason must be recorded. ---
+    const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60_000);
+    const docAfterSecondHardFailure = doc({
+      extractionStatus: 'FAILED',
+      retryCount: 2,
+      extractionError: failed2[0].error,
+      updatedAt: twentyHoursAgo,
+    });
+    const d3 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [docAfterSecondHardFailure]) });
+    const r3 = await processPendingFilings(IPO, d3);
+    expect(r3.spawned).toBe(0);
+    expect(d3.runExtractor).not.toHaveBeenCalled();
+    expect(r3.skipped.some((s) => /extraction backing off until/.test(s))).toBe(true);
   });
 });
 

@@ -30,10 +30,17 @@ Nothing here interprets the numbers. Character damage ("777.00" for "177.00",
 """
 
 import json
+import os
 import re
 import sys
 
-import pdfplumber
+# Round 4: import (and thereby pin BLAS/OMP thread env vars) BEFORE pdfplumber
+# and, later at runtime, before the OCR route's lazy numpy/cv2 imports inside
+# `ocr_pages` — see memory_guard.py's module-level `_pin_blas_thread_env()`.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import memory_guard  # noqa: E402
+
+import pdfplumber  # noqa: E402
 
 COL_GAP_PT = 15.0
 ROW_GAP_PT = 7.0
@@ -488,10 +495,14 @@ def apply_ocr_names(rows, ocr_lines):
 
 
 def extract(path, ocr=True):
+    pages_words = []
     with pdfplumber.open(path) as pdf:
-        pages_words = [
-            p.extract_words(y_tolerance=1, x_tolerance=1.5) for p in pdf.pages
-        ]
+        # W-137 sibling: release each page's pdfplumber cache as we go rather
+        # than holding the whole document's char/object cache alive at once
+        # (same shape as extract_filing.py's prospectus OOM).
+        for p in pdf.pages:
+            pages_words.append(p.extract_words(y_tolerance=1, x_tolerance=1.5))
+            p.close()
     bands = column_bands(pages_words)
     pages = [page_rows(w, bands) for w in pages_words]
 
@@ -513,6 +524,12 @@ def extract(path, ocr=True):
 
 
 def main():
+    # MINOR-3: robust to `python -m` / package-relative invocation, same as
+    # ocr_pages.py — see that file's comment for why.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import memory_guard
+    memory_guard.install_memory_ceiling()
+
     argv = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not argv:
         print(json.dumps({"error": "usage: anchor_report_text.py <pdf-path> [--no-ocr]"}))
@@ -520,6 +537,17 @@ def main():
     try:
         pages = extract(argv[0], ocr="--no-ocr" not in sys.argv[1:])
     except Exception as exc:  # noqa: BLE001 - the caller only needs the reason
+        # MAJOR-4 (W-137 round 2): this sidecar is spawned by
+        # anchor-investors-scraper.ts with NO RLIMIT_AS guard at all until
+        # now. `anchor_report_text.ts`'s `extractPageTexts` reads
+        # `JSON.parse(res.stdout...)` and checks `parsed.error` — it never
+        # inspects `res.status` — so the JSON shape is the real contract;
+        # exit 3 (matching `memory_guard.EXIT_MEMORY_CEILING`) is set for a
+        # memory-ceiling hit so a human/log can tell it apart from an
+        # ordinary parse failure, without changing what the TS side reads.
+        if memory_guard.is_memory_exhaustion(exc):
+            print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
+            return memory_guard.EXIT_MEMORY_CEILING
         print(json.dumps({"error": "%s: %s" % (type(exc).__name__, exc)}))
         return 1
     print(json.dumps({"pages": pages}))

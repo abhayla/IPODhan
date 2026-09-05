@@ -546,6 +546,16 @@ def annotate_fields(fields, page_confidence, floor=CONFIDENCE_FLOOR):
 
 
 def main():
+    # MINOR-3: `import memory_guard` resolves via the script's own directory
+    # on sys.path — true automatically when this file is run directly
+    # (`python ocr_pages.py ...`, the only way it is invoked today), but NOT
+    # guaranteed under `python -m scripts.ocr_pages` or once imported as a
+    # package submodule. Insert the directory explicitly so the import is
+    # robust to either invocation style.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import memory_guard
+    memory_guard.install_memory_ceiling()
+
     argv = sys.argv[1:]
     if not argv:
         print("usage: ocr_pages.py <pdf-path> [--dpi N] [--backend rapidocr|tesseract] "
@@ -560,7 +570,20 @@ def main():
     if not backend_available(backend):
         print(json.dumps({"error": "ocr backend %s not available" % backend}))
         return 3
-    result = ocr_pdf_pages(path, pages, dpi, backend)
+    try:
+        result = ocr_pdf_pages(path, pages, dpi, backend)
+    except Exception as exc:
+        # W-137/MAJOR-2: exit 4 here (not 3 — this CLI already uses 3 for
+        # "backend unavailable"). Not on the node auto-persist path today
+        # (only extract_filing.py is spawned there), but a standalone caller
+        # still gets a clean failure instead of an OOM kill. `MemoryError` is
+        # the direct hit; `is_memory_exhaustion` also catches the OCR
+        # backend's own C-extension allocation failures (onnxruntime/opencv)
+        # that RLIMIT_AS surfaces as OSError/RuntimeError instead.
+        if not memory_guard.is_memory_exhaustion(exc):
+            raise
+        print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
+        return 4
     print(json.dumps({
         "source_doc": os.path.basename(path), "backend": backend, "dpi": dpi,
         "pages": [{"page": i, "confidence": round(c, 4), "text": t}
