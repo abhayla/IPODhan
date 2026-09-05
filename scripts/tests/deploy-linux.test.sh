@@ -1520,6 +1520,158 @@ else
   fi
 fi
 
+# --- Case 28: W-136b — cleanup_probe() polls the PORT freeing up, not just --
+# --- the leader pid. Root cause: the next-server CHILD process routinely  --
+# --- outlives the `sh -c`/setsid leader by a few seconds after TERM, so   --
+# --- the old "wait up to 5s for $pid, then check the port ONCE" sequence  --
+# --- found the port still held on three of three real deploys and fell   --
+# --- through to the fuser -k backstop every time ("WARN: PROBE_PORT ...  --
+# --- still has a listener ... attempting fuser -k"). This extracts the   --
+# --- REAL cleanup_probe() body and executes it for real against a fake   --
+# --- `ss`/`fuser` (driven by a time-window + marker-file state dir, not   --
+# --- a real socket/process-group — MSYS/Windows has no real `ss`/`fuser`/ --
+# --- `setsid` and no reliable negative-pid process-group kill, so a      --
+# --- real-socket harness was flaky here; the fakes make the polling/     --
+# --- escalation CONTROL FLOW deterministic and portable) plus a REAL     --
+# --- background process standing in for the probe leader (kill -0 on a   --
+# --- real pid is reliable on every platform). This is dynamic execution,  --
+# --- not a grep on the script text (case 27 already covers the static    --
+# --- shape: setsid/negative-pgid/fuser-fallback presence).
+CLEANUP_FN_28="$(awk '/^  cleanup_probe\(\) \{/,/^  \}$/' "$DEPLOY_SCRIPT")"
+if [ -z "$CLEANUP_FN_28" ]; then
+  fail "case 28: could not extract cleanup_probe() from $DEPLOY_SCRIPT — function renamed/restructured?"
+else
+  FAKEBIN28="$(mktemp -d)"
+  cat > "$FAKEBIN28/ss" <<'FAKESS'
+#!/usr/bin/env bash
+# Fake `ss -ltn "( sport = :$PORT )"`. Reports LISTEN until either a
+# freed-marker file exists (written by our fake `fuser -k`) or the
+# case's configured "free-after" second count has elapsed since the
+# case's recorded start time — both read from CLEANUP_TEST_STATE_DIR so
+# the timing is decoupled from any real socket/process.
+argline="$*"
+port="$(printf '%s' "$argline" | grep -oE ':[0-9]+' | tail -1 | tr -d ':')"
+state_dir="${CLEANUP_TEST_STATE_DIR:?ss: CLEANUP_TEST_STATE_DIR not set}"
+if [ -f "$state_dir/freed-$port" ]; then
+  exit 0
+fi
+free_after="$(cat "$state_dir/free-after-$port" 2>/dev/null || echo 999999)"
+start_ts="$(cat "$state_dir/start-$port" 2>/dev/null || echo 0)"
+now_ts="$(date +%s)"
+elapsed=$(( now_ts - start_ts ))
+if [ "$elapsed" -lt "$free_after" ]; then
+  echo "LISTEN 0 1 127.0.0.1:$port 0.0.0.0:* users:((\"fake-next-server\",pid=99999,fd=3))"
+fi
+exit 0
+FAKESS
+  cat > "$FAKEBIN28/fuser" <<'FAKEFUSER'
+#!/usr/bin/env bash
+# Fake `fuser -n tcp $PORT` (query) and `fuser -k -n tcp $PORT` (kill).
+# The kill form writes the freed-marker fake `ss` above checks for —
+# i.e. this is what actually "frees" the port in case 28d.
+state_dir="${CLEANUP_TEST_STATE_DIR:?fuser: CLEANUP_TEST_STATE_DIR not set}"
+port="${@: -1}"
+case " $* " in
+  *" -k "*)
+    touch "$state_dir/freed-$port"
+    exit 0
+    ;;
+  *)
+    echo " 99999"
+    exit 0
+    ;;
+esac
+FAKEFUSER
+  chmod +x "$FAKEBIN28/ss" "$FAKEBIN28/fuser"
+
+  # Runs the real cleanup_probe() body against a fresh fake state dir.
+  #   $1 name  $2 port  $3 free_after_secs  $4 PROBE_CLEANUP_WAIT_SECS
+  #   $5 leader_delay_secs  $6 "yes"|"no" (put fake ss/fuser on PATH)
+  run_cleanup_probe_28() {
+    local port="$2" free_after="$3" wait_secs="$4" leaderdelay="$5" use_fakes="$6"
+    local statedir; statedir="$(mktemp -d)"
+    date +%s > "$statedir/start-$port"
+    echo "$free_after" > "$statedir/free-after-$port"
+    ( sleep "$leaderdelay" ) &
+    local leaderpid=$!
+    local runpath="$PATH"
+    if [ "$use_fakes" = "yes" ]; then
+      runpath="$FAKEBIN28:$PATH"
+    else
+      # case 28c: simulate an `ss`-less host by excluding the fakebin dir
+      # (this test box genuinely has no real `ss` either, so this is a
+      # real "ss absent" run, not merely a simulated one).
+      runpath="$PATH"
+    fi
+    (
+      PATH="$runpath"
+      PROBE_PORT="$port"
+      pid="$leaderpid"
+      PROBE_CLEANUP_FAILED=0
+      PROBE_CLEANUP_WAIT_SECS="$wait_secs"
+      export CLEANUP_TEST_STATE_DIR="$statedir"
+      log() { echo "==> $*"; }
+      eval "$CLEANUP_FN_28"
+      cleanup_probe
+      echo "PROBE_CLEANUP_FAILED=$PROBE_CLEANUP_FAILED"
+    )
+    rm -rf "$statedir"
+  }
+
+  # 28a: child listener outlives the leader by ~3s -> cleaned by the PORT
+  # wait, no fuser fallback, INFO "free after" line printed.
+  OUT28A="$(run_cleanup_probe_28 a 45001 3 8 0.2 yes 2>&1)"
+  if printf '%s' "$OUT28A" | grep -q 'probe port 45001 free after' \
+     && ! printf '%s' "$OUT28A" | grep -qi 'attempting fuser' \
+     && ! printf '%s' "$OUT28A" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT28A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 28a: child listener outlives leader by ~3s -> cleaned by the port wait, no fuser fallback"
+  else
+    fail "case 28a: expected a clean port-wait resolution with an INFO 'free after' line and no fuser fallback — got: $OUT28A"
+  fi
+
+  # 28b: port never frees during the initial (short) wait window -> KILL
+  # escalation runs, port frees a couple seconds into the escalation's
+  # own poll -> still no fuser fallback needed.
+  OUT28B="$(run_cleanup_probe_28 b 45002 6 2 0.2 yes 2>&1)"
+  if printf '%s' "$OUT28B" | grep -q 'probe port 45002 free after' \
+     && ! printf '%s' "$OUT28B" | grep -qi 'attempting fuser' \
+     && ! printf '%s' "$OUT28B" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT28B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 28b: port survives the initial wait -> KILL escalation clears it, no fuser fallback"
+  else
+    fail "case 28b: expected KILL escalation to resolve it with an INFO 'free after' line and no fuser fallback — got: $OUT28B"
+  fi
+
+  # 28c: `ss` absent -> falls back to a leader-only wait with the WARN
+  # fallback log line, and does not hang/crash (leader dies quickly so
+  # the fallback loop exits well before PROBE_CLEANUP_WAIT_SECS).
+  OUT28C="$(run_cleanup_probe_28 c 45003 3 3 0.3 no 2>&1)"
+  if printf '%s' "$OUT28C" | grep -qi 'ss not found' \
+     && printf '%s' "$OUT28C" | grep -qi 'leader-only wait' \
+     && ! printf '%s' "$OUT28C" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT28C" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 28c: ss absent -> leader-only wait with the fallback log line, no crash"
+  else
+    fail "case 28c: expected the ss-absent fallback WARN + leader-only wait, no crash — got: $OUT28C"
+  fi
+
+  # 28d: port never frees on its own (real "stray process" shape) ->
+  # both the port-wait and the KILL escalation's re-check still see a
+  # listener -> falls through to the EXISTING fuser -k last resort,
+  # which (in this fake) actually frees it -> no FATAL.
+  OUT28D="$(run_cleanup_probe_28 d 45004 999999 2 0.2 yes 2>&1)"
+  if printf '%s' "$OUT28D" | grep -qi 'attempting fuser -k' \
+     && ! printf '%s' "$OUT28D" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT28D" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 28d: existing fuser-last-resort still fires and clears a truly stubborn listener"
+  else
+    fail "case 28d: expected the fuser -k last resort to fire and succeed with no FATAL — got: $OUT28D"
+  fi
+
+  rm -rf "$FAKEBIN28"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1

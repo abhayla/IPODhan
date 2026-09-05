@@ -824,15 +824,59 @@ probe_release() {
   cleanup_probe() {
     local pgid="$pid"
     kill -TERM -- -"$pgid" 2>/dev/null || kill "$pid" 2>/dev/null || true
-    local waited=0
-    while [ "$waited" -lt 5 ]; do
-      if ! kill -0 "$pid" 2>/dev/null; then
-        break
+
+    # W-136b: waiting on the LEADER pid alone is wrong — the next-server
+    # CHILD process routinely outlives the `sh -c`/setsid leader by a few
+    # seconds after TERM, so the old "wait up to 5s for $pid, then check
+    # the port once" sequence found the port still held on every real
+    # deploy and fell through to the fuser -k backstop every time ("WARN:
+    # PROBE_PORT ... still has a listener ... attempting fuser -k").
+    # Poll for the PORT itself to free up (leader dead AND no listener),
+    # not just the leader — that is the actual condition we need.
+    local wait_secs="${PROBE_CLEANUP_WAIT_SECS:-10}"
+    local have_ss=0
+    if command -v ss >/dev/null 2>&1; then
+      have_ss=1
+    fi
+    local waited=0 port_free=0
+    if [ "$have_ss" -eq 1 ]; then
+      while [ "$waited" -lt "$wait_secs" ]; do
+        local leader_gone=0
+        kill -0 "$pid" 2>/dev/null || leader_gone=1
+        local listen_count; listen_count="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
+        if [ "$leader_gone" -eq 1 ] && [ "${listen_count:-0}" -eq 0 ]; then
+          port_free=1
+          break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+      done
+      if [ "$port_free" -eq 1 ]; then
+        log "probe port $PROBE_PORT free after ${waited}s"
       fi
-      sleep 1
-      waited=$((waited + 1))
-    done
-    if kill -0 "$pid" 2>/dev/null; then
+    else
+      log "WARN: ss not found — cleanup_probe() can only wait on the leader pid, not confirm PROBE_PORT $PROBE_PORT actually freed up. Install ss (iproute2) on this host for a reliable probe-port wait; falling back to a leader-only wait."
+      while [ "$waited" -lt "$wait_secs" ]; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+        waited=$((waited + 1))
+      done
+    fi
+
+    if [ "$have_ss" -eq 1 ] && [ "$port_free" -ne 1 ]; then
+      kill -KILL -- -"$pgid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+      local kwaited=0
+      while [ "$kwaited" -lt 3 ]; do
+        local kcount; kcount="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
+        if [ "${kcount:-0}" -eq 0 ]; then
+          port_free=1
+          log "probe port $PROBE_PORT free after $((waited + kwaited))s"
+          break
+        fi
+        sleep 1
+        kwaited=$((kwaited + 1))
+      done
+    elif [ "$have_ss" -ne 1 ] && kill -0 "$pid" 2>/dev/null; then
       kill -KILL -- -"$pgid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
     # Verify the probe port is actually free — a survivor here means a
