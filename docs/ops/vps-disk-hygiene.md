@@ -154,3 +154,10 @@ scripts/deploy-linux.sh` syntax check) and silently skipping every prune.
 
 A Notifier POST failure is logged and does not fail the script (the sweep
 still ran; only the page is missing).
+
+## Cron invocation (W-162, 2026-09-05 21:14 IST)
+The release directory keeps `scripts/vps-disk-hygiene.sh` at mode 664 (the deploy copies files without
+execute bits), so the root crontab line invokes it as `/bin/bash /var/www/ipodhan/current/scripts/vps-disk-hygiene.sh`
+(path switched from `current-staging` to `current` after the 2026-09-05 prod deploy). Do not rely on the
+file being executable; if the deploy script ever chmods release scripts, the `/bin/bash` prefix stays harmless.
+First scheduled run: Sunday 2026-09-06 04:17 IST -> read `/var/log/ipodhan-disk-hygiene.log` in the morning.
