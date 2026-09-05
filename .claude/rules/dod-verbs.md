@@ -1,4 +1,10 @@
-# Scope: global
+---
+paths:
+  - "web/**"
+  - "scraper/**"
+  - "packages/**"
+---
+# Scope: path (paths above)
 
 # Definition-of-Done Verbs Are Load-Bearing
 

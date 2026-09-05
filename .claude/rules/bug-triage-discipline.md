@@ -1,4 +1,10 @@
-# Scope: global
+---
+paths:
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "docs/reviews/**"
+---
+# Scope: path (paths above)
 
 # Bug Triage Discipline — miss-analysis and sibling-class audit
 
