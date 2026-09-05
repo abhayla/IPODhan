@@ -505,10 +505,10 @@ def has_name_shaped_word(name):
     return bool(re.search(r"[A-Za-z]{2,}", name or ""))
 
 
-def page_needs_ocr(rows):
-    """Should this page's name column be re-read by OCR?
+def page_needs_ocr(rows, words=None):
+    """Should this page be re-read by OCR?
 
-    Two triggers, both about the NAME column (the only thing OCR repairs here):
+    Three triggers:
 
       1. Original: more than `NAME_QUALITY_FLOOR` of the rows carry a name the
          publication gate would reject — the historical "the scan's text layer
@@ -520,19 +520,70 @@ def page_needs_ocr(rows):
          the letter then parsed to nothing and the document sat at PENDING
          forever. A page with no name material at all is the strongest possible
          signal that the text layer failed.
+      3. W-170 (Qualiance, NSE Emerge): the page has NO text layer at all - not
+         damaged glyphs, not blank cells, zero words. `page_rows` returns None
+         for it (there is nothing to band into rows), which used to read as "no
+         table here" and skip OCR entirely - the letter then parsed to nothing
+         and the document sat at PENDING forever, same failure mode as #2 for a
+         different reason. `words` (the page's raw `extract_words()` output,
+         passed by the caller) distinguishes this from every other `rows is
+         None` page: a boilerplate/prose page with no table still has words: a
+         page whose PDF content stream is an image and nothing else has none.
 
-    A page with no table rows at all (`rows` is None — a pure image page) is NOT
-    flagged: `apply_ocr_names` needs the text layer's row geometry to place the
-    OCR read, so there is nothing to apply the result to. Those pages surface to
-    the caller as empty text, which the node side records as MANUAL_REVIEW with
-    "no text and OCR heuristic did not fire" rather than retrying forever.
+    Trigger 3 needs `words` explicitly because `rows is None` alone is
+    ambiguous (see the docstring note below); triggers 1-2 are decided from
+    `rows` alone and ignore `words` (kept optional for callers that don't have
+    it, e.g. the unit tests in test_anchor_report_text_ocr_gate.py).
+
+    A page with no table rows AND some words (prose, a signature block, a page
+    whose columns didn't band into a table) is NOT flagged here:
+    `apply_ocr_names` needs the text layer's row geometry to place the OCR
+    read, so a page with no rows and no words to rebuild from has nothing to
+    attach a name-only OCR pass to. `extract()` instead rebuilds trigger-3
+    pages' full row geometry from the OCR word boxes themselves (see
+    `ocr_full_page_rows`) rather than routing them through `apply_ocr_names`.
     """
     if not rows:
-        return False
+        return words is not None and len(words) == 0
     names = rows["names"]
     if low_confidence_share(names) > NAME_QUALITY_FLOOR:
         return True
     return bool(names) and not any(has_name_shaped_word(n) for n in names)
+
+
+def ocr_full_page_rows(ocr_lines):
+    """Rebuild a page's ENTIRE row geometry from OCR word boxes (W-170).
+
+    `apply_ocr_names` repairs only the name column, because it needs the text
+    layer's row centres/name-band geometry to place OCR words. A page with a
+    genuinely empty text layer (Qualiance: 0 pdfplumber chars, one full-page
+    image per page) has no such geometry to reuse - there is no "row 4" to
+    attach an OCR name to until the table itself is rebuilt.
+
+    So: treat each OCR word's box exactly like a pdfplumber word (same
+    `text`/`top`/`x0` shape `column_bands`/`page_rows` already consume) and run
+    the identical per-column banding/row-splitting pipeline on them. Column
+    geometry is computed from THIS PAGE ALONE (unlike the multi-page text-layer
+    pass) since a scanned page's OCR boxes are not comparable in x/y terms to
+    another page's pdfplumber words.
+    """
+    words = [
+        {"text": w["text"], "top": w["box"][1], "x0": w["box"][0], "x1": w["box"][2]}
+        for line in ocr_lines
+        for w in line.get("words", [])
+    ]
+    if not words:
+        return None
+    bands = column_bands([words])
+    rows = page_rows(words, bands)
+    if rows is None:
+        return None
+    rows = dict(rows)
+    # OCR letter-shrapnel repair, same treatment `apply_ocr_names` gives a
+    # supplemented name column - these words come from the same OCR pass and
+    # carry the same damage shape ("F U N D" for "FUND").
+    rows["names"] = [join_letter_runs(n) for n in rows["names"]]
+    return rows
 
 
 def extract(path, ocr=True):
@@ -547,13 +598,22 @@ def extract(path, ocr=True):
     bands = column_bands(pages_words)
     pages = [page_rows(w, bands) for w in pages_words]
 
-    scanned = [i for i, rows in enumerate(pages) if page_needs_ocr(rows)]
+    scanned = [
+        i for i, rows in enumerate(pages) if page_needs_ocr(rows, pages_words[i])
+    ]
     if ocr and scanned:
         import ocr_pages  # local: the OCR stack is only needed on damaged scans
 
         if ocr_pages.backend_available():
             for page in ocr_pages.ocr_pdf_page_boxes(path, scanned, dpi=OCR_DPI):
-                pages[page["page"]] = apply_ocr_names(pages[page["page"]], page["lines"])
+                idx = page["page"]
+                if pages[idx] is not None:
+                    pages[idx] = apply_ocr_names(pages[idx], page["lines"])
+                else:
+                    # W-170: no text layer at all - rebuild the row geometry
+                    # from the OCR boxes themselves rather than supplementing
+                    # a name column that has no row geometry to attach to.
+                    pages[idx] = ocr_full_page_rows(page["lines"])
 
     return [
         render_rows(rows) if rows else (_plain(w) if w else "")
