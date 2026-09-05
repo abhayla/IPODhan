@@ -199,3 +199,55 @@ describe('W-145 consolidation of listingExchanges', () => {
     expect(result.conflictsDetected).toBe(0);
   });
 });
+
+describe('W-145: the three sources that hard-coded BOTH now report unknown', () => {
+  it('description-backfill emits no listing exchange', async () => {
+    const { buildDescriptionScrapedIPO } = await import(
+      '../../../src/services/description-backfill.js'
+    );
+    const scraped = buildDescriptionScrapedIPO(
+      {
+        companyName: 'Acme Industries Limited',
+        issueSize: 1000,
+        segment: 'SME',
+        offeringType: 'IPO',
+        status: 'LISTED',
+      } as any,
+      'A long enough company description to pass the plausibility floor.'
+    );
+    expect(scraped.listingExchange).toBeUndefined();
+  });
+
+  it('historical-ipo-assembler emits no listing exchange', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { assembleHistoricalRecord } = await import(
+      '../../../src/services/historical-ipo-assembler.js'
+    );
+    const FX = path.join(process.cwd(), 'tests', 'fixtures', 'historical');
+    const reportRow = JSON.parse(
+      fs.readFileSync(path.join(FX, 'ather-cg-report118.json'), 'utf-8')
+    );
+    const detailHtml = fs.readFileSync(path.join(FX, 'ather-cg-detail.html'), 'utf-8');
+
+    const { scraped } = assembleHistoricalRecord({ reportRow, detailHtml });
+    expect(scraped.listingExchange).toBeUndefined();
+  });
+
+  it('no scraper source hard-codes a BOTH listing exchange any more', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const roots = [path.join(process.cwd(), 'src', 'scrapers'), path.join(process.cwd(), 'src', 'services')];
+    const offenders: string[] = [];
+    for (const root of roots) {
+      for (const file of fs.readdirSync(root)) {
+        if (!file.endsWith('.ts')) continue;
+        // The rules module itself quotes the dead pattern in its docstring.
+        if (file === 'listing-exchange-resolution.ts') continue;
+        const text = fs.readFileSync(path.join(root, file), 'utf-8');
+        if (/listingExchange:\s*'BOTH'/.test(text)) offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

@@ -142,7 +142,7 @@ describe('upsertIPO update path — Deepa walk guards', () => {
     expect(bulkTrackFieldUpdatesMock).not.toHaveBeenCalled();
   });
 
-  it('W-16a: the fallback update never nulls a present value and merges listing exchanges', async () => {
+  it('W-16a/W-145: the fallback never nulls a present value and never widens an SME row past one exchange', async () => {
     consolidateIPODataMock.mockRejectedValue(new Error('consolidation boom'));
 
     const ipoRepository = makeIpoRepository();
@@ -152,7 +152,10 @@ describe('upsertIPO update path — Deepa walk guards', () => {
     const [id, patch] = ipoRepository.update.mock.calls[0];
     expect(id).toBe('deepa-id');
     expect(patch.leadManagers ?? LEAD_MANAGERS).toEqual(LEAD_MANAGERS);
-    expect(patch.listingExchanges).toEqual(['BSE', 'NSE']);
+    // W-145: Deepa Jewellers is an SME issue and lists on BSE SME only. The
+    // pre-W-145 fallback unioned NSE in purely because an NSE scrape touched
+    // the row — the exact class that left 5 SME rows marked "both" in prod.
+    expect(patch.listingExchanges).toEqual(['BSE']);
     for (const [key, value] of Object.entries(patch)) {
       if (value === null || value === undefined) {
         expect((existingDeepaRow() as any)[key] ?? null).toBeNull();

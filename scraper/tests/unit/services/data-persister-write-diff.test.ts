@@ -139,7 +139,16 @@ describe('round-3 C1/C2: the write skip is decided by a diff against the ROW, no
     consolidateIPODataMock.mockResolvedValue(consolidationResult({ status: 'OPEN' }, 0));
     const ipoRepository = makeIpoRepository();
 
-    await upsertIPO(ipoRepository, scrape({ listingExchange: 'BSE' }), 'BSE', existingRow({ listingExchanges: ['NSE'] }));
+    // W-145: the default fixture is SME, and an SME issue lists on exactly ONE
+    // board — widening it is now refused by the invariant. This test is about
+    // the write-DIFF mechanism (a row-level change with fieldsUpdated 0 still
+    // writes), so it runs on a MAINBOARD row, where a two-board union is legal.
+    await upsertIPO(
+      ipoRepository,
+      scrape({ listingExchange: 'BSE', segment: 'MAINBOARD' }),
+      'BSE',
+      existingRow({ listingExchanges: ['NSE'], segment: 'MAINBOARD' })
+    );
 
     expect(ipoRepository.update).toHaveBeenCalledTimes(1);
     const [, patch] = ipoRepository.update.mock.calls[0];
