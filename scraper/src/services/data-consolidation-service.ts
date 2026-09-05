@@ -795,6 +795,14 @@ export class DataConsolidationService {
       if (violatesSmeSingleExchange(smeSegment, storedExchanges)) {
         let listingRecordExchange: any = null;
         try {
+          // Round 3: an absent repository is a MISSING evidence tier, not a
+          // silent no-op — say so once, so a mis-wired caller is visible.
+          if (!this.listingPerformanceRepository) {
+            logger.info(
+              { ipoId: input.ipoId },
+              '[DataConsolidation] W-145 tier 1 skipped: no listing repository'
+            );
+          }
           listingRecordExchange =
             input.ipoId !== 'new' && this.listingPerformanceRepository
               ? (await this.listingPerformanceRepository.findByIPO(input.ipoId))?.exchange ?? null
@@ -808,13 +816,18 @@ export class DataConsolidationService {
         }
         smeCollapseEvidence = {
           listingRecordExchange,
-          trackedExchangeSources: existingFieldSources
+          trackedExchangeRows: existingFieldSources
             .filter(
               (row: any) =>
                 row.tableName === input.tableName &&
                 (row.fieldName === 'symbol' || row.fieldName === 'listingExchanges')
             )
-            .map((row: any) => row.source),
+            .map((row: any) => ({
+              fieldName: row.fieldName,
+              source: row.source,
+              value: row.value,
+              updatedAt: row.updatedAt,
+            })),
           incomingSource: input.source,
         };
       }
@@ -1192,6 +1205,35 @@ export class DataConsolidationService {
               previousValue: storedValue,
               previousSource: existingSource,
             });
+
+            // Round 3: the collapse ANSWERS the disagreement an earlier cycle
+            // recorded — leaving that CRITICAL row open would keep a resolved
+            // problem in the admin queue forever. Best-effort/non-fatal, like
+            // every other conflict-row cleanup.
+            if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+              try {
+                const openRows =
+                  (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
+                for (const row of openRows) {
+                  if (
+                    row.tableName === tableName &&
+                    row.fieldName === fieldName &&
+                    row.resolutionReason === SME_SINGLE_EXCHANGE_CONFLICT_REASON
+                  ) {
+                    await this.dataConflictsRepository.resolveConflict(row.id, {
+                      resolvedSource: collapsed.exchange,
+                      resolutionReason: `SME_COLLAPSE_${collapsed.tier}`,
+                      resolvedBy: 'SYSTEM',
+                    });
+                  }
+                }
+              } catch (error) {
+                console.error(
+                  '[DataConsolidation] Failed to resolve SME invariant conflict row after collapse (non-fatal):',
+                  error
+                );
+              }
+            }
 
             return {
               fieldName,

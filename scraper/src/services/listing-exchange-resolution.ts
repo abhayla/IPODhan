@@ -85,13 +85,53 @@ export type SmeCollapseTier =
   | 'FIELD_SOURCE_PROVENANCE'
   | 'INCOMING_SELF_ASSERTION';
 
+/** A `field_sources` row considered as tier-2 evidence. */
+export interface ExchangeProvenanceRow {
+  fieldName: string;
+  source: ScraperSource;
+  value: unknown;
+  updatedAt?: Date | string | null;
+}
+
 export interface SmeCollapseEvidence {
   /** `listing_performance.exchange` for this IPO ('BOTH' is not evidence). */
   listingRecordExchange?: ListingExchange | 'BOTH' | null;
-  /** Sources of the `symbol` / `listingExchanges` provenance rows on this IPO. */
-  trackedExchangeSources?: ScraperSource[];
+  /** `symbol` / `listingExchanges` provenance rows on this IPO. */
+  trackedExchangeRows?: ExchangeProvenanceRow[];
   /** The self-asserting exchange scraper writing in THIS run, if any. */
   incomingSource?: ScraperSource;
+}
+
+/**
+ * Round 3: does this provenance row's stored VALUE actually name the exchange
+ * its `source` column claims? A row's source alone is not evidence — an NSE run
+ * writes rows for fields that say nothing about the board.
+ *
+ * - `listingExchanges`: the stored array must be exactly that one exchange.
+ * - `symbol`: only an all-numeric symbol is determinable (a BSE scrip code);
+ *   an alphabetic ticker exists in both namespaces, so it is skipped.
+ */
+function rowEvidencesItsSource(row: ExchangeProvenanceRow): ListingExchange | null {
+  const exchange = row.source === 'NSE' || row.source === 'BSE' ? row.source : null;
+  if (!exchange) return null;
+
+  if (row.fieldName === 'listingExchanges') {
+    const value = row.value;
+    return Array.isArray(value) && value.length === 1 && value[0] === exchange ? exchange : null;
+  }
+
+  if (row.fieldName === 'symbol') {
+    const symbol = typeof row.value === 'string' ? row.value.trim() : '';
+    if (!/^\d+$/.test(symbol)) return null; // not determinable — shared namespace
+    return exchange === 'BSE' ? 'BSE' : null;
+  }
+
+  return null;
+}
+
+function rowTime(row: ExchangeProvenanceRow): number {
+  const at = row.updatedAt ? new Date(row.updatedAt).getTime() : NaN;
+  return Number.isFinite(at) ? at : 0;
 }
 
 /**
@@ -119,15 +159,24 @@ export function collapseSmeExchanges(
     return { exchange: listed, tier: 'LISTING_RECORD' };
   }
 
-  const tracked = (evidence.trackedExchangeSources ?? []).filter(
-    (source): source is ListingExchange => source === 'NSE' || source === 'BSE'
-  );
-  const distinctTracked = Array.from(new Set(tracked)).filter((exchange) =>
-    members.includes(exchange)
-  );
-  // Provenance from BOTH exchanges is not evidence for either one.
-  if (distinctTracked.length === 1) {
-    return { exchange: distinctTracked[0], tier: 'FIELD_SOURCE_PROVENANCE' };
+  // Round 3: only rows whose stored VALUE names their own exchange count, and
+  // the FRESHEST such row decides — a stale row from a wrong earlier run must
+  // not outvote the current state. Rows disagreeing at the same timestamp are
+  // no evidence at all.
+  const evidenced = (evidence.trackedExchangeRows ?? [])
+    .map((row) => ({ exchange: rowEvidencesItsSource(row), at: rowTime(row) }))
+    .filter(
+      (entry): entry is { exchange: ListingExchange; at: number } =>
+        entry.exchange !== null && members.includes(entry.exchange)
+    )
+    .sort((a, b) => b.at - a.at);
+
+  if (evidenced.length > 0) {
+    const newest = evidenced[0];
+    const contested = evidenced.some((e) => e.at === newest.at && e.exchange !== newest.exchange);
+    if (!contested) {
+      return { exchange: newest.exchange, tier: 'FIELD_SOURCE_PROVENANCE' };
+    }
   }
 
   const incoming = evidence.incomingSource;

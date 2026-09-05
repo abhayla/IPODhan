@@ -51,13 +51,14 @@ const mockConflictsRepo = {
   upsertConflict: vi.fn(),
   autoResolveConverged: vi.fn(),
   findUnresolvedForIPO: vi.fn(),
+  resolveConflict: vi.fn(),
 } as unknown as DataConflictsRepository;
 
-function fieldSourceRow(fieldName: string, source: string, value: any) {
+function fieldSourceRow(fieldName: string, source: string, value: any, updatedAt = '2026-09-01T00:00:00Z') {
   return {
     ipoId: 'w145', tableName: 'ipos', fieldName, source, value,
     confidence: 100, dataLineage: null, previousValue: null, previousSource: null,
-    updatedAt: new Date('2026-09-01T00:00:00Z'), createdAt: new Date('2026-09-01T00:00:00Z'),
+    updatedAt: new Date(updatedAt), createdAt: new Date(updatedAt),
   } as any;
 }
 
@@ -284,7 +285,7 @@ describe('W-145 round 2: evidence-based collapse of an SME row already stored wi
     listingRepo.findByIPO.mockResolvedValue({ exchange: 'NSE' });
     // Provenance points the other way; the listing record still decides.
     const result = await run({
-      sources: [fieldSourceRow('symbol', 'BSE', 'ACME')],
+      sources: [fieldSourceRow('listingExchanges', 'BSE', ['BSE'])],
       source: 'BSE',
     });
 
@@ -295,7 +296,7 @@ describe('W-145 round 2: evidence-based collapse of an SME row already stored wi
   it('tier 1 — a BOTH listing record is not evidence, so the weaker tiers decide', async () => {
     listingRepo.findByIPO.mockResolvedValue({ exchange: 'BOTH' });
     const result = await run({
-      sources: [fieldSourceRow('symbol', 'BSE', 'ACME')],
+      sources: [fieldSourceRow('listingExchanges', 'BSE', ['BSE'])],
       source: 'BSE',
     });
 
@@ -304,7 +305,7 @@ describe('W-145 round 2: evidence-based collapse of an SME row already stored wi
 
   it('tier 2 — provenance from exactly one exchange scraper decides', async () => {
     const result = await run({
-      sources: [fieldSourceRow('listingExchanges', 'NSE', ['NSE', 'BSE'])],
+      sources: [fieldSourceRow('listingExchanges', 'NSE', ['NSE'])],
       source: 'BSE',
     });
 
@@ -314,8 +315,8 @@ describe('W-145 round 2: evidence-based collapse of an SME row already stored wi
   it('tier 2 — provenance from BOTH exchanges is not evidence; tier 3 (this run) decides', async () => {
     const result = await run({
       sources: [
-        fieldSourceRow('symbol', 'NSE', 'ACME'),
-        fieldSourceRow('listingExchanges', 'BSE', ['NSE', 'BSE']),
+        fieldSourceRow('listingExchanges', 'NSE', ['NSE']),
+        fieldSourceRow('listingExchanges', 'BSE', ['BSE']),
       ],
       source: 'BSE',
     });
@@ -356,5 +357,120 @@ describe('W-145 round 2: evidence-based collapse of an SME row already stored wi
 
     expect(result.consolidatedData.listingExchanges).toEqual(['NSE', 'BSE']);
     expect(result.conflictsDetected).toBe(0);
+  });
+});
+
+describe('W-145 round 3: tier-2 evidence quality, conflict cleanup, missing repo', () => {
+  const listingRepo = { findByIPO: vi.fn() };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listingRepo.findByIPO.mockResolvedValue(null);
+  });
+
+  function run(service: DataConsolidationService, sources: any[], source: any = 'BSE', segment = 'SME') {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(sources);
+    return service.consolidateIPOData({
+      ipoId: 'w145-sme',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, source) },
+      source,
+      existingData: { listingExchanges: ['NSE', 'BSE'], segment } as any,
+    });
+  }
+
+  it('a provenance row whose VALUE does not name its own exchange is not evidence', async () => {
+    const service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo, listingRepo);
+    // An NSE-written row that still holds the wrong PAIR proves nothing; the
+    // alphabetic symbol lives in both namespaces, so it proves nothing either.
+    const result = await run(
+      service,
+      [
+        fieldSourceRow('listingExchanges', 'NSE', ['NSE', 'BSE']),
+        fieldSourceRow('symbol', 'NSE', 'ACME'),
+      ],
+      'BSE'
+    );
+
+    // Falls through to tier 3 — this run's own self-assertion.
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+  });
+
+  it('a STALE contradicting row does not outvote the freshest evidenced row', async () => {
+    const service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo, listingRepo);
+    const result = await run(
+      service,
+      [
+        fieldSourceRow('listingExchanges', 'NSE', ['NSE'], '2026-01-01T00:00:00Z'),
+        fieldSourceRow('listingExchanges', 'BSE', ['BSE'], '2026-09-01T00:00:00Z'),
+      ],
+      'NSE'
+    );
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+  });
+
+  it('the collapse RESOLVES the earlier CRITICAL invariant conflict row', async () => {
+    const service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo, listingRepo);
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO as any).mockResolvedValue([
+      {
+        id: 'conflict-1',
+        tableName: 'ipos',
+        fieldName: 'listingExchanges',
+        resolutionReason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+      },
+    ]);
+
+    const result = await run(service, [fieldSourceRow('listingExchanges', 'NSE', ['NSE'])], 'BSE');
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+    expect(mockConflictsRepo.resolveConflict).toHaveBeenCalledWith('conflict-1', {
+      resolvedSource: 'NSE',
+      resolutionReason: 'SME_COLLAPSE_FIELD_SOURCE_PROVENANCE',
+      resolvedBy: 'SYSTEM',
+    });
+  });
+
+  it('without a listing repository the weaker tiers still collapse the row', async () => {
+    const service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo);
+    const result = await run(service, [], 'NSE');
+
+    expect(listingRepo.findByIPO).not.toHaveBeenCalled();
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+  });
+
+  it('idempotent: a collapsed row stays single on the next cycle', async () => {
+    const service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo, listingRepo);
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('listingExchanges', 'BSE', ['BSE']),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145-sme',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'BSE') },
+      source: 'BSE',
+      existingData: { listingExchanges: ['BSE'], segment: 'SME' } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+    expect(result.conflictsDetected).toBe(0);
+  });
+
+  it('a row with a NULL segment is not an SME row — the pair is left alone', async () => {
+    const service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo, listingRepo);
+    listingRepo.findByIPO.mockResolvedValue({ exchange: 'NSE' });
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145-sme',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, 'NSE') },
+      source: 'NSE',
+      existingData: { listingExchanges: ['NSE', 'BSE'], segment: null } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE', 'BSE']);
+    expect(listingRepo.findByIPO).not.toHaveBeenCalled();
   });
 });
