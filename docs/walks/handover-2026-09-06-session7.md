@@ -2,6 +2,8 @@
 
 Read first: (1) this file; (2) the last 40 lines of `docs/walks/2026-09-02-deepa-pipeline-walk.md`; (3) `docs/ops/branching-model.md` (owner rule 2026-09-05: prod deploys only from `release/prod-<date>`; main never frozen); (4) `docs/walks/batch-2026-09-05-post-deploy.md` (the staging proofs to read); (5) `~/.claude/CLAUDE.md` "One deployment window per day" and "Production hosts are not test benches".
 
+**2026-09-06 early hours: batch 2 is merged and proven; jump to the UPDATE section at the end of this file first.**
+
 ## Production (verified 2026-09-05 22:00-22:35 IST)
 - **Served: d38b72aa** from `release/prod-2026-09-05` (deploy run 33975270028, tag `prod-2026-09-05`), releases prod 3 / staging 2-3, disk 59% / 41 GB free, port 3999 free, pm2 all online, no OOM since 08:38, pm2 daemon stops still 38.
 - `ENABLE_FILING_AUTO_PERSIST=true` restored 21:11 (backups `scraper.env.bak-20260905-preflagrestore`, `-w137`). `ENABLE_SME_FILING_AUTO_PERSIST` NOT set on prod (owner-present flip only).
@@ -44,3 +46,41 @@ Read first: (1) this file; (2) the last 40 lines of `docs/walks/2026-09-02-deepa
 
 ## Session totals (2026-09-05, session 6)
 Worker rounds: ~26 Sonnet, ~15 Opus, ~7.5 M tokens. GitHub: 1 prod deploy, 12 PRs, ~16 hosted gate runs, ~12 staging deploy runs. Worktrees: 13 created, all removed. Lessons saved: release-branch model, architect oversight, timestamps read not guessed, manual reset vs cache, gate on exit code.
+
+---
+
+## UPDATE 2026-09-06 04:24 IST (session 7 continued overnight; owner said "whatever is pending, work on it now")
+
+**Read this section first; the sections above describe the state at 23:05 IST and are superseded where they differ.**
+
+### main and staging now
+- **main = 0127cfa9 (code 37288341)**; staging serves `20260905-224733-37288341`. Batch 2 is fully merged: #305 W-161b, #306 W-164, #307 hook fix (Stop hook wait exemption), #308 W-151, #304 W-145, #310 W-168 (+W-168b), #311 W-170, #312 W-164b (`*.mjs eol=lf`), #309 W-169 (+b/c/d/e). All worktrees removed (main checkout proven intact each time), all merged branches deleted on origin. `git worktree list` = main only.
+- **Local full pass on 7146969b** (scraper by directory, web alone): scraper green in every directory (config 121, db 5, errors 5, helpers 19, module-resolution 3, pipelines 4, repositories 28, scheduler 86, scrapers 455, scripts 349+6 skipped, services 1,337+1 skipped, utils 360, root 119); web unit 2,423 passed after W-164b (the only red was the CRLF shebang import); web tsc 0; scraper tsc 89 = baseline. W-169 (merged after) touches only `scripts/deploy-linux.sh`, `scripts/tests/*.sh`, `pr-gate.yml`, so that pass stands for 37288341; the deploy suite itself is proven on ubuntu (all cases) and by the staging deploy line below.
+
+### Staging proofs already read (so the morning does not repeat them)
+- **W-136b/W-169 PROVEN**: staging deploy of 37288341 logged `==> probe port 3999 free after 1s (direct listener kill)` and no `surviving pid(s)` line (fuser -k never ran). Wart W-169f: the older WARN "…attempting fuser -k as a last resort" still prints before the direct-kill block (string only).
+- **W-168 PROVEN**: 22:39Z cycle: `Anchor auto-persist summary … considered 4, spawned 1, persisted 0, manualReview 0, failed 1, anchorSpawnBudgetRemaining 0` while Lumino Industries extracted 2 / persisted 2 filings in the same cycle (filing budget not starved). Ashutosh Fibre's refusal carries `deterministic: true` (the second identical failure lands MANUAL_REVIEW).
+- **W-170 parser PROVEN, persist BLOCKED**: Shanti Inorganics' real letter parsed (allocation Rs 13.44 Cr), refused by the persister guard "exceeds 60% of the QIB portion (Rs 0.26 Cr) for an issue of Rs 0.57 Cr" because the stored issue size is wrong (W-177 below). Ashutosh (parsed at 12.13 by the OLD parser at 21:25Z) has not retried yet (backoff); the W-170 parser must derive 92.
+- Not yet provable tonight: W-145 (needs an NSE + BSE cycle; watch for CRITICAL CONFLICT rows on SME single-board), W-151 (`audit:coverage --gate` "details row present" counter, WARN until 2026-09-09), W-147 SME headline, W-160 Kanohar flip on staging, W-153 counters over a day, W-142 Qualiance reset via the W-158 CLI.
+
+### New rows found overnight
+- **W-177 (prod correctness, high)**: `/api/ipos` shanti-inorganics-ltd `issueSize=5691200.00` with band 79-83, lot 1600: that is the SHARE COUNT in the rupee column (5,691,200 x 83 = Rs 47.2 Cr), ~80x low on a live SME page; round-7 class "share counts as rupees". A read-only RCA (writers of issue_size, matrix entry, why the substance guard missed, sibling sweep over SME rows) is in the ledger under W-177 when it lands. Fix through the pipeline + audit:substance bound, never by hand.
+- **W-176**: each staging deploy stopped a scraper mid-cycle and left `filing-auto-persist:cycle` (45-min TTL) and `scraper:cycle` locks behind; four deploys tonight cost up to 45 min of staging evidence each. Candidate: release both locks when the deploy stops the scraper.
+- **W-170b**: `lastPercentIdx` scans rows after the Total row (a percent-bearing footnote after Total hides it; fails safe by refusal).
+- **W-169f**: WARN wording above. **W-171**: Kanohar DRHP band 72/82 vs 601/632 (held, verify in the morning). W-163/W-165/W-172/W-173/W-157/W-145c/Autofurnish unchanged.
+
+### Lessons recorded tonight (memory + ledger)
+- Gate through a pipe hides the exit code (`gh pr checks --watch | tail` -> tail's 0): `set -o pipefail` + file capture, then `$?` of the gate itself (2nd occurrence of the W-160b class; memory `feedback-gate-on-exit-code-not-text` extended).
+- A branch that touches validators/schemas/dates must run the root-level scraper unit files too, not only its service directory (W-145's two reds on the hosted gate).
+- Linux-only harness assumptions are real and cheap to catch on the hosted job: EPIPE under pipefail, a real `ss` on ubuntu, a bare `[ -n ] &&` as a function's last line under `set -e`, `#!/usr/bin/env bash` wrappers on a PATH containing a `bash` wrapper (infinite recursion). Five W-169 rounds, all caught by the job the row itself added.
+- A worker's "pre-existing/flaky" claim that contradicts a green run earlier the same night is a regression until reproduced (W-169c).
+- Worker budgets: a deploy suite with real sleeps needs > 10 min on this laptop when it is memory-starved; brief 20 min for it. Laptop free memory fell to 0.7 GB at 04:00; the harness killed background waits; no heavy local runs until it recovers.
+- `wt-new.ps1` does not link node_modules; create junctions (root/web/scraper) to the main checkout's node_modules; `wt-rm.ps1` removes them as links.
+
+### Tomorrow (2026-09-06), revised
+1. Morning reads (read-only): the remaining proofs above; Ashutosh anchor outcome after its backoff; W-177 RCA result; the Playwright prod sweep with >= 2.5 GB free (W-164 now targets prod without a local server).
+2. Fix wave (Sonnet, Tier B unless noted): W-177 root cause + substance bound + sibling sweep (Tier A: it corrects prod data via the pipeline); W-176 lock release in the deploy script (Tier A: deploy script); W-169f, W-170b small.
+3. Full local pass on the new integration sha, one push, one gate; cut `release/prod-2026-09-06`; Rule 6 brief; deploy in the 21:00-23:30 window only on the owner's word. D-15 SME flip on prod only with the owner present (W-168 + W-170 are now on main, the preconditions named earlier are met once soaked).
+
+### Session totals so far (2026-09-06 00:30-04:55 IST)
+Worker rounds: ~10 Sonnet (W-168b x2, W-145 fix, W-169b x2, W-169c, W-169d, W-169e, W-170 review, W-177 RCA), 0 Opus. GitHub: 0 prod deploys, 9 PRs merged, ~14 hosted gate runs, 5 real staging deploys (superseded ones auto-cancelled). Worktrees: 8 removed, 1 created and removed (W-164b). Laptop: two background waits killed for memory.
