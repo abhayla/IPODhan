@@ -1,0 +1,17 @@
+# Lighter install for `pytest scraper/scripts` in CI (W-159).
+#
+# The full requirements.txt + requirements-constraints.txt closure exists to
+# run the OCR route (rapidocr-onnxruntime + pypdfium2 + their transitive
+# pins) end-to-end on the VPS. The scraper/scripts/test_*.py suite does not
+# need that: `ocr_pages.py` imports rapidocr/pypdfium2 lazily inside
+# functions, never at module load, and every OCR-dependent test is already
+# skip-guarded via `ocr_pages.backend_available()` (W-57) when the backend
+# is absent. Installing only what the tests actually import keeps the PR
+# gate fast and avoids the heavy/native OCR wheels for a job that would just
+# skip those assertions anyway.
+#
+# pdfplumber is the one direct dependency the tests import (via
+# anchor_report_text.py) — pinned to the same version as requirements.txt so
+# a version drift here can't mask what production actually runs.
+pdfplumber==0.11.6
+pytest==8.4.2

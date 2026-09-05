@@ -143,6 +143,53 @@ jobs:
         run: npx vitest run --config vitest.config.ts
         working-directory: ./scraper
 
+  python-tests:
+    name: Scraper Python Extractor Tests (W-159)
+    runs-on: ubuntu-latest
+    # W-159: the scraper's python extractor guards (scraper/scripts/test_*.py,
+    # ~110 tests covering the DRHP/RHP financial extraction path — memory
+    # guard W-137, NUL-byte backstop W-138, cover-headline W-147, bounds
+    # W-148) were never run by any CI workflow; the `gate` job above is
+    # node-only. A regression here merged green until now. Kept as its own
+    # job (not a step of `gate`) so it runs in parallel and a failure here is
+    # attributed to the python suite, not the node one.
+    #
+    # Installs scraper/scripts/requirements-test.txt, NOT the full
+    # requirements.txt + requirements-constraints.txt closure — that full
+    # set exists to run OCR (rapidocr-onnxruntime + pypdfium2, W-112-pinned)
+    # end-to-end on the VPS. `ocr_pages.py` imports those lazily inside
+    # functions (never at module load), and every OCR-dependent test is
+    # already skip-guarded via `ocr_pages.backend_available()` (W-57) when
+    # the backend is absent, so the lighter install still exercises every
+    # test that can run without native OCR wheels and skips the rest
+    # honestly instead of installing heavy dependencies nothing here needs.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: scraper/scripts/requirements-test.txt
+
+      - name: Install test dependencies
+        run: python -m pip install -r scraper/scripts/requirements-test.txt
+
+      - name: Run scraper python extractor test suite
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          # W-159 round 2: extract_filing.py installs the W-137 RLIMIT_AS
+          # memory ceiling at MODULE import (memory_guard.install_memory_ceiling()),
+          # which is real (not a no-op) on this ubuntu runner. "off" is the
+          # one documented opt-out value (memory_guard.ceiling_disabled_by_env())
+          # so collecting test_extract_filing_rupee_glyph.py does not pin the
+          # pytest process itself to max_rss_mb(). Production default (unset)
+          # is unaffected.
+          EXTRACTOR_MEMORY_CEILING: 'off'
+        run: python -m pytest scraper/scripts -q -rs -p no:cacheprovider
+
   # M-c: this job used to live in test.yml, which is workflow_dispatch-only —
   # so the gate that replays the journal from empty ran only when a human
   # remembered to click it. The two defects it exists to catch (0035's enum/table
