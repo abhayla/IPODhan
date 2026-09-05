@@ -27,6 +27,18 @@ import { DataConsolidationService } from '../../../src/services/data-consolidati
 import { DataConsolidationOrchestrator } from '../../../src/services/data-consolidation-orchestrator.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
 
+// W-177 round 3 (MINOR-2): the public `consolidatedUpsertIPO` door also
+// fires the step-ledger side effects (best-effort, caught, non-fatal per
+// the orchestrator's own comment) — but with no real Postgres in this unit
+// suite, each write retries against an unreachable DB and burns real wall
+// time per call (same pattern as document-cycle-listed-rotation.test.ts).
+vi.mock('../../../src/services/step-ledger.js', () => ({
+  initStepLedger: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../../../src/services/step-ledger-recorders.js', () => ({
+  recordDiscoverySteps: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../../src/config/feature-flags.js', () => ({
   FEATURE_FLAGS: {
     ENABLE_SOURCE_TRACKING: true,
@@ -221,5 +233,93 @@ describe('W-177 round 2 — DataConsolidationOrchestrator.extractConsolidatedDat
     const orchestrator: any = makeOrchestrator();
     const patch = orchestrator.extractConsolidatedData(result, incoming as any, 'CHITTORGARH', null);
     expect(patch.issueSize).toBeUndefined();
+  });
+});
+
+describe('W-177 round 3 (MINOR-1) — the sweep is field-generic, not issueSize-only', () => {
+  it('a rejected `status` (TERMINAL_STATUS_KEPT) never falls back to originalScraped.status either', () => {
+    const orchestrator: any = makeOrchestrator();
+    const result = {
+      fieldResults: [
+        {
+          fieldName: 'status',
+          finalValue: undefined,
+          rejectedSources: [{ source: 'CHITTORGARH', reason: 'TERMINAL_STATUS_KEPT' }],
+        },
+      ],
+    } as any;
+    const originalScraped = { companyName: 'X', offeringType: 'IPO', status: 'OPEN' } as any;
+
+    const patch = orchestrator.extractConsolidatedData(result, originalScraped, 'CHITTORGARH', null);
+
+    // If the sweep only covered issueSize (the round-2 fix's literal diff),
+    // `status` would still read `consolidated.status || originalScraped.status`
+    // and re-admit 'OPEN' here. It must not.
+    expect(patch.status).toBeUndefined();
+  });
+});
+
+describe('W-177 round 3 (MINOR-2) — the real prod door: consolidatedUpsertIPO', () => {
+  function makeIpoRepo() {
+    return {
+      create: vi.fn(),
+      update: vi.fn(),
+    };
+  }
+
+  it('NEW row via the public consolidatedUpsertIPO: create() is called (not update()) with issueSize undefined', async () => {
+    const ipoRepo = makeIpoRepo();
+    ipoRepo.create.mockResolvedValue({ id: 'new-shanti-id' });
+    const orchestrator: any = new DataConsolidationOrchestrator(ipoRepo as any, mockFieldSourcesRepo, mockConflictsRepo, null);
+
+    // preResolvedIPO = null (not undefined): this is the T-307 contract —
+    // BaseScraperOrchestrator resolves identity once and passes the result
+    // straight through, so this test drives the orchestrator the same way
+    // prod does, without re-deriving resolveIpoRow's tiered lookup.
+    const upsertResult = await orchestrator.consolidatedUpsertIPO(shantiIncoming(), 'CHITTORGARH', 100, null);
+
+    expect(upsertResult.isNew).toBe(true);
+    expect(ipoRepo.create).toHaveBeenCalledTimes(1);
+    expect(ipoRepo.update).not.toHaveBeenCalled();
+
+    const createArg = ipoRepo.create.mock.calls[0][0];
+    // undefined (not null): extractConsolidatedData's issueSize fallback
+    // chain (`consolidated.issueSize?.toString() ?? fallback(...)`.toString())
+    // yields `undefined` here, never `null` — the DB-layer NULL coercion
+    // happens downstream in data-persister's coercePositiveOrNull, not here.
+    expect(createArg.issueSize).toBeUndefined();
+  });
+
+  it('UPDATE row via consolidatedUpsertIPO: a plausible stored issueSize is kept, not overwritten by the incoming share count', async () => {
+    const ipoRepo = makeIpoRepo();
+    ipoRepo.update.mockResolvedValue({ id: 'shanti-id' });
+    const orchestrator: any = new DataConsolidationOrchestrator(ipoRepo as any, mockFieldSourcesRepo, mockConflictsRepo, null);
+
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('issueSize', 'DRHP', '47200000'),
+    ] as any);
+
+    const existingIPO = {
+      id: 'shanti-id',
+      segment: 'SME',
+      priceRangeMin: 79,
+      priceRangeMax: 83,
+      issueSize: '47200000',
+    };
+
+    const upsertResult = await orchestrator.consolidatedUpsertIPO(
+      shantiIncoming(), // still the bad share count, 5,691,200
+      'CHITTORGARH',
+      100,
+      existingIPO // preResolvedIPO: this IS the existing row (isNew=false)
+    );
+
+    expect(upsertResult.isNew).toBe(false);
+    expect(ipoRepo.update).toHaveBeenCalledTimes(1);
+    expect(ipoRepo.create).not.toHaveBeenCalled();
+
+    const [updatedId, updateArg] = ipoRepo.update.mock.calls[0];
+    expect(updatedId).toBe('shanti-id');
+    expect(updateArg.issueSize?.toString()).toBe('47200000');
   });
 });
