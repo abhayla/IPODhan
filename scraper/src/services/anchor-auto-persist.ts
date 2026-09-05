@@ -22,6 +22,7 @@ import { db, getRedisClient, filterProtectedFields } from '@ipodhan/shared';
 import {
   persistAnchorReport,
   type AnchorPersistSummary,
+  type AnchorRefusalKind,
 } from './anchor-persister.js';
 import {
   scrapeAnchorInvestorsDetailed,
@@ -58,6 +59,13 @@ export type AnchorAutoOutcome =
        * to MANUAL_REVIEW after the 2nd identical failure instead of the
        * ordinary 10-attempt backoff. Never set for a transient failure
        * (timeout/OOM/network/sidecar error), which keeps its existing path.
+       *
+       * W-168b: also true when this failure came from a PERSISTER refusal
+       * (e.g. `refusedKind === 'arithmetic'`) that reaches the catch-all
+       * FAILED branch below. A persister refusal is a verdict on the file's
+       * CONTENT — same PDF, same OCR result, same refusal — so it deserves
+       * the same "retry once, then MANUAL_REVIEW" treatment as a scraper
+       * parse failure, not an unbounded 10-attempt backoff.
        */
       deterministic?: boolean;
       /**
@@ -68,8 +76,12 @@ export type AnchorAutoOutcome =
        * NOT on the reason text, which an OCR pass can render with cosmetic
        * variation (different whitespace/rounding) between two runs that are
        * otherwise the identical deterministic refusal.
+       *
+       * W-168b: also carries an `AnchorRefusalKind` (e.g. `'arithmetic'`)
+       * when this failure is a PERSISTER refusal rather than a scraper
+       * failure — see the `deterministic` doc below.
        */
-      sourceKind?: AnchorScrapeFailureKind;
+      sourceKind?: AnchorScrapeFailureKind | AnchorRefusalKind;
     };
 
 /**
@@ -123,7 +135,22 @@ export function classifyAnchorAutoOutcome(input: {
   if (summary.refusedKind === 'name_quality' || summary.refusedKind === 'blank_names') {
     return { kind: 'manual_review', reason: `anchor: ${summary.refusedReason}`, summary };
   }
-  return { kind: 'failed', reason: `anchor: ${summary.refusedReason}`, summary };
+  // W-168b: this refusal reached the catch-all because it is neither
+  // "arithmetic checked out" (persisted) nor name/blank-name garbling
+  // (manual_review above) — it is a persister VERDICT on this document's
+  // content (e.g. `refusedKind === 'arithmetic'`, or a missing/locked IPO
+  // row that will not change on retry). Same document, same DB state, same
+  // refusal every time: mark it deterministic so the caller escalates to
+  // MANUAL_REVIEW after the 2nd identical refusal instead of burning every
+  // anchor spawn slot on a document that can never pass (the W-168
+  // starvation class the W-170 review found this gap in).
+  return {
+    kind: 'failed',
+    reason: `anchor: ${summary.refusedReason}`,
+    summary,
+    deterministic: true,
+    sourceKind: summary.refusedKind ?? undefined,
+  };
 }
 
 export interface AnchorAutoPersistArgs {
