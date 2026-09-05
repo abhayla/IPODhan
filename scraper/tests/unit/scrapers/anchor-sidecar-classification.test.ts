@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { fileURLToPath } from 'node:url';
 
 /**
  * W-142 round 2 — the two review findings that live in the scrape layer.
@@ -123,7 +124,11 @@ describe('MAJOR-1 — a pinned document is never re-selected and never downloade
   it('runs the sidecar on the pinned path itself, without touching the documents table', async () => {
     spawnSyncMock.mockReturnValue({ status: 0, stdout: '{"pages":["nothing parseable"]}', stderr: '' });
 
-    const pinnedPdfPath = import.meta.url.replace('file:///', '');
+    // fileURLToPath, not a string-replace on the URL — stripping a leading
+    // `/` is correct for `file:///C:/...` on Windows but wrong on Linux
+    // (`file:///home/...` has no drive letter, so it loses the root and
+    // the sidecar path check below fails before the sidecar ever spawns).
+    const pinnedPdfPath = fileURLToPath(import.meta.url);
     const outcome = await scrapeAnchorInvestorsDetailed(
       dbThatMustNotBeQueried,
       'ipo-1',
