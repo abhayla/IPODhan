@@ -251,3 +251,110 @@ describe('W-145: the three sources that hard-coded BOTH now report unknown', () 
     expect(offenders).toEqual([]);
   });
 });
+
+describe('W-145 round 2: evidence-based collapse of an SME row already stored with two exchanges', () => {
+  let service: DataConsolidationService;
+  const listingRepo = { findByIPO: vi.fn() };
+
+  function makeService() {
+    return new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo, listingRepo);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listingRepo.findByIPO.mockResolvedValue(null);
+    service = makeService();
+  });
+
+  async function run(opts: { sources?: any[]; source?: any; segment?: string } = {}) {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(opts.sources ?? []);
+    return service.consolidateIPOData({
+      ipoId: 'w145-sme',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource(undefined, opts.source ?? 'BSE') },
+      source: opts.source ?? 'BSE',
+      existingData: {
+        listingExchanges: ['NSE', 'BSE'],
+        segment: opts.segment ?? 'SME',
+      } as any,
+    });
+  }
+
+  it('tier 1 — a listing record for one exchange wins', async () => {
+    listingRepo.findByIPO.mockResolvedValue({ exchange: 'NSE' });
+    // Provenance points the other way; the listing record still decides.
+    const result = await run({
+      sources: [fieldSourceRow('symbol', 'BSE', 'ACME')],
+      source: 'BSE',
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+    expect(result.conflictsDetected).toBe(0);
+  });
+
+  it('tier 1 — a BOTH listing record is not evidence, so the weaker tiers decide', async () => {
+    listingRepo.findByIPO.mockResolvedValue({ exchange: 'BOTH' });
+    const result = await run({
+      sources: [fieldSourceRow('symbol', 'BSE', 'ACME')],
+      source: 'BSE',
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+  });
+
+  it('tier 2 — provenance from exactly one exchange scraper decides', async () => {
+    const result = await run({
+      sources: [fieldSourceRow('listingExchanges', 'NSE', ['NSE', 'BSE'])],
+      source: 'BSE',
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+  });
+
+  it('tier 2 — provenance from BOTH exchanges is not evidence; tier 3 (this run) decides', async () => {
+    const result = await run({
+      sources: [
+        fieldSourceRow('symbol', 'NSE', 'ACME'),
+        fieldSourceRow('listingExchanges', 'BSE', ['NSE', 'BSE']),
+      ],
+      source: 'BSE',
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE']);
+  });
+
+  it('tier 3 — the self-asserting exchange of this run', async () => {
+    const result = await run({ source: 'NSE' });
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+  });
+
+  it('no evidence — the pair is kept AND a CRITICAL conflict row is written', async () => {
+    // CHITTORGARH names a board (so the field is actually consolidated) but is
+    // not self-asserting, so tier 3 gives nothing either.
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+    const result = await service.consolidateIPOData({
+      ipoId: 'w145-sme',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: toListingExchangesForSource('BSE', 'CHITTORGARH') },
+      source: 'CHITTORGARH',
+      existingData: { listingExchanges: ['NSE', 'BSE'], segment: 'SME' } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE', 'BSE']);
+    expect(result.conflictsDetected).toBe(1);
+    const conflictRow = vi.mocked(mockConflictsRepo.upsertConflict as any).mock.calls.at(-1)?.[0];
+    expect(conflictRow).toMatchObject({
+      fieldName: 'listingExchanges',
+      resolutionReason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+      severity: 'CRITICAL',
+    });
+  });
+
+  it('a MAINBOARD row stored with both exchanges is never collapsed', async () => {
+    listingRepo.findByIPO.mockResolvedValue({ exchange: 'NSE' });
+    const result = await run({ segment: 'MAINBOARD', source: 'NSE' });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE', 'BSE']);
+    expect(result.conflictsDetected).toBe(0);
+  });
+});

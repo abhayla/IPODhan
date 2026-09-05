@@ -22,6 +22,9 @@ import type {
   FieldSourcesRepository,
   DataConflictsRepository
 } from '@ipodhan/shared';
+// W-145 round 2: the package root re-exports only the INTERFACE; the class has
+// its own subpath entry.
+import { ListingPerformanceRepository as ListingPerformanceRepositoryClass } from '@ipodhan/shared/repositories/listing-performance-repository';
 import {
   db,
   getRedisClient,
@@ -738,7 +741,9 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       this.ipoRepository,
       this.fieldSourcesRepository,
       this.dataConflictsRepository,
-      redis
+      redis,
+      // W-145 round 2: listing-record evidence for the SME single-exchange collapse.
+      new ListingPerformanceRepositoryClass(db, redis)
     );
   }
 

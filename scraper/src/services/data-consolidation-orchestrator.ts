@@ -68,11 +68,16 @@ export class DataConsolidationOrchestrator {
     private ipoRepository: IPORepository,
     private fieldSourcesRepository: any, // from web
     private dataConflictsRepository: any, // from web
-    private redis: Redis | null
+    private redis: Redis | null,
+    // W-145 round 2: OPTIONAL. Supplies the strongest evidence tier for the SME
+    // single-exchange collapse (`listing_performance.exchange`). Omitted =>
+    // that tier is simply unavailable, the weaker tiers still apply.
+    listingPerformanceRepository?: { findByIPO(ipoId: string): Promise<any> }
   ) {
     this.consolidationService = new DataConsolidationService(
       fieldSourcesRepository,
-      dataConflictsRepository
+      dataConflictsRepository,
+      listingPerformanceRepository
     );
     this.distributedLock = new DistributedLock(redis);
   }

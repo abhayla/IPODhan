@@ -78,3 +78,65 @@ export function violatesSmeSingleExchange(
 
 /** Named reason recorded on the `data_conflicts` row the invariant raises. */
 export const SME_SINGLE_EXCHANGE_CONFLICT_REASON = 'SME_SINGLE_EXCHANGE_INVARIANT';
+
+/** Which evidence decided an SME collapse (recorded in the log line). */
+export type SmeCollapseTier =
+  | 'LISTING_RECORD'
+  | 'FIELD_SOURCE_PROVENANCE'
+  | 'INCOMING_SELF_ASSERTION';
+
+export interface SmeCollapseEvidence {
+  /** `listing_performance.exchange` for this IPO ('BOTH' is not evidence). */
+  listingRecordExchange?: ListingExchange | 'BOTH' | null;
+  /** Sources of the `symbol` / `listingExchanges` provenance rows on this IPO. */
+  trackedExchangeSources?: ScraperSource[];
+  /** The self-asserting exchange scraper writing in THIS run, if any. */
+  incomingSource?: ScraperSource;
+}
+
+/**
+ * W-145 round 2. A union never shrinks, so an SME row already stored as
+ * ['NSE','BSE'] (5 such rows in prod) would stay wrong forever: the invariant
+ * only refuses to WIDEN. This collapses such a row back to the single board
+ * that has EVIDENCE, in a fixed order — a listing record for that exchange,
+ * then the exchange whose own scraper owns provenance on this IPO, then the
+ * exchange asserting itself in this run. With no evidence it returns null and
+ * the caller keeps the stored pair plus its CRITICAL conflict row: a guess is
+ * worse than a visible, tracked disagreement.
+ */
+export function collapseSmeExchanges(
+  stored: unknown,
+  evidence: SmeCollapseEvidence
+): { exchange: ListingExchange; tier: SmeCollapseTier } | null {
+  if (!Array.isArray(stored) || stored.length < 2) return null;
+  const members = stored.filter(
+    (value): value is ListingExchange => value === 'NSE' || value === 'BSE'
+  );
+  if (members.length < 2) return null;
+
+  const listed = evidence.listingRecordExchange;
+  if ((listed === 'NSE' || listed === 'BSE') && members.includes(listed)) {
+    return { exchange: listed, tier: 'LISTING_RECORD' };
+  }
+
+  const tracked = (evidence.trackedExchangeSources ?? []).filter(
+    (source): source is ListingExchange => source === 'NSE' || source === 'BSE'
+  );
+  const distinctTracked = Array.from(new Set(tracked)).filter((exchange) =>
+    members.includes(exchange)
+  );
+  // Provenance from BOTH exchanges is not evidence for either one.
+  if (distinctTracked.length === 1) {
+    return { exchange: distinctTracked[0], tier: 'FIELD_SOURCE_PROVENANCE' };
+  }
+
+  const incoming = evidence.incomingSource;
+  if (
+    (incoming === 'NSE' || incoming === 'BSE') &&
+    members.includes(incoming)
+  ) {
+    return { exchange: incoming, tier: 'INCOMING_SELF_ASSERTION' };
+  }
+
+  return null;
+}
