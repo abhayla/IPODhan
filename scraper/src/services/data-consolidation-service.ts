@@ -1557,7 +1557,7 @@ export class DataConsolidationService {
         // consolidation run must never write.
         if (!this.currentShadowMode) {
           try {
-            await this.dataConflictsRepository.upsertConflict({
+            const conflictResult = await this.dataConflictsRepository.upsertConflict({
               ipoId,
               tableName,
               fieldName,
@@ -1569,6 +1569,31 @@ export class DataConsolidationService {
               resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
               severity: 'CRITICAL',
             });
+
+            // W-161b: `upsertConflict` returns `{ skipped: true, reason }`
+            // rather than throwing when it refuses a write (e.g. the W-79
+            // same-source guard) — a caller that only `await`s the call and
+            // never inspects the return value treats a refused write exactly
+            // like a successful one. For THIS site specifically, a silent
+            // skip means the HOLD leaves no audit-trail row for
+            // `resolveHighValueHoldEscape` to read, permanently inert for
+            // that field. The repository already logs at warn on skip; this
+            // adds the HOLD-specific context (ipoId/field/both sources) so a
+            // skip on the escape's own read-path is diagnosable from THIS
+            // log line, not just the generic repository one.
+            if ((conflictResult as { skipped?: true; reason?: string }).skipped) {
+              logger.warn(
+                {
+                  ipoId,
+                  tableName,
+                  fieldName,
+                  existingSource,
+                  incomingSource,
+                  skipReason: (conflictResult as { reason?: string }).reason,
+                },
+                'hold_status_transition: upsertConflict SKIPPED the HOLD audit-trail write — resolveHighValueHoldEscape will never see this dispute'
+              );
+            }
           } catch (error) {
             console.error('[DataConsolidation] Failed to record HOLD conflict (non-fatal):', error);
           }
