@@ -116,6 +116,16 @@ def _pin_blas_thread_env():
 _pin_blas_thread_env()
 
 
+# Round 5 (MAJOR-A): the near-ceiling last resort in `is_memory_exhaustion`
+# must be disabled entirely when the RLIMIT_AS guard was never actually
+# installed (Windows, or `resource.setrlimit` itself failed) — otherwise
+# VmSize's ~1.5 GB of harmless mapped-but-untouched headroom (see
+# NEAR_CEILING_THRESHOLD below) can put an ordinary run "near" a ceiling that
+# was never enforced in the first place. Set only by `install_memory_ceiling()`
+# on success; read only by `is_near_memory_ceiling()`.
+_installed_ceiling_mb = None
+
+
 def install_memory_ceiling():
     """Pin BLAS/OMP thread counts to 1 (all platforms), then set RLIMIT_AS to
     `max_rss_mb()` (POSIX only).
@@ -124,19 +134,25 @@ def install_memory_ceiling():
     has no `resource` module (Windows) or the call itself failed — a caller
     can use the return value to log/test without guessing whether the
     RLIMIT_AS half of the guard is actually active. The thread-pinning half
-    always runs regardless of this return value.
+    always runs regardless of this return value. Also records the applied
+    limit in `_installed_ceiling_mb` so `is_near_memory_ceiling()` can tell a
+    genuinely-active ceiling apart from one that was never enforced.
     """
+    global _installed_ceiling_mb
     _pin_blas_thread_env()
     try:
         import resource
     except ImportError:
+        _installed_ceiling_mb = None
         return None
     limit_bytes = max_rss_mb() * 1024 * 1024
     try:
         resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, limit_bytes))
     except (ValueError, OSError):
+        _installed_ceiling_mb = None
         return None
-    return max_rss_mb()
+    _installed_ceiling_mb = max_rss_mb()
+    return _installed_ceiling_mb
 
 
 def memory_ceiling_error_json(limit_mb):
@@ -162,29 +178,52 @@ _MEMORY_EXHAUSTION_ERRNOS = frozenset({11, 12})
 # low cap) `SystemError: error return without exception set` — CPython's own
 # symptom when a C-level allocation (e.g. inside re/json/pypdfium2) fails at a
 # point that does not properly raise MemoryError itself.
+# Round 5 (MAJOR-B): the previous bare `allocat` matched ordinary business
+# text unrelated to memory — `ValueError("could not convert string to float:
+# 'Total Amount allocated'")` and `KeyError('allocation_sums_and_qib_floor')`
+# (from `extract_filing.py`'s `check_allocation`, over an anchor document
+# containing the phrase "Total Amount allocated") both matched and were
+# misclassified as memory exhaustion, sending a HEALTHY document straight to
+# the 24h hard-failure floor. Every alternative below requires the word
+# "allocate"/"allocation" to sit next to a memory/allocation-failure verb —
+# never bare "allocat" — so ordinary field/business text no longer matches.
 _MEMORY_EXHAUSTION_MESSAGE_RE = re.compile(
-    r"allocat|cannot allocate|out of memory|can't start new thread|bad_alloc"
+    r"bad_alloc|bad allocation|allocate memory|memory allocation|cannot allocate"
+    r"|out of memory|can't start new thread"
     r"|error return without exception set",
     re.IGNORECASE,
 )
 
 # Round 3: how close to the configured ceiling counts as "close enough that
 # ANY exception right here is presumptively the ceiling, not a real bug".
-NEAR_CEILING_THRESHOLD = 0.85
+# Round 5 (MAJOR-A): raised from 0.85 to 0.97. VmSize (current virtual size)
+# on an ORDINARY OCR run sits at RSS + ~1.5 GB of mapped-but-untouched
+# library address space (onnxruntime/opencv — see the module docstring), so
+# a normal run with RSS 1.26 GB against the DEFAULT_MAX_RSS_MB=3072 ceiling
+# already reads ~90% of the cap via VmSize alone, with zero actual pressure.
+# 0.97 leaves room only for a run genuinely about to hit RLIMIT_AS.
+NEAR_CEILING_THRESHOLD = 0.97
 
 
-def _current_vm_peak_mb():
-    """Best-effort peak virtual memory (VmPeak) in MB for THIS process.
+def _current_vm_size_mb():
+    """Best-effort CURRENT virtual memory size (VmSize) in MB for THIS
+    process — round 5 (MAJOR-A): switched from `VmPeak` (a STICKY high-water
+    mark that never falls back down even after the spike that caused it has
+    long since been freed) to `VmSize` (the process's CURRENT address-space
+    size), so a document that once spiked close to the ceiling and recovered
+    does not keep every SUBSEQUENT unrelated exception misclassified for the
+    rest of the process's life.
 
     Tries `/proc/self/status` first (exact, Linux-only), falls back to
-    `resource.getrusage` (`ru_maxrss` — peak RSS, not VSZ, but the best
-    portable proxy). Returns `None` when neither is available (Windows, or a
-    sandboxed /proc) — callers must treat `None` as "cannot tell", never as 0.
+    `resource.getrusage` (`ru_maxrss` — peak RSS, not current VSZ, but the
+    best portable proxy available without `/proc`). Returns `None` when
+    neither is available (Windows, or a sandboxed /proc) — callers must treat
+    `None` as "cannot tell", never as 0.
     """
     try:
         with open("/proc/self/status") as fh:
             for line in fh:
-                if line.startswith("VmPeak:"):
+                if line.startswith("VmSize:"):
                     return int(line.split()[1]) / 1024.0
     except (OSError, ValueError, IndexError):
         pass
@@ -200,15 +239,28 @@ def _current_vm_peak_mb():
 
 
 def is_near_memory_ceiling(limit_mb=None, threshold=NEAR_CEILING_THRESHOLD):
-    """True when this process's peak memory is already at/near the configured
-    ceiling (POSIX only — returns False, never raises, when unmeasurable)."""
-    limit_mb = max_rss_mb() if limit_mb is None else limit_mb
+    """True only when the RLIMIT_AS guard is actually ACTIVE for this process
+    (`install_memory_ceiling()` succeeded and recorded the limit it applied
+    in `_installed_ceiling_mb`) AND this process's CURRENT virtual size
+    (`VmSize`, not the sticky `VmPeak`) is at/near that ceiling.
+
+    Round 5 (MAJOR-A): the guard is disabled entirely — always returns False
+    — when `_installed_ceiling_mb` is `None` (guard never installed, e.g. the
+    platform has no `resource` module, or `install_memory_ceiling()` was
+    never called/failed). Without this gate, VmSize's ~1.5 GB of harmless
+    mapped-but-untouched library headroom (see `NEAR_CEILING_THRESHOLD`) can
+    read as "near" a ceiling that was never enforced at all, misclassifying
+    an ordinary exception in an ordinary run.
+    """
+    if _installed_ceiling_mb is None:
+        return False
+    limit_mb = _installed_ceiling_mb if limit_mb is None else limit_mb
     if limit_mb <= 0:
         return False
-    peak_mb = _current_vm_peak_mb()
-    if peak_mb is None:
+    size_mb = _current_vm_size_mb()
+    if size_mb is None:
         return False
-    return peak_mb >= threshold * limit_mb
+    return size_mb >= threshold * limit_mb
 
 
 def is_memory_exhaustion(exc):

@@ -168,9 +168,35 @@ export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
  * ordinary Python-catchable shapes, matched here too as a backstop in case a
  * future change to the CLI's own handler regresses), `std::bad_alloc` (a C++
  * dependency's own OOM exception), and `Killed` (the shell's own message
- * when the kernel OOM-killer — not RLIMIT_AS — still gets there first). */
+ * when the kernel OOM-killer — not RLIMIT_AS — still gets there first).
+ *
+ * Round 5 (MINOR-1): `Killed` was unanchored and case-insensitive, so it also
+ * matched unrelated stderr text containing "skilled" or "killed by user"
+ * (e.g. a worker-pool log line). Anchored to the whole word with `\b` and
+ * pulled out of the case-insensitive flag via a separate case-sensitive
+ * alternation, since the shell's own message is always capitalized `Killed`.
+ * `MemoryError` is similarly narrowed to only match an actual Python
+ * exception line (`MemoryError` at the start of a traceback line, or
+ * followed by `:` as in `MemoryError: ...`), not any incidental mention of
+ * the word (e.g. inside a comment or an unrelated log string). */
 export const MEMORY_ABORT_STDERR_RE =
-  /Memory allocation still failed|OpenBLAS error|MemoryError|memory ceiling exceeded|Cannot allocate memory|std::bad_alloc|Killed/i;
+  /Memory allocation still failed|OpenBLAS error|(^|\n)MemoryError(:|$)|memory ceiling exceeded|Cannot allocate memory|std::bad_alloc/i;
+/** Round 5 (MINOR-1): kept case-sensitive and word-boundary-anchored, and
+ * OUTSIDE `MEMORY_ABORT_STDERR_RE`'s `i` flag on purpose — a JS regex literal
+ * cannot mix case sensitivity per-alternative, and the shell's OOM-killer
+ * message is always capitalized `Killed`. Folding it in case-insensitively
+ * (the previous shape) also matched "skilled"-style substrings and lowercase
+ * "killed" inside unrelated prose. Combined with `MEMORY_ABORT_STDERR_RE` via
+ * `isMemoryAbortStderr()` below — always use that, not this regex alone. */
+export const MEMORY_ABORT_KILLED_RE = /\bKilled\b/;
+
+/** The single check callers use: true when the captured stderr tail carries
+ * ANY known C-level memory-abort or OOM-kill signature — see the two
+ * constants above for what each half matches and why they cannot be one
+ * regex literal. */
+export function isMemoryAbortStderr(stderr: string): boolean {
+  return MEMORY_ABORT_STDERR_RE.test(stderr) || MEMORY_ABORT_KILLED_RE.test(stderr);
+}
 
 /** Marks a FAILED row's `extraction_error` as a HARD failure (killed/OOM),
  * with the count of consecutive hard failures embedded — read back by
@@ -239,6 +265,13 @@ export function parseBlockedVersion(error: string | null | undefined): string | 
  *    `retryCount` already includes the attempt that set `updatedAt`, so the
  *    attempt count the backoff formula wants (the count BEFORE that attempt)
  *    is `retryCount - 1`.
+ *
+ * Round 5 (MINOR-2): the hard-failure 24h floor is NOT a one-time wait —
+ * `hardFailureCount` (parsed off `extractionError`) is only ever reset by a
+ * COMPLETED run. A document stuck at `HARD_FAILURE:2` (or higher) is blocked
+ * on this same 24h cadence every cycle, indefinitely, until either a run of
+ * the extractor actually completes for it or an operator manually clears
+ * `extraction_error`.
  */
 export function documentExtractionBlocked(
   doc: DocumentGate,
@@ -273,6 +306,12 @@ export function documentExtractionBlocked(
     // W-137: 2+ consecutive killed/memory-ceiling failures on this SAME
     // document override the normal (6h-capped) exponential backoff with a
     // floor of 24h — the document is what kills the box, not the timing.
+    // Round 5 (MINOR-2): only a COMPLETED run resets the retry/error state —
+    // a document stuck at HARD_FAILURE:2 (or higher) stays on this 24h
+    // cadence FOREVER, cycle after cycle, until either a run completes or an
+    // operator manually clears `extraction_error`. This is stated explicitly
+    // in the blocked reason below so an operator reading the skip log does
+    // not mistake it for a one-time wait.
     const hardFailureCount = parseHardFailureCount(doc.extractionError);
     const hardFloorApplies = hardFailureCount >= 2;
     if (hardFloorApplies) {
@@ -287,7 +326,7 @@ export function documentExtractionBlocked(
       return {
         blocked: true,
         reason: hardFloorApplies
-          ? `extraction backing off until ${nextDueAt.toISOString()} — ${hardFailureCount} consecutive hard failures (killed/OOM), needs manual extraction if this recurs`
+          ? `extraction backing off until ${nextDueAt.toISOString()} — ${hardFailureCount} consecutive hard failures (killed/OOM), needs manual extraction if this recurs (repeats every 24h until a run completes or an operator clears extraction_error)`
           : `extraction backing off until ${nextDueAt.toISOString()}`,
       };
     }
@@ -626,7 +665,7 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     // alone. The node side is the only place left that can still tell:
     // scan the captured stderr tail for the known C-level abort/OOM
     // signatures, regardless of exit code.
-    const stderrLooksLikeMemoryAbort = MEMORY_ABORT_STDERR_RE.test(result.stderr || '');
+    const stderrLooksLikeMemoryAbort = isMemoryAbortStderr(result.stderr || '');
     const hardFailure =
       result.status === null || result.status === EXTRACTOR_MEMORY_CEILING_EXIT || stderrLooksLikeMemoryAbort;
     return {

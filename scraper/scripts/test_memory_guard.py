@@ -99,27 +99,93 @@ def test_is_memory_exhaustion_recognizes_systemerror_shape(monkeypatch):
 
 def test_is_memory_exhaustion_near_ceiling_catches_unrecognized_exception_types(monkeypatch):
     """Round 3 last resort: an exception type/message we did not anticipate,
-    but the process is already at/above 85% of the configured cap."""
-    monkeypatch.setenv("EXTRACTOR_MAX_RSS_MB", "100")
-    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: 90.0)  # 90% of 100
+    but the process is already at/above the near-ceiling threshold of the
+    configured cap, AND (round 5 MAJOR-A) the guard is actually active."""
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 100)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 98.0)  # 98% of 100
     assert memory_guard.is_memory_exhaustion(IndexError("list index out of range")) is True
 
 
 def test_is_memory_exhaustion_below_near_ceiling_threshold_is_not_exhaustion(monkeypatch):
-    monkeypatch.setenv("EXTRACTOR_MAX_RSS_MB", "100")
-    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: 50.0)  # 50% of 100
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 100)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 50.0)  # 50% of 100
     assert memory_guard.is_memory_exhaustion(IndexError("list index out of range")) is False
 
 
-def test_is_near_memory_ceiling_false_when_vm_peak_unmeasurable(monkeypatch):
-    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: None)
+def test_is_near_memory_ceiling_false_when_vm_size_unmeasurable(monkeypatch):
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 100)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: None)
     assert memory_guard.is_near_memory_ceiling(limit_mb=100) is False
 
 
 def test_is_near_memory_ceiling_respects_custom_threshold(monkeypatch):
-    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: 70.0)
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 100)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 70.0)
     assert memory_guard.is_near_memory_ceiling(limit_mb=100, threshold=0.85) is False
     assert memory_guard.is_near_memory_ceiling(limit_mb=100, threshold=0.6) is True
+
+
+def test_is_near_memory_ceiling_false_when_guard_never_installed(monkeypatch):
+    """MAJOR-A: even a process reading 99% of the default cap via VmSize must
+    NOT be treated as near-ceiling when the RLIMIT_AS guard was never
+    installed (e.g. Windows, or install_memory_ceiling() failed/never ran) —
+    VmSize's own ~1.5 GB of harmless headroom would otherwise misfire here."""
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", None)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 99.0)
+    assert memory_guard.is_near_memory_ceiling(limit_mb=100) is False
+
+
+def test_is_memory_exhaustion_ordinary_exception_at_90pct_vmsize_is_not_exhaustion(monkeypatch):
+    """MAJOR-A false-positive repro: a normal OCR run's RSS 1.26 GB reads as
+    VmSize ~90% of the 3072 MB default cap purely from mapped-but-untouched
+    library address space. An ORDINARY exception (e.g. a KeyError in field
+    emission) at that level must NOT be classified as memory exhaustion now
+    that the near-ceiling threshold is 0.97, not 0.85."""
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 3072)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 3072 * 0.90)
+    assert memory_guard.is_memory_exhaustion(KeyError("some_field")) is False
+
+
+def test_is_memory_exhaustion_ordinary_exception_at_98pct_vmsize_is_exhaustion(monkeypatch):
+    """At 98% of the cap (above the 0.97 threshold) with the guard active, an
+    unrecognized exception is presumptively the ceiling."""
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", 3072)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 3072 * 0.98)
+    assert memory_guard.is_memory_exhaustion(KeyError("some_field")) is True
+
+
+def test_is_memory_exhaustion_guard_not_installed_never_near_ceiling_even_at_99pct(monkeypatch):
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", None)
+    monkeypatch.setattr(memory_guard, "_current_vm_size_mb", lambda: 3072 * 0.99)
+    assert memory_guard.is_memory_exhaustion(KeyError("some_field")) is False
+
+
+def test_is_memory_exhaustion_ignores_allocation_business_text_false_positives(monkeypatch):
+    """MAJOR-B repro: the bare `allocat` substring previously matched ordinary
+    business text from extract_filing.py's check_allocation over anchor
+    documents containing "Total Amount allocated" — a HEALTHY document was
+    misclassified as memory exhaustion. Disable the near-ceiling last resort
+    so only the message regex is under test."""
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", None)
+    assert memory_guard.is_memory_exhaustion(
+        ValueError("could not convert string to float: 'Total Amount allocated'")
+    ) is False
+    assert memory_guard.is_memory_exhaustion(
+        KeyError("allocation_sums_and_qib_floor")
+    ) is False
+
+
+def test_is_memory_exhaustion_recognizes_real_allocation_failure_messages(monkeypatch):
+    """MAJOR-B: the narrowed regex must still catch the real memory-allocation
+    failure shapes seen live (OpenBLAS's own phrasing, ENOMEM, MemoryError)."""
+    monkeypatch.setattr(memory_guard, "_installed_ceiling_mb", None)
+    assert memory_guard.is_memory_exhaustion(
+        RuntimeError("OpenBLAS error: Memory allocation still failed after 10 retries, giving up.")
+    ) is True
+    exc = OSError(12, "Cannot allocate memory")
+    exc.errno = 12
+    assert memory_guard.is_memory_exhaustion(exc) is True
+    assert memory_guard.is_memory_exhaustion(MemoryError()) is True
 
 
 def test_extract_filing_exits_3_on_memory_ceiling():

@@ -56,6 +56,7 @@ import {
   HARD_FAILURE_MIN_BACKOFF_MS,
   parseHardFailureCount,
   markHardFailure,
+  isMemoryAbortStderr,
   DEFAULT_MAX_SPAWNS_PER_CYCLE as DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL,
   EXTRACT_TIMEOUT_MS as EXTRACT_TIMEOUT_MS_REAL,
   type AutoPersistDeps,
@@ -125,6 +126,36 @@ afterEach(() => {
   delete process.env.ENABLE_FILING_AUTO_PERSIST;
   MOCK_FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = false;
   MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = false;
+});
+
+// ------------------------------------------------------ MEMORY_ABORT_STDERR_RE
+
+describe('isMemoryAbortStderr — round 5 MINOR-1 (Killed word-boundary anchor)', () => {
+  it('matches the shell OOM-killer message', () => {
+    expect(isMemoryAbortStderr('Killed')).toBe(true);
+    expect(isMemoryAbortStderr('some output\nKilled\n')).toBe(true);
+  });
+
+  it('does NOT match unrelated stderr text merely containing "skilled" or lowercase "killed" in prose', () => {
+    // Previously unanchored + case-insensitive: the old single regex was
+    // `/…|Killed/i`, which matched "skilled" (contains the substring
+    // "killed" is false lexically, but the old pattern had no word boundary
+    // so it matched inside "skilled" too) and lowercase "killed" inside
+    // unrelated prose (e.g. a worker-pool log line) — both are the
+    // adversarial repros named in the brief and must not match at all.
+    expect(isMemoryAbortStderr('warning: this route reassigns the skilled worker pool')).toBe(false);
+    expect(isMemoryAbortStderr('note: previously killed by user via CTRL+C, retrying')).toBe(false);
+  });
+
+  it('does NOT match an incidental mention of MemoryError inside a comment/log line, only an actual exception line', () => {
+    expect(
+      isMemoryAbortStderr(
+        'Traceback (most recent call last):\n  # NOTE: this branch previously mentions MemoryError in a comment, not a real exception\n  ValueError: bad input\n'
+      )
+    ).toBe(false);
+    expect(isMemoryAbortStderr('Traceback (most recent call last):\nMemoryError: \n')).toBe(true);
+    expect(isMemoryAbortStderr('MemoryError')).toBe(true);
+  });
 });
 
 // --------------------------------------------------------------------- flag
