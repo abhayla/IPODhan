@@ -130,7 +130,12 @@ function rowEvidencesItsSource(row: ExchangeProvenanceRow): ListingExchange | nu
 }
 
 function rowTime(row: ExchangeProvenanceRow): number {
-  const at = row.updatedAt ? new Date(row.updatedAt).getTime() : NaN;
+  const { updatedAt } = row;
+  const at = !updatedAt
+    ? NaN
+    : typeof updatedAt === 'string'
+      ? Date.parse(updatedAt)
+      : updatedAt.getTime();
   return Number.isFinite(at) ? at : 0;
 }
 

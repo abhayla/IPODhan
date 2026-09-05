@@ -118,6 +118,17 @@ describe('T-236 / a zero price band is unannounced, not invalid', () => {
  * moneycontrol-scraper.ts for the same class of fix, W-116/W-116b). The
  * 3-field probe above therefore no longer reports a missing-closeDate error.
  */
+
+/**
+ * W-145 update: `listingExchange` was REMOVED from this expected list, same
+ * treatment as T-329's issueSize and W-116's closeDate. ChittorgarhIPOSchema's
+ * `listingExchange` is now optional - Chittorgarh is an aggregator that
+ * cannot always determine which exchange(s) an IPO will list on (BSE, NSE,
+ * or both), and per the source priority matrix (validators.ts), an unknown
+ * value must never overwrite a known one from a source that CAN see the
+ * board (e.g. NSE/BSE). The 3-field probe above therefore no longer reports
+ * a missing-listingExchange error.
+ */
 describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated reasons', () => {
   it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax, issueSize (T-329) or closeDate (W-116)', () => {
     const result = validateChittorgarhIPOData({
@@ -135,14 +146,11 @@ describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated re
     // closeDate is intentionally NOT expected here anymore (W-116) - it is
     // an optional field now, so omitting it produces no validation error.
     expect(paths).not.toContain('closeDate');
+    // listingExchange is intentionally NOT expected here anymore (W-145) - it
+    // is an optional field now, so omitting it produces no validation error.
+    expect(paths).not.toContain('listingExchange');
     expect(paths).toEqual(
-      expect.arrayContaining([
-        'openDate',
-        'listingExchange',
-        'offeringType',
-        'status',
-        'dataSource',
-      ])
+      expect.arrayContaining(['openDate', 'offeringType', 'status', 'dataSource'])
     );
   });
 });
