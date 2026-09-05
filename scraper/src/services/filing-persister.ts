@@ -70,6 +70,14 @@ export interface PersistFilingOptions {
   docType: FilingDocType;
   documentId?: string | null;
   sourceSha?: string | null;
+  /**
+   * The extractor build that produced this extraction
+   * (`filing-auto-persist.EXTRACTOR_VERSION`). Recorded in every
+   * `field_sources.data_lineage` this run writes, so a row's provenance names
+   * WHICH build produced it — W-151 needs that for the empty `ipo_details`
+   * row, whose only content is its provenance.
+   */
+  extractorVersion?: string | null;
   /** false (default) computes the plan and writes nothing. */
   apply?: boolean;
 }
@@ -545,6 +553,7 @@ export async function persistFilingExtraction(
     docType: options.docType,
     documentId: options.documentId ?? null,
     sourceSha: options.sourceSha ?? null,
+    extractorVersion: options.extractorVersion ?? null,
     sourceDoc: extraction.source_doc ?? null,
   };
 
@@ -833,20 +842,31 @@ export async function persistFilingExtraction(
     'issueType',
   ]);
 
-  if (Object.keys(details).length > 0) {
-    // Per-field protection: an admin who hand-corrected one ipo_details column
-    // must not have it overwritten by the next filing run. The raw Drizzle
-    // upsert cannot see field_protection_metadata, so the payload is filtered
-    // BEFORE it reaches the writer, exactly as the orchestrators do for `ipos`.
-    const writable = await filterFields('ipo_details', details);
-    if (Object.keys(writable).length > 0) {
-      if (apply) {
-        await deps.ipoDetailsWriter.upsert(ipoId, { ...writable, dataSource: source });
-        for (const col of Object.keys(writable)) await trackField('ipo_details', col);
-      }
-      bump(written, 'ipo_details', 1);
-    }
+  // Per-field protection: an admin who hand-corrected one ipo_details column
+  // must not have it overwritten by the next filing run. The raw Drizzle
+  // upsert cannot see field_protection_metadata, so the payload is filtered
+  // BEFORE it reaches the writer, exactly as the orchestrators do for `ipos`.
+  const detailsWritable =
+    Object.keys(details).length > 0 ? await filterFields('ipo_details', details) : {};
+
+  // W-151: the row exists for every IPO whose filing was persisted, even when
+  // the extraction yielded ZERO writable detail columns (which is the norm for
+  // an RHP/DRHP/PROSPECTUS — see W-147). Before this, "no row" and "row with
+  // unknown fields" were indistinguishable, so a whole-pipeline gap looked like
+  // an empty table: 3 rows for 358 IPOs. The identity row carries `data_source`
+  // (the only NOT NULL column besides `ipo_id`), and its `field_sources` row
+  // carries the doc type, the source document id and the extractor version — so
+  // `audit:coverage` can count "IPOs with a details row" and see the gap.
+  //
+  // `dataSource` is appended AFTER `filterFields`, exactly as before: it is a
+  // provenance stamp the persister owns, not an admin-editable value, and it is
+  // NOT NULL so an insert cannot omit it.
+  if (apply) {
+    await deps.ipoDetailsWriter.upsert(ipoId, { ...detailsWritable, dataSource: source });
+    for (const col of Object.keys(detailsWritable)) await trackField('ipo_details', col);
+    await trackField('ipo_details', 'dataSource');
   }
+  bump(written, 'ipo_details', 1);
 
   // ------------------------------------------------- 3. financial_statements
   const basisRaw = str(extraction, 'financial_basis');

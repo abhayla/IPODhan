@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
+import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
 
 // T-297 (gap G3): loading web/.env.local is now OPTIONAL. On a dev PC that file
 // carries the SSH-tunnel DSN, so it stays the default. On the Linux box — where
@@ -208,6 +209,31 @@ async function main() {
   const { c: ldCov } = await scalar(`SELECT count(*)::int c FROM ipos WHERE ${REAL_IPO} AND status='LISTED' AND listing_date IS NOT NULL`);
   add('core.listing_date', ldCov, listed, 100, 'LISTED');
 
+  // ---- W-151: an ipo_details row for every IPO with a COMPLETED filing (HARD) ----
+  // "COMPLETED" = document_fetch_state.state = 'EXTRACTED' (the terminal success
+  // state of the document cycle). The persister writes the identity row even when
+  // the extraction yields no detail column, so a shortfall here is a pipeline gap
+  // between extraction and the write door, not a thin document.
+  const dfsExists = (await q(`SELECT to_regclass('public.document_fetch_state') AS reg`))[0].reg;
+  let detailsRow = null;
+  if (dfsExists) {
+    const { c: filingDen } = await scalar(
+      `SELECT count(DISTINCT i.id)::int c FROM ipos i
+         JOIN document_fetch_state s ON s.ipo_id = i.id AND s.state = 'EXTRACTED'
+        WHERE i.${REAL_IPO}`
+    );
+    const { c: detailsNum } = await scalar(
+      `SELECT count(DISTINCT i.id)::int c FROM ipos i
+         JOIN document_fetch_state s ON s.ipo_id = i.id AND s.state = 'EXTRACTED'
+         JOIN ipo_details d ON d.ipo_id = i.id
+        WHERE i.${REAL_IPO}`
+    );
+    detailsRow = evaluateDetailsRowCoverage({
+      withCompletedFiling: filingDen,
+      withDetailsRow: detailsNum,
+    });
+  }
+
   // Stage A invariants (drive-to-zero):
   const stageA = [
     { name: 'pollution.surfaceLeak==0', ok: leak === 0, detail: `${leak}` },
@@ -291,6 +317,14 @@ async function main() {
   let fail = 0;
   log(`  -- Stage A invariants (HARD) --`);
   for (const s of stageA) { if (!s.ok) fail++; log(`  [${s.ok ? 'PASS' : 'FAIL'}] ${s.name} (${s.detail})`); }
+
+  log(`\n  -- Details-row coverage (HARD, W-151) --`);
+  if (!detailsRow) {
+    log(`  [SKIP] ipo_details row present - document_fetch_state table absent on this database`);
+  } else {
+    if (!detailsRow.pass) fail++;
+    log(`  [${detailsRow.pass ? 'PASS' : 'FAIL'}] ipo_details row present ${detailsRow.detail}`);
+  }
 
   log(`\n  -- Substance plausibility (HARD; folds audit-substance-plausibility) --`);
   for (const l of substanceLines) log(l);
