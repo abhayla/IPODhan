@@ -1709,7 +1709,7 @@ exec "%s" "$@"
   # wait, no fuser fallback, INFO "free after" line printed.
   OUT28A="$(run_cleanup_probe_28 a 45001 3 8 0.2 yes 2>&1)"
   if emit "$OUT28A" | grep -q 'probe port 45001 free after' \
-     && ! emit "$OUT28A" | grep -qi 'attempting fuser' \
+     && ! emit "$OUT28A" | grep -qi 'surviving pid(s)' \
      && ! emit "$OUT28A" | grep -qi 'FATAL' \
      && emit "$OUT28A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28a: child listener outlives leader by ~3s -> cleaned by the port wait, no fuser fallback"
@@ -1725,7 +1725,7 @@ exec "%s" "$@"
   # fired (see the mutation-proof step right after this case).
   OUT28B="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" killaware 45002 0 2 0.2 yes 2>&1)"
   if emit "$OUT28B" | grep -q 'probe port 45002 free after' \
-     && ! emit "$OUT28B" | grep -qi 'attempting fuser' \
+     && ! emit "$OUT28B" | grep -qi 'surviving pid(s)' \
      && ! emit "$OUT28B" | grep -qi 'FATAL' \
      && emit "$OUT28B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28b: port survives the initial wait -> KILL escalation clears it, no fuser fallback"
@@ -1748,7 +1748,7 @@ exec "%s" "$@"
   else
     MUT_OUT28B="$(run_cleanup_probe_28_body "$MUTANT_FN_28" killaware 45012 0 2 0.2 yes 2>&1)"
     if emit "$MUT_OUT28B" | grep -q 'probe port 45012 free after' \
-       && ! emit "$MUT_OUT28B" | grep -qi 'attempting fuser'; then
+       && ! emit "$MUT_OUT28B" | grep -qi 'surviving pid(s)'; then
       fail "case 28b mutation-proof: removing the KILL escalation should have broken case 28b's assertions, but the mutant still passed — the test does not actually depend on the escalation"
     else
       pass "case 28b mutation-proof: removing the KILL escalation correctly makes case 28b's pass condition fail (mutant output: $MUT_OUT28B)"
@@ -2036,7 +2036,15 @@ else
   # `log`/`warn` and a fake `redis-cli` ahead of PATH (or no redis-cli at
   # all, for case 30c), then invokes it and returns stdout+stderr plus the
   # fake's argv log.
-  #   $1 = "held-both" | "held-none" | "no-redis-cli"   $2 = DRY_RUN (0/1)
+  #   $1 = "held-both" | "held-none" | "no-redis-cli" | "token-changed"
+  #   $2 = DRY_RUN (0/1)
+  # The fake strips "-t N" and "-u URL" before reading the command, so it
+  # works regardless of flag order. EVAL simulates the compare-and-delete
+  # Lua script server-side: it only "deletes" (returns 1) when ARGV[1]
+  # still equals the token GET returned earlier -- "token-changed" models
+  # a scraper cron-restart grabbing a fresh lock between our GET and EVAL.
+  # DEL is instrumented to yell if the function ever calls it directly
+  # (it must only ever be invoked from inside the EVAL script).
   run_release_locks_30() {
     local scenario="$1" dry_run="${2:-0}"
     local rc_log; rc_log="$(mktemp)"
@@ -2044,16 +2052,39 @@ else
       cat > "$FAKEBIN30/redis-cli" <<FAKERC30
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '$rc_log'
-[ "\$1" = "-u" ] && shift
-shift
-cmd="\$1"; shift
-key="\$1"
+args=("\$@")
+filtered=()
+i=0
+while [ \$i -lt \${#args[@]} ]; do
+  case "\${args[\$i]}" in
+    -t|-u) i=\$((i+2)); continue ;;
+    *) filtered+=("\${args[\$i]}"); i=\$((i+1)) ;;
+  esac
+done
+cmd="\${filtered[0]}"
 case "\$cmd" in
   GET)
-    if [ "$scenario" = "held-both" ]; then echo "tok-abc"; else echo ""; fi
+    if [ "$scenario" = "held-both" ] || [ "$scenario" = "token-changed" ]; then
+      echo "tok-abc"
+    else
+      echo ""
+    fi
     ;;
   TTL) echo "111" ;;
-  DEL) echo "1" ;;
+  EVAL)
+    argv1="\${filtered[4]}"
+    if [ "$scenario" = "token-changed" ]; then
+      echo 0
+    elif [ "\$argv1" = "tok-abc" ]; then
+      echo 1
+    else
+      echo 0
+    fi
+    ;;
+  DEL)
+    echo "DEL-CALLED-DIRECTLY" >&2
+    echo "1"
+    ;;
 esac
 FAKERC30
       chmod +x "$FAKEBIN30/redis-cli"
@@ -2085,13 +2116,14 @@ FAKERC30
   if emit "$OUT30A" | grep -q 'releasing lock:resource:scraper:cycle (held: 111s remaining)' \
      && emit "$OUT30A" | grep -q 'releasing lock:resource:filing-auto-persist:cycle (held: 111s remaining)' \
      && emit "$OUT30A" | grep -q 'cycle locks released: 2' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET lock:resource:scraper:cycle' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 DEL lock:resource:scraper:cycle' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 GET lock:resource:filing-auto-persist:cycle' \
-     && emitn "$OUT30A" | grep -q -- '-u redis://localhost:6379/1 DEL lock:resource:filing-auto-persist:cycle'; then
-    pass "case 30a: both cycle locks held -> both released via the db-1 REDIS_URL, summary 'cycle locks released: 2'"
+     && emitn "$OUT30A" | grep -q -- '-t 3 -u redis://localhost:6379/1 GET lock:resource:scraper:cycle' \
+     && emitn "$OUT30A" | grep -q -- '-t 3 -u redis://localhost:6379/1 GET lock:resource:filing-auto-persist:cycle' \
+     && emitn "$OUT30A" | grep -qE -- '-t 3 -u redis://localhost:6379/1 EVAL .*lock:resource:scraper:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -qE -- '-t 3 -u redis://localhost:6379/1 EVAL .*lock:resource:filing-auto-persist:cycle tok-abc$' \
+     && ! emit "$OUT30A" | grep -q 'DEL-CALLED-DIRECTLY'; then
+    pass "case 30a: both cycle locks held -> released via EVAL compare-and-delete on the GET token, DEL never issued directly"
   else
-    fail "case 30a: expected both keys released with the -u REDIS_URL and a 'released: 2' summary — got: $OUT30A"
+    fail "case 30a: expected EVAL-based compare-and-delete keyed on the GET token (never a direct DEL) — got: $OUT30A"
   fi
 
   # 30b: neither key held -> both logged 'not held', released 0.
@@ -2124,6 +2156,39 @@ FAKERC30
     pass "case 30d: dry-run skips redis-cli entirely, logs the dry-run line only"
   else
     fail "case 30d: expected dry-run to skip redis-cli and log the dry-run line only — got: $OUT30D"
+  fi
+
+  # 30e: the token changes between GET and EVAL (the scraper's pm2
+  # --cron-restart=*/30 grabbed a fresh lock in that window) -> EVAL's
+  # compare returns 0, the key is left alone, and the summary reflects 0
+  # released (never a false "released" claim for a lock we didn't own).
+  OUT30E="$(run_release_locks_30 token-changed 0)"
+  if emit "$OUT30E" | grep -q 'releasing lock:resource:scraper:cycle (held: 111s remaining)' \
+     && emit "$OUT30E" | grep -q 'lock:resource:scraper:cycle token changed, not released' \
+     && emit "$OUT30E" | grep -q 'lock:resource:filing-auto-persist:cycle token changed, not released' \
+     && emit "$OUT30E" | grep -q 'cycle locks released: 0' \
+     && ! emit "$OUT30E" | grep -q 'DEL-CALLED-DIRECTLY'; then
+    pass "case 30e: token changed between GET and EVAL -> 'token changed, not released', released count 0"
+  else
+    fail "case 30e: expected 'token changed, not released' + a released-0 summary when EVAL loses the race — got: $OUT30E"
+  fi
+
+  # 30f: the full argv log for a held-both run is EXACTLY six calls — one
+  # GET, one TTL, one EVAL per key, nothing else (no stray key, no
+  # additional command) — and every call carries the -t 3 connect timeout.
+  RC_LOG_30F="$(emitn "$OUT30A" | awk '/^--- rc-log ---$/{f=1;next} f')"
+  RC_LINES_30F="$(printf '%s\n' "$RC_LOG_30F" | grep -c .)"
+  if [ "$RC_LINES_30F" -eq 6 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' GET ')" -eq 2 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' TTL ')" -eq 2 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' EVAL ')" -eq 2 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' DEL ')" -eq 0 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -vc -- '^-t 3 -u ')" -eq 0 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:scraper:cycle')" -eq 3 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:filing-auto-persist:cycle')" -eq 3 ]; then
+    pass "case 30f: argv log is exactly GET/TTL/EVAL for the two known keys, -t 3 on every call, no other key or command"
+  else
+    fail "case 30f: expected exactly 6 calls (GET/TTL/EVAL x2 keys) all carrying -t 3, no stray key/command — got: $RC_LOG_30F"
   fi
 
   rm -rf "$FAKEBIN30" "$ENVDIR30"

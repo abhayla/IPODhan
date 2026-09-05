@@ -414,16 +414,27 @@ release_scraper_cycle_locks() {
   fi
 
   local key value ttl released=0
+  # The scraper runs under pm2 with --cron-restart=*/30 -- a fresh cycle can
+  # start (and take a NEW lock with a NEW token) in the window between our
+  # GET and our DEL. A plain DEL after GET would then delete a lock we never
+  # read, releasing a cycle that is actually still running. EVAL makes the
+  # read-then-delete atomic and conditional: only delete if the value is
+  # STILL the exact token we just read.
   for key in "lock:resource:scraper:cycle" "lock:resource:filing-auto-persist:cycle"; do
-    value="$(redis-cli -u "$redis_url" GET "$key" 2>/dev/null || true)"
+    value="$(redis-cli -t 3 -u "$redis_url" GET "$key" 2>/dev/null || true)"
     if [ -z "$value" ]; then
       log "release_scraper_cycle_locks: $key not held"
       continue
     fi
-    ttl="$(redis-cli -u "$redis_url" TTL "$key" 2>/dev/null || true)"
+    ttl="$(redis-cli -t 3 -u "$redis_url" TTL "$key" 2>/dev/null || true)"
     log "release_scraper_cycle_locks: releasing $key (held: ${ttl}s remaining)"
-    redis-cli -u "$redis_url" DEL "$key" >/dev/null 2>&1 || true
-    released=$((released + 1))
+    local eval_result
+    eval_result="$(redis-cli -t 3 -u "$redis_url" EVAL       "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"       1 "$key" "$value" 2>/dev/null || true)"
+    if [ "$eval_result" = "1" ]; then
+      released=$((released + 1))
+    else
+      log "release_scraper_cycle_locks: $key token changed, not released"
+    fi
   done
   log "release_scraper_cycle_locks: cycle locks released: $released"
   return 0
@@ -898,8 +909,9 @@ probe_release() {
     # CHILD process routinely outlives the `sh -c`/setsid leader by a few
     # seconds after TERM, so the old "wait up to 5s for $pid, then check
     # the port once" sequence found the port still held on every real
-    # deploy and fell through to the fuser -k backstop every time ("WARN:
-    # PROBE_PORT ... still has a listener ... attempting fuser -k").
+    # deploy and fell through to the direct-listener-kill / fuser -k backstop
+    # every time ("WARN: PROBE_PORT ... still has a listener ... trying a
+    # direct listener kill first (fuser -k only if that fails)").
     # Poll for the PORT itself to free up (leader dead AND no listener),
     # not just the leader — that is the actual condition we need.
     local wait_secs="${PROBE_CLEANUP_WAIT_SECS:-10}"
