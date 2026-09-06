@@ -1,9 +1,10 @@
 /**
  * Freshness SLO config (T-195) — data-class -> max staleness, seeded from the
  * MEASURED scrape cadence (T-176, docs/monitoring/scrape-cadence-measurement.md),
- * NEVER from the undeployed Asia/Kolkata market-hour tiers in
- * scheduler/config.ts (T-176 §3: only the flat 30-min PM2 cron actually runs
- * in production).
+ * NEVER from the Asia/Kolkata market-hour tiers that used to live in
+ * scheduler/config.ts (removed as dead code — never deployed; T-176 §3:
+ * only the flat 30-min PM2 cron + the due-step cycle in due-step-cycle.ts
+ * actually run in production).
  *
  * T-176 measured ALL SIX live scraper sources (NSE, BSE, MONEYCONTROL,
  * CHITTORGARH, INVESTORGAIN_GMP, API_FALLBACK) firing on a flat 30-minute PM2

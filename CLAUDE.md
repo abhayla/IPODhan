@@ -49,7 +49,8 @@ npm run lint && npm run build
 # Scraper (from scraper/)
 npm start                      # Run all enabled scrapers once (NSE included — there is no start:nse)
 npm run start:bse              # Single source: bse | moneycontrol | chittorgarh | gmp | fallback | api
-npm run scheduler              # Cron-based scheduler (production mode; SCRAPER_INTERVAL_MODE=dev relaxes cadence)
+# No separate cron scheduler entrypoint. Production cadence = `tsx src/index.ts --source=all`
+# under pm2, woken every 30 min; due-step logic lives in scraper/src/scheduler/due-step-cycle.ts.
 cd scraper && npx vitest run tests/unit/path/to/test.test.ts  # Single scraper test (tiers/configs: .claude/rules/scraper-test-layout.md)
 
 # Production verification (run BOTH after any deploy — see .claude/rules/repeatable-production-audit.md)
