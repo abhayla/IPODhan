@@ -99,6 +99,141 @@ export function detectPatterns(content) {
   return hits.sort();
 }
 
+/**
+ * Strips comments (prose) from `source` before pattern matching, so a
+ * code comment that merely QUOTES or DISCUSSES a write statement (e.g. a
+ * doc comment explaining why raw SQL was rejected, per
+ * docs/architecture/write-path-hardening.md) never counts as a live write
+ * site. String literals are left intact — a real SQL string embedded in
+ * code must still match.
+ *
+ * Comment replacement preserves newlines and replaces other characters
+ * with a single space, so line numbers and non-comment token adjacency
+ * are unaffected.
+ *
+ * @param {string} source
+ * @param {string} ext file extension including the leading dot (e.g. '.ts', '.py')
+ * @returns {string}
+ */
+export function stripComments(source, ext) {
+  return ext === '.py' ? stripPythonComments(source) : stripCLikeComments(source);
+}
+
+/**
+ * Strips `//` line comments and `/* ... *\/` block comments (this also
+ * covers JSDoc `/** ... *\/` blocks — a JSDoc block is a block comment,
+ * there is no separate syntax to special-case) from JS/TS/SQL-family
+ * source, respecting single/double/template string literals and their
+ * backslash escapes so a comment marker inside a string is never treated
+ * as a real comment start.
+ */
+function stripCLikeComments(source) {
+  let out = '';
+  let i = 0;
+  const n = source.length;
+  let stringDelim = null;
+
+  while (i < n) {
+    const c = source[i];
+
+    if (stringDelim) {
+      if (c === '\\' && i + 1 < n) {
+        out += c + source[i + 1];
+        i += 2;
+        continue;
+      }
+      out += c;
+      if (c === stringDelim) stringDelim = null;
+      i += 1;
+      continue;
+    }
+
+    if (c === '"' || c === "'" || c === '`') {
+      stringDelim = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+
+    if (c === '/' && source[i + 1] === '/') {
+      while (i < n && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+
+    if (c === '/' && source[i + 1] === '*') {
+      out += '  ';
+      i += 2;
+      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      if (i < n) {
+        out += '  ';
+        i += 2;
+      }
+      continue;
+    }
+
+    out += c;
+    i += 1;
+  }
+
+  return out;
+}
+
+/**
+ * Strips `#` line comments from Python source, respecting single/double
+ * quoted string literals and their backslash escapes. (Triple-quoted
+ * strings are not special-cased: a `#` inside one is rare enough for this
+ * ratchet's purpose, and none of the scanned extensions are `.py` today —
+ * this branch exists for parity/tests, not a live scan path.)
+ */
+function stripPythonComments(source) {
+  let out = '';
+  let i = 0;
+  const n = source.length;
+  let stringDelim = null;
+
+  while (i < n) {
+    const c = source[i];
+
+    if (stringDelim) {
+      if (c === '\\' && i + 1 < n) {
+        out += c + source[i + 1];
+        i += 2;
+        continue;
+      }
+      out += c;
+      if (c === stringDelim) stringDelim = null;
+      i += 1;
+      continue;
+    }
+
+    if (c === '"' || c === "'") {
+      stringDelim = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+
+    if (c === '#') {
+      while (i < n && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+
+    out += c;
+    i += 1;
+  }
+
+  return out;
+}
+
 function walk(dir, out) {
   let entries;
   try {
@@ -175,7 +310,7 @@ export function scanRepo(root = ROOT) {
     } catch {
       continue;
     }
-    const kinds = detectPatterns(content);
+    const kinds = detectPatterns(stripComments(content, extname(relPath)));
     if (kinds.length > 0) found.set(relPath, kinds);
   }
   return found;
@@ -217,6 +352,49 @@ function writeBaseline(foundMap) {
   return files.length;
 }
 
+/**
+ * Compares the live scan (`found`, relative POSIX path -> matched pattern
+ * kinds) against the baseline map (relative POSIX path -> baselined pattern
+ * kinds), at BOTH the file-set level (T-316's original contract) and the
+ * per-file pattern-set level: a file already in the baseline that gains a
+ * write-pattern KIND the baseline never recorded is a real regression even
+ * though the file itself is not new — e.g. a file baselined only for
+ * `repository` writes that starts also matching `raw_sql`.
+ *
+ * A pattern kind disappearing from an already-baselined file (the file
+ * itself still matches, just fewer kinds) is a shrink, not a regression —
+ * reported as an informational note only (mirrors why STALE, a whole-file
+ * shrink, still requires `--update` to commit: shrinks are good, but only
+ * FAIL forces them to be committed instead of silently going stale forever;
+ * per-pattern shrinks are common byproducts of unrelated edits and would
+ * make the gate too noisy to fail on).
+ *
+ * @returns {{
+ *   newFiles: string[],
+ *   staleFiles: string[],
+ *   newPatterns: {file: string, kinds: string[]}[],
+ *   shrunkPatterns: {file: string, kinds: string[]}[],
+ * }}
+ */
+export function diffAgainstBaseline(found, baselineMap) {
+  const newFiles = [...found.keys()].filter((f) => !baselineMap.has(f)).sort();
+  const staleFiles = [...baselineMap.keys()].filter((f) => !found.has(f)).sort();
+
+  const newPatterns = [];
+  const shrunkPatterns = [];
+  for (const file of [...found.keys()].sort()) {
+    if (!baselineMap.has(file)) continue; // already reported as NEW
+    const baselineKinds = new Set(baselineMap.get(file));
+    const foundKinds = found.get(file);
+    const added = foundKinds.filter((k) => !baselineKinds.has(k));
+    const removed = [...baselineKinds].filter((k) => !foundKinds.includes(k));
+    if (added.length > 0) newPatterns.push({ file, kinds: added });
+    if (removed.length > 0) shrunkPatterns.push({ file, kinds: removed });
+  }
+
+  return { newFiles, staleFiles, newPatterns, shrunkPatterns };
+}
+
 function main() {
   const args = process.argv.slice(2);
   const found = scanRepo();
@@ -230,14 +408,21 @@ function main() {
   const baseline = loadBaseline();
   const baselineMap = baselineToMap(baseline);
 
-  const newFiles = [...found.keys()]
-    .filter((f) => !baselineMap.has(f))
-    .sort();
-  const staleFiles = [...baselineMap.keys()]
-    .filter((f) => !found.has(f))
-    .sort();
+  const diff = diffAgainstBaseline(found, baselineMap);
+  const { newFiles, staleFiles, newPatterns, shrunkPatterns } = diff;
 
-  if (newFiles.length === 0 && staleFiles.length === 0) {
+  const hasFailure = newFiles.length > 0 || staleFiles.length > 0 || newPatterns.length > 0;
+
+  if (!hasFailure) {
+    if (shrunkPatterns.length > 0) {
+      console.log(
+        '[write-ratchet] NOTE — baselined file(s) lost a write pattern (a shrink; run ' +
+          '--update to record it, not required to pass):'
+      );
+      for (const { file, kinds } of shrunkPatterns) {
+        console.log(`  SHRUNK: ${file}  [${kinds.join(', ')}]`);
+      }
+    }
     console.log(
       `[write-ratchet] PASS — ${found.size} files match baseline (config/write-ratchet-baseline.json).`
     );
@@ -252,6 +437,21 @@ function main() {
     console.error(
       '\nRoute the write through the shared write path instead of adding it here. ' +
         'See docs/architecture/write-path-hardening.md.'
+    );
+  }
+
+  if (newPatterns.length > 0) {
+    console.error(
+      '[write-ratchet] FAIL — baselined file(s) gained a new write pattern not recorded in the ' +
+        'baseline:'
+    );
+    for (const { file, kinds } of newPatterns) {
+      console.error(`  NEW-PATTERN: ${file}  [${kinds.join(', ')}]`);
+    }
+    console.error(
+      '\nRoute the new write through the shared write path, or if this is a reviewed and ' +
+        'approved new write surface, run `node scripts/check-write-ratchet.mjs --update` and ' +
+        'commit the regenerated config/write-ratchet-baseline.json.'
     );
   }
 
