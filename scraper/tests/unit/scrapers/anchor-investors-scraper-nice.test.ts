@@ -5,11 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const spawnSyncMock = vi.fn();
 vi.mock('child_process', () => ({ spawnSync: (...args: unknown[]) => spawnSyncMock(...args) }));
 
-/** `withLowPriority` mocked at the module boundary, defaulting to a
- * pass-through so tests can assert either shape explicitly per case. */
+/** `withLowPriority`/`withBoxLock` mocked at the module boundary, defaulting
+ * to a pass-through so tests can assert either shape explicitly per case. */
 const lowPrioritySpawnMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
+const boxLockMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
 vi.mock('../../../src/utils/low-priority-spawn.js', () => ({
   withLowPriority: (...args: unknown[]) => lowPrioritySpawnMock(...(args as [string, string[]])),
+  withBoxLock: (...args: unknown[]) => boxLockMock(...(args as [string, string[]])),
+  EXTRACTOR_BUSY_EXIT_CODE: 75,
 }));
 
 import { extractPageTexts } from '../../../src/scrapers/anchor-investors-scraper';
@@ -59,5 +62,15 @@ describe('extractPageTexts — W-178 nice-wrapped sidecar spawn', () => {
     extractPageTexts('anchor-report.pdf');
 
     expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+  });
+
+  it('W-178c: status 75 (flock -E, box lock timed out) is classified as busy — a non-failure, non-deterministic outcome', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 75, stdout: '', stderr: '' });
+
+    const result = extractPageTexts('anchor-report.pdf');
+
+    expect(result.ok).toBe(false);
+    expect((result as { kind?: string }).kind).toBe('busy');
+    expect((result as { reason: string }).reason).toContain('another extractor holds the box lock');
   });
 });

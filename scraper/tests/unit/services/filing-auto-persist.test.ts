@@ -14,8 +14,17 @@ vi.mock('node:child_process', () => ({ spawnSync: (...args: unknown[]) => spawnS
  * this per-test to exercise the wrapped shape.
  */
 const lowPrioritySpawnMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
+/**
+ * W-178c: `withBoxLock` defaults to a pass-through the same way
+ * `withLowPriority` does — the box-lock-specific behaviour (flock wrap,
+ * status-75 classification) is exercised in its own describe block below via
+ * `boxLockMock`.
+ */
+const boxLockMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
 vi.mock('../../../src/utils/low-priority-spawn.js', () => ({
   withLowPriority: (...args: unknown[]) => lowPrioritySpawnMock(...(args as [string, string[]])),
+  withBoxLock: (...args: unknown[]) => boxLockMock(...(args as [string, string[]])),
+  EXTRACTOR_BUSY_EXIT_CODE: 75,
 }));
 
 /**
@@ -483,6 +492,37 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     expect(failedCall[0]).not.toHaveProperty('retryCount');
   });
 
+  it('W-178c: a busy (box-lock) extractor result reverts the document to PENDING, unchanged — no FAILED row, no retryCount bump', async () => {
+    const d = deps({
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'extractor skipped this cycle: another extractor holds the box lock (W-178c)',
+        busy: true,
+      })),
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.failed).toBe(0);
+    expect(result.skipped.some((s) => s.includes('box lock (W-178c)'))).toBe(true);
+
+    const eWrites = recordedSteps.flatMap((r) => r.writes).filter((w) => w.stepId.startsWith('E'));
+    expect(eWrites).toHaveLength(0);
+
+    // IN_PROGRESS (retryCount 1) is stamped before the spawn, same as any
+    // other attempt — then reverted straight back to PENDING with the
+    // PRE-attempt retryCount (0), never a FAILED status at all.
+    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 1 })
+    );
+    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', status: 'PENDING', error: null, retryCount: 0 })
+    );
+    expect(
+      (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.some((c) => c[0].status === 'FAILED')
+    ).toBe(false);
+  });
+
   it('a document-load failure returns an empty result instead of throwing', async () => {
     const d = deps({
       loadDocuments: vi.fn(async () => {
@@ -768,6 +808,17 @@ describe('defaultExtractorRunner — W-137 hard-failure classification', () => {
 
     expect(result.ok).toBe(false);
     expect((result as { hardFailure?: boolean }).hardFailure).toBe(false);
+  });
+
+  it('W-178c: status 75 (flock -E, box lock timed out) is classified as busy — not a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 75, stdout: '', stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { busy?: boolean }).busy).toBe(true);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBeUndefined();
+    expect((result as { error: string }).error).toContain('another extractor holds the box lock');
   });
 });
 
@@ -1726,6 +1777,24 @@ describe('W-142 — the outcome map written to documents.extraction_status', () 
     // The refusal is visible in the ledger as the anchor step, blocked.
     const h3 = recordedSteps.flatMap((s) => s.writes).filter((w) => w.stepId === 'H3');
     expect(h3.length).toBeGreaterThan(0);
+  });
+
+  it('W-178c: a busy (box-lock) outcome reverts the anchor document to PENDING — not FAILED, no retryCount bump', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'busy' as const,
+        reason: 'anchor: anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)',
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    expect(r.failed).toBe(0);
+    expect(r.skipped.some((s) => s.includes('box lock (W-178c)'))).toBe(true);
+    expect(stateCalls(d).some((c) => c.status === 'FAILED')).toBe(false);
+    expect(stateCalls(d).some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
+    const pendingCall = stateCalls(d).find((c) => c.status === 'PENDING');
+    expect(pendingCall).toBeDefined();
+    expect(pendingCall.retryCount).toBe(0);
   });
 
   it('empty pages (W-139 shape) -> MANUAL_REVIEW naming the OCR heuristic, never an endless retry', async () => {

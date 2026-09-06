@@ -131,6 +131,15 @@ describe('classifyAnchorAutoOutcome — the outcome map', () => {
   it('a missing summary is FAILED, never a claimed persist', () => {
     expect(classifyAnchorAutoOutcome({}).kind).toBe('failed');
   });
+
+  it('W-178c: a busy (box-lock) sidecar failure is its own outcome — not hard_failure, not deterministic-failed', () => {
+    const out = classifyAnchorAutoOutcome({
+      failure: { kind: 'busy', reason: 'anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)' },
+    });
+    expect(out.kind).toBe('busy');
+    expect((out as { deterministic?: boolean }).deterministic).toBeUndefined();
+    expect(out.reason).toContain('box lock (W-178c)');
+  });
 });
 
 describe('pagesAreEmpty — the W-139 detector', () => {

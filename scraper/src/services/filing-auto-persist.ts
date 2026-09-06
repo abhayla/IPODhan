@@ -189,7 +189,7 @@ export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
  * `MEMORY_ABORT_KILLED_RE` and `isMemoryAbortStderr` keeps working.
  */
 import { isMemoryAbortStderr } from './memory-abort-stderr.js';
-import { withLowPriority } from '../utils/low-priority-spawn.js';
+import { withLowPriority, withBoxLock, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
 export {
   MEMORY_ABORT_STDERR_RE,
   MEMORY_ABORT_KILLED_RE,
@@ -687,6 +687,12 @@ export type ExtractorFailure = {
    * with `EXTRACTOR_MEMORY_CEILING_EXIT` — a HARD failure the caller must
    * back off much longer than an ordinary parse/validation failure. */
   hardFailure?: boolean;
+  /** W-178c: true when the box lock could not be acquired within the wait
+   * window (another extractor — prod or staging — holds it). NOT a failure
+   * of this document: no backoff, no retry-count increment, no FAILED row —
+   * the caller reverts the IN_PROGRESS stamp and retries next cycle
+   * unchanged. Mutually exclusive with `hardFailure`. */
+  busy?: boolean;
 };
 export type ExtractorSuccess = { ok: true; extraction: FilingExtraction };
 export type ExtractorResult = ExtractorSuccess | ExtractorFailure;
@@ -779,14 +785,20 @@ function spawnExtractor(
   if (typeof issueSizeRupees === 'number' && Number.isFinite(issueSizeRupees) && issueSizeRupees > 0) {
     args.push('--issue-size', String(Math.round(issueSizeRupees)));
   }
-  const wrapped = withLowPriority(bin, args);
+  // W-178c: box-lock wraps the OUTSIDE of the nice wrap — flock(nice(python)) —
+  // so the lock is held for the process's whole scheduling lifetime.
+  const niceWrapped = withLowPriority(bin, args);
+  const wrapped = withBoxLock(niceWrapped.bin, niceWrapped.args);
   const result = spawnSync(wrapped.bin, wrapped.args, {
     encoding: 'utf8',
     timeout: EXTRACT_TIMEOUT_MS,
     maxBuffer: 64 * 1024 * 1024,
     cwd: path.dirname(script),
   });
-  return wrapped.bin === 'nice' ? remapNiceExecFailure(result, bin) : result;
+  // The ENOENT remap only ever concerns `nice` failing to exec its target,
+  // regardless of whether `flock` sits outside it — `flock` propagates the
+  // wrapped command's own exit status/stderr verbatim on a non-signal exit.
+  return niceWrapped.bin === 'nice' ? remapNiceExecFailure(result, bin) : result;
 }
 
 /**
@@ -835,6 +847,19 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     logger.warn({ triedBin: primaryBin }, 'python binary not found — retrying once with python3');
     result = spawnExtractor('python3', script, pdfPath, docType, sme, issueSizeRupees);
     if (!result.error) logger.info({ usedBin: 'python3' }, 'extractor spawned with python3 fallback');
+  }
+
+  // W-178c: the box lock (outside `nice`, outside the ENOENT retry above —
+  // both bins get the same lock) timed out. `flock -E` makes this exit code
+  // unambiguous versus an ordinary python failure; classify it BEFORE the
+  // generic non-zero-exit handling below so it never earns a backoff.
+  if (!result.error && result.status === EXTRACTOR_BUSY_EXIT_CODE) {
+    logger.warn('extractor skipped this cycle: another extractor holds the box lock (W-178c)');
+    return {
+      ok: false,
+      error: 'extractor skipped this cycle: another extractor holds the box lock (W-178c)',
+      busy: true,
+    };
   }
 
   if (result.error) return { ok: false, error: `spawn failed: ${result.error.message}` };
@@ -1164,6 +1189,22 @@ async function runAnchorDocument(
       'Anchor allocation report extracted and persisted automatically (W-142)'
     );
     return { persisted: true };
+  }
+
+  // W-178c: box busy is NOT a failure — revert to PENDING with the
+  // pre-attempt retryCount, same shape as the filing-loop busy branch above.
+  if (outcome.kind === 'busy') {
+    result.skipped.push(`${ANCHOR_DOC_TYPE}: another extractor holds the box lock (W-178c)`);
+    logger.warn({ ipoId: ipo.id }, 'extractor skipped this cycle: another extractor holds the box lock (W-178c)');
+    await deps
+      .setDocumentExtractionState({
+        documentId: doc.id,
+        status: 'PENDING',
+        error: null,
+        retryCount: ctx.previousRetryCount,
+      })
+      .catch(() => undefined);
+    return { persisted: false };
   }
 
   result.failed++;
@@ -1546,6 +1587,28 @@ export async function processPendingFilings(
     const run = deps.runExtractor({ pdfPath, docType, sme, issueSizeRupees });
 
     if (isExtractorFailure(run)) {
+      // W-178c: box busy is NOT a failure of this document — revert the
+      // IN_PROGRESS stamp taken above back to PENDING with the retryCount it
+      // had before this attempt, so the next cycle sees an unchanged
+      // document (no backoff, no hard-failure marker, no FAILED row).
+      if (run.busy) {
+        result.skipped = [
+          ...result.skipped,
+          `${docType}: another extractor holds the box lock (W-178c)`,
+        ];
+        try {
+          await deps.setDocumentExtractionState({
+            documentId: doc.id,
+            status: 'PENDING',
+            error: null,
+            retryCount: previousRetryCount,
+          });
+        } catch {
+          /* already logged by the writer; a stuck IN_PROGRESS status must not fail the cycle */
+        }
+        doc.retryCount = previousRetryCount;
+        continue;
+      }
       result.failed++;
       // W-137: a killed/memory-ceiling extractor is a HARD failure — embed
       // the (incrementing) hard-failure marker so the NEXT cycle's
