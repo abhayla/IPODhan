@@ -22,12 +22,16 @@
 # alert path.
 #
 # WHAT IT RUNS
-#   1. audit-ipo-coverage.mjs --gate     (DB invariants + substance; needs the DB)
-#   2. audit-prod.mjs                    (live HTTP/API audit; needs no DB)
-#   3. audit-detection-floor.mjs --gate  (round-7 coverage floor; needs the DB)
-#   4. assert-schema-drift.ts            (T-330: live DB vs schema.ts; needs the DB)
-# Both are strictly read-only: SELECT-only SQL and GET requests. Neither writes
-# to the database, Redis, or the filesystem outside this script's state dir.
+#   1. audit-ipo-coverage.mjs --gate       (DB invariants + substance; needs the DB)
+#   2. audit-prod.mjs                      (live HTTP/API audit; needs no DB)
+#   3. audit-detection-floor.mjs --gate    (round-7 coverage floor; needs the DB)
+#   4. audit-findings-to-issues.mjs        (recurrence loop part 2: sync tonight's
+#                                            FAIL/UNVERIFIABLE findings to GitHub
+#                                            issues; fail-open, never fails this cron)
+#   5. assert-schema-drift.ts              (T-330: live DB vs schema.ts; needs the DB)
+# All of 1-3 and 5 are strictly read-only: SELECT-only SQL and GET requests. Step 4
+# WRITES to GitHub (issues) but never to the database, Redis, or the local
+# filesystem outside this script's state dir.
 #
 # INSTALL (one manual step — a production mutation, so it is NOT done by the
 # worker that authored this file):
@@ -102,10 +106,10 @@ run_audit() {
 
   local failed=0
 
-  echo "--- [1/4] audit-ipo-coverage --gate (DB invariants + substance) ---"
+  echo "--- [1/5] audit-ipo-coverage --gate (DB invariants + substance) ---"
   node scripts/audit-ipo-coverage.mjs --gate || { failed=1; echo "GATE FAILED: audit-ipo-coverage"; }
 
-  echo "--- [2/4] audit-prod (live HTTP/API) ---"
+  echo "--- [2/5] audit-prod (live HTTP/API) ---"
   BASE_URL="https://ipodhan.com" node scripts/audit-prod.mjs || { failed=1; echo "GATE FAILED: audit-prod"; }
 
   # T-335: the fresh-review coverage floor, promoted to FAIL-level checks —
@@ -121,7 +125,7 @@ run_audit() {
   # Exit codes: 0 clean, 1 a check FAILed, 3 no FAIL but at least one check was
   # UNVERIFIABLE (the audit was BLIND tonight, not green - it still pages and
   # still fails this cron run), 2 the audit crashed.
-  echo "--- [3/4] audit-detection-floor --gate (round-7 coverage floor) ---"
+  echo "--- [3/5] audit-detection-floor --gate (round-7 coverage floor) ---"
   BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate
   DF_CODE=$?
   case "$DF_CODE" in
@@ -130,12 +134,25 @@ run_audit() {
     *) failed=1; echo "GATE FAILED: audit-detection-floor exited $DF_CODE" ;;
   esac
 
+  # Recurrence loop part 2 (T-added 2026-09-06): sync tonight's FAIL/UNVERIFIABLE
+  # findings (written by step 3 above to <STATE_DIR>/findings-latest.json) to
+  # GitHub issues — one issue per check, commented only when the failing rows
+  # change, closed automatically when the check goes back to PASS. This step is
+  # FAIL-OPEN BY DESIGN: `|| true` means a missing `gh`, a revoked login, or a
+  # network error can never turn a green (or already-alerted) audit run into a
+  # failed cron run — the script itself already prints `ISSUES-SKIP: <reason>`
+  # and exits 0 in every one of those cases (see its own header comment).
+  # AUDIT_ISSUES_DRY_RUN=1 forces --dry-run (no real GitHub writes) for the
+  # first night this runs on the box.
+  echo "--- [4/5] audit-findings-to-issues (nightly findings -> GitHub issues) ---"
+  node scripts/audit-findings-to-issues.mjs || true
+
   # T-330: read-only schema-drift check — compares the live column/matview set
   # against packages/shared/src/db/schema.ts. Catches the class where a
   # migration is journaled as applied but the live DDL never actually matched
   # (ipo_scores.algorithm_version varchar(10) vs SSOT varchar(50); calendar_view
   # never created) between deploys, e.g. after an out-of-band manual DB change.
-  echo "--- [4/4] assert-schema-drift (live DB vs schema.ts) ---"
+  echo "--- [5/5] assert-schema-drift (live DB vs schema.ts) ---"
   npx tsx scripts/assert-schema-drift.ts || { failed=1; echo "GATE FAILED: assert-schema-drift"; }
 
   echo "=== exit code: $failed ==="
