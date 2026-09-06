@@ -167,6 +167,17 @@ export const DEFAULT_WAKE_BUDGET_MS = 20 * 60 * 1000;
  */
 export const PURGE_RESERVE_MS = 2 * 60 * 1000;
 
+/**
+ * Reviewer MEDIUM (round 3): the post-budget-trip reservation loop (purge
+ * slot + up to `listedCap` LISTED rows, below) previously had NO time
+ * ceiling of its own — a slow reserved visit could push the wake past
+ * `wakeBudgetMs` even though the extraction budget correctly floors at 0.
+ * This caps the reservation pass to whichever is earlier: the wake budget
+ * minus the purge reservation, or this fixed ceiling from the moment the
+ * discovery budget trips.
+ */
+export const RESERVATION_CEILING_MS = 3 * 60 * 1000;
+
 /** `DOCUMENT_CYCLE_WAKE_BUDGET_MS` env override, default `DEFAULT_WAKE_BUDGET_MS`. */
 export function getWakeBudgetMs(): number {
   const raw = process.env.DOCUMENT_CYCLE_WAKE_BUDGET_MS;
@@ -235,6 +246,13 @@ export interface DocumentCycleSummary {
    */
   listedReserved: number;
   /**
+   * Round 3 reviewer fix: LISTED rows that WOULD have been reserved (within
+   * `listedCap`) but were skipped because the reservation deadline
+   * (`startedAt + wakeBudgetMs - PURGE_RESERVE_MS`, or `RESERVATION_CEILING_MS`
+   * from the trip point, whichever is earlier) was already reached.
+   */
+  listedReservedSkippedByDeadline: number;
+  /**
    * W-136: LISTED candidates actually processed via the post-budget-trip
    * reservation (a subset of `listedReserved` — can be lower only if fewer
    * unprocessed LISTED candidates existed than the cap).
@@ -275,6 +293,7 @@ export function summarize(
     skippedUnenriched?: number;
     reserved?: number;
     processedAfterBudget?: number;
+    reservedSkippedByDeadline?: number;
   } = { cap: 0, deferred: 0 },
   calendarInfo: { skipped: number; reason: CalendarGateReason | null } = { skipped: 0, reason: null }
 ): DocumentCycleSummary {
@@ -296,6 +315,7 @@ export function summarize(
     listedSkippedUnenriched: listedInfo.skippedUnenriched ?? 0,
     listedReserved: listedInfo.reserved ?? 0,
     listedProcessedAfterBudget: listedInfo.processedAfterBudget ?? 0,
+    listedReservedSkippedByDeadline: listedInfo.reservedSkippedByDeadline ?? 0,
     calendarSkipped: calendarInfo.skipped,
     calendarGateReason: calendarInfo.reason,
   };
@@ -1096,13 +1116,25 @@ export async function runDocumentCycle(
     const processedIds = new Set<string>();
     let listedReserved = 0;
     let listedProcessedAfterBudget = 0;
+    let listedReservedSkippedByDeadline = 0;
 
     for (let i = 0; i < candidates.length; i++) {
       const ipo = candidates[i];
       const isPurgeCandidate = ipo.issue?.withdrawn === true;
 
       if (now() - startedAt >= budgetMs) {
-        if (purgeReserved && !purgeProcessed) {
+        // Round 3 reviewer fix: the reservation pass below (purge slot + up to
+        // `listedCap` LISTED rows) previously ran with no ceiling of its own —
+        // a slow reserved visit could push the wake past `wakeBudgetMs` even
+        // though the extraction budget correctly floors at 0. Bound it to
+        // whichever is earlier: the wake budget minus the purge reservation,
+        // or a fixed ceiling from this trip point.
+        const reservationDeadline = Math.min(
+          startedAt + wakeBudgetMs - PURGE_RESERVE_MS,
+          now() + RESERVATION_CEILING_MS
+        );
+
+        if (purgeReserved && !purgeProcessed && now() < reservationDeadline) {
           const purgeIdx = candidates.findIndex(
             (c, idx) => idx >= i && c.issue?.withdrawn === true
           );
@@ -1130,6 +1162,10 @@ export async function runDocumentCycle(
           .filter((c) => lifecycleRank(c) === 3 && !processedIds.has(c.id));
         listedReserved = Math.min(listedCap, remainingListed.length);
         for (const listedCandidate of remainingListed.slice(0, listedCap)) {
+          if (now() >= reservationDeadline) {
+            listedReservedSkippedByDeadline++;
+            continue;
+          }
           await processCandidate(listedCandidate);
           processedIds.add(listedCandidate.id);
           listedProcessedAfterBudget++;
@@ -1145,6 +1181,7 @@ export async function runDocumentCycle(
             purgeProcessed,
             listedReserved,
             listedProcessedAfterBudget,
+            listedReservedSkippedByDeadline,
           },
           'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot and up to listedCap LISTED slots are reserved regardless of budget'
         );
@@ -1274,6 +1311,7 @@ export async function runDocumentCycle(
         skippedUnenriched: listedSkippedUnenriched,
         reserved: listedReserved,
         processedAfterBudget: listedProcessedAfterBudget,
+        reservedSkippedByDeadline: listedReservedSkippedByDeadline,
       },
       { skipped: calendarSkipped, reason: calendarGate.reason }
     );
