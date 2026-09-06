@@ -237,6 +237,31 @@ test('stripComments: a doc comment describing the raw_sql pattern in prose is re
   assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
 });
 
+test('stripComments: a regex literal containing an escaped slash does not blank a same-line write', () => {
+  const fixture = `const urlRe = /^https:\\/\\//; db.update(ipos).set({});`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['drizzle']);
+});
+
+test('stripComments: a same-line string literal still matches (regex-literal fix does not regress string tracking)', () => {
+  const fixture = `const s = "http://x"; db.update(ipos).set({})`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['drizzle']);
+});
+
+test('stripComments: a same-line regex literal is skipped and the following write still matches', () => {
+  const fixture = `const re = /^https:\\/\\//; db.update(ipos)`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['drizzle']);
+});
+
+test('stripComments: a "//"-lookalike inside a string literal on the same line as a write still matches', () => {
+  const fixture = `const s = 'a // b'; UPDATE ipos SET lot_size = 100 WHERE id = 1;`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['raw_sql']);
+});
+
+test('stripComments: a real line comment quoting a write on the same line is NOT matched', () => {
+  const fixture = `// db.update(ipos).set({});`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
+});
+
 // --- diffAgainstBaseline(): per-file pattern-set comparison -----------------
 
 test('diffAgainstBaseline: a brand-new file is reported as newFiles, not newPatterns', () => {

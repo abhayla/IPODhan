@@ -127,8 +127,84 @@ export function stripComments(source, ext) {
  * backslash escapes so a comment marker inside a string is never treated
  * as a real comment start.
  */
+// Tokens after which a `/` is a value (start of an expression) rather than
+// a division operator — the standard lexer heuristic for disambiguating
+// regex literals from division without a full parser.
+const REGEX_CONTEXT_CHARS = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';']);
+
+/**
+ * Looks backward through what has been emitted so far to decide whether a
+ * `/` at the current position starts a regex literal (true) or is a
+ * division operator (false). A `/` is division only when it directly
+ * follows a value-producing token: an identifier/number (`ipos`, `2`), a
+ * `)` (call/paren result), or a `]` (array/index result) — the `return`
+ * keyword is the one identifier-like exception that still opens a regex
+ * (`return /foo/.test(x)`). Start-of-source and every other punctuator
+ * (`(`, `,`, `=`, `:`, `[`, `!`, `&`, `|`, `?`, `{`, `}`, `;`) are regex
+ * contexts.
+ */
+function isRegexContext(out) {
+  let j = out.length - 1;
+  while (j >= 0 && /\s/.test(out[j])) j -= 1;
+  if (j < 0) return true;
+
+  const ch = out[j];
+  if (REGEX_CONTEXT_CHARS.has(ch)) return true;
+
+  if (/[A-Za-z0-9_$)\]]/.test(ch)) {
+    let k = j;
+    while (k >= 0 && /[A-Za-z0-9_$]/.test(out[k])) k -= 1;
+    const word = out.slice(k + 1, j + 1);
+    return word === 'return';
+  }
+
+  return true;
+}
+
+/**
+ * Skips over a regex literal starting at `source[i]` (the opening `/`),
+ * respecting backslash escapes and `[...]` character classes (where an
+ * unescaped `/` does not end the literal), and appending it to `out`
+ * unchanged — a regex literal is a value, not prose, so it must never be
+ * blanked or mistaken for a comment delimiter.
+ * @returns {number} the index immediately after the literal (including any
+ *   trailing flags), i.e. the resumed scan position
+ */
+function copyRegexLiteral(source, i, out) {
+  const n = source.length;
+  out.out += source[i];
+  let j = i + 1;
+  let inClass = false;
+  while (j < n) {
+    const c = source[j];
+    out.out += c;
+    if (c === '\\' && j + 1 < n) {
+      out.out += source[j + 1];
+      j += 2;
+      continue;
+    }
+    if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) {
+      j += 1;
+      break;
+    } else if (c === '\n') {
+      // Unterminated literal (or this wasn't actually a regex) — bail
+      // without consuming the newline as part of it.
+      out.out = out.out.slice(0, -1);
+      return j;
+    }
+    j += 1;
+  }
+  while (j < n && /[a-zA-Z]/.test(source[j])) {
+    out.out += source[j];
+    j += 1;
+  }
+  return j;
+}
+
 function stripCLikeComments(source) {
-  let out = '';
+  const out = { out: '' };
   let i = 0;
   const n = source.length;
   let stringDelim = null;
@@ -138,11 +214,11 @@ function stripCLikeComments(source) {
 
     if (stringDelim) {
       if (c === '\\' && i + 1 < n) {
-        out += c + source[i + 1];
+        out.out += c + source[i + 1];
         i += 2;
         continue;
       }
-      out += c;
+      out.out += c;
       if (c === stringDelim) stringDelim = null;
       i += 1;
       continue;
@@ -150,38 +226,43 @@ function stripCLikeComments(source) {
 
     if (c === '"' || c === "'" || c === '`') {
       stringDelim = c;
-      out += c;
+      out.out += c;
       i += 1;
       continue;
     }
 
     if (c === '/' && source[i + 1] === '/') {
       while (i < n && source[i] !== '\n') {
-        out += ' ';
+        out.out += ' ';
         i += 1;
       }
       continue;
     }
 
     if (c === '/' && source[i + 1] === '*') {
-      out += '  ';
+      out.out += '  ';
       i += 2;
       while (i < n && !(source[i] === '*' && source[i + 1] === '/')) {
-        out += source[i] === '\n' ? '\n' : ' ';
+        out.out += source[i] === '\n' ? '\n' : ' ';
         i += 1;
       }
       if (i < n) {
-        out += '  ';
+        out.out += '  ';
         i += 2;
       }
       continue;
     }
 
-    out += c;
+    if (c === '/' && isRegexContext(out.out)) {
+      i = copyRegexLiteral(source, i, out);
+      continue;
+    }
+
+    out.out += c;
     i += 1;
   }
 
-  return out;
+  return out.out;
 }
 
 /**
