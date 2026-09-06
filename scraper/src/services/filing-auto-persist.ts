@@ -873,7 +873,20 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     };
   }
 
-  if (result.error) return { ok: false, error: `spawn failed: ${result.error.message}` };
+  if (result.error) {
+    // Staging incident (2026-09-06, ESDS Software RHP, 21.9 MB): a
+    // `spawnSync` timeout (`EXTRACT_TIMEOUT_MS`, 10 min) does NOT always fall
+    // through to the `result.status === null` branch below the way the
+    // comment there used to claim — Node reports it as a top-level
+    // `result.error` with `code === 'ETIMEDOUT'`, caught by THIS branch
+    // instead. Missing `hardFailure` here meant a document that reliably
+    // times out was retried on the ordinary (6h-capped) exponential curve
+    // forever, never reaching the 24h hard-failure floor a 2nd consecutive
+    // timeout is supposed to trigger — exactly as unsafe to retry hourly as
+    // an OOM kill (see the `result.status === null` comment below).
+    const isTimeout = (result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT';
+    return { ok: false, error: `spawn failed: ${result.error.message}`, hardFailure: isTimeout };
+  }
   if (result.status !== 0) {
     // W-137: `result.status === null` means the process was terminated by a
     // signal (`result.signal`, e.g. SIGKILL from the OOM killer) rather than
@@ -882,12 +895,14 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     // Both are HARD failures: retrying the same document hourly is exactly
     // what took the pm2 daemon down repeatedly.
     //
-    // MINOR-1: a `spawnSync` timeout (`EXTRACT_TIMEOUT_MS`, 10 min) also
-    // terminates the process by signal (SIGTERM), so it lands in this SAME
-    // `result.status === null` branch and is treated as a hard failure too.
-    // Accepted: two slow-network documents in a row earn the 24h floor the
-    // same as two OOM kills — a document that reliably times out is exactly
-    // as unsafe to retry hourly as one that is killed for memory.
+    // MINOR-1 (corrected 2026-09-06): a `spawnSync` timeout
+    // (`EXTRACT_TIMEOUT_MS`, 10 min) does NOT reliably land here — Node
+    // reports it as a top-level `result.error` (code `ETIMEDOUT`), handled by
+    // the `if (result.error)` branch ABOVE, which now sets `hardFailure` for
+    // that code directly. Accepted: two slow-network documents in a row earn
+    // the 24h floor the same as two OOM kills — a document that reliably
+    // times out is exactly as unsafe to retry hourly as one that is killed
+    // for memory.
     // Round 4: OpenBLAS (loaded by numpy on the OCR route) can call abort()
     // at the C level under RLIMIT_AS — "OpenBLAS error: Memory allocation
     // still failed after 10 retries, giving up." — which no Python exception

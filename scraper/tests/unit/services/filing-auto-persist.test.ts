@@ -2206,3 +2206,136 @@ describe('W-142 round 2 — MINOR-2: blank-name rows are published, never silent
     warn.mockRestore();
   });
 });
+
+// ---------------------------------------------- extraction-timeout backoff (staging incident, ESDS RHP)
+//
+// Observed on staging: a 21.9 MB RHP timed out at EXTRACT_TIMEOUT_MS (10 min),
+// spawnSync itself returned `result.error` with code ETIMEDOUT (not a
+// status-null/signal-killed result), so `defaultExtractorRunner`'s early
+// `if (result.error) return { ok: false, error: ... }` branch fired WITHOUT
+// ever setting `hardFailure` — the timeout was retried on every eligible
+// cycle forever, never earning the 24h hard-failure floor a document that
+// cannot finish in 10 min twice needs.
+
+describe('extraction timeout — staging incident regression (ESDS Software, ipo af03ab82)', () => {
+  const now = new Date('2026-09-06T15:56:17Z');
+
+  it('(a) a FAILED row, retryCount 5, updated 20 min ago, ETIMEDOUT error — blocked by backoff', () => {
+    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
+    const gate = documentExtractionBlocked(
+      {
+        extractionStatus: 'FAILED',
+        retryCount: 5,
+        updatedAt: twentyMinAgo,
+        extractionError: 'extractor: spawn failed: spawnSync nice ETIMEDOUT',
+      },
+      EXTRACTOR_VERSION,
+      now
+    );
+    expect(gate.blocked).toBe(true);
+  });
+
+  it('(b) a timeout failure through processPendingFilings writes FAILED with retryCount = prev+1, never left IN_PROGRESS', async () => {
+    const d = deps({
+      loadDocuments: vi.fn(async () => [
+        // retryCount 4's own backoff (2^3 x 15min = 2h) must already have
+        // elapsed, or the gate blocks selection before this call ever spawns
+        // — the scenario under test is "eligible again, then times out".
+        doc({ retryCount: 4, extractionStatus: 'FAILED', updatedAt: new Date(Date.now() - 3 * 60 * 60_000) }),
+      ]),
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'spawn failed: spawnSync nice ETIMEDOUT',
+        hardFailure: true,
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    const calls = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(calls).toContainEqual(
+      expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 5 })
+    );
+    const finalCall = calls[calls.length - 1];
+    expect(finalCall.status).toBe('FAILED');
+    expect(finalCall.status).not.toBe('IN_PROGRESS');
+    // retryCount is intentionally omitted on the FAILED write (unchanged from
+    // the IN_PROGRESS stamp) — asserting its absence pins that it is never
+    // silently reset or left off by accident in a way that would re-derive
+    // a smaller value downstream.
+    expect(finalCall).not.toHaveProperty('retryCount');
+  });
+
+  it('(c) defaultExtractorRunner classifies a spawnSync ETIMEDOUT result as a hard failure', () => {
+    spawnSyncMock.mockReset();
+    delete process.env.PYTHON_BIN;
+    spawnSyncMock.mockReturnValueOnce({
+      error: Object.assign(new Error('spawnSync nice ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(true);
+    expect((result as { error: string }).error).toContain('ETIMEDOUT');
+  });
+
+  it('(c) two consecutive ETIMEDOUT hard failures apply the 24h floor — a document that cannot finish in 10 min twice will not finish on the third try either', () => {
+    const rawError = 'extractor: spawn failed: spawnSync nice ETIMEDOUT';
+    const afterFirst = markHardFailure(null, rawError);
+    const afterSecond = markHardFailure(afterFirst, rawError);
+    expect(afterSecond).toBe(`${HARD_FAILURE_MARKER}:2:${rawError}`);
+
+    const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60_000);
+    const twentyFiveHoursAgo = new Date(now.getTime() - 25 * 60 * 60_000);
+
+    // Ordinary exponential backoff at retryCount 5 is capped at 6h — 20h
+    // later it would normally be clear. The hard-failure floor must still hold.
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyHoursAgo, extractionError: afterSecond },
+        EXTRACTOR_VERSION,
+        now
+      ).blocked
+    ).toBe(true);
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyFiveHoursAgo, extractionError: afterSecond },
+        EXTRACTOR_VERSION,
+        now
+      ).blocked
+    ).toBe(false);
+  });
+
+  it('(d) "left IN_PROGRESS" is logged ONLY for a row whose status was IN_PROGRESS before this cycle\'s stamp — never for a FAILED row', () => {
+    const warn = vi.spyOn(logger, 'warn');
+    const states = [{ docType: 'RHP', documentId: 'doc-x', extractedAt: null, extractorVersion: null }];
+
+    // A FAILED row, backoff already elapsed — eligible for selection, but it
+    // was never left IN_PROGRESS, so the recovery-warning must not fire.
+    const failedRow = doc({
+      id: 'doc-x',
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      updatedAt: new Date(now.getTime() - 20 * 60_000),
+    });
+    selectPendingFilings('ipo-1', [failedRow], states, { fileExists: () => true, now });
+    expect(
+      warn.mock.calls.some((c) => String(c[1] ?? '').includes('left IN_PROGRESS by an earlier run'))
+    ).toBe(false);
+
+    // A genuinely crash-recovered IN_PROGRESS row, backoff elapsed — the
+    // recovery warning IS expected here.
+    const inProgressRow = doc({
+      id: 'doc-x',
+      extractionStatus: 'IN_PROGRESS',
+      retryCount: 1,
+      updatedAt: new Date(now.getTime() - 20 * 60_000),
+    });
+    selectPendingFilings('ipo-1', [inProgressRow], states, { fileExists: () => true, now });
+    expect(
+      warn.mock.calls.some((c) => String(c[1] ?? '').includes('left IN_PROGRESS by an earlier run'))
+    ).toBe(true);
+
+    warn.mockRestore();
+  });
+});
