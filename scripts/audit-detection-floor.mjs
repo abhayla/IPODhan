@@ -459,7 +459,12 @@ async function checkM() {
     SELECT i.company_name, i.slug, i.status,
            EXTRACT(EPOCH FROM (now() - i.listing_date)) / 86400.0 AS days_since_listing,
            count(DISTINCT s.id)::int AS state_row_count,
-           count(DISTINCT d.id)::int AS documents_row_count
+           count(DISTINCT d.id)::int AS documents_row_count,
+           count(DISTINCT s.id) FILTER (
+             WHERE s.state NOT IN ('FOUND', 'NOT_APPLICABLE', 'SUPERSEDED')
+                OR s.next_retry_at < now()
+           )::int AS incomplete_row_count,
+           EXTRACT(EPOCH FROM (now() - MAX(s.last_attempt_at))) / 3600.0 AS hours_since_last_attempt
       FROM ipos i
       LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
       LEFT JOIN documents d ON d.ipo_id = i.id
@@ -475,6 +480,8 @@ async function checkM() {
       daysSinceListing: r.days_since_listing,
       stateRowCount: r.state_row_count,
       documentsRowCount: r.documents_row_count,
+      incompleteRowCount: r.incomplete_row_count,
+      hoursSinceLastAttempt: r.hours_since_last_attempt,
     }))
     .filter(Boolean);
   for (const v of rotationStalled)

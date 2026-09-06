@@ -18,7 +18,7 @@
  * (bounded by the 60s discovery budget), and (b) has no extraction-side
  * budget check at all.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/shared';
@@ -180,6 +180,16 @@ function candidateRow(id: string, status = 'OPEN') {
     company_website: null,
     verifier_url: null,
   };
+}
+
+/**
+ * W-136: a LISTED row `candidateRow` cannot produce — `isInLiveWindow` drops
+ * a LISTED status with a null `listing_date` before it ever reaches
+ * `deriveLifecycleStage`, so the W-136 reservation tests need a real recent
+ * listing date to stay inside the live window.
+ */
+function listedCandidateRow(id: string) {
+  return { ...candidateRow(id, 'LISTED'), listing_date: new Date().toISOString().slice(0, 10) };
 }
 
 const { runDocumentCycle, PURGE_CANDIDATES_SQL } = await import('../../../src/services/document-cycle.js');
@@ -394,6 +404,93 @@ describe('W-124 — one purge (WITHDRAWN/POSTPONED) slot is reserved regardless 
     const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
     expect(idsProcessed.filter((id) => id === 'withdrawn-1')).toHaveLength(1);
     expect(idsProcessed).toContain('ipo-1');
+  });
+});
+
+describe('W-136 — up to listedCap LISTED slots are reserved when the budget trips, mirroring the purge reservation', () => {
+  beforeEach(() => {
+    // Map each candidate row's own status straight to its stage (identity),
+    // so LISTED/WITHDRAWN/OPEN rows fed by `candidateRow(id, status)` reach
+    // the real rank-3/4 branches instead of the file's default fixed
+    // 'PRE_OPEN' stage.
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+  });
+
+  afterEach(() => {
+    delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
+  });
+
+  it('(a) budget trips before LISTED is reached, cap=2, 3 incomplete LISTED candidates -> exactly 2 are processed after the trip', async () => {
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '2';
+    dbExecuteMock.mockResolvedValue({
+      rows: [listedCandidateRow('listed-1'), listedCandidateRow('listed-2'), listedCandidateRow('listed-3')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toHaveLength(2);
+    expect(idsProcessed).toEqual(['listed-1', 'listed-2']); // walk order
+    expect(summary.listedProcessedAfterBudget).toBe(2);
+    expect(summary.listedReserved).toBe(2);
+  });
+
+  it('(b) budget trips with a purge candidate AND LISTED candidates present -> both reservations fire, nothing runs twice', async () => {
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '2';
+    dbExecuteMock.mockResolvedValue({
+      rows: [
+        candidateRow('withdrawn-1', 'WITHDRAWN'),
+        listedCandidateRow('listed-1'),
+        listedCandidateRow('listed-2'),
+      ],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toHaveLength(3);
+    expect(new Set(idsProcessed).size).toBe(3); // no duplicate processing
+    expect(idsProcessed).toContain('withdrawn-1');
+    expect(idsProcessed).toContain('listed-1');
+    expect(idsProcessed).toContain('listed-2');
+    expect(summary.listedProcessedAfterBudget).toBe(2);
+  });
+
+  it('(c) budget does not trip -> listedReserved and listedProcessedAfterBudget stay 0, behavior unchanged', async () => {
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '2';
+    dbExecuteMock.mockResolvedValue({
+      rows: [listedCandidateRow('listed-1'), listedCandidateRow('listed-2')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(summary.budgetExhausted).toBe(false);
+    expect(summary.listedReserved).toBe(0);
+    expect(summary.listedProcessedAfterBudget).toBe(0);
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toEqual(['listed-1', 'listed-2']);
+  });
+
+  it('(d) a LISTED candidate already processed before the trip is not processed again by the reservation', async () => {
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '2';
+    dbExecuteMock.mockResolvedValue({
+      rows: [listedCandidateRow('listed-1'), listedCandidateRow('listed-2')],
+    });
+
+    // Sequence: startedAt=0; loop check for listed-1 (0-0=0 < 500, processed
+    // normally); loop check for listed-2 (1000-0=1000 >= 500, budget trips —
+    // the reservation must pick up ONLY listed-2, not re-run listed-1).
+    const values = [0, 0, 1_000];
+    let i = 0;
+    const now = vi.fn(() => (i < values.length ? values[i++] : values[values.length - 1]));
+
+    const summary = await runDocumentCycle({ budgetMs: 500, extractionBudgetMs: 999_999, now });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed.filter((id) => id === 'listed-1')).toHaveLength(1);
+    expect(idsProcessed.filter((id) => id === 'listed-2')).toHaveLength(1);
+    expect(summary.listedProcessedAfterBudget).toBe(1);
+    expect(summary.listedReserved).toBe(1);
   });
 });
 

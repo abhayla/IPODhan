@@ -190,6 +190,18 @@ export interface DocumentCycleSummary {
    * earlier LISTED row rotates out of the way.
    */
   listedSkippedUnenriched: number;
+  /**
+   * W-136: LISTED slots reserved this cycle when the budget tripped before
+   * the LISTED tier was reached — mirrors `purgeReserved` for WITHDRAWN rows.
+   * `min(listedCap, unprocessed LISTED candidates at the trip point)`.
+   */
+  listedReserved: number;
+  /**
+   * W-136: LISTED candidates actually processed via the post-budget-trip
+   * reservation (a subset of `listedReserved` — can be lower only if fewer
+   * unprocessed LISTED candidates existed than the cap).
+   */
+  listedProcessedAfterBudget: number;
 }
 
 /** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0` — the ledger `reason`. */
@@ -213,6 +225,8 @@ export function summarize(
     complete?: number;
     enriched?: number;
     skippedUnenriched?: number;
+    reserved?: number;
+    processedAfterBudget?: number;
   } = { cap: 0, deferred: 0 }
 ): DocumentCycleSummary {
   return {
@@ -231,6 +245,8 @@ export function summarize(
     listedComplete: listedInfo.complete ?? 0,
     listedEnriched: listedInfo.enriched ?? 0,
     listedSkippedUnenriched: listedInfo.skippedUnenriched ?? 0,
+    listedReserved: listedInfo.reserved ?? 0,
+    listedProcessedAfterBudget: listedInfo.processedAfterBudget ?? 0,
   };
 }
 
@@ -995,6 +1011,9 @@ export async function runDocumentCycle(
     // other exhausted-budget candidate still resumes next cycle as before.
     const purgeReserved = candidates.some((c) => c.issue?.withdrawn === true);
     let purgeProcessed = false;
+    const processedIds = new Set<string>();
+    let listedReserved = 0;
+    let listedProcessedAfterBudget = 0;
 
     for (let i = 0; i < candidates.length; i++) {
       const ipo = candidates[i];
@@ -1007,9 +1026,31 @@ export async function runDocumentCycle(
           );
           if (purgeIdx !== -1) {
             await processCandidate(candidates[purgeIdx]);
+            processedIds.add(candidates[purgeIdx].id);
             purgeProcessed = true;
           }
         }
+
+        // W-136: mirror the purge reservation for LISTED rows. Without this,
+        // a full live (OPEN/CLOSED/UPCOMING) backlog burns the whole budget
+        // every cycle, LISTED never gets a `runIpo` call, its rotation stamp
+        // never advances, and the same `listedCap` LISTED rows are re-selected
+        // forever while every other LISTED row starves (the ESDS/Priority
+        // Jewels staging stall this fixes). Reserve up to `listedCap` LISTED
+        // candidates — from the trip point onward, in walk order — that have
+        // not already been processed this cycle (by the normal walk above or
+        // by the purge slot); independent of, and can fire alongside, the
+        // purge reservation.
+        const remainingListed = candidates
+          .slice(i)
+          .filter((c) => lifecycleRank(c) === 3 && !processedIds.has(c.id));
+        listedReserved = Math.min(listedCap, remainingListed.length);
+        for (const listedCandidate of remainingListed.slice(0, listedCap)) {
+          await processCandidate(listedCandidate);
+          processedIds.add(listedCandidate.id);
+          listedProcessedAfterBudget++;
+        }
+
         budgetExhausted = true;
         logger.warn(
           {
@@ -1018,13 +1059,16 @@ export async function runDocumentCycle(
             budgetMs,
             purgeReserved,
             purgeProcessed,
+            listedReserved,
+            listedProcessedAfterBudget,
           },
-          'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot is reserved regardless of budget'
+          'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot and up to listedCap LISTED slots are reserved regardless of budget'
         );
         break;
       }
 
       await processCandidate(ipo);
+      processedIds.add(ipo.id);
       if (isPurgeCandidate) purgeProcessed = true;
     }
 
@@ -1134,6 +1178,8 @@ export async function runDocumentCycle(
         complete: listedComplete,
         enriched: listedEnriched,
         skippedUnenriched: listedSkippedUnenriched,
+        reserved: listedReserved,
+        processedAfterBudget: listedProcessedAfterBudget,
       }
     );
 

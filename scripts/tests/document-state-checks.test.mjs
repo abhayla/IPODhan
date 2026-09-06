@@ -532,3 +532,70 @@ test('68e the rotation window mirrors the scraper constant and is pinned', () =>
   // mirrored; this pins the mirror against silent drift.
   assert.equal(LISTED_ROTATION_WINDOW_DAYS, 10);
 });
+
+// --- listed_rotation_stall shape 2 (W-136): fetch-state rows EXIST but are --
+// stale — the ESDS Software/Priority Jewels staging stall, where the        -
+// discovery budget tripped before LISTED every cycle and `last_attempt_at` -
+// never advanced, even though rows were present. ---------------------------
+
+test('68f FAILs a LISTED IPO with an incomplete row untouched for >24h', () => {
+  const violation = checkListedRotationStall({
+    companyName: 'ESDS Software Solution Ltd.',
+    slug: 'esds-software-solution',
+    status: 'LISTED',
+    daysSinceListing: 5,
+    stateRowCount: 3,
+    documentsRowCount: 2,
+    incompleteRowCount: 1,
+    hoursSinceLastAttempt: 48,
+  });
+  assert.match(violation, /esds-software-solution/);
+  assert.match(violation, /listed_rotation_stall/);
+});
+
+test('68g FAILs a LISTED IPO whose incomplete row has NEVER been attempted (null last_attempt_at)', () => {
+  const violation = checkListedRotationStall({
+    companyName: 'Priority Jewels Ltd.',
+    slug: 'priority-jewels',
+    status: 'LISTED',
+    daysSinceListing: 2,
+    stateRowCount: 2,
+    documentsRowCount: 1,
+    incompleteRowCount: 2,
+    hoursSinceLastAttempt: null,
+  });
+  assert.match(violation, /priority-jewels/);
+  assert.match(violation, /never/);
+});
+
+test('68h PASSes a LISTED IPO with an incomplete row touched within the last 24h', () => {
+  assert.equal(
+    checkListedRotationStall({
+      companyName: 'Fresh Rotation Ltd.',
+      slug: 'fresh-rotation',
+      status: 'LISTED',
+      daysSinceListing: 3,
+      stateRowCount: 3,
+      documentsRowCount: 2,
+      incompleteRowCount: 1,
+      hoursSinceLastAttempt: 2,
+    }),
+    null
+  );
+});
+
+test('68i PASSes a LISTED IPO with fetch-state rows and none incomplete (all FOUND/NOT_APPLICABLE/SUPERSEDED)', () => {
+  assert.equal(
+    checkListedRotationStall({
+      companyName: 'All Complete Ltd.',
+      slug: 'all-complete',
+      status: 'LISTED',
+      daysSinceListing: 3,
+      stateRowCount: 5,
+      documentsRowCount: 5,
+      incompleteRowCount: 0,
+      hoursSinceLastAttempt: 500,
+    }),
+    null
+  );
+});
