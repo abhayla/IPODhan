@@ -2249,10 +2249,31 @@ _HEADLINE_MONEY_FIELDS = ("fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap
                           "total_offer_amount_at_cap")
 
 
-def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=None):
+def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=None,
+                               doc_type=None):
     """The SEBI ICDR cover-page offering headline, emitted under the SAME field
     names and units `extract_price_band_ad` uses, plus `issue_price_type` and the
-    `headline_source` marker the persister ranks below a price band ad."""
+    `headline_source` marker the persister ranks below a price band ad.
+
+    W-171: a DRHP is a DRAFT — it has no price band by law (SEBI ICDR requires
+    the band only from the RHP/PROSPECTUS stage). Its cover prints a placeholder
+    "[*]" for price, but occasionally an earlier round's stale numbers survive a
+    copy-paste, which a naive regex would happily read as a real band (prod:
+    Kanohar Electricals DRHP misread as band 72/82 against the RHP's true
+    601-632). So a DRHP never even runs the cover regexes below — every headline
+    field is nulled, unconditionally, before any pattern is tried.
+    """
+    if doc_type == "DRHP":
+        skip_reason = "DRHP has no price band by law"
+        emit.null("headline_source", skip_reason)
+        emit.null("headline_skipped_reason", skip_reason)
+        for name in (("price_band_floor", "price_band_cap", "face_value", "lot_size",
+                      "shares_at_floor", "shares_at_cap", "ofs_shares",
+                      "total_offer_shares_at_cap", "issue_structure", "issue_price_type")
+                     + _HEADLINE_MONEY_FIELDS):
+            emit.null(name, skip_reason)
+        return
+
     blob, _lines, pages = _cover_lines(page_texts)
     cover_page = pages[0] if pages else None
 
@@ -2392,7 +2413,8 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
              share_check)
 
 
-def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD"):
+def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
+                doc_type=None):
     # Strip the rupee glyphs before the shared core: prospectuses write
     # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
     # match across the glyph, so it would silently fall back to the SME default.
@@ -2426,7 +2448,7 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD"):
     # its issue size, price, face value, lot size or fresh/OFS legs at all.
     # `unit` (the document-level unit the persister multiplies by) is passed in so
     # the cover's own lakh/crore figures are converted into it exactly.
-    extract_offering_headline(page_texts, emit, segment, unit)
+    extract_offering_headline(page_texts, emit, segment, unit, doc_type=doc_type)
 
     for key, name in (("revenue", "revenue_by_fy"), ("totalIncome", "total_income_by_fy"),
                       ("profit", "pat_by_fy"), ("eps", "eps_basic_by_fy"),
@@ -2527,7 +2549,7 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         meta = extract_price_band_ad(page_texts, emit, segment)
     else:
         meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees,
-                           segment=segment)
+                           segment=segment, doc_type=doc_type)
 
     # W-133 MAJOR-3: fold the shared core's own financial-completeness verdict
     # (pnl["status"], surfaced above as meta["financial_status"]) into the

@@ -19,6 +19,11 @@ import {
   checkListingPerformance,
   checkGmpSanity,
   checkDegenerateBookbuildingBand,
+  checkLotEconomicsRetailRange,
+  MAINBOARD_LOT_ECONOMICS_MIN,
+  MAINBOARD_LOT_ECONOMICS_MAX,
+  SME_LOT_ECONOMICS_MIN,
+  SME_LOT_ECONOMICS_MAX,
   SUBSTANCE_CHECKS,
 } from '../../../../scripts/lib/substance-checks.mjs';
 
@@ -317,9 +322,94 @@ describe('checkDegenerateBookbuildingBand (T-308, round-6 P1: gabion-technologie
   });
 });
 
+describe('checkLotEconomicsRetailRange (W-171: Kanohar-shape lot/cap misread)', () => {
+  it('fails for a MAINBOARD row whose lot x cap sits far below the SEBI retail range (Kanohar-shape: lot 23 x misread cap 82)', () => {
+    const reason = checkLotEconomicsRetailRange({
+      lot_size: 23,
+      price_range_max: 82,
+      segment: 'MAINBOARD',
+      issue_type: 'BOOK_BUILDING',
+    });
+    expect(reason).toMatch(/outside the SEBI ICDR Reg 32\(1\)/);
+  });
+
+  it('passes for the same lot against the true cap (lot 23 x 632 = within range)', () => {
+    expect(
+      checkLotEconomicsRetailRange({
+        lot_size: 23,
+        price_range_max: 632,
+        segment: 'MAINBOARD',
+        issue_type: 'BOOK_BUILDING',
+      })
+    ).toBeNull();
+  });
+
+  it('passes at the MAINBOARD range boundaries', () => {
+    expect(
+      checkLotEconomicsRetailRange({
+        lot_size: 1,
+        price_range_max: MAINBOARD_LOT_ECONOMICS_MIN,
+        segment: 'MAINBOARD',
+        issue_type: null,
+      })
+    ).toBeNull();
+    expect(
+      checkLotEconomicsRetailRange({
+        lot_size: 1,
+        price_range_max: MAINBOARD_LOT_ECONOMICS_MAX,
+        segment: 'MAINBOARD',
+        issue_type: null,
+      })
+    ).toBeNull();
+  });
+
+  it('fails for an SME row outside its (much larger) retail range', () => {
+    const reason = checkLotEconomicsRetailRange({
+      lot_size: 100,
+      price_range_max: 50,
+      segment: 'SME',
+      issue_type: 'BOOK_BUILDING',
+    });
+    expect(reason).toMatch(/outside the SEBI ICDR Chapter IX/);
+  });
+
+  it('passes for an SME row inside its retail range', () => {
+    expect(
+      checkLotEconomicsRetailRange({
+        lot_size: 1600,
+        price_range_max: (SME_LOT_ECONOMICS_MIN + SME_LOT_ECONOMICS_MAX) / 2 / 1600,
+        segment: 'SME',
+        issue_type: 'BOOK_BUILDING',
+      })
+    ).toBeNull();
+  });
+
+  it('is exempt for a FIXED_PRICE issue even when lot x cap looks implausible', () => {
+    expect(
+      checkLotEconomicsRetailRange({
+        lot_size: 23,
+        price_range_max: 82,
+        segment: 'MAINBOARD',
+        issue_type: 'FIXED_PRICE',
+      })
+    ).toBeNull();
+  });
+
+  it('passes (not applicable) when lot_size or price_range_max is missing', () => {
+    expect(checkLotEconomicsRetailRange({ lot_size: null, price_range_max: 632, segment: 'MAINBOARD' })).toBeNull();
+    expect(checkLotEconomicsRetailRange({ lot_size: 23, price_range_max: null, segment: 'MAINBOARD' })).toBeNull();
+  });
+
+  it('passes (not applicable) for a segment with no defined band (RIGHTS/NCD/REIT/InvIT)', () => {
+    expect(
+      checkLotEconomicsRetailRange({ lot_size: 23, price_range_max: 82, segment: 'RIGHTS', issue_type: null })
+    ).toBeNull();
+  });
+});
+
 describe('SUBSTANCE_CHECKS registry', () => {
   it('exposes one entry per predicate with key/name/predicate', () => {
-    expect(SUBSTANCE_CHECKS).toHaveLength(11);
+    expect(SUBSTANCE_CHECKS).toHaveLength(12);
     for (const c of SUBSTANCE_CHECKS) {
       expect(typeof c.key).toBe('string');
       expect(typeof c.name).toBe('string');

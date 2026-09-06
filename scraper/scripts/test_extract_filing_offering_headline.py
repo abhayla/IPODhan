@@ -21,9 +21,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from extract_filing import Emitter, extract_offering_headline  # noqa: E402
 
 
-def headline(text, segment="SME", doc_unit="lakhs"):
+def headline(text, segment="SME", doc_unit="lakhs", doc_type=None):
     emit = Emitter("test.pdf")
-    extract_offering_headline([(0, text)], emit, segment, doc_unit)
+    extract_offering_headline([(0, text)], emit, segment, doc_unit, doc_type=doc_type)
     return emit.fields
 
 
@@ -388,3 +388,61 @@ def test_every_printed_unit_spelling_converts_the_same_way(printed, doc_unit, ex
     cover = AUTOFURNISH_COVER.replace("RS. 1460.01 LAKHS", printed)
     f = headline(cover, doc_unit=doc_unit)
     assert value(f, "fresh_issue_amount") == pytest.approx(expected, rel=1e-6)
+
+
+# --------------------------------------------------------------------------- #
+# W-171 — a DRHP never emits a price band, even when its cover would otherwise
+# match the same band regex an RHP/PROSPECTUS cover matches.
+#
+# SYNTHETIC cover (no real Kanohar DRHP fixture exists) built to the exact
+# shapes COVER_BAND_RX / COVER_OFFER_SHARES_RX / COVER_AGGREGATING_RX already
+# match in the tests above — the prod incident (2026-09-05) was a DRHP cover
+# misread as price band 72/82 (the RHP's true band was 601-632); this fixture
+# reproduces that SHAPE, not the real filing text.
+# --------------------------------------------------------------------------- #
+KANOHAR_SHAPE_COVER = """DRAFT RED HERRING PROSPECTUS
+Dated: August 1, 2026
+100% Book Built Issue
+KANOHAR-SHAPE LIMITED (SYNTHETIC FIXTURE)
+DETAILS OF THE ISSUE
+PRICE BAND: 72 TO 82 PER EQUITY SHARE
+INITIAL PUBLIC OFFERING OF UP TO 50,00,000 EQUITY SHARES OF FACE VALUE RS. 10/- EACH
+("EQUITY SHARES") OF KANOHAR-SHAPE LIMITED ("THE COMPANY") FOR CASH AGGREGATING UP TO
+RS. 4100.00 LAKHS ("THE ISSUE").
+NOT APPLICABLE AS THE ENTIRE ISSUE CONSTITUTES FRESH ISSUE OF EQUITY SHARES
+THE MINIMUM LOT SIZE IS 23 EQUITY SHARES
+"""
+
+
+def test_drhp_never_emits_a_price_band_even_when_the_cover_would_match():
+    """A DRHP cover carrying the exact band-regex shape must still null every
+    headline field — the extractor must not even attempt the regex match."""
+    f = headline(KANOHAR_SHAPE_COVER, doc_type="DRHP")
+    for name in ("price_band_floor", "price_band_cap", "face_value", "lot_size",
+                 "shares_at_floor", "shares_at_cap", "ofs_shares",
+                 "total_offer_shares_at_cap", "issue_structure", "issue_price_type",
+                 "fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap",
+                 "total_offer_amount_at_cap"):
+        assert value(f, name) is None, name
+    assert value(f, "headline_source") is None
+    assert value(f, "headline_skipped_reason") is None
+    assert f["headline_skipped_reason"]["check"]["detail"] == "DRHP has no price band by law"
+    assert f["price_band_floor"]["check"]["detail"] == "DRHP has no price band by law"
+
+
+def test_rhp_twin_of_the_same_cover_still_parses_the_band():
+    """The exact same cover text, read as an RHP (doc_type not DRHP), parses
+    the band normally — proving the DRHP guard is doc-type-specific, not a
+    regression of RHP/PROSPECTUS behaviour."""
+    f = headline(KANOHAR_SHAPE_COVER, doc_type="RHP")
+    assert value(f, "price_band_floor") == 72.0
+    assert value(f, "price_band_cap") == 82.0
+    assert value(f, "lot_size") == 23.0
+    assert value(f, "total_offer_shares_at_cap") == 5000000.0
+
+
+def test_headline_helper_default_doc_type_is_unaffected():
+    """Every pre-existing test above calls `headline()` with no doc_type
+    (defaults to None) and must keep parsing exactly as before."""
+    f = headline(AUTOFURNISH_COVER)
+    assert value(f, "price_band_floor") == 41.0
