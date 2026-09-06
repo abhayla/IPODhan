@@ -742,26 +742,19 @@ test('lead-manager count SQL: no longer calls array_length on the jsonb lead_man
 // must carry the UTC pin, and count-matching keeps this from being satisfied
 // by a single stray occurrence while a second Pool block goes unpinned.
 
-test('audit-detection-floor.mjs: every pool-config branch pins options: -c timezone=UTC', () => {
+test('audit-detection-floor.mjs: uses createUtcPool + installUtcTimestampParsing, no direct new Pool(', () => {
   const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
-  // The pool is one `new pg.Pool(` call with a ternary of TWO config-object
-  // branches (discrete DATABASE_* vs connectionString) — count branches by
-  // their shared `max: 4,` line, not by `new pg.Pool(` occurrences, so a
-  // second unpinned branch cannot hide behind the first branch's pin.
-  const branchCount = (script.match(/max: 4,/g) || []).length;
-  const utcOptionCount = (script.match(/options:\s*'-c timezone=UTC'/g) || []).length;
-  assert.ok(branchCount >= 2, 'expected at least the two documented pool-config branches');
-  assert.equal(
-    utcOptionCount,
-    branchCount,
-    `expected one "options: '-c timezone=UTC'" per pool-config branch (found ${branchCount} branch(es), ${utcOptionCount} UTC pin(s))`
-  );
+  assert.match(script, /createUtcPool[\s\S]*from '\.\/lib\/pg-utc\.mjs'/);
+  assert.match(script, /installUtcTimestampParsing\(\)/);
+  assert.match(script, /createUtcPool\(/);
+  assert.doesNotMatch(script, /new pg\.Pool\(/);
+  assert.doesNotMatch(script, /new Pool\(/);
 });
 
-test('audit-detection-floor.mjs: main() asserts the DB session timezone before running checks', () => {
+test('audit-detection-floor.mjs: main() asserts the DB session (timezone + parser round-trip) before running checks', () => {
   const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
   assert.match(script, /async function assertSessionTimezoneUtc\s*\(/);
-  assert.match(script, /current_setting\('TimeZone'\)/);
+  assert.match(script, /assertUtcSession\(pool\)/);
   const mainBody = script.slice(script.indexOf('async function main('));
   assert.match(
     mainBody.slice(0, mainBody.indexOf('\n', mainBody.indexOf('\n') + 1) + 200),
@@ -770,14 +763,32 @@ test('audit-detection-floor.mjs: main() asserts the DB session timezone before r
   );
 });
 
-test('audit-ipo-coverage.mjs: every pool-config branch pins options: -c timezone=UTC', () => {
+test('audit-ipo-coverage.mjs: uses createUtcPool + installUtcTimestampParsing, no direct new Pool(', () => {
   const script = readFileSync(new URL('../audit-ipo-coverage.mjs', import.meta.url), 'utf8');
-  const branchCount = (script.match(/max: 4,/g) || []).length;
-  const utcOptionCount = (script.match(/options:\s*'-c timezone=UTC'/g) || []).length;
-  assert.ok(branchCount >= 2, 'expected at least the two documented pool-config branches');
-  assert.equal(
-    utcOptionCount,
-    branchCount,
-    `expected one "options: '-c timezone=UTC'" per pool-config branch (found ${branchCount} branch(es), ${utcOptionCount} UTC pin(s))`
+  assert.match(script, /createUtcPool[\s\S]*from '\.\/lib\/pg-utc\.mjs'/);
+  assert.match(script, /installUtcTimestampParsing\(\)/);
+  assert.match(script, /createUtcPool\(/);
+  assert.doesNotMatch(script, /new pg\.Pool\(/);
+  assert.doesNotMatch(script, /new Pool\(/);
+});
+
+test('audit-ipo-coverage.mjs: main() asserts the DB session before running checks', () => {
+  const script = readFileSync(new URL('../audit-ipo-coverage.mjs', import.meta.url), 'utf8');
+  assert.match(script, /assertUtcSession\(pool\)/);
+  const mainBody = script.slice(script.indexOf('async function main('));
+  assert.match(
+    mainBody.slice(0, mainBody.indexOf('\n', mainBody.indexOf('\n') + 1) + 300),
+    /await assertUtcSession\(pool\)/,
+    'assertUtcSession(pool) must run at the very start of main(), before any check'
   );
+});
+
+test('audit-substance-plausibility.mjs and fix-substance-corruption.mjs use createUtcPool, no direct new Pool(', () => {
+  for (const rel of ['../audit-substance-plausibility.mjs', '../fix-substance-corruption.mjs']) {
+    const script = readFileSync(new URL(rel, import.meta.url), 'utf8');
+    assert.match(script, /createUtcPool[\s\S]*from '\.\/lib\/pg-utc\.mjs'/, `${rel} must import createUtcPool`);
+    assert.match(script, /installUtcTimestampParsing\(\)/, `${rel} must call installUtcTimestampParsing()`);
+    assert.doesNotMatch(script, /new pg\.Pool\(/, `${rel} must not construct pg.Pool directly`);
+    assert.doesNotMatch(script, /new Pool\(/, `${rel} must not construct Pool directly`);
+  }
 });

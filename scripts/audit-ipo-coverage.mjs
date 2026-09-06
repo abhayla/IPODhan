@@ -7,7 +7,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import pg from 'pg';
+import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
@@ -40,7 +40,9 @@ const GATE = process.argv.includes('--gate');
 // DATABASE_URL, so building a discrete-params Pool unconditionally left
 // `password: undefined` and failed SASL auth the first time this gate ran
 // against real prod env — T-304 finding).
-const pool = new pg.Pool(
+installUtcTimestampParsing();
+
+const pool = createUtcPool(
   process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
     ? {
         host: process.env.DATABASE_HOST,
@@ -50,13 +52,11 @@ const pool = new pg.Pool(
         password: process.env.DATABASE_PASSWORD,
         ssl: false,
         max: 4,
-        options: '-c timezone=UTC',
       }
     : {
         connectionString: process.env.DATABASE_URL,
         ssl: false,
         max: 4,
-        options: '-c timezone=UTC',
       }
 );
 
@@ -82,6 +82,12 @@ const CHILD = {
 };
 
 async function main() {
+  try {
+    await assertUtcSession(pool);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
+  }
   const out = [];
   const log = (s) => { out.push(s); console.log(s); };
 

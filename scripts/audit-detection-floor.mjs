@@ -34,7 +34,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import pg from 'pg';
+import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import {
   checkBlockedAllAge,
   checkFoundNotExtracted,
@@ -85,7 +85,12 @@ const GATE = process.argv.includes('--gate');
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
 
-const pool = new pg.Pool(
+// installUtcTimestampParsing() MUST run before the pool is created / any
+// query runs — it registers the process-wide OID-1114 parser (see pg-utc.mjs
+// for why this and the session-level pin are both required).
+installUtcTimestampParsing();
+
+const pool = createUtcPool(
   process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
     ? {
         host: process.env.DATABASE_HOST,
@@ -95,22 +100,15 @@ const pool = new pg.Pool(
         password: process.env.DATABASE_PASSWORD,
         ssl: false,
         max: 4,
-        options: '-c timezone=UTC',
       }
-    : { connectionString: process.env.DATABASE_URL, ssl: false, max: 4, options: '-c timezone=UTC' }
+    : { connectionString: process.env.DATABASE_URL, ssl: false, max: 4 }
 );
 
-// T-XXX: the DB server default session tz is Asia/Calcutta while naive
-// `timestamp` columns hold UTC wall-clock (packages/shared/src/db/timezone-config.ts).
-// The `options` above pins the session, but a silently-ignored option (bad pg
-// version, connection pooler in front of Postgres) would make every now()-based
-// age check in this file fire 5.5h early with no visible symptom. Verify at
-// runtime, not just at construction time.
 async function assertSessionTimezoneUtc() {
-  const { rows } = await pool.query(`SELECT current_setting('TimeZone') AS tz`);
-  const tz = rows[0]?.tz;
-  if (tz !== 'UTC') {
-    console.error(`FATAL: DB session timezone is "${tz}", expected "UTC". now()-based age checks would be wrong by the session's UTC offset. Fix the pool's "options: -c timezone=UTC" or the connection path in front of Postgres.`);
+  try {
+    await assertUtcSession(pool);
+  } catch (err) {
+    console.error(err.message);
     process.exit(2);
   }
 }

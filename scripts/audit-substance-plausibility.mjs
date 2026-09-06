@@ -12,7 +12,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import pg from 'pg';
+import { createUtcPool, installUtcTimestampParsing } from './lib/pg-utc.mjs';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 
 // T-297 (gap G3): web/.env.local is OPTIONAL — see the matching note in
@@ -33,7 +33,9 @@ if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
 const GATE = process.argv.includes('--gate');
 const MAX_OFFENDERS = 5;
 
-const pool = new pg.Pool({
+installUtcTimestampParsing();
+
+const pool = createUtcPool({
   host: process.env.DATABASE_HOST,
   port: parseInt(process.env.DATABASE_PORT || '5432'),
   database: process.env.DATABASE_NAME || 'ipodhan',
@@ -41,7 +43,6 @@ const pool = new pg.Pool({
   password: process.env.DATABASE_PASSWORD,
   ssl: false,
   max: 4,
-  options: '-c timezone=UTC',
 });
 
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
