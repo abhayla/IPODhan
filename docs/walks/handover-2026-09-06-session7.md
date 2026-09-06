@@ -102,3 +102,26 @@ Worker rounds: ~10 Sonnet (W-168b x2, W-145 fix, W-169b x2, W-169c, W-169d, W-16
 - Cadence: the 3 Sep decision is implemented in due-step-cycle.ts (discovery 4 slots, live numbers OPEN-only 10:00-17:00 IST, aggregators daily, closed/listed quiet); only "aggregators once per filing" has no event trigger.
 - Nightly VPS audit runs at 03:45 and has been red all week on legacy rows (59 degenerate bands, 2 issue_size 0, 2 registrar pollution, 2 date-order); new checks reach it tomorrow. Recurrence loop parts 2-4 (audit -> GitHub issues -> fleet task) need gh + a token on the VPS: owner.
 - Owner rules today: reports in feature terms (no ids); cut the release early and keep main moving.
+
+---
+
+## SESSION 8 START HERE (written 2026-09-06 ~20:40 IST; session 7 at 92% context; owner: "What are we waiting for? there was already a plan which was approved")
+
+**Deploy is APPROVED (owner, 2026-09-06 10:20 "go with all your recommendation" and 20:35 "what are we waiting for"). Do not ask again. Window 21:00-23:30 IST. One prod deploy today (none so far).**
+
+### Runbook (execute in order, record each step in the ledger with `date`)
+1. `git fetch origin && git rev-parse --short origin/release/prod-2026-09-06` must print f9b67d0a. Read `docs/walks/brief-2026-09-06.md` (the Rule 6 brief, already presented).
+2. Deploy: `gh workflow run deploy-linux.yml --ref release/prod-2026-09-06 -f slot=prod -f ref=f9b67d0a` (the PreToolUse hook allows this form only). Wait for the run (`gh run list --workflow deploy-linux.yml --limit 1`, then `gh run view <id>` until completed). Rollback if red or if verification fails: same command with `-f ref=d38b72aa`.
+3. Verify on the VPS (ssh alias `rfp-vps`, read paths only): `basename $(readlink -f /var/www/ipodhan/current)` ends f9b67d0a; `pm2 jlist` shows ipodhan-web x2 online and ipodhan-scraper stopped-between-runs; the deploy log shows "probe port 3999 free after Ns (direct listener kill)" and "release_scraper_cycle_locks"; `curl -s -o /dev/null -w '%{http_code}' https://ipodhan.com/` = 200; run `cd web && npm run test:prod-verify` on the laptop (>= 2.5 GB free) and `npm run audit:data` (expect the same legacy reds only); the next prod scraper cycle (:00/:30) shows extractionFailed 0 and the prod extractor at `ni=10` (`ps -o ni= -p $(pgrep -f venv/prod/bin/python)`).
+4. Env lines (approved): append `DSN_ASSERT_REDIS_DB=0` to `/var/www/ipodhan/shared/env/prod/scraper.env` and `DSN_ASSERT_REDIS_DB=1` to `/var/www/ipodhan/shared/env/staging/scraper.env` (back up each file first as `.bak-20260906-dsnassert`; take effect on the next scraper start; prod REDIS_URL has no db path = db 0, staging has /1).
+5. Prod row repair (approved): Shanti Inorganics (slug shanti-inorganics-ltd, issue_size 5691200 = share count) and Ashutosh Fibre (ashutosh-fibre-ltd, 6124800). First the pipeline path: on the VPS from the prod release dir, `scraper/scripts/reset-document.ts` per `docs/ops/reset-document.md` is for documents; for the ipos row use the W-177 guard by triggering re-consolidation (read `docs/reviews/w177-detection-rca.md` for the path) or, if no source rewrites the value within one cycle, the manual repair with the RHP cover figures (issue size = shares x cap: Shanti 5,691,200 x 83 = 472,369,600; Ashutosh 6,124,800 x 92 = 563,481,600) via the read-only tunnel recipe in memory `vps-db-tunnel-setup` with a write script guarded by slug and a `RETURNING` check, then `DEL ipo:slug:<slug>` and `ipo:id:<id>` in Redis (see memory `manual-db-reset-bypasses-redis-cache`), and confirm on `/api/ipos/<slug>`.
+6. Tag `prod-2026-09-06` at f9b67d0a and push the tag; update `docs/ops/branching-model.md` current line; ledger line; handover; memory (`prod-deploy-2026-09-06-approval` -> done).
+7. NOT tonight: the SME auto-persist flip (owner: tomorrow, owner present). NOT needed: the Cloudflare purge (the 522 is gone).
+
+### Tomorrow's bundle is already on main (291dfdb9): DRHP never emits a band; dead scheduler removed; detection gate + failure-class registry; one extractor per box; anchor subtotals; listed-rotation stall (proof: staging listedSkippedUnenriched must fall below 7); migration snapshot repair + fetch-state index + journal lint (the deploy will run one journaled migration: nine no-op ADD COLUMN IF NOT EXISTS + CREATE INDEX IF NOT EXISTS); ratchet tooling. Full local pass + cut `release/prod-2026-09-07` the same way (`docs/ops/branching-model.md`).
+
+### Owner items still open
+gh + a token on the VPS for the nightly audit -> GitHub issues (recurrence loop parts 2-4); legacy-row data repair (59 degenerate bands, 2 issue_size 0, 2 registrar pollution, 2 date order); SME flip tomorrow.
+
+### Rules in force today
+Report in FEATURE terms, never bare W-ids (memory `feedback-report-in-features-not-ids`); cut the release early and keep main moving; worktree recipe = wt-new, start commit, three node_modules junctions, `cd packages/shared && npx tsc`; `git stash` is blocked by a hook; gate on exit codes with pipefail; every merge chain reads Fable's own probe before merging; supervision tick every 30 min.
