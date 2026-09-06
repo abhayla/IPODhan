@@ -62,8 +62,13 @@ async function probeHydration(rights: RightsIssueData[]): Promise<string[]> {
   return errors.filter((e) => e.includes('did not match') || e.includes('Hydration'));
 }
 
+// T-454 (#253): same class as RightsIssuesTabs.test.tsx — fixtures are
+// dated relative to a fixed instant, not the real wall clock.
+const FIXED_NOW = '2026-06-15T00:00:00.000Z';
+
 describe('RightsIssuesTabs Open/Close Date columns hydration (T-310)', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ now: new Date(FIXED_NOW) });
     (useRouter as ReturnType<typeof vi.fn>).mockReturnValue({
       push: vi.fn(),
       replace: vi.fn(),
@@ -72,6 +77,7 @@ describe('RightsIssuesTabs Open/Close Date columns hydration (T-310)', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
