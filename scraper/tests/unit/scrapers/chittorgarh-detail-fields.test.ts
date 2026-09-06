@@ -3,6 +3,7 @@ import {
   extractLotSizeFromDetailHtml,
   extractRegistrarFromDetailHtml,
   extractAllotmentDateFromDetailHtml,
+  extractIssueSizeFromDetailHtml,
 } from '../../../src/scrapers/chittorgarh-detail-fields.js';
 
 describe('extractLotSizeFromDetailHtml', () => {
@@ -88,5 +89,66 @@ describe('extractAllotmentDateFromDetailHtml', () => {
       )
     ).toBeNull();
     expect(extractAllotmentDateFromDetailHtml('')).toBeNull();
+  });
+});
+
+describe('extractIssueSizeFromDetailHtml', () => {
+  it('extracts a plain ₹ crore figure (anchor layout)', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>₹757.06 Cr</span></td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7570600000);
+  });
+
+  it('extracts "Rs X Crores" without the anchor wrapper', () => {
+    const html = `<td>Total Issue Size</td><td>Rs 91.50 Crores</td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 200 })
+    ).toBe(915000000);
+  });
+
+  it('parses the combined shares+aggregating phrasing and cross-checks against price cap', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>1,76,47,058 shares (aggregating up to ₹757.06 Cr)</span></td>`;
+    // 17,647,058 shares * 429 cap = 7,570,587,882 vs 7,570,600,000 -> within 25%
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7570600000);
+  });
+
+  it('returns null when the cross-checked shares figure disagrees with the stated crore total', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>1,76,47,058 shares (aggregating up to ₹757.06 Cr)</span></td>`;
+    // price cap of 5000 makes shares*cap wildly exceed the stated total
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 5000 })
+    ).toBeNull();
+  });
+
+  it('returns null when the label is absent', () => {
+    expect(
+      extractIssueSizeFromDetailHtml('<td>Registrar</td><td>Bigshare</td>', {
+        floor: 100_000_000,
+        priceRangeMax: 100,
+      })
+    ).toBeNull();
+    expect(extractIssueSizeFromDetailHtml('', { floor: 100_000_000, priceRangeMax: 100 })).toBeNull();
+  });
+
+  it('returns null for a share-count-only page with no crore total at all', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>1,76,47,058 Shares</span></td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBeNull();
+  });
+
+  it('rejects an SME figure below the SME segment floor (Rs1 Cr)', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>₹0.50 Cr</span></td>`;
+    expect(extractIssueSizeFromDetailHtml(html, { floor: 10_000_000, priceRangeMax: 90 })).toBeNull();
+  });
+
+  it('rejects a mainboard figure below the mainboard segment floor (Rs10 Cr)', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>₹5.00 Cr</span></td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 90 })
+    ).toBeNull();
   });
 });

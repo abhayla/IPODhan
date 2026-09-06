@@ -10,7 +10,6 @@
  * carry an output-plausibility gate: a value outside the domain-sane range is
  * rejected (returns null) rather than persisted.
  */
-
 /** Plausible application-lot bounds for an Indian IPO (mainboard + SME). */
 const MIN_LOT = 1;
 const MAX_LOT = 1_000_000;
@@ -514,4 +513,95 @@ export function extractAllotmentDateFromDetailHtml(html: string): string | null 
   const check = new Date(`${iso}T00:00:00Z`);
   if (isNaN(check.getTime()) || check.getUTCDate() !== Number(day)) return null;
   return iso;
+}
+
+/**
+ * Extract the total issue size (in RUPEES) from a Chittorgarh per-IPO detail
+ * page (W-177 repair backfill — `scripts/backfill-issue-size-chittorgarh-
+ * detail.ts`). The write-time guard rejects a raw share count landing in the
+ * rupees column (e.g. ESDS Software 17,647,058 stored where ~Rs757 Cr belongs)
+ * — this extractor sources the REAL rupee figure from the detail page instead
+ * of deriving it by arithmetic (shares x cap is wrong for several real IPOs:
+ * anchor-portion timing, floor-vs-cap pricing — see the backfill script header).
+ *
+ * The detail page renders the total as a crore figure, e.g.:
+ *   <a title="Issue Size">Issue Size</a></span></td><td><span>₹757.06 Cr</span></td>
+ *   <td>Total Issue Size</td><td>Rs 91.50 Crores</td>
+ *   1,76,47,058 shares (aggregating up to ₹757.06 Cr)
+ *
+ * Plausibility gate (never persisted otherwise):
+ *   1. the parsed rupee figure must be >= the segment floor
+ *      (`MAINBOARD_ISSUE_SIZE_FLOOR` / `SME_ISSUE_SIZE_FLOOR` — the SAME
+ *      constants the write-time guard uses, imported, never re-typed);
+ *   2. when the page ALSO states a share count in the same phrase
+ *      ("<shares> shares (aggregating up to <Cr>)"), `shares * priceRangeMax`
+ *      must be within 25% of the parsed rupee figure, else the page's own
+ *      numbers disagree and the value is rejected as ambiguous.
+ * Returns null when the label is absent, the amount is unparsable, or either
+ * gate fails — never a guessed/derived value.
+ */
+export interface IssueSizeDetailOptions {
+  // Caller passes the SAME segment-floor constant the write-time guard uses
+  // (`MAINBOARD_ISSUE_SIZE_FLOOR` / `SME_ISSUE_SIZE_FLOOR` from
+  // data-consolidation-service.ts) — not re-imported here to avoid a module
+  // cycle (that service imports field-priority-matrix.ts, which imports
+  // FINANCIAL_FIELD_BOUNDS from THIS file).
+  floor: number | null;
+  priceRangeMax: number | null;
+}
+
+const ISSUE_SIZE_CROSS_CHECK_TOLERANCE = 0.25;
+
+function parseCroreToRupees(amountStr: string): number | null {
+  const cleaned = amountStr.replace(/,/g, '');
+  const amount = parseFloat(cleaned);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return amount * 10_000_000;
+}
+
+export function extractIssueSizeFromDetailHtml(
+  html: string,
+  opts: IssueSizeDetailOptions
+): number | null {
+  if (!html) return null;
+
+  // Block anchored on the "Issue Size" / "Total Issue Size" label, same
+  // anchor-or-plain-cell shape as extractLotSizeFromDetailHtml.
+  const labelMatch =
+    html.match(/(?:Total\s+)?Issue\s*Size\s*<\/a>([\s\S]{0,220})/i) ??
+    html.match(/(?:Total\s+)?Issue\s*Size\s*<\/(?:td|span)>([\s\S]{0,220})/i) ??
+    html.match(/(?:Total\s+)?Issue\s*Size[^<]{0,20}<\/[a-z]+>([\s\S]{0,220})/i);
+  if (!labelMatch) return null;
+
+  const block = labelMatch[1];
+
+  // "1,76,47,058 shares (aggregating up to ₹757.06 Cr)" — shares + amount
+  // stated together lets us cross-check the page's own numbers.
+  const combined = block.match(
+    /([\d,]+)\s*shares[\s\S]{0,60}?aggregating\s+up\s+to\s*(?:₹|Rs\.?\s*)?([\d,.]+)\s*Cr(?:ore)?s?\b/i
+  );
+
+  let rupees: number | null = null;
+  let sharesOnPage: number | null = null;
+
+  if (combined) {
+    rupees = parseCroreToRupees(combined[2]);
+    const shares = parseInt(combined[1].replace(/,/g, ''), 10);
+    sharesOnPage = Number.isFinite(shares) ? shares : null;
+  } else {
+    const plain = block.match(/(?:₹|Rs\.?\s*)([\d,.]+)\s*Cr(?:ore)?s?\b/i);
+    if (plain) rupees = parseCroreToRupees(plain[1]);
+  }
+
+  if (rupees === null) return null;
+
+  if (opts.floor !== null && rupees < opts.floor) return null;
+
+  if (sharesOnPage !== null && opts.priceRangeMax) {
+    const computed = sharesOnPage * opts.priceRangeMax;
+    const deviation = Math.abs(rupees - computed) / rupees;
+    if (deviation > ISSUE_SIZE_CROSS_CHECK_TOLERANCE) return null;
+  }
+
+  return Math.round(rupees);
 }
