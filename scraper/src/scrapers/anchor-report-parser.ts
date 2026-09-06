@@ -562,8 +562,58 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
     (acc, i) => (looksInvestorShaped(all[i]) ? i : acc),
     -1
   );
-  const totalAt = all.findIndex((r, i) => looksLikeTotalRow(r, i > lastInvestorPercentIdx));
-  const main = totalAt === -1 ? all : all.slice(0, totalAt);
+  // Round 3 (W-170c): a letter can print MORE THAN ONE row that
+  // `looksLikeTotalRow` accepts after the last investor row - e.g. a
+  // blank-named category subtotal ("Mutual Funds" sub-block, no share count
+  // readable) at ~100% BEFORE the real Total. Taking the first such
+  // candidate truncates `main` early, drops the real investors between the
+  // two rows, and misclassifies the real Total + those rows as `after`.
+  // Disambiguate by which candidate's printed totals actually corroborate
+  // the SUM of the investor rows that precede it - reusing
+  // `isPrintedTotalReadable`, the same digit-slack/ratio check already used
+  // to corroborate the chosen Total row below, so no new threshold is
+  // introduced. Prefer the LAST candidate that corroborates (the one
+  // closest to covering every investor row); if none corroborates, keep
+  // today's behaviour (first candidate) so existing fixtures stay
+  // byte-identical.
+  const totalCandidates = all
+    .map((r, i) => (looksLikeTotalRow(r, i > lastInvestorPercentIdx) ? i : -1))
+    .filter((i) => i !== -1);
+  let totalAt = totalCandidates.length > 0 ? totalCandidates[0] : -1;
+  if (totalCandidates.length > 1) {
+    let corroboratedAt: number | null = null;
+    for (const idx of totalCandidates) {
+      // W-170c: exclude every row that looks like a Total/subtotal row (any
+      // blank-named ~100% row, not just the ones already promoted into
+      // `totalCandidates` by position) - a category sub-block's own
+      // blank-named subtotal carries a real, readable share count via
+      // `readRow` and would otherwise be double-counted into the investor
+      // sum, inflating it past `PRINTED_FACTOR_LIMIT` and wrongly rejecting
+      // the real Total's corroboration.
+      const investorSharesSoFar = all
+        .slice(0, idx)
+        .filter((r) => !looksLikeTotalRow(r, true))
+        .map(readRow)
+        .filter((c): c is Candidate => c !== null)
+        .reduce((s, c) => s + c.shares, 0);
+      if (investorSharesSoFar <= 0) continue;
+      const printed = readPrintedTotals(all[idx]);
+      if (isPrintedTotalReadable(printed.shares, printed.sharesDigits, investorSharesSoFar)) {
+        corroboratedAt = idx;
+      }
+    }
+    if (corroboratedAt !== null) totalAt = corroboratedAt;
+  }
+  // A category sub-block's own blank-named ~100% subtotal (e.g. a "Mutual
+  // Funds" or "FII" running total) can carry a real, readable share count of
+  // its own - excluded from `main` here for the same reason it is excluded
+  // from `investorSharesSoFar` above: it is not an investor row, and left in
+  // would silently become an extra "investor" whose amount cell (usually
+  // blank/unparseable against `price`) then gets treated as a corrupted row
+  // rather than what it actually is - a subtotal artifact.
+  const main = (totalAt === -1 ? all : all.slice(0, totalAt)).filter(
+    (r) => !looksLikeTotalRow(r, true)
+  );
   const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
 
   const candidates = main

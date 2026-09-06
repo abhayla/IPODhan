@@ -256,3 +256,91 @@ describe('parseAnchorReport - W-170b: a percent-bearing footnote AFTER the Total
     }
   });
 });
+
+describe('parseAnchorReport - W-170c: a blank-named category subtotal BEFORE the real Total must not be picked as the Total', () => {
+  // Ashutosh Fibre's page 0 text, with one extra line inserted right BEFORE
+  // the real (blank-named) Total row: a blank-named ~100% category subtotal
+  // (e.g. a "Mutual Funds" sub-block total) that carries no readable share
+  // count of its own - the exact shape `looksLikeTotalRow` also accepts,
+  // which used to make `totalAt` land on this row (the first match) instead
+  // of the real Total further down, truncating `main` at the wrong point.
+  const TOTAL_LINE = '#  |  | 17,43,600 | 100.00% |  | 16,04,11,200';
+  const MF_SUBTOTAL_LINE = '#  |  | Mutual Funds | 100.00%';
+  const ORACLE = { investors: 5, bidPrice: 92, totalShares: 1743600, totalAmountRupees: 160411200 };
+
+  function pageWithSubtotalBeforeTotal(): string {
+    const lines = ashutosh.pages[0].split('\n');
+    const totalIdx = lines.indexOf(TOTAL_LINE);
+    if (totalIdx === -1) throw new Error('fixture Total line moved - update TOTAL_LINE');
+    return [...lines.slice(0, totalIdx), MF_SUBTOTAL_LINE, ...lines.slice(totalIdx)].join('\n');
+  }
+
+  it('recognises the real Total row (corroborated by the investor sum), not the earlier blank-named subtotal', () => {
+    const pages = [pageWithSubtotalBeforeTotal(), ashutosh.pages[1]];
+    const result = parseAnchorReport(pages);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.value.bidPrice).toBe(ORACLE.bidPrice);
+    expect(result.value.rows).toHaveLength(ORACLE.investors);
+    expect(result.value.totalShares).toBe(ORACLE.totalShares);
+    expect(result.value.totalAmountRupees).toBe(ORACLE.totalAmountRupees);
+    expect(result.value.percentageCheckPassed).toBe(true);
+    // Only the REAL Total row's printed figures corroborate here - proof the
+    // parser did not stop at the earlier subtotal.
+    expect(result.value.printedTotalShares).toBe(ORACLE.totalShares);
+    expect(result.value.printedTotalAmountRupees).toBe(ORACLE.totalAmountRupees);
+  });
+});
+
+describe('parseAnchorReport - W-170d: TWO readable-share subtotal rows before the real Total must not compound past the corroboration bound', () => {
+  // Ashutosh Fibre's page 0 text, with two extra blank-named ~100% category
+  // subtotal lines inserted before the real Total: unlike W-170c's
+  // MF_SUBTOTAL_LINE (no share-count cell -> `readRow` returns null for it,
+  // so it was never counted anywhere), these two carry a REAL, readable
+  // share count of their own - the exact shape a genuine "Mutual Funds" /
+  // "FII" category sub-block subtotal prints. Pre-fix, `investorSharesSoFar`
+  // summed every row before the Total via `readRow`, which does not know
+  // these subtotal rows are not investors - the compounded sum
+  // (investors + both subtotals) landed at more than double the real total,
+  // failing `isPrintedTotalReadable`'s factor-of-2 bound and falling back to
+  // the earlier (wrong) subtotal candidate as "the Total".
+  const TOTAL_LINE = '#  |  | 17,43,600 | 100.00% |  | 16,04,11,200';
+  // Sum of investors 1-3 (NINE ALPS + SINGULARITY + NAV CAPITAL):
+  // 6,52,800 + 3,75,600 + 3,75,600 = 14,04,000.
+  const SUBTOTAL_A_LINE = '#  |  | 14,04,000 | 100.00%';
+  // Sum of investors 3-5 (NAV CAPITAL + AARTH AIF + VIRA AIF), overlapping
+  // investor 3 with the block above it - the shape that makes the
+  // compounded pre-fix sum exceed the factor-of-2 bound instead of landing
+  // exactly on it: 3,75,600 + 2,30,400 + 1,09,200 = 7,15,200.
+  const SUBTOTAL_B_LINE = '#  |  | 7,15,200 | 100.00%';
+  const ORACLE = { investors: 5, bidPrice: 92, totalShares: 1743600, totalAmountRupees: 160411200 };
+
+  function pageWithTwoSubtotalsBeforeTotal(): string {
+    const lines = ashutosh.pages[0].split('\n');
+    const totalIdx = lines.indexOf(TOTAL_LINE);
+    if (totalIdx === -1) throw new Error('fixture Total line moved - update TOTAL_LINE');
+    const investor3Idx = lines.findIndex((l) => l.startsWith('# 3 |'));
+    if (investor3Idx === -1) throw new Error('fixture investor row 3 moved - update lookup');
+    const withA = [
+      ...lines.slice(0, investor3Idx + 1),
+      SUBTOTAL_A_LINE,
+      ...lines.slice(investor3Idx + 1),
+    ];
+    const newTotalIdx = withA.indexOf(TOTAL_LINE);
+    return [...withA.slice(0, newTotalIdx), SUBTOTAL_B_LINE, ...withA.slice(newTotalIdx)].join('\n');
+  }
+
+  it('recognises the real Total row and reads exactly 5 investors, not the earlier subtotal nor 7 rows', () => {
+    const pages = [pageWithTwoSubtotalsBeforeTotal(), ashutosh.pages[1]];
+    const result = parseAnchorReport(pages);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.value.bidPrice).toBe(ORACLE.bidPrice);
+    expect(result.value.rows).toHaveLength(ORACLE.investors);
+    expect(result.value.totalShares).toBe(ORACLE.totalShares);
+    expect(result.value.totalAmountRupees).toBe(ORACLE.totalAmountRupees);
+    expect(result.value.percentageCheckPassed).toBe(true);
+    expect(result.value.printedTotalShares).toBe(ORACLE.totalShares);
+    expect(result.value.printedTotalAmountRupees).toBe(ORACLE.totalAmountRupees);
+  });
+});
