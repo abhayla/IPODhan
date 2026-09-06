@@ -65,13 +65,14 @@ import {
   planIpoCycle,
   applyOutcome,
   toPersistedState,
+  dueDocTypesForStage,
   type AttemptOutcome,
   type CycleOptions,
   type CyclePlan,
   type IssueShape,
   type StateRow,
 } from './document-state-machine.js';
-import { isExchangeServedType, type DocumentType } from './document-types.js';
+import { isExchangeServedType, DOCUMENT_TYPES, type DocumentType } from './document-types.js';
 import type { LifecycleStage } from '../scheduler/stage-reconciler.js';
 import type {
   DocumentFetchStatePatch,
@@ -1608,6 +1609,48 @@ export class DocumentDiscoveryRunner {
    * caller (`document-cycle.ts`) only sets it when `existingRows` matches what
    * the precomputed plan saw (no demotion happened in between).
    */
+  /**
+   * Rotation-stall guard (listed-rotation-stall-null-fetch-state).
+   *
+   * `document-cycle.ts`'s LISTED-tier ordering sorts by
+   * `MAX(document_fetch_state.last_attempt_at)` (NULLS FIRST): an IPO with
+   * ZERO fetch-state rows sorts first forever, every cycle, because nothing
+   * ever writes it a row. Two ways `runIpo` used to leave with no row
+   * written at all: (a) `plan.skipIpo` true on an IPO that has never been
+   * touched (no `existingRows`, so there is no bookkeeping row of ANY kind
+   * to prove a cycle even looked at it), and (b) an exception thrown by the
+   * network/discovery section AFTER the plan was computed but BEFORE the
+   * per-`due`-type loop reached `ensureRow` — swallowed by the caller's
+   * non-fatal catch (`runCycle` here, and `document-cycle.ts`'s
+   * `processCandidate`), leaving the IPO exactly as untouched as before the
+   * cycle ran. Either way the IPO re-sorts to the front next cycle and the
+   * same failure (or the same "nothing due" plan) repeats forever, starving
+   * every LISTED row behind it.
+   *
+   * The fix is not to fabricate a real fetch attempt — it is to guarantee
+   * SOME `document_fetch_state` row for this IPO gets `last_attempt_at`
+   * bumped to `now`, so the SQL order and `enrichListedCandidates`'s
+   * `lastActivityAt` both see this IPO as "visited this cycle" and it sorts
+   * to the back next time. `attempts`/`state` are left untouched — this is a
+   * rotation stamp, not a fetch outcome, so it must never be mistaken by the
+   * retry ladder (`hasBeenAttempted`, `next_retry_at`) for a real attempt.
+   * Non-fatal by construction: a failure to even stamp the rotation marker
+   * must never mask or replace the original error/log.
+   */
+  private async stampRotationTouch(ipo: DiscoveryIpo, plan: CyclePlan | null): Promise<void> {
+    const docType =
+      plan?.due[0] ?? dueDocTypesForStage(ipo.stage)[0] ?? DOCUMENT_TYPES[0];
+    try {
+      const row = await this.deps.store.ensureRow(ipo.id, docType);
+      await this.deps.store.update(row.id, { lastAttemptAt: this.now() });
+    } catch (error) {
+      logger.warn(
+        { ipoId: ipo.id, docType, error: error instanceof Error ? error.message : String(error) },
+        'Rotation-stamp write failed (non-fatal) — IPO may re-sort to the front next cycle'
+      );
+    }
+  }
+
   async runIpo(ipo: DiscoveryIpo, existingRows: StateRow[]): Promise<IpoRunResult> {
     const now = this.now();
     const callsBefore = this.deps.counter.count(ipo.id);
@@ -1660,10 +1703,32 @@ export class DocumentDiscoveryRunner {
 
     if (plan.skipIpo) {
       logger.debug({ ipoId: ipo.id, company: ipo.companyName }, plan.reason);
+      // Rotation-stall guard: a `skipIpo` plan with NO existing fetch-state
+      // history means this IPO has never once been recorded as visited — a
+      // withdrawn/postponed issue caught before it ever got a state row is
+      // the known case (its `toMarkNotApplicable` is derived from
+      // `existingRows`, which is empty). Without a stamp it sorts first
+      // forever and this branch repeats every cycle with zero rows written.
+      if (existingRows.length === 0) await this.stampRotationTouch(ipo, plan);
       result.networkCalls = this.deps.counter.count(ipo.id) - callsBefore;
       return result;
     }
 
+    // Rotation-stall guard: everything from here on touches the network
+    // (BSE/NSE and beyond) BEFORE the `for (const docType of plan.due)` loop
+    // below reaches its first `ensureRow` call. A thrown error anywhere in
+    // this section — an exchange payload shaped unexpectedly, a symbol
+    // lookup throwing instead of returning a graceful `not_on_board` — used
+    // to propagate straight to the caller's non-fatal catch
+    // (`runCycle`/`document-cycle.ts`'s `processCandidate`), which logs and
+    // continues WITHOUT this IPO ever getting a `document_fetch_state` row.
+    // With zero rows, the LISTED rotation order (`last_attempt_at` NULLS
+    // FIRST) sorts it first again next cycle, so the same failure repeats
+    // forever and starves every LISTED row behind it. Stamping a rotation
+    // touch on the way out (before rethrowing, so the original error is
+    // still logged exactly as before) guarantees this IPO rotates to the
+    // back regardless of what actually failed.
+    try {
     /**
      * sha256 -> the document row already stored for it THIS run (matrix E7/R2:
      * 'same hash from BSE and NSE = one row, two URLs').
@@ -2035,6 +2100,10 @@ export class DocumentDiscoveryRunner {
 
     result.networkCalls = this.deps.counter.count(ipo.id) - callsBefore;
     return result;
+    } catch (error) {
+      await this.stampRotationTouch(ipo, plan);
+      throw error;
+    }
   }
 
   /** Run a whole cycle. Never throws for one IPO's sake. */

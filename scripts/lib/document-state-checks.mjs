@@ -72,6 +72,45 @@ export function checkLiveIpoHasStateRows(ipo) {
   return `${ipo.companyName} is ${status} with 0 document_fetch_state rows — the job never looked at it`;
 }
 
+/**
+ * How long a LISTED IPO stays inside the rotation's live window (mirrors
+ * `LIVE_WINDOW_DAYS_AFTER_LISTING` in
+ * `scraper/src/services/document-state-machine.ts` — kept as a literal here
+ * rather than imported so this audit script has zero runtime dependency on
+ * the scraper package; a drift between the two is a same-class incident, not
+ * silently absorbed).
+ */
+export const LISTED_ROTATION_WINDOW_DAYS = 10;
+
+/**
+ * FAIL — listed-rotation-stall-null-fetch-state (2026-09-06).
+ *
+ * `checkLiveIpoHasStateRows` above deliberately excludes LISTED
+ * (`LIVE_STATUSES_REQUIRING_STATE = ['UPCOMING','OPEN','CLOSED']`) because
+ * `STAGE_DOCUMENT_TYPES.LISTED` is `[]` — no NEW document type becomes due at
+ * LISTED. That reasoning is a detection gap: `dueDocTypesForStage` is
+ * CUMULATIVE, so a LISTED IPO still needs every PRE_OPEN/OPEN/CLOSED
+ * document (DRHP, RHP, Prospectus, ...) to have been fetched already. A
+ * LISTED IPO with `documents` rows on file but ZERO `document_fetch_state`
+ * rows is not "nothing due" — it is the ordering bug: `document-cycle.ts`'s
+ * LISTED-tier candidate order sorts by
+ * `MAX(document_fetch_state.last_attempt_at)` NULLS FIRST, so an IPO with no
+ * fetch-state rows at all sorts first every cycle forever, and (before the
+ * runner's rotation-stamp guard) could stay that way with no row ever
+ * written, starving every LISTED row behind it. Scoped to the live window
+ * (not every historical LISTED IPO — an old, fully-retired listing
+ * legitimately has no reason to gain fetch-state rows years later).
+ */
+export function checkListedRotationStall(ipo) {
+  const status = String(ipo.status ?? '').toUpperCase();
+  if (status !== 'LISTED') return null;
+  const daysSinceListing = Number(ipo.daysSinceListing);
+  if (!Number.isFinite(daysSinceListing) || daysSinceListing > LISTED_ROTATION_WINDOW_DAYS) return null;
+  if ((ipo.documentsRowCount ?? 0) === 0) return null;
+  if ((ipo.stateRowCount ?? 0) > 0) return null;
+  return `${ipo.companyName ?? ipo.slug} (${ipo.slug ?? 'no-slug'}) is LISTED ${daysSinceListing.toFixed(1)}d ago, has documents on file, but 0 document_fetch_state rows — rotation stall (listed_rotation_stall)`;
+}
+
 /** WARN — an extractor that failed 3x needs a human, but is not a data outage. */
 export function checkExtractFailed(row) {
   if (row.state !== 'EXTRACT_FAILED') return null;

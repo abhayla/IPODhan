@@ -39,6 +39,8 @@ import {
   checkBlockedAllAge,
   checkFoundNotExtracted,
   checkLiveIpoHasStateRows,
+  checkListedRotationStall,
+  LISTED_ROTATION_WINDOW_DAYS,
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
@@ -445,6 +447,41 @@ async function checkM() {
   for (const v of forgotten) notify('m_live_ipo_has_state', 'P2', v, 'Live IPO has no document state rows', v);
   record('m_live_ipo_has_state', 'every UPCOMING/OPEN/CLOSED IPO has document_fetch_state rows',
     forgotten.length === 0 ? 'PASS' : 'FAIL', forgotten.slice(0, MAX_OFFENDERS).join('; '));
+
+  // listed_rotation_stall (2026-09-06): the check above deliberately excludes
+  // LISTED (STAGE_DOCUMENT_TYPES.LISTED === [] — nothing NEW becomes due), but
+  // `dueDocTypesForStage` is cumulative, so a LISTED IPO still needed every
+  // earlier-stage document already fetched. A LISTED IPO inside the 10-day
+  // rotation window with `documents` on file but ZERO `document_fetch_state`
+  // rows sorts first in the LISTED rotation order forever (NULLS FIRST on
+  // MAX(last_attempt_at)) and starves every LISTED row behind it.
+  const listedRotationCandidates = await q(`
+    SELECT i.company_name, i.slug, i.status,
+           EXTRACT(EPOCH FROM (now() - i.listing_date)) / 86400.0 AS days_since_listing,
+           count(DISTINCT s.id)::int AS state_row_count,
+           count(DISTINCT d.id)::int AS documents_row_count
+      FROM ipos i
+      LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
+      LEFT JOIN documents d ON d.ipo_id = i.id
+     WHERE i.${REAL_IPO} AND i.status = 'LISTED' AND i.listing_date IS NOT NULL
+       AND i.listing_date >= now() - interval '${LISTED_ROTATION_WINDOW_DAYS} days'
+     GROUP BY i.id, i.company_name, i.slug, i.status, i.listing_date
+  `);
+  const rotationStalled = listedRotationCandidates
+    .map((r) => checkListedRotationStall({
+      companyName: r.company_name,
+      slug: r.slug,
+      status: r.status,
+      daysSinceListing: r.days_since_listing,
+      stateRowCount: r.state_row_count,
+      documentsRowCount: r.documents_row_count,
+    }))
+    .filter(Boolean);
+  for (const v of rotationStalled)
+    notify('listed_rotation_stall', 'P2', v, 'LISTED IPO stuck at the front of the document rotation', v);
+  record('listed_rotation_stall',
+    `no LISTED IPO inside the ${LISTED_ROTATION_WINDOW_DAYS}-day live window has documents on file but 0 document_fetch_state rows`,
+    rotationStalled.length === 0 ? 'PASS' : 'FAIL', rotationStalled.slice(0, MAX_OFFENDERS).join('; '));
 
   // BRLM count vs the BSE payload (F17). We cannot re-fetch BSE from the audit
   // (read-only, and it would double the traffic), so the comparison is against

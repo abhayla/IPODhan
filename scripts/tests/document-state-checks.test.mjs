@@ -11,6 +11,8 @@ import {
   checkBlockedAllAge,
   checkFoundNotExtracted,
   checkLiveIpoHasStateRows,
+  checkListedRotationStall,
+  LISTED_ROTATION_WINDOW_DAYS,
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
@@ -447,4 +449,86 @@ test('67f the exchange-unserved set mirrors the runner and is pinned', () => {
   // the DRHP predates that. The audit runs as plain Node on the box with no TS
   // toolchain, so the constant is mirrored; this pins the mirror.
   assert.deepEqual([...EXCHANGE_UNSERVED_DOC_TYPES], ['DRHP']);
+});
+
+// --- listed_rotation_stall: LISTED IPO with documents on file but 0 -------
+// document_fetch_state rows, inside the rotation's live window -------------
+
+test('68 FAILs a LISTED IPO inside the live window with documents but 0 fetch-state rows', () => {
+  const violation = checkListedRotationStall({
+    companyName: 'Madhur Knit Crafts Ltd.',
+    slug: 'madhur-knit-crafts',
+    status: 'LISTED',
+    daysSinceListing: 3,
+    stateRowCount: 0,
+    documentsRowCount: 4,
+  });
+  assert.match(violation, /madhur-knit-crafts/);
+  assert.match(violation, /listed_rotation_stall/);
+});
+
+test('68a PASSes once at least one fetch-state row exists', () => {
+  assert.equal(
+    checkListedRotationStall({
+      companyName: 'Hy-Tech Engineers Ltd.',
+      slug: 'hy-tech-engineers',
+      status: 'LISTED',
+      daysSinceListing: 3,
+      stateRowCount: 1,
+      documentsRowCount: 4,
+    }),
+    null
+  );
+});
+
+test('68b PASSes a LISTED IPO with 0 documents at all (nothing to be stuck on)', () => {
+  assert.equal(
+    checkListedRotationStall({
+      companyName: 'Fresh Listing Ltd.',
+      slug: 'fresh-listing',
+      status: 'LISTED',
+      daysSinceListing: 1,
+      stateRowCount: 0,
+      documentsRowCount: 0,
+    }),
+    null
+  );
+});
+
+test('68c PASSes a LISTED IPO past the rotation window — old history is not a nightly page', () => {
+  assert.equal(
+    checkListedRotationStall({
+      companyName: 'Old Listing Ltd.',
+      slug: 'old-listing',
+      status: 'LISTED',
+      daysSinceListing: LISTED_ROTATION_WINDOW_DAYS + 1,
+      stateRowCount: 0,
+      documentsRowCount: 4,
+    }),
+    null
+  );
+});
+
+test('68d ignores non-LISTED statuses and a missing/unknown listing date', () => {
+  assert.equal(
+    checkListedRotationStall({ companyName: 'X', status: 'OPEN', stateRowCount: 0, documentsRowCount: 4 }),
+    null
+  );
+  assert.equal(
+    checkListedRotationStall({
+      companyName: 'X',
+      status: 'LISTED',
+      daysSinceListing: NaN,
+      stateRowCount: 0,
+      documentsRowCount: 4,
+    }),
+    null
+  );
+});
+
+test('68e the rotation window mirrors the scraper constant and is pinned', () => {
+  // scraper/src/services/document-state-machine.ts: LIVE_WINDOW_DAYS_AFTER_LISTING.
+  // The audit runs as plain Node with no TS toolchain, so the value is
+  // mirrored; this pins the mirror against silent drift.
+  assert.equal(LISTED_ROTATION_WINDOW_DAYS, 10);
 });
