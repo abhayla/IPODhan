@@ -3,6 +3,7 @@ import {
   extractLotSizeFromDetailHtml,
   extractRegistrarFromDetailHtml,
   extractAllotmentDateFromDetailHtml,
+  extractIssueSizeFromDetailHtml,
 } from '../../../src/scrapers/chittorgarh-detail-fields.js';
 
 describe('extractLotSizeFromDetailHtml', () => {
@@ -88,5 +89,102 @@ describe('extractAllotmentDateFromDetailHtml', () => {
       )
     ).toBeNull();
     expect(extractAllotmentDateFromDetailHtml('')).toBeNull();
+  });
+});
+
+describe('extractIssueSizeFromDetailHtml', () => {
+  it('extracts a plain ₹ crore figure (anchor layout)', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>₹757.06 Cr</span></td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7570600000);
+  });
+
+  it('extracts "Rs X Crores" without the anchor wrapper', () => {
+    const html = `<td>Total Issue Size</td><td>Rs 91.50 Crores</td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 200 })
+    ).toBe(915000000);
+  });
+
+  it('parses the combined shares+aggregating phrasing and cross-checks against price cap', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>1,76,47,058 shares (aggregating up to ₹757.06 Cr)</span></td>`;
+    // 17,647,058 shares * 429 cap = 7,570,587,882 vs 7,570,600,000 -> within 25%
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7570600000);
+  });
+
+  it('returns null when the cross-checked shares figure disagrees with the stated crore total', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>1,76,47,058 shares (aggregating up to ₹757.06 Cr)</span></td>`;
+    // price cap of 5000 makes shares*cap wildly exceed the stated total
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 5000 })
+    ).toBeNull();
+  });
+
+  it('returns null when the label is absent', () => {
+    expect(
+      extractIssueSizeFromDetailHtml('<td>Registrar</td><td>Bigshare</td>', {
+        floor: 100_000_000,
+        priceRangeMax: 100,
+      })
+    ).toBeNull();
+    expect(extractIssueSizeFromDetailHtml('', { floor: 100_000_000, priceRangeMax: 100 })).toBeNull();
+  });
+
+  it('returns null for a share-count-only page with no crore total at all', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>1,76,47,058 Shares</span></td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBeNull();
+  });
+
+  it('rejects an SME figure below the SME segment floor (Rs1 Cr)', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>₹0.50 Cr</span></td>`;
+    expect(extractIssueSizeFromDetailHtml(html, { floor: 10_000_000, priceRangeMax: 90 })).toBeNull();
+  });
+
+  it('rejects a mainboard figure below the mainboard segment floor (Rs10 Cr)', () => {
+    const html = `<a title="Issue Size">Issue Size</a></span></td><td><span>₹5.00 Cr</span></td>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 90 })
+    ).toBeNull();
+  });
+
+  it('extracts from the real ESDS detail-page markup (Indian digit grouping, HTML comment nodes, "agg." abbreviation, <br/>, and a preceding "Issue Size (Year-wise)" nav link that must NOT match)', () => {
+    const html = `<a title="Issue Size (Year-wise)" href="/report/ipo-yearwise-issue-size/1">Issue Size (Year-wise)</a><tr><td style="width:40%"><span data-component="keyword-popup" data-record-id="72"><a title="Total Issue Size" href="/keyword/total-issue-size/72/">Total Issue Size</a></span></td><td class="text-end"><span class="text-end">1,67,83,216<!-- --> <!-- -->shares <br/>(agg. up to ₹<!-- -->720<!-- --> <!-- -->Cr)</span></td></tr><tr><td><span data-component="keyword-popup" data-record-id="60"><a title="Fresh Issue" href="/keyword/fresh-issue/60/">Fresh Issue</a></span> </td><td class="text-end"><span class="text-end">1,67,83,216<!-- --> <!-- -->shares</span></td></tr>`;
+    // 1,67,83,216 shares x cap 429 = ~720 Cr — cross-check passes.
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7_200_000_000);
+  });
+
+  it('falls back to the page prose ("of ₹720.00 crore") only when the detail-table row is absent', () => {
+    const html = `<p>ESDS Software Solution came up with a fresh issue of 1.68 crore shares of ₹720.00 crore.</p>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429, companyName: 'ESDS Software Solution' })
+    ).toBe(7_200_000_000);
+  });
+
+  it('does not leak the NEXT row\'s crore figure when the Total Issue Size row itself has none (row-boundary bug)', () => {
+    const html = `<a title="Total Issue Size">Total Issue Size</a></span></td><td><span>1,67,83,216 shares</span></td></tr><tr><td>Fresh Issue</td><td><span>₹500.00 Cr</span></td></tr>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBeNull();
+  });
+
+  it('rejects a prose "of ₹<x> crore" match about a DIFFERENT IPO (no identity anchor)', () => {
+    const html = `<p>Meanwhile, Some Other Company Ltd priced its issue of ₹500.00 crore.</p>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429, companyName: 'ESDS Software Solution' })
+    ).toBeNull();
+  });
+
+  it('accepts prose with no companyName supplied when it reads as a real IPO issue-size statement', () => {
+    const html = `<p>The IPO consists entirely of a fresh issue of ₹720.00 crore.</p>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7_200_000_000);
   });
 });

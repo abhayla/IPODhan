@@ -72,7 +72,7 @@ DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" node <scri
 `pg` is hoisted at the repo root (`require('<repo>/node_modules/pg')`, not `web/node_modules`). A repair
 script must: print `current_database()` first, select by slug, refuse on id/cap mismatch, update with
 `WHERE id AND slug AND issue_size = <old>` and `RETURNING`, dry-run by default. Template used 2026-09-06:
-`docs/ops/templates/repair-row-template.cjs`.
+`docs/ops/templates/repair-row-template.cjs.txt`.
 After any manual ipos row change, drop the web cache on the SLOT's Redis (Linux VPS, auth from the
 slot's scraper.env `REDIS_URL`; prod = db 0, staging = db 1): `redis-cli -n 0 -a <pw> DEL ipo:slug:<slug> ipo:id:<id>`;
 documents rows: `DEL documents:<ipoId>` or use `scraper/scripts/reset-document.ts` (`docs/ops/reset-document.md`).
