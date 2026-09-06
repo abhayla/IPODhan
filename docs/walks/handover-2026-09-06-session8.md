@@ -55,3 +55,34 @@ Lessons: (1) every new or changed audit check runs once against real data before
 nothing about the SQL around it and a crash hid three nights of checks); (2) `listedSkippedUnenriched` cannot fall unless
 rows complete, the rotation proof is the spread of `last_attempt_at`; (3) ad-hoc pg readers parse naive timestamps as
 laptop-local (5.5 h early), read `::text` or install the 1114 parser; (4) md-only pushes to main do not deploy staging.
+
+## Update 23:35 IST (after the owner's "fix the pending items" and "test-architect audit" directives)
+Merged to main since the first version of this file (all on `release/prod-2026-09-07`'s candidate line):
+- #331 source-backed issue_size backfill; RUN ON PROD: 22 rows corrected from Chittorgarh (ESDS 720 Cr, Pernia 680 Cr,
+  Stallion 199 Cr, ICICI Pru AMC 10,603 Cr, two former zeros, twelve Dec-2025 SME rows); floor check on prod 23 -> 2
+  (Nirbhay Colours, Piyush: no Chittorgarh page; need a second source). Above-floor wrong-unit rows (Windlas 47 Cr for a
+  401 Cr issue, AAA, Induss, Banganga, Sanmitra) are a different class: NO OWNER YET.
+- #332 coverage audit substance query selects `segment` (floor + lot-band checks were inert): proven on staging (21 / 14).
+- #333 extraction timeout = hard failure + every document status write invalidates `documents:<ipoId>`: merged BEFORE its
+  staging proof (contract item 5 amended: merge is how the proof is obtained when staging is the only bench; the release
+  cut is the gate). PROOF OWED: first staging cycle on 3c11ba12 (23:45 IST) should park the ESDS RHP with HARD_FAILURE:2;
+  on prod the Skyways RHP + prospectus burn ~20 min per cycle until tomorrow's deploy.
+- #330 nightly findings -> GitHub issues (5 commits, Opus x3): first night 2026-09-07 03:45 runs DRY-RUN; read
+  `/root/data-audit-ipodhan/state/run-2026-09-07.log` for `ISSUES-DRY-RUN` + the planned actions; go live only on the
+  owner's word with `touch /root/data-audit-ipodhan/state/issues-live`.
+- Process: `.claude/rules/defect-fix-contract.md` (project) + global standing rule in `~/.claude/CLAUDE.md`; user hook
+  `~/.claude/hooks/agent-fix-contract-required.py` live (Class:/Proof: on fix briefs; log at
+  `~/.claude/hooks/.fix-contract.log`; escape `AGENT_FIX_CONTRACT_ALLOW=1`).
+In flight at 23:35: `fix/review-gaps-scraper` (backfill drops cache keys itself when REDIS_URL is reachable; two t299
+repair scripts pin UTC; substance-plausibility column coverage; registry rows) and `fix/admin-documents-cache-key` (web
+admin editor used the wrong documents cache key). Then the independent review-of-the-reviews (owner 23:05).
+
+## Owner decisions still open
+1. Write-ratchet baseline says "never add an entry"; the corrective backfill was baselined. Recommend a documented
+   exception category "corrective backfills (dry-run default, guarded UPDATE, RETURNING)"; alternative: route through the
+   persister.
+2. Flip the nightly issue sync live after reading the first dry-run log.
+3. SME auto-persist flip (owner present); larger prospectus volume then meets the new 24 h timeout floor.
+4. Owner of the two unmatched rows and the above-floor wrong-unit rows (second source: NSE/BSE issue size).
+5. `c_issue_size_consistency` compares total issue size with `subscriptions.shares_offered` (the NET public offer), so
+   anchor-heavy issues always diverge (11 on prod, unchanged by the repair): redesign or retire.
