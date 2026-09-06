@@ -5,6 +5,20 @@ const spawnSyncMock = vi.fn();
 vi.mock('node:child_process', () => ({ spawnSync: (...args: unknown[]) => spawnSyncMock(...args) }));
 
 /**
+ * W-178: `withLowPriority` is mocked at the module boundary, DEFAULTING to a
+ * pass-through (no `nice` wrap) so every pre-existing test in this file that
+ * asserts `spawnSyncMock.mock.calls[0][0] === 'python'` keeps working
+ * unchanged — those tests are about the ENOENT/python3-retry and
+ * PYTHON_BIN resolution logic, not about CPU-priority wrapping. The
+ * dedicated "nice-wrapped spawn on Linux" describe block below overrides
+ * this per-test to exercise the wrapped shape.
+ */
+const lowPrioritySpawnMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
+vi.mock('../../../src/utils/low-priority-spawn.js', () => ({
+  withLowPriority: (...args: unknown[]) => lowPrioritySpawnMock(...(args as [string, string[]])),
+}));
+
+/**
  * D-15 lift: mutable so tests can flip ENABLE_SME_FILING_AUTO_PERSIST per case without
  * re-importing the module (same pattern as document-cycle-passes.test.ts). Both flags
  * default to false — production shape — and are reset in afterEach. Declared via
@@ -1309,6 +1323,85 @@ describe('defaultExtractorRunner — python binary resolution', () => {
       expect(args).not.toContain('--issue-size');
     }
   );
+});
+
+describe('defaultExtractorRunner — W-178 nice-wrapped spawn on Linux', () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+    delete process.env.PYTHON_BIN;
+    lowPrioritySpawnMock.mockImplementation((bin: string, args: string[]) => ({
+      bin: 'nice',
+      args: ['-n', '10', bin, ...args],
+    }));
+  });
+
+  afterEach(() => {
+    lowPrioritySpawnMock.mockImplementation((bin: string, args: string[]) => ({ bin, args }));
+  });
+
+  it("prefixes the actual spawn with 'nice -n <level>' when withLowPriority wraps it (forced linux + nice on PATH)", () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(lowPrioritySpawnMock).toHaveBeenCalledWith('python', expect.arrayContaining(['x.pdf']));
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('nice');
+    const args = spawnSyncMock.mock.calls[0][1] as string[];
+    expect(args[0]).toBe('-n');
+    expect(args[1]).toBe('10');
+    expect(args[2]).toBe('python');
+  });
+
+  it('remaps a nice-wrapped ENOENT (exit 127, "No such file or directory") back to the python3 retry', () => {
+    spawnSyncMock
+      .mockReturnValueOnce({ status: 127, stdout: '', stderr: "nice: 'python': No such file or directory" })
+      .mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(2);
+    expect(spawnSyncMock.mock.calls[1][0]).toBe('nice');
+    expect((spawnSyncMock.mock.calls[1][1] as string[])[2]).toBe('python3');
+    expect(result.ok).toBe(true);
+  });
+
+  it('does not remap an ordinary exit 127 that is unrelated to a missing binary', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 127, stdout: '', stderr: 'some unrelated script failure' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    // No ENOENT synthesized -> no python3 retry, ordinary non-fatal failure.
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+  });
+
+  it('W-178 round 2 MINOR-1: does not remap exit 127 that mentions the bin + "No such file or directory" but has no "nice:" prefix', () => {
+    // A genuine python-side FileNotFoundError traceback that happens to
+    // mention 'python' and the exact phrase the old (looser) regex matched
+    // on — no GNU-coreutils 'nice: ' line, so this is NOT a nice-exec
+    // failure and must not be misclassified as a missing-binary ENOENT.
+    spawnSyncMock.mockReturnValueOnce({
+      status: 127,
+      stdout: '',
+      stderr:
+        'Traceback (most recent call last):\n  File "python", line 1\nFileNotFoundError: [Errno 2] No such file or directory: \'some.pdf\'',
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    // No ENOENT synthesized -> no python3 retry.
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+  });
+
+  it('returns the plain (unwrapped) spawn when withLowPriority is a no-op (e.g. non-linux)', () => {
+    lowPrioritySpawnMock.mockImplementation((bin: string, args: string[]) => ({ bin, args }));
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+  });
 });
 
 // ------------------------------------------------------------------- W-142

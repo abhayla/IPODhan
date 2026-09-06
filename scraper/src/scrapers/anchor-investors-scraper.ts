@@ -37,6 +37,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { documentPath, getStoreDir } from '../services/document-store';
 import { parseAnchorReport } from './anchor-report-parser';
 import { isMemoryAbortStderr } from '../services/memory-abort-stderr.js';
+import { withLowPriority } from '../utils/low-priority-spawn.js';
 
 /**
  * Individual anchor investor data
@@ -373,7 +374,15 @@ async function resolvePdfPath(
  * rebuild it - see `scripts/anchor_report_text.py`.
  */
 export function extractPageTexts(pdfPath: string): SidecarResult {
-  const res = spawnSync('python', [SIDECAR, pdfPath], {
+  // W-178: wrapped through `withLowPriority` so this sidecar never contends
+  // for CPU at nice-0 against nginx/Next on the VPS — see
+  // `low-priority-spawn.ts`'s module comment (nice wraps the OUTSIDE of the
+  // spawn; `memory_guard.py`'s RLIMIT_AS ceiling inside the python process
+  // is unaffected either way). This site has no PYTHON_BIN/ENOENT-retry to
+  // preserve (unlike `filing-auto-persist.ts`'s `spawnExtractor`) — it
+  // always spawns plain `'python'`.
+  const wrapped = withLowPriority('python', [SIDECAR, pdfPath]);
+  const res = spawnSync(wrapped.bin, wrapped.args, {
     encoding: 'utf8',
     timeout: SIDECAR_TIMEOUT_MS,
     maxBuffer: 32 * 1024 * 1024,
