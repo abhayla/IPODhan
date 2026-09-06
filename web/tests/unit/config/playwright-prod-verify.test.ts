@@ -86,25 +86,49 @@ describe('run-prod-verify.mjs (round 2: arg forwarding + URL validation)', () =>
 });
 
 describe('isEntryFile (W-164c: entry guard compares paths, not URL strings)', () => {
-  it('matches on Windows where import.meta.url has three slashes (file:///D:/...)', () => {
-    expect(
-      isEntryFile(
-        'D:\\Abhay\\x\\run-prod-verify.mjs',
-        'file:///D:/Abhay/x/run-prod-verify.mjs',
-        'win32'
-      )
-    ).toBe(true);
-  });
+  it.skipIf(process.platform !== 'win32')(
+    'matches on Windows where import.meta.url has three slashes (file:///D:/...)',
+    () => {
+      expect(
+        isEntryFile(
+          'D:\\Abhay\\x\\run-prod-verify.mjs',
+          'file:///D:/Abhay/x/run-prod-verify.mjs',
+          'win32'
+        )
+      ).toBe(true);
+    }
+  );
 
-  it('matches on Windows regardless of drive-letter/path case', () => {
-    expect(
-      isEntryFile(
-        'd:\\abhay\\x\\RUN-PROD-VERIFY.mjs',
-        'file:///D:/Abhay/x/run-prod-verify.mjs',
-        'win32'
-      )
-    ).toBe(true);
-  });
+  it.skipIf(process.platform !== 'win32')(
+    'matches on Windows regardless of drive-letter/path case',
+    () => {
+      expect(
+        isEntryFile(
+          'd:\\abhay\\x\\RUN-PROD-VERIFY.mjs',
+          'file:///D:/Abhay/x/run-prod-verify.mjs',
+          'win32'
+        )
+      ).toBe(true);
+    }
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'matches on posix where import.meta.url is a plain file:// path',
+    () => {
+      expect(
+        isEntryFile('/home/u/x/run-prod-verify.mjs', 'file:///home/u/x/run-prod-verify.mjs', 'linux')
+      ).toBe(true);
+    }
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'does not match on a case-sensitive mismatch on posix',
+    () => {
+      expect(
+        isEntryFile('/home/u/x/RUN-PROD-VERIFY.mjs', 'file:///home/u/x/run-prod-verify.mjs', 'linux')
+      ).toBe(false);
+    }
+  );
 
   it('does not match a different file', () => {
     expect(
