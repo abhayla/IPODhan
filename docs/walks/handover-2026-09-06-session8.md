@@ -113,3 +113,15 @@ Then: full local pass on the candidate sha, cut the branch, Rule 6 brief at 20:3
    diverge by that definition (Meesho 3,085 vs 5,421 Cr, Wakefit, Aequs, Nephrocare, Gujarat Kidney, Exato, Ravelcare,
    Phychem); three are plain wrong units (Windlas 47 -> 402 Cr, CMS Info Systems 168 -> 1,100 Cr, AAA 33.7 -> 10 Cr) and
    can be written with `--recheck-above-floor --apply --overwrite-above-floor --slug ... --allow-prod` on the owner's word.
+
+## Update 00:20 IST 2026-09-07
+- Three above-floor wrong-unit rows written on prod with the reviewed tool (Windlas 402 Cr, CMS Info Systems 1,100 Cr,
+  AAA Technologies 10 Cr); the eight definitional rows (fresh vs total incl. OFS) wait for the owner's definition (item 6).
+- OWNER QUESTION 00:12 ("did anyone verify the 30-minute window against the cadence decision?"): no, a review miss.
+  Findings: the document cycle runs on every wake with no weekday/holiday gate (Sunday cycles made 105-115 network
+  calls); its budgets (discovery + a separate 25-min extraction budget) exceed the 30-min wake and the 25-min cycle lock,
+  so wakes can overlap. Recommendation given and accepted for build: keep the 30-min wake; one 20-min wake budget shared
+  by discovery + extraction + reservations with the lock TTL above it; calendar gate (Sunday/holidays: live issues only);
+  `m_cycle_overrun` detection check; "checked against the cadence decision" added to the review checklist. Build in
+  progress in worktree `IPODhan-cadence` (branch `fix/document-cycle-cadence`), NOT for the 09-07 release; next bundle
+  after a staging soak. Reviewer brief must cite the 2026-09-03 decision (ledger 13:44 IST line).
