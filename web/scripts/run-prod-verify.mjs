@@ -13,6 +13,8 @@
 // compare`) which the round-1 script silently dropped, and validate
 // PROD_BASE_URL is actually an http(s) URL before spawning Playwright.
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 export function isValidProdBaseUrl(url) {
   return /^https?:\/\//i.test(url);
@@ -20,6 +22,21 @@ export function isValidProdBaseUrl(url) {
 
 export function buildPlaywrightArgs(extraArgs) {
   return ['playwright', 'test', 'production-verification', '--project=chromium', ...extraArgs];
+}
+
+// W-164c: on Windows import.meta.url is `file:///D:/...` (three slashes) while
+// the previous string-built comparison produced `file://D:/...` (two), so the
+// guard below never matched and `main()` never ran — `npm run test:prod-verify`
+// silently printed nothing and exited 0. Compare resolved filesystem paths
+// instead of building a URL string.
+export function isEntryFile(argv1, importMetaUrl, platform = process.platform) {
+  if (!argv1) return false;
+  const invoked = path.resolve(argv1);
+  const entry = path.resolve(fileURLToPath(importMetaUrl));
+  if (platform === 'win32') {
+    return invoked.toLowerCase() === entry.toLowerCase();
+  }
+  return invoked === entry;
 }
 
 function main() {
@@ -44,6 +61,6 @@ function main() {
   process.exit(result.status ?? 1);
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+if (isEntryFile(process.argv[1], import.meta.url)) {
   main();
 }
