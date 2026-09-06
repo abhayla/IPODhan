@@ -79,7 +79,7 @@ Worker rounds: ~26 Sonnet, ~15 Opus, ~7.5 M tokens. GitHub: 1 prod deploy, 12 PR
 - Three workers tonight ran `git stash` against their briefs (no loss, stash count 10 throughout): prose does not hold; build a user-level PreToolUse guard denying `git stash` in worktree paths (Tier A, morning).
 
 ### Final state at the end of the overnight work (main 292d4733)
-- main = batch 2 + W-164b + W-177 (#313) + W-176/W-169f (#314) + W-170b (#315); staging redeploys to 292d4733 after #315; prod untouched at d38b72aa; no worktrees; stash 10.
+- main = batch 2 + W-164b + W-177 (#313) + W-176/W-169f (#314) + W-170b (#315); staging serves 20260906-002205-7c2706bf (the #315 merge sha); prod untouched at d38b72aa; no worktrees; stash 10.
 - Owner items: (1) repair Shanti/Ashutosh `issue_size` on prod (share count stored as rupees) or wait for the pipeline; (2) add `DSN_ASSERT_REDIS_DB=0/1` to the prod/staging scraper.env files; (3) D-15 SME flip on prod; (4) approve the `git stash` guard hook; (5) tonight's deploy window: cut `release/prod-2026-09-06` after the morning proofs and the full local pass on 292d4733.
 
 ### Tomorrow (2026-09-06), revised
