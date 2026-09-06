@@ -90,6 +90,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:/Users/itsab/.claude/tool
 Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -p tsconfig.json | grep -c 'error TS'`). Scripts tests run with `node --test scripts/tests/<file>.test.mjs`, not vitest.
 
 ## 7. Gotchas learned
+- Naive `timestamp` columns hold UTC wall-clock (the app pins session timezone=UTC and installs a UTC parser). An ad-hoc `pg` reader parses them as LAPTOP-local time (IST) and shows every value 5 h 30 min early; read `col::text` or set `types.setTypeParser(1114, s => new Date(s + 'Z'))`. The DB server default timezone is Asia/Calcutta, so any pool without `options: '-c timezone=UTC'` gets an IST `now()` against UTC columns (the audit scripts had exactly this, found 2026-09-06).
 - `git stash` is blocked in linked worktrees by a user hook (escape `GIT_STASH_GUARD_ALLOW=1`).
 - Laptop below ~0.5 GB free makes every hook time out; check memory before blaming hooks.
 - Timestamps in ledger lines come from `date`, never estimated.
