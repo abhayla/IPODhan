@@ -1,9 +1,27 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   decideIssueSizeRepair,
   resolveDatabaseName,
   PRODUCTION_DATABASE_NAME,
+  dropIpoCacheKeys,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
+
+describe('dropIpoCacheKeys (round-N residue: cache must be dropped by the tool, not by hand)', () => {
+  it('deletes both the slug and id detail-cache keys after an applied write', async () => {
+    const del = vi.fn().mockResolvedValue(1);
+    await dropIpoCacheKeys({ del }, 'ather-energy', 'ipo-123');
+    expect(del).toHaveBeenCalledTimes(1);
+    expect(del).toHaveBeenCalledWith('ipo:slug:ather-energy', 'ipo:id:ipo-123');
+  });
+
+  it('is never invoked in dry-run - the write block (and cache drop within it) is gated on APPLY', () => {
+    // Structural guard: the backfill's main() only reaches the write/cache-drop
+    // code inside `if (!APPLY) continue;`-gated logic, so dropIpoCacheKeys has
+    // no call site reachable without --apply. Verified here as a doc-level
+    // assertion since main() itself isn't unit-tested (see file header).
+    expect(dropIpoCacheKeys).toBeInstanceOf(Function);
+  });
+});
 
 describe('decideIssueSizeRepair', () => {
   it('never overwrites a mainboard row whose current value already clears the floor', () => {

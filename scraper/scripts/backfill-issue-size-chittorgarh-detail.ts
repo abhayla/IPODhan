@@ -29,7 +29,7 @@
  *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts [--slug a,b,c] [--limit N]
  *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --apply --allow-prod
  */
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNotNull, inArray, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
@@ -308,6 +308,16 @@ async function main() {
         written++;
         console.log(`    WROTE ${c.slug} issue_size ${current ?? 'NULL'} -> ${value}`);
         console.log(`    drop cache keys: ipo:slug:${c.slug}  ipo:id:${c.id}`);
+        if (process.env.REDIS_URL) {
+          try {
+            await dropIpoCacheKeys(getRedisClient(), c.slug, c.id);
+          } catch (err) {
+            logger.warn(
+              { slug: c.slug, id: c.id, error: err instanceof Error ? err.message : String(err) },
+              'cache drop failed - drop the printed keys by hand'
+            );
+          }
+        }
       } else {
         skipped++;
         skipReasons['concurrent write (row changed since selection)'] = (skipReasons['concurrent write (row changed since selection)'] ?? 0) + 1;
@@ -324,6 +334,22 @@ async function main() {
   if (!APPLY) console.log('DRY-RUN: re-run with --apply to write.');
   console.log('='.repeat(80));
   process.exit(fetchFailed > 0 && written === 0 && APPLY ? 1 : fetchFailed > 0 && !APPLY && sourced === 0 ? 1 : 0);
+}
+
+/**
+ * Drop the two IPO detail caches (`ipo:slug:*`, `ipo:id:*`) after a repaired
+ * row is written — round 4 residue: the printed "drop cache keys" line told
+ * an operator to do this BY HAND, so a repaired row could sit stale behind
+ * a 15-min TTL until someone remembered. Fail-open (redis-best-effort per
+ * `redis-best-effort-fail-open.md`): a drop failure never fails the backfill,
+ * it just falls back to the printed manual-drop line with a WARN.
+ */
+export async function dropIpoCacheKeys(
+  redis: { del: (...keys: string[]) => Promise<unknown> },
+  slug: string,
+  id: string
+): Promise<void> {
+  await redis.del(`ipo:slug:${slug}`, `ipo:id:${id}`);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

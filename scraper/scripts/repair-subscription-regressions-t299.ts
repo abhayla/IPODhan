@@ -47,6 +47,9 @@
  */
 import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'node:fs';
+import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+
+configureUtcTimestampParsing();
 
 const APPLY = process.argv.includes('--apply');
 const LEDGER_DIR = 'D:/Abhay/GetWorkDone/evidence/2026-08-23-T-299';
@@ -55,6 +58,7 @@ const SINCE = '2026-06-01 00:00:00'; // naive literal, compared to naive column 
 const NAMED_SELF_HEALED_SLUGS = ['tempsens-instruments-india-ltd', 'augmont-enterprises-ltd'];
 
 const pool = new Pool({
+  options: '-c timezone=UTC', // GitHub #28: session UTC so the naive `timestamp` column reads/compares as UTC, matching app writes
   host: process.env.DATABASE_HOST,
   port: parseInt(process.env.DATABASE_PORT || '5432'),
   database: process.env.DATABASE_NAME || 'ipodhan',

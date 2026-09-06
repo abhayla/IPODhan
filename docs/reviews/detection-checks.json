@@ -35,7 +35,8 @@
       ],
       "failThreshold": "issue_size diverges from shares_offered x price_range_max by more than 25%, when both are present",
       "severity": "P1",
-      "unverifiableWhen": "shares_offered not yet scraped for the row (skipped, not a violation)"
+      "unverifiableWhen": "shares_offered not yet scraped for the row (skipped, not a violation)",
+      "note": "subscriptions.shares_offered is the NET public offer (anchor allocation excluded), so an anchor-heavy issue's issue_size can legitimately diverge from shares_offered x price_range_max by more than this check's 25% band by design - open design item, owner sign-off needed before tightening/loosening the threshold."
     },
     {
       "id": "d_lot_band_window",
