@@ -450,4 +450,62 @@ export function checkCycleOverrun(rows) {
     parts.push(`${overlaps.length} overlapping wake(s): ${overlaps.join('; ')}`);
   }
   return parts.join(' | ');
+
+/** A required doc type stuck in extraction is a data outage past this age. */
+export const EXTRACTION_STUCK_MAX_HOURS = 48;
+
+/** Prospectus-chain document types that gate the pipeline — a filing everyone
+ * downstream (financials, valuation, risk factors) waits on. */
+export const REQUIRED_EXTRACTION_DOC_TYPES = new Set(['DRHP', 'RHP', 'PROSPECTUS']);
+
+const LIVE_EXTRACTION_STATUSES = new Set(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED']);
+
+/** `documents.extraction_error` marker set by filing-auto-persist's hard-failure
+ * escalation ladder (`HARD_FAILURE:<n>:<original error>`, see
+ * scraper/src/services/filing-auto-persist.ts HARD_FAILURE_MARKER). */
+const HARD_FAILURE_MARKER = 'HARD_FAILURE';
+
+/**
+ * FAIL — a required document type (DRHP/RHP/PROSPECTUS) on a LIVE-window IPO
+ * is stuck in extraction with nothing surfacing it.
+ *
+ * RCA (round 5, #333 follow-up): two ETIMEDOUTs hit the 24h floor, the retry
+ * ladder ran out at 10 attempts, and the row landed in `MANUAL_REVIEW` — a
+ * state nothing FAIL-level ever watches. `m_extract_failed`
+ * (`checkExtractFailed`) is WARN-only and keys ONLY off
+ * `document_fetch_state.state === 'EXTRACT_FAILED'`; it is blind to
+ * `documents.extraction_status === 'MANUAL_REVIEW'` entirely, and blind to a
+ * `documents.extraction_status === 'FAILED'` row stuck behind a
+ * `HARD_FAILURE:<n>:` marker (filing-auto-persist's own escalation ladder) —
+ * `grep -rn MANUAL_REVIEW scripts/` was empty before this check.
+ *
+ * Takes ONE row per (ipo, required doc type) already carrying BOTH signals —
+ * the `documents.extraction_status`/`extraction_error` pair AND the sibling
+ * `document_fetch_state.state` for the same (ipo, doc_type), left-joined by
+ * the caller's query. Any of the three stuck shapes, older than
+ * EXTRACTION_STUCK_MAX_HOURS by the UTC-parsed `hoursSinceUpdate`, FAILs.
+ */
+export function checkExtractionStuck(row) {
+  const ipoStatus = String(row.ipoStatus ?? '').toUpperCase();
+  if (!LIVE_EXTRACTION_STATUSES.has(ipoStatus)) return null;
+  const docType = String(row.docType ?? '').toUpperCase();
+  if (!REQUIRED_EXTRACTION_DOC_TYPES.has(docType)) return null;
+
+  const extractionStatus = row.extractionStatus ?? null;
+  const fetchState = row.fetchState ?? null;
+  const extractionError = row.extractionError ?? '';
+
+  const isManualReview = extractionStatus === 'MANUAL_REVIEW';
+  const isFetchStateFailed = fetchState === 'EXTRACT_FAILED';
+  const isHardFailure =
+    extractionStatus === 'FAILED' && typeof extractionError === 'string' && extractionError.startsWith(`${HARD_FAILURE_MARKER}:`);
+
+  if (!isManualReview && !isFetchStateFailed && !isHardFailure) return null;
+
+  const hours = row.hoursSinceUpdate === null || row.hoursSinceUpdate === undefined ? null : Number(row.hoursSinceUpdate);
+  if (hours === null || !Number.isFinite(hours) || hours <= EXTRACTION_STUCK_MAX_HOURS) return null;
+
+  const shape = isManualReview ? 'MANUAL_REVIEW' : isFetchStateFailed ? 'EXTRACT_FAILED' : `FAILED (${HARD_FAILURE_MARKER})`;
+  const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
+  return `${label}: ${docType} stuck ${shape} for ${hours.toFixed(1)}h (> ${EXTRACTION_STUCK_MAX_HOURS}h) — needs-decision`;
 }

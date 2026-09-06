@@ -787,3 +787,76 @@ test('audit-ipo-coverage.mjs: main() asserts the DB session before running check
 // (createUtcPool, installUtcTimestampParsing, assertUtcSession, no direct
 // Pool construction) now lives in scripts/tests/pg-utc.test.mjs — kept as one
 // copy there to avoid two source-of-truth assertions drifting apart.
+
+// ---- round 7: schema-backed column-membership check for m_extraction_stuck's query ----
+// The `d.doc_type does not exist` failure on staging (documents' real column is
+// `type`, not `doc_type` — document_fetch_state uses `doc_type`) is the SAME
+// query-shape class audit-substance-plausibility.test.mjs guards for `ipos`/
+// `listing_performance`. Extended here for the extractionStuckRows query's three
+// aliases: i (ipos), d (documents), fs (document_fetch_state).
+
+function extractTableColumnsForFloorTest(schemaSource, constName) {
+  const noComments = schemaSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const declMarker = `export const ${constName} = pgTable(`;
+  const declStart = noComments.indexOf(declMarker);
+  assert.ok(declStart !== -1, `could not find "export const ${constName} = pgTable(" in schema.ts`);
+  const braceStart = noComments.indexOf('{', declStart);
+  assert.ok(braceStart !== -1, `could not find the columns object opening brace for ${constName}`);
+  let depth = 0;
+  let end = -1;
+  for (let i = braceStart; i < noComments.length; i++) {
+    if (noComments[i] === '{') depth++;
+    else if (noComments[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  assert.ok(end !== -1, `unbalanced braces while scanning ${constName}'s columns object`);
+  const block = noComments.slice(braceStart + 1, end);
+  const columns = new Set();
+  const colRe = /\b[A-Za-z_][A-Za-z0-9_]*\(\s*'([a-z][a-z0-9_]*)'/g;
+  let m;
+  while ((m = colRe.exec(block)) !== null) columns.add(m[1]);
+  return columns;
+}
+
+function extractColumnRefsForFloorTest(sql, alias) {
+  const refs = new Set();
+  const re = new RegExp(`\b${alias}\.([a-z_][a-z0-9_]*)`, 'g');
+  let m;
+  while ((m = re.exec(sql)) !== null) refs.add(m[1]);
+  return refs;
+}
+
+function extractExtractionStuckSql(auditSource) {
+  const marker = 'SELECT i.company_name, i.slug, i.status AS ipo_status';
+  const start = auditSource.indexOf(marker);
+  assert.ok(start !== -1, 'extractionStuckRows query not found in audit-detection-floor.mjs — has it been renamed/moved?');
+  const end = auditSource.indexOf("IN ('DRHP','RHP','PROSPECTUS')", start);
+  assert.ok(end !== -1, 'could not locate the end of the extractionStuckRows query');
+  return auditSource.slice(start, end + "IN ('DRHP','RHP','PROSPECTUS')".length);
+}
+
+test('m_extraction_stuck query: every i./d./fs.<col> reference is a real column of ipos/documents/document_fetch_state (schema.ts SSOT)', () => {
+  const auditSource = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const schemaSource = readFileSync(new URL('../../packages/shared/src/db/schema.ts', import.meta.url), 'utf8');
+  const sql = extractExtractionStuckSql(auditSource);
+
+  const iposColumns = extractTableColumnsForFloorTest(schemaSource, 'ipos');
+  const documentsColumns = extractTableColumnsForFloorTest(schemaSource, 'documents');
+  const fetchStateColumns = extractTableColumnsForFloorTest(schemaSource, 'documentFetchState');
+
+  // Canaries — prove the extractor still matches the real schema shape, and
+  // pin the exact defect this round found: `documents` has NO `doc_type`.
+  assert.ok(documentsColumns.has('type'), 'canary: "type" column not found on documents — extractor drifted');
+  assert.ok(!documentsColumns.has('doc_type'), 'canary: documents unexpectedly has doc_type in schema.ts — has the schema changed?');
+  assert.ok(fetchStateColumns.has('doc_type'), 'canary: "doc_type" column not found on document_fetch_state — extractor drifted');
+
+  const checks = [
+    ['i', iposColumns],
+    ['d', documentsColumns],
+    ['fs', fetchStateColumns],
+  ];
+  for (const [alias, columns] of checks) {
+    const referenced = extractColumnRefsForFloorTest(sql, alias);
+    const bogus = [...referenced].filter((c) => !columns.has(c));
+    assert.deepEqual(bogus, [], `extractionStuckRows query references ${alias}.<col> not present on its real table: ${bogus.join(', ')}`);
+  }
+});

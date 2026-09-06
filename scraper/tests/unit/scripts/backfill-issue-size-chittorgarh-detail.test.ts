@@ -1,9 +1,72 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   decideIssueSizeRepair,
   resolveDatabaseName,
   PRODUCTION_DATABASE_NAME,
+  dropIpoCacheKeys,
+  validateOverwriteAboveFloorRequiresSlug,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
+
+describe('validateOverwriteAboveFloorRequiresSlug (round-4: refuse a whole-table overwrite)', () => {
+  it('refuses --overwrite-above-floor with no --slug', () => {
+    const v = validateOverwriteAboveFloorRequiresSlug(true, null);
+    expect(v.ok).toBe(false);
+    expect(v.message).toMatch(/requires --slug/);
+  });
+
+  it('refuses --overwrite-above-floor with an empty --slug list', () => {
+    const v = validateOverwriteAboveFloorRequiresSlug(true, []);
+    expect(v.ok).toBe(false);
+  });
+
+  it('allows --overwrite-above-floor when --slug names at least one row', () => {
+    const v = validateOverwriteAboveFloorRequiresSlug(true, ['windlas-biotech-ipo']);
+    expect(v.ok).toBe(true);
+  });
+
+  it('allows no --overwrite-above-floor regardless of --slug (FLAG-only recheck run)', () => {
+    expect(validateOverwriteAboveFloorRequiresSlug(false, null).ok).toBe(true);
+  });
+});
+
+describe('dropIpoCacheKeys (round-N residue: cache must be dropped by the tool, not by hand)', () => {
+  it('drops the canonical set (ipo:detail/ipo:slug via invalidateIPOCaches, plus ipo:id which that helper does not cover) — round 5', async () => {
+    const del = vi.fn().mockResolvedValue(1);
+    const scan = vi.fn().mockResolvedValue(['0', []]); // invalidateIPOCaches's list/search/history SCAN, no matches
+    await dropIpoCacheKeys({ del, scan }, 'ather-energy', 'ipo-123');
+    // invalidateIPOCaches(redis, 'ather-energy') deletes ipo:detail + ipo:slug in one call...
+    expect(del).toHaveBeenCalledWith('ipo:detail:ather-energy', 'ipo:slug:ather-energy');
+    // ...then dropIpoCacheKeys itself deletes ipo:id, which invalidateIPOCaches never touches.
+    expect(del).toHaveBeenCalledWith('ipo:id:ipo-123');
+    expect(del).toHaveBeenCalledTimes(2);
+  });
+
+  it('still drops ipo:id even if invalidateIPOCaches itself fails (fail-open, non-fatal)', async () => {
+    // invalidateIPOCaches catches its own errors and never throws (T-264 fail-open
+    // convention), but this proves dropIpoCacheKeys does not depend on its success.
+    const del = vi.fn().mockResolvedValue(1);
+    const scan = vi.fn().mockRejectedValue(new Error('redis down'));
+    await dropIpoCacheKeys({ del, scan }, 'ather-energy', 'ipo-123');
+    expect(del).toHaveBeenCalledWith('ipo:id:ipo-123');
+  });
+
+  it('source-level proof: the only call site of dropIpoCacheKeys() sits AFTER the `if (!APPLY) continue;` dry-run gate (round-4: renamed from a no-op instanceof-Function check)', async () => {
+    // main() itself isn't unit-tested (network/DB side effects — see file
+    // header), so this asserts the REAL thing statically: dropIpoCacheKeys's
+    // one call site in the source text appears textually AFTER the dry-run
+    // gate that `continue`s past it, which is what makes it unreachable
+    // without --apply. A future edit that moves the call before the gate
+    // (or removes the gate) turns this red.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = fileURLToPath(new URL('../../../scripts/backfill-issue-size-chittorgarh-detail.ts', import.meta.url));
+    const source = readFileSync(path, 'utf8');
+    const applyGateIdx = source.indexOf('if (!APPLY) continue;');
+    const callSiteIdx = source.indexOf('await dropIpoCacheKeys(');
+    expect(applyGateIdx).toBeGreaterThan(-1);
+    expect(callSiteIdx).toBeGreaterThan(applyGateIdx);
+  });
+});
 
 describe('decideIssueSizeRepair', () => {
   it('never overwrites a mainboard row whose current value already clears the floor', () => {
@@ -54,6 +117,69 @@ describe('decideIssueSizeRepair', () => {
     const d = decideIssueSizeRepair({ current: null, segment: 'MAINBOARD', sourced: null });
     expect(d.write).toBe(false);
     expect(d.reason).toMatch(/no plausible source figure/);
+  });
+});
+
+describe('decideIssueSizeRepair — above-floor recheck mode (round-N: Windlas/AAA/Induss/Banganga/Sanmitra class)', () => {
+  it('OK: source figure within 40% of the stored value — never touched', () => {
+    const d = decideIssueSizeRepair({
+      current: 400_000_000,
+      segment: 'MAINBOARD',
+      sourced: 470_000_000, // 17.5% divergence
+      mode: 'above-floor',
+    });
+    expect(d.status).toBe('OK');
+    expect(d.write).toBe(false);
+  });
+
+  it('FLAG: source figure diverges >40% but --overwrite-above-floor was not given', () => {
+    // Windlas-shaped: stored 47 Cr, source 401 Cr (~8.5x)
+    const d = decideIssueSizeRepair({
+      current: 470_000_000,
+      segment: 'MAINBOARD',
+      sourced: 4_010_000_000,
+      mode: 'above-floor',
+    });
+    expect(d.status).toBe('FLAG');
+    expect(d.write).toBe(false);
+    expect(d.reason).toMatch(/overwrite-above-floor/);
+  });
+
+  it('WRITE: source figure diverges >40% AND --overwrite-above-floor is given', () => {
+    const d = decideIssueSizeRepair({
+      current: 470_000_000,
+      segment: 'MAINBOARD',
+      sourced: 4_010_000_000,
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+    });
+    expect(d.status).toBe('WRITE');
+    expect(d.write).toBe(true);
+  });
+
+  it('SKIP: the write-time guard rejects the sourced value even in overwrite mode (cross-check failing)', () => {
+    const d = decideIssueSizeRepair({
+      current: 470_000_000,
+      segment: 'SME',
+      sourced: 500_000, // below the SME floor itself — fails the write-time guard
+      mode: 'above-floor',
+      overwriteAboveFloor: true,
+    });
+    expect(d.status).toBe('SKIP');
+    expect(d.write).toBe(false);
+    expect(d.reason).toMatch(/failed the write-time guard/);
+  });
+
+  it('SKIP: no sourced figure at all', () => {
+    const d = decideIssueSizeRepair({ current: 470_000_000, segment: 'MAINBOARD', sourced: null, mode: 'above-floor' });
+    expect(d.status).toBe('SKIP');
+    expect(d.write).toBe(false);
+  });
+
+  it('below-floor mode (no mode given) is unchanged — still WRITEs a below-floor row', () => {
+    const d = decideIssueSizeRepair({ current: 17_647_058, segment: 'MAINBOARD', sourced: 7_570_600_000 });
+    expect(d.status).toBe('WRITE');
+    expect(d.write).toBe(true);
   });
 });
 

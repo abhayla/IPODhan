@@ -42,12 +42,16 @@
 import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
+import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+
+configureUtcTimestampParsing();
 
 const APPLY = process.argv.includes('--apply');
 const LEDGER_DIR = 'D:/Abhay/GetWorkDone/evidence/2026-08-23-T-299';
 const LEDGER_PATH = `${LEDGER_DIR}/dates-leadmanagers-repair-ledger.json`;
 
 const pool = new Pool({
+  options: '-c timezone=UTC', // GitHub #28: session UTC so `updated_at = now()` writes UTC-naive, matching app writes
   host: process.env.DATABASE_HOST,
   port: parseInt(process.env.DATABASE_PORT || '5432'),
   database: process.env.DATABASE_NAME || 'ipodhan',
