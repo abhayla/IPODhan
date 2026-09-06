@@ -30,6 +30,26 @@ describe('field-priority-matrix — the filing source outranks the exchanges whe
   });
 });
 
+describe('field-priority-matrix — T-453: Chittorgarh printed total outranks the exchange share-count derivation for issueSize', () => {
+  // nse-api-client.ts computeNSEIssueSizeRupees and bse-api-scraper.ts
+  // computeBSEIssueSize DERIVE issueSize as (shares offered) x price, which
+  // excludes the OFS the exchanges don't itemise separately in that figure.
+  // Chittorgarh's list API field ('Total Issue Amount (Incl.Firm
+  // reservations)') is read directly from the source and matches the
+  // printed total (Meesho 5,421 Cr vs the exchange-derived 3,085 Cr). This
+  // pins the ordering itself, not just presence — a review mutation that
+  // silently moved CHITTORGARH back below NSE/BSE must fail this test.
+  it('ranks CHITTORGARH above NSE and BSE for issueSize', () => {
+    expect(getSourcePriority('issueSize', 'CHITTORGARH')).toBeGreaterThanOrEqual(0);
+    expect(getSourcePriority('issueSize', 'CHITTORGARH')).toBeLessThan(getSourcePriority('issueSize', 'NSE'));
+    expect(getSourcePriority('issueSize', 'CHITTORGARH')).toBeLessThan(getSourcePriority('issueSize', 'BSE'));
+  });
+
+  it('still ranks DRHP above CHITTORGARH for issueSize (the offer document is primary; Chittorgarh transcribes it)', () => {
+    expect(getSourcePriority('issueSize', 'DRHP')).toBeLessThan(getSourcePriority('issueSize', 'CHITTORGARH'));
+  });
+});
+
 describe('field-priority-matrix — the filing source ranks BELOW the exchanges on timeline dates', () => {
   // The ad prints an INDICATIVE timeline; the exchanges publish the actual one
   // and revise it after the ad goes to press. DRHP is present so a filing can
