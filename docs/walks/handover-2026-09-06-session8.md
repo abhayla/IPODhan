@@ -86,3 +86,30 @@ admin editor used the wrong documents cache key). Then the independent review-of
 4. Owner of the two unmatched rows and the above-floor wrong-unit rows (second source: NSE/BSE issue size).
 5. `c_issue_size_consistency` compares total issue size with `subscriptions.shares_offered` (the NET public offer), so
    anchor-heavy issues always diverge (11 on prod, unchanged by the repair): redesign or retire.
+
+## Update 00:05 IST 2026-09-07 (after the comprehensive review and the independent review-of-the-reviews)
+Merged since 23:35: #334 (web admin routes invalidate through the shared key helpers; unknown tables warn). In flight:
+#335 `fix/review-gaps-scraper` (rounds 1-4 landed: backfill drops its own cache keys, t299 + two discovery scripts pin
+UTC/parser, substance-plausibility evaluates real rows with a schema-backed column test, above-floor recheck mode with
+`--overwrite-above-floor` requiring `--slug`; round 5 in progress: FAIL-level `m_extraction_stuck` check for
+MANUAL_REVIEW/EXTRACT_FAILED/HARD_FAILURE > 48 h, live-mode refusal when the state dir is missing, reset-document and
+retype-ratios scripts invalidate the documents cache, full cache-key set on repair writes). Hook: log capped + redacted (round 4).
+
+### Release `release/prod-2026-09-07`: NO-GO until these five proofs are read (second reviewer's list, accepted)
+1. Timeout fix on staging: no ESDS/Skyways retry on consecutive cycles (00:15 / 00:45 cycles) and, tomorrow, a
+   `HARD_FAILURE:2` line after the next timeout (ESDS RHP not due before ~01:26 IST).
+2. `m_extraction_stuck` merged (#335 round 5) and seen in the detection floor on staging, or the gap named and accepted in
+   the Rule 6 brief.
+3. Index `idx_document_fetch_state_ipo_last_attempt` present on staging: READ 00:02 IST (present; prod has 33 migrations,
+   staging 34, the deploy applies the 34th).
+4. #335 merged before the cut (gate + Tier B; my real-data gates: substance-plausibility on staging, recheck on prod
+   read-only: 252 rows, 11 flagged, 0 written).
+5. 03:45 cron log: `ISSUES-DRY-RUN` + the planned action list, with `/root/data-audit-ipodhan/state` present.
+Then: full local pass on the candidate sha, cut the branch, Rule 6 brief at 20:30, window 21:00-23:30, rollback
+`-f ref=f9b67d0a`.
+
+### Owner decisions (added)
+6. What `issue_size` means on the site: total (fresh + OFS, Chittorgarh's figure) or fresh only. Eight production rows
+   diverge by that definition (Meesho 3,085 vs 5,421 Cr, Wakefit, Aequs, Nephrocare, Gujarat Kidney, Exato, Ravelcare,
+   Phychem); three are plain wrong units (Windlas 47 -> 402 Cr, CMS Info Systems 168 -> 1,100 Cr, AAA 33.7 -> 10 Cr) and
+   can be written with `--recheck-above-floor --apply --overwrite-above-floor --slug ... --allow-prod` on the owner's word.
