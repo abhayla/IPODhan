@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth, getAdminIdentity } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { getIPOByIdKey } from '@/lib/cache/cache-keys';
 import {
   ipos,
   financialData,
@@ -306,7 +307,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
     const redis = getRedisClient();
     try {
       // Invalidate IPO detail cache
-      await redis.del(`ipo:id:${ipoId}`, `ipo:slug:*`);
+      await redis.del(getIPOByIdKey(ipoId), `ipo:slug:*`);
 
       // Invalidate list caches (IPO might appear in lists)
       const listKeys = await redis.keys('ipo:list:*');

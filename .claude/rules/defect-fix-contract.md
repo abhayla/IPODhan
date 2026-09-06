@@ -30,8 +30,11 @@ unit of work. Every defect fix (worker brief, PR body, ledger line) MUST carry t
 
 Worker briefs for fix tasks MUST carry `Class:` and `Proof:` lines (the user-level hook
 `agent-fix-contract-required.py` refuses a fix brief without them, fail-open). Reviews (Tier A/B) MUST verdict
-on item 2 explicitly: "covers the class: yes/no + why". A brief that ships a parser or extractor MUST include a
+on item 2 explicitly, and any change to scheduling, budgets, cron cadence or wake logic MUST be checked against the
+owner's cadence decision (2026-09-03, ledger 13:44 IST 2026-09-06; scraper/src/scheduler/due-step-cycle.ts is its code): "covers the class: yes/no + why". A brief that ships a parser or extractor MUST include a
 REAL fixture captured from the live source, never a format typed from memory.
+
+Item 5 timing: when the only real-data bench is staging and staging deploys only from `main`, the merge to `main` is HOW the proof is obtained; the gate that REQUIRES the proof is then the release cut (`release/prod-<date>`), never the merge. The ledger line for such a merge names the proof still owed and the cycle that will carry it. (2026-09-06: the extraction-timeout fix was merged with its staging proof owed; the comprehensive review flagged it, correctly, as an unproven merge.)
 
 Project specifics (IPODhan): the real-data proof for scraper behaviour is a staging cycle read (`docs/ops/
 prod-ops-recipes.md` §2); for audit checks it is the script run against `ipodhan_staging` through the tunnel; for

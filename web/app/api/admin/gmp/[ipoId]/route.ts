@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { gmpRecords } from '@ipodhan/shared/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { markFieldAsManuallyEdited } from '@/lib/admin/field-protection-checker';
@@ -101,7 +102,7 @@ export const POST = withAdminAuth(async (
     // Invalidate relevant caches
     const redis = getRedisClient();
     try {
-      await redis.del(`ipo:id:${ipoId}`, `ipo:slug:*`);
+      await redis.del(getIPOByIdKey(ipoId), `ipo:slug:*`);
       const listKeys = await redis.keys('ipo:list:*');
       if (listKeys.length > 0) {
         await redis.del(...listKeys);
@@ -206,7 +207,7 @@ export const PATCH = withAdminAuth(async (
     // Invalidate relevant caches
     const redis = getRedisClient();
     try {
-      await redis.del(`ipo:id:${ipoId}`, `ipo:slug:*`);
+      await redis.del(getIPOByIdKey(ipoId), `ipo:slug:*`);
       const listKeys = await redis.keys('ipo:list:*');
       if (listKeys.length > 0) {
         await redis.del(...listKeys);
@@ -269,7 +270,7 @@ export const DELETE = withAdminAuth(async (
     // Invalidate relevant caches
     const redis = getRedisClient();
     try {
-      await redis.del(`ipo:id:${ipoId}`, `ipo:slug:*`);
+      await redis.del(getIPOByIdKey(ipoId), `ipo:slug:*`);
       const listKeys = await redis.keys('ipo:list:*');
       if (listKeys.length > 0) {
         await redis.del(...listKeys);

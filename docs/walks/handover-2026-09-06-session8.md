@@ -55,3 +55,73 @@ Lessons: (1) every new or changed audit check runs once against real data before
 nothing about the SQL around it and a crash hid three nights of checks); (2) `listedSkippedUnenriched` cannot fall unless
 rows complete, the rotation proof is the spread of `last_attempt_at`; (3) ad-hoc pg readers parse naive timestamps as
 laptop-local (5.5 h early), read `::text` or install the 1114 parser; (4) md-only pushes to main do not deploy staging.
+
+## Update 23:35 IST (after the owner's "fix the pending items" and "test-architect audit" directives)
+Merged to main since the first version of this file (all on `release/prod-2026-09-07`'s candidate line):
+- #331 source-backed issue_size backfill; RUN ON PROD: 22 rows corrected from Chittorgarh (ESDS 720 Cr, Pernia 680 Cr,
+  Stallion 199 Cr, ICICI Pru AMC 10,603 Cr, two former zeros, twelve Dec-2025 SME rows); floor check on prod 23 -> 2
+  (Nirbhay Colours, Piyush: no Chittorgarh page; need a second source). Above-floor wrong-unit rows (Windlas 47 Cr for a
+  401 Cr issue, AAA, Induss, Banganga, Sanmitra) are a different class: NO OWNER YET.
+- #332 coverage audit substance query selects `segment` (floor + lot-band checks were inert): proven on staging (21 / 14).
+- #333 extraction timeout = hard failure + every document status write invalidates `documents:<ipoId>`: merged BEFORE its
+  staging proof (contract item 5 amended: merge is how the proof is obtained when staging is the only bench; the release
+  cut is the gate). PROOF OWED: first staging cycle on 3c11ba12 (23:45 IST) should park the ESDS RHP with HARD_FAILURE:2;
+  on prod the Skyways RHP + prospectus burn ~20 min per cycle until tomorrow's deploy.
+- #330 nightly findings -> GitHub issues (5 commits, Opus x3): first night 2026-09-07 03:45 runs DRY-RUN; read
+  `/root/data-audit-ipodhan/state/run-2026-09-07.log` for `ISSUES-DRY-RUN` + the planned actions; go live only on the
+  owner's word with `touch /root/data-audit-ipodhan/state/issues-live`.
+- Process: `.claude/rules/defect-fix-contract.md` (project) + global standing rule in `~/.claude/CLAUDE.md`; user hook
+  `~/.claude/hooks/agent-fix-contract-required.py` live (Class:/Proof: on fix briefs; log at
+  `~/.claude/hooks/.fix-contract.log`; escape `AGENT_FIX_CONTRACT_ALLOW=1`).
+In flight at 23:35: `fix/review-gaps-scraper` (backfill drops cache keys itself when REDIS_URL is reachable; two t299
+repair scripts pin UTC; substance-plausibility column coverage; registry rows) and `fix/admin-documents-cache-key` (web
+admin editor used the wrong documents cache key). Then the independent review-of-the-reviews (owner 23:05).
+
+## Owner decisions still open
+1. Write-ratchet baseline says "never add an entry"; the corrective backfill was baselined. Recommend a documented
+   exception category "corrective backfills (dry-run default, guarded UPDATE, RETURNING)"; alternative: route through the
+   persister.
+2. Flip the nightly issue sync live after reading the first dry-run log.
+3. SME auto-persist flip (owner present); larger prospectus volume then meets the new 24 h timeout floor.
+4. Owner of the two unmatched rows and the above-floor wrong-unit rows (second source: NSE/BSE issue size).
+5. `c_issue_size_consistency` compares total issue size with `subscriptions.shares_offered` (the NET public offer), so
+   anchor-heavy issues always diverge (11 on prod, unchanged by the repair): redesign or retire.
+
+## Update 00:05 IST 2026-09-07 (after the comprehensive review and the independent review-of-the-reviews)
+Merged since 23:35: #334 (web admin routes invalidate through the shared key helpers; unknown tables warn). In flight:
+#335 `fix/review-gaps-scraper` (rounds 1-4 landed: backfill drops its own cache keys, t299 + two discovery scripts pin
+UTC/parser, substance-plausibility evaluates real rows with a schema-backed column test, above-floor recheck mode with
+`--overwrite-above-floor` requiring `--slug`; round 5 in progress: FAIL-level `m_extraction_stuck` check for
+MANUAL_REVIEW/EXTRACT_FAILED/HARD_FAILURE > 48 h, live-mode refusal when the state dir is missing, reset-document and
+retype-ratios scripts invalidate the documents cache, full cache-key set on repair writes). Hook: log capped + redacted (round 4).
+
+### Release `release/prod-2026-09-07`: NO-GO until these five proofs are read (second reviewer's list, accepted)
+1. Timeout fix on staging: no ESDS/Skyways retry on consecutive cycles (00:15 / 00:45 cycles) and, tomorrow, a
+   `HARD_FAILURE:2` line after the next timeout (ESDS RHP not due before ~01:26 IST).
+2. `m_extraction_stuck` merged (#335 round 5) and seen in the detection floor on staging, or the gap named and accepted in
+   the Rule 6 brief.
+3. Index `idx_document_fetch_state_ipo_last_attempt` present on staging: READ 00:02 IST (present; prod has 33 migrations,
+   staging 34, the deploy applies the 34th).
+4. #335 merged before the cut (gate + Tier B; my real-data gates: substance-plausibility on staging, recheck on prod
+   read-only: 252 rows, 11 flagged, 0 written).
+5. 03:45 cron log: `ISSUES-DRY-RUN` + the planned action list, with `/root/data-audit-ipodhan/state` present.
+Then: full local pass on the candidate sha, cut the branch, Rule 6 brief at 20:30, window 21:00-23:30, rollback
+`-f ref=f9b67d0a`.
+
+### Owner decisions (added)
+6. What `issue_size` means on the site: total (fresh + OFS, Chittorgarh's figure) or fresh only. Eight production rows
+   diverge by that definition (Meesho 3,085 vs 5,421 Cr, Wakefit, Aequs, Nephrocare, Gujarat Kidney, Exato, Ravelcare,
+   Phychem); three are plain wrong units (Windlas 47 -> 402 Cr, CMS Info Systems 168 -> 1,100 Cr, AAA 33.7 -> 10 Cr) and
+   can be written with `--recheck-above-floor --apply --overwrite-above-floor --slug ... --allow-prod` on the owner's word.
+
+## Update 00:20 IST 2026-09-07
+- Three above-floor wrong-unit rows written on prod with the reviewed tool (Windlas 402 Cr, CMS Info Systems 1,100 Cr,
+  AAA Technologies 10 Cr); the eight definitional rows (fresh vs total incl. OFS) wait for the owner's definition (item 6).
+- OWNER QUESTION 00:12 ("did anyone verify the 30-minute window against the cadence decision?"): no, a review miss.
+  Findings: the document cycle runs on every wake with no weekday/holiday gate (Sunday cycles made 105-115 network
+  calls); its budgets (discovery + a separate 25-min extraction budget) exceed the 30-min wake and the 25-min cycle lock,
+  so wakes can overlap. Recommendation given and accepted for build: keep the 30-min wake; one 20-min wake budget shared
+  by discovery + extraction + reservations with the lock TTL above it; calendar gate (Sunday/holidays: live issues only);
+  `m_cycle_overrun` detection check; "checked against the cadence decision" added to the review checklist. Build in
+  progress in worktree `IPODhan-cadence` (branch `fix/document-cycle-cadence`), NOT for the 09-07 release; next bundle
+  after a staging soak. Reviewer brief must cite the 2026-09-03 decision (ledger 13:44 IST line).

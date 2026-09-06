@@ -141,8 +141,15 @@ function record(id, name, status, detail) {
 const STATE_DIR = process.env.DETECTION_FLOOR_STATE_DIR
   || (existsSync('/root/data-audit-ipodhan/state') ? '/root/data-audit-ipodhan/state' : tmpdir());
 const STATE_FILE = join(STATE_DIR, 'detection-floor-last-run.json');
+const FINDINGS_FILE = join(STATE_DIR, 'findings-latest.json');
 const RUN_DATE = new Date().toISOString().slice(0, 10);
 const REPORT_PATH = join(STATE_DIR, `run-${RUN_DATE}.log`);
+
+// Cap per check so one runaway check (e.g. a full-table sweep with thousands
+// of offenders) cannot blow up the findings file or, downstream, the number
+// of rows the issue-sync script tries to render into a single GitHub issue
+// body.
+const FINDINGS_MAX_ROWS_PER_CHECK = 200;
 
 function readPreviousState() {
   try { return JSON.parse(readFileSync(STATE_FILE, 'utf8')); } catch { return {}; }
@@ -150,6 +157,33 @@ function readPreviousState() {
 function writeCurrentState(state) {
   try { writeFileSync(STATE_FILE, JSON.stringify(state, null, 2)); }
   catch (e) { console.log(`[STATE-WARN] could not persist ${STATE_FILE}: ${e.message} — every row will look "new" next run`); }
+}
+
+// Recurrence loop part 2 (nightly audit -> GitHub issues): a durable,
+// machine-readable snapshot of tonight's run that scripts/audit-findings-to-issues.mjs
+// reads. Written in the SAME try/catch shape as writeCurrentState — this file
+// must never be the reason the audit itself fails or exits non-zero.
+function writeFindingsLatest({ results, findingsByCheck, runDate }) {
+  try {
+    const failed = results.filter((r) => r.status === 'FAIL');
+    const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
+    const findings = {};
+    for (const [checkId, rows] of findingsByCheck) {
+      findings[checkId] = rows.slice(0, FINDINGS_MAX_ROWS_PER_CHECK).map((r) => ({
+        rowKey: r.rowKey, title: r.title, body: r.body,
+      }));
+    }
+    const payload = {
+      runDate,
+      generatedAt: new Date().toISOString(),
+      gate: failed.length === 0 && unverifiable.length === 0 ? 'PASS' : 'FAIL',
+      results,
+      findings,
+    };
+    writeFileSync(FINDINGS_FILE, JSON.stringify(payload, null, 2));
+  } catch (e) {
+    console.log(`[FINDINGS-WARN] could not persist ${FINDINGS_FILE}: ${e.message} — tonight's findings will not sync to GitHub issues`);
+  }
 }
 
 async function tableExists(name) {
@@ -1092,6 +1126,7 @@ async function main() {
   // silent-pass class this whole mechanism exists to prevent (blocker 1).
   if (payloads.length && GATE) await sendNotifications(payloads);
   if (GATE) writeCurrentState(nextState);
+  writeFindingsLatest({ results, findingsByCheck, runDate: RUN_DATE });
   await pool.end();
 
   if (!GATE) { console.log('(report mode; pass --gate to exit non-zero on FAIL or UNVERIFIABLE)'); process.exit(0); }
