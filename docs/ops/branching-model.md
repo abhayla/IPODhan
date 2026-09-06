@@ -23,8 +23,8 @@ Rules
    branch PR'd into `main`.
 
 Current lines
-- `release/prod-2026-09-06` = f9b67d0a (cut 13:35 IST 2026-09-06 after a full local pass on that sha; deploy candidate for the 21:00-23:30 window; rollback = `-f ref=d38b72aa`, an ancestor).
-- `release/prod-2026-09-05` = d38b72aa (cut 16:05 IST 2026-09-05; deploy candidate for the 21:00-23:30 window).
+- `release/prod-2026-09-06` = f9b67d0a, **IN PRODUCTION** since 2026-09-06 21:02 IST (run 34042205589, tag `prod-2026-09-06`); rollback = `-f ref=d38b72aa` from the same branch (an ancestor).
+- `release/prod-2026-09-05` = d38b72aa (in production 2026-09-05 21:10 to 2026-09-06 21:02; kept one back for rollback, tag `prod-2026-09-05`).
 - production before that: 8cd287d5 (no branch; rollback = `-f ref=8cd287d5` from the same release branch, since 8cd287d5 is an ancestor).
 
 ## Oversight (owner 2026-09-05 16:45 IST: "keep overseeing that everything is followed, and self-improve")

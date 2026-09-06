@@ -29,7 +29,8 @@ grep -h "extractionFailed" ~/.pm2/logs/ipodhan-scraper-out.log | tail -1
 # extractor priority on the next cycle (expect ni=10 after the 2026-09-06 release)
 ps -o ni=,pid=,args= -p $(pgrep -f venv/prod/bin/python) 2>/dev/null
 ```
-Env files: `/var/www/ipodhan/shared/env/{prod,staging}/{web,scraper}.env` (read with `grep -c` or key names only).
+Env files: `/var/www/ipodhan/shared/env/{prod,staging}/{web,scraper}.env`. Never print a URL value: values are quoted, so mask with `sed -E 's#://[^@]*@#://***@#'` AFTER stripping the key, or print only `grep -c`/key names. Edits: `cp -p $f $f.bak-<date>-<reason>` then append; a scraper.env change takes effect at the next pm2 start.
+Standing lines added 2026-09-06: `DSN_ASSERT_REDIS_DB=0` (prod) / `=1` (staging).
 Layout: `/var/www/ipodhan/{releases,releases-staging,current,current-staging,shared,repo}`.
 
 ## 3. Deploy (only from a frozen release branch, one prod deploy per day, 21:00-23:30 IST)
@@ -42,7 +43,8 @@ gh run view <id> --log | grep -E "probe port|release_scraper_cycle_locks|Deployi
 ```
 Rollback = the same command with `-f ref=<previous sha>` (must be an ancestor on the same release branch).
 The deploy log IS the Actions run log (`scripts/deploy-linux.sh` prints `==> ...` lines); nothing is written on the box.
-Every push to `main` auto-deploys staging, so batch docs commits and push once.
+Every push to `main` auto-deploys staging EXCEPT markdown-only pushes (`paths-ignore: '**/*.md'`), so ledger/docs pushes are free; batch code pushes.
+Tag after verification: `git tag -a prod-<date> <sha> -m "..." && git push origin prod-<date>` (a tag push does not deploy).
 
 ## 4. Post-deploy verification
 
@@ -50,6 +52,9 @@ Every push to `main` auto-deploys staging, so batch docs commits and push once.
 curl -s -o /dev/null -w '%{http_code}' https://ipodhan.com/
 cd web && npm run test:prod-verify          # laptop, needs >= 2.5 GB free
 npm run audit:data                          # root; expect only the known legacy reds
+# audit:coverage needs a DB: web/.env.local is git-ignored and may be missing on the laptop; supply the tunnel instead:
+#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
+'); DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" npm run audit:data
 ```
 Then on the VPS: served sha (section 2), pm2 web x2 online, scraper `stopped` between runs, next cycle
 `extractionFailed 0`, extractor `ni=10`.
@@ -71,7 +76,8 @@ script must: print `current_database()` first, select by slug, refuse on id/cap 
 After any manual ipos row change, drop the web cache on the SLOT's Redis (Linux VPS, auth from the
 slot's scraper.env `REDIS_URL`; prod = db 0, staging = db 1): `redis-cli -n 0 -a <pw> DEL ipo:slug:<slug> ipo:id:<id>`;
 documents rows: `DEL documents:<ipoId>` or use `scraper/scripts/reset-document.ts` (`docs/ops/reset-document.md`).
-Confirm on `/api/ipos/<slug>`.
+Confirm on `/api/ipos/<slug>?cb=<random>` (cache-busted): the API sends `s-maxage=300, stale-while-revalidate=600`, so the plain URL keeps serving the OLD value from the Cloudflare edge for up to 15 min (`cf-cache-status: HIT`, `Age:`). No purge needed for a data fix; wait it out.
+Redis auth on the box: `redis-cli -u "$REDIS_URL"` fails with NOAUTH on this redis-cli; extract the password (`pw=${u#redis://:}; pw=${pw%%@*}`) and use `redis-cli -a "$pw" --no-auth-warning -n <db>`. The web slot has no separate env file (`web.env.local` in the same dir); both slots share one Redis, prod db 0 / staging db 1.
 
 ## 6. Gotchas learned
 - `git stash` is blocked in linked worktrees by a user hook (escape `GIT_STASH_GUARD_ALLOW=1`).
