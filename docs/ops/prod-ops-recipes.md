@@ -79,7 +79,17 @@ documents rows: `DEL documents:<ipoId>` or use `scraper/scripts/reset-document.t
 Confirm on `/api/ipos/<slug>?cb=<random>` (cache-busted): the API sends `s-maxage=300, stale-while-revalidate=600`, so the plain URL keeps serving the OLD value from the Cloudflare edge for up to 15 min (`cf-cache-status: HIT`, `Age:`). No purge needed for a data fix; wait it out.
 Redis auth on the box: `redis-cli -u "$REDIS_URL"` fails with NOAUTH on this redis-cli; extract the password (`pw=${u#redis://:}; pw=${pw%%@*}`) and use `redis-cli -a "$pw" --no-auth-warning -n <db>`. The web slot has no separate env file (`web.env.local` in the same dir); both slots share one Redis, prod db 0 / staging db 1.
 
-## 6. Gotchas learned
+## 6. Worktrees (owner lifecycle rule)
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:/Users/itsab/.claude/tools/wt-new.ps1" -Repo "D:/Abhay/Ventures/IPODhan" -Name <task> -Branch fix/<x> -Purpose "..." -TtlHours 6
+#   -> tree lands at D:\Abhay\Ventures\IPODhan-<task> (the tool prefixes the repo name; pass forward slashes from bash or PowerShell eats the backslashes)
+cd /d/Abhay/Ventures/IPODhan-<task> && for d in . web scraper; do cmd //c mklink //J "$(cygpath -w $PWD/$d/node_modules)" "$(cygpath -w /d/Abhay/Ventures/IPODhan/$d/node_modules)"; done
+cd packages/shared && npx tsc          # or scraper tsc reports 217 errors instead of the 87 baseline
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:/Users/itsab/.claude/tools/wt-rm.ps1" -Path "D:/Abhay/Ventures/IPODhan-<task>"   # after merge; prints links-removed + main tracked count proof
+```
+Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -p tsconfig.json | grep -c 'error TS'`). Scripts tests run with `node --test scripts/tests/<file>.test.mjs`, not vitest.
+
+## 7. Gotchas learned
 - `git stash` is blocked in linked worktrees by a user hook (escape `GIT_STASH_GUARD_ALLOW=1`).
 - Laptop below ~0.5 GB free makes every hook time out; check memory before blaming hooks.
 - Timestamps in ledger lines come from `date`, never estimated.
