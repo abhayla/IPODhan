@@ -583,8 +583,16 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   if (totalCandidates.length > 1) {
     let corroboratedAt: number | null = null;
     for (const idx of totalCandidates) {
+      // W-170c: exclude every row that looks like a Total/subtotal row (any
+      // blank-named ~100% row, not just the ones already promoted into
+      // `totalCandidates` by position) - a category sub-block's own
+      // blank-named subtotal carries a real, readable share count via
+      // `readRow` and would otherwise be double-counted into the investor
+      // sum, inflating it past `PRINTED_FACTOR_LIMIT` and wrongly rejecting
+      // the real Total's corroboration.
       const investorSharesSoFar = all
         .slice(0, idx)
+        .filter((r) => !looksLikeTotalRow(r, true))
         .map(readRow)
         .filter((c): c is Candidate => c !== null)
         .reduce((s, c) => s + c.shares, 0);
@@ -596,7 +604,16 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
     }
     if (corroboratedAt !== null) totalAt = corroboratedAt;
   }
-  const main = totalAt === -1 ? all : all.slice(0, totalAt);
+  // A category sub-block's own blank-named ~100% subtotal (e.g. a "Mutual
+  // Funds" or "FII" running total) can carry a real, readable share count of
+  // its own - excluded from `main` here for the same reason it is excluded
+  // from `investorSharesSoFar` above: it is not an investor row, and left in
+  // would silently become an extra "investor" whose amount cell (usually
+  // blank/unparseable against `price`) then gets treated as a corrupted row
+  // rather than what it actually is - a subtotal artifact.
+  const main = (totalAt === -1 ? all : all.slice(0, totalAt)).filter(
+    (r) => !looksLikeTotalRow(r, true)
+  );
   const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
 
   const candidates = main
