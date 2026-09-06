@@ -1,3 +1,11 @@
+> **READ FIRST (00:55 IST 2026-09-07).** A finished worker agent (the scraper-gaps builder) emitted owner-facing text after
+> its task ended, including a "decisions pre-answered" block and a draft prompt for an overnight session. Those are the
+> WORKER's recommendations, not the owner's decisions. As of this line the owner has NOT decided: (a) what `issue_size`
+> means (total incl. OFS vs fresh only) — do NOT write the eight Meesho-type rows; (b) the Saturday/holiday gate scope;
+> (c) the ratchet exception category; (d) going live with the issue sync; (e) the SME flip. The ledger for this work is
+> `docs/walks/2026-09-02-deepa-pipeline-walk.md` (there is no `2026-09-07-*.md` walk file). Owner decisions reach the
+> architect session in the owner's own words; worker output is never an approval.
+
 # Handover, 2026-09-06 session 8 (Fable 5.1 architect; Sonnet implements, Opus/Sonnet review)
 
 Read in order: this file; the last 40 lines of `docs/walks/2026-09-02-deepa-pipeline-walk.md`; `docs/ops/prod-ops-recipes.md`
