@@ -28,6 +28,17 @@
  * Usage (from scraper/, tunnel env exported):
  *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts [--slug a,b,c] [--limit N]
  *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --apply --allow-prod
+ *
+ * Round-N: --recheck-above-floor widens selection to rows that already clear
+ * the segment floor but may still carry the WRONG figure (Windlas Biotech
+ * stored 47 Cr for a real 401 Cr issue; AAA Technologies, Induss, Banganga,
+ * Sanmitra similar — all above-floor, so invisible to the below-floor query
+ * above). It sources the same way and only ever FLAGS a >40% divergence —
+ * writing needs --overwrite-above-floor ON TOP of --apply (and --allow-prod
+ * on prod, same rule as below-floor). Rows within 40% are OK and never
+ * touched.
+ *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --recheck-above-floor
+ *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --recheck-above-floor --apply --overwrite-above-floor --allow-prod
  */
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -48,6 +59,15 @@ const limitIdx = process.argv.indexOf('--limit');
 const LIMIT = limitIdx >= 0 ? parseInt(process.argv[limitIdx + 1], 10) : Infinity;
 const slugIdx = process.argv.indexOf('--slug');
 const SLUGS = slugIdx >= 0 ? process.argv[slugIdx + 1].split(',').map((s) => s.trim()).filter(Boolean) : null;
+// Round-N residue: rows ABOVE the segment floor can still carry the wrong unit
+// (Windlas Biotech 47 Cr stored vs 401 Cr real; AAA Technologies, Induss,
+// Banganga, Sanmitra similar) — invisible to the below-floor selection above.
+// --recheck-above-floor widens selection to floor-clearing rows and FLAGS (never
+// writes) a >40% divergence from the source figure unless --overwrite-above-floor
+// is also given (and --apply, and --allow-prod on prod, same as the below-floor path).
+const RECHECK_ABOVE_FLOOR = process.argv.includes('--recheck-above-floor');
+const OVERWRITE_ABOVE_FLOOR = process.argv.includes('--overwrite-above-floor');
+const ABOVE_FLOOR_DIVERGENCE_THRESHOLD = 0.40;
 
 /** The one database name this CLI refuses to WRITE to without --allow-prod. */
 export const PRODUCTION_DATABASE_NAME = 'ipodhan';
@@ -98,28 +118,72 @@ export function decideIssueSizeRepair(input: {
   current: number | null; // null/0 (round 4): same defect class — no usable value
   segment: 'MAINBOARD' | 'SME' | null;
   sourced: number | null; // already floor + cross-check gated by the extractor, or null
-}): { write: boolean; reason: string } {
+  mode?: 'below-floor' | 'above-floor'; // default 'below-floor' (original behaviour, unchanged)
+  overwriteAboveFloor?: boolean; // --overwrite-above-floor: required to WRITE a divergent above-floor row
+}): { write: boolean; reason: string; status: 'OK' | 'FLAG' | 'WRITE' | 'SKIP' } {
+  const mode = input.mode ?? 'below-floor';
   const floor =
     input.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : input.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
 
-  if (floor !== null && input.current !== null && input.current >= floor) {
-    return { write: false, reason: 'current value already clears the segment floor — never overwritten' };
+  if (mode === 'below-floor') {
+    if (floor !== null && input.current !== null && input.current >= floor) {
+      return { write: false, status: 'SKIP', reason: 'current value already clears the segment floor — never overwritten' };
+    }
+    if (input.sourced === null) {
+      return { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
+    }
+    // Belt-and-braces: re-run the exact write-time guard on the sourced value
+    // before deciding to write, so this script and the persister door can never
+    // disagree about what counts as plausible.
+    const implausible = collectImplausibleIssueSizeFields(
+      { issueSize: input.sourced, segment: input.segment },
+      null,
+      'ADMIN' // filing-total semantics: this is a stated total, not an exchange share count
+    );
+    if (implausible.fields.has('issueSize')) {
+      return { write: false, status: 'SKIP', reason: `sourced value failed the write-time guard (${implausible.reason})` };
+    }
+    return { write: true, status: 'WRITE', reason: 'sourced value passes floor + cross-check gates' };
   }
+
+  // mode === 'above-floor': rows that already clear the segment floor but may
+  // still carry the WRONG unit/figure (Windlas/AAA/Induss/Banganga/Sanmitra
+  // class) — the below-floor gate above is blind to these by construction.
   if (input.sourced === null) {
-    return { write: false, reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
+    return { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
   }
-  // Belt-and-braces: re-run the exact write-time guard on the sourced value
-  // before deciding to write, so this script and the persister door can never
-  // disagree about what counts as plausible.
   const implausible = collectImplausibleIssueSizeFields(
     { issueSize: input.sourced, segment: input.segment },
     null,
-    'ADMIN' // filing-total semantics: this is a stated total, not an exchange share count
+    'ADMIN'
   );
   if (implausible.fields.has('issueSize')) {
-    return { write: false, reason: `sourced value failed the write-time guard (${implausible.reason})` };
+    return { write: false, status: 'SKIP', reason: `sourced value failed the write-time guard (${implausible.reason})` };
   }
-  return { write: true, reason: 'sourced value passes floor + cross-check gates' };
+  if (input.current === null || input.current === 0) {
+    // Selection guarantees current >= floor in this mode; defensive only.
+    return { write: false, status: 'SKIP', reason: 'no usable current value to compare against (defensive — selection should exclude this)' };
+  }
+  const divergence = Math.abs(input.sourced / input.current - 1);
+  if (divergence <= ABOVE_FLOOR_DIVERGENCE_THRESHOLD) {
+    return {
+      write: false,
+      status: 'OK',
+      reason: `within ${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% of stored value (source=${input.sourced}, stored=${input.current}, divergence=${(divergence * 100).toFixed(1)}%) — never touched`,
+    };
+  }
+  if (!input.overwriteAboveFloor) {
+    return {
+      write: false,
+      status: 'FLAG',
+      reason: `diverges from stored value by >${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% (source=${input.sourced}, stored=${input.current}, divergence=${(divergence * 100).toFixed(1)}%) — pass --overwrite-above-floor to write`,
+    };
+  }
+  return {
+    write: true,
+    status: 'WRITE',
+    reason: `diverges from stored value by >${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% — overwritten (--overwrite-above-floor given)`,
+  };
 }
 
 async function fetchReport118(year: number, range: string): Promise<any[]> {
@@ -244,12 +308,16 @@ async function main() {
     .filter((r) => {
       const floor = r.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : r.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
       if (floor === null) return false;
-      if (r.issueSize === null) return true; // NULL — no usable value
+      if (r.issueSize === null) return RECHECK_ABOVE_FLOOR ? false : true; // NULL — below-floor's "no usable value" class; nothing to recheck above the floor
       const val = Number(r.issueSize);
-      if (!Number.isFinite(val) || val <= 0) return true; // 0 — same defect class
-      return val < floor;
+      if (!Number.isFinite(val) || val <= 0) return RECHECK_ABOVE_FLOOR ? false : true; // 0 — same defect class, below-floor only
+      return RECHECK_ABOVE_FLOOR ? val >= floor : val < floor;
     }) as Candidate[];
-  console.log(`considered (offering_type=IPO, has price cap, live status, issue_size NULL/0/below segment floor): ${candidates.length}`);
+  console.log(
+    RECHECK_ABOVE_FLOOR
+      ? `considered (offering_type=IPO, has price cap, live status, issue_size >= segment floor — recheck mode): ${candidates.length}`
+      : `considered (offering_type=IPO, has price cap, live status, issue_size NULL/0/below segment floor): ${candidates.length}`
+  );
 
   // 3. Match to a Chittorgarh detail URL.
   const matched = candidates
@@ -258,7 +326,7 @@ async function main() {
   console.log(`matched to a Chittorgarh detail URL: ${matched.length} (unmatched: ${candidates.length - matched.length})`);
 
   // 4. Fetch + extract + decide.
-  let sourced = 0, written = 0, skipped = 0, fetchFailed = 0;
+  let sourced = 0, written = 0, skipped = 0, fetchFailed = 0, ok = 0, flagged = 0;
   const skipReasons: Record<string, number> = {};
   let fetched = 0;
 
@@ -280,14 +348,25 @@ async function main() {
     const value = extractIssueSizeFromDetailHtml(html, { floor, priceRangeMax: c.priceRangeMax, companyName: c.companyName });
     if (value !== null) sourced++;
 
-    const decision = decideIssueSizeRepair({ current, segment: c.segment, sourced: value });
+    const decision = decideIssueSizeRepair({
+      current,
+      segment: c.segment,
+      sourced: value,
+      mode: RECHECK_ABOVE_FLOOR ? 'above-floor' : 'below-floor',
+      overwriteAboveFloor: OVERWRITE_ABOVE_FLOOR,
+    });
     console.log(
-      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.write ? 'WRITE' : 'SKIP'} (${decision.reason})`
+      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.status} (${decision.reason})`
     );
 
+    if (decision.status === 'OK') ok++;
+    if (decision.status === 'FLAG') flagged++;
+
     if (!decision.write) {
-      skipped++;
-      skipReasons[decision.reason] = (skipReasons[decision.reason] ?? 0) + 1;
+      if (decision.status !== 'OK') {
+        skipped++;
+        skipReasons[decision.reason] = (skipReasons[decision.reason] ?? 0) + 1;
+      }
       continue;
     }
 
@@ -331,6 +410,12 @@ async function main() {
 
   const reasonsStr = Object.entries(skipReasons).map(([k, v]) => `${k}=${v}`).join(', ') || 'none';
   console.log(`\nconsidered ${candidates.length}, sourced ${sourced}, written ${written}, skipped ${skipped} (${reasonsStr})`);
+  if (RECHECK_ABOVE_FLOOR) {
+    console.log(`recheck: ${matched.length} rows, ok ${ok}, flagged ${flagged}, written ${written}`);
+    if (flagged > 0 && !OVERWRITE_ABOVE_FLOOR) {
+      console.log('FLAGGED rows above need owner review — re-run with --apply --overwrite-above-floor (and --allow-prod on prod) to write.');
+    }
+  }
   if (!APPLY) console.log('DRY-RUN: re-run with --apply to write.');
   console.log('='.repeat(80));
   process.exit(fetchFailed > 0 && written === 0 && APPLY ? 1 : fetchFailed > 0 && !APPLY && sourced === 0 ? 1 : 0);
