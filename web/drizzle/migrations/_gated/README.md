@@ -42,6 +42,11 @@ Destructive column drop (owner-applied with read-back):
    unwritten; `scraper/tests/unit/config/price-band-single-scheme.test.ts` asserts no
    code path writes them. Independent of B2–C3.
 
+8. `D2_ipos_drop_exchange_column.sql` — **DESTRUCTIVE**: drop `ipos.exchange`.
+   Not in the SSOT schema; its only reader/writer was `web/scripts/fix-exchange-field.ts`
+   (ISS-008, Oct 2025, long closed), which has been deleted. Pre-apply check + owner
+   sign-off required before dropping. Independent of B2–D1.
+
 Apply each via the tunnel (`localhost:15432`) with a read-back after. Note: the drizzle
 journal is currently out of sync (pre-existing `extraction_status` enum drift blocks a
 clean `db:generate`), so these are hand-authored rather than generated — record the

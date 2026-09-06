@@ -374,6 +374,41 @@ Examples:
 
 ---
 
+## ⚠️ Never hand-commit a migration without its snapshot
+
+Every migration file in `web/drizzle/migrations/` MUST be produced by `npm run db:generate`,
+which writes two things together: the `.sql` file AND its matching
+`meta/<idx>_snapshot.json`. The snapshot is drizzle-kit's record of "what the schema looked
+like after this migration" — the next `db:generate` diffs against the **latest snapshot on
+disk**, not against the SQL files themselves.
+
+If a migration's SQL is written by hand (or generated then edited) and committed together
+with only a journal entry — no snapshot — drizzle-kit doesn't know that migration happened.
+The next real `db:generate` diffs against the last REAL snapshot (which predates the
+hand-committed migration) and re-emits every column/index that migration already added, as
+if they were new.
+
+**Example (2026-09-06):** `0048_ipo_valuation_share_legs.sql` and
+`0049_ipo_details_ad_fields.sql` were both hand-committed with journal entries but no
+`meta/0048_snapshot.json` / `meta/0049_snapshot.json` — the last real snapshot on disk was
+`meta/0047_snapshot.json`. Adding one new index to `schema.ts` and running `db:generate`
+diffed against 0047 and emitted a migration with the new index PLUS all nine columns 0048
+and 0049 already added on prod/staging as spurious `ADD COLUMN` statements. The fix
+(`20260906090638_icy_firelord.sql`) turned every `ADD COLUMN` into
+`ADD COLUMN IF NOT EXISTS` (idempotent, matching 0048/0049's own style) so it is a no-op on
+prod/staging and only does real work on a database missing those columns (e.g. a fresh
+`ipodhan_test`) — and, critically, it is itself a real `db:generate` output, so it finally
+writes the snapshot 0048/0049 never did.
+
+**If you must hand-author a migration** (e.g. for `_gated/` destructive DDL that
+`db:generate` can't produce safely): it will show up as drift the next time someone runs
+`db:generate` for an unrelated change. That's not a bug in the next person's PR — it's this
+class of gap surfacing. Fix it the way 0049's gap was fixed above: make the hand-authored
+statements idempotent (`IF NOT EXISTS` / `IF EXISTS`) so the next real generate is a safe
+no-op, not a second migration.
+
+---
+
 ## 🎓 Developer Checklist
 
 Before pushing schema changes:
