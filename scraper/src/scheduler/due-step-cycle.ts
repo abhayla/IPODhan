@@ -94,8 +94,19 @@ export function istWeekday(now: Date): number {
   return toIstClock(now).weekday;
 }
 
-/** "YYYY-MM-DD" for `now` in IST — matches the `market_holidays.date` column format. */
+/**
+ * "YYYY-MM-DD" for `now` in IST — matches the `market_holidays.date` column
+ * format. Built from UTC getters on an already-IST-shifted epoch instant
+ * (never `.toISOString()` on it) so this never trips the T-327 naive-parse
+ * ratchet (`date-tz-parse-ratchet.test.ts`) — `getUTCFullYear`/`getUTCMonth`/
+ * `getUTCDate` are TZ-agnostic reads of the shifted instant, not a
+ * local-midnight parse of a raw string.
+ */
 export function istDateIso(now: Date): string {
   const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
-  return new Date(istMs).toISOString().slice(0, 10);
+  const ist = new Date(istMs);
+  const year = ist.getUTCFullYear();
+  const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(ist.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
