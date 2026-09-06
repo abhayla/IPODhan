@@ -16,6 +16,8 @@ import {
   EXCLUDED_PATH_SEGMENTS,
   ROOT,
   scanRepo,
+  stripComments,
+  diffAgainstBaseline,
 } from '../check-write-ratchet.mjs';
 
 test('exactly the four documented pattern classes exist', () => {
@@ -160,6 +162,139 @@ test('a file can match more than one pattern class', () => {
     await pool.query('UPDATE ipos SET last_scraped_at = now() WHERE id = $1', [id]);
   `;
   assert.deepEqual(detectPatterns(fixture), ['drizzle', 'raw_sql']);
+});
+
+// --- stripComments() -------------------------------------------------------
+
+test('stripComments: a // line comment quoting a write statement is removed', () => {
+  const fixture = `
+    // old approach: await db.update(ipos).set(fields).where(eq(ipos.id, id));
+    doSomethingElse();
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
+});
+
+test('stripComments: a /* */ block comment quoting raw SQL is removed', () => {
+  const fixture = `
+    /*
+     * Rejected approach: UPDATE ipos SET status = 'LISTED' WHERE id = $1;
+     * Use the shared write path instead.
+     */
+    doSomethingElse();
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
+});
+
+test('stripComments: a JSDoc /** */ block quoting raw SQL is removed', () => {
+  const fixture = `
+    /**
+     * WHY: the old writer issued \`UPDATE ipos SET x = 1\` as raw SQL; the
+     * ratchet correctly failed it, so it now goes through ipoRepository.
+     */
+    export function noop() {}
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
+});
+
+test('stripComments: a python # comment quoting a write statement is removed', () => {
+  const fixture = `
+    # old: cursor.execute("UPDATE ipos SET status = 'LISTED'")
+    def noop():
+        pass
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.py')), []);
+});
+
+test('stripComments: a real SQL string literal still matches (strings are preserved)', () => {
+  const fixture = `
+    // apply the fix below
+    await pool.query('UPDATE ipos SET lot_size = 100 WHERE id = $1', [id]);
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['raw_sql']);
+});
+
+test('stripComments: a real SQL string literal survives python comment stripping', () => {
+  const fixture = `
+    # apply the fix below
+    cursor.execute("UPDATE ipos SET lot_size = 100 WHERE id = %s", [id])
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.py')), ['raw_sql']);
+});
+
+test('stripComments: a // marker inside a string literal is not treated as a comment start', () => {
+  const fixture = `
+    const url = 'https://example.com/ipos'; // not a write
+    await db.update(ipos).set(fields).where(eq(ipos.id, id));
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['drizzle']);
+});
+
+test('stripComments: a doc comment describing the raw_sql pattern in prose is removed', () => {
+  const fixture = `
+    // See docs: the raw_sql pattern matches INSERT INTO ipos, UPDATE ipos, DELETE FROM ipos.
+    export const x = 1;
+  `;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
+});
+
+test('stripComments: a regex literal containing an escaped slash does not blank a same-line write', () => {
+  const fixture = `const urlRe = /^https:\\/\\//; db.update(ipos).set({});`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['drizzle']);
+});
+
+test('stripComments: a same-line string literal still matches (regex-literal fix does not regress string tracking)', () => {
+  const fixture = `const s = "http://x"; db.update(ipos).set({})`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['drizzle']);
+});
+
+test('stripComments: a same-line regex literal is skipped and the following write still matches', () => {
+  const fixture = `const re = /^https:\\/\\//; db.update(ipos)`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['drizzle']);
+});
+
+test('stripComments: a "//"-lookalike inside a string literal on the same line as a write still matches', () => {
+  const fixture = `const s = 'a // b'; UPDATE ipos SET lot_size = 100 WHERE id = 1;`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), ['raw_sql']);
+});
+
+test('stripComments: a real line comment quoting a write on the same line is NOT matched', () => {
+  const fixture = `// db.update(ipos).set({});`;
+  assert.deepEqual(detectPatterns(stripComments(fixture, '.ts')), []);
+});
+
+// --- diffAgainstBaseline(): per-file pattern-set comparison -----------------
+
+test('diffAgainstBaseline: a brand-new file is reported as newFiles, not newPatterns', () => {
+  const found = new Map([['a.ts', ['drizzle']]]);
+  const baselineMap = new Map();
+  const diff = diffAgainstBaseline(found, baselineMap);
+  assert.deepEqual(diff.newFiles, ['a.ts']);
+  assert.deepEqual(diff.newPatterns, []);
+});
+
+test('diffAgainstBaseline: a baselined file gaining an unrecorded pattern kind is a newPatterns FAIL', () => {
+  const found = new Map([['a.ts', ['drizzle', 'raw_sql']]]);
+  const baselineMap = new Map([['a.ts', ['drizzle']]]);
+  const diff = diffAgainstBaseline(found, baselineMap);
+  assert.deepEqual(diff.newFiles, []);
+  assert.deepEqual(diff.staleFiles, []);
+  assert.deepEqual(diff.newPatterns, [{ file: 'a.ts', kinds: ['raw_sql'] }]);
+});
+
+test('diffAgainstBaseline: a baselined file losing a pattern kind is a shrunkPatterns note, not a failure', () => {
+  const found = new Map([['a.ts', ['drizzle']]]);
+  const baselineMap = new Map([['a.ts', ['drizzle', 'raw_sql']]]);
+  const diff = diffAgainstBaseline(found, baselineMap);
+  assert.deepEqual(diff.newPatterns, []);
+  assert.deepEqual(diff.shrunkPatterns, [{ file: 'a.ts', kinds: ['raw_sql'] }]);
+  assert.deepEqual(diff.staleFiles, []);
+});
+
+test('diffAgainstBaseline: an unchanged baselined file produces no diffs', () => {
+  const found = new Map([['a.ts', ['drizzle']]]);
+  const baselineMap = new Map([['a.ts', ['drizzle']]]);
+  const diff = diffAgainstBaseline(found, baselineMap);
+  assert.deepEqual(diff, { newFiles: [], staleFiles: [], newPatterns: [], shrunkPatterns: [] });
 });
 
 // W-69: scanRepo() must only scan git-TRACKED files. A gitignored/untracked
