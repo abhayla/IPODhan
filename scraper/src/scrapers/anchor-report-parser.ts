@@ -562,7 +562,40 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
     (acc, i) => (looksInvestorShaped(all[i]) ? i : acc),
     -1
   );
-  const totalAt = all.findIndex((r, i) => looksLikeTotalRow(r, i > lastInvestorPercentIdx));
+  // Round 3 (W-170c): a letter can print MORE THAN ONE row that
+  // `looksLikeTotalRow` accepts after the last investor row - e.g. a
+  // blank-named category subtotal ("Mutual Funds" sub-block, no share count
+  // readable) at ~100% BEFORE the real Total. Taking the first such
+  // candidate truncates `main` early, drops the real investors between the
+  // two rows, and misclassifies the real Total + those rows as `after`.
+  // Disambiguate by which candidate's printed totals actually corroborate
+  // the SUM of the investor rows that precede it - reusing
+  // `isPrintedTotalReadable`, the same digit-slack/ratio check already used
+  // to corroborate the chosen Total row below, so no new threshold is
+  // introduced. Prefer the LAST candidate that corroborates (the one
+  // closest to covering every investor row); if none corroborates, keep
+  // today's behaviour (first candidate) so existing fixtures stay
+  // byte-identical.
+  const totalCandidates = all
+    .map((r, i) => (looksLikeTotalRow(r, i > lastInvestorPercentIdx) ? i : -1))
+    .filter((i) => i !== -1);
+  let totalAt = totalCandidates.length > 0 ? totalCandidates[0] : -1;
+  if (totalCandidates.length > 1) {
+    let corroboratedAt: number | null = null;
+    for (const idx of totalCandidates) {
+      const investorSharesSoFar = all
+        .slice(0, idx)
+        .map(readRow)
+        .filter((c): c is Candidate => c !== null)
+        .reduce((s, c) => s + c.shares, 0);
+      if (investorSharesSoFar <= 0) continue;
+      const printed = readPrintedTotals(all[idx]);
+      if (isPrintedTotalReadable(printed.shares, printed.sharesDigits, investorSharesSoFar)) {
+        corroboratedAt = idx;
+      }
+    }
+    if (corroboratedAt !== null) totalAt = corroboratedAt;
+  }
   const main = totalAt === -1 ? all : all.slice(0, totalAt);
   const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
 

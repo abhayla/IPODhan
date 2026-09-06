@@ -256,3 +256,38 @@ describe('parseAnchorReport - W-170b: a percent-bearing footnote AFTER the Total
     }
   });
 });
+
+describe('parseAnchorReport - W-170c: a blank-named category subtotal BEFORE the real Total must not be picked as the Total', () => {
+  // Ashutosh Fibre's page 0 text, with one extra line inserted right BEFORE
+  // the real (blank-named) Total row: a blank-named ~100% category subtotal
+  // (e.g. a "Mutual Funds" sub-block total) that carries no readable share
+  // count of its own - the exact shape `looksLikeTotalRow` also accepts,
+  // which used to make `totalAt` land on this row (the first match) instead
+  // of the real Total further down, truncating `main` at the wrong point.
+  const TOTAL_LINE = '#  |  | 17,43,600 | 100.00% |  | 16,04,11,200';
+  const MF_SUBTOTAL_LINE = '#  |  | Mutual Funds | 100.00%';
+  const ORACLE = { investors: 5, bidPrice: 92, totalShares: 1743600, totalAmountRupees: 160411200 };
+
+  function pageWithSubtotalBeforeTotal(): string {
+    const lines = ashutosh.pages[0].split('\n');
+    const totalIdx = lines.indexOf(TOTAL_LINE);
+    if (totalIdx === -1) throw new Error('fixture Total line moved - update TOTAL_LINE');
+    return [...lines.slice(0, totalIdx), MF_SUBTOTAL_LINE, ...lines.slice(totalIdx)].join('\n');
+  }
+
+  it('recognises the real Total row (corroborated by the investor sum), not the earlier blank-named subtotal', () => {
+    const pages = [pageWithSubtotalBeforeTotal(), ashutosh.pages[1]];
+    const result = parseAnchorReport(pages);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.value.bidPrice).toBe(ORACLE.bidPrice);
+    expect(result.value.rows).toHaveLength(ORACLE.investors);
+    expect(result.value.totalShares).toBe(ORACLE.totalShares);
+    expect(result.value.totalAmountRupees).toBe(ORACLE.totalAmountRupees);
+    expect(result.value.percentageCheckPassed).toBe(true);
+    // Only the REAL Total row's printed figures corroborate here - proof the
+    // parser did not stop at the earlier subtotal.
+    expect(result.value.printedTotalShares).toBe(ORACLE.totalShares);
+    expect(result.value.printedTotalAmountRupees).toBe(ORACLE.totalAmountRupees);
+  });
+});
