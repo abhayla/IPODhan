@@ -10,7 +10,6 @@
  * carry an output-plausibility gate: a value outside the domain-sane range is
  * rejected (returns null) rather than persisted.
  */
-
 /** Plausible application-lot bounds for an Indian IPO (mainboard + SME). */
 const MIN_LOT = 1;
 const MAX_LOT = 1_000_000;
@@ -514,4 +513,142 @@ export function extractAllotmentDateFromDetailHtml(html: string): string | null 
   const check = new Date(`${iso}T00:00:00Z`);
   if (isNaN(check.getTime()) || check.getUTCDate() !== Number(day)) return null;
   return iso;
+}
+
+/**
+ * Extract the total issue size (in RUPEES) from a Chittorgarh per-IPO detail
+ * page (W-177 repair backfill — `scripts/backfill-issue-size-chittorgarh-
+ * detail.ts`). The write-time guard rejects a raw share count landing in the
+ * rupees column (e.g. ESDS Software 17,647,058 stored where ~Rs757 Cr belongs)
+ * — this extractor sources the REAL rupee figure from the detail page instead
+ * of deriving it by arithmetic (shares x cap is wrong for several real IPOs:
+ * anchor-portion timing, floor-vs-cap pricing — see the backfill script header).
+ *
+ * The detail page renders the total as a crore figure, e.g.:
+ *   <a title="Issue Size">Issue Size</a></span></td><td><span>₹757.06 Cr</span></td>
+ *   <td>Total Issue Size</td><td>Rs 91.50 Crores</td>
+ *   1,76,47,058 shares (aggregating up to ₹757.06 Cr)
+ *
+ * Plausibility gate (never persisted otherwise):
+ *   1. the parsed rupee figure must be >= the segment floor
+ *      (`MAINBOARD_ISSUE_SIZE_FLOOR` / `SME_ISSUE_SIZE_FLOOR` — the SAME
+ *      constants the write-time guard uses, imported, never re-typed);
+ *   2. when the page ALSO states a share count in the same phrase
+ *      ("<shares> shares (aggregating up to <Cr>)"), `shares * priceRangeMax`
+ *      must be within 25% of the parsed rupee figure, else the page's own
+ *      numbers disagree and the value is rejected as ambiguous.
+ * Returns null when the label is absent, the amount is unparsable, or either
+ * gate fails — never a guessed/derived value.
+ */
+export interface IssueSizeDetailOptions {
+  // Caller passes the SAME segment-floor constant the write-time guard uses
+  // (`MAINBOARD_ISSUE_SIZE_FLOOR` / `SME_ISSUE_SIZE_FLOOR` from
+  // data-consolidation-service.ts) — not re-imported here to avoid a module
+  // cycle (that service imports field-priority-matrix.ts, which imports
+  // FINANCIAL_FIELD_BOUNDS from THIS file).
+  floor: number | null;
+  priceRangeMax: number | null;
+  // Identity anchor for the prose fallback (round 4): the page's own company
+  // name, when known, restricts "of ₹<amount> crore" prose matches to a
+  // sentence actually ABOUT this IPO (never a neighbouring IPO's figure).
+  companyName?: string | null;
+}
+
+const ISSUE_SIZE_CROSS_CHECK_TOLERANCE = 0.25;
+
+function parseCroreToRupees(amountStr: string): number | null {
+  const cleaned = amountStr.replace(/,/g, '');
+  const amount = parseFloat(cleaned);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return amount * 10_000_000;
+}
+
+export function extractIssueSizeFromDetailHtml(
+  html: string,
+  opts: IssueSizeDetailOptions
+): number | null {
+  if (!html) return null;
+
+  // The real page (T-issue-size-repair fix round) renders React comment
+  // nodes (`<!-- -->`) between every number and its unit — "1,67,83,216<!--
+  // --> <!-- -->shares <br/>(agg. up to ₹<!-- -->720<!-- --> <!-- -->Cr)" —
+  // strip them BEFORE matching so `\s*` gaps in the patterns below actually
+  // land on the digits/words, not on a comment node.
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+
+  // Prefer the exact "Total Issue Size" anchor by its title attribute — a
+  // "Issue Size (Year-wise)" nav link (real page) sits earlier in the
+  // document and must never match: its title/text carry the extra
+  // "(Year-wise)" text so neither this nor the fallback patterns match it.
+  const labelMatch =
+    clean.match(/title="Total Issue Size"[\s\S]{0,200}?<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/(?:td|span)>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size[^<]{0,20}<\/[a-z]+>([\s\S]{0,260})/i);
+
+  let rupees: number | null = null;
+  let sharesOnPage: number | null = null;
+
+  if (labelMatch) {
+    // Round 4 (checker finding): the raw {0,260}-char capture had no row
+    // boundary, so an EMPTY "Total Issue Size" cell (shares only, no Cr
+    // figure) could fall through to the NEXT `<tr>` and pick up a
+    // neighbouring row's crore figure instead of returning null. Truncate
+    // the block at the first `</tr>` — the source figure must come from
+    // THIS row, never an adjacent one.
+    const rawBlock = labelMatch[1];
+    const rowEnd = rawBlock.search(/<\/tr>/i);
+    const block = rowEnd === -1 ? rawBlock : rawBlock.slice(0, rowEnd);
+
+    // "1,67,83,216 shares (agg. up to ₹720 Cr)" — shares + amount stated
+    // together lets us cross-check the page's own numbers. "agg." is the
+    // real page's abbreviation; "aggregating" also matches (older/other pages).
+    const combined = block.match(
+      /([\d,]+)\s*shares[\s\S]{0,100}?(?:aggregating|agg\.?)\s+up\s+to\s*(?:₹|Rs\.?\s*)?([\d,.]+)\s*Cr(?:ore)?s?\b/i
+    );
+
+    if (combined) {
+      rupees = parseCroreToRupees(combined[2]);
+      const shares = parseInt(combined[1].replace(/,/g, ''), 10);
+      sharesOnPage = Number.isFinite(shares) ? shares : null;
+    } else {
+      const plain = block.match(/(?:₹|Rs\.?\s*)([\d,.]+)\s*Cr(?:ore)?s?\b/i);
+      if (plain) rupees = parseCroreToRupees(plain[1]);
+    }
+  } else {
+    // Fallback: the page prose ("... fresh issue of 1.68 crore shares of
+    // ₹720.00 crore.") — used ONLY when the detail-table row itself is
+    // absent. Round 4 (checker finding): the original pattern had no
+    // identity anchor and could match a DECOY sentence about a different
+    // IPO elsewhere on the page. Require the matching sentence to also
+    // name THIS IPO's company (when known) or, failing that, to read as an
+    // actual issue-size statement ("IPO" + "fresh issue"/"offer for sale"
+    // in the same sentence) — never a bare "of ₹<x> crore" match anywhere
+    // in the document.
+    const sentences = clean.split(/(?<=[.!?])\s+/);
+    for (const sentence of sentences) {
+      const m = sentence.match(/of\s*₹\s*([\d,.]+)\s*Cr(?:ore)?s?\b/i);
+      if (!m) continue;
+      const hasCompany =
+        !!opts.companyName && sentence.toLowerCase().includes(opts.companyName.toLowerCase());
+      const hasIssueSizeContext =
+        /\bIPO\b/i.test(sentence) && (/fresh issue/i.test(sentence) || /offer for sale/i.test(sentence));
+      if (hasCompany || hasIssueSizeContext) {
+        rupees = parseCroreToRupees(m[1]);
+        break;
+      }
+    }
+  }
+
+  if (rupees === null) return null;
+
+  if (opts.floor !== null && rupees < opts.floor) return null;
+
+  if (sharesOnPage !== null && opts.priceRangeMax) {
+    const computed = sharesOnPage * opts.priceRangeMax;
+    const deviation = Math.abs(rupees - computed) / rupees;
+    if (deviation > ISSUE_SIZE_CROSS_CHECK_TOLERANCE) return null;
+  }
+
+  return Math.round(rupees);
 }
