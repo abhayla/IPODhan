@@ -110,6 +110,8 @@ DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" DA
 ```
 The tool drops `ipo:slug/ipo:id` (+ the invalidation set) itself when REDIS_URL is reachable; from the laptop it is not, so
 drop the printed keys on the box (section 5). FLAG can mean fresh-issue vs total (incl. OFS): triage before writing.
+
+**Field definition:** `ipos.issue_size` = TOTAL issue size in rupees INCLUDING the offer-for-sale portion (fresh issue + OFS), as printed in the offer document / Chittorgarh "Total Issue Size"; NOT the fresh-issue-only figure and NOT the net public offer x price (owner decision 2026-09-07; provenance ADMIN rows written by the backfill tool; matrix ranks CHITTORGARH printed total above the exchanges' share-count derivation since PR #337; c_issue_size_consistency band 0.75x-3.0x of shares_offered x price cap since PR #338).
 Audit scripts through the tunnel (report mode; add `--gate` for exit codes): `audit-ipo-coverage.mjs`,
 `audit-detection-floor.mjs`, `audit-substance-plausibility.mjs`, all with `DATABASE_URL=...` as above; a findings file
 for the issue sync: `DETECTION_FLOOR_STATE_DIR=<dir> node scripts/audit-detection-floor.mjs` then

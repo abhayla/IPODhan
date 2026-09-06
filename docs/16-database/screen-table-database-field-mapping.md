@@ -93,6 +93,8 @@ See split mapping documents for updated field names.
 ### Key Metrics Cards
 *Detail View Fields*
 
+**Field definitions:** `ipos.issue_size` = TOTAL issue size in rupees INCLUDING the offer-for-sale portion (fresh issue + OFS), as printed in the offer document / Chittorgarh "Total Issue Size"; NOT the fresh-issue-only figure and NOT the net public offer x price (owner decision 2026-09-07; provenance ADMIN rows written by the backfill tool; matrix ranks CHITTORGARH printed total above the exchanges' share-count derivation since PR #337; c_issue_size_consistency band 0.75x-3.0x of shares_offered x price cap since PR #338).
+
 | UI Field Label | DB Table | DB Column | Type | Scrape Sources | Used In Screens |
 |----------------|----------|-----------|------|----------------|-----------------|
 | Issue Size | ipos | issue_size | NUMERIC(12,2) | NSE(1), BSE(2), Moneycontrol(3), API_Fallback(5) | IPO Detail Page, Lists |
