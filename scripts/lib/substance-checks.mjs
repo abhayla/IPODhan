@@ -210,6 +210,41 @@ export function checkIssueSizeSegmentFloor(row) {
   return null;
 }
 
+// ---- Check 11: lot-economics retail range (W-171) --------------------------
+// Same rule as scraper/src/utils/data-validation.ts Rule 9
+// (LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD / _SME) — SEBI ICDR Reg 32(1) caps a
+// MAINBOARD retail lot at ~Rs10,000-16,000 (lot_size x price_range_max); SEBI
+// ICDR Chapter IX puts a genuine SME lot at ~Rs1,00,000-2,00,000. Bounds are
+// READ from that file's own constants at the top of this section (not
+// reinvented) — keep both in sync by hand, same convention as
+// MAINBOARD_ISSUE_SIZE_FLOOR/SME_ISSUE_SIZE_FLOOR above. A FIXED_PRICE issue
+// is exempt (data-validation.ts exempts it for the same reason: its minimum
+// investment is not bounded the way SEBI's retail-lot band assumes
+// book-building). This is the DB-read-side companion to that scraper-side
+// write gate — a Kanohar-shape row (lot 23 x a misread cap of 82 = Rs1,886)
+// reaching the DB by any other path is caught here too.
+export const MAINBOARD_LOT_ECONOMICS_MIN = 10000;
+export const MAINBOARD_LOT_ECONOMICS_MAX = 16000;
+export const SME_LOT_ECONOMICS_MIN = 100000;
+export const SME_LOT_ECONOMICS_MAX = 200000;
+
+export function checkLotEconomicsRetailRange(row) {
+  const lot = toNumber(row.lot_size);
+  const cap = toNumber(row.price_range_max);
+  if (lot === null || cap === null) return null;
+  if (row.issue_type === 'FIXED_PRICE') return null;
+  const minInvestment = lot * cap;
+  if (row.segment === 'MAINBOARD' &&
+      (minInvestment < MAINBOARD_LOT_ECONOMICS_MIN || minInvestment > MAINBOARD_LOT_ECONOMICS_MAX)) {
+    return `MAINBOARD minimum investment (lot ${lot} x cap ${cap} = ${minInvestment}) outside the SEBI ICDR Reg 32(1) retail range [${MAINBOARD_LOT_ECONOMICS_MIN}..${MAINBOARD_LOT_ECONOMICS_MAX}]`;
+  }
+  if (row.segment === 'SME' &&
+      (minInvestment < SME_LOT_ECONOMICS_MIN || minInvestment > SME_LOT_ECONOMICS_MAX)) {
+    return `SME minimum investment (lot ${lot} x cap ${cap} = ${minInvestment}) outside the SEBI ICDR Chapter IX retail range [${SME_LOT_ECONOMICS_MIN}..${SME_LOT_ECONOMICS_MAX}]`;
+  }
+  return null;
+}
+
 // ---- Check 9: registrar quality (#45) --------------------------------------
 // A registrar string MUST NOT carry address/contact pollution — '^'/tab/newline
 // delimiters or "Tel:"/"E-mail:" blocks (the scrape artifact sanitizeRegistrar removes).
@@ -232,6 +267,7 @@ export const SUBSTANCE_CHECKS = [
   { key: 'degenerate_bookbuilding_band', name: 'no degenerate band on a non-FIXED_PRICE issue', predicate: checkDegenerateBookbuildingBand },
   { key: 'issue_size', name: 'issue_size > 0', predicate: checkIssueSize },
   { key: 'issue_size_segment_floor', name: 'issue_size >= segment floor when a band is present', predicate: checkIssueSizeSegmentFloor },
+  { key: 'lot_economics_retail_range', name: 'lot x cap within the SEBI retail range (MAINBOARD/SME)', predicate: checkLotEconomicsRetailRange },
   { key: 'isin_format', name: 'ISIN format IN[E|F]{9 alnum}', predicate: checkIsinFormat },
   { key: 'name_quality', name: 'name has no trailing status token', predicate: checkNameQuality },
   { key: 'listing_performance', name: 'listing_price>0 & gain in [-90..900]%', predicate: checkListingPerformance },

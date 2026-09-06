@@ -628,8 +628,22 @@ export async function persistFilingExtraction(
       ? withUnit('ipos.issueSize', (u) => Math.round(toRupees(offerTotalMn, u)))
       : null;
 
-  const floor = num(extraction, 'price_band_floor');
-  const cap = num(extraction, 'price_band_cap');
+  // W-171: a DRHP has no price band by law - the extractor now nulls these
+  // fields itself for a DRHP, but this is the write path's OWN check, in case
+  // a stale/hand-edited extraction JSON still carries a band. Defence in
+  // depth: never trust the doc type at only one layer.
+  const isDrhp = options.docType === 'DRHP';
+  const rawFloor = num(extraction, 'price_band_floor');
+  const rawCap = num(extraction, 'price_band_cap');
+  if (isDrhp && (rawFloor !== null || rawCap !== null)) {
+    logger.warn(
+      { ipoId, docType: options.docType, sourceDoc: extraction.source_doc ?? null,
+        rawFloor, rawCap },
+      '[FilingPersister] DRHP extraction carried a price band - discarding, a DRHP has no band by law'
+    );
+  }
+  const floor = isDrhp ? null : rawFloor;
+  const cap = isDrhp ? null : rawCap;
   const lotSize = num(extraction, 'lot_size');
   const faceValue = num(extraction, 'face_value');
   const openDate = str(extraction, 'open_date');
@@ -782,7 +796,9 @@ export async function persistFilingExtraction(
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
   const regulation = str(extraction, 'book_building_regulation');
-  const coverPriceType = str(extraction, 'issue_price_type');
+  // W-171: same defence-in-depth as priceRangeMin/Max above - a DRHP's cover
+  // wording is never trusted for the issue's price-process type either.
+  const coverPriceType = isDrhp ? null : str(extraction, 'issue_price_type');
   const priceTypeForWrite =
     coverPriceType === 'FIXED_PRICE' || coverPriceType === 'BOOK_BUILDING' ? coverPriceType : null;
   if (regulation && priceTypeForWrite === 'FIXED_PRICE') {
