@@ -3,10 +3,6 @@ import {
   resetNiceOnPathCache,
   resolveExtractorNice,
   withLowPriority,
-  resetFlockOnPathCache,
-  resolveBoxLockPath,
-  resolveLockWaitSeconds,
-  withBoxLock,
   EXTRACTOR_BUSY_EXIT_CODE,
 } from '../../../src/utils/low-priority-spawn';
 
@@ -101,88 +97,8 @@ describe('withLowPriority', () => {
   });
 });
 
-const fakeFlockExists = (p: string) => p === '/usr/bin/flock';
-
-describe('withBoxLock', () => {
-  beforeEach(() => {
-    resetFlockOnPathCache();
-  });
-
-  afterEach(() => {
-    forcePlatform(REAL_PLATFORM);
-    resetFlockOnPathCache();
-  });
-
-  it('EXTRACTOR_BUSY_EXIT_CODE is 75 (flock --conflict-exit-code)', () => {
+describe('EXTRACTOR_BUSY_EXIT_CODE', () => {
+  it('is 75 (sysexits.h reserved range; box_lock.py exits this on a busy lock, W-178c round 2)', () => {
     expect(EXTRACTOR_BUSY_EXIT_CODE).toBe(75);
-  });
-
-  it('defaults the lock path and wait seconds', () => {
-    expect(resolveBoxLockPath({})).toBe('/var/www/ipodhan/shared/extractor.lock');
-    expect(resolveLockWaitSeconds({})).toBe(120);
-  });
-
-  it('honours EXTRACTOR_BOX_LOCK and EXTRACTOR_LOCK_WAIT_S overrides', () => {
-    const env = { EXTRACTOR_BOX_LOCK: '/tmp/custom.lock', EXTRACTOR_LOCK_WAIT_S: '30' };
-    expect(resolveBoxLockPath(env)).toBe('/tmp/custom.lock');
-    expect(resolveLockWaitSeconds(env)).toBe(30);
-  });
-
-  it('falls back to the default wait on a non-numeric or negative EXTRACTOR_LOCK_WAIT_S', () => {
-    expect(resolveLockWaitSeconds({ EXTRACTOR_LOCK_WAIT_S: 'nope' })).toBe(120);
-    expect(resolveLockWaitSeconds({ EXTRACTOR_LOCK_WAIT_S: '-5' })).toBe(120);
-  });
-
-  it('wraps with flock -w <wait> -E 75 <lockfile> on a forced linux platform when flock is on PATH', () => {
-    forcePlatform('linux');
-    const env = { PATH: '/usr/bin:/bin' };
-    const result = withBoxLock('python', ['script.py', 'a.pdf'], env, fakeFlockExists);
-    expect(result.bin).toBe('flock');
-    expect(result.args).toEqual([
-      '-w',
-      '120',
-      '-E',
-      '75',
-      '/var/www/ipodhan/shared/extractor.lock',
-      'python',
-      'script.py',
-      'a.pdf',
-    ]);
-  });
-
-  it('returns the plain spawn unchanged on a non-linux platform', () => {
-    forcePlatform('win32');
-    const env = { PATH: '/usr/bin:/bin' };
-    const result = withBoxLock('python', ['script.py'], env, fakeFlockExists);
-    expect(result).toEqual({ bin: 'python', args: ['script.py'] });
-  });
-
-  it('returns the plain spawn unchanged on linux when flock is not on PATH, and warns once', () => {
-    forcePlatform('linux');
-    const env = { PATH: '/no/such/dir' };
-    const fakeLogger = { warn: vi.fn() };
-
-    const first = withBoxLock('python', ['script.py'], env, () => false, fakeLogger);
-    const second = withBoxLock('python', ['other.py'], env, () => false, fakeLogger);
-
-    expect(first).toEqual({ bin: 'python', args: ['script.py'] });
-    expect(second).toEqual({ bin: 'python', args: ['other.py'] });
-    expect(fakeLogger.warn).toHaveBeenCalledTimes(1);
-    expect(fakeLogger.warn).toHaveBeenCalledWith(
-      'flock not found on PATH; extractors are not box-locked (W-178c)'
-    );
-  });
-
-  it('composes flock(nice(python)) when chained through withLowPriority then withBoxLock', () => {
-    forcePlatform('linux');
-    const env = { PATH: '/usr/bin:/bin' };
-    const pathExists = (p: string) => p === '/usr/bin/nice' || p === '/usr/bin/flock';
-    resetNiceOnPathCache();
-    const niceWrapped = withLowPriority('python', ['script.py'], env, pathExists);
-    const boxWrapped = withBoxLock(niceWrapped.bin, niceWrapped.args, env, pathExists);
-    expect(boxWrapped.bin).toBe('flock');
-    // flock's args end with the FULL nice-wrapped command (nice -n 10 python script.py).
-    expect(boxWrapped.args.slice(5)).toEqual(['nice', '-n', '10', 'python', 'script.py']);
-    resetNiceOnPathCache();
   });
 });

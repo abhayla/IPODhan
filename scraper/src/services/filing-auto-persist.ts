@@ -189,7 +189,7 @@ export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
  * `MEMORY_ABORT_KILLED_RE` and `isMemoryAbortStderr` keeps working.
  */
 import { isMemoryAbortStderr } from './memory-abort-stderr.js';
-import { withLowPriority, withBoxLock, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
+import { withLowPriority, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
 export {
   MEMORY_ABORT_STDERR_RE,
   MEMORY_ABORT_KILLED_RE,
@@ -785,20 +785,21 @@ function spawnExtractor(
   if (typeof issueSizeRupees === 'number' && Number.isFinite(issueSizeRupees) && issueSizeRupees > 0) {
     args.push('--issue-size', String(Math.round(issueSizeRupees)));
   }
-  // W-178c: box-lock wraps the OUTSIDE of the nice wrap — flock(nice(python)) —
-  // so the lock is held for the process's whole scheduling lifetime.
-  const niceWrapped = withLowPriority(bin, args);
-  const wrapped = withBoxLock(niceWrapped.bin, niceWrapped.args);
+  // W-178c round 2: the box lock now lives INSIDE `extract_filing.py`
+  // (`box_lock.acquire`, `fcntl.flock`) — no outer `flock` wrapper anymore.
+  // See `low-priority-spawn.ts`'s `EXTRACTOR_BUSY_EXIT_CODE` doc comment and
+  // `scripts/box_lock.py`'s module comment for the round-1 gaps this closes
+  // (orphan lock holder on a killed extractor, a second wait-timeout clock,
+  // an opaque exit code).
+  const wrapped = withLowPriority(bin, args);
   const result = spawnSync(wrapped.bin, wrapped.args, {
     encoding: 'utf8',
     timeout: EXTRACT_TIMEOUT_MS,
     maxBuffer: 64 * 1024 * 1024,
     cwd: path.dirname(script),
   });
-  // The ENOENT remap only ever concerns `nice` failing to exec its target,
-  // regardless of whether `flock` sits outside it — `flock` propagates the
-  // wrapped command's own exit status/stderr verbatim on a non-signal exit.
-  return niceWrapped.bin === 'nice' ? remapNiceExecFailure(result, bin) : result;
+  // The ENOENT remap only ever concerns `nice` failing to exec its target.
+  return wrapped.bin === 'nice' ? remapNiceExecFailure(result, bin) : result;
 }
 
 /**
@@ -1120,6 +1121,9 @@ async function runAnchorDocument(
     result: AutoPersistResult;
     retryCountAtStamp: number;
     previousRetryCount: number;
+    /** W-178c round 2: the row's status BEFORE this attempt's IN_PROGRESS
+     * stamp — restored verbatim on a busy-box revert. */
+    previousStatus: ExtractionStatus;
     stateId?: string;
   }
 ): Promise<{ persisted: boolean }> {
@@ -1191,16 +1195,20 @@ async function runAnchorDocument(
     return { persisted: true };
   }
 
-  // W-178c: box busy is NOT a failure — revert to PENDING with the
-  // pre-attempt retryCount, same shape as the filing-loop busy branch above.
+  // W-178c round 2: box busy is NOT a failure — revert to the row's EXACT
+  // pre-attempt state (status, retryCount, and error untouched), same shape
+  // as the filing-loop busy branch above, and refund both the shared and
+  // anchor-specific spawn budgets this attempt consumed.
   if (outcome.kind === 'busy') {
     result.skipped.push(`${ANCHOR_DOC_TYPE}: another extractor holds the box lock (W-178c)`);
     logger.warn({ ipoId: ipo.id }, 'extractor skipped this cycle: another extractor holds the box lock (W-178c)');
+    result.spawned--;
+    result.anchorsSpawned--;
+    if (deps.anchorSpawnBudget) deps.anchorSpawnBudget.remaining++;
     await deps
       .setDocumentExtractionState({
         documentId: doc.id,
-        status: 'PENDING',
-        error: null,
+        status: ctx.previousStatus,
         retryCount: ctx.previousRetryCount,
       })
       .catch(() => undefined);
@@ -1509,6 +1517,9 @@ export async function processPendingFilings(
       const pdfPath = documentPath(ipo.id, doc.type, doc.sha256 as string, deps.storeDir ?? getStoreDir());
       const previousRetryCount = doc.retryCount ?? 0;
       const revivingAfterManualReview = doc.extractionStatus === 'MANUAL_REVIEW';
+      // W-178c round 2: same "pre-attempt status" capture as the filing loop
+      // above — `doc.extractionStatus` is never mutated here either.
+      const previousStatus = (doc.extractionStatus as ExtractionStatus | null) ?? 'PENDING';
       const newRetryCount = revivingAfterManualReview ? 1 : previousRetryCount + 1;
       doc.retryCount = newRetryCount;
 
@@ -1531,6 +1542,7 @@ export async function processPendingFilings(
         result,
         retryCountAtStamp: newRetryCount,
         previousRetryCount,
+        previousStatus,
         stateId: stateIdByDocType.get(ANCHOR_DOC_TYPE),
       });
       if (outcome.persisted) anyPersisted = true;
@@ -1566,6 +1578,12 @@ export async function processPendingFilings(
     // only admits such a document once the encoded version no longer matches.
     const previousRetryCount = doc.retryCount ?? 0;
     const revivingAfterManualReview = doc.extractionStatus === 'MANUAL_REVIEW';
+    // W-178c round 2: the document's own status BEFORE this attempt's
+    // IN_PROGRESS stamp — `doc.extractionStatus` is never mutated in this
+    // loop (only `doc.retryCount` is), so it still holds the pre-attempt
+    // value when the busy-revert branch below reads it. A row revived from
+    // MANUAL_REVIEW must go back to MANUAL_REVIEW on a busy box, not PENDING.
+    const previousStatus = (doc.extractionStatus as ExtractionStatus | null) ?? 'PENDING';
     const newRetryCount = revivingAfterManualReview ? 1 : previousRetryCount + 1;
     // Mutate the shared reference: the W-45 and persist failure paths below
     // read `doc.retryCount` for the SAME "already counted at the stamp" value
@@ -1587,20 +1605,33 @@ export async function processPendingFilings(
     const run = deps.runExtractor({ pdfPath, docType, sme, issueSizeRupees });
 
     if (isExtractorFailure(run)) {
-      // W-178c: box busy is NOT a failure of this document — revert the
-      // IN_PROGRESS stamp taken above back to PENDING with the retryCount it
-      // had before this attempt, so the next cycle sees an unchanged
-      // document (no backoff, no hard-failure marker, no FAILED row).
+      // W-178c round 2: box busy is NOT a failure of this document — revert
+      // the IN_PROGRESS stamp taken above to EXACTLY the row's pre-attempt
+      // state, so the next cycle sees a genuinely unchanged document:
+      //  - status: `previousStatus` (never a hardcoded 'PENDING') — a row
+      //    revived from MANUAL_REVIEW (`revivingAfterManualReview`) goes
+      //    back to MANUAL_REVIEW, not PENDING, since a busy box told us
+      //    nothing about whether the row still needs a human;
+      //  - error: omitted (not `null`) — `buildExtractionStatePatch` only
+      //    writes `extractionError` when the key is present at all, so
+      //    omitting it (rather than passing `null`) leaves whatever error
+      //    string the row already carried (e.g. a `HARD_FAILURE:N` marker on
+      //    a FAILED row) untouched instead of clobbering it with NULL;
+      //  - retryCount: `previousRetryCount`, as before.
+      // Also refunds the per-cycle spawn budget this attempt consumed above
+      // — a contended cycle must not burn a spawn slot on an attempt that
+      // never actually ran.
       if (run.busy) {
         result.skipped = [
           ...result.skipped,
           `${docType}: another extractor holds the box lock (W-178c)`,
         ];
+        result.spawned--;
+        if (deps.spawnBudget) deps.spawnBudget.remaining++;
         try {
           await deps.setDocumentExtractionState({
             documentId: doc.id,
-            status: 'PENDING',
-            error: null,
+            status: previousStatus,
             retryCount: previousRetryCount,
           });
         } catch {

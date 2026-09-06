@@ -15,15 +15,14 @@ vi.mock('node:child_process', () => ({ spawnSync: (...args: unknown[]) => spawnS
  */
 const lowPrioritySpawnMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
 /**
- * W-178c: `withBoxLock` defaults to a pass-through the same way
- * `withLowPriority` does — the box-lock-specific behaviour (flock wrap,
- * status-75 classification) is exercised in its own describe block below via
- * `boxLockMock`.
+ * W-178c round 2: the box lock moved INSIDE the python extractor process
+ * (`scripts/box_lock.py`) — there is no `withBoxLock` spawn wrap left to
+ * mock. `EXTRACTOR_BUSY_EXIT_CODE` (75) is still the contract: python now
+ * calls `sys.exit(75)` itself, and this file's status-75 tests import the
+ * constant below rather than hardcoding a bare literal.
  */
-const boxLockMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
 vi.mock('../../../src/utils/low-priority-spawn.js', () => ({
   withLowPriority: (...args: unknown[]) => lowPrioritySpawnMock(...(args as [string, string[]])),
-  withBoxLock: (...args: unknown[]) => boxLockMock(...(args as [string, string[]])),
   EXTRACTOR_BUSY_EXIT_CODE: 75,
 }));
 
@@ -93,6 +92,7 @@ import {
 import type { FilingExtraction, PersistFilingSummary } from '../../../src/services/filing-persister.js';
 import logger from '../../../src/utils/logger.js';
 import { documentPath } from '../../../src/services/document-store.js';
+import { EXTRACTOR_BUSY_EXIT_CODE } from '../../../src/utils/low-priority-spawn.js';
 
 const SHA = 'a'.repeat(64);
 const IPO = { id: 'ipo-1', companyName: 'Rays Of Belief Ltd', slug: 'rays-of-belief-ltd', segment: 'MAINBOARD' };
@@ -492,8 +492,10 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     expect(failedCall[0]).not.toHaveProperty('retryCount');
   });
 
-  it('W-178c: a busy (box-lock) extractor result reverts the document to PENDING, unchanged — no FAILED row, no retryCount bump', async () => {
+  it('W-178c round 2: a busy (box-lock) extractor result reverts a PENDING document to PENDING, unchanged, and refunds the spawn budget', async () => {
+    const spawnBudget = { remaining: 3 };
     const d = deps({
+      spawnBudget,
       runExtractor: vi.fn(() => ({
         ok: false as const,
         error: 'extractor skipped this cycle: another extractor holds the box lock (W-178c)',
@@ -504,22 +506,114 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     const result = await processPendingFilings(IPO, d);
 
     expect(result.failed).toBe(0);
+    expect(result.spawned).toBe(0);
     expect(result.skipped.some((s) => s.includes('box lock (W-178c)'))).toBe(true);
+    // The spawn budget consumed before the (never-actually-run) attempt is
+    // refunded — a contended cycle does not burn its budget on nothing.
+    expect(spawnBudget.remaining).toBe(3);
 
     const eWrites = recordedSteps.flatMap((r) => r.writes).filter((w) => w.stepId.startsWith('E'));
     expect(eWrites).toHaveLength(0);
 
     // IN_PROGRESS (retryCount 1) is stamped before the spawn, same as any
-    // other attempt — then reverted straight back to PENDING with the
-    // PRE-attempt retryCount (0), never a FAILED status at all.
+    // other attempt — then reverted straight back to the row's PRE-attempt
+    // status (PENDING here) with the PRE-attempt retryCount (0), never a
+    // FAILED status at all, and with NO `error` key at all (never `null`) —
+    // omitting it leaves whatever error string the row already carried
+    // untouched instead of clobbering it.
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
       expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 1 })
     );
-    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
-      expect.objectContaining({ documentId: 'doc-1', status: 'PENDING', error: null, retryCount: 0 })
+    const revertCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'PENDING'
     );
+    expect(revertCall[0]).toMatchObject({ documentId: 'doc-1', status: 'PENDING', retryCount: 0 });
+    expect(revertCall[0]).not.toHaveProperty('error');
     expect(
       (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.some((c) => c[0].status === 'FAILED')
+    ).toBe(false);
+  });
+
+  it('W-178c round 2: a busy result on a FAILED row (carrying HARD_FAILURE:2) restores FAILED with the exact same error string and retryCount, and refunds the spawn budget', async () => {
+    const spawnBudget = { remaining: 2 };
+    const hardFailureError = markHardFailure(markHardFailure(null, 'extractor: killed'), 'extractor: killed again');
+    // Past the 24h hard-failure floor (`HARD_FAILURE_MIN_BACKOFF_MS`) so
+    // `documentExtractionBlocked` admits this row into `pendingForThisCall`
+    // in the first place — otherwise the busy-revert code under test never
+    // runs at all.
+    const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    const d = deps({
+      spawnBudget,
+      loadDocuments: vi.fn(async () => [
+        doc({
+          extractionStatus: 'FAILED',
+          retryCount: 5,
+          extractionError: hardFailureError,
+          updatedAt: twentyFiveHoursAgo,
+        }),
+      ]),
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'extractor skipped this cycle: another extractor holds the box lock (W-178c)',
+        busy: true,
+      })),
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.failed).toBe(0);
+    expect(spawnBudget.remaining).toBe(2);
+
+    const revertCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(revertCall).toBeDefined();
+    expect(revertCall[0]).toMatchObject({ documentId: 'doc-1', status: 'FAILED', retryCount: 5 });
+    // The error key is OMITTED (not re-written, not nulled) — the row's own
+    // HARD_FAILURE:2 marker (needed by `documentExtractionBlocked`'s 24h
+    // backoff gate) survives the busy revert untouched.
+    expect(revertCall[0]).not.toHaveProperty('error');
+  });
+
+  it('W-178c round 2: a busy result on a MANUAL_REVIEW-revived row returns it to its prior parked state, not PENDING', async () => {
+    const spawnBudget = { remaining: 4 };
+    // Encoded at an OLDER version than EXTRACTOR_VERSION — `documentExtractionBlocked`
+    // only revives a MANUAL_REVIEW row when the encoded version no longer
+    // matches the current one (a same-version encoding stays permanently
+    // blocked, per the (g) tests above).
+    const parkedError = withBlockedVersion('operator flagged for manual check', 'old-version');
+    const d = deps({
+      spawnBudget,
+      loadDocuments: vi.fn(async () => [
+        doc({ extractionStatus: 'MANUAL_REVIEW', retryCount: 10, extractionError: parkedError }),
+      ]),
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'extractor skipped this cycle: another extractor holds the box lock (W-178c)',
+        busy: true,
+      })),
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.failed).toBe(0);
+    expect(spawnBudget.remaining).toBe(4);
+
+    // A MANUAL_REVIEW revival stamps retryCount 1 at IN_PROGRESS (transition
+    // 6), then the busy revert restores the row to MANUAL_REVIEW with the
+    // ORIGINAL pre-attempt retryCount (10) — never PENDING, and never the
+    // in-flight revival's retryCount.
+    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 1 })
+    );
+    const revertCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'MANUAL_REVIEW'
+    );
+    expect(revertCall).toBeDefined();
+    expect(revertCall[0]).toMatchObject({ documentId: 'doc-1', status: 'MANUAL_REVIEW', retryCount: 10 });
+    expect(revertCall[0]).not.toHaveProperty('error');
+    expect(
+      (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.some((c) => c[0].status === 'PENDING')
     ).toBe(false);
   });
 
@@ -810,8 +904,8 @@ describe('defaultExtractorRunner — W-137 hard-failure classification', () => {
     expect((result as { hardFailure?: boolean }).hardFailure).toBe(false);
   });
 
-  it('W-178c: status 75 (flock -E, box lock timed out) is classified as busy — not a hard failure', () => {
-    spawnSyncMock.mockReturnValueOnce({ status: 75, stdout: '', stderr: '' });
+  it('W-178c round 2: EXTRACTOR_BUSY_EXIT_CODE (box_lock.py exits this on a timed-out lock) is classified as busy — not a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: EXTRACTOR_BUSY_EXIT_CODE, stdout: '', stderr: '' });
 
     const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
 
@@ -1779,8 +1873,12 @@ describe('W-142 — the outcome map written to documents.extraction_status', () 
     expect(h3.length).toBeGreaterThan(0);
   });
 
-  it('W-178c: a busy (box-lock) outcome reverts the anchor document to PENDING — not FAILED, no retryCount bump', async () => {
+  it('W-178c round 2: a busy (box-lock) outcome reverts a PENDING anchor document to PENDING and refunds both spawn budgets', async () => {
+    const spawnBudget = { remaining: 3 };
+    const anchorSpawnBudget = { remaining: 2 };
     const d = anchorDeps({
+      spawnBudget,
+      anchorSpawnBudget,
       runAnchorPersist: vi.fn(async () => ({
         kind: 'busy' as const,
         reason: 'anchor: anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)',
@@ -1789,12 +1887,43 @@ describe('W-142 — the outcome map written to documents.extraction_status', () 
     const r = await processPendingFilings(IPO, d);
 
     expect(r.failed).toBe(0);
+    expect(r.spawned).toBe(0);
+    expect(r.anchorsSpawned).toBe(0);
     expect(r.skipped.some((s) => s.includes('box lock (W-178c)'))).toBe(true);
     expect(stateCalls(d).some((c) => c.status === 'FAILED')).toBe(false);
     expect(stateCalls(d).some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
     const pendingCall = stateCalls(d).find((c) => c.status === 'PENDING');
     expect(pendingCall).toBeDefined();
     expect(pendingCall.retryCount).toBe(0);
+    expect(pendingCall).not.toHaveProperty('error');
+    // Both the shared and anchor-specific per-cycle spawn budgets are
+    // refunded — a contended cycle must not burn either budget on an
+    // attempt that never actually ran.
+    expect(spawnBudget.remaining).toBe(3);
+    expect(anchorSpawnBudget.remaining).toBe(2);
+  });
+
+  it('W-178c round 2: a busy outcome on a MANUAL_REVIEW-revived anchor row returns it to its prior parked state, not PENDING', async () => {
+    // Encoded at an OLDER version than EXTRACTOR_VERSION, same reasoning as
+    // the filing-loop MANUAL_REVIEW-revival test above.
+    const parkedError = withBlockedVersion('anchor: operator flagged for manual check', 'old-version');
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [
+        anchorDoc({ extractionStatus: 'MANUAL_REVIEW', retryCount: 10, extractionError: parkedError }),
+      ]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'busy' as const,
+        reason: 'anchor: anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)',
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    expect(r.failed).toBe(0);
+    expect(stateCalls(d).some((c) => c.status === 'PENDING')).toBe(false);
+    const manualReviewCall = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(manualReviewCall).toBeDefined();
+    expect(manualReviewCall).toMatchObject({ documentId: 'anchor-1', retryCount: 10 });
+    expect(manualReviewCall).not.toHaveProperty('error');
   });
 
   it('empty pages (W-139 shape) -> MANUAL_REVIEW naming the OCR heuristic, never an endless retry', async () => {

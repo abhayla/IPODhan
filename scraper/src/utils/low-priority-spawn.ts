@@ -128,104 +128,24 @@ export function withLowPriority(
 
 /**
  * W-178c: at most one PDF extractor runs on the box at a time, across BOTH
- * the prod and staging pm2 slots. `withLowPriority` (above) only asks the
- * scheduler to prefer other processes; it does nothing once TWO extractors
- * are both runnable on a 2-vCPU box — measured 2026-09-06: two extractors at
- * ~100% CPU each starved nginx/Next long enough for 522s, even with one of
- * them niced. A box-wide advisory lock closes that gap with no new
- * dependency: `flock` (util-linux, present on every Ubuntu box this app
- * deploys to) already does cross-process mutual exclusion on a lock file.
- *
- * `flock -w <wait> -E <conflict-exit-code> <lockfile> <bin> <args...>` waits
- * up to `<wait>` seconds for the lock, then EITHER runs `<bin>` under the
- * held lock (propagating its exit status verbatim) OR — if the wait times
- * out — exits with `<conflict-exit-code>` itself, having never exec'd `bin`
- * at all. `-E` (util-linux `--conflict-exit-code`) is what makes that exit
- * code distinguishable from an ordinary nonzero exit from the wrapped
- * command; the default (1) collides with a real python failure. 75 is
- * chosen because it is outside the low range a CLI tool would plausibly use
- * on its own (sysexits.h reserves 64-78 for this purpose; nothing in this
- * codebase's python extractors uses it) — callers key off
- * `EXTRACTOR_BUSY_EXIT_CODE`, never a bare literal.
+ * the prod and staging pm2 slots — round 2: the lock now lives INSIDE the
+ * python extractor process itself (`scraper/scripts/box_lock.py`,
+ * `fcntl.flock`), not around the spawn. Round 1 wrapped the spawn with an
+ * external `flock -w <wait> -E <conflict-exit-code> <lockfile> <bin> ...`;
+ * the review found that wrapping from the OUTSIDE leaves an orphaned
+ * `flock` process holding the lock when the wrapped extractor is killed
+ * (SIGKILL/timeout), ties the wait to a SEPARATE clock from Node's own
+ * spawn timeout, and only lets Node see `flock`'s exit code rather than a
+ * plain exit from the python process itself. `scripts/box_lock.py`'s module
+ * comment has the full writeup. `EXTRACTOR_BUSY_EXIT_CODE` is unchanged —
+ * python now calls `sys.exit(75)` directly instead of `flock -E 75` doing
+ * it on its behalf, so the CONTRACT callers depend on (75 means "busy this
+ * cycle, not a real failure") is exactly the same, just literally true now
+ * instead of true-by-flock-convention.
  */
 
-/** util-linux `flock --conflict-exit-code`: reserved for "lock not acquired
- * within the wait window", never emitted by a python extractor on its own. */
+/** Reserved for "lock not acquired within the wait window" — sysexits.h
+ * reserves 64-78 for this purpose and nothing in this codebase's python
+ * extractors otherwise uses it. Callers key off this constant, never a bare
+ * literal. */
 export const EXTRACTOR_BUSY_EXIT_CODE = 75;
-
-const DEFAULT_EXTRACTOR_BOX_LOCK = '/var/www/ipodhan/shared/extractor.lock';
-const DEFAULT_EXTRACTOR_LOCK_WAIT_S = 120;
-
-/** The shared-across-slots lock file. `shared/` already exists on the VPS
- * (both the prod and staging deploy targets symlink `current` into it), so
- * no new directory needs provisioning. Override for tests / non-standard
- * layouts via `EXTRACTOR_BOX_LOCK`. */
-export function resolveBoxLockPath(env: NodeJS.ProcessEnv = process.env): string {
-  const raw = env.EXTRACTOR_BOX_LOCK?.trim();
-  return raw ? raw : DEFAULT_EXTRACTOR_BOX_LOCK;
-}
-
-/** How long a spawn waits for the box lock before giving up as "busy" this
- * cycle. Clamped to a non-negative integer so a bad env value can never
- * produce an invalid `flock -w` argument. */
-export function resolveLockWaitSeconds(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.EXTRACTOR_LOCK_WAIT_S;
-  const parsed = raw !== undefined ? Number.parseInt(raw, 10) : DEFAULT_EXTRACTOR_LOCK_WAIT_S;
-  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_EXTRACTOR_LOCK_WAIT_S;
-  return parsed;
-}
-
-let cachedFlockOnPath: boolean | undefined;
-let warnedFlockMissing = false;
-
-/** Mirrors `resetNiceOnPathCache` — same reasoning, separate cache (the two
- * binaries can be present/absent independently on a stripped image). */
-export function resetFlockOnPathCache(): void {
-  cachedFlockOnPath = undefined;
-  warnedFlockMissing = false;
-}
-
-function flockResolvesOnPath(
-  env: NodeJS.ProcessEnv = process.env,
-  pathExists: (p: string) => boolean = existsSync,
-  logger: WarnLogger = defaultLogger
-): boolean {
-  if (cachedFlockOnPath !== undefined) return cachedFlockOnPath;
-  const pathVar = env.PATH ?? env.Path ?? '';
-  cachedFlockOnPath = pathVar
-    .split(POSIX_PATH_DELIMITER)
-    .filter(Boolean)
-    .some((dir) => pathExists(path.posix.join(dir, 'flock')));
-  if (!cachedFlockOnPath && !warnedFlockMissing) {
-    warnedFlockMissing = true;
-    logger.warn('flock not found on PATH; extractors are not box-locked (W-178c)');
-  }
-  return cachedFlockOnPath;
-}
-
-/**
- * Returns `{ bin: 'flock', args: ['-w', wait, '-E', '75', lockfile, bin,
- * ...args] }` when running on Linux with `flock` available on PATH;
- * otherwise returns `{ bin, args }` unchanged — same fail-open shape as
- * `withLowPriority`. Compose as `withBoxLock(...Object.values(withLowPriority(bin, args)))`
- * shape (bin+args) so the box lock wraps the OUTSIDE of the nice wrap:
- * `flock(nice(python))` — the lock must be held for the process's whole
- * scheduling lifetime, nice or not.
- */
-export function withBoxLock(
-  bin: string,
-  args: string[],
-  env: NodeJS.ProcessEnv = process.env,
-  pathExists: (p: string) => boolean = existsSync,
-  logger: WarnLogger = defaultLogger
-): LowPrioritySpawn {
-  if (process.platform !== 'linux' || !flockResolvesOnPath(env, pathExists, logger)) {
-    return { bin, args };
-  }
-  const lockfile = resolveBoxLockPath(env);
-  const waitS = String(resolveLockWaitSeconds(env));
-  return {
-    bin: 'flock',
-    args: ['-w', waitS, '-E', String(EXTRACTOR_BUSY_EXIT_CODE), lockfile, bin, ...args],
-  };
-}

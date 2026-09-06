@@ -37,7 +37,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { documentPath, getStoreDir } from '../services/document-store';
 import { parseAnchorReport } from './anchor-report-parser';
 import { isMemoryAbortStderr } from '../services/memory-abort-stderr.js';
-import { withLowPriority, withBoxLock, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
+import { withLowPriority, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
 
 /**
  * Individual anchor investor data
@@ -385,12 +385,13 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
   // is unaffected either way). This site has no PYTHON_BIN/ENOENT-retry to
   // preserve (unlike `filing-auto-persist.ts`'s `spawnExtractor`) — it
   // always spawns plain `'python'`.
-  // W-178c: box-lock wraps the OUTSIDE of the nice wrap — flock(nice(python)) —
-  // same composition and lock file as `filing-auto-persist.ts`'s
-  // `spawnExtractor`, so a prod extraction and a staging anchor scrape (or
-  // vice versa) never run at once.
-  const niceWrapped = withLowPriority('python', [SIDECAR, pdfPath]);
-  const wrapped = withBoxLock(niceWrapped.bin, niceWrapped.args);
+  // W-178c round 2: the box lock now lives INSIDE `anchor_report_text.py`
+  // (`box_lock.acquire`, `fcntl.flock`) — no outer `flock` wrapper anymore.
+  // See `low-priority-spawn.ts`'s `EXTRACTOR_BUSY_EXIT_CODE` doc comment and
+  // `scripts/box_lock.py`'s module comment for why moving the lock into the
+  // process fixes the orphan-holder / dual-timeout / opaque-exit-code gaps
+  // the outer-wrap design had.
+  const wrapped = withLowPriority('python', [SIDECAR, pdfPath]);
   const res = spawnSync(wrapped.bin, wrapped.args, {
     encoding: 'utf8',
     timeout: SIDECAR_TIMEOUT_MS,
