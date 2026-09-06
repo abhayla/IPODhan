@@ -4,7 +4,30 @@ import {
   resolveDatabaseName,
   PRODUCTION_DATABASE_NAME,
   dropIpoCacheKeys,
+  validateOverwriteAboveFloorRequiresSlug,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
+
+describe('validateOverwriteAboveFloorRequiresSlug (round-4: refuse a whole-table overwrite)', () => {
+  it('refuses --overwrite-above-floor with no --slug', () => {
+    const v = validateOverwriteAboveFloorRequiresSlug(true, null);
+    expect(v.ok).toBe(false);
+    expect(v.message).toMatch(/requires --slug/);
+  });
+
+  it('refuses --overwrite-above-floor with an empty --slug list', () => {
+    const v = validateOverwriteAboveFloorRequiresSlug(true, []);
+    expect(v.ok).toBe(false);
+  });
+
+  it('allows --overwrite-above-floor when --slug names at least one row', () => {
+    const v = validateOverwriteAboveFloorRequiresSlug(true, ['windlas-biotech-ipo']);
+    expect(v.ok).toBe(true);
+  });
+
+  it('allows no --overwrite-above-floor regardless of --slug (FLAG-only recheck run)', () => {
+    expect(validateOverwriteAboveFloorRequiresSlug(false, null).ok).toBe(true);
+  });
+});
 
 describe('dropIpoCacheKeys (round-N residue: cache must be dropped by the tool, not by hand)', () => {
   it('deletes both the slug and id detail-cache keys after an applied write', async () => {
@@ -14,12 +37,21 @@ describe('dropIpoCacheKeys (round-N residue: cache must be dropped by the tool, 
     expect(del).toHaveBeenCalledWith('ipo:slug:ather-energy', 'ipo:id:ipo-123');
   });
 
-  it('is never invoked in dry-run - the write block (and cache drop within it) is gated on APPLY', () => {
-    // Structural guard: the backfill's main() only reaches the write/cache-drop
-    // code inside `if (!APPLY) continue;`-gated logic, so dropIpoCacheKeys has
-    // no call site reachable without --apply. Verified here as a doc-level
-    // assertion since main() itself isn't unit-tested (see file header).
-    expect(dropIpoCacheKeys).toBeInstanceOf(Function);
+  it('source-level proof: the only call site of dropIpoCacheKeys() sits AFTER the `if (!APPLY) continue;` dry-run gate (round-4: renamed from a no-op instanceof-Function check)', async () => {
+    // main() itself isn't unit-tested (network/DB side effects — see file
+    // header), so this asserts the REAL thing statically: dropIpoCacheKeys's
+    // one call site in the source text appears textually AFTER the dry-run
+    // gate that `continue`s past it, which is what makes it unreachable
+    // without --apply. A future edit that moves the call before the gate
+    // (or removes the gate) turns this red.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = fileURLToPath(new URL('../../../scripts/backfill-issue-size-chittorgarh-detail.ts', import.meta.url));
+    const source = readFileSync(path, 'utf8');
+    const applyGateIdx = source.indexOf('if (!APPLY) continue;');
+    const callSiteIdx = source.indexOf('await dropIpoCacheKeys(');
+    expect(applyGateIdx).toBeGreaterThan(-1);
+    expect(callSiteIdx).toBeGreaterThan(applyGateIdx);
   });
 });
 

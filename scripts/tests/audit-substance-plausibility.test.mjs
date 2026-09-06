@@ -79,52 +79,97 @@ test('audit-substance-plausibility.mjs prints "evaluated N rows"', () => {
 
 // Round-3 residue: the `rows` query selected `i.issue_type`, but `issue_type`
 // is a column of `ipo_details`, NOT `ipos` — Postgres error 42703 on real
-// (staging) data, invisible to the coverage test above (which only checks a
-// column is selected SOMEWHERE, not that its alias is declared). This test
-// statically parses the declared table aliases (FROM/JOIN <table> <alias>,
-// including LATERAL subquery aliases) and asserts every `<alias>.<column>`
-// reference in the query uses one of them — `i.issue_type` would have failed
-// this test before the column existed on `i` at all.
-function extractDeclaredAliases(sql) {
-  const aliases = new Set();
-  // `FROM ipos i` / `JOIN listing_performance lp` / `) d ON true`
-  const fromJoinRe = /\b(?:FROM|JOIN)\s+[a-z_][a-z0-9_]*\s+(?:AS\s+)?([a-z][a-z0-9_]*)\b/gi;
+// (staging) data. Round 4: an alias-DECLARATION test (does the query declare
+// an "i" alias at all) cannot catch this — `i` WAS declared, it just doesn't
+// have that column. This is a real COLUMN-MEMBERSHIP check instead: parse
+// the actual `ipos`/`listing_performance` column definitions out of
+// packages/shared/src/db/schema.ts (the single source of truth) and assert
+// every `i.<col>` / `lp.<col>` referenced in the query is a real column of
+// that table. Reintroducing `i.issue_type` must turn this red.
+const SCHEMA_FILE = path.join(__dirname, '..', '..', 'packages', 'shared', 'src', 'db', 'schema.ts');
+
+/**
+ * Extract the SQL column names declared inside one `pgTable(...)` call,
+ * identified by its exported const name (e.g. `ipos`, `listingPerformance`).
+ * Strips comments first (stray braces in prose would unbalance a naive brace
+ * counter), then balances braces from the first `{` after `pgTable(` to find
+ * the columns-object boundary — this correctly ignores the nested `{ length:
+ * 255 }` / `.$type<...>()` shapes without needing a real parser.
+ */
+function extractTableColumns(schemaSource, constName) {
+  const noComments = schemaSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+  const declMarker = `export const ${constName} = pgTable(`;
+  const declStart = noComments.indexOf(declMarker);
+  assert.ok(declStart !== -1, `could not find "export const ${constName} = pgTable(" in schema.ts`);
+  const braceStart = noComments.indexOf('{', declStart);
+  assert.ok(braceStart !== -1, `could not find the columns object opening brace for ${constName}`);
+
+  let depth = 0;
+  let end = -1;
+  for (let i = braceStart; i < noComments.length; i++) {
+    if (noComments[i] === '{') depth++;
+    else if (noComments[i] === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  assert.ok(end !== -1, `unbalanced braces while scanning ${constName}'s columns object`);
+  const block = noComments.slice(braceStart + 1, end);
+
+  // Generic, not an allowlist of builder names — every Drizzle column
+  // definition is `<builderFn>('sql_col_name', ...)` (varchar/uuid/integer/
+  // timestamp/jsonb/*Enum/etc.), and this codebase's enum builders are
+  // per-domain names (e.g. segmentEnum, offeringTypeEnum) an allowlist would
+  // have to be kept in sync with by hand. A bare `'...'` option value (e.g.
+  // `{ onDelete: 'cascade' }`, `mode: 'number'`) never has an identifier
+  // directly followed by `(` immediately before its quote, so this stays
+  // precise without one.
+  const columns = new Set();
+  const colRe = /\b[A-Za-z_][A-Za-z0-9_]*\(\s*'([a-z][a-z0-9_]*)'/g;
   let m;
-  while ((m = fromJoinRe.exec(sql)) !== null) aliases.add(m[1].toLowerCase());
-  // `) d ON true` — LATERAL subquery close-paren alias
-  const lateralRe = /\)\s+([a-z][a-z0-9_]*)\s+ON\b/gi;
-  while ((m = lateralRe.exec(sql)) !== null) aliases.add(m[1].toLowerCase());
-  return aliases;
+  while ((m = colRe.exec(block)) !== null) columns.add(m[1]);
+  return columns;
 }
 
-function extractReferencedAliases(sql) {
+function extractColumnRefs(sql, alias) {
   const refs = new Set();
-  const re = /\b([a-z][a-z0-9_]*)\.[a-z_][a-z0-9_]*/gi;
+  const re = new RegExp(`\\b${alias}\\.([a-z_][a-z0-9_]*)`, 'g');
   let m;
-  const sqlKeywordAliases = new Set(['select', 'from', 'join', 'where', 'lateral', 'left', 'inner']);
-  while ((m = re.exec(sql)) !== null) {
-    const alias = m[1].toLowerCase();
-    if (!sqlKeywordAliases.has(alias)) refs.add(alias);
-  }
+  while ((m = re.exec(sql)) !== null) refs.add(m[1]);
   return refs;
 }
 
-test('every <alias>.<column> in the rows query references a declared table/LATERAL alias', () => {
+test('every i.<col> in the rows query is a real column of the ipos table (schema.ts SSOT)', () => {
   const auditSource = readFileSync(AUDIT_FILE, 'utf8');
+  const schemaSource = readFileSync(SCHEMA_FILE, 'utf8');
   const rowsSql = extractRowsSql(auditSource);
-  const declared = extractDeclaredAliases(rowsSql);
-  // 'i', 'lp', 'd' must all be present given the current shape - a canary
-  // that the regex above still matches the real query shape.
-  assert.ok(declared.has('i'), 'expected alias "i" (ipos) to be declared in FROM/JOIN');
-  assert.ok(declared.has('lp'), 'expected alias "lp" (listing_performance) to be declared in FROM/JOIN');
-  assert.ok(declared.has('d'), 'expected alias "d" (LATERAL ipo_details) to be declared');
 
-  const referenced = extractReferencedAliases(rowsSql);
-  const undeclared = [...referenced].filter((a) => !declared.has(a));
+  const iposColumns = extractTableColumns(schemaSource, 'ipos');
+  assert.ok(iposColumns.size > 20, `expected many ipos columns, parsed only ${iposColumns.size} — extractor likely drifted from schema.ts's shape`);
+  assert.ok(iposColumns.has('segment'), 'canary: "segment" column not found on ipos — column extraction regex drifted');
+  assert.ok(!iposColumns.has('issue_type'), 'canary: "issue_type" unexpectedly found on ipos in schema.ts — has the schema changed?');
+
+  const referenced = extractColumnRefs(rowsSql, 'i');
+  const bogus = [...referenced].filter((c) => !iposColumns.has(c));
   assert.deepEqual(
-    undeclared,
+    bogus,
     [],
-    `rows query references alias(es) not declared in FROM/JOIN: ${undeclared.join(', ')} ` +
-      '(e.g. i.issue_type when issue_type actually lives on ipo_details, aliased d)'
+    `rows query references i.<col> not present on the real ipos table: ${bogus.join(', ')} ` +
+      '(e.g. i.issue_type — that column lives on ipo_details, selected via the LATERAL alias d)'
   );
+});
+
+test('every lp.<col> in the rows query is a real column of the listing_performance table (schema.ts SSOT)', () => {
+  const auditSource = readFileSync(AUDIT_FILE, 'utf8');
+  const schemaSource = readFileSync(SCHEMA_FILE, 'utf8');
+  const rowsSql = extractRowsSql(auditSource);
+
+  const lpColumns = extractTableColumns(schemaSource, 'listingPerformance');
+  assert.ok(lpColumns.size > 5, `expected several listing_performance columns, parsed only ${lpColumns.size}`);
+
+  const referenced = extractColumnRefs(rowsSql, 'lp');
+  const bogus = [...referenced].filter((c) => !lpColumns.has(c));
+  assert.deepEqual(bogus, [], `rows query references lp.<col> not present on listing_performance: ${bogus.join(', ')}`);
 });

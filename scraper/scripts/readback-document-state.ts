@@ -23,6 +23,13 @@
  */
 
 import { writeFileSync } from 'node:fs';
+import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+
+// GitHub #28: `options: '-c timezone=UTC'` on the Pool pins the SESSION to
+// UTC; this pins the CLIENT-SIDE parse of naive `timestamp` columns read back
+// as UTC regardless of process TZ — both are required, one covers writes/now(),
+// the other covers reads (round-4 pool-utc-pin.test.ts requires both).
+configureUtcTimestampParsing();
 
 export interface ReadbackRow {
   company_name: string;

@@ -149,6 +149,15 @@ export function decideIssueSizeRepair(input: {
   // mode === 'above-floor': rows that already clear the segment floor but may
   // still carry the WRONG unit/figure (Windlas/AAA/Induss/Banganga/Sanmitra
   // class) — the below-floor gate above is blind to these by construction.
+  //
+  // CAVEAT (round 4): a >40% divergence FLAG is not always a wrong stored
+  // value — some IPOs legitimately publish a fresh-issue-only total on one
+  // page and a total-incl-OFS figure on another (the "Meesho-type" shape),
+  // so the two numbers can disagree by design, not by corruption.
+  // --overwrite-above-floor writes EVERY flagged row in the run with no
+  // per-row human check, so callers MUST triage with --slug first — see
+  // validateOverwriteAboveFloorRequiresSlug(), which refuses a whole-table
+  // overwrite.
   if (input.sourced === null) {
     return { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
   }
@@ -256,10 +265,46 @@ const FISCAL_YEARS = [
   { year: 2020, range: '2020-21' },
 ];
 
+/**
+ * Round-4: --overwrite-above-floor writes EVERY flagged row in one run — but
+ * a FLAG can be a legitimate divergence (fresh-issue-only vs total-incl-OFS
+ * figures, the "Meesho-type" shape), not a wrong value. Requiring --slug
+ * forces a human to triage the flagged list first and name exactly which
+ * rows to overwrite, instead of blindly overwriting a whole table's worth of
+ * FLAGs — some of which may be correct as stored. Pure for unit testing.
+ */
+export function validateOverwriteAboveFloorRequiresSlug(
+  overwriteAboveFloor: boolean,
+  slugs: string[] | null
+): { ok: boolean; message?: string } {
+  if (overwriteAboveFloor && (!slugs || slugs.length === 0)) {
+    return {
+      ok: false,
+      message:
+        '--overwrite-above-floor requires --slug a,b,c — refusing a whole-table overwrite. ' +
+        'A FLAG can be a legitimate fresh-issue-vs-total (incl. OFS) divergence, not a wrong value ' +
+        '(the "Meesho-type" shape) — triage the flagged list first, then re-run naming exactly which rows to write.',
+    };
+  }
+  return { ok: true };
+}
+
 async function main() {
   console.log('='.repeat(80));
   console.log(`ISSUE-SIZE BACKFILL (Chittorgarh detail pages, W-177 repair) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  const overwriteGuard = validateOverwriteAboveFloorRequiresSlug(OVERWRITE_ABOVE_FLOOR, SLUGS);
+  if (!overwriteGuard.ok) {
+    console.error(`backfill-issue-size: ${overwriteGuard.message}`);
+    process.exit(1);
+  }
+  if (RECHECK_ABOVE_FLOOR) {
+    console.log(
+      'CAVEAT: FLAG can be fresh-issue vs total (incl. OFS): Meesho-type rows diverge legitimately; ' +
+        '--overwrite-above-floor writes EVERY flagged row, so triage with --slug before writing.'
+    );
+  }
 
   const dbName = resolveDatabaseName(process.env);
   console.log(`database: ${dbName || '(unresolved)'}`);
