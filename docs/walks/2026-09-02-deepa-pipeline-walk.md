@@ -937,3 +937,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 04:15 IST tick: prod f9b67d0a (04:03 cycle 79 s, extractionFailed 1), staging f0c66b6b (03:45 cycle 33 s, extractionFailed 2), disk 56%, load 0.4, OOM 0; no worktrees, no agents, 10 pre-existing stashes untouched; nothing running, brief final.
 
 - 04:45 IST tick: prod f9b67d0a (04:30 cycle 43 s, extractionFailed 1), staging f0c66b6b (04:18 cycle 62 s, extractionFailed 2), disk 56%, load 0.2, OOM 0; no worktrees, no agents, 10 pre-existing stashes untouched; nothing running.
+
+- 05:15 IST tick: prod f9b67d0a (05:01 cycle 81 s, extractionFailed 1), staging f0c66b6b (04:45 cycle 28 s, extractionFailed 3; last FAILED line read, see next line if new), disk 56%, load 0.3, OOM 0; no worktrees, no agents, 10 pre-existing stashes untouched; nothing running.
