@@ -3,6 +3,7 @@ import {
   resetNiceOnPathCache,
   resolveExtractorNice,
   withLowPriority,
+  EXTRACTOR_BUSY_EXIT_CODE,
 } from '../../../src/utils/low-priority-spawn';
 
 const REAL_PLATFORM = process.platform;
@@ -93,5 +94,11 @@ describe('withLowPriority', () => {
     withLowPriority('python', ['script.py'], env, fakePathExists, fakeLogger);
 
     expect(fakeLogger.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('EXTRACTOR_BUSY_EXIT_CODE', () => {
+  it('is 75 (sysexits.h reserved range; box_lock.py exits this on a busy lock, W-178c round 2)', () => {
+    expect(EXTRACTOR_BUSY_EXIT_CODE).toBe(75);
   });
 });

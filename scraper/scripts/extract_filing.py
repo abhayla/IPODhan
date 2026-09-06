@@ -22,6 +22,25 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memory_guard  # noqa: E402 — light (no heavy deps), safe to import first
+import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
+
+# W-178c round 2: how long this process waits to acquire the box lock before
+# giving up as "busy" this cycle — kept independent of ANCHOR_LOCK_WAIT_S
+# (anchor_report_text.py) because the two scripts run at very different
+# durations (a full RHP extraction vs. a page-text sidecar); each gets its
+# own wait tuned to its own typical runtime.
+DEFAULT_EXTRACTOR_LOCK_WAIT_S = 90
+
+
+def _extractor_lock_wait_s():
+    raw = os.environ.get("EXTRACTOR_LOCK_WAIT_S")
+    if raw is None:
+        return DEFAULT_EXTRACTOR_LOCK_WAIT_S
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_EXTRACTOR_LOCK_WAIT_S
+    return value if value >= 0 else DEFAULT_EXTRACTOR_LOCK_WAIT_S
 
 
 def _emit_memory_ceiling_and_exit(exc):
@@ -2646,6 +2665,17 @@ def main():
         issue_size_rupees = float(issue_size_arg) if issue_size_arg is not None else None
         positional = [a for a in argv if not a.startswith("--")
                       and a != doc_type and a != issue_size_arg]
+
+        # W-178c round 2: acquire the box lock BEFORE any PDF work (the
+        # `--texts` offline seam included, on the same footing — it still
+        # runs the same money/OCR-adjacent parsing code, just against
+        # already-extracted text). Failure exits 75 (`EXTRACTOR_BUSY_EXIT_CODE`
+        # in `low-priority-spawn.ts`) instead of falling through to `main()`'s
+        # own except block below, which would misreport this as an
+        # extraction bug rather than a busy box.
+        if not box_lock.acquire(box_lock.resolve_lock_path(), _extractor_lock_wait_s()):
+            print("extractor busy: box lock held (W-178c)", file=sys.stderr)
+            sys.exit(75)
 
         if "--texts" in argv:
             with open(positional[0], "r", encoding="utf-8") as fh:

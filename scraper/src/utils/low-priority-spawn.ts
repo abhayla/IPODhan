@@ -125,3 +125,27 @@ export function withLowPriority(
   const level = String(resolveExtractorNice(env));
   return { bin: 'nice', args: ['-n', level, bin, ...args] };
 }
+
+/**
+ * W-178c: at most one PDF extractor runs on the box at a time, across BOTH
+ * the prod and staging pm2 slots — round 2: the lock now lives INSIDE the
+ * python extractor process itself (`scraper/scripts/box_lock.py`,
+ * `fcntl.flock`), not around the spawn. Round 1 wrapped the spawn with an
+ * external `flock -w <wait> -E <conflict-exit-code> <lockfile> <bin> ...`;
+ * the review found that wrapping from the OUTSIDE leaves an orphaned
+ * `flock` process holding the lock when the wrapped extractor is killed
+ * (SIGKILL/timeout), ties the wait to a SEPARATE clock from Node's own
+ * spawn timeout, and only lets Node see `flock`'s exit code rather than a
+ * plain exit from the python process itself. `scripts/box_lock.py`'s module
+ * comment has the full writeup. `EXTRACTOR_BUSY_EXIT_CODE` is unchanged —
+ * python now calls `sys.exit(75)` directly instead of `flock -E 75` doing
+ * it on its behalf, so the CONTRACT callers depend on (75 means "busy this
+ * cycle, not a real failure") is exactly the same, just literally true now
+ * instead of true-by-flock-convention.
+ */
+
+/** Reserved for "lock not acquired within the wait window" — sysexits.h
+ * reserves 64-78 for this purpose and nothing in this codebase's python
+ * extractors otherwise uses it. Callers key off this constant, never a bare
+ * literal. */
+export const EXTRACTOR_BUSY_EXIT_CODE = 75;

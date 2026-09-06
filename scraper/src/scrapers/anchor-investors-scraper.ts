@@ -37,7 +37,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { documentPath, getStoreDir } from '../services/document-store';
 import { parseAnchorReport } from './anchor-report-parser';
 import { isMemoryAbortStderr } from '../services/memory-abort-stderr.js';
-import { withLowPriority } from '../utils/low-priority-spawn.js';
+import { withLowPriority, EXTRACTOR_BUSY_EXIT_CODE } from '../utils/low-priority-spawn.js';
 
 /**
  * Individual anchor investor data
@@ -139,7 +139,11 @@ export type AnchorScrapeFailureKind =
   | 'sidecar_error'
   | 'parse_failed'
   | 'issue_size_conflict'
-  | 'error';
+  | 'error'
+  /** W-178c: the box lock timed out — another extractor (prod or staging)
+   * holds it. NOT a failure of this document: no retry-count bump, no
+   * deterministic-repeat key touched, no backoff. */
+  | 'busy';
 
 /**
  * MAJOR-1 (round 2). The automatic door has ALREADY selected one document row
@@ -165,7 +169,7 @@ export interface AnchorScrapeOutcome {
 /** The sidecar's own outcome, before any anchor-table parsing. */
 export type SidecarFailure = {
   ok: false;
-  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error';
+  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error' | 'busy';
   reason: string;
 };
 export type SidecarResult = { ok: true; pages: string[] } | SidecarFailure;
@@ -381,6 +385,12 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
   // is unaffected either way). This site has no PYTHON_BIN/ENOENT-retry to
   // preserve (unlike `filing-auto-persist.ts`'s `spawnExtractor`) — it
   // always spawns plain `'python'`.
+  // W-178c round 2: the box lock now lives INSIDE `anchor_report_text.py`
+  // (`box_lock.acquire`, `fcntl.flock`) — no outer `flock` wrapper anymore.
+  // See `low-priority-spawn.ts`'s `EXTRACTOR_BUSY_EXIT_CODE` doc comment and
+  // `scripts/box_lock.py`'s module comment for why moving the lock into the
+  // process fixes the orphan-holder / dual-timeout / opaque-exit-code gaps
+  // the outer-wrap design had.
   const wrapped = withLowPriority('python', [SIDECAR, pdfPath]);
   const res = spawnSync(wrapped.bin, wrapped.args, {
     encoding: 'utf8',
@@ -388,6 +398,16 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
   });
+
+  // W-178c: the box lock timed out — another extractor holds it. Classify
+  // BEFORE the memory-abort/timeout/signal checks below: this exit code
+  // (`flock -E`) is unambiguous and never reached python at all, so none of
+  // those checks apply.
+  if (res.status === EXTRACTOR_BUSY_EXIT_CODE) {
+    const reason = 'anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)';
+    logger.warn(`[Anchor Investors] ${reason}`);
+    return { ok: false, kind: 'busy', reason };
+  }
 
   // W-137 shape, applied to THIS sidecar: `memory_guard` exits 3 on the memory
   // ceiling and prints its JSON; a C-level abort (OpenBLAS/OOM-killer) leaves

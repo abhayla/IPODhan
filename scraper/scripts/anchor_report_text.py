@@ -39,9 +39,27 @@ import sys
 # `ocr_pages` — see memory_guard.py's module-level `_pin_blas_thread_env()`.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memory_guard  # noqa: E402
+import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 from json_safe import strip_nul_bytes  # noqa: E402
 
 import pdfplumber  # noqa: E402
+
+# W-178c round 2: this sidecar's own wait, independent of extract_filing.py's
+# EXTRACTOR_LOCK_WAIT_S — the node caller's sidecar timeout is 120s
+# (anchor-investors-scraper.ts), so the lock wait must leave enough of that
+# budget for the actual page-text extraction that follows.
+DEFAULT_ANCHOR_LOCK_WAIT_S = 20
+
+
+def _anchor_lock_wait_s():
+    raw = os.environ.get("ANCHOR_LOCK_WAIT_S")
+    if raw is None:
+        return DEFAULT_ANCHOR_LOCK_WAIT_S
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_ANCHOR_LOCK_WAIT_S
+    return value if value >= 0 else DEFAULT_ANCHOR_LOCK_WAIT_S
 
 COL_GAP_PT = 15.0
 ROW_GAP_PT = 7.0
@@ -632,6 +650,12 @@ def main():
     if not argv:
         print(json.dumps({"error": "usage: anchor_report_text.py <pdf-path> [--no-ocr]"}))
         return 1
+
+    # W-178c round 2: acquire the box lock BEFORE any PDF work.
+    if not box_lock.acquire(box_lock.resolve_lock_path(), _anchor_lock_wait_s()):
+        print("extractor busy: box lock held (W-178c)", file=sys.stderr)
+        sys.exit(75)
+
     try:
         pages = extract(argv[0], ocr="--no-ocr" not in sys.argv[1:])
     except Exception as exc:  # noqa: BLE001 - the caller only needs the reason

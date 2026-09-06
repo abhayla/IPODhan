@@ -48,6 +48,10 @@ export type AnchorAutoOutcome =
   | { kind: 'persisted'; reason: null; summary: AnchorPersistSummary }
   | { kind: 'manual_review'; reason: string; summary?: AnchorPersistSummary }
   | { kind: 'hard_failure'; reason: string }
+  /** W-178c: the box lock timed out — another extractor holds it. NOT a
+   * failure: no retry-count bump, no deterministic-repeat key touched, the
+   * document reverts to PENDING unchanged. */
+  | { kind: 'busy'; reason: string }
   | {
       kind: 'failed';
       reason: string;
@@ -99,6 +103,12 @@ export function classifyAnchorAutoOutcome(input: {
   const { failure, summary } = input;
 
   if (failure) {
+    // W-178c: classified BEFORE `hard_failure`/deterministic handling — busy
+    // is neither. It never reached the parser, so it carries no content
+    // verdict at all.
+    if (failure.kind === 'busy') {
+      return { kind: 'busy', reason: `anchor: ${failure.reason}` };
+    }
     if (failure.kind === 'hard_failure') {
       return { kind: 'hard_failure', reason: `anchor: ${failure.reason}` };
     }

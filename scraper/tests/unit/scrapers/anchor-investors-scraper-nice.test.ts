@@ -6,13 +6,17 @@ const spawnSyncMock = vi.fn();
 vi.mock('child_process', () => ({ spawnSync: (...args: unknown[]) => spawnSyncMock(...args) }));
 
 /** `withLowPriority` mocked at the module boundary, defaulting to a
- * pass-through so tests can assert either shape explicitly per case. */
+ * pass-through so tests can assert either shape explicitly per case.
+ * W-178c round 2: the box lock moved INSIDE the python process
+ * (`scripts/box_lock.py`) — there is no `withBoxLock` wrap left to mock. */
 const lowPrioritySpawnMock = vi.fn((bin: string, args: string[]) => ({ bin, args }));
 vi.mock('../../../src/utils/low-priority-spawn.js', () => ({
   withLowPriority: (...args: unknown[]) => lowPrioritySpawnMock(...(args as [string, string[]])),
+  EXTRACTOR_BUSY_EXIT_CODE: 75,
 }));
 
 import { extractPageTexts } from '../../../src/scrapers/anchor-investors-scraper';
+import { EXTRACTOR_BUSY_EXIT_CODE } from '../../../src/utils/low-priority-spawn';
 
 describe('extractPageTexts — W-178 nice-wrapped sidecar spawn', () => {
   beforeEach(() => {
@@ -59,5 +63,15 @@ describe('extractPageTexts — W-178 nice-wrapped sidecar spawn', () => {
     extractPageTexts('anchor-report.pdf');
 
     expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+  });
+
+  it('W-178c round 2: EXTRACTOR_BUSY_EXIT_CODE (box_lock.py exits this on a timed-out lock) is classified as busy — a non-failure, non-deterministic outcome', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: EXTRACTOR_BUSY_EXIT_CODE, stdout: '', stderr: '' });
+
+    const result = extractPageTexts('anchor-report.pdf');
+
+    expect(result.ok).toBe(false);
+    expect((result as { kind?: string }).kind).toBe('busy');
+    expect((result as { reason: string }).reason).toContain('another extractor holds the box lock');
   });
 });
