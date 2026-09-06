@@ -301,3 +301,30 @@ jobs:
 
       - name: Run require-release-branch test suite
         run: bash scripts/deploy/tests/require-release-branch.test.sh
+
+  # Recurrence loop, part 1 (2026-09-06): the "share count stored as issue
+  # size" class was fixed on one write path in August and recurred on
+  # another write path in September with no check to catch it. This job
+  # refuses a scraper/persister-touching PR that adds no detection check and
+  # carries no explicit declaration of why not. See
+  # docs/reviews/failure-classes.md for the registry, and
+  # scripts/ci/require-detection-change.mjs for the exact trigger/exempt
+  # globs and the declaration format.
+  detection-change-gate:
+    name: Detection-Change Gate (recurrence loop pt.1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detection-change gate self-test
+        run: node --test scripts/ci/tests/require-detection-change.test.mjs
+
+      - name: Run detection-change gate
+        env:
+          GH_PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/require-detection-change.mjs origin/${{ github.base_ref }} HEAD

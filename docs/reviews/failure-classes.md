@@ -1,0 +1,40 @@
+# Failure-class registry (recurrence loop, part 1)
+
+Machine-readable registry of data/scraper/persister failure classes that have recurred or
+could recur. Seeded 2026-09-06 from `scripts/lib/substance-checks.mjs`,
+`scripts/audit-ipo-coverage.mjs`, `scripts/audit-detection-floor.mjs`,
+`docs/reviews/round-7-detection-rca.md`, `docs/reviews/w177-detection-rca.md`, and the last two
+weeks of `docs/walks/2026-09-02-deepa-pipeline-walk.md`.
+
+**`detection_check` must be a real, verifiable id** — a `key` from the `SUBSTANCE_CHECKS` array in
+`scripts/lib/substance-checks.mjs`, a `checkId` string passed to `record(...)` in
+`scripts/audit-detection-floor.mjs`, or an invariant name in `scripts/audit-ipo-coverage.mjs`. Where
+no such check exists, the row says `unguarded` honestly rather than naming something that isn't a
+real, running check. A write-time guard inside the scraper/consolidation code (rejects/collapses a
+bad value before it is stored) is NOT the same as a `detection_check` — it stops the write but does
+not surface a signal if a new write path bypasses it, which is exactly how this class recurs (see
+Why, above the table). Guarded rows below are guarded because an *audit* check exists that would
+independently re-flag the bad value in the DB even if a write path let it through.
+
+| class_id | feature | symptom (user-visible) | first_seen | fix_prs | detection_check | status |
+|---|---|---|---|---|---|---|
+| share-count-as-issue-size | scraper persist (issue_size) | `issue_size` column holds a raw share count (~80x too small) instead of rupees, e.g. `4,575,000` shown as the issue size in rupees | Aug 2026 (round 6/7 detection RCA); recurred Sep 2026 on the create path (W-177) | round-7 RCA fix + `w177-detection-rca.md` fix (segment-floor + shares-x-band consistency rule; `SME_ISSUE_SIZE_FLOOR`) | `issue_size_segment_floor` (`scripts/lib/substance-checks.mjs`) + `c_issue_size_consistency` / `c_issue_size_floor` (`scripts/audit-detection-floor.mjs`, `checkC()`) | guarded |
+| DRHP-emitted price band | field-priority-matrix (price band) | a DRHP-sourced price band (pre-final, often `[•]` placeholder-derived) is shown instead of the live RHP/Price-Band-Ad/exchange value | flagged in `docs/reviews/skyways-field-audit.md` (2026-08-27) as a live-matrix ordering question, not confirmed as a shipped bug | none — matrix order (`ADMIN>NSE>BSE>DRHP`) was reviewed and left as-is for Skyways | none found in `substance-checks.mjs` or the audit scripts (no plausibility/source check ties price-band value to its `field_sources` origin) | unguarded |
+| degenerate price band | scraper persist (price_range_min/max) | price band min==max or min>max stored on a non-fixed-price issue | pre-existing (SUBSTANCE_CHECKS design) | `checkDegenerateBookbuildingBand` added to substance checks | `degenerate_bookbuilding_band` (`scripts/lib/substance-checks.mjs`) | guarded |
+| issue_size 0 | scraper persist (issue_size) | `issue_size` stored as 0 or null on a live IPO row | round-6/7 detection RCA (`docs/reviews/round-7-detection-rca.md` P1-3) | round-7 fix (`[FAIL] issue_size > 0` gate) | `issue_size` (`scripts/lib/substance-checks.mjs`) | guarded |
+| registrar address pollution | scraper persist (registrar) | `registrar` field carries an address/contact fragment instead of the registrar name | round-7 detection RCA (P3 batch) | `checkRegistrarQuality` added | `registrar_quality` (`scripts/lib/substance-checks.mjs`) | guarded |
+| date-order violation | scraper persist (open/close/allotment/listing dates) | open > close, or allotment before close, or listing before allotment | pre-existing (SUBSTANCE_CHECKS design) | `checkDateOrdering` | `date_ordering` (`scripts/lib/substance-checks.mjs`) | guarded |
+| fabricated open/close dates from Moneycontrol | moneycontrol-scraper.ts | open/close dates are ESTIMATED from listing/allotment date (listing-3, listing-10, allotment-2) and written as if scraped; recurred in `chittorgarh-scraper.ts` / `chittorgarh-rights-debt-adapter.ts` (same class, `close = open + 3` when empty) | 2026-09-04 (W-02 class recurrence; walk W-116) | hotfix `c018f4e1` + `210ad865` (estimation removed both places; matrix reordered so exchanges outrank the filing for bidding-window dates) | **none** — `docs/walks/2026-09-02-deepa-pipeline-walk.md` W-119 explicitly says "No substance rule catches a fabricated date ... open, after the walk (detection upgrade for the W-116 class)" | unguarded |
+| NUL rupee glyph | extract_filing.py / PDF text extraction | the rupee glyph renders as a backtick or NUL/garbage character in extracted amounts (e.g. `` `0.50 million` ``) | walk W-92 | `aca495f0` (glyph normaliser scoped to bid-window text) | none in `substance-checks.mjs` or the audit scripts (round-7 RCA P3 batch names "name glyph" as a still-open audit gap, not shipped) | unguarded |
+| extractor memory blow-up | scraper/scripts/*.py (pdfplumber/OCR extraction) | Python extractor OOMs or aborts with a C-level MemoryError that the caller misclassifies as a soft/retryable failure | walk W-137 | `dfa42f7c`..`6c44ec21`..`2a6817a9` (memory ceiling, single-thread BLAS, hard-classify C-level aborts, exit 3 JSON) | none — this is a process-exit-code contract inside `scraper/scripts/*.py`, not a DB-row audit check; nothing in `substance-checks.mjs` or the audit scripts re-verifies extractor exit-code handling | unguarded |
+| deploy probe port held | scripts/deploy-linux.sh | the deploy's port-probe listener is not fully killed (group signal misses a child outside the leader's process group), blocking the next deploy | walk W-169 | `d8322a00`, `37288341`, `2cc19d43` (kill by PORT, not only by pgid) | none in `substance-checks.mjs`/`audit-*.mjs` (mitigated by deploy-script bash tests, not a data/audit check) | unguarded |
+| scraper locks left by deploy | scripts/deploy-linux.sh / scraper cycle locks | a deploy that stops the scraper mid-cycle leaves the Redis cycle lock held, starving the next cron cycle | walk W-176 | `7f964415`, `648c2ba8`, `1d966477` (release locks on deploy stop; compare-and-delete on the lock token) | none in `substance-checks.mjs`/`audit-*.mjs` | unguarded |
+| both slots extracting at once (522) | scraper cron cadence / nginx | both staging cron slots (:00/:30) run extraction simultaneously on 2 vCPUs, starving nginx and producing Cloudflare 522s | walk W-178 | `7300e0aa`, `ea40e3c3`, `6039504a`, `252cd9d0` (cron offset to :15/:45, nice priority, TZ restore) | none in `substance-checks.mjs`/`audit-*.mjs` (an ops/cadence class, not a DB-row check) | unguarded |
+| garbled anchor names | anchor-report-parser.ts (OCR text) | anchor investor names published with OCR corruption (e.g. `OSWAL OT] LAL FINVEST N4 LI IITE D`) | walk W-81 | `c17d5d18` — write-time `NAME_QUALITY_FLOOR` 0.3 gate refuses to publish a book with >30% unreadable names | none in `substance-checks.mjs`/`audit-*.mjs` — the fix is a write-time refusal gate in the parser, not an independent audit check on stored `anchor_investors` rows | unguarded |
+| exchange defaulting to BOTH for SME | data-consolidation-service.ts / data-consolidation-orchestrator.ts | an SME IPO is stored with `listing_exchanges = [NSE, BSE]` when SME issues list on exactly one exchange | walk W-145 | `violatesSmeSingleExchange` / `collapseSmeExchanges` — write-time invariant in the consolidation service and orchestrator | none in `substance-checks.mjs`/`audit-*.mjs` — the guard runs only on the write path; no audit check independently re-verifies stored SME rows for a two-exchange value | unguarded |
+
+## Summary (as seeded 2026-09-06)
+
+14 rows: 6 `guarded` (an audit check independently re-verifies the DB), 8 `unguarded` (fixed at a
+write path or in ops config, but nothing independently re-checks it — this is exactly the shape
+that let share-count-as-issue-size recur in September after its August fix).
