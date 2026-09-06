@@ -34,7 +34,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import pg from 'pg';
+import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import {
   checkBlockedAllAge,
   checkFoundNotExtracted,
@@ -85,7 +85,12 @@ const GATE = process.argv.includes('--gate');
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
 
-const pool = new pg.Pool(
+// installUtcTimestampParsing() MUST run before the pool is created / any
+// query runs — it registers the process-wide OID-1114 parser (see pg-utc.mjs
+// for why this and the session-level pin are both required).
+installUtcTimestampParsing();
+
+const pool = createUtcPool(
   process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
     ? {
         host: process.env.DATABASE_HOST,
@@ -98,6 +103,15 @@ const pool = new pg.Pool(
       }
     : { connectionString: process.env.DATABASE_URL, ssl: false, max: 4 }
 );
+
+async function assertSessionTimezoneUtc() {
+  try {
+    await assertUtcSession(pool);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
+  }
+}
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 const REAL_IPO = `offering_type = 'IPO'`;
 
@@ -1004,6 +1018,7 @@ async function sendNotifications(payloads) {
 }
 
 async function main() {
+  await assertSessionTimezoneUtc();
   console.log(`
 === DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
   await checkA_B();

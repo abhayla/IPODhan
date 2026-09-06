@@ -12,7 +12,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import pg from 'pg';
+import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 
 // T-297 (gap G3): web/.env.local is OPTIONAL — see the matching note in
@@ -33,7 +33,9 @@ if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
 const GATE = process.argv.includes('--gate');
 const MAX_OFFENDERS = 5;
 
-const pool = new pg.Pool({
+installUtcTimestampParsing();
+
+const pool = createUtcPool({
   host: process.env.DATABASE_HOST,
   port: parseInt(process.env.DATABASE_PORT || '5432'),
   database: process.env.DATABASE_NAME || 'ipodhan',
@@ -54,6 +56,12 @@ async function tableExists(name) {
 }
 
 async function main() {
+  try {
+    await assertUtcSession(pool);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
+  }
   const out = [];
   const log = (s) => { out.push(s); console.log(s); };
 

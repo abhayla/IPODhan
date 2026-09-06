@@ -732,3 +732,58 @@ test('lead-manager count SQL: no longer calls array_length on the jsonb lead_man
   assert.doesNotMatch(script, /(?<!jsonb_)array_length\(lead_managers/);
   assert.match(script, /jsonb_array_length\(lead_managers\)/);
 });
+
+// --- fix-round audit-pool-utc: every audit Pool pins the DB session to UTC --
+// (packages/shared/src/db/timezone-config.ts) — the DB server default session
+// tz is Asia/Calcutta while naive `timestamp` columns hold UTC wall-clock, so
+// an un-pinned pool makes every now()-relative age check in this file fire
+// 5.5h early with no visible symptom (a document BLOCKED_ALL for 18.5h reads
+// as >24h). Source-level assertion: every `new pg.Pool(` block in the script
+// must carry the UTC pin, and count-matching keeps this from being satisfied
+// by a single stray occurrence while a second Pool block goes unpinned.
+
+test('audit-detection-floor.mjs: uses createUtcPool + installUtcTimestampParsing, no direct new Pool(', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  assert.match(script, /createUtcPool[\s\S]*from '\.\/lib\/pg-utc\.mjs'/);
+  assert.match(script, /installUtcTimestampParsing\(\)/);
+  assert.match(script, /createUtcPool\(/);
+  assert.doesNotMatch(script, /new pg\.Pool\(/);
+  assert.doesNotMatch(script, /new Pool\(/);
+});
+
+test('audit-detection-floor.mjs: main() asserts the DB session (timezone + parser round-trip) before running checks', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  assert.match(script, /async function assertSessionTimezoneUtc\s*\(/);
+  assert.match(script, /assertUtcSession\(pool\)/);
+  const mainBody = script.slice(script.indexOf('async function main('));
+  assert.match(
+    mainBody.slice(0, mainBody.indexOf('\n', mainBody.indexOf('\n') + 1) + 200),
+    /await assertSessionTimezoneUtc\(\)/,
+    'assertSessionTimezoneUtc() must run at the very start of main(), before any check'
+  );
+});
+
+test('audit-ipo-coverage.mjs: uses createUtcPool + installUtcTimestampParsing, no direct new Pool(', () => {
+  const script = readFileSync(new URL('../audit-ipo-coverage.mjs', import.meta.url), 'utf8');
+  assert.match(script, /createUtcPool[\s\S]*from '\.\/lib\/pg-utc\.mjs'/);
+  assert.match(script, /installUtcTimestampParsing\(\)/);
+  assert.match(script, /createUtcPool\(/);
+  assert.doesNotMatch(script, /new pg\.Pool\(/);
+  assert.doesNotMatch(script, /new Pool\(/);
+});
+
+test('audit-ipo-coverage.mjs: main() asserts the DB session before running checks', () => {
+  const script = readFileSync(new URL('../audit-ipo-coverage.mjs', import.meta.url), 'utf8');
+  assert.match(script, /assertUtcSession\(pool\)/);
+  const mainBody = script.slice(script.indexOf('async function main('));
+  assert.match(
+    mainBody.slice(0, mainBody.indexOf('\n', mainBody.indexOf('\n') + 1) + 300),
+    /await assertUtcSession\(pool\)/,
+    'assertUtcSession(pool) must run at the very start of main(), before any check'
+  );
+});
+
+// audit-substance-plausibility.mjs and fix-substance-corruption.mjs coverage
+// (createUtcPool, installUtcTimestampParsing, assertUtcSession, no direct
+// Pool construction) now lives in scripts/tests/pg-utc.test.mjs — kept as one
+// copy there to avoid two source-of-truth assertions drifting apart.

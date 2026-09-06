@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import pg from 'pg';
+import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 for (const line of readFileSync(join(__dirname, '..', 'web', '.env.local'), 'utf8').split(/\r?\n/)) {
@@ -23,7 +23,9 @@ for (const line of readFileSync(join(__dirname, '..', 'web', '.env.local'), 'utf
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
 const EXECUTE = process.argv.includes('--execute');
-const pool = new pg.Pool({
+installUtcTimestampParsing();
+
+const pool = createUtcPool({
   host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'),
   database: process.env.DATABASE_NAME || 'ipodhan', user: process.env.DATABASE_USER,
   password: process.env.DATABASE_PASSWORD, ssl: false, max: 4,
@@ -53,6 +55,12 @@ const NULL_ALLOT = `(allotment_date IS NOT NULL AND listing_date IS NOT NULL AND
 const DATE_CORRUPT_WHERE = `${REAL_IPO} AND (${NULL_CLOSE} OR ${NULL_OPEN} OR ${NULL_ALLOT})`;
 
 async function main() {
+  try {
+    await assertUtcSession(pool);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
+  }
   console.log(`\n=== Substance corruption fix (${EXECUTE ? 'EXECUTE' : 'DRY RUN'}) ===`);
 
   const [{ z }] = await q(`SELECT count(*)::int z FROM ipos WHERE ${REAL_IPO} AND issue_size = 0`);
