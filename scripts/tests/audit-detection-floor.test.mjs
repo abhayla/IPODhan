@@ -712,3 +712,23 @@ test('(l) does not double-report the same company from both feeds', () => {
   });
   assert.equal(m.length, 1);
 });
+
+// --- fix-round W-136-r2: incomplete_row_count only counts DUE rows ---------
+// (a row in a deliberate future next_retry_at backoff must not be flagged as
+// a rotation stall), and the lead-manager count query must not use
+// array_length on a jsonb column. ------------------------------------------
+
+test('listed_rotation_stall SQL: incomplete_row_count excludes rows in a future backoff', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  // The FILTER must require the row to actually be due (no future
+  // next_retry_at), not merely "not complete" — otherwise a row parked in a
+  // deliberate backoff (next_retry_at in the future) with an old
+  // last_attempt_at false-positives as a rotation stall.
+  assert.match(script, /AND \(s\.next_retry_at IS NULL OR s\.next_retry_at <= now\(\)\)/);
+});
+
+test('lead-manager count SQL: no longer calls array_length on the jsonb lead_managers column', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(script, /(?<!jsonb_)array_length\(lead_managers/);
+  assert.match(script, /jsonb_array_length\(lead_managers\)/);
+});

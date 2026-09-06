@@ -41,6 +41,7 @@ import {
   checkLiveIpoHasStateRows,
   checkListedRotationStall,
   LISTED_ROTATION_WINDOW_DAYS,
+  STALE_ROTATION_HOURS,
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
@@ -459,7 +460,12 @@ async function checkM() {
     SELECT i.company_name, i.slug, i.status,
            EXTRACT(EPOCH FROM (now() - i.listing_date)) / 86400.0 AS days_since_listing,
            count(DISTINCT s.id)::int AS state_row_count,
-           count(DISTINCT d.id)::int AS documents_row_count
+           count(DISTINCT d.id)::int AS documents_row_count,
+           count(DISTINCT s.id) FILTER (
+             WHERE s.state NOT IN ('FOUND', 'NOT_APPLICABLE', 'SUPERSEDED')
+               AND (s.next_retry_at IS NULL OR s.next_retry_at <= now())
+           )::int AS incomplete_row_count,
+           EXTRACT(EPOCH FROM (now() - MAX(s.last_attempt_at))) / 3600.0 AS hours_since_last_attempt
       FROM ipos i
       LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
       LEFT JOIN documents d ON d.ipo_id = i.id
@@ -475,12 +481,14 @@ async function checkM() {
       daysSinceListing: r.days_since_listing,
       stateRowCount: r.state_row_count,
       documentsRowCount: r.documents_row_count,
+      incompleteRowCount: r.incomplete_row_count,
+      hoursSinceLastAttempt: r.hours_since_last_attempt,
     }))
     .filter(Boolean);
   for (const v of rotationStalled)
     notify('listed_rotation_stall', 'P2', v, 'LISTED IPO stuck at the front of the document rotation', v);
   record('listed_rotation_stall',
-    `no LISTED IPO inside the ${LISTED_ROTATION_WINDOW_DAYS}-day live window has documents on file but 0 document_fetch_state rows`,
+    `no LISTED IPO inside the ${LISTED_ROTATION_WINDOW_DAYS}-day live window is stuck at the front of the rotation: documents on file with 0 fetch-state rows, or due rows with MAX(last_attempt_at) older than ${STALE_ROTATION_HOURS}h`,
     rotationStalled.length === 0 ? 'PASS' : 'FAIL', rotationStalled.slice(0, MAX_OFFENDERS).join('; '));
 
   // BRLM count vs the BSE payload (F17). We cannot re-fetch BSE from the audit
@@ -489,7 +497,7 @@ async function checkM() {
   // count is skipped rather than assumed healthy.
   const brlm = await q(`
     SELECT company_name,
-           coalesce(array_length(lead_managers, 1), 0)::int AS stored_count,
+           coalesce(CASE WHEN jsonb_typeof(lead_managers) = 'array' THEN jsonb_array_length(lead_managers) END, 0)::int AS stored_count,
            bse_payload_lead_manager_count::int AS payload_count
       FROM ipos
      WHERE ${REAL_IPO} AND bse_payload_lead_manager_count IS NOT NULL

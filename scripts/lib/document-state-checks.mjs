@@ -83,8 +83,18 @@ export function checkLiveIpoHasStateRows(ipo) {
 export const LISTED_ROTATION_WINDOW_DAYS = 10;
 
 /**
- * FAIL — listed-rotation-stall-null-fetch-state (2026-09-06).
+ * How long a LISTED IPO's incomplete document_fetch_state rows may go
+ * untouched before the audit calls it a stall (round 2, W-136). The document
+ * cycle runs every 30 minutes, so 24h is ~48 missed opportunities — never a
+ * false positive from ordinary jitter, but far short of the days-long
+ * staging stall (ESDS Software, Priority Jewels) this shape exists to catch.
+ */
+export const STALE_ROTATION_HOURS = 24;
+
+/**
+ * FAIL — listed_rotation_stall, two shapes.
  *
+ * Shape 1 (2026-09-06, listed-rotation-stall-null-fetch-state):
  * `checkLiveIpoHasStateRows` above deliberately excludes LISTED
  * (`LIVE_STATUSES_REQUIRING_STATE = ['UPCOMING','OPEN','CLOSED']`) because
  * `STAGE_DOCUMENT_TYPES.LISTED` is `[]` — no NEW document type becomes due at
@@ -97,18 +107,47 @@ export const LISTED_ROTATION_WINDOW_DAYS = 10;
  * `MAX(document_fetch_state.last_attempt_at)` NULLS FIRST, so an IPO with no
  * fetch-state rows at all sorts first every cycle forever, and (before the
  * runner's rotation-stamp guard) could stay that way with no row ever
- * written, starving every LISTED row behind it. Scoped to the live window
- * (not every historical LISTED IPO — an old, fully-retired listing
- * legitimately has no reason to gain fetch-state rows years later).
+ * written, starving every LISTED row behind it.
+ *
+ * Shape 2 (2026-09-06 round 2, W-136 — `runDocumentCycle`'s discovery-budget
+ * reservation): shape 1 above only fires when a LISTED IPO has ZERO
+ * `document_fetch_state` rows. The staging stall this shape catches (ESDS
+ * Software, Priority Jewels) already HAD fetch-state rows — the discovery
+ * budget just tripped, cycle after cycle, before the LISTED tier was ever
+ * reached, so `runIpo` (which stamps `last_attempt_at`) never ran for them.
+ * A LISTED IPO in the live window with at least one incomplete row (state
+ * not FOUND/NOT_APPLICABLE/SUPERSEDED, or overdue for retry) whose newest
+ * `last_attempt_at` across ALL its rows is more than `STALE_ROTATION_HOURS`
+ * old — or null, i.e. never attempted at all — is a stall even though rows
+ * exist.
+ *
+ * Both shapes scoped to the live window (not every historical LISTED IPO —
+ * an old, fully-retired listing legitimately has no reason to gain
+ * fetch-state activity years later).
  */
 export function checkListedRotationStall(ipo) {
   const status = String(ipo.status ?? '').toUpperCase();
   if (status !== 'LISTED') return null;
   const daysSinceListing = Number(ipo.daysSinceListing);
   if (!Number.isFinite(daysSinceListing) || daysSinceListing > LISTED_ROTATION_WINDOW_DAYS) return null;
-  if ((ipo.documentsRowCount ?? 0) === 0) return null;
-  if ((ipo.stateRowCount ?? 0) > 0) return null;
-  return `${ipo.companyName ?? ipo.slug} (${ipo.slug ?? 'no-slug'}) is LISTED ${daysSinceListing.toFixed(1)}d ago, has documents on file, but 0 document_fetch_state rows — rotation stall (listed_rotation_stall)`;
+  const label = `${ipo.companyName ?? ipo.slug} (${ipo.slug ?? 'no-slug'}) is LISTED ${daysSinceListing.toFixed(1)}d ago`;
+
+  if ((ipo.documentsRowCount ?? 0) > 0 && (ipo.stateRowCount ?? 0) === 0) {
+    return `${label}, has documents on file, but 0 document_fetch_state rows — rotation stall (listed_rotation_stall)`;
+  }
+
+  if ((ipo.incompleteRowCount ?? 0) >= 1) {
+    const hoursSinceLastAttempt = ipo.hoursSinceLastAttempt === null || ipo.hoursSinceLastAttempt === undefined
+      ? null
+      : Number(ipo.hoursSinceLastAttempt);
+    const stale = hoursSinceLastAttempt === null || !Number.isFinite(hoursSinceLastAttempt) || hoursSinceLastAttempt > STALE_ROTATION_HOURS;
+    if (stale) {
+      const lastTouched = hoursSinceLastAttempt === null ? 'never' : `${hoursSinceLastAttempt.toFixed(1)}h ago`;
+      return `${label}, has ${ipo.incompleteRowCount} incomplete document_fetch_state row(s), last touched ${lastTouched} (> ${STALE_ROTATION_HOURS}h) — rotation stall (listed_rotation_stall)`;
+    }
+  }
+
+  return null;
 }
 
 /** WARN — an extractor that failed 3x needs a human, but is not a data outage. */
