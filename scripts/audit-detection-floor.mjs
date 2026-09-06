@@ -41,6 +41,7 @@ import {
   checkLiveIpoHasStateRows,
   checkListedRotationStall,
   LISTED_ROTATION_WINDOW_DAYS,
+  STALE_ROTATION_HOURS,
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
@@ -487,7 +488,7 @@ async function checkM() {
   for (const v of rotationStalled)
     notify('listed_rotation_stall', 'P2', v, 'LISTED IPO stuck at the front of the document rotation', v);
   record('listed_rotation_stall',
-    `no LISTED IPO inside the ${LISTED_ROTATION_WINDOW_DAYS}-day live window has documents on file but 0 document_fetch_state rows`,
+    `no LISTED IPO inside the ${LISTED_ROTATION_WINDOW_DAYS}-day live window is stuck at the front of the rotation: documents on file with 0 fetch-state rows, or due rows with MAX(last_attempt_at) older than ${STALE_ROTATION_HOURS}h`,
     rotationStalled.length === 0 ? 'PASS' : 'FAIL', rotationStalled.slice(0, MAX_OFFENDERS).join('; '));
 
   // BRLM count vs the BSE payload (F17). We cannot re-fetch BSE from the audit
