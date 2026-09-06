@@ -565,32 +565,51 @@ export function extractIssueSizeFromDetailHtml(
 ): number | null {
   if (!html) return null;
 
-  // Block anchored on the "Issue Size" / "Total Issue Size" label, same
-  // anchor-or-plain-cell shape as extractLotSizeFromDetailHtml.
+  // The real page (T-issue-size-repair fix round) renders React comment
+  // nodes (`<!-- -->`) between every number and its unit — "1,67,83,216<!--
+  // --> <!-- -->shares <br/>(agg. up to ₹<!-- -->720<!-- --> <!-- -->Cr)" —
+  // strip them BEFORE matching so `\s*` gaps in the patterns below actually
+  // land on the digits/words, not on a comment node.
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+
+  // Prefer the exact "Total Issue Size" anchor by its title attribute — a
+  // "Issue Size (Year-wise)" nav link (real page) sits earlier in the
+  // document and must never match: its title/text carry the extra
+  // "(Year-wise)" text so neither this nor the fallback patterns match it.
   const labelMatch =
-    html.match(/(?:Total\s+)?Issue\s*Size\s*<\/a>([\s\S]{0,220})/i) ??
-    html.match(/(?:Total\s+)?Issue\s*Size\s*<\/(?:td|span)>([\s\S]{0,220})/i) ??
-    html.match(/(?:Total\s+)?Issue\s*Size[^<]{0,20}<\/[a-z]+>([\s\S]{0,220})/i);
-  if (!labelMatch) return null;
-
-  const block = labelMatch[1];
-
-  // "1,76,47,058 shares (aggregating up to ₹757.06 Cr)" — shares + amount
-  // stated together lets us cross-check the page's own numbers.
-  const combined = block.match(
-    /([\d,]+)\s*shares[\s\S]{0,60}?aggregating\s+up\s+to\s*(?:₹|Rs\.?\s*)?([\d,.]+)\s*Cr(?:ore)?s?\b/i
-  );
+    clean.match(/title="Total Issue Size"[\s\S]{0,200}?<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/(?:td|span)>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size[^<]{0,20}<\/[a-z]+>([\s\S]{0,260})/i);
 
   let rupees: number | null = null;
   let sharesOnPage: number | null = null;
 
-  if (combined) {
-    rupees = parseCroreToRupees(combined[2]);
-    const shares = parseInt(combined[1].replace(/,/g, ''), 10);
-    sharesOnPage = Number.isFinite(shares) ? shares : null;
+  if (labelMatch) {
+    const block = labelMatch[1];
+
+    // "1,67,83,216 shares (agg. up to ₹720 Cr)" — shares + amount stated
+    // together lets us cross-check the page's own numbers. "agg." is the
+    // real page's abbreviation; "aggregating" also matches (older/other pages).
+    const combined = block.match(
+      /([\d,]+)\s*shares[\s\S]{0,100}?(?:aggregating|agg\.?)\s+up\s+to\s*(?:₹|Rs\.?\s*)?([\d,.]+)\s*Cr(?:ore)?s?\b/i
+    );
+
+    if (combined) {
+      rupees = parseCroreToRupees(combined[2]);
+      const shares = parseInt(combined[1].replace(/,/g, ''), 10);
+      sharesOnPage = Number.isFinite(shares) ? shares : null;
+    } else {
+      const plain = block.match(/(?:₹|Rs\.?\s*)([\d,.]+)\s*Cr(?:ore)?s?\b/i);
+      if (plain) rupees = parseCroreToRupees(plain[1]);
+    }
   } else {
-    const plain = block.match(/(?:₹|Rs\.?\s*)([\d,.]+)\s*Cr(?:ore)?s?\b/i);
-    if (plain) rupees = parseCroreToRupees(plain[1]);
+    // Fallback: the page prose ("... fresh issue of 1.68 crore shares of
+    // ₹720.00 crore.") — used ONLY when the detail-table row itself is
+    // absent. Anchored on "of ₹<amount> cr" so the earlier "of <N> crore
+    // shares" phrase (no ₹) in the same sentence is never mistaken for it.
+    const prose = clean.match(/of\s*₹\s*([\d,.]+)\s*Cr(?:ore)?s?\b/i);
+    if (prose) rupees = parseCroreToRupees(prose[1]);
   }
 
   if (rupees === null) return null;

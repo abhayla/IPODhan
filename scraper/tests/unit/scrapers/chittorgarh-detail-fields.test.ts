@@ -151,4 +151,19 @@ describe('extractIssueSizeFromDetailHtml', () => {
       extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 90 })
     ).toBeNull();
   });
+
+  it('extracts from the real ESDS detail-page markup (Indian digit grouping, HTML comment nodes, "agg." abbreviation, <br/>, and a preceding "Issue Size (Year-wise)" nav link that must NOT match)', () => {
+    const html = `<a title="Issue Size (Year-wise)" href="/report/ipo-yearwise-issue-size/1">Issue Size (Year-wise)</a><tr><td style="width:40%"><span data-component="keyword-popup" data-record-id="72"><a title="Total Issue Size" href="/keyword/total-issue-size/72/">Total Issue Size</a></span></td><td class="text-end"><span class="text-end">1,67,83,216<!-- --> <!-- -->shares <br/>(agg. up to ₹<!-- -->720<!-- --> <!-- -->Cr)</span></td></tr><tr><td><span data-component="keyword-popup" data-record-id="60"><a title="Fresh Issue" href="/keyword/fresh-issue/60/">Fresh Issue</a></span> </td><td class="text-end"><span class="text-end">1,67,83,216<!-- --> <!-- -->shares</span></td></tr>`;
+    // 1,67,83,216 shares x cap 429 = ~720 Cr — cross-check passes.
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7_200_000_000);
+  });
+
+  it('falls back to the page prose ("of ₹720.00 crore") only when the detail-table row is absent', () => {
+    const html = `<p>ESDS Software Solution came up with a fresh issue of 1.68 crore shares of ₹720.00 crore.</p>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBe(7_200_000_000);
+  });
 });
