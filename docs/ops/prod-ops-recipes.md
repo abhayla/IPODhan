@@ -1,0 +1,81 @@
+# Production ops recipes (living runbook)
+
+Owner rule 2026-09-06 20:52 IST: "keep recording the specific things you do within this project, like SSH,
+so that you don't have to reinvent the wheel." Every operational recipe used on prod/staging goes here the
+same turn it is used. Secrets never appear here; they live in `D:\Abhay\GLOBAL.env` (key NAMES may be
+cited). Hosts: Linux VPS `72.61.240.224` (nginx + pm2, prod + staging), Windows VPS `103.118.16.189`
+(PostgreSQL 16 for both slots).
+
+## 1. Shell access
+
+| Target | Command | Notes |
+|---|---|---|
+| Linux VPS | `ssh -o BatchMode=yes rfp-vps '<cmd>'` | alias in `~/.ssh/config` (`Host rfp-vps`, key auth). Pipe through `grep -vi kex` to drop the post-quantum KEX warning. Read paths only (owner rule: the VPS is production, no ad-hoc runs). |
+| DB tunnel | `ssh -i ~/.ssh/ipodhan_vps -o BatchMode=yes -o ServerAliveInterval=60 -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new -N -L 15432:localhost:5432 Administrator@103.118.16.189` | run in the background; `localhost:15432` then reaches prod Postgres. Manual and session-scoped: every fresh session starts with the port down. |
+
+## 2. Reading prod / staging state (read-only, safe any time)
+
+```bash
+# served release per slot (name ends with the short sha)
+basename $(readlink -f /var/www/ipodhan/current)            # prod
+basename $(readlink -f /var/www/ipodhan/current-staging)    # staging
+cat /var/www/ipodhan/DEPLOYED_SHA-prod /var/www/ipodhan/DEPLOYED_SHA-staging
+# pm2 apps with cron (prod scraper */30, staging 15,45)
+pm2 jlist | python3 -c "import json,sys; [print(p['name'], p['pm2_env']['status'], p['pm2_env'].get('cron_restart')) for p in json.load(sys.stdin)]"
+df -h / | tail -1; uptime; ls /var/www/ipodhan/releases | wc -l
+# scraper cycle summaries (document discovery counters incl. listedSkippedUnenriched)
+grep -h "listedSkippedUnenriched" ~/.pm2/logs/ipodhan-scraper-staging-out.log | tail -2 | grep -o '"listedCap[^}]*'
+grep -h "extractionFailed" ~/.pm2/logs/ipodhan-scraper-out.log | tail -1
+# extractor priority on the next cycle (expect ni=10 after the 2026-09-06 release)
+ps -o ni=,pid=,args= -p $(pgrep -f venv/prod/bin/python) 2>/dev/null
+```
+Env files: `/var/www/ipodhan/shared/env/{prod,staging}/{web,scraper}.env` (read with `grep -c` or key names only).
+Layout: `/var/www/ipodhan/{releases,releases-staging,current,current-staging,shared,repo}`.
+
+## 3. Deploy (only from a frozen release branch, one prod deploy per day, 21:00-23:30 IST)
+
+```bash
+git fetch origin && git rev-parse --short origin/release/prod-<date>          # must equal the brief sha
+gh workflow run deploy-linux.yml --ref release/prod-<date> -f slot=prod -f ref=<sha>
+gh run list --workflow deploy-linux.yml --limit 1                              # get the run id
+gh run view <id> --log | grep -E "probe port|release_scraper_cycle_locks|Deploying|rollback|migrat" # proof lines
+```
+Rollback = the same command with `-f ref=<previous sha>` (must be an ancestor on the same release branch).
+The deploy log IS the Actions run log (`scripts/deploy-linux.sh` prints `==> ...` lines); nothing is written on the box.
+Every push to `main` auto-deploys staging, so batch docs commits and push once.
+
+## 4. Post-deploy verification
+
+```bash
+curl -s -o /dev/null -w '%{http_code}' https://ipodhan.com/
+cd web && npm run test:prod-verify          # laptop, needs >= 2.5 GB free
+npm run audit:data                          # root; expect only the known legacy reds
+```
+Then on the VPS: served sha (section 2), pm2 web x2 online, scraper `stopped` between runs, next cycle
+`extractionFailed 0`, extractor `ni=10`.
+
+## 5. Reading and repairing prod rows
+
+Public read: `curl -s https://ipodhan.com/api/ipos/<slug>` returns `{"ipo":{...}}` (camelCase; `issueSize` is
+rupees as a numeric string).
+DB read/write via the tunnel with the least-privilege app role (password key `IPODHAN_APP_DB_PASSWORD` in
+GLOBAL.env; `DATABASE_URL` there points at the firewalled public port and does NOT work from the laptop):
+```bash
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"\r')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" node <script>.cjs [--apply]
+```
+`pg` is hoisted at the repo root (`require('<repo>/node_modules/pg')`, not `web/node_modules`). A repair
+script must: print `current_database()` first, select by slug, refuse on id/cap mismatch, update with
+`WHERE id AND slug AND issue_size = <old>` and `RETURNING`, dry-run by default. Template used 2026-09-06:
+`docs/ops/templates/repair-row-template.cjs`.
+After any manual ipos row change, drop the web cache on the SLOT's Redis (Linux VPS, auth from the
+slot's scraper.env `REDIS_URL`; prod = db 0, staging = db 1): `redis-cli -n 0 -a <pw> DEL ipo:slug:<slug> ipo:id:<id>`;
+documents rows: `DEL documents:<ipoId>` or use `scraper/scripts/reset-document.ts` (`docs/ops/reset-document.md`).
+Confirm on `/api/ipos/<slug>`.
+
+## 6. Gotchas learned
+- `git stash` is blocked in linked worktrees by a user hook (escape `GIT_STASH_GUARD_ALLOW=1`).
+- Laptop below ~0.5 GB free makes every hook time out; check memory before blaming hooks.
+- Timestamps in ledger lines come from `date`, never estimated.
+- The `postgres` superuser is localhost-only on the DB host; through the tunnel it still works, but use
+  `ipodhan_app` for app tables anyway.
