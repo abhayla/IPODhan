@@ -111,16 +111,36 @@ function computeTimerState(closeDate: string, upiCutoffTime: string, status: UPI
   return { timeLeft: seconds, urgencyLevel };
 }
 
+// Round 2 (#346 review, medium finding): the round-1 fix rendered a fixed
+// 'normal' urgency pre-mount, which showed a genuinely misleading green
+// "Open" badge + no Alert for an IPO that is actually seconds from its
+// cutoff — a false all-clear, then a layout jump when the real Alert
+// mounted. Pre-mount now renders a NEUTRAL placeholder instead: the same
+// DOM shape and reserved vertical space the Alert will occupy, but
+// `aria-hidden`, `invisible` (no color, no role="alert", no urgency text)
+// — so the two renders agree structurally (`mounted` is `false` on both
+// the server and the client's pre-hydration render, so nothing here is
+// `Date.now()`-derived) without ever claiming a state that isn't true yet.
+// The live countdown NUMBER (`formatTimeLeft(timeLeft)`, inside the
+// pre-existing `suppressHydrationWarning` element) is the one exception —
+// a text-only mismatch on a single element is exactly what
+// `suppressHydrationWarning` is for.
+const ALERT_PLACEHOLDER_MESSAGE =
+  'Critical: Less than 2 hours remaining! Complete your UPI mandate approval immediately to avoid application rejection.';
+
 export function UPIDeadlineTimer({
   closeDate,
   upiCutoffTime = '5:00 PM',
   status = 'OPEN'
 }: UPIDeadlineTimerProps) {
-  const [{ timeLeft, urgencyLevel }, setTimerState] = useState<TimerState>(() =>
+  const [{ timeLeft, urgencyLevel: liveUrgencyLevel }, setTimerState] = useState<TimerState>(() =>
     computeTimerState(closeDate, upiCutoffTime, status)
   );
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+
     if (status !== 'OPEN') {
       return;
     }
@@ -139,6 +159,9 @@ export function UPIDeadlineTimer({
   if (status !== 'OPEN') {
     return null;
   }
+
+  // Only meaningful once `mounted` — every usage below is guarded by it.
+  const urgencyLevel: UrgencyLevel = liveUrgencyLevel;
 
   // Format time remaining
   const formatTimeLeft = (seconds: number): string => {
@@ -213,13 +236,14 @@ export function UPIDeadlineTimer({
   const timerDisplay = (
     <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
       <div className="flex items-center gap-3">
-        {getIcon()}
+        {mounted ? getIcon() : <Clock className="h-4 w-4 invisible" aria-hidden="true" />}
         <div>
           <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
             UPI Mandate Deadline
           </p>
           <p
             className={`text-2xl font-bold ${
+              !mounted ? 'text-gray-700 dark:text-gray-300' :
               urgencyLevel === 'critical' ? 'text-red-600' :
               urgencyLevel === 'warning' ? 'text-yellow-600' :
               urgencyLevel === 'expired' ? 'text-gray-500' :
@@ -245,13 +269,17 @@ export function UPIDeadlineTimer({
         </div>
       </div>
       <div className="text-right">
-        <Badge variant={getBadgeVariant()}>
-          {urgencyLevel === 'expired' ? 'Closed' :
-           urgencyLevel === 'critical' ? 'Critical' :
-           urgencyLevel === 'warning' ? 'Closing Soon' :
-           'Open'}
+        <Badge variant={mounted ? getBadgeVariant() : 'outline'} aria-hidden={!mounted || undefined}>
+          {mounted
+            ? (urgencyLevel === 'expired' ? 'Closed' :
+               urgencyLevel === 'critical' ? 'Critical' :
+               urgencyLevel === 'warning' ? 'Closing Soon' :
+               'Open')
+            // Neutral placeholder, not a claim — sized like the real
+            // labels so the badge doesn't resize once mounted.
+            : '            '}
         </Badge>
-        {timeLeft > 0 && (
+        {(!mounted || urgencyLevel !== 'expired') && (
           <p className="text-xs text-gray-500 mt-1">
             Closes: {format(parseISO(closeDate), 'MMM dd, yyyy')} at {upiCutoffTime} IST
           </p>
@@ -259,6 +287,29 @@ export function UPIDeadlineTimer({
       </div>
     </div>
   );
+
+  // Pre-mount: reserve the Alert's vertical space (same component, same
+  // classes, so the height matches exactly) without claiming role="alert"
+  // or any urgency — invisible, aria-hidden, neutral icon, longest-case
+  // placeholder text so mounting never SHRINKS it either. `role={undefined}`
+  // overrides the Alert component's own `role="alert"` (prop spread order —
+  // see web/components/ui/alert.tsx).
+  if (!mounted) {
+    return (
+      <div className="space-y-3">
+        {timerDisplay}
+        <Alert
+          variant="default"
+          role={undefined}
+          aria-hidden="true"
+          className="invisible"
+        >
+          <Clock className="h-4 w-4" />
+          <AlertDescription>{ALERT_PLACEHOLDER_MESSAGE}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   // Alert message
   if (urgencyLevel === 'critical' || urgencyLevel === 'warning') {
@@ -276,56 +327,4 @@ export function UPIDeadlineTimer({
   }
 
   return timerDisplay;
-}
-
-// Inline timer component for headers/cards
-export function UPIDeadlineTimerInline({
-  closeDate,
-  upiCutoffTime = '5:00 PM',
-  status = 'OPEN'
-}: UPIDeadlineTimerProps) {
-  const [{ timeLeft, urgencyLevel }, setTimerState] = useState<TimerState>(() =>
-    computeTimerState(closeDate, upiCutoffTime, status)
-  );
-
-  useEffect(() => {
-    if (status !== 'OPEN') {
-      return;
-    }
-
-    const tick = () => setTimerState(computeTimerState(closeDate, upiCutoffTime, status));
-
-    tick();
-    const timer = setInterval(tick, 1000);
-
-    return () => clearInterval(timer);
-  }, [closeDate, upiCutoffTime, status]);
-
-  if (status !== 'OPEN' || timeLeft === 0) {
-    return null;
-  }
-
-  const days = Math.floor(timeLeft / 86400);
-  const hours = Math.floor((timeLeft % 86400) / 3600);
-  const minutes = Math.floor((timeLeft % 3600) / 60);
-
-  const formatCompact = () => {
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  };
-
-  return (
-    <Badge
-      variant={
-        urgencyLevel === 'critical' ? 'destructive' :
-        urgencyLevel === 'warning' ? 'secondary' :
-        'outline'
-      }
-      className="inline-flex items-center gap-1"
-    >
-      <Clock className="h-3 w-3" />
-      UPI: {formatCompact()}
-    </Badge>
-  );
 }

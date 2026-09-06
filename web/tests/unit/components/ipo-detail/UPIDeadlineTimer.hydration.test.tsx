@@ -24,11 +24,19 @@ import { hydrateRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { UPIDeadlineTimer } from '@/components/ipo-detail/UPIDeadlineTimer';
 
-async function probeHydration(closeDate: string, serverNowMs: number): Promise<string[]> {
+interface ProbeResult {
+  warnings: string[];
+  /** The raw SSR markup — identical to what the client's pre-mount render
+   * produces, since `mounted` is `false` on both sides until the effect
+   * fires. Used to assert the round-2 neutral-placeholder requirement. */
+  ssrHtml: string;
+}
+
+async function probeHydration(closeDate: string, serverNowMs: number): Promise<ProbeResult> {
   const dateNowSpy = vi.spyOn(Date, 'now');
 
   dateNowSpy.mockReturnValue(serverNowMs);
-  const html = renderToString(<UPIDeadlineTimer closeDate={closeDate} status="OPEN" />);
+  const ssrHtml = renderToString(<UPIDeadlineTimer closeDate={closeDate} status="OPEN" />);
 
   // Same shape as the checker's probe: the client's first render (and the
   // effect that follows) observes a `Date.now()` a couple of seconds later
@@ -36,7 +44,7 @@ async function probeHydration(closeDate: string, serverNowMs: number): Promise<s
   dateNowSpy.mockReturnValue(serverNowMs + 2000);
 
   const container = document.createElement('div');
-  container.innerHTML = html;
+  container.innerHTML = ssrHtml;
   document.body.appendChild(container);
 
   const errors: string[] = [];
@@ -55,7 +63,10 @@ async function probeHydration(closeDate: string, serverNowMs: number): Promise<s
     dateNowSpy.mockRestore();
   }
 
-  return errors.filter((e) => e.includes('did not match') || e.includes('hydrat'));
+  return {
+    warnings: errors.filter((e) => e.includes('did not match') || e.includes('hydrat')),
+    ssrHtml,
+  };
 }
 
 describe('UPIDeadlineTimer hydration (T-302C F1)', () => {
@@ -68,13 +79,53 @@ describe('UPIDeadlineTimer hydration (T-302C F1)', () => {
     // serverNow, so the SSR string is in the sub-24h "seconds visible"
     // branch of formatTimeLeft — the exact case the checker reproduced.
     const serverNow = new Date('2026-08-24T08:00:00.000Z').getTime();
-    const warnings = await probeHydration('2026-08-24', serverNow);
+    const { warnings } = await probeHydration('2026-08-24', serverNow);
     expect(warnings).toEqual([]);
   });
 
   it('produces zero hydration warnings for an OPEN IPO more than 24h from its cutoff (seconds hidden)', async () => {
     const serverNow = new Date('2026-08-20T00:00:00.000Z').getTime();
-    const warnings = await probeHydration('2026-08-24', serverNow);
+    const { warnings } = await probeHydration('2026-08-24', serverNow);
     expect(warnings).toEqual([]);
+  });
+
+  // Issue #206 (T-302C2): the per-second TEXT drift covered above is a
+  // different class from a STRUCTURAL drift — `urgencyLevel` crossing a
+  // boundary between the server render and the client's first render
+  // changes which elements are mounted (the Alert wrapper, the "Closes:"
+  // line), which `suppressHydrationWarning` on the countdown text node
+  // cannot cover. Each case below pins the server's `Date.now()` one
+  // second before a boundary and lets the probe's fixed +2000ms client
+  // clock cross it, reproducing the exact crossing the checker found.
+  //
+  // cutoff for closeDate '2026-08-24' with the default "5:00 PM" cutoff
+  // is 2026-08-24T11:30:00.000Z (17:00 IST − 5:30 UTC offset).
+  const CUTOFF_MS = new Date('2026-08-24T11:30:00.000Z').getTime();
+
+  it.each([
+    [
+      '24h boundary: normal -> warning (Alert wrapper mounts)',
+      CUTOFF_MS - 86401 * 1000, // 24h + 1s left => normal on the server
+    ],
+    [
+      '2h boundary: warning -> critical (Alert text/variant changes)',
+      CUTOFF_MS - 7201 * 1000, // 2h + 1s left => warning on the server
+    ],
+    [
+      'expiry boundary: critical -> expired ("Closes:" line unmounts)',
+      CUTOFF_MS - 1 * 1000, // 1s left => critical on the server
+    ],
+  ])('produces zero hydration warnings crossing the %s', async (_label, serverNow) => {
+    const { warnings, ssrHtml } = await probeHydration('2026-08-24', serverNow);
+    expect(warnings).toEqual([]);
+
+    // Round 2 (#346 review): the pre-mount render (= this SSR markup, since
+    // `mounted` is false on both server and client until the effect fires)
+    // must be a NEUTRAL placeholder — no urgency label and no role="alert",
+    // regardless of which side of a boundary the real clock is on.
+    expect(ssrHtml).not.toMatch(/\brole="alert"\b/);
+    for (const label of ['Open', 'Closing Soon', 'Critical', 'Closed']) {
+      expect(ssrHtml).not.toContain(`>${label}<`);
+    }
   });
 });
