@@ -1078,6 +1078,65 @@ describe('IPORepository', () => {
       expect(result).toBeNull();
     });
 
+    // Issue #170 (T-278C3 checker finding, non-blocking): a MISS must never be
+    // cached under the 7-day SLUG_REDIRECT TTL with no invalidation path — a
+    // renamed IPO's old slug would keep 404ing for up to 7 days after the
+    // redirect row is written (scraper duplicate-sweep-job.ts, a separate
+    // process, has no hook to bust this repo's Redis key). Reproduce: look up
+    // a not-yet-redirected slug (miss), THEN simulate the redirect row being
+    // written, THEN look up the same slug again — it must resolve immediately,
+    // proving the first miss was never cached.
+    it('does not cache a miss, so a redirect written after a lookup resolves on the very next lookup (#170)', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+      mockRedis.set = vi.fn().mockResolvedValue('OK');
+
+      const liveSelectMiss = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]), // not live
+      };
+      const redirectSelectMiss = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]), // no redirect row yet
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelectMiss)
+        .mockReturnValueOnce(redirectSelectMiss);
+
+      const firstLookup = await repository.findRedirectSlug('about-to-be-renamed');
+      expect(firstLookup).toBeNull();
+
+      // A negative-caching implementation would have SET the miss into Redis
+      // here under CacheTTL.SLUG_REDIRECT (7 days) — assert it did not.
+      expect(mockRedis.setex).not.toHaveBeenCalled();
+      expect(mockRedis.set).not.toHaveBeenCalled();
+
+      // The redirect row now exists (scraper wrote it). Redis still reports a
+      // miss because nothing cached the negative result above.
+      const liveSelectAfterWrite = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const redirectSelectAfterWrite = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ currentSlug: 'renamed-target-slug' }]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelectAfterWrite)
+        .mockReturnValueOnce(redirectSelectAfterWrite);
+
+      const secondLookup = await repository.findRedirectSlug('about-to-be-renamed');
+      expect(secondLookup).toBe('renamed-target-slug');
+    });
+
     // T-278F2 (checker round 2 finding): a poisoned/stale `ipo:slug-redirect:*`
     // cache entry must NOT be able to shadow a currently-live slug. Round 1's
     // guard sat inside the getFromCache miss callback, so a cache HIT skipped

@@ -48,6 +48,7 @@ import {
 } from './live-metrics-merge';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
 import { logger } from '../logger';
+import { withRetry, trackRetry } from '../db/connection-retry';
 import type {
   IPO,
   IPOInsert,
@@ -1175,6 +1176,17 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * own "retired slugs are immutable once written" comment) — and even a
    * stale/wrong cached mapping can no longer shadow a live slug, because the
    * live check above already returned null before the cache was ever read.
+   *
+   * MISSES are never cached (#170, T-278C3 checker finding): the redirect
+   * row is written by a separate process (scraper's duplicate-sweep-job.ts)
+   * with no hook into this repo's Redis, so a cached "no redirect yet"
+   * result had no invalidation path and could keep 404ing a freshly-renamed
+   * IPO's old slug for up to `CacheTTL.SLUG_REDIRECT` (7 days). Only a FOUND
+   * redirect is cached — that mapping is genuinely immutable once written,
+   * so caching it long-lived is safe; caching its absence is not, because
+   * the absence can flip to "found" at any time. This bypasses
+   * `BaseRepository.getFromCache` (which would cache the miss too) and
+   * calls `this.redis`/`this.setCache` directly instead.
    */
   async findRedirectSlug(oldSlug: string): Promise<string | null> {
     const [live] = await this.db
@@ -1186,8 +1198,21 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
     const cacheKey = getSlugRedirectKey(oldSlug);
 
-    return this.getFromCache(
-      cacheKey,
+    let cached: string | null = null;
+    try {
+      cached = await this.redis.get(cacheKey);
+    } catch (error) {
+      console.error(
+        `[Cache] Error getting key ${cacheKey}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+    if (cached) {
+      // currentSlug is a plain string — no Date fields to revive here.
+      return JSON.parse(cached) as string;
+    }
+
+    const currentSlug = await withRetry(
       async () => {
         const [row] = await this.db
           .select({ currentSlug: ipos.slug })
@@ -1198,8 +1223,25 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
         return row?.currentSlug ?? null;
       },
-      CacheTTL.SLUG_REDIRECT
+      {
+        maxRetries: 3,
+        context: `cache-aside query for key: ${cacheKey}`,
+        onRetry: trackRetry,
+      }
     );
+
+    if (currentSlug) {
+      this.setCache(cacheKey, currentSlug, CacheTTL.SLUG_REDIRECT).catch(
+        (error) => {
+          console.error(
+            `[Cache] Error setting key ${cacheKey}:`,
+            error instanceof Error ? error.message : error
+          );
+        }
+      );
+    }
+
+    return currentSlug;
   }
 
   /**
