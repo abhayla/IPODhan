@@ -548,6 +548,10 @@ export interface IssueSizeDetailOptions {
   // FINANCIAL_FIELD_BOUNDS from THIS file).
   floor: number | null;
   priceRangeMax: number | null;
+  // Identity anchor for the prose fallback (round 4): the page's own company
+  // name, when known, restricts "of ₹<amount> crore" prose matches to a
+  // sentence actually ABOUT this IPO (never a neighbouring IPO's figure).
+  companyName?: string | null;
 }
 
 const ISSUE_SIZE_CROSS_CHECK_TOLERANCE = 0.25;
@@ -586,7 +590,15 @@ export function extractIssueSizeFromDetailHtml(
   let sharesOnPage: number | null = null;
 
   if (labelMatch) {
-    const block = labelMatch[1];
+    // Round 4 (checker finding): the raw {0,260}-char capture had no row
+    // boundary, so an EMPTY "Total Issue Size" cell (shares only, no Cr
+    // figure) could fall through to the NEXT `<tr>` and pick up a
+    // neighbouring row's crore figure instead of returning null. Truncate
+    // the block at the first `</tr>` — the source figure must come from
+    // THIS row, never an adjacent one.
+    const rawBlock = labelMatch[1];
+    const rowEnd = rawBlock.search(/<\/tr>/i);
+    const block = rowEnd === -1 ? rawBlock : rawBlock.slice(0, rowEnd);
 
     // "1,67,83,216 shares (agg. up to ₹720 Cr)" — shares + amount stated
     // together lets us cross-check the page's own numbers. "agg." is the
@@ -606,10 +618,26 @@ export function extractIssueSizeFromDetailHtml(
   } else {
     // Fallback: the page prose ("... fresh issue of 1.68 crore shares of
     // ₹720.00 crore.") — used ONLY when the detail-table row itself is
-    // absent. Anchored on "of ₹<amount> cr" so the earlier "of <N> crore
-    // shares" phrase (no ₹) in the same sentence is never mistaken for it.
-    const prose = clean.match(/of\s*₹\s*([\d,.]+)\s*Cr(?:ore)?s?\b/i);
-    if (prose) rupees = parseCroreToRupees(prose[1]);
+    // absent. Round 4 (checker finding): the original pattern had no
+    // identity anchor and could match a DECOY sentence about a different
+    // IPO elsewhere on the page. Require the matching sentence to also
+    // name THIS IPO's company (when known) or, failing that, to read as an
+    // actual issue-size statement ("IPO" + "fresh issue"/"offer for sale"
+    // in the same sentence) — never a bare "of ₹<x> crore" match anywhere
+    // in the document.
+    const sentences = clean.split(/(?<=[.!?])\s+/);
+    for (const sentence of sentences) {
+      const m = sentence.match(/of\s*₹\s*([\d,.]+)\s*Cr(?:ore)?s?\b/i);
+      if (!m) continue;
+      const hasCompany =
+        !!opts.companyName && sentence.toLowerCase().includes(opts.companyName.toLowerCase());
+      const hasIssueSizeContext =
+        /\bIPO\b/i.test(sentence) && (/fresh issue/i.test(sentence) || /offer for sale/i.test(sentence));
+      if (hasCompany || hasIssueSizeContext) {
+        rupees = parseCroreToRupees(m[1]);
+        break;
+      }
+    }
   }
 
   if (rupees === null) return null;

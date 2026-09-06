@@ -163,6 +163,27 @@ describe('extractIssueSizeFromDetailHtml', () => {
   it('falls back to the page prose ("of ₹720.00 crore") only when the detail-table row is absent', () => {
     const html = `<p>ESDS Software Solution came up with a fresh issue of 1.68 crore shares of ₹720.00 crore.</p>`;
     expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429, companyName: 'ESDS Software Solution' })
+    ).toBe(7_200_000_000);
+  });
+
+  it('does not leak the NEXT row\'s crore figure when the Total Issue Size row itself has none (row-boundary bug)', () => {
+    const html = `<a title="Total Issue Size">Total Issue Size</a></span></td><td><span>1,67,83,216 shares</span></td></tr><tr><td>Fresh Issue</td><td><span>₹500.00 Cr</span></td></tr>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
+    ).toBeNull();
+  });
+
+  it('rejects a prose "of ₹<x> crore" match about a DIFFERENT IPO (no identity anchor)', () => {
+    const html = `<p>Meanwhile, Some Other Company Ltd priced its issue of ₹500.00 crore.</p>`;
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429, companyName: 'ESDS Software Solution' })
+    ).toBeNull();
+  });
+
+  it('accepts prose with no companyName supplied when it reads as a real IPO issue-size statement', () => {
+    const html = `<p>The IPO consists entirely of a fresh issue of ₹720.00 crore.</p>`;
+    expect(
       extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
     ).toBe(7_200_000_000);
   });

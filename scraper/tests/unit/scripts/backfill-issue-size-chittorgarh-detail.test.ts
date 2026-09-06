@@ -39,6 +39,22 @@ describe('decideIssueSizeRepair', () => {
     const d = decideIssueSizeRepair({ current: 4_575_000, segment: 'SME', sourced: 91_500_000 });
     expect(d.write).toBe(true);
   });
+
+  it('writes a NULL-issue_size row when the sourced figure clears the floor (round 4: same defect class)', () => {
+    const d = decideIssueSizeRepair({ current: null, segment: 'MAINBOARD', sourced: 7_200_000_000 });
+    expect(d.write).toBe(true);
+  });
+
+  it('writes a zero-issue_size row when the sourced figure clears the floor (round 4: same defect class)', () => {
+    const d = decideIssueSizeRepair({ current: 0, segment: 'SME', sourced: 91_500_000 });
+    expect(d.write).toBe(true);
+  });
+
+  it('skips a NULL-issue_size row when no plausible source figure was found', () => {
+    const d = decideIssueSizeRepair({ current: null, segment: 'MAINBOARD', sourced: null });
+    expect(d.write).toBe(false);
+    expect(d.reason).toMatch(/no plausible source figure/);
+  });
 });
 
 describe('resolveDatabaseName / PRODUCTION_DATABASE_NAME (prod guard)', () => {

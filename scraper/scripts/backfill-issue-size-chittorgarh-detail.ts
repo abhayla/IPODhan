@@ -31,7 +31,7 @@
  */
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, gt, isNotNull, inArray } from 'drizzle-orm';
+import { and, eq, isNotNull, inArray, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { extractIssueSizeFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
@@ -67,6 +67,11 @@ export function resolveDatabaseName(env: NodeJS.ProcessEnv): string {
   return fromUrl || env.DATABASE_NAME || env.PGDATABASE || '';
 }
 
+// WITHDRAWN/POSTPONED are excluded ON PURPOSE, not an oversight: those rows
+// belong to the purge/archival path (repair-name-pollution-and-redirects.ts
+// and friends), which owns their lifecycle — this backfill only repairs a
+// LIVE row's issue_size, never resurrects or re-touches a row a different
+// script is responsible for retiring.
 const STATUSES = ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'] as const;
 
 interface Candidate {
@@ -74,7 +79,7 @@ interface Candidate {
   slug: string;
   companyName: string;
   segment: 'MAINBOARD' | 'SME' | null;
-  issueSize: string; // numeric column comes back as a string
+  issueSize: string | null; // numeric column comes back as a string, or null
   priceRangeMax: number | null;
   status: string;
 }
@@ -90,14 +95,14 @@ interface DiscoveryEntry { slug: string; id: string; }
  * value the write-time guard would already have accepted stay untouched).
  */
 export function decideIssueSizeRepair(input: {
-  current: number;
+  current: number | null; // null/0 (round 4): same defect class — no usable value
   segment: 'MAINBOARD' | 'SME' | null;
   sourced: number | null; // already floor + cross-check gated by the extractor, or null
 }): { write: boolean; reason: string } {
   const floor =
     input.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : input.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
 
-  if (floor !== null && input.current >= floor) {
+  if (floor !== null && input.current !== null && input.current >= floor) {
     return { write: false, reason: 'current value already clears the segment floor — never overwritten' };
   }
   if (input.sourced === null) {
@@ -207,13 +212,15 @@ async function main() {
   );
   console.log(`discovery map: ${discovery.size} IPOs (+${report82Added} from report 82 fallback)`);
 
-  // 2. Selection: IPO offering type, issue_size > 0, price_range_max present,
-  //    a live status, below the segment floor. Import the SAME floor
-  //    constants the write-time guard uses — never re-typed.
+  // 2. Selection: IPO offering type, price_range_max present, a LIVE status
+  //    (WITHDRAWN/POSTPONED excluded — see the STATUSES comment above),
+  //    and issue_size that is either NULL, 0, or a positive value below the
+  //    segment floor (round 4: NULL/0 is the SAME "no usable value" defect
+  //    class as a below-floor share count — all three get the same source
+  //    repair). Import the SAME floor constants the write-time guard uses —
+  //    never re-typed.
   const whereClauses = [
     eq(schema.ipos.offeringType, 'IPO'),
-    isNotNull(schema.ipos.issueSize),
-    gt(schema.ipos.issueSize, '0'),
     isNotNull(schema.ipos.priceRangeMax),
     inArray(schema.ipos.status, STATUSES as unknown as string[]),
   ];
@@ -233,13 +240,16 @@ async function main() {
     .where(and(...whereClauses));
 
   const candidates: Candidate[] = rows
-    .map((r) => ({ ...r, issueSize: String(r.issueSize) }))
+    .map((r) => ({ ...r, issueSize: r.issueSize == null ? null : String(r.issueSize) }))
     .filter((r) => {
-      const val = Number(r.issueSize);
       const floor = r.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : r.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
-      return floor !== null && Number.isFinite(val) && val < floor;
+      if (floor === null) return false;
+      if (r.issueSize === null) return true; // NULL — no usable value
+      const val = Number(r.issueSize);
+      if (!Number.isFinite(val) || val <= 0) return true; // 0 — same defect class
+      return val < floor;
     }) as Candidate[];
-  console.log(`considered (offering_type=IPO, issue_size>0, has price cap, below segment floor): ${candidates.length}`);
+  console.log(`considered (offering_type=IPO, has price cap, live status, issue_size NULL/0/below segment floor): ${candidates.length}`);
 
   // 3. Match to a Chittorgarh detail URL.
   const matched = candidates
@@ -255,7 +265,7 @@ async function main() {
   for (const c of matched) {
     if (fetched >= LIMIT) break;
     fetched++;
-    const current = Number(c.issueSize);
+    const current = c.issueSize === null ? null : Number(c.issueSize);
     const html = await fetchDetailHtml(c.disc.slug, c.disc.id);
     await new Promise((r) => setTimeout(r, 700 + Math.random() * 600)); // rate limit
     if (!html) {
@@ -267,12 +277,12 @@ async function main() {
     }
 
     const floor = c.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : c.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
-    const value = extractIssueSizeFromDetailHtml(html, { floor, priceRangeMax: c.priceRangeMax });
+    const value = extractIssueSizeFromDetailHtml(html, { floor, priceRangeMax: c.priceRangeMax, companyName: c.companyName });
     if (value !== null) sourced++;
 
     const decision = decideIssueSizeRepair({ current, segment: c.segment, sourced: value });
     console.log(
-      `  ${c.slug}: old=${current} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.write ? 'WRITE' : 'SKIP'} (${decision.reason})`
+      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.write ? 'WRITE' : 'SKIP'} (${decision.reason})`
     );
 
     if (!decision.write) {
@@ -284,19 +294,24 @@ async function main() {
     if (!APPLY) continue;
 
     try {
+      // Round 4: `eq(issueSize, c.issueSize)` never matches when the
+      // CURRENT value is SQL NULL (`= NULL` is always unknown/false in
+      // Postgres) — a plain eq guard silently dropped every NULL-row write.
+      // `IS NOT DISTINCT FROM` treats NULL=NULL as true, so the guard works
+      // identically for NULL, '0', and a below-floor positive value.
       const result = await db
         .update(schema.ipos)
         .set({ issueSize: String(value), updatedAt: new Date() })
-        .where(and(eq(schema.ipos.id, c.id), eq(schema.ipos.issueSize, c.issueSize)))
+        .where(and(eq(schema.ipos.id, c.id), sql`${schema.ipos.issueSize} IS NOT DISTINCT FROM ${c.issueSize}`))
         .returning({ id: schema.ipos.id });
       if (result.length > 0) {
         written++;
-        console.log(`    WROTE ${c.slug} issue_size ${current} -> ${value}`);
+        console.log(`    WROTE ${c.slug} issue_size ${current ?? 'NULL'} -> ${value}`);
         console.log(`    drop cache keys: ipo:slug:${c.slug}  ipo:id:${c.id}`);
       } else {
         skipped++;
         skipReasons['concurrent write (row changed since selection)'] = (skipReasons['concurrent write (row changed since selection)'] ?? 0) + 1;
-        console.log(`    SKIP ${c.slug}: row changed since selection (WHERE issue_size= guard missed)`);
+        console.log(`    SKIP ${c.slug}: row changed since selection (IS NOT DISTINCT FROM guard missed)`);
       }
     } catch (err) {
       fetchFailed++; // treat as a hard failure for the exit code
