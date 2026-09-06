@@ -41,6 +41,7 @@
  *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --recheck-above-floor --apply --overwrite-above-floor --allow-prod
  */
 import { db, getRedisClient } from '@ipodhan/shared';
+import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNotNull, inArray, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
@@ -502,19 +503,30 @@ async function main() {
 }
 
 /**
- * Drop the two IPO detail caches (`ipo:slug:*`, `ipo:id:*`) after a repaired
- * row is written — round 4 residue: the printed "drop cache keys" line told
- * an operator to do this BY HAND, so a repaired row could sit stale behind
- * a 15-min TTL until someone remembered. Fail-open (redis-best-effort per
+ * Drop the CANONICAL IPO cache-key set after a repaired row is written —
+ * round 4 residue: the printed "drop cache keys" line told an operator to do
+ * this BY HAND, so a repaired row could sit stale behind a 15-min TTL until
+ * someone remembered. Fail-open (redis-best-effort per
  * `redis-best-effort-fail-open.md`): a drop failure never fails the backfill,
  * it just falls back to the printed manual-drop line with a WARN.
+ *
+ * Round 5: dropping only `ipo:slug:*`/`ipo:id:*` left `ipo:detail:<slug>`
+ * (the /api/ipos/[slug] response cache) and the `ipo:list:*`/`ipo:search:*`/
+ * `ipos:history:*` pattern keys stale — a repaired issue_size could still
+ * render its OLD value on the listing/search pages after a "fixed" write.
+ * Routes through the scraper's own `invalidateIPOCaches` (the canonical set
+ * for detail/slug/list/search/history) for everything it covers, then drops
+ * `ipo:id:<id>` directly — that key is NOT one `invalidateIPOCaches` clears
+ * (it only takes a slug), so this backfill (which has both slug and id from
+ * its `ipos` row) still has to own it.
  */
 export async function dropIpoCacheKeys(
   redis: { del: (...keys: string[]) => Promise<unknown> },
   slug: string,
   id: string
 ): Promise<void> {
-  await redis.del(`ipo:slug:${slug}`, `ipo:id:${id}`);
+  await invalidateIPOCaches(redis as unknown as Parameters<typeof invalidateIPOCaches>[0], slug);
+  await redis.del(`ipo:id:${id}`);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

@@ -47,6 +47,7 @@ import {
   checkDocumentTypeMatchesClassifier,
   checkNotYetFiledAge,
   checkAbsenceWithoutEvidence,
+  checkExtractionStuck,
 } from './lib/document-state-checks.mjs';
 import {
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
@@ -449,6 +450,42 @@ async function checkM() {
   const failedExtractions = rows.map(norm).map(checkExtractFailed).filter(Boolean);
   record('m_extract_failed', 'no document stuck in EXTRACT_FAILED (WARN-level)',
     failedExtractions.length === 0 ? 'PASS' : 'WARN', failedExtractions.slice(0, MAX_OFFENDERS).join('; '));
+
+  // m_extraction_stuck (round 5, #333 follow-up): m_extract_failed above is
+  // WARN-only and blind to `documents.extraction_status` entirely (MANUAL_REVIEW,
+  // or FAILED behind a HARD_FAILURE marker) — see checkExtractionStuck's header
+  // comment. FAIL-level, joins `documents` to its sibling `document_fetch_state`
+  // row (same ipo+doc_type) so all three stuck shapes are caught in one check.
+  const extractionStuckRows = await q(`
+    SELECT i.company_name, i.slug, i.status AS ipo_status, d.doc_type,
+           d.extraction_status, d.extraction_error, d.updated_at AS doc_updated_at,
+           fs.state AS fetch_state
+      FROM documents d
+      JOIN ipos i ON i.id = d.ipo_id
+      LEFT JOIN document_fetch_state fs ON fs.ipo_id = d.ipo_id AND fs.doc_type = d.doc_type
+     WHERE i.${REAL_IPO}
+       AND i.status IN ('UPCOMING','OPEN','CLOSED','LISTED')
+       AND d.doc_type IN ('DRHP','RHP','PROSPECTUS')
+  `);
+  const nowMs = Date.now();
+  const extractionStuck = extractionStuckRows
+    .map((r) => ({
+      companyName: r.company_name,
+      slug: r.slug,
+      ipoStatus: r.ipo_status,
+      docType: r.doc_type,
+      extractionStatus: r.extraction_status,
+      extractionError: r.extraction_error,
+      fetchState: r.fetch_state,
+      hoursSinceUpdate: r.doc_updated_at ? (nowMs - new Date(r.doc_updated_at).getTime()) / (1000 * 60 * 60) : null,
+    }))
+    .map(checkExtractionStuck)
+    .filter(Boolean);
+  for (const v of extractionStuck)
+    notify('m_extraction_stuck', 'P1', v, 'Required document type stuck in extraction (MANUAL_REVIEW/EXTRACT_FAILED/HARD_FAILURE) past 48h', v);
+  record('m_extraction_stuck',
+    'no DRHP/RHP/PROSPECTUS stuck MANUAL_REVIEW, EXTRACT_FAILED, or FAILED+HARD_FAILURE for more than 48h on a live IPO',
+    extractionStuck.length === 0 ? 'PASS' : 'FAIL', extractionStuck.slice(0, MAX_OFFENDERS).join('; '));
 
   const liveIpos = await q(`
     SELECT i.company_name, i.status, count(s.id)::int AS state_row_count
