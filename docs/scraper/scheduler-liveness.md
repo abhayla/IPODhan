@@ -1,5 +1,15 @@
 # Scheduler job liveness inventory (T-311)
 
+> **2026-09-06 — SUPERSEDED:** `SchedulerService`, `scraper/src/scheduler/index.ts`
+> and `scraper/src/scheduler/config.ts` were removed: they were never deployed since
+> the Linux migration, and this doc's own inventory below is what proved it (prod
+> ran only the `ipodhan-scraper` PM2 one-shot, never `npm run scheduler`). The
+> due-step cycle (`scraper/src/scheduler/due-step-cycle.ts`, S-02) is now the only
+> scheduler — it runs inside that same one-shot process on every PM2
+> `--cron-restart` wake. The rest of this document is kept as the historical audit
+> that justified the removal; do not read the "kept as a non-production entrypoint"
+> line below as current — that entrypoint no longer exists.
+
 **Root cause (T-305 P2-7, the D9 config-vs-code liveness class from T-297):**
 production runs exactly one scraper process — `ipodhan-scraper` (PM2), the
 one-shot `tsx src/index.ts --source=all`, `cron_restart: */30 * * * *`
