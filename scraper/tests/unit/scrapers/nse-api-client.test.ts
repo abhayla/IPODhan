@@ -125,3 +125,41 @@ describe('transformIPOData issueSize (T-329 fix, RED against the old parseFloat(
     expect(result.issueSize).toBe(1679885000);
   });
 });
+
+/**
+ * T-455 (issue #242, round-7 P3-1): NSE's `current-issue` list endpoint
+ * carries no `sector`/`industry` field on any real captured payload — the
+ * mapper used to read `data.sector`, which was always `undefined`, so the
+ * DB column stayed 0/N filled while the matrix and a backfill-script header
+ * both claimed NSE as the working source. This pins the real (not
+ * hand-typed) fixture shape and guards against a future re-introduction of
+ * a phantom-field read.
+ */
+describe('transformIPOData sector (T-455 fix, real NSE fixture)', () => {
+  it('never emits a sector key from the real NSE current-issue payload (phantom field)', async () => {
+    const { transformIPOData } = await import('../../../src/scrapers/nse-api-client.js');
+    const fixture = (await import('../../fixtures/nse/ipo-current-issue.live-2026-08-22.json', { with: { type: 'json' } })).default;
+    const record = Array.isArray(fixture) ? fixture[0] : fixture;
+    expect(record.sector).toBeUndefined(); // sanity: the real payload has no such field
+    const result = transformIPOData(record, 'ipo');
+    expect(result.sector).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(result, 'sector')).toBe(false);
+  });
+
+  it('still stays undefined even if a source object happens to carry a `sector` key (no accidental read remains)', async () => {
+    const { transformIPOData } = await import('../../../src/scrapers/nse-api-client.js');
+    const data = {
+      companyName: 'Test Co',
+      symbol: 'TEST',
+      series: 'EQ',
+      issueSize: '1000000',
+      issuePrice: '95 to 99',
+      issueStartDate: '24-Aug-2026',
+      issueEndDate: '27-Aug-2026',
+      status: 'Active',
+      sector: 'Should Never Be Read',
+    };
+    const result = transformIPOData(data, 'ipo');
+    expect(result.sector).toBeUndefined();
+  });
+});
