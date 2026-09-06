@@ -517,15 +517,18 @@ function modalPrice(prices: number[]): number | null {
  * genuine investor row prints 100% of the anchor portion by itself, only the
  * row that sums every investor does.
  */
-function looksLikeTotalRow(rec: RawRecord, isLastPercentBearingRecord: boolean): boolean {
+function looksLikeTotalRow(rec: RawRecord, noInvestorShapedRowFollows: boolean): boolean {
   if (/^total\b/i.test(rec.name.trim())) return true;
   if (rec.name.trim() !== '') return false;
-  // Position guard (round 2 / Hole 3): a blank-named ~100% row is only
-  // trusted as the Total row when it is the LAST record in the whole letter
-  // that carries any percentage at all - a mid-letter row that happens to be
-  // both blank-named AND print ~100% (unlikely, but not impossible in a
-  // sub-table) must not be mistaken for the table's own Total row.
-  if (!isLastPercentBearingRecord) return false;
+  // Position guard (round 2 / Hole 3, refined W-170b): a blank-named ~100%
+  // row is only trusted as the Total row when no investor-shaped row (has a
+  // name, or a genuine share count) follows it anywhere in the letter. A
+  // percent-bearing footnote/restated line printed AFTER the real Total
+  // (e.g. "% of QIB portion 60.00%") carries neither a name nor a share
+  // count, so it no longer disqualifies the real Total from being
+  // recognised - only a row that actually looks like another investor
+  // record can.
+  if (!noInvestorShapedRowFollows) return false;
   const pctCell = rec.cells.find((c) => parsePercent(c) !== null);
   if (pctCell === undefined) return false;
   const value = parsePercent(pctCell) as number;
@@ -545,8 +548,21 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   const percentBearingIndices = all
     .map((r, i) => (r.cells.some((c) => parsePercent(c) !== null) ? i : -1))
     .filter((i) => i !== -1);
-  const lastPercentIdx = percentBearingIndices[percentBearingIndices.length - 1] ?? -1;
-  const totalAt = all.findIndex((r, i) => looksLikeTotalRow(r, i === lastPercentIdx));
+  // A row is "investor-shaped" when it carries a name or a genuine share
+  // count - a blank-named ~100% row (the Total itself) is deliberately
+  // excluded so the Total can never disqualify itself, and a footnote/
+  // restated line with neither a name nor a share count never counts either
+  // (W-170b: such a line printed after the real Total wrongly demoted it).
+  const looksInvestorShaped = (rec: RawRecord): boolean => {
+    if (rec.name.trim() !== '') return true;
+    if (looksLikeTotalRow(rec, true)) return false;
+    return readRow(rec) !== null;
+  };
+  const lastInvestorPercentIdx = percentBearingIndices.reduce(
+    (acc, i) => (looksInvestorShaped(all[i]) ? i : acc),
+    -1
+  );
+  const totalAt = all.findIndex((r, i) => looksLikeTotalRow(r, i > lastInvestorPercentIdx));
   const main = totalAt === -1 ? all : all.slice(0, totalAt);
   const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
 
