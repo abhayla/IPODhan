@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { getDocumentsKey, getPeerCompaniesKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import {
   documents,
   peerCompanies,
@@ -189,9 +190,24 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
 
     // Invalidate relevant caches
     try {
+      // The real read-side cache key for one-to-many tables comes from the
+      // shared key helper, not a hand-typed table-ipo-id string. Before this
+      // fix, DocumentRepository.findByIPO read getDocumentsKey(ipoId) (a
+      // "documents" prefix on its own) while this route invalidated a
+      // "documents-ipo-id" shaped key that never matched it, leaving a
+      // stale row cached for up to 1h after an admin edit.
+      const entityKeys: string[] = [];
+      if (tableName === 'documents') {
+        entityKeys.push(getDocumentsKey(ipoId));
+      } else if (tableName === 'peer_companies') {
+        entityKeys.push(getPeerCompaniesKey(ipoId));
+      } else {
+        entityKeys.push(`${tableName}:ipo:${ipoId}`);
+      }
+
       await redis.del(
-        `ipo:id:${ipoId}`,
-        `${tableName}:ipo:${ipoId}`,
+        getIPOByIdKey(ipoId),
+        ...entityKeys,
         `${tableName}:record:${recordId}`
       );
 
