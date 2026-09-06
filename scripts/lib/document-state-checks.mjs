@@ -450,6 +450,7 @@ export function checkCycleOverrun(rows) {
     parts.push(`${overlaps.length} overlapping wake(s): ${overlaps.join('; ')}`);
   }
   return parts.join(' | ');
+}
 
 /** A required doc type stuck in extraction is a data outage past this age. */
 export const EXTRACTION_STUCK_MAX_HOURS = 48;

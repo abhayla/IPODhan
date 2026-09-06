@@ -690,6 +690,7 @@ test('cycle-overrun: PASS on no rows (UNVERIFIABLE is the caller\'s job, not thi
 
 test('CYCLE_OVERRUN_MAX_MS is exactly 25 minutes', () => {
   assert.equal(CYCLE_OVERRUN_MAX_MS, 25 * 60 * 1000);
+});
 
 // ---- checkExtractionStuck (round 5, #333 follow-up: MANUAL_REVIEW invisible) ----
 
