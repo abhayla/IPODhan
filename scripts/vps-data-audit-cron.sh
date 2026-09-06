@@ -142,10 +142,22 @@ run_audit() {
   # network error can never turn a green (or already-alerted) audit run into a
   # failed cron run — the script itself already prints `ISSUES-SKIP: <reason>`
   # and exits 0 in every one of those cases (see its own header comment).
-  # AUDIT_ISSUES_DRY_RUN=1 forces --dry-run (no real GitHub writes) for the
-  # first night this runs on the box.
+  #
+  # DEFAULT IS DRY-RUN. Without this, the very first cron tick on a fresh box
+  # (nothing set AUDIT_ISSUES_DRY_RUN) would file every currently-FAILing check
+  # as a real GitHub issue in one shot — ~17 issues on night one, against every
+  # reviewer's recommendation to prove this on the box before trusting it with
+  # real issue creation. Live mode is opt-in via a marker file, not an env var
+  # nobody sets: it stays dry-run until `touch $STATE_DIR/issues-live` (i.e.
+  # `touch /root/data-audit-ipodhan/state/issues-live`). AUDIT_ISSUES_DRY_RUN=1
+  # still forces dry-run even once the marker exists (env override always wins).
   echo "--- [4/5] audit-findings-to-issues (nightly findings -> GitHub issues) ---"
-  node scripts/audit-findings-to-issues.mjs || true
+  if [[ ! -f "$STATE_DIR/issues-live" ]]; then
+    echo "ISSUES-DRY-RUN: no $STATE_DIR/issues-live marker; touch it to go live"
+    AUDIT_ISSUES_DRY_RUN=1 node scripts/audit-findings-to-issues.mjs || true
+  else
+    node scripts/audit-findings-to-issues.mjs || true
+  fi
 
   # T-330: read-only schema-drift check — compares the live column/matview set
   # against packages/shared/src/db/schema.ts. Catches the class where a

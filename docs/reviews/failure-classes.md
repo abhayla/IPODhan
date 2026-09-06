@@ -99,6 +99,18 @@ AUDIT_ISSUES_DRY_RUN=1 node scripts/audit-findings-to-issues.mjs
 node scripts/audit-findings-to-issues.mjs --dry-run /path/to/findings-latest.json
 ```
 
+**Cron step [4/5] DEFAULTS TO DRY-RUN.** `scripts/vps-data-audit-cron.sh` does not rely on anyone
+remembering to set `AUDIT_ISSUES_DRY_RUN=1` — it stays dry-run on every tick until a marker file
+exists, so the very first cron run on a fresh box cannot file every currently-FAILing check as a
+real issue in one shot. Go live with:
+
+```bash
+touch /root/data-audit-ipodhan/state/issues-live
+```
+
+Setting `AUDIT_ISSUES_DRY_RUN=1` in the cron's environment still forces dry-run even after the
+marker exists — the env override always wins over the marker.
+
 **State.** `<STATE_DIR>/issues-sync-state.json` — `{ [checkId]: { issueNumber, firstSeen,
 lastRowKeys, closedAt? } }` — lives next to `findings-latest.json` in the audit's own state dir and
 is the only way the script knows "unchanged since last night" vs "this is new". A closed entry is

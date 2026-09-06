@@ -291,6 +291,13 @@ test('the cron script invokes the new issue-sync step', () => {
   assert.match(cron, /audit-findings-to-issues\.mjs/);
 });
 
+test('the cron script defaults to dry-run via an issues-live marker file, not a bare AUDIT_ISSUES_DRY_RUN', () => {
+  const cron = readFileSync(join(REPO_ROOT, 'scripts', 'vps-data-audit-cron.sh'), 'utf8');
+  assert.match(cron, /issues-live/);
+  assert.match(cron, /AUDIT_ISSUES_DRY_RUN=1 node scripts\/audit-findings-to-issues\.mjs/);
+  assert.match(cron, /ISSUES-DRY-RUN: no .*issues-live marker; touch it to go live/);
+});
+
 test('the runner uses execFile with argv arrays, never exec() with a shell string', () => {
   const src = readFileSync(join(__dirname, '..', 'audit-findings-to-issues.mjs'), 'utf8');
   assert.match(src, /execFile\b/);
