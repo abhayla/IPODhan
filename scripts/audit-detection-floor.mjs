@@ -462,7 +462,7 @@ async function checkM() {
            count(DISTINCT d.id)::int AS documents_row_count,
            count(DISTINCT s.id) FILTER (
              WHERE s.state NOT IN ('FOUND', 'NOT_APPLICABLE', 'SUPERSEDED')
-                OR s.next_retry_at < now()
+               AND (s.next_retry_at IS NULL OR s.next_retry_at <= now())
            )::int AS incomplete_row_count,
            EXTRACT(EPOCH FROM (now() - MAX(s.last_attempt_at))) / 3600.0 AS hours_since_last_attempt
       FROM ipos i
@@ -496,7 +496,7 @@ async function checkM() {
   // count is skipped rather than assumed healthy.
   const brlm = await q(`
     SELECT company_name,
-           coalesce(array_length(lead_managers, 1), 0)::int AS stored_count,
+           coalesce(CASE WHEN jsonb_typeof(lead_managers) = 'array' THEN jsonb_array_length(lead_managers) END, 0)::int AS stored_count,
            bse_payload_lead_manager_count::int AS payload_count
       FROM ipos
      WHERE ${REAL_IPO} AND bse_payload_lead_manager_count IS NOT NULL

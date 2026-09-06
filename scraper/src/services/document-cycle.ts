@@ -1041,6 +1041,8 @@ export async function runDocumentCycle(
         // not already been processed this cycle (by the normal walk above or
         // by the purge slot); independent of, and can fire alongside, the
         // purge reservation.
+        // `lifecycleRank(c) === 3` is the LISTED rank (see `lifecycleRank`'s
+        // switch above: 0=OPEN, 1=CLOSED, 2=UPCOMING/PRE_OPEN, 3=LISTED, 4=WITHDRAWN/POSTPONED).
         const remainingListed = candidates
           .slice(i)
           .filter((c) => lifecycleRank(c) === 3 && !processedIds.has(c.id));

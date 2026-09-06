@@ -599,3 +599,45 @@ test('68i PASSes a LISTED IPO with fetch-state rows and none incomplete (all FOU
     null
   );
 });
+
+// --- fix-round W-136-r2: incomplete_row_count must be DUE-only -------------
+// (audit-detection-floor.mjs's SQL FILTER, not this predicate, is what
+// excludes a future-backoff row from the count — these fixtures assert the
+// predicate's behavior for the two counts the fixed SQL would actually
+// produce for each scenario).
+
+test('68j PASSes when the only incomplete row is in a future backoff (SQL now excludes it -> count 0)', () => {
+  // Row: state=WANTED, next_retry_at 2 days in the future, last_attempt_at 3
+  // days ago. The fixed SQL FILTER excludes this row entirely (not due), so
+  // incompleteRowCount arrives as 0 even though hoursSinceLastAttempt is old.
+  assert.equal(
+    checkListedRotationStall({
+      companyName: 'Backoff Ltd.',
+      slug: 'backoff-co',
+      status: 'LISTED',
+      daysSinceListing: 4,
+      stateRowCount: 1,
+      documentsRowCount: 1,
+      incompleteRowCount: 0,
+      hoursSinceLastAttempt: 72,
+    }),
+    null
+  );
+});
+
+test('68k FAILs when the incomplete row is actually due (next_retry_at in the past, count 1) and stale', () => {
+  // Row: state=WANTED, next_retry_at in the past (due), last_attempt_at 3
+  // days ago. The SQL FILTER includes this row, so incompleteRowCount is 1.
+  const violation = checkListedRotationStall({
+    companyName: 'Due Retry Ltd.',
+    slug: 'due-retry-co',
+    status: 'LISTED',
+    daysSinceListing: 4,
+    stateRowCount: 1,
+    documentsRowCount: 1,
+    incompleteRowCount: 1,
+    hoursSinceLastAttempt: 72,
+  });
+  assert.match(violation, /due-retry-co/);
+  assert.match(violation, /listed_rotation_stall/);
+});
