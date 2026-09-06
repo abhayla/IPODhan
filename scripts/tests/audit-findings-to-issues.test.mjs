@@ -21,6 +21,8 @@ import {
   LOCK_STALE_MS,
   localDateStamp,
   DATA_REPAIR_CHECK_IDS,
+  resolveStateDirOrRefuse,
+  CANONICAL_STATE_DIR,
 } from '../audit-findings-to-issues.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -444,4 +446,34 @@ test('LOW(a): acquireLock uses an atomic create-exclusive write (wx), not check-
 test('localDateStamp formats a Date as local YYYY-MM-DD', () => {
   const d = new Date(2026, 8, 6); // month is 0-indexed: September 6, 2026
   assert.equal(localDateStamp(d), '2026-09-06');
+});
+
+// ---- round 6: refuse tmpdir() fallback in LIVE mode -------------------------
+
+test('resolveStateDirOrRefuse: an explicit DETECTION_FLOOR_STATE_DIR always wins, live or dry-run', () => {
+  const r = resolveStateDirOrRefuse({ DETECTION_FLOOR_STATE_DIR: '/custom/dir' }, false, () => false);
+  assert.deepEqual(r, { dir: '/custom/dir', refused: false });
+});
+
+test('resolveStateDirOrRefuse: uses the canonical dir when it exists, live or dry-run', () => {
+  const r = resolveStateDirOrRefuse({}, false, (p) => p === CANONICAL_STATE_DIR);
+  assert.deepEqual(r, { dir: CANONICAL_STATE_DIR, refused: false });
+});
+
+test('resolveStateDirOrRefuse: LIVE mode (not dry-run) REFUSES with exit-0 shape when the canonical dir is missing', () => {
+  const r = resolveStateDirOrRefuse({}, /* dryRun */ false, () => false);
+  assert.equal(r.refused, true);
+  assert.equal(r.dir, null);
+  assert.match(r.message, new RegExp(`^ISSUES-SKIP: state dir ${CANONICAL_STATE_DIR} missing$`));
+});
+
+test('resolveStateDirOrRefuse: dry-run mode still falls back to tmpdir() when the canonical dir is missing', () => {
+  const r = resolveStateDirOrRefuse({}, /* dryRun */ true, () => false);
+  assert.equal(r.refused, false);
+  assert.ok(r.dir && r.dir.length > 0);
+  assert.notEqual(r.dir, CANONICAL_STATE_DIR);
+});
+
+test('m_extraction_stuck is registered in DATA_REPAIR_CHECK_IDS (round 6, needs-decision)', () => {
+  assert.ok(DATA_REPAIR_CHECK_IDS.has('m_extraction_stuck'));
 });

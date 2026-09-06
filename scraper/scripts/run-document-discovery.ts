@@ -74,6 +74,12 @@ import {
 import { readback } from './readback-document-state.js';
 import { NetworkCounter } from '../src/utils/network-counter.js';
 import { deriveLifecycleStage } from '../src/scheduler/stage-reconciler.js';
+import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+
+// GitHub #28: `options: '-c timezone=UTC'` on each Pool below pins the
+// SESSION to UTC (writes/now()); this pins the CLIENT-SIDE parse of naive
+// `timestamp` columns read back as UTC regardless of process TZ (reads).
+configureUtcTimestampParsing();
 
 /**
  * The four acceptance IPOs. `status`, `segment` and the dates are the values

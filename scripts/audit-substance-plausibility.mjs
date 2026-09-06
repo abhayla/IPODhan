@@ -35,15 +35,28 @@ const MAX_OFFENDERS = 5;
 
 installUtcTimestampParsing();
 
-const pool = createUtcPool({
-  host: process.env.DATABASE_HOST,
-  port: parseInt(process.env.DATABASE_PORT || '5432'),
-  database: process.env.DATABASE_NAME || 'ipodhan',
-  user: process.env.DATABASE_USER || 'postgres',
-  password: process.env.DATABASE_PASSWORD,
-  ssl: false,
-  max: 4,
-});
+// Mirror packages/shared/src/db/index.ts (and audit-ipo-coverage.mjs): use
+// discrete DATABASE_* params only when both HOST and PASSWORD are set
+// (dev-tunnel shape); otherwise fall back to DATABASE_URL (the prod VPS env
+// shape — a discrete-params Pool built unconditionally leaves
+// `password: undefined` and fails with "client password must be a string").
+const pool = createUtcPool(
+  process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
+    ? {
+        host: process.env.DATABASE_HOST,
+        port: parseInt(process.env.DATABASE_PORT || '5432'),
+        database: process.env.DATABASE_NAME || 'ipodhan',
+        user: process.env.DATABASE_USER || 'postgres',
+        password: process.env.DATABASE_PASSWORD,
+        ssl: false,
+        max: 4,
+      }
+    : {
+        connectionString: process.env.DATABASE_URL,
+        ssl: false,
+        max: 4,
+      }
+);
 
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 // Genuine-IPO population predicate — mirrors REAL_IPO in audit-ipo-coverage.mjs.
@@ -77,9 +90,16 @@ async function main() {
             i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
             lp.listing_price, lp.listing_gain_percent,
-            COALESCE(lp.issue_price, i.price_range_max) AS issue_price
+            COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
+            d.issue_type
        FROM ipos i
        LEFT JOIN listing_performance lp ON lp.ipo_id = i.id
+       LEFT JOIN LATERAL (
+         SELECT issue_type FROM ipo_details
+          WHERE ipo_id = i.id
+          ORDER BY updated_at DESC, id DESC
+          LIMIT 1
+       ) d ON true
       WHERE i.${REAL_IPO}`
   );
 
@@ -103,6 +123,7 @@ async function main() {
   }
 
   // Run each pure predicate across all rows; collect counts + up to MAX_OFFENDERS names.
+  log(`  evaluated ${rows.length} rows`);
   log(`\n=== PER-CHECK RESULTS ===`);
   let totalViolations = 0;
   const failedChecks = [];

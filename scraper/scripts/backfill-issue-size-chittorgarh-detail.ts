@@ -28,8 +28,20 @@
  * Usage (from scraper/, tunnel env exported):
  *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts [--slug a,b,c] [--limit N]
  *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --apply --allow-prod
+ *
+ * Round-N: --recheck-above-floor widens selection to rows that already clear
+ * the segment floor but may still carry the WRONG figure (Windlas Biotech
+ * stored 47 Cr for a real 401 Cr issue; AAA Technologies, Induss, Banganga,
+ * Sanmitra similar — all above-floor, so invisible to the below-floor query
+ * above). It sources the same way and only ever FLAGS a >40% divergence —
+ * writing needs --overwrite-above-floor ON TOP of --apply (and --allow-prod
+ * on prod, same rule as below-floor). Rows within 40% are OK and never
+ * touched.
+ *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --recheck-above-floor
+ *   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts --recheck-above-floor --apply --overwrite-above-floor --allow-prod
  */
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient } from '@ipodhan/shared';
+import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNotNull, inArray, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
@@ -48,6 +60,15 @@ const limitIdx = process.argv.indexOf('--limit');
 const LIMIT = limitIdx >= 0 ? parseInt(process.argv[limitIdx + 1], 10) : Infinity;
 const slugIdx = process.argv.indexOf('--slug');
 const SLUGS = slugIdx >= 0 ? process.argv[slugIdx + 1].split(',').map((s) => s.trim()).filter(Boolean) : null;
+// Round-N residue: rows ABOVE the segment floor can still carry the wrong unit
+// (Windlas Biotech 47 Cr stored vs 401 Cr real; AAA Technologies, Induss,
+// Banganga, Sanmitra similar) — invisible to the below-floor selection above.
+// --recheck-above-floor widens selection to floor-clearing rows and FLAGS (never
+// writes) a >40% divergence from the source figure unless --overwrite-above-floor
+// is also given (and --apply, and --allow-prod on prod, same as the below-floor path).
+const RECHECK_ABOVE_FLOOR = process.argv.includes('--recheck-above-floor');
+const OVERWRITE_ABOVE_FLOOR = process.argv.includes('--overwrite-above-floor');
+const ABOVE_FLOOR_DIVERGENCE_THRESHOLD = 0.40;
 
 /** The one database name this CLI refuses to WRITE to without --allow-prod. */
 export const PRODUCTION_DATABASE_NAME = 'ipodhan';
@@ -98,28 +119,81 @@ export function decideIssueSizeRepair(input: {
   current: number | null; // null/0 (round 4): same defect class — no usable value
   segment: 'MAINBOARD' | 'SME' | null;
   sourced: number | null; // already floor + cross-check gated by the extractor, or null
-}): { write: boolean; reason: string } {
+  mode?: 'below-floor' | 'above-floor'; // default 'below-floor' (original behaviour, unchanged)
+  overwriteAboveFloor?: boolean; // --overwrite-above-floor: required to WRITE a divergent above-floor row
+}): { write: boolean; reason: string; status: 'OK' | 'FLAG' | 'WRITE' | 'SKIP' } {
+  const mode = input.mode ?? 'below-floor';
   const floor =
     input.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : input.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
 
-  if (floor !== null && input.current !== null && input.current >= floor) {
-    return { write: false, reason: 'current value already clears the segment floor — never overwritten' };
+  if (mode === 'below-floor') {
+    if (floor !== null && input.current !== null && input.current >= floor) {
+      return { write: false, status: 'SKIP', reason: 'current value already clears the segment floor — never overwritten' };
+    }
+    if (input.sourced === null) {
+      return { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
+    }
+    // Belt-and-braces: re-run the exact write-time guard on the sourced value
+    // before deciding to write, so this script and the persister door can never
+    // disagree about what counts as plausible.
+    const implausible = collectImplausibleIssueSizeFields(
+      { issueSize: input.sourced, segment: input.segment },
+      null,
+      'ADMIN' // filing-total semantics: this is a stated total, not an exchange share count
+    );
+    if (implausible.fields.has('issueSize')) {
+      return { write: false, status: 'SKIP', reason: `sourced value failed the write-time guard (${implausible.reason})` };
+    }
+    return { write: true, status: 'WRITE', reason: 'sourced value passes floor + cross-check gates' };
   }
+
+  // mode === 'above-floor': rows that already clear the segment floor but may
+  // still carry the WRONG unit/figure (Windlas/AAA/Induss/Banganga/Sanmitra
+  // class) — the below-floor gate above is blind to these by construction.
+  //
+  // CAVEAT (round 4): a >40% divergence FLAG is not always a wrong stored
+  // value — some IPOs legitimately publish a fresh-issue-only total on one
+  // page and a total-incl-OFS figure on another (the "Meesho-type" shape),
+  // so the two numbers can disagree by design, not by corruption.
+  // --overwrite-above-floor writes EVERY flagged row in the run with no
+  // per-row human check, so callers MUST triage with --slug first — see
+  // validateOverwriteAboveFloorRequiresSlug(), which refuses a whole-table
+  // overwrite.
   if (input.sourced === null) {
-    return { write: false, reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
+    return { write: false, status: 'SKIP', reason: 'no plausible source figure (absent, ambiguous, or cross-check failed)' };
   }
-  // Belt-and-braces: re-run the exact write-time guard on the sourced value
-  // before deciding to write, so this script and the persister door can never
-  // disagree about what counts as plausible.
   const implausible = collectImplausibleIssueSizeFields(
     { issueSize: input.sourced, segment: input.segment },
     null,
-    'ADMIN' // filing-total semantics: this is a stated total, not an exchange share count
+    'ADMIN'
   );
   if (implausible.fields.has('issueSize')) {
-    return { write: false, reason: `sourced value failed the write-time guard (${implausible.reason})` };
+    return { write: false, status: 'SKIP', reason: `sourced value failed the write-time guard (${implausible.reason})` };
   }
-  return { write: true, reason: 'sourced value passes floor + cross-check gates' };
+  if (input.current === null || input.current === 0) {
+    // Selection guarantees current >= floor in this mode; defensive only.
+    return { write: false, status: 'SKIP', reason: 'no usable current value to compare against (defensive — selection should exclude this)' };
+  }
+  const divergence = Math.abs(input.sourced / input.current - 1);
+  if (divergence <= ABOVE_FLOOR_DIVERGENCE_THRESHOLD) {
+    return {
+      write: false,
+      status: 'OK',
+      reason: `within ${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% of stored value (source=${input.sourced}, stored=${input.current}, divergence=${(divergence * 100).toFixed(1)}%) — never touched`,
+    };
+  }
+  if (!input.overwriteAboveFloor) {
+    return {
+      write: false,
+      status: 'FLAG',
+      reason: `diverges from stored value by >${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% (source=${input.sourced}, stored=${input.current}, divergence=${(divergence * 100).toFixed(1)}%) — pass --overwrite-above-floor to write`,
+    };
+  }
+  return {
+    write: true,
+    status: 'WRITE',
+    reason: `diverges from stored value by >${(ABOVE_FLOOR_DIVERGENCE_THRESHOLD * 100).toFixed(0)}% — overwritten (--overwrite-above-floor given)`,
+  };
 }
 
 async function fetchReport118(year: number, range: string): Promise<any[]> {
@@ -137,8 +211,35 @@ async function fetchReport118(year: number, range: string): Promise<any[]> {
   return d?.reportTableData ?? [];
 }
 
+function buildDetailUrl(slug: string, id: string): string {
+  return `https://www.chittorgarh.com/ipo/${slug}/${id}/`;
+}
+
+/**
+ * Round-3 recheck diagnostics: when the extractor returns null in
+ * --recheck-above-floor mode, print WHY — the first 160 chars of the raw
+ * "Issue Size" table cell (comment nodes stripped) so the architect can see
+ * the actual markup instead of guessing. Mirrors the label-matching regex in
+ * extractIssueSizeFromDetailHtml (diagnostic-only duplicate — never used to
+ * decide a write, only to print).
+ */
+export function extractIssueSizeCellSnippet(html: string): string | null {
+  if (!html) return null;
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+  const labelMatch =
+    clean.match(/title="Total Issue Size"[\s\S]{0,200}?<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/(?:td|span)>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size[^<]{0,20}<\/[a-z]+>([\s\S]{0,260})/i);
+  if (!labelMatch) return null;
+  const rawBlock = labelMatch[1];
+  const rowEnd = rawBlock.search(/<\/tr>/i);
+  const block = rowEnd === -1 ? rawBlock : rawBlock.slice(0, rowEnd);
+  return block.slice(0, 160);
+}
+
 async function fetchDetailHtml(slug: string, id: string): Promise<string | null> {
-  const u = `https://www.chittorgarh.com/ipo/${slug}/${id}/`;
+  const u = buildDetailUrl(slug, id);
   try {
     const r = await fetch(u, {
       headers: {
@@ -165,10 +266,46 @@ const FISCAL_YEARS = [
   { year: 2020, range: '2020-21' },
 ];
 
+/**
+ * Round-4: --overwrite-above-floor writes EVERY flagged row in one run — but
+ * a FLAG can be a legitimate divergence (fresh-issue-only vs total-incl-OFS
+ * figures, the "Meesho-type" shape), not a wrong value. Requiring --slug
+ * forces a human to triage the flagged list first and name exactly which
+ * rows to overwrite, instead of blindly overwriting a whole table's worth of
+ * FLAGs — some of which may be correct as stored. Pure for unit testing.
+ */
+export function validateOverwriteAboveFloorRequiresSlug(
+  overwriteAboveFloor: boolean,
+  slugs: string[] | null
+): { ok: boolean; message?: string } {
+  if (overwriteAboveFloor && (!slugs || slugs.length === 0)) {
+    return {
+      ok: false,
+      message:
+        '--overwrite-above-floor requires --slug a,b,c — refusing a whole-table overwrite. ' +
+        'A FLAG can be a legitimate fresh-issue-vs-total (incl. OFS) divergence, not a wrong value ' +
+        '(the "Meesho-type" shape) — triage the flagged list first, then re-run naming exactly which rows to write.',
+    };
+  }
+  return { ok: true };
+}
+
 async function main() {
   console.log('='.repeat(80));
   console.log(`ISSUE-SIZE BACKFILL (Chittorgarh detail pages, W-177 repair) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  const overwriteGuard = validateOverwriteAboveFloorRequiresSlug(OVERWRITE_ABOVE_FLOOR, SLUGS);
+  if (!overwriteGuard.ok) {
+    console.error(`backfill-issue-size: ${overwriteGuard.message}`);
+    process.exit(1);
+  }
+  if (RECHECK_ABOVE_FLOOR) {
+    console.log(
+      'CAVEAT: FLAG can be fresh-issue vs total (incl. OFS): Meesho-type rows diverge legitimately; ' +
+        '--overwrite-above-floor writes EVERY flagged row, so triage with --slug before writing.'
+    );
+  }
 
   const dbName = resolveDatabaseName(process.env);
   console.log(`database: ${dbName || '(unresolved)'}`);
@@ -244,12 +381,16 @@ async function main() {
     .filter((r) => {
       const floor = r.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : r.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
       if (floor === null) return false;
-      if (r.issueSize === null) return true; // NULL — no usable value
+      if (r.issueSize === null) return RECHECK_ABOVE_FLOOR ? false : true; // NULL — below-floor's "no usable value" class; nothing to recheck above the floor
       const val = Number(r.issueSize);
-      if (!Number.isFinite(val) || val <= 0) return true; // 0 — same defect class
-      return val < floor;
+      if (!Number.isFinite(val) || val <= 0) return RECHECK_ABOVE_FLOOR ? false : true; // 0 — same defect class, below-floor only
+      return RECHECK_ABOVE_FLOOR ? val >= floor : val < floor;
     }) as Candidate[];
-  console.log(`considered (offering_type=IPO, has price cap, live status, issue_size NULL/0/below segment floor): ${candidates.length}`);
+  console.log(
+    RECHECK_ABOVE_FLOOR
+      ? `considered (offering_type=IPO, has price cap, live status, issue_size >= segment floor — recheck mode): ${candidates.length}`
+      : `considered (offering_type=IPO, has price cap, live status, issue_size NULL/0/below segment floor): ${candidates.length}`
+  );
 
   // 3. Match to a Chittorgarh detail URL.
   const matched = candidates
@@ -258,7 +399,7 @@ async function main() {
   console.log(`matched to a Chittorgarh detail URL: ${matched.length} (unmatched: ${candidates.length - matched.length})`);
 
   // 4. Fetch + extract + decide.
-  let sourced = 0, written = 0, skipped = 0, fetchFailed = 0;
+  let sourced = 0, written = 0, skipped = 0, fetchFailed = 0, ok = 0, flagged = 0;
   const skipReasons: Record<string, number> = {};
   let fetched = 0;
 
@@ -280,14 +421,33 @@ async function main() {
     const value = extractIssueSizeFromDetailHtml(html, { floor, priceRangeMax: c.priceRangeMax, companyName: c.companyName });
     if (value !== null) sourced++;
 
-    const decision = decideIssueSizeRepair({ current, segment: c.segment, sourced: value });
+    if (RECHECK_ABOVE_FLOOR) {
+      console.log(`    url: ${buildDetailUrl(c.disc.slug, c.disc.id)}`);
+      if (value === null) {
+        const snippet = extractIssueSizeCellSnippet(html);
+        console.log(`    source=none — Issue Size cell (first 160 chars): ${snippet ?? '(no "Issue Size" label found on page)'}`);
+      }
+    }
+
+    const decision = decideIssueSizeRepair({
+      current,
+      segment: c.segment,
+      sourced: value,
+      mode: RECHECK_ABOVE_FLOOR ? 'above-floor' : 'below-floor',
+      overwriteAboveFloor: OVERWRITE_ABOVE_FLOOR,
+    });
     console.log(
-      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.write ? 'WRITE' : 'SKIP'} (${decision.reason})`
+      `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.status} (${decision.reason})`
     );
 
+    if (decision.status === 'OK') ok++;
+    if (decision.status === 'FLAG') flagged++;
+
     if (!decision.write) {
-      skipped++;
-      skipReasons[decision.reason] = (skipReasons[decision.reason] ?? 0) + 1;
+      if (decision.status !== 'OK') {
+        skipped++;
+        skipReasons[decision.reason] = (skipReasons[decision.reason] ?? 0) + 1;
+      }
       continue;
     }
 
@@ -308,6 +468,16 @@ async function main() {
         written++;
         console.log(`    WROTE ${c.slug} issue_size ${current ?? 'NULL'} -> ${value}`);
         console.log(`    drop cache keys: ipo:slug:${c.slug}  ipo:id:${c.id}`);
+        if (process.env.REDIS_URL) {
+          try {
+            await dropIpoCacheKeys(getRedisClient(), c.slug, c.id);
+          } catch (err) {
+            logger.warn(
+              { slug: c.slug, id: c.id, error: err instanceof Error ? err.message : String(err) },
+              'cache drop failed - drop the printed keys by hand'
+            );
+          }
+        }
       } else {
         skipped++;
         skipReasons['concurrent write (row changed since selection)'] = (skipReasons['concurrent write (row changed since selection)'] ?? 0) + 1;
@@ -321,9 +491,42 @@ async function main() {
 
   const reasonsStr = Object.entries(skipReasons).map(([k, v]) => `${k}=${v}`).join(', ') || 'none';
   console.log(`\nconsidered ${candidates.length}, sourced ${sourced}, written ${written}, skipped ${skipped} (${reasonsStr})`);
+  if (RECHECK_ABOVE_FLOOR) {
+    console.log(`recheck: ${matched.length} rows, ok ${ok}, flagged ${flagged}, written ${written}`);
+    if (flagged > 0 && !OVERWRITE_ABOVE_FLOOR) {
+      console.log('FLAGGED rows above need owner review — re-run with --apply --overwrite-above-floor (and --allow-prod on prod) to write.');
+    }
+  }
   if (!APPLY) console.log('DRY-RUN: re-run with --apply to write.');
   console.log('='.repeat(80));
   process.exit(fetchFailed > 0 && written === 0 && APPLY ? 1 : fetchFailed > 0 && !APPLY && sourced === 0 ? 1 : 0);
+}
+
+/**
+ * Drop the CANONICAL IPO cache-key set after a repaired row is written —
+ * round 4 residue: the printed "drop cache keys" line told an operator to do
+ * this BY HAND, so a repaired row could sit stale behind a 15-min TTL until
+ * someone remembered. Fail-open (redis-best-effort per
+ * `redis-best-effort-fail-open.md`): a drop failure never fails the backfill,
+ * it just falls back to the printed manual-drop line with a WARN.
+ *
+ * Round 5: dropping only `ipo:slug:*`/`ipo:id:*` left `ipo:detail:<slug>`
+ * (the /api/ipos/[slug] response cache) and the `ipo:list:*`/`ipo:search:*`/
+ * `ipos:history:*` pattern keys stale — a repaired issue_size could still
+ * render its OLD value on the listing/search pages after a "fixed" write.
+ * Routes through the scraper's own `invalidateIPOCaches` (the canonical set
+ * for detail/slug/list/search/history) for everything it covers, then drops
+ * `ipo:id:<id>` directly — that key is NOT one `invalidateIPOCaches` clears
+ * (it only takes a slug), so this backfill (which has both slug and id from
+ * its `ipos` row) still has to own it.
+ */
+export async function dropIpoCacheKeys(
+  redis: { del: (...keys: string[]) => Promise<unknown> },
+  slug: string,
+  id: string
+): Promise<void> {
+  await invalidateIPOCaches(redis as unknown as Parameters<typeof invalidateIPOCaches>[0], slug);
+  await redis.del(`ipo:id:${id}`);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

@@ -35,7 +35,8 @@
       ],
       "failThreshold": "issue_size diverges from shares_offered x price_range_max by more than 25%, when both are present",
       "severity": "P1",
-      "unverifiableWhen": "shares_offered not yet scraped for the row (skipped, not a violation)"
+      "unverifiableWhen": "shares_offered not yet scraped for the row (skipped, not a violation)",
+      "note": "subscriptions.shares_offered is the NET public offer (anchor allocation excluded), so an anchor-heavy issue's issue_size can legitimately diverge from shares_offered x price_range_max by more than this check's 25% band by design - open design item, owner sign-off needed before tightening/loosening the threshold."
     },
     {
       "id": "d_lot_band_window",
@@ -308,6 +309,16 @@
       "warnThreshold": "a slot's row is open but under 24h old - a normal in-progress-fix window, not yet an outage",
       "severity": "P1",
       "unverifiableWhen": "the deploy-failure-status.json file exists but could not be read/parsed (an ABSENT file is a legitimate PASS - no deploy has ever failed)"
+    },
+    {
+      "id": "m_extraction_stuck",
+      "findingClass": "a required document type (DRHP/RHP/PROSPECTUS) on a live-window IPO is stuck in extraction (MANUAL_REVIEW, EXTRACT_FAILED, or FAILED behind a HARD_FAILURE marker) with nothing FAIL-level watching it",
+      "round7Findings": [],
+      "sourceTask": "round-5 review-of-the-reviews (#333 follow-up)",
+      "registryClass": "silent-terminal-state-invisible-to-audit",
+      "failThreshold": "any UPCOMING/OPEN/CLOSED/LISTED IPO's DRHP/RHP/PROSPECTUS document has extraction_status=MANUAL_REVIEW, a sibling document_fetch_state.state=EXTRACT_FAILED, or extraction_status=FAILED with an extraction_error starting HARD_FAILURE:, for more than 48h",
+      "severity": "P1",
+      "unverifiableWhen": "never - always runs against documents/document_fetch_state joined to ipos"
     }
   ],
   "notCoveredByThisManifest": [

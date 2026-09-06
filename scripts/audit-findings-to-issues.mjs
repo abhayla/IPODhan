@@ -447,6 +447,7 @@ export const DATA_REPAIR_CHECK_IDS = new Set([
   'j_sector_populated', 'j_segment_not_null',
   'j_dead_source_retire_by',
   'm_brlm_count', 'm_document_type_classifier',
+  'm_extraction_stuck', // round 5/6: needs-decision — a human must review a MANUAL_REVIEW/HARD_FAILURE document, not just wait for a retry
 ]);
 
 export function parseArgs(argv) {
@@ -516,11 +517,41 @@ export function releaseLock(lockPath) {
   try { unlinkSync(lockPath); } catch { /* best-effort */ }
 }
 
+export const CANONICAL_STATE_DIR = '/root/data-audit-ipodhan/state';
+
+/**
+ * Round 6: the state-dir resolution used to fall back to `tmpdir()` whenever
+ * neither `DETECTION_FLOOR_STATE_DIR` nor the canonical `/root/data-audit-
+ * ipodhan/state` existed — silently on the real box too. In LIVE mode (not
+ * dry-run — the vps-data-audit-cron.sh wrapper only runs without
+ * AUDIT_ISSUES_DRY_RUN once the `issues-live` marker has been touched, see
+ * that script's header comment) a missing canonical dir means the cron
+ * environment itself is broken (wrong box, bad mount, a fresh box the
+ * one-time setup step never ran on) — writing sync state + real GitHub
+ * issues into a process-local tmpdir that vanishes on reboot silently
+ * desyncs state from reality forever. Refuse instead. A DRY run (a
+ * developer's laptop, or the cron wrapper's own safe default before the
+ * marker is touched) may still use tmpdir — it never persists real state.
+ *
+ * Pure + DI'd on `existsFn` so this is unit-testable without touching a real
+ * filesystem path under /root.
+ */
+export function resolveStateDirOrRefuse(env, dryRun, existsFn = existsSync) {
+  if (env.DETECTION_FLOOR_STATE_DIR) return { dir: env.DETECTION_FLOOR_STATE_DIR, refused: false };
+  if (existsFn(CANONICAL_STATE_DIR)) return { dir: CANONICAL_STATE_DIR, refused: false };
+  if (dryRun) return { dir: tmpdir(), refused: false };
+  return { dir: null, refused: true, message: `ISSUES-SKIP: state dir ${CANONICAL_STATE_DIR} missing` };
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  const STATE_DIR = process.env.DETECTION_FLOOR_STATE_DIR
-    || (existsSync('/root/data-audit-ipodhan/state') ? '/root/data-audit-ipodhan/state' : tmpdir());
+  const stateDirResolution = resolveStateDirOrRefuse(process.env, opts.dryRun);
+  if (stateDirResolution.refused) {
+    console.log(stateDirResolution.message);
+    return;
+  }
+  const STATE_DIR = stateDirResolution.dir;
 
   const lockPath = acquireLock(STATE_DIR);
   if (!lockPath) {

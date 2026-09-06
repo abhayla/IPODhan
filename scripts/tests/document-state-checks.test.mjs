@@ -25,6 +25,8 @@ import {
   countBsePayloadLeadManagers,
   BLOCKED_ALL_MAX_HOURS,
   FOUND_UNREAD_MAX_HOURS,
+  checkExtractionStuck,
+  EXTRACTION_STUCK_MAX_HOURS,
 } from '../lib/document-state-checks.mjs';
 
 const NOW = '2026-08-28T06:00:00Z';
@@ -640,4 +642,72 @@ test('68k FAILs when the incomplete row is actually due (next_retry_at in the pa
   });
   assert.match(violation, /due-retry-co/);
   assert.match(violation, /listed_rotation_stall/);
+});
+
+// ---- checkExtractionStuck (round 5, #333 follow-up: MANUAL_REVIEW invisible) ----
+
+const STUCK_BASE = {
+  companyName: 'Stuck Filings Ltd.',
+  slug: 'stuck-filings-ltd',
+  ipoStatus: 'OPEN',
+  docType: 'RHP',
+};
+
+test('m_extraction_stuck FAILs on MANUAL_REVIEW past 48h', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: 49 });
+  assert.notEqual(v, null);
+  assert.match(v, /MANUAL_REVIEW/);
+  assert.match(v, /stuck-filings-ltd|Stuck Filings/);
+});
+
+test('m_extraction_stuck FAILs on document_fetch_state EXTRACT_FAILED past 48h', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'PENDING', fetchState: 'EXTRACT_FAILED', hoursSinceUpdate: 72 });
+  assert.notEqual(v, null);
+  assert.match(v, /EXTRACT_FAILED/);
+});
+
+test('m_extraction_stuck FAILs on FAILED with a HARD_FAILURE marker past 48h', () => {
+  const v = checkExtractionStuck({
+    ...STUCK_BASE,
+    extractionStatus: 'FAILED',
+    extractionError: 'HARD_FAILURE:3:ETIMEDOUT connecting to nseindia.com',
+    hoursSinceUpdate: 96,
+  });
+  assert.notEqual(v, null);
+  assert.match(v, /HARD_FAILURE/);
+});
+
+test('m_extraction_stuck PASSes on FAILED WITHOUT a HARD_FAILURE marker (ordinary retryable failure)', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'FAILED', extractionError: 'timeout', hoursSinceUpdate: 96 });
+  assert.equal(v, null);
+});
+
+test('m_extraction_stuck PASSes at 47h — under the 48h floor', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: 47 });
+  assert.equal(v, null);
+});
+
+test('m_extraction_stuck PASSes exactly at 48h (boundary is exclusive)', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: EXTRACTION_STUCK_MAX_HOURS });
+  assert.equal(v, null);
+});
+
+test('m_extraction_stuck PASSes on a non-live IPO status (WITHDRAWN) even when MANUAL_REVIEW and old', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, ipoStatus: 'WITHDRAWN', extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: 200 });
+  assert.equal(v, null);
+});
+
+test('m_extraction_stuck PASSes on a non-required doc type (ADDENDUM) even when MANUAL_REVIEW and old', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, docType: 'ADDENDUM', extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: 200 });
+  assert.equal(v, null);
+});
+
+test('m_extraction_stuck FAILs on LISTED status too (documents were still due while live)', () => {
+  const v = checkExtractionStuck({ ...STUCK_BASE, ipoStatus: 'LISTED', docType: 'DRHP', extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: 60 });
+  assert.notEqual(v, null);
+});
+
+test('m_extraction_stuck PASSes with no hoursSinceUpdate (null/undefined — never updated, defensive)', () => {
+  assert.equal(checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: null }), null);
+  assert.equal(checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'MANUAL_REVIEW' }), null);
 });
