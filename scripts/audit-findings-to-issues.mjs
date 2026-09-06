@@ -174,6 +174,31 @@ export function planIssueSync({ findings, issues, openIssues, previousState, tod
   return actions;
 }
 
+// MEDIUM fix, pure and testable: build the next issues-sync-state.json from
+// the actions ATTEMPTED and their per-action success/failure. A FAILED action
+// leaves the previous entry untouched — a failed create must not record an
+// issueNumber that doesn't exist, and a failed reopen must not clear
+// closedAt (the issue is still closed on GitHub; forgetting that we closed
+// it would make every later night treat it as a human close and go silent
+// on it forever).
+export function buildNextState({ actions, actionResults, previousState, runDate }) {
+  const nextState = { ...previousState };
+  actions.forEach((action, i) => {
+    if (!actionResults[i]) return; // failed (or not yet attempted) — keep prior entry as-is
+    if (action.type === 'create') {
+      nextState[action.checkId] = { issueNumber: null, firstSeen: action.firstSeen, lastRowKeys: action.rowKeys };
+    } else if (action.type === 'comment') {
+      nextState[action.checkId] = { ...nextState[action.checkId], lastRowKeys: action.rowKeys };
+    } else if (action.type === 'close') {
+      nextState[action.checkId] = { ...nextState[action.checkId], issueNumber: action.issueNumber, closedAt: runDate };
+    } else if (action.type === 'reopen') {
+      const { closedAt, ...rest } = nextState[action.checkId] || {};
+      nextState[action.checkId] = { ...rest, issueNumber: action.issueNumber, lastRowKeys: action.rowKeys };
+    }
+  });
+  return nextState;
+}
+
 // ---------------------------------------------------------------------------
 // Body rendering (pure, testable independent of gh).
 
@@ -360,10 +385,14 @@ async function applyAction(action, { repo, dryRun, registry, runDate, logPath })
     }
 
     if (action.type === 'reopen') {
+      // LOW (b): an UNVERIFIABLE reopen is left as ordinary behaviour (the
+      // check is still "bad" and deserves the same reopen), just labeled in
+      // the log so a reader can tell "failing again" from "went blind again".
+      const kind = action.finding?.status === 'UNVERIFIABLE' ? 'reopen (unverifiable)' : 'reopen';
       const args = ['issue', 'reopen', String(action.issueNumber), '--repo', repo, '--comment', action.comment];
-      if (dryRun) { log(`DRY-RUN: gh ${args.join(' ')}`); return true; }
+      if (dryRun) { log(`DRY-RUN [${kind}]: gh ${args.join(' ')}`); return true; }
       await execFileAsync('gh', args, { timeout: 20000 });
-      log(`reopened #${action.issueNumber} for ${action.checkId}: ${action.comment}`);
+      log(`${kind} #${action.issueNumber} for ${action.checkId}: ${action.comment}`);
       return true;
     }
   } catch (e) {
@@ -457,15 +486,29 @@ export function localDateStamp(d = new Date()) {
 // minutes — a crashed holder must not wedge every future run forever.
 export const LOCK_STALE_MS = 30 * 60 * 1000;
 
+// LOW (a): 'wx' (O_CREAT|O_EXCL) makes the create-if-absent step atomic — two
+// processes racing to acquire can no longer both pass an existsSync() check
+// and both believe they hold the lock.
+function tryCreateLockFile(lockPath) {
+  try { writeFileSync(lockPath, String(process.pid), { flag: 'wx' }); return true; }
+  catch (e) { if (e.code === 'EEXIST') return false; throw e; }
+}
+
 export function acquireLock(stateDir) {
   const lockPath = join(stateDir, 'issues-sync.lock');
-  if (existsSync(lockPath)) {
-    try {
-      if (Date.now() - statSync(lockPath).mtimeMs < LOCK_STALE_MS) return null;
-    } catch { /* stat failed — try to acquire anyway */ }
-  }
-  try { writeFileSync(lockPath, String(process.pid)); } catch { /* best-effort */ }
-  return lockPath;
+  try {
+    if (tryCreateLockFile(lockPath)) return lockPath;
+  } catch { return null; /* unexpected fs error — fail closed, don't hold a lock we can't trust */ }
+
+  // Lock file already exists — reclaim it only if stale, still via 'wx' so a
+  // second process racing the same reclaim cannot both win.
+  try {
+    if (Date.now() - statSync(lockPath).mtimeMs >= LOCK_STALE_MS) {
+      try { unlinkSync(lockPath); } catch { /* someone else may already have removed/renewed it */ }
+      if (tryCreateLockFile(lockPath)) return lockPath;
+    }
+  } catch { /* stat/create failed — treat as held */ }
+  return null;
 }
 
 export function releaseLock(lockPath) {
@@ -563,8 +606,16 @@ async function main() {
     });
 
     const logPath = join(STATE_DIR, `run-${localDateStamp()}.log`);
+    // MEDIUM: capture per-action success so the state write below can skip a
+    // FAILED action's state transition. Without this, a reopen whose `gh
+    // issue reopen` call actually failed still had its closedAt cleared in
+    // our state — the issue stays closed on GitHub, but we'd remember it as
+    // "reopened", so every later night reads the still-closed issue as a
+    // human close and goes silent on it forever.
+    const actionResults = [];
     for (const action of actions) {
       const ok = await applyAction(action, { repo, dryRun: opts.dryRun, registry, runDate: loaded.runDate, logPath });
+      actionResults.push(ok);
       if (!ok) degradedCount += 1;
     }
 
@@ -575,22 +626,13 @@ async function main() {
       return;
     }
 
-    // Persist next state from the actions actually taken. Closed entries are
-    // KEPT (M1) with a closedAt stamp, never deleted. A reopen (H1) clears
-    // closedAt so the NEXT close is recognised as ours again.
-    const nextState = { ...previousState };
-    for (const action of actions) {
-      if (action.type === 'create') {
-        nextState[action.checkId] = { issueNumber: null, firstSeen: action.firstSeen, lastRowKeys: action.rowKeys };
-      } else if (action.type === 'comment') {
-        nextState[action.checkId] = { ...nextState[action.checkId], lastRowKeys: action.rowKeys };
-      } else if (action.type === 'close') {
-        nextState[action.checkId] = { ...nextState[action.checkId], issueNumber: action.issueNumber, closedAt: loaded.runDate };
-      } else if (action.type === 'reopen') {
-        const { closedAt, ...rest } = nextState[action.checkId] || {};
-        nextState[action.checkId] = { ...rest, issueNumber: action.issueNumber, lastRowKeys: action.rowKeys };
-      }
-    }
+    // Persist next state from the actions that actually SUCCEEDED (or were a
+    // no-op skip) — a failed action leaves the previous entry untouched, so a
+    // failed create records no issueNumber and a failed reopen keeps closedAt
+    // set (it is still closed on GitHub). Closed entries are KEPT (M1) with a
+    // closedAt stamp, never deleted. A successful reopen (H1) clears closedAt
+    // so the NEXT close is recognised as ours again.
+    const nextState = buildNextState({ actions, actionResults, previousState, runDate: loaded.runDate });
     // Re-resolve real issue numbers for creates from a fresh list.
     try {
       const refreshed = await listIssues(repo);

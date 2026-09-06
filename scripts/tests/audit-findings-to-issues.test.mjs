@@ -16,6 +16,7 @@ import {
   renderIssueBody,
   renderCommentBody,
   parseArgs,
+  buildNextState,
   DEFAULT_MAX_ISSUES,
   LOCK_STALE_MS,
   localDateStamp,
@@ -394,6 +395,43 @@ test('LOW(e): a stale lock (older than LOCK_STALE_MS) is reclaimed, not honoured
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- MEDIUM: a failed action must not mutate state --------------------------
+
+test('MEDIUM: a failed reopen keeps closedAt set in the written state', () => {
+  const action = { type: 'reopen', checkId: 'c_test', issueNumber: 9, rowKeys: ['row-1'], finding: finding() };
+  const previousState = { c_test: { issueNumber: 9, firstSeen: '2026-09-01', lastRowKeys: ['row-1'], closedAt: '2026-09-05' } };
+  const nextState = buildNextState({ actions: [action], actionResults: [false], previousState, runDate: '2026-09-07' });
+  assert.equal(nextState.c_test.closedAt, '2026-09-05', 'closedAt must survive a failed reopen — the issue is still closed on GitHub');
+  assert.equal(nextState.c_test.issueNumber, 9);
+});
+
+test('MEDIUM: a successful reopen clears closedAt', () => {
+  const action = { type: 'reopen', checkId: 'c_test', issueNumber: 9, rowKeys: ['row-1'], finding: finding() };
+  const previousState = { c_test: { issueNumber: 9, firstSeen: '2026-09-01', lastRowKeys: ['row-1'], closedAt: '2026-09-05' } };
+  const nextState = buildNextState({ actions: [action], actionResults: [true], previousState, runDate: '2026-09-07' });
+  assert.equal(nextState.c_test.closedAt, undefined);
+});
+
+test('MEDIUM: a failed create records no issueNumber (no state entry at all)', () => {
+  const action = { type: 'create', checkId: 'c_test', firstSeen: '2026-09-07', rowKeys: ['row-1'], finding: finding() };
+  const nextState = buildNextState({ actions: [action], actionResults: [false], previousState: {}, runDate: '2026-09-07' });
+  assert.equal(nextState.c_test, undefined);
+});
+
+test('MEDIUM: a successful create records issueNumber: null (resolved later from a fresh list)', () => {
+  const action = { type: 'create', checkId: 'c_test', firstSeen: '2026-09-07', rowKeys: ['row-1'], finding: finding() };
+  const nextState = buildNextState({ actions: [action], actionResults: [true], previousState: {}, runDate: '2026-09-07' });
+  assert.equal(nextState.c_test.issueNumber, null);
+  assert.deepEqual(nextState.c_test.lastRowKeys, ['row-1']);
+});
+
+// ---- LOW (a): lockfile atomicity ---------------------------------------------
+
+test('LOW(a): acquireLock uses an atomic create-exclusive write (wx), not check-then-write', () => {
+  const src = readFileSync(join(__dirname, '..', 'audit-findings-to-issues.mjs'), 'utf8');
+  assert.match(src, /flag:\s*'wx'/);
 });
 
 test('localDateStamp formats a Date as local YYYY-MM-DD', () => {
