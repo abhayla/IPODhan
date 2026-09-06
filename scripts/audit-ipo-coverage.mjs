@@ -5,7 +5,7 @@
 // Coverage thresholds are measured against the APPLICABLE population (genuine IPOs,
 // offering_type='IPO'; LISTED-only for listing perf; etc.). No writes. Loads web/.env.local.
 import { readFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
@@ -20,6 +20,10 @@ import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
 // anywhere except one laptop, which is a large part of why it had never been
 // scheduled (see docs/data-quality/discovery-coverage.md §4.1).
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// T-454 (#221): guard so the module can be `import`ed (for its exported SQL
+// constant / query builder) without running the live gate against a DB —
+// e.g. from scripts/tests/audit-ipo-coverage-distinct-on.test.mjs.
+const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 const envPath = join(__dirname, '..', 'web', '.env.local');
 if (existsSync(envPath)) {
   for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
@@ -27,7 +31,7 @@ if (existsSync(envPath)) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
 }
-if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
+if (isMainModule && !process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
   console.error('FATAL: no DB connection configured — provide web/.env.local or DATABASE_* in the environment');
   process.exit(2);
 }
@@ -64,6 +68,19 @@ const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 // Genuine-IPO population predicate — MUST mirror REAL_IPO_OFFERING_TYPES in
 // packages/shared/src/utils/offering-type.ts. Non-IPO offerings are excluded.
 const REAL_IPO = `offering_type = 'IPO'`;
+
+// T-454 (#221): the gate's own de-duplication join for `ipo_details`
+// (a table with NO unique constraint on ipo_id — see T-308F finding F4).
+// A plain `LEFT JOIN ipo_details d ON d.ipo_id = i.id` would multiply the
+// substance-gate row count whenever a second ipo_details row exists for one
+// IPO. Exported so the regression test executes THIS string (the gate's own
+// query), not a hand-copied duplicate that cannot detect drift.
+export const IPO_DETAILS_LATERAL_JOIN_SQL = `LEFT JOIN LATERAL (
+         SELECT issue_type FROM ipo_details
+          WHERE ipo_id = i.id
+          ORDER BY updated_at DESC, id DESC
+          LIMIT 1
+       ) d ON true`;
 
 // child tables that feed detail-page sections -> coverage = distinct ipo_id present
 const CHILD = {
@@ -261,12 +278,7 @@ async function main() {
             d.issue_type
        FROM ipos i
        LEFT JOIN listing_performance lp ON lp.ipo_id = i.id
-       LEFT JOIN LATERAL (
-         SELECT issue_type FROM ipo_details
-          WHERE ipo_id = i.id
-          ORDER BY updated_at DESC, id DESC
-          LIMIT 1
-       ) d ON true
+       ${IPO_DETAILS_LATERAL_JOIN_SQL}
       WHERE i.${REAL_IPO}`
   );
   const gmpExists = (await q(`SELECT to_regclass('public.gmp_records') AS reg`))[0].reg;
@@ -367,4 +379,6 @@ async function main() {
   process.exit(fail === 0 ? 0 : 1);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+if (isMainModule) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}
