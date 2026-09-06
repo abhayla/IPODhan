@@ -254,6 +254,30 @@ log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 fatal() { echo "FATAL: $*" >&2; exit 1; }
 
+# W-178 round 2 Opus MINOR-4: SCRAPER_CRON_OVERRIDE is operator-typed input (an
+# on-call engineer pastes it by hand during an incident) — validate its shape
+# HERE, before any pm2 delete/stop below, so a typo aborts loudly with a clear
+# message instead of either a cryptic pm2/cron parse failure deep into the
+# deploy, or (worse) pm2 silently accepting a malformed cron string that never
+# fires and leaves the scraper never restarting. Checked here (right after
+# fatal() exists) rather than immediately after SCRAPER_CRON is computed a few
+# lines above, because fatal() is not yet defined at that point in the script.
+_scraper_cron_field_count=0
+set -f # noglob: a cron field is "*/30" etc — unquoted word-splitting below must
+       # NOT also filename-glob-expand against cwd contents (it did: "* * * * *"
+       # silently expanded to real filenames without this).
+for _scraper_cron_field in $SCRAPER_CRON; do
+  _scraper_cron_field_count=$((_scraper_cron_field_count + 1))
+  case "$_scraper_cron_field" in
+    *[!0-9*,/-]*|'') set +f; fatal "SCRAPER_CRON_OVERRIDE is not a 5-field cron: $SCRAPER_CRON" ;;
+  esac
+done
+set +f
+if [ "$_scraper_cron_field_count" -ne 5 ]; then
+  fatal "SCRAPER_CRON_OVERRIDE is not a 5-field cron: $SCRAPER_CRON"
+fi
+unset _scraper_cron_field_count _scraper_cron_field
+
 # ---------------------------------------------------------------- resolve commit
 if [[ "$COMMITISH" == "HEAD" && "$FORCE" -ne 1 ]]; then
   if [[ -n "$(cd "$REPO_ROOT" && git status --porcelain)" ]]; then
@@ -487,8 +511,17 @@ resume_scraper() {
   # W-111/W-112: PYTHON_BIN pins the auto-persist PDF/OCR extractor to the
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
+  # W-178 round 2: default-expand SCRAPER_CRON here (not a bare "$SCRAPER_CRON")
+  # — this function's own test isolation (case 9c, deploy-linux.test.sh) sed-
+  # extracts JUST this function body and evals it under `set -u` without ever
+  # running the top-level SLOT branch (~line 230) that assigns SCRAPER_CRON,
+  # so a bare reference is an unbound-variable abort that kills the whole
+  # `( cd ... && TZ=UTC ... pm2 start ... )` compound command before pm2 ever
+  # runs — the TZ=UTC prefix was never the problem; the line never executed.
+  # In production SCRAPER_CRON is always set well before this function is
+  # ever called, so the fallback here is dead weight on the real deploy path.
   ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="$SCRAPER_CRON" -- src/index.ts --source=all ) \
+      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
 trap resume_scraper EXIT
@@ -1166,7 +1199,7 @@ restart_pm2() {
     log "[dry-run] pm2 delete $PM2_WEB_APP"
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=$SCRAPER_CRON -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=${SCRAPER_CRON:-*/30 * * * *} -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1193,8 +1226,11 @@ restart_pm2() {
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
+  # W-178 round 2: see resume_scraper()'s comment above — default-expand
+  # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
+  # abort on an unbound variable under `set -u` before pm2 ever runs.
   ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="$SCRAPER_CRON" -- src/index.ts --source=all )
+      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 

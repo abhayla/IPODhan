@@ -2234,3 +2234,29 @@ else
 fi
 unset SCRAPER_CRON_OVERRIDE
 unset DEPLOY_ROOT
+
+# --- Case 31d: W-178 round 2 Opus MINOR-4 — a malformed SCRAPER_CRON_OVERRIDE
+# --- (not exactly 5 whitespace-separated fields, or a field with characters
+# --- outside [0-9*,/-]) must abort BEFORE any pm2 delete/stop — proven here
+# --- by asserting the fatal message fires and the log never reaches a
+# --- 'pm2 delete' line, not just that the process exits non-zero.
+ROOT31D="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT31D"
+export SCRAPER_CRON_OVERRIDE="not a valid cron"
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31d.log 2>&1; then
+  fail "case 31d: a malformed SCRAPER_CRON_OVERRIDE should have aborted the deploy, but it exited 0"
+else
+  if grep -q 'FATAL: SCRAPER_CRON_OVERRIDE is not a 5-field cron' /tmp/deploy-test-31d.log; then
+    pass "case 31d: malformed SCRAPER_CRON_OVERRIDE aborts with the expected FATAL message"
+  else
+    fail "case 31d: expected the FATAL SCRAPER_CRON_OVERRIDE message in the log"
+    cat /tmp/deploy-test-31d.log
+  fi
+  if grep -q 'pm2 delete' /tmp/deploy-test-31d.log; then
+    fail "case 31d: log reached 'pm2 delete' — the cron validation did not abort early enough"
+  else
+    pass "case 31d: no 'pm2 delete' reached before the malformed-cron abort"
+  fi
+fi
+unset SCRAPER_CRON_OVERRIDE
+unset DEPLOY_ROOT

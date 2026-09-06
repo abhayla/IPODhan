@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   resetNiceOnPathCache,
   resolveExtractorNice,
@@ -35,7 +35,7 @@ describe('withLowPriority', () => {
     expect(result.bin).toBe('nice');
     // First two argv entries after 'nice' are '-n', '<level>', then the
     // original bin, then the original args, in order.
-    expect(result.args.slice(0, 2)).toEqual(['-n', '15']);
+    expect(result.args.slice(0, 2)).toEqual(['-n', '10']);
     expect(result.args.slice(2)).toEqual(['python', 'script.py', 'a.pdf']);
   });
 
@@ -52,9 +52,9 @@ describe('withLowPriority', () => {
     expect(resolveExtractorNice(env)).toBe(0);
   });
 
-  it('falls back to the default (15) on a non-numeric EXTRACTOR_NICE', () => {
+  it('falls back to the default (10) on a non-numeric EXTRACTOR_NICE', () => {
     const env = { EXTRACTOR_NICE: 'not-a-number' };
-    expect(resolveExtractorNice(env)).toBe(15);
+    expect(resolveExtractorNice(env)).toBe(10);
   });
 
   it('returns the plain spawn unchanged on a non-linux platform', () => {
@@ -69,5 +69,29 @@ describe('withLowPriority', () => {
     const env = { PATH: '/no/such/dir:/also/missing' };
     const result = withLowPriority('python', ['script.py'], env, noPathExists);
     expect(result).toEqual({ bin: 'python', args: ['script.py'] });
+  });
+
+  it('W-178 round 2 MINOR-2: warns once (cached) when nice is missing on PATH, on a forced linux platform', () => {
+    forcePlatform('linux');
+    const env = { PATH: '/no/such/dir' };
+    const fakeLogger = { warn: vi.fn() };
+
+    withLowPriority('python', ['script.py'], env, noPathExists, fakeLogger);
+    withLowPriority('python', ['other.py'], env, noPathExists, fakeLogger);
+
+    expect(fakeLogger.warn).toHaveBeenCalledTimes(1);
+    expect(fakeLogger.warn).toHaveBeenCalledWith(
+      'nice not found on PATH; extractor runs at normal priority (W-178)'
+    );
+  });
+
+  it('W-178 round 2 MINOR-2: does not warn when nice IS on PATH', () => {
+    forcePlatform('linux');
+    const env = { PATH: '/usr/bin:/bin' };
+    const fakeLogger = { warn: vi.fn() };
+
+    withLowPriority('python', ['script.py'], env, fakePathExists, fakeLogger);
+
+    expect(fakeLogger.warn).not.toHaveBeenCalled();
   });
 });

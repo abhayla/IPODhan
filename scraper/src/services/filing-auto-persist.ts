@@ -732,8 +732,17 @@ function remapNiceExecFailure(
 ): SpawnSyncReturns<string> {
   if (result.error || result.status !== 127) return result;
   const stderr = String(result.stderr ?? '');
+  // W-178 round 2 MINOR-1: also require the GNU-coreutils `nice: ` line
+  // prefix (anchored to the start of a line, since stderr can carry other
+  // output before it). Without this, a python traceback that happens to
+  // mention "No such file or directory" (a plain FileNotFoundError, nothing
+  // to do with the `nice` wrapper failing to exec) and coincidentally
+  // contains the bin name would be misclassified as a missing-binary ENOENT
+  // and wrongly trigger the python3 retry.
   const looksLikeMissingExec =
-    stderr.includes(originalBin) && /no such file or directory|not found/i.test(stderr);
+    stderr.includes(originalBin) &&
+    /no such file or directory|not found/i.test(stderr) &&
+    /^\s*nice:/m.test(stderr);
   if (!looksLikeMissingExec) return result;
   const enoent = new Error(`spawnSync ${originalBin} ENOENT`) as NodeJS.ErrnoException;
   enoent.code = 'ENOENT';

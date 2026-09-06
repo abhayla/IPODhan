@@ -25,6 +25,9 @@
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import defaultLogger from './logger.js';
+
+type WarnLogger = Pick<typeof defaultLogger, 'warn'>;
 
 /** `nice`'s PATH is always POSIX-delimited (this guard only ever activates
  * on `process.platform === 'linux'`) — hardcode ':' rather than
@@ -34,8 +37,13 @@ import path from 'node:path';
 const POSIX_PATH_DELIMITER = ':';
 
 /** Default `nice` level (0-19, higher = lower priority) applied to every
- * python extractor spawn on Linux. Overridable via `EXTRACTOR_NICE`. */
-const DEFAULT_EXTRACTOR_NICE = 15;
+ * python extractor spawn on Linux. Overridable via `EXTRACTOR_NICE`.
+ * W-178 round 2 MINOR-5: lowered from 15 to 10 — 15 was more deference than
+ * the measured 522 incident needed (a single extractor at nice-0 vs nice-10
+ * still yields the CPU to nginx/Next under contention; 15 risked the
+ * extractor starving itself behind unrelated low-priority work on a busy
+ * box for no added protection). */
+const DEFAULT_EXTRACTOR_NICE = 10;
 
 /** Clamp to the valid POSIX `nice -n` range so a bad env value can never
  * produce an invalid or backwards (negative, root-only) priority. */
@@ -47,11 +55,16 @@ export function resolveExtractorNice(env: NodeJS.ProcessEnv = process.env): numb
 }
 
 let cachedNiceOnPath: boolean | undefined;
+let warnedNiceMissing = false;
 
 /** Cheap, synchronous `which nice` — no subprocess spawn. Cached for the
- * life of the process; PATH does not change mid-run. Exposed for tests. */
+ * life of the process; PATH does not change mid-run. Exposed for tests.
+ * Also resets the paired "nice missing" warn-once flag (W-178 round 2
+ * MINOR-2) — the two caches are about the same fact and always reset
+ * together in tests. */
 export function resetNiceOnPathCache(): void {
   cachedNiceOnPath = undefined;
+  warnedNiceMissing = false;
 }
 
 /**
@@ -60,10 +73,18 @@ export function resetNiceOnPathCache(): void {
  * drive-letter paths, e.g. `C:\...`, cannot round-trip through a
  * `:`-delimited PATH string at all — the drive letter's own colon collides
  * with the delimiter). Production always uses the real `existsSync`.
+ *
+ * W-178 round 2 MINOR-2: when `nice` is absent, every extractor spawn
+ * silently ran at normal priority with no signal anywhere that the W-178
+ * mitigation was a no-op on this box. Logs ONE `logger.warn` per process
+ * (not once per spawn — a scraper cycle spawns the extractor per document)
+ * the first time the check resolves false; `resetNiceOnPathCache()` is the
+ * only way to re-arm it, matching the PATH cache it rides along with.
  */
 function niceResolvesOnPath(
   env: NodeJS.ProcessEnv = process.env,
-  pathExists: (p: string) => boolean = existsSync
+  pathExists: (p: string) => boolean = existsSync,
+  logger: WarnLogger = defaultLogger
 ): boolean {
   if (cachedNiceOnPath !== undefined) return cachedNiceOnPath;
   const pathVar = env.PATH ?? env.Path ?? '';
@@ -71,6 +92,10 @@ function niceResolvesOnPath(
     .split(POSIX_PATH_DELIMITER)
     .filter(Boolean)
     .some((dir) => pathExists(path.posix.join(dir, 'nice')));
+  if (!cachedNiceOnPath && !warnedNiceMissing) {
+    warnedNiceMissing = true;
+    logger.warn('nice not found on PATH; extractor runs at normal priority (W-178)');
+  }
   return cachedNiceOnPath;
 }
 
@@ -91,9 +116,10 @@ export function withLowPriority(
   bin: string,
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
-  pathExists: (p: string) => boolean = existsSync
+  pathExists: (p: string) => boolean = existsSync,
+  logger: WarnLogger = defaultLogger
 ): LowPrioritySpawn {
-  if (process.platform !== 'linux' || !niceResolvesOnPath(env, pathExists)) {
+  if (process.platform !== 'linux' || !niceResolvesOnPath(env, pathExists, logger)) {
     return { bin, args };
   }
   const level = String(resolveExtractorNice(env));

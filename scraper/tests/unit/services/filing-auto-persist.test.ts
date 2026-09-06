@@ -1331,7 +1331,7 @@ describe('defaultExtractorRunner — W-178 nice-wrapped spawn on Linux', () => {
     delete process.env.PYTHON_BIN;
     lowPrioritySpawnMock.mockImplementation((bin: string, args: string[]) => ({
       bin: 'nice',
-      args: ['-n', '15', bin, ...args],
+      args: ['-n', '10', bin, ...args],
     }));
   });
 
@@ -1348,7 +1348,7 @@ describe('defaultExtractorRunner — W-178 nice-wrapped spawn on Linux', () => {
     expect(spawnSyncMock.mock.calls[0][0]).toBe('nice');
     const args = spawnSyncMock.mock.calls[0][1] as string[];
     expect(args[0]).toBe('-n');
-    expect(args[1]).toBe('15');
+    expect(args[1]).toBe('10');
     expect(args[2]).toBe('python');
   });
 
@@ -1371,6 +1371,25 @@ describe('defaultExtractorRunner — W-178 nice-wrapped spawn on Linux', () => {
     const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
 
     // No ENOENT synthesized -> no python3 retry, ordinary non-fatal failure.
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+  });
+
+  it('W-178 round 2 MINOR-1: does not remap exit 127 that mentions the bin + "No such file or directory" but has no "nice:" prefix', () => {
+    // A genuine python-side FileNotFoundError traceback that happens to
+    // mention 'python' and the exact phrase the old (looser) regex matched
+    // on — no GNU-coreutils 'nice: ' line, so this is NOT a nice-exec
+    // failure and must not be misclassified as a missing-binary ENOENT.
+    spawnSyncMock.mockReturnValueOnce({
+      status: 127,
+      stdout: '',
+      stderr:
+        'Traceback (most recent call last):\n  File "python", line 1\nFileNotFoundError: [Errno 2] No such file or directory: \'some.pdf\'',
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    // No ENOENT synthesized -> no python3 retry.
     expect(spawnSyncMock).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(false);
   });
