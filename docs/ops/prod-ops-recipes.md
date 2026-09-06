@@ -96,3 +96,31 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 - Timestamps in ledger lines come from `date`, never estimated.
 - The `postgres` superuser is localhost-only on the DB host; through the tunnel it still works, but use
   `ipodhan_app` for app tables anyway.
+
+## 8. Data repair tools (productized; never hand SQL)
+```bash
+# issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432   DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts                     # dry run (staging)
+  ... --apply                                                                    # write on staging
+  ... --allow-prod            (DATABASE_NAME=ipodhan)                            # prod dry run
+  ... --allow-prod --apply                                                       # prod write (owner word)
+  ... --recheck-above-floor [--allow-prod]                                       # FLAG rows >= floor diverging >40% from source (no write)
+  ... --recheck-above-floor --apply --overwrite-above-floor --slug a,b --allow-prod   # write named flagged rows only
+```
+The tool drops `ipo:slug/ipo:id` (+ the invalidation set) itself when REDIS_URL is reachable; from the laptop it is not, so
+drop the printed keys on the box (section 5). FLAG can mean fresh-issue vs total (incl. OFS): triage before writing.
+Audit scripts through the tunnel (report mode; add `--gate` for exit codes): `audit-ipo-coverage.mjs`,
+`audit-detection-floor.mjs`, `audit-substance-plausibility.mjs`, all with `DATABASE_URL=...` as above; a findings file
+for the issue sync: `DETECTION_FLOOR_STATE_DIR=<dir> node scripts/audit-detection-floor.mjs` then
+`node scripts/audit-findings-to-issues.mjs --dry-run <dir>/findings-latest.json`.
+
+## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
+Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`
+(owner word after reading the first dry-run log `/root/data-audit-ipodhan/state/run-<date>.log`: `ISSUES-DRY-RUN` + the
+planned create/comment/close/reopen list). Env `AUDIT_ISSUES_DRY_RUN=1` always forces dry-run. State:
+`issues-sync-state.json` + `issues-sync.lock` in the same dir; live mode refuses when the dir is missing.
+
+## 10. User-level hooks (this laptop)
+Tests: `cd ~/.claude/hooks && python -m pytest tests -q` (from inside a repo, pytest picks up the repo config and errors).
+Fix-contract hook log: `~/.claude/hooks/.fix-contract.log` (512 KB cap, rotates to `.1`); escape `AGENT_FIX_CONTRACT_ALLOW=1`.
