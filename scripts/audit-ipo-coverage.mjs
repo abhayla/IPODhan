@@ -50,11 +50,13 @@ const pool = new pg.Pool(
         password: process.env.DATABASE_PASSWORD,
         ssl: false,
         max: 4,
+        options: '-c timezone=UTC',
       }
     : {
         connectionString: process.env.DATABASE_URL,
         ssl: false,
         max: 4,
+        options: '-c timezone=UTC',
       }
 );
 

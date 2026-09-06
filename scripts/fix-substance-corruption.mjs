@@ -27,6 +27,7 @@ const pool = new pg.Pool({
   host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'),
   database: process.env.DATABASE_NAME || 'ipodhan', user: process.env.DATABASE_USER,
   password: process.env.DATABASE_PASSWORD, ssl: false, max: 4,
+  options: '-c timezone=UTC',
 });
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 const REAL_IPO = `offering_type = 'IPO'`;

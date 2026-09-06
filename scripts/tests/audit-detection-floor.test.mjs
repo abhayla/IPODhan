@@ -732,3 +732,52 @@ test('lead-manager count SQL: no longer calls array_length on the jsonb lead_man
   assert.doesNotMatch(script, /(?<!jsonb_)array_length\(lead_managers/);
   assert.match(script, /jsonb_array_length\(lead_managers\)/);
 });
+
+// --- fix-round audit-pool-utc: every audit Pool pins the DB session to UTC --
+// (packages/shared/src/db/timezone-config.ts) — the DB server default session
+// tz is Asia/Calcutta while naive `timestamp` columns hold UTC wall-clock, so
+// an un-pinned pool makes every now()-relative age check in this file fire
+// 5.5h early with no visible symptom (a document BLOCKED_ALL for 18.5h reads
+// as >24h). Source-level assertion: every `new pg.Pool(` block in the script
+// must carry the UTC pin, and count-matching keeps this from being satisfied
+// by a single stray occurrence while a second Pool block goes unpinned.
+
+test('audit-detection-floor.mjs: every pool-config branch pins options: -c timezone=UTC', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  // The pool is one `new pg.Pool(` call with a ternary of TWO config-object
+  // branches (discrete DATABASE_* vs connectionString) — count branches by
+  // their shared `max: 4,` line, not by `new pg.Pool(` occurrences, so a
+  // second unpinned branch cannot hide behind the first branch's pin.
+  const branchCount = (script.match(/max: 4,/g) || []).length;
+  const utcOptionCount = (script.match(/options:\s*'-c timezone=UTC'/g) || []).length;
+  assert.ok(branchCount >= 2, 'expected at least the two documented pool-config branches');
+  assert.equal(
+    utcOptionCount,
+    branchCount,
+    `expected one "options: '-c timezone=UTC'" per pool-config branch (found ${branchCount} branch(es), ${utcOptionCount} UTC pin(s))`
+  );
+});
+
+test('audit-detection-floor.mjs: main() asserts the DB session timezone before running checks', () => {
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  assert.match(script, /async function assertSessionTimezoneUtc\s*\(/);
+  assert.match(script, /current_setting\('TimeZone'\)/);
+  const mainBody = script.slice(script.indexOf('async function main('));
+  assert.match(
+    mainBody.slice(0, mainBody.indexOf('\n', mainBody.indexOf('\n') + 1) + 200),
+    /await assertSessionTimezoneUtc\(\)/,
+    'assertSessionTimezoneUtc() must run at the very start of main(), before any check'
+  );
+});
+
+test('audit-ipo-coverage.mjs: every pool-config branch pins options: -c timezone=UTC', () => {
+  const script = readFileSync(new URL('../audit-ipo-coverage.mjs', import.meta.url), 'utf8');
+  const branchCount = (script.match(/max: 4,/g) || []).length;
+  const utcOptionCount = (script.match(/options:\s*'-c timezone=UTC'/g) || []).length;
+  assert.ok(branchCount >= 2, 'expected at least the two documented pool-config branches');
+  assert.equal(
+    utcOptionCount,
+    branchCount,
+    `expected one "options: '-c timezone=UTC'" per pool-config branch (found ${branchCount} branch(es), ${utcOptionCount} UTC pin(s))`
+  );
+});

@@ -41,6 +41,7 @@ const pool = new pg.Pool({
   password: process.env.DATABASE_PASSWORD,
   ssl: false,
   max: 4,
+  options: '-c timezone=UTC',
 });
 
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);

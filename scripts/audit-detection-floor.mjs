@@ -95,9 +95,25 @@ const pool = new pg.Pool(
         password: process.env.DATABASE_PASSWORD,
         ssl: false,
         max: 4,
+        options: '-c timezone=UTC',
       }
-    : { connectionString: process.env.DATABASE_URL, ssl: false, max: 4 }
+    : { connectionString: process.env.DATABASE_URL, ssl: false, max: 4, options: '-c timezone=UTC' }
 );
+
+// T-XXX: the DB server default session tz is Asia/Calcutta while naive
+// `timestamp` columns hold UTC wall-clock (packages/shared/src/db/timezone-config.ts).
+// The `options` above pins the session, but a silently-ignored option (bad pg
+// version, connection pooler in front of Postgres) would make every now()-based
+// age check in this file fire 5.5h early with no visible symptom. Verify at
+// runtime, not just at construction time.
+async function assertSessionTimezoneUtc() {
+  const { rows } = await pool.query(`SELECT current_setting('TimeZone') AS tz`);
+  const tz = rows[0]?.tz;
+  if (tz !== 'UTC') {
+    console.error(`FATAL: DB session timezone is "${tz}", expected "UTC". now()-based age checks would be wrong by the session's UTC offset. Fix the pool's "options: -c timezone=UTC" or the connection path in front of Postgres.`);
+    process.exit(2);
+  }
+}
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 const REAL_IPO = `offering_type = 'IPO'`;
 
@@ -1004,6 +1020,7 @@ async function sendNotifications(payloads) {
 }
 
 async function main() {
+  await assertSessionTimezoneUtc();
   console.log(`
 === DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
   await checkA_B();
