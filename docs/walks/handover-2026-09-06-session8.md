@@ -98,12 +98,10 @@ retype-ratios scripts invalidate the documents cache, full cache-key set on repa
 ### Release `release/prod-2026-09-07`: NO-GO until these five proofs are read (second reviewer's list, accepted)
 1. Timeout fix on staging: no ESDS/Skyways retry on consecutive cycles (00:15 / 00:45 cycles) and, tomorrow, a
    `HARD_FAILURE:2` line after the next timeout (ESDS RHP not due before ~01:26 IST).
-2. `m_extraction_stuck` merged (#335 round 5) and seen in the detection floor on staging, or the gap named and accepted in
-   the Rule 6 brief.
+2. `m_extraction_stuck` merged and seen on staging (PASS line at 00:2x IST). DONE.
 3. Index `idx_document_fetch_state_ipo_last_attempt` present on staging: READ 00:02 IST (present; prod has 33 migrations,
    staging 34, the deploy applies the 34th).
-4. #335 merged before the cut (gate + Tier B; my real-data gates: substance-plausibility on staging, recheck on prod
-   read-only: 252 rows, 11 flagged, 0 written).
+4. #335 MERGED 00:25 IST (seven rounds, Tier B x2 PASS; real-data gates read). DONE.
 5. 03:45 cron log: `ISSUES-DRY-RUN` + the planned action list, with `/root/data-audit-ipodhan/state` present.
 Then: full local pass on the candidate sha, cut the branch, Rule 6 brief at 20:30, window 21:00-23:30, rollback
 `-f ref=f9b67d0a`.
@@ -125,3 +123,11 @@ Then: full local pass on the candidate sha, cut the branch, Rule 6 brief at 20:3
   `m_cycle_overrun` detection check; "checked against the cadence decision" added to the review checklist. Build in
   progress in worktree `IPODhan-cadence` (branch `fix/document-cycle-cadence`), NOT for the 09-07 release; next bundle
   after a staging soak. Reviewer brief must cite the 2026-09-03 decision (ledger 13:44 IST line).
+
+## Update 00:27 IST 2026-09-07: what is left for the release cut
+Proofs owed: 1b (HARD_FAILURE:2 for the ESDS RHP on staging after ~01:26 IST; monitor armed in session 8, otherwise
+read `grep -h af03ab82 ~/.pm2/logs/ipodhan-scraper-staging-out.log | grep RHP | tail`) and 5 (03:45 IST cron log with
+`ISSUES-DRY-RUN` + planned actions, state dir present). Then: full local pass on the candidate sha (main as of the read),
+cut `release/prod-2026-09-07`, Rule 6 brief 20:30, deploy window 21:00-23:30, rollback `-f ref=f9b67d0a`.
+Not in the release: the cadence conformance build (`IPODhan-cadence`, in progress; review against the 2026-09-03 decision).
+Scraper tsc baseline is now 88 (main, after #333 changed the shared package) — not 87.
