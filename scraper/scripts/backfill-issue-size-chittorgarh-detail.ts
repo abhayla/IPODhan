@@ -201,8 +201,35 @@ async function fetchReport118(year: number, range: string): Promise<any[]> {
   return d?.reportTableData ?? [];
 }
 
+function buildDetailUrl(slug: string, id: string): string {
+  return `https://www.chittorgarh.com/ipo/${slug}/${id}/`;
+}
+
+/**
+ * Round-3 recheck diagnostics: when the extractor returns null in
+ * --recheck-above-floor mode, print WHY — the first 160 chars of the raw
+ * "Issue Size" table cell (comment nodes stripped) so the architect can see
+ * the actual markup instead of guessing. Mirrors the label-matching regex in
+ * extractIssueSizeFromDetailHtml (diagnostic-only duplicate — never used to
+ * decide a write, only to print).
+ */
+export function extractIssueSizeCellSnippet(html: string): string | null {
+  if (!html) return null;
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+  const labelMatch =
+    clean.match(/title="Total Issue Size"[\s\S]{0,200}?<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/a>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size\s*<\/(?:td|span)>([\s\S]{0,260})/i) ??
+    clean.match(/(?:Total\s+)?Issue\s*Size[^<]{0,20}<\/[a-z]+>([\s\S]{0,260})/i);
+  if (!labelMatch) return null;
+  const rawBlock = labelMatch[1];
+  const rowEnd = rawBlock.search(/<\/tr>/i);
+  const block = rowEnd === -1 ? rawBlock : rawBlock.slice(0, rowEnd);
+  return block.slice(0, 160);
+}
+
 async function fetchDetailHtml(slug: string, id: string): Promise<string | null> {
-  const u = `https://www.chittorgarh.com/ipo/${slug}/${id}/`;
+  const u = buildDetailUrl(slug, id);
   try {
     const r = await fetch(u, {
       headers: {
@@ -347,6 +374,14 @@ async function main() {
     const floor = c.segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : c.segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
     const value = extractIssueSizeFromDetailHtml(html, { floor, priceRangeMax: c.priceRangeMax, companyName: c.companyName });
     if (value !== null) sourced++;
+
+    if (RECHECK_ABOVE_FLOOR) {
+      console.log(`    url: ${buildDetailUrl(c.disc.slug, c.disc.id)}`);
+      if (value === null) {
+        const snippet = extractIssueSizeCellSnippet(html);
+        console.log(`    source=none — Issue Size cell (first 160 chars): ${snippet ?? '(no "Issue Size" label found on page)'}`);
+      }
+    }
 
     const decision = decideIssueSizeRepair({
       current,

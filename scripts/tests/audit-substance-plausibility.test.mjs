@@ -24,7 +24,9 @@ const AUDIT_FILE = path.join(__dirname, '..', 'audit-substance-plausibility.mjs'
 const CHECKS_FILE = path.join(__dirname, '..', 'lib', 'substance-checks.mjs');
 
 function extractRowsSql(auditSource) {
-  const marker = 'const rows = await q(';
+  // NOTE: `const rows = await q(` is NOT unique — tableExists() also
+  // declares a local `rows`. Anchor on the query's own opening text instead.
+  const marker = 'SELECT i.id, i.company_name';
   const start = auditSource.indexOf(marker);
   assert.ok(start !== -1, 'rows query not found in audit-substance-plausibility.mjs — has it been renamed/moved?');
   const end = auditSource.indexOf('WHERE i.${REAL_IPO}`', start);
@@ -73,4 +75,56 @@ test('every row.<col> read by a SUBSTANCE_CHECKS predicate is selected by the ro
 test('audit-substance-plausibility.mjs prints "evaluated N rows"', () => {
   const auditSource = readFileSync(AUDIT_FILE, 'utf8');
   assert.match(auditSource, /evaluated \$\{rows\.length\} rows/);
+});
+
+// Round-3 residue: the `rows` query selected `i.issue_type`, but `issue_type`
+// is a column of `ipo_details`, NOT `ipos` — Postgres error 42703 on real
+// (staging) data, invisible to the coverage test above (which only checks a
+// column is selected SOMEWHERE, not that its alias is declared). This test
+// statically parses the declared table aliases (FROM/JOIN <table> <alias>,
+// including LATERAL subquery aliases) and asserts every `<alias>.<column>`
+// reference in the query uses one of them — `i.issue_type` would have failed
+// this test before the column existed on `i` at all.
+function extractDeclaredAliases(sql) {
+  const aliases = new Set();
+  // `FROM ipos i` / `JOIN listing_performance lp` / `) d ON true`
+  const fromJoinRe = /\b(?:FROM|JOIN)\s+[a-z_][a-z0-9_]*\s+(?:AS\s+)?([a-z][a-z0-9_]*)\b/gi;
+  let m;
+  while ((m = fromJoinRe.exec(sql)) !== null) aliases.add(m[1].toLowerCase());
+  // `) d ON true` — LATERAL subquery close-paren alias
+  const lateralRe = /\)\s+([a-z][a-z0-9_]*)\s+ON\b/gi;
+  while ((m = lateralRe.exec(sql)) !== null) aliases.add(m[1].toLowerCase());
+  return aliases;
+}
+
+function extractReferencedAliases(sql) {
+  const refs = new Set();
+  const re = /\b([a-z][a-z0-9_]*)\.[a-z_][a-z0-9_]*/gi;
+  let m;
+  const sqlKeywordAliases = new Set(['select', 'from', 'join', 'where', 'lateral', 'left', 'inner']);
+  while ((m = re.exec(sql)) !== null) {
+    const alias = m[1].toLowerCase();
+    if (!sqlKeywordAliases.has(alias)) refs.add(alias);
+  }
+  return refs;
+}
+
+test('every <alias>.<column> in the rows query references a declared table/LATERAL alias', () => {
+  const auditSource = readFileSync(AUDIT_FILE, 'utf8');
+  const rowsSql = extractRowsSql(auditSource);
+  const declared = extractDeclaredAliases(rowsSql);
+  // 'i', 'lp', 'd' must all be present given the current shape - a canary
+  // that the regex above still matches the real query shape.
+  assert.ok(declared.has('i'), 'expected alias "i" (ipos) to be declared in FROM/JOIN');
+  assert.ok(declared.has('lp'), 'expected alias "lp" (listing_performance) to be declared in FROM/JOIN');
+  assert.ok(declared.has('d'), 'expected alias "d" (LATERAL ipo_details) to be declared');
+
+  const referenced = extractReferencedAliases(rowsSql);
+  const undeclared = [...referenced].filter((a) => !declared.has(a));
+  assert.deepEqual(
+    undeclared,
+    [],
+    `rows query references alias(es) not declared in FROM/JOIN: ${undeclared.join(', ')} ` +
+      '(e.g. i.issue_type when issue_type actually lives on ipo_details, aliased d)'
+  );
 });

@@ -123,6 +123,25 @@ describe('extractIssueSizeFromDetailHtml', () => {
     ).toBeNull();
   });
 
+  it('Windlas Biotech IPO (2021) real page fixture — round-3 investigation: confirms this markup already parses (₹402 Cr, cross-check passes at cap 460)', () => {
+    // Captured 2026-09-06 from https://www.chittorgarh.com/ipo/windlas-biotech-ipo/1135/
+    // ("Total Issue Size" row, raw, comment nodes intact as the real page emits
+    // them). Round-3 coordinator report: staging returned source=none for this
+    // IPO in --recheck-above-floor mode. This fixture proves the CURRENT
+    // extractor already parses this exact real markup correctly — the null on
+    // staging was not a parser gap for this shape (discovery-matching or a
+    // stale deploy is the more likely cause; not reproduced here).
+    const html =
+      'title="Total Issue Size" href="/keyword/total-issue-size/72/">Total Issue Size</a></span></td>' +
+      '<td class="text-end"><span class="text-end">87,29,023<!-- --> <!-- -->shares <br/>(agg. up to ₹<!-- -->402<!-- --> <!-- -->Cr)</span></td></tr>' +
+      '<tr><td><span data-component="keyword-popup" data-record-id="60"><a title="Fresh Issue" href="/keyword/fresh-issue/60/">Fresh Issue</a></span> </td>' +
+      '<td class="text-end"><span class="text-end">35,86,956<!-- --> <!-- -->shares <br/>(agg. up to ₹<!-- -->165<!-- --> <!-- -->Cr)</span></td></tr>';
+    // 87,29,023 shares * ₹460 cap = ₹4,015,350,580 vs stated ₹4,020,000,000 -> 0.12% deviation, well within tolerance
+    expect(
+      extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 460 })
+    ).toBe(4020000000);
+  });
+
   it('returns null when the label is absent', () => {
     expect(
       extractIssueSizeFromDetailHtml('<td>Registrar</td><td>Bigshare</td>', {
