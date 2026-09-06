@@ -9,10 +9,16 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import {
   planIssueSync,
   renderIssueBody,
   renderCommentBody,
+  parseArgs,
+  DEFAULT_MAX_ISSUES,
+  LOCK_STALE_MS,
+  localDateStamp,
   DATA_REPAIR_CHECK_IDS,
 } from '../audit-findings-to-issues.mjs';
 
@@ -140,7 +146,7 @@ test('M1: a human-closed issue is NOT recreated when rows are unchanged', () => 
   const actions = planIssueSync({
     findings: { c_test: finding() }, // still FAIL, same row-1
     issues: [{ number: 42, title, state: 'CLOSED' }],
-    previousState: { c_test: { issueNumber: 42, firstSeen: '2026-09-01', lastRowKeys: ['row-1'], closedAt: '2026-09-05' } },
+    previousState: { c_test: { issueNumber: 42, firstSeen: '2026-09-01', lastRowKeys: ['row-1'] } },
     today: '2026-09-07',
   });
   assert.equal(actions.length, 1);
@@ -156,7 +162,7 @@ test('M1: a closed issue gets a non-reopening comment when rows changed', () => 
       c_test: finding({ rows: [{ rowKey: 'row-9', title: 'Row 9', body: 'new offender' }] }),
     },
     issues: [{ number: 42, title, state: 'CLOSED' }],
-    previousState: { c_test: { issueNumber: 42, firstSeen: '2026-09-01', lastRowKeys: ['row-1'], closedAt: '2026-09-05' } },
+    previousState: { c_test: { issueNumber: 42, firstSeen: '2026-09-01', lastRowKeys: ['row-1'] } },
     today: '2026-09-07',
   });
   assert.equal(actions.length, 1);
@@ -169,9 +175,8 @@ test('M1: a closed issue gets a non-reopening comment when rows changed', () => 
   assert.match(body, /still failing/i);
 });
 
-test('M1: PASS -> FAIL -> PASS flap keeps the SAME issue (state carries issueNumber across close)', () => {
+test('M1/H1: PASS -> FAIL -> PASS flap keeps the SAME issue (state carries issueNumber across close)', () => {
   const title = '[nightly-audit] c_test: test check';
-  // Night 1: FAIL, no issue yet -> create.
   const night1 = planIssueSync({ findings: { c_test: finding() }, issues: [], previousState: {}, today: '2026-09-01' });
   assert.equal(night1[0].type, 'create');
 
@@ -185,8 +190,8 @@ test('M1: PASS -> FAIL -> PASS flap keeps the SAME issue (state carries issueNum
   assert.equal(night2[0].type, 'close');
   assert.equal(night2[0].issueNumber, 7);
 
-  // Night 3: FAIL again, issue #7 is now CLOSED with the SAME rows as before
-  // closing -> must NOT create a new issue; unchanged rows -> skip, not reopen.
+  // Night 3: FAIL again, issue #7 is now CLOSED — our own state has closedAt
+  // from night 2, so this must REOPEN #7, never create a new issue.
   const night3 = planIssueSync({
     findings: { c_test: finding() }, // rows: ['row-1'] again
     issues: [{ number: 7, title, state: 'CLOSED' }],
@@ -194,8 +199,48 @@ test('M1: PASS -> FAIL -> PASS flap keeps the SAME issue (state carries issueNum
     today: '2026-09-03',
   });
   assert.equal(night3.length, 1);
-  assert.notEqual(night3[0].type, 'create');
+  assert.equal(night3[0].type, 'reopen');
   assert.equal(night3[0].issueNumber, 7);
+});
+
+// ---- H1: our own auto-close vs a human close --------------------------------
+
+test('H1 case 1: an issue WE auto-closed (closedAt in state) that fails again -> reopen', () => {
+  const title = '[nightly-audit] c_test: test check';
+  const actions = planIssueSync({
+    findings: { c_test: finding() }, // FAIL again, same row-1
+    issues: [{ number: 9, title, state: 'CLOSED' }],
+    previousState: { c_test: { issueNumber: 9, firstSeen: '2026-09-01', lastRowKeys: ['row-1'], closedAt: '2026-09-02' } },
+    today: '2026-09-03',
+  });
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].type, 'reopen');
+  assert.equal(actions[0].issueNumber, 9);
+  assert.match(actions[0].comment, /Failing again on 2026-09-03/);
+});
+
+test('H1 case 2: an issue a HUMAN closed (no closedAt in state) is never reopened', () => {
+  const title = '[nightly-audit] c_test: test check';
+  // Unchanged rows -> skip, not reopen.
+  const unchangedActions = planIssueSync({
+    findings: { c_test: finding() },
+    issues: [{ number: 9, title, state: 'CLOSED' }],
+    previousState: { c_test: { issueNumber: 9, firstSeen: '2026-09-01', lastRowKeys: ['row-1'] } }, // no closedAt
+    today: '2026-09-03',
+  });
+  assert.equal(unchangedActions[0].type, 'skip');
+  assert.match(unchangedActions[0].reason, /closed by a human/);
+
+  // Changed rows -> comment on the closed issue, still never reopen.
+  const changedActions = planIssueSync({
+    findings: { c_test: finding({ rows: [{ rowKey: 'row-9', title: 'Row 9', body: 'x' }] }) },
+    issues: [{ number: 9, title, state: 'CLOSED' }],
+    previousState: { c_test: { issueNumber: 9, firstSeen: '2026-09-01', lastRowKeys: ['row-1'] } }, // no closedAt
+    today: '2026-09-03',
+  });
+  assert.equal(changedActions[0].type, 'comment');
+  assert.equal(changedActions[0].targetState, 'CLOSED');
+  assert.notEqual(changedActions[0].type, 'reopen');
 });
 
 // ---- renderIssueBody / renderCommentBody -----------------------------------
@@ -273,7 +318,7 @@ test('M3: main() has a runDate-is-today freshness guard', () => {
 
 test('minor (a): dry-run branch never calls writeFileSync on the sync-state path', () => {
   const src = readFileSync(join(__dirname, '..', 'audit-findings-to-issues.mjs'), 'utf8');
-  const dryRunBlockMatch = src.match(/if \(opts\.dryRun\) \{[\s\S]*?\n {2}\}/);
+  const dryRunBlockMatch = src.match(/if \(opts\.dryRun\) \{[\s\S]*?return;\s*\n\s*\}/);
   assert.ok(dryRunBlockMatch, 'expected an early-return dry-run block in main()');
   assert.doesNotMatch(dryRunBlockMatch[0], /writeFileSync/);
 });
@@ -286,4 +331,72 @@ test('minor (b): every DATA_REPAIR_CHECK_IDS entry is a real check id in detecti
   for (const id of DATA_REPAIR_CHECK_IDS) {
     assert.ok(knownIds.has(id), `DATA_REPAIR_CHECK_IDS has "${id}" which is not a check id in detection-checks.json`);
   }
+});
+
+// ---- M4: dry-run still reads (list is not gated by dryRun) -----------------
+
+test('M4: the gh-available branch calls listIssues even under --dry-run (only writes are gated)', () => {
+  const src = readFileSync(join(__dirname, '..', 'audit-findings-to-issues.mjs'), 'utf8');
+  // The `available` branch's try-block calls listIssues(repo) unconditionally
+  // (no `if (!opts.dryRun)` guarding that specific call) — writes (ensureLabels
+  // args, applyAction) are what carry the dryRun flag instead.
+  const availableBranch = src.match(/} else \{\s*try \{\s*degradedCount \+= await ensureLabels\(repo, opts\.dryRun\);\s*issues = await listIssues\(repo\);/);
+  assert.ok(availableBranch, 'expected listIssues(repo) to be called unconditionally in the gh-available branch');
+});
+
+test('M4: the no-gh branch prints the documented dry-run fallback message', () => {
+  const src = readFileSync(join(__dirname, '..', 'audit-findings-to-issues.mjs'), 'utf8');
+  assert.match(src, /DRY-RUN \(no gh\): assuming no existing issues/);
+});
+
+// ---- LOW (d): malformed --max-issues falls back to the default -------------
+
+test('LOW(d): a non-numeric --max-issues falls back to DEFAULT_MAX_ISSUES with a warning', () => {
+  const opts = parseArgs(['--max-issues', 'not-a-number']);
+  assert.equal(opts.maxIssues, DEFAULT_MAX_ISSUES);
+});
+
+test('LOW(d): a valid --max-issues is respected', () => {
+  const opts = parseArgs(['--max-issues', '5']);
+  assert.equal(opts.maxIssues, 5);
+});
+
+// ---- LOW (e): lockfile ------------------------------------------------------
+
+test('LOW(e): a second acquireLock in the same state dir is refused while the lock is fresh', async () => {
+  const { acquireLock, releaseLock } = await import('../audit-findings-to-issues.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'audit-lock-test-'));
+  try {
+    const lock1 = acquireLock(dir);
+    assert.ok(lock1, 'first acquireLock should succeed');
+    const lock2 = acquireLock(dir);
+    assert.equal(lock2, null, 'second acquireLock should be refused while the lock is fresh');
+    releaseLock(lock1);
+    const lock3 = acquireLock(dir);
+    assert.ok(lock3, 'acquireLock should succeed again after release');
+    releaseLock(lock3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('LOW(e): a stale lock (older than LOCK_STALE_MS) is reclaimed, not honoured', async () => {
+  const { acquireLock } = await import('../audit-findings-to-issues.mjs');
+  const { utimesSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'audit-lock-test-'));
+  try {
+    const lockPath = join(dir, 'issues-sync.lock');
+    writeFileSync(lockPath, '12345');
+    const staleSeconds = (Date.now() - LOCK_STALE_MS - 60000) / 1000;
+    utimesSync(lockPath, staleSeconds, staleSeconds);
+    const reacquired = acquireLock(dir);
+    assert.ok(reacquired, 'a lock older than LOCK_STALE_MS must be reclaimable');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('localDateStamp formats a Date as local YYYY-MM-DD', () => {
+  const d = new Date(2026, 8, 6); // month is 0-indexed: September 6, 2026
+  assert.equal(localDateStamp(d), '2026-09-06');
 });

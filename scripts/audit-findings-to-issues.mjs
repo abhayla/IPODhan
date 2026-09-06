@@ -35,7 +35,7 @@
 // the two files travel together on the box. A closed entry is KEPT (never
 // deleted) — deleting it on close was the M1 bug: it made a PASS->FAIL flap
 // open a brand-new issue every cycle instead of recognizing the same check.
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, statSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
@@ -131,9 +131,22 @@ export function planIssueSync({ findings, issues, openIssues, previousState, tod
     const unchanged = newKeys.length === 0 && resolvedKeys.length === 0;
 
     if (issue.state === 'CLOSED') {
-      // M1: never reopen a human-closed issue. Only speak up when the row-key
-      // set actually moved since the state we last recorded for it.
-      if (unchanged) {
+      // H1: our own auto-close (prevEntry.closedAt set — see the 'close'
+      // action below) is NOT the same thing as a human closing it. If WE
+      // closed it and the check is bad again, reopen — otherwise a
+      // PASS->close->FAIL flap skips forever ("unchanged" against the rows
+      // it had when we closed it). A human close carries no closedAt in our
+      // state (we never set it before their manual action), so that case
+      // keeps the M1 behaviour: never reopen, comment only on row change.
+      const weClosedIt = !!prevEntry?.closedAt;
+      if (weClosedIt) {
+        actions.push({
+          type: 'reopen', checkId, issueNumber: issue.number,
+          comment: `Failing again on ${today}.`,
+          rowKeys, finding,
+        });
+        budget -= 1;
+      } else if (unchanged) {
         actions.push({ type: 'skip', checkId, reason: 'still failing, issue closed by a human, rows unchanged — not reopening', issueNumber: issue.number });
       } else {
         actions.push({
@@ -236,7 +249,9 @@ async function ghAvailable() {
 
 async function withBodyFile(body, fn) {
   const path = join(tmpdir(), `audit-issue-body-${process.pid}-${randomBytes(6).toString('hex')}.md`);
-  writeFileSync(path, body, 'utf8');
+  // LOW (c): 0600 — these bodies carry DB content (company names, values);
+  // no other local user on the box should be able to read the temp file.
+  writeFileSync(path, body, { encoding: 'utf8', mode: 0o600 });
   try {
     return await fn(path);
   } finally {
@@ -270,12 +285,21 @@ async function ensureLabels(repo, dryRun) {
 // M1: `--state all` — an issue a human closed must still be found by title so
 // it is never recreated. `state` in the returned JSON is what planIssueSync
 // uses to tell OPEN from CLOSED.
+const LIST_ISSUES_LIMIT = 1000;
 async function listIssues(repo) {
   const { stdout } = await execFileAsync('gh',
     ['issue', 'list', '--repo', repo, '--label', NIGHTLY_AUDIT_LABEL, '--state', 'all',
-      '--json', 'number,title,state', '--limit', '200'],
+      '--json', 'number,title,state', '--limit', String(LIST_ISSUES_LIMIT)],
     { timeout: 20000 });
-  return JSON.parse(stdout);
+  const issues = JSON.parse(stdout);
+  // LOW (b): `gh issue list` has no built-in pagination flag alongside
+  // --limit — raising the cap to 1000 covers any realistic nightly-audit
+  // volume; log loudly if it is ever actually hit so a silent truncation
+  // (a human-closed issue past position 1000 looking "gone") gets noticed.
+  if (issues.length >= LIST_ISSUES_LIMIT) {
+    log(`WARNING: gh issue list returned ${issues.length} issues (== the ${LIST_ISSUES_LIMIT} cap) — the nightly-audit label may have more than this script can see`);
+  }
+  return issues;
 }
 
 async function resolveRepoSlug(cliRepo) {
@@ -334,6 +358,14 @@ async function applyAction(action, { repo, dryRun, registry, runDate, logPath })
       log(`closed #${action.issueNumber} for ${action.checkId}: ${action.comment}`);
       return true;
     }
+
+    if (action.type === 'reopen') {
+      const args = ['issue', 'reopen', String(action.issueNumber), '--repo', repo, '--comment', action.comment];
+      if (dryRun) { log(`DRY-RUN: gh ${args.join(' ')}`); return true; }
+      await execFileAsync('gh', args, { timeout: 20000 });
+      log(`reopened #${action.issueNumber} for ${action.checkId}: ${action.comment}`);
+      return true;
+    }
   } catch (e) {
     log(`action failed for ${action.checkId} (${action.type}): ${e.message} — continuing with remaining checks`);
     return false;
@@ -388,7 +420,7 @@ export const DATA_REPAIR_CHECK_IDS = new Set([
   'm_brlm_count', 'm_document_type_classifier',
 ]);
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const opts = { dryRun: process.env.AUDIT_ISSUES_DRY_RUN === '1', maxIssues: DEFAULT_MAX_ISSUES, repo: null, findingsPath: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -397,127 +429,199 @@ function parseArgs(argv) {
     else if (a === '--max-issues') opts.maxIssues = parseInt(argv[++i], 10);
     else if (!a.startsWith('--')) opts.findingsPath = a;
   }
+  // LOW (d): a malformed --max-issues (non-numeric) must not silently disable
+  // the safety cap (NaN <= 0 is always false, so budget checks would never
+  // trip and every FAIL/UNVERIFIABLE check would try to create/comment).
+  if (Number.isNaN(opts.maxIssues)) {
+    console.log(`[audit-findings-to-issues] WARNING: --max-issues was not a number — falling back to the default (${DEFAULT_MAX_ISSUES})`);
+    opts.maxIssues = DEFAULT_MAX_ISSUES;
+  }
   return opts;
+}
+
+// LOW (a): match the cron's own log naming — vps-data-audit-cron.sh stamps
+// run-<date>.log with bash's `date +%F`, which is the box's LOCAL date, not
+// UTC. findings-latest.json's runDate (from audit-detection-floor.mjs) is
+// UTC, so the two can disagree near a day boundary; the log path quoted in
+// an issue BODY should point at the file the cron actually produced.
+export function localDateStamp(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// LOW (e): a simple mtime-based lockfile so an overlapping run (a slow tick
+// still finishing when the next fires) skips instead of racing on
+// issues-sync-state.json or double-filing the same check. Stale after 30
+// minutes — a crashed holder must not wedge every future run forever.
+export const LOCK_STALE_MS = 30 * 60 * 1000;
+
+export function acquireLock(stateDir) {
+  const lockPath = join(stateDir, 'issues-sync.lock');
+  if (existsSync(lockPath)) {
+    try {
+      if (Date.now() - statSync(lockPath).mtimeMs < LOCK_STALE_MS) return null;
+    } catch { /* stat failed — try to acquire anyway */ }
+  }
+  try { writeFileSync(lockPath, String(process.pid)); } catch { /* best-effort */ }
+  return lockPath;
+}
+
+export function releaseLock(lockPath) {
+  if (!lockPath) return;
+  try { unlinkSync(lockPath); } catch { /* best-effort */ }
 }
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  const available = await ghAvailable();
-  if (!available) {
-    console.log('ISSUES-SKIP: gh not installed or not authenticated — see `gh auth status`');
-    process.exit(0);
-  }
-
   const STATE_DIR = process.env.DETECTION_FLOOR_STATE_DIR
     || (existsSync('/root/data-audit-ipodhan/state') ? '/root/data-audit-ipodhan/state' : tmpdir());
-  const findingsPath = opts.findingsPath || join(STATE_DIR, 'findings-latest.json');
-  const syncStatePath = join(STATE_DIR, 'issues-sync-state.json');
-  const registryPath = join(REPO_ROOT, 'docs', 'reviews', 'detection-checks.json');
 
-  if (!existsSync(findingsPath)) {
-    console.log(`ISSUES-SKIP: no findings file at ${findingsPath} — audit-detection-floor.mjs has not run yet tonight`);
-    process.exit(0);
+  const lockPath = acquireLock(STATE_DIR);
+  if (!lockPath) {
+    console.log('ISSUES-SKIP: another sync is running');
+    return;
   }
 
-  let loaded;
   try {
-    loaded = loadFindingsFile(findingsPath);
-  } catch (e) {
-    console.log(`ISSUES-SKIP: could not parse ${findingsPath}: ${e.message}`);
-    process.exit(0);
-  }
-
-  // M3: a findings file from a PRIOR run (e.g. tonight's audit crashed before
-  // it could rewrite the file) must never be synced as if it were tonight's
-  // result — that can close an issue on a stale PASS that no longer holds.
-  const today = new Date().toISOString().slice(0, 10);
-  if (loaded.runDate !== today) {
-    console.log(`ISSUES-SKIP: findings runDate ${loaded.runDate} is not today (${today})`);
-    process.exit(0);
-  }
-
-  const registry = loadRegistry(registryPath);
-  const previousState = existsSync(syncStatePath)
-    ? JSON.parse(readFileSync(syncStatePath, 'utf8'))
-    : {};
-
-  const repo = await resolveRepoSlug(opts.repo);
-
-  let degradedCount = 0;
-  let issues;
-  try {
-    degradedCount += await ensureLabels(repo, opts.dryRun);
-    issues = opts.dryRun ? [] : await listIssues(repo);
-  } catch (e) {
-    console.log(`ISSUES-SKIP: gh call failed: ${e.message}`);
-    process.exit(0);
-  }
-
-  // Only FAIL/UNVERIFIABLE checks are candidates for create, but a check that
-  // WAS bad and is now PASS still needs to be considered for close — so pass
-  // every check's finding through, planIssueSync() decides.
-  const actions = planIssueSync({
-    findings: loaded.findings,
-    issues,
-    previousState,
-    today: loaded.runDate,
-    maxIssues: opts.maxIssues,
-  });
-
-  const logPath = join(STATE_DIR, `run-${loaded.runDate}.log`);
-  for (const action of actions) {
-    const ok = await applyAction(action, { repo, dryRun: opts.dryRun, registry, runDate: loaded.runDate, logPath });
-    if (!ok) degradedCount += 1;
-  }
-
-  // Minor (a): a dry run must not mutate state — it is a preview, not a sync.
-  if (opts.dryRun) {
-    console.log(`[audit-findings-to-issues] done: ${actions.length} action(s) planned [dry-run, state untouched]`);
-    if (degradedCount > 0) console.log(`ISSUES-DEGRADED: ${degradedCount} action(s) failed`);
-    process.exit(0);
-  }
-
-  // Persist next state from the actions actually taken. Closed entries are
-  // KEPT (M1) with a closedAt stamp, never deleted — deleting them was what
-  // made a PASS->FAIL flap open a brand-new issue every cycle.
-  const nextState = { ...previousState };
-  for (const action of actions) {
-    if (action.type === 'create') {
-      nextState[action.checkId] = { issueNumber: null, firstSeen: action.firstSeen, lastRowKeys: action.rowKeys };
-    } else if (action.type === 'comment') {
-      nextState[action.checkId] = { ...nextState[action.checkId], lastRowKeys: action.rowKeys };
-    } else if (action.type === 'close') {
-      nextState[action.checkId] = { ...nextState[action.checkId], issueNumber: action.issueNumber, closedAt: loaded.runDate };
+    const available = await ghAvailable();
+    if (!available && !opts.dryRun) {
+      console.log('ISSUES-SKIP: gh not installed or not authenticated — see `gh auth status`');
+      return;
     }
-  }
-  // Re-resolve real issue numbers for creates from a fresh list.
-  try {
-    const refreshed = await listIssues(repo);
-    for (const checkId of Object.keys(nextState)) {
-      if (nextState[checkId]?.issueNumber == null) {
-        const finding = loaded.findings[checkId];
-        const title = `[nightly-audit] ${checkId}: ${finding?.name || ''}`;
-        const match = refreshed.find((i) => i.title === title);
-        if (match) nextState[checkId].issueNumber = match.number;
+
+    const findingsPath = opts.findingsPath || join(STATE_DIR, 'findings-latest.json');
+    const syncStatePath = join(STATE_DIR, 'issues-sync-state.json');
+    const registryPath = join(REPO_ROOT, 'docs', 'reviews', 'detection-checks.json');
+
+    if (!existsSync(findingsPath)) {
+      console.log(`ISSUES-SKIP: no findings file at ${findingsPath} — audit-detection-floor.mjs has not run yet tonight`);
+      return;
+    }
+
+    let loaded;
+    try {
+      loaded = loadFindingsFile(findingsPath);
+    } catch (e) {
+      console.log(`ISSUES-SKIP: could not parse ${findingsPath}: ${e.message}`);
+      return;
+    }
+
+    // M3: a findings file from a PRIOR run (e.g. tonight's audit crashed
+    // before it could rewrite the file) must never be synced as if it were
+    // tonight's result — that can close an issue on a stale PASS that no
+    // longer holds.
+    const today = new Date().toISOString().slice(0, 10);
+    if (loaded.runDate !== today) {
+      console.log(`ISSUES-SKIP: findings runDate ${loaded.runDate} is not today (${today})`);
+      return;
+    }
+
+    const registry = loadRegistry(registryPath);
+    const previousState = existsSync(syncStatePath)
+      ? JSON.parse(readFileSync(syncStatePath, 'utf8'))
+      : {};
+
+    const repo = await resolveRepoSlug(opts.repo);
+
+    let degradedCount = 0;
+    let issues;
+    // M4: `gh issue list` is READ-ONLY — a dry run must still call it so the
+    // preview reflects the REAL create/comment/close/reopen decision instead
+    // of pretending nothing exists. Only WRITES (label ensure, issue
+    // create/comment/close/reopen) are suppressed under --dry-run.
+    if (!available) {
+      log('DRY-RUN (no gh): assuming no existing issues');
+      issues = [];
+      degradedCount += await ensureLabels(repo, opts.dryRun);
+    } else {
+      try {
+        degradedCount += await ensureLabels(repo, opts.dryRun);
+        issues = await listIssues(repo);
+      } catch (e) {
+        if (opts.dryRun) {
+          log(`DRY-RUN: could not list issues (${e.message}) — assuming none`);
+          issues = [];
+        } else {
+          console.log(`ISSUES-SKIP: gh call failed: ${e.message}`);
+          return;
+        }
       }
     }
-  } catch (e) {
-    log(`could not refresh issue numbers after sync: ${e.message}`);
-  }
 
-  try {
-    writeFileSync(syncStatePath, JSON.stringify(nextState, null, 2));
-  } catch (e) {
-    log(`could not persist ${syncStatePath}: ${e.message} — next run may re-create/re-comment`);
-  }
+    // Only FAIL/UNVERIFIABLE checks are candidates for create, but a check
+    // that WAS bad and is now PASS still needs to be considered for close —
+    // so pass every check's finding through, planIssueSync() decides.
+    const actions = planIssueSync({
+      findings: loaded.findings,
+      issues,
+      previousState,
+      today: loaded.runDate,
+      maxIssues: opts.maxIssues,
+    });
 
-  console.log(`[audit-findings-to-issues] done: ${actions.length} action(s) (${actions.filter((a) => a.type !== 'skip').length} applied to GitHub)`);
-  if (degradedCount > 0) console.log(`ISSUES-DEGRADED: ${degradedCount} action(s) failed`);
-  process.exit(0);
+    const logPath = join(STATE_DIR, `run-${localDateStamp()}.log`);
+    for (const action of actions) {
+      const ok = await applyAction(action, { repo, dryRun: opts.dryRun, registry, runDate: loaded.runDate, logPath });
+      if (!ok) degradedCount += 1;
+    }
+
+    // Minor (a): a dry run must not mutate state — it is a preview, not a sync.
+    if (opts.dryRun) {
+      console.log(`[audit-findings-to-issues] done: ${actions.length} action(s) planned [dry-run, state untouched]`);
+      if (degradedCount > 0) console.log(`ISSUES-DEGRADED: ${degradedCount} action(s) failed`);
+      return;
+    }
+
+    // Persist next state from the actions actually taken. Closed entries are
+    // KEPT (M1) with a closedAt stamp, never deleted. A reopen (H1) clears
+    // closedAt so the NEXT close is recognised as ours again.
+    const nextState = { ...previousState };
+    for (const action of actions) {
+      if (action.type === 'create') {
+        nextState[action.checkId] = { issueNumber: null, firstSeen: action.firstSeen, lastRowKeys: action.rowKeys };
+      } else if (action.type === 'comment') {
+        nextState[action.checkId] = { ...nextState[action.checkId], lastRowKeys: action.rowKeys };
+      } else if (action.type === 'close') {
+        nextState[action.checkId] = { ...nextState[action.checkId], issueNumber: action.issueNumber, closedAt: loaded.runDate };
+      } else if (action.type === 'reopen') {
+        const { closedAt, ...rest } = nextState[action.checkId] || {};
+        nextState[action.checkId] = { ...rest, issueNumber: action.issueNumber, lastRowKeys: action.rowKeys };
+      }
+    }
+    // Re-resolve real issue numbers for creates from a fresh list.
+    try {
+      const refreshed = await listIssues(repo);
+      for (const checkId of Object.keys(nextState)) {
+        if (nextState[checkId]?.issueNumber == null) {
+          const finding = loaded.findings[checkId];
+          const title = `[nightly-audit] ${checkId}: ${finding?.name || ''}`;
+          const match = refreshed.find((i) => i.title === title);
+          if (match) nextState[checkId].issueNumber = match.number;
+        }
+      }
+    } catch (e) {
+      log(`could not refresh issue numbers after sync: ${e.message}`);
+    }
+
+    try {
+      writeFileSync(syncStatePath, JSON.stringify(nextState, null, 2));
+    } catch (e) {
+      log(`could not persist ${syncStatePath}: ${e.message} — next run may re-create/re-comment`);
+    }
+
+    console.log(`[audit-findings-to-issues] done: ${actions.length} action(s) (${actions.filter((a) => a.type !== 'skip').length} applied to GitHub)`);
+    if (degradedCount > 0) console.log(`ISSUES-DEGRADED: ${degradedCount} action(s) failed`);
+  } finally {
+    releaseLock(lockPath);
+  }
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
 if (isMain || process.argv[1]?.endsWith('audit-findings-to-issues.mjs')) {
-  main().catch((e) => { console.log(`ISSUES-SKIP: unexpected error: ${e.stack || e.message}`); process.exit(0); });
+  main()
+    .then(() => process.exit(0))
+    .catch((e) => { console.log(`ISSUES-SKIP: unexpected error: ${e.stack || e.message}`); process.exit(0); });
 }
