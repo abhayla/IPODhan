@@ -416,18 +416,24 @@ THE MINIMUM LOT SIZE IS 23 EQUITY SHARES
 
 def test_drhp_never_emits_a_price_band_even_when_the_cover_would_match():
     """A DRHP cover carrying the exact band-regex shape must still null every
-    headline field — the extractor must not even attempt the regex match."""
+    price-dependent headline field — the extractor must not even attempt the
+    band/lot/price regex match. `face_value` is the exception: it is the par
+    value fixed at registration, legitimately printed on a DRHP cover, and is
+    still read."""
     f = headline(KANOHAR_SHAPE_COVER, doc_type="DRHP")
-    for name in ("price_band_floor", "price_band_cap", "face_value", "lot_size",
+    for name in ("price_band_floor", "price_band_cap", "lot_size",
                  "shares_at_floor", "shares_at_cap", "ofs_shares",
                  "total_offer_shares_at_cap", "issue_structure", "issue_price_type",
                  "fresh_issue_amount", "ofs_amount", "ofs_amount_at_cap",
                  "total_offer_amount_at_cap"):
         assert value(f, name) is None, name
+    assert value(f, "face_value") == 10.0
     assert value(f, "headline_source") is None
     assert value(f, "headline_skipped_reason") is None
-    assert f["headline_skipped_reason"]["check"]["detail"] == "DRHP has no price band by law"
-    assert f["price_band_floor"]["check"]["detail"] == "DRHP has no price band by law"
+    assert f["headline_skipped_reason"]["check"]["detail"] == \
+        "DRHP has no price band by law (face value kept)"
+    assert f["price_band_floor"]["check"]["detail"] == \
+        "DRHP has no price band by law (face value kept)"
 
 
 def test_rhp_twin_of_the_same_cover_still_parses_the_band():

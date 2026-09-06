@@ -2260,14 +2260,26 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
     "[*]" for price, but occasionally an earlier round's stale numbers survive a
     copy-paste, which a naive regex would happily read as a real band (prod:
     Kanohar Electricals DRHP misread as band 72/82 against the RHP's true
-    601-632). So a DRHP never even runs the cover regexes below — every headline
-    field is nulled, unconditionally, before any pattern is tried.
+    601-632). So a DRHP never runs the price/band/lot cover regexes — every
+    price-dependent headline field is nulled, unconditionally, before any of
+    those patterns is tried. `face_value` is different: it is the company's par
+    value, fixed at registration and legitimately printed on a DRHP cover, so it
+    is still read.
     """
     if doc_type == "DRHP":
-        skip_reason = "DRHP has no price band by law"
+        skip_reason = "DRHP has no price band by law (face value kept)"
         emit.null("headline_source", skip_reason)
         emit.null("headline_skipped_reason", skip_reason)
-        for name in (("price_band_floor", "price_band_cap", "face_value", "lot_size",
+
+        blob, _lines, pages = _cover_lines(page_texts)
+        cover_page = pages[0] if pages else None
+        sentence, _why = _offer_sentence(blob)
+        fm = COVER_FACE_VALUE_RX.search(sentence) if sentence else None
+        face = _num(fm.group(1)) if fm else None
+        emit.put("face_value", face, cover_page, "cover_face_value_plausible",
+                 check_cover_face_value(face))
+
+        for name in (("price_band_floor", "price_band_cap", "lot_size",
                       "shares_at_floor", "shares_at_cap", "ofs_shares",
                       "total_offer_shares_at_cap", "issue_structure", "issue_price_type")
                      + _HEADLINE_MONEY_FIELDS):
