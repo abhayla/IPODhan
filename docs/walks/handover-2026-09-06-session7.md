@@ -96,3 +96,9 @@ Worker rounds: ~10 Sonnet (W-168b x2, W-145 fix, W-169b x2, W-169c, W-169d, W-16
 - W-171 RCA: DRHP path emits a cover band (no exclusion); Kanohar is MAINBOARD, the hold was the lot x cap retail-range check; fix proposal recorded (tomorrow unless the brief accepts).
 - W-163: the exact Kanohar API URL still 522 at the edge while a query-string variant is 200; purge at Cloudflare in tonight verification (owner word).
 - Stash guard hook live (user-level, 31 tests, live-proven). Hook timeouts explicit 60 s (#316).
+
+### 2026-09-06 14:12 IST update (afternoon wave, main 2bd6f471; release/prod-2026-09-06 = f9b67d0a unchanged)
+- Merged behind the release: DRHP never emits a price band + lot x price audit check (#319); dead cron scheduler removed, README/liveness docs corrected (#320); recurrence loop part 1: failure-class registry (14 rows, 6 guarded) + detection-change PR gate (#321, live, judged #322); one PDF extractor per box with the lock inside python (#322).
+- Cadence: the 3 Sep decision is implemented in due-step-cycle.ts (discovery 4 slots, live numbers OPEN-only 10:00-17:00 IST, aggregators daily, closed/listed quiet); only "aggregators once per filing" has no event trigger.
+- Nightly VPS audit runs at 03:45 and has been red all week on legacy rows (59 degenerate bands, 2 issue_size 0, 2 registrar pollution, 2 date-order); new checks reach it tomorrow. Recurrence loop parts 2-4 (audit -> GitHub issues -> fleet task) need gh + a token on the VPS: owner.
+- Owner rules today: reports in feature terms (no ids); cut the release early and keep main moving.
