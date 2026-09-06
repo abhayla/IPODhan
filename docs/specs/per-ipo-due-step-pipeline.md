@@ -98,6 +98,39 @@ exchange-only rows are kept for audit.
 - The flat 30-min `--source=all` PM2 cron is replaced by these jobs behind a feature flag;
   rollback = flip the flag.
 
+### 5.1 Document cycle cadence (D-13 conformance — cycle-overrun fix, 2026-09-07)
+
+The document cycle (`scraper/src/services/document-cycle.ts` `runDocumentCycle`, wired as the
+`primarySourceDiscovery` step in `scraper/src/index.ts`) runs on every 30-min PM2 wake — see that
+file's own doc comment for why per-cycle (not daily) is correct once the state machine makes a
+no-change cycle free. Two gaps against the owner's D-13 cadence decision (2026-09-03, walk row
+`docs/walks/2026-09-02-deepa-pipeline-walk.md:200`) were fixed here after the 2026-09-06
+cycle-overrun RCA (observed 1,210-1,278s cycles, 105-115 network calls on a Sunday):
+
+- **Calendar gate.** D-13 says a Sunday wake does DB reads and no network calls. The document
+  cycle previously had no such gate at all. `document-cycle-calendar-gate.ts` now checks, using
+  `due-step-cycle.ts`'s IST weekday helpers (`istWeekday`/`istDateIso` — the SSOT for this repo's
+  IST calendar arithmetic) plus the `market_holidays` table: on Sunday, Saturday (assumption —
+  treated the same as Sunday; nothing in this repo's calendar treats Saturday as a trading day
+  either), or an NSE holiday, only `UPCOMING`/`PRE_OPEN`/`OPEN` candidates stay eligible for
+  network work. `CLOSED`/`LISTED`/`WITHDRAWN` candidates are skipped that wake (`calendarSkipped`
+  in the cycle summary, one `Document cycle: calendar gate — live-only` log line) and picked up
+  the next non-gated cycle — the state table remembers where each one is. A holiday-lookup failure
+  fails OPEN (treated as a normal trading day), never gates a real business day on an outage.
+- **Wake budget.** Discovery (`CYCLE_BUDGET.DISCOVERY_MS`, 60s) and extraction
+  (`DEFAULT_EXTRACTION_BUDGET_MS`, 25min) used to be two independent budgets that could together
+  exceed a 30-min wake with no shared ceiling. `DOCUMENT_CYCLE_WAKE_BUDGET_MS` (env override,
+  default 20 min — `getWakeBudgetMs()`) is now the ONE budget the two share: extraction gets
+  whatever discovery did not use, minus a fixed `PURGE_RESERVE_MS` (2 min) held back for the purge
+  step (`triggerDocumentPurge`) that runs later in the same wake. `index.ts`'s whole-cycle Redis
+  lock TTL (`CYCLE_LOCK_TTL_MS`) is derived from the same wake budget plus 5 minutes of slack,
+  instead of a separately-hardcoded number that could silently drift out of sync with it.
+- **Detection.** `m_cycle_overrun` (`scripts/lib/document-state-checks.mjs`, wired in
+  `scripts/audit-detection-floor.mjs`) reads the `scraper_steps` step-ledger rows for
+  `primarySourceDiscovery` and FAILs when a cycle ran longer than 25 minutes or two cycles'
+  wall-clock windows overlapped — see `docs/reviews/failure-classes.md`'s "document cycle overrun"
+  row and `docs/reviews/detection-checks.json`'s `m_cycle_overrun` entry.
+
 ## 6. Source tiers (S-03) and conflict rule (S-04)
 
 | Tier | Sources | Truth for | Never used for |

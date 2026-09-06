@@ -395,3 +395,59 @@ export function checkAbsenceWithoutEvidence(row) {
   if (inScopeRungs.some((r) => r.verdict === EXCHANGES_SETTLED_SKIP_VERDICT)) return null;
   return `${row.companyName}: ${row.docType} is NOT_YET_FILED but no rung answered — ${chain}`;
 }
+
+/**
+ * Cadence D-13 / cycle-overrun RCA (2026-09-06 observed 1,210-1,278s document
+ * cycles): the document cycle's discovery+extraction budgets used to be
+ * independent, so a cycle could run past a healthy wake length with nothing
+ * failing loudly — the cycle just quietly ran long, or a second wake started
+ * before the first one finished (PM2's `cron_restart` force-restarts, it does
+ * not wait). This is the DETECTION half of that fix: it reads the SAME
+ * `scraper_steps` step-ledger rows `k_step_ledger_silence` already reads
+ * (`step = 'primarySourceDiscovery'`, one row per wake, `durationMs` +
+ * `createdAt` written by `index.ts`'s `runStep` wrapper) and fails when a
+ * cycle ran too long, or when two cycles' wall-clock windows overlapped.
+ *
+ * Pure — no DB, no clock reached implicitly (`now` is never read here; every
+ * timestamp comes from the rows). `createdAt` is written AFTER the step
+ * function resolves, so it is the step's END time; `durationMs` recovers the
+ * start.
+ */
+export const CYCLE_OVERRUN_MAX_MS = 25 * 60 * 1000;
+
+/**
+ * @param {Array<{ cycleId: string, createdAt: string | Date, durationMs: number }>} rows
+ *   `primarySourceDiscovery` step-ledger rows for the audit window, any order.
+ * @returns {string | null} null (pass) or a human-readable violation string.
+ */
+export function checkCycleOverrun(rows) {
+  if (!rows || rows.length === 0) return null;
+
+  const tooLong = rows.filter((r) => r.durationMs > CYCLE_OVERRUN_MAX_MS);
+
+  const sorted = [...rows]
+    .map((r) => ({ ...r, endMs: new Date(r.createdAt).getTime(), startMs: new Date(r.createdAt).getTime() - r.durationMs }))
+    .sort((a, b) => a.startMs - b.startMs);
+  const overlaps = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const cur = sorted[i];
+    if (prev.cycleId !== cur.cycleId && cur.startMs < prev.endMs) {
+      overlaps.push(`${prev.cycleId} (ended ${new Date(prev.endMs).toISOString()}) overlapped ${cur.cycleId} (started ${new Date(cur.startMs).toISOString()})`);
+    }
+  }
+
+  if (tooLong.length === 0 && overlaps.length === 0) return null;
+
+  const parts = [];
+  if (tooLong.length > 0) {
+    parts.push(
+      `${tooLong.length} cycle(s) exceeded ${CYCLE_OVERRUN_MAX_MS / 60_000}min: ` +
+        tooLong.map((r) => `${r.cycleId}=${(r.durationMs / 1000).toFixed(0)}s`).join(', ')
+    );
+  }
+  if (overlaps.length > 0) {
+    parts.push(`${overlaps.length} overlapping wake(s): ${overlaps.join('; ')}`);
+  }
+  return parts.join(' | ');
+}

@@ -84,3 +84,18 @@ export function isMarketHoursIST(now: Date): boolean {
   const inWindow = minutesOfDay >= 10 * 60 && minutesOfDay < 17 * 60;
   return isWeekday && inWindow;
 }
+
+/**
+ * 0 = Sunday .. 6 = Saturday, in IST — exported so other cadence-gated code
+ * (the document cycle's Sunday/Saturday calendar gate, T-cadence-D13) reuses
+ * this module's IST calendar arithmetic instead of re-deriving it.
+ */
+export function istWeekday(now: Date): number {
+  return toIstClock(now).weekday;
+}
+
+/** "YYYY-MM-DD" for `now` in IST — matches the `market_holidays.date` column format. */
+export function istDateIso(now: Date): string {
+  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
+  return new Date(istMs).toISOString().slice(0, 10);
+}

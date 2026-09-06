@@ -18,6 +18,8 @@ import {
   checkDocumentTypeMatchesClassifier,
   checkNotYetFiledAge,
   checkAbsenceWithoutEvidence,
+  checkCycleOverrun,
+  CYCLE_OVERRUN_MAX_MS,
   answeredRungsIn,
   chainFromLastAttempt,
   EXCHANGE_UNSERVED_DOC_TYPES,
@@ -640,4 +642,50 @@ test('68k FAILs when the incomplete row is actually due (next_retry_at in the pa
   });
   assert.match(violation, /due-retry-co/);
   assert.match(violation, /listed_rotation_stall/);
+});
+
+// ---- checkCycleOverrun (cadence D-13 / cycle-overrun RCA) -----------------
+
+test('cycle-overrun: PASS when every cycle is short and non-overlapping', () => {
+  const t0 = Date.now();
+  const rows = [
+    { cycleId: 'c1', createdAt: new Date(t0), durationMs: 60_000 },
+    { cycleId: 'c2', createdAt: new Date(t0 + 30 * 60_000), durationMs: 90_000 },
+  ];
+  assert.equal(checkCycleOverrun(rows), null);
+});
+
+test('cycle-overrun: FAILs when one cycle exceeds the 25min ceiling (the observed 1,210-1,278s class)', () => {
+  const t0 = Date.now();
+  const rows = [{ cycleId: 'c1', createdAt: new Date(t0), durationMs: 27 * 60_000 }];
+  const violation = checkCycleOverrun(rows);
+  assert.match(violation, /exceeded/);
+  assert.match(violation, /c1/);
+});
+
+test('cycle-overrun: FAILs when two different cycles overlap in wall-clock time', () => {
+  const t0 = Date.now();
+  // c1 runs t0..t0+20min; c2 starts at t0+15min (before c1 ends at t0+20min) — overlap.
+  const rows = [
+    { cycleId: 'c1', createdAt: new Date(t0 + 20 * 60_000), durationMs: 20 * 60_000 },
+    { cycleId: 'c2', createdAt: new Date(t0 + 23 * 60_000), durationMs: 8 * 60_000 },
+  ];
+  const violation = checkCycleOverrun(rows);
+  assert.match(violation, /overlapping/);
+});
+
+test('cycle-overrun: a single long-running cycle is NOT reported as "overlapping itself"', () => {
+  const t0 = Date.now();
+  const rows = [{ cycleId: 'c1', createdAt: new Date(t0 + 30 * 60_000), durationMs: 30 * 60_000 }];
+  const violation = checkCycleOverrun(rows);
+  assert.match(violation, /exceeded/);
+  assert.doesNotMatch(violation, /overlapping/);
+});
+
+test('cycle-overrun: PASS on no rows (UNVERIFIABLE is the caller\'s job, not this predicate\'s)', () => {
+  assert.equal(checkCycleOverrun([]), null);
+});
+
+test('CYCLE_OVERRUN_MAX_MS is exactly 25 minutes', () => {
+  assert.equal(CYCLE_OVERRUN_MAX_MS, 25 * 60 * 1000);
 });
