@@ -16,7 +16,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/prompt-enhance-reminder.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/prompt-enhance-reminder.sh\"",
+            "timeout": 60
           }
         ]
       },
@@ -25,7 +26,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/ba-usecase-discovery-reminder.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/ba-usecase-discovery-reminder.sh\"",
+            "timeout": 60
           }
         ]
       }
@@ -36,7 +38,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-governance-status.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-governance-status.sh\"",
+            "timeout": 60
           }
         ]
       },
@@ -45,15 +48,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-governance-status.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-governance-status.sh\"",
+            "timeout": 60
           },
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-concurrency-guard.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-concurrency-guard.sh\"",
+            "timeout": 60
           },
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/stale-branch-reaper.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/stale-branch-reaper.sh\"",
+            "timeout": 60
           }
         ]
       }
@@ -64,7 +70,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/no-overask-guard.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/no-overask-guard.sh\"",
+            "timeout": 60
           }
         ]
       },
@@ -73,11 +80,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/no-overask-guard.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/no-overask-guard.sh\"",
+            "timeout": 60
           },
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/verifier-edge-guard.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/verifier-edge-guard.sh\"",
+            "timeout": 60
           }
         ]
       }
@@ -110,7 +119,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/team-task-created-deliverable.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/team-task-created-deliverable.sh\"",
+            "timeout": 60
           }
         ]
       }
@@ -121,7 +131,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/team-task-completed-verifier.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/team-task-completed-verifier.sh\"",
+            "timeout": 60
           }
         ]
       }
@@ -132,7 +143,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/team-teammate-idle-drain.sh\""
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/team-teammate-idle-drain.sh\"",
+            "timeout": 60
           }
         ]
       }
