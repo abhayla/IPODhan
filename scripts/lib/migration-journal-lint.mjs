@@ -79,17 +79,35 @@ export function findNonMonotonicWhen(entries) {
  * Entries strictly after FUTURE_CHECK_AFTER_IDX must not be dated more than
  * ~24h into the future relative to `nowMs` — that class (hand-typed dates up
  * to 2026-09-10) is exactly what caused blocker 1.
+ *
+ * This rule and MONOTONIC_CHECK_FROM_IDX contradict each other until real
+ * time passes 2026-09-10 (idx 33's when=1789032000000): a migration authored
+ * THIS week must sort above idx 33 (monotonic rule) but idx 33 is already
+ * >24h in the future, so "when > previous.when" and "when <= now+24h" cannot
+ * both hold for a real, honestly-timestamped new entry. The allowed ceiling
+ * is therefore the LARGER of the two floors an honest entry must clear:
+ * `max(nowMs + 24h, previousEntry.when + 1ms)` — i.e. a migration may be
+ * future-dated exactly as far as it MUST be to stay monotonic against a
+ * future-dated predecessor, never further. Once real time passes 2026-09-10
+ * this collapses back to the plain `nowMs + 24h` ceiling on its own, since
+ * idx 33's `when` will no longer be ahead of `nowMs`.
  * @param {JournalEntry[]} entries
  * @param {number} nowMs
  * @returns {string[]}
  */
 export function findFutureDatedWhen(entries, nowMs) {
   const violations = [];
-  for (const e of entries) {
+  const sorted = [...entries].sort((a, b) => a.idx - b.idx);
+  for (let i = 0; i < sorted.length; i++) {
+    const e = sorted[i];
     if (e.idx <= FUTURE_CHECK_AFTER_IDX) continue; // grandfathered, see doc above
-    if (e.when - nowMs > ONE_DAY_MS) {
+    const prev = sorted[i - 1];
+    const minimumMonotonicCeiling = prev ? prev.when + 1000 : -Infinity;
+    const allowedMax = Math.max(nowMs + ONE_DAY_MS, minimumMonotonicCeiling);
+    if (e.when > allowedMax) {
       violations.push(
-        `idx ${e.idx} (${e.tag}) has when=${e.when}, more than 24h in the future relative to now (${nowMs}). ` +
+        `idx ${e.idx} (${e.tag}) has when=${e.when}, more than 24h in the future relative to now (${nowMs}) ` +
+          `and beyond the minimum needed to stay monotonic past its predecessor (allowed max ${allowedMax}). ` +
           `Hand-typed future dates are exactly the class that caused a migration to be silently skipped (T-403 round 3).`
       );
     }

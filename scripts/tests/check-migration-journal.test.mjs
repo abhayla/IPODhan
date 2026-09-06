@@ -84,6 +84,28 @@ test('a when within 24h of now is fine for a new entry', () => {
   assert.deepEqual(findFutureDatedWhen(entries, Date.now()), []);
 });
 
+test('a when just above a far-future predecessor is ALLOWED (minimum needed to stay monotonic)', () => {
+  const now = Date.now();
+  const farFuturePrev = now + 30 * 24 * 60 * 60 * 1000;
+  const entries = [
+    { idx: FUTURE_CHECK_AFTER_IDX, when: farFuturePrev, tag: '20260906090638_icy_firelord' },
+    { idx: FUTURE_CHECK_AFTER_IDX + 1, when: farFuturePrev + 1000, tag: 'new_migration' },
+  ];
+  assert.deepEqual(findFutureDatedWhen(entries, now), []);
+});
+
+test('a when far beyond a far-future predecessor is REJECTED (more than the minimum needed)', () => {
+  const now = Date.now();
+  const farFuturePrev = now + 30 * 24 * 60 * 60 * 1000;
+  const entries = [
+    { idx: FUTURE_CHECK_AFTER_IDX, when: farFuturePrev, tag: '20260906090638_icy_firelord' },
+    { idx: FUTURE_CHECK_AFTER_IDX + 1, when: farFuturePrev + 10 * 24 * 60 * 60 * 1000, tag: 'new_migration' },
+  ];
+  const violations = findFutureDatedWhen(entries, now);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /beyond the minimum needed to stay monotonic/);
+});
+
 test('missing .sql file fails unconditionally', () => {
   const entries = [{ idx: 0, when: 1, tag: 'ghost_migration' }];
   const violations = findMissingArtifacts(entries, new Set(), new Set());
