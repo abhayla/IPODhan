@@ -33,6 +33,8 @@ Worker briefs for fix tasks MUST carry `Class:` and `Proof:` lines (the user-lev
 on item 2 explicitly: "covers the class: yes/no + why". A brief that ships a parser or extractor MUST include a
 REAL fixture captured from the live source, never a format typed from memory.
 
+Item 5 timing: when the only real-data bench is staging and staging deploys only from `main`, the merge to `main` is HOW the proof is obtained; the gate that REQUIRES the proof is then the release cut (`release/prod-<date>`), never the merge. The ledger line for such a merge names the proof still owed and the cycle that will carry it. (2026-09-06: the extraction-timeout fix was merged with its staging proof owed; the comprehensive review flagged it, correctly, as an unproven merge.)
+
 Project specifics (IPODhan): the real-data proof for scraper behaviour is a staging cycle read (`docs/ops/
 prod-ops-recipes.md` §2); for audit checks it is the script run against `ipodhan_staging` through the tunnel; for
 repairs it is a dry run on staging followed by `--apply` on staging, then prod on the owner's word.
