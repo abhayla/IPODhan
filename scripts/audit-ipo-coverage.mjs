@@ -254,7 +254,7 @@ async function main() {
   // single command is the comprehensive gate — contract Stage A.5 / C-5: --gate
   // FAILs on substance smells, not just missing fields). HARD: contributes to exit.
   const subRows = await q(
-    `SELECT i.id, i.company_name, i.isin, i.open_date, i.close_date, i.allotment_date, i.listing_date,
+    `SELECT i.id, i.company_name, i.isin, i.segment, i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
@@ -279,7 +279,7 @@ async function main() {
     for (const r of subRows) r.gmp_value = byId.get(r.id) ?? null;
   }
   let substanceFail = 0;
-  const substanceLines = [];
+  const substanceLines = [`  evaluated ${subRows.length} rows`];
   for (const check of SUBSTANCE_CHECKS) {
     if (check.optional && check.key === 'gmp_sanity' && !gmpExists) { substanceLines.push(`  [SKIP] ${check.name}`); continue; }
     let count = 0; const offenders = [];
