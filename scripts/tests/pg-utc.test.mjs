@@ -88,10 +88,11 @@ for (const rel of [
   '../audit-substance-plausibility.mjs',
   '../fix-substance-corruption.mjs',
 ]) {
-  test(`${rel}: imports createUtcPool from ./lib/pg-utc.mjs and never constructs Pool directly`, () => {
+  test(`${rel}: imports createUtcPool from ./lib/pg-utc.mjs, calls assertUtcSession(pool) before any query, never constructs Pool directly`, () => {
     const script = readFileSync(new URL(rel, import.meta.url), 'utf8');
     assert.match(script, /import\s*\{[^}]*createUtcPool[^}]*\}\s*from\s*'\.\/lib\/pg-utc\.mjs'/);
     assert.match(script, /installUtcTimestampParsing\(\)/);
+    assert.match(script, /assertUtcSession\(/, `${rel} must call assertUtcSession(pool) — utc-naive-timestamp-normalization.md requires the boot-time assert on every pool`);
     assert.doesNotMatch(script, /new pg\.Pool\(/);
     assert.doesNotMatch(script, /new Pool\(/);
   });

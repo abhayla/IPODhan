@@ -783,12 +783,7 @@ test('audit-ipo-coverage.mjs: main() asserts the DB session before running check
   );
 });
 
-test('audit-substance-plausibility.mjs and fix-substance-corruption.mjs use createUtcPool, no direct new Pool(', () => {
-  for (const rel of ['../audit-substance-plausibility.mjs', '../fix-substance-corruption.mjs']) {
-    const script = readFileSync(new URL(rel, import.meta.url), 'utf8');
-    assert.match(script, /createUtcPool[\s\S]*from '\.\/lib\/pg-utc\.mjs'/, `${rel} must import createUtcPool`);
-    assert.match(script, /installUtcTimestampParsing\(\)/, `${rel} must call installUtcTimestampParsing()`);
-    assert.doesNotMatch(script, /new pg\.Pool\(/, `${rel} must not construct pg.Pool directly`);
-    assert.doesNotMatch(script, /new Pool\(/, `${rel} must not construct Pool directly`);
-  }
-});
+// audit-substance-plausibility.mjs and fix-substance-corruption.mjs coverage
+// (createUtcPool, installUtcTimestampParsing, assertUtcSession, no direct
+// Pool construction) now lives in scripts/tests/pg-utc.test.mjs — kept as one
+// copy there to avoid two source-of-truth assertions drifting apart.
