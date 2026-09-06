@@ -36,4 +36,7 @@ based on `main`; no `git stash` anywhere (T-438); every running worker against i
 ledger facts vs reality (served sha, prod flags). A finding = a ledger line + a lesson when it is a
 class; a repeated class = a mechanism (hook/test), per Learn-or-block. Mechanical gates already in
 place: `deploy-branch-guard.py` (wrong deploy command), the workflow step (wrong branch/sha), the
-pre-commit YAML/ASCII check, `wt-new.ps1`/`wt-rm.ps1` (worktree lifecycle).
+pre-commit YAML/ASCII check, `wt-new.ps1`/`wt-rm.ps1` (worktree lifecycle), and (2026-09-06)
+`detection-change-gate` in `.github/workflows/pr-gate.yml` — a scraper/persister fix PR must add or
+change a detection check or declare why not (`.claude/rules/recurrence-detection-gate.md`,
+`docs/reviews/failure-classes.md`).
