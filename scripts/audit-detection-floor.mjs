@@ -47,6 +47,7 @@ import {
   checkDocumentTypeMatchesClassifier,
   checkNotYetFiledAge,
   checkAbsenceWithoutEvidence,
+  checkCycleOverrun,
   checkExtractionStuck,
 } from './lib/document-state-checks.mjs';
 import {
@@ -781,6 +782,37 @@ async function checkK() {
     streaks.length ? `failing streak >=3: ${streaks.join(', ')}` : 'no failing streaks');
 }
 
+// ---- (m_cycle_overrun): cadence D-13 / cycle-overrun RCA -------------------
+// Reads the SAME scraper_steps rows as (k) above -- one row per wake for
+// step='primarySourceDiscovery' (the document cycle) -- and fails when a
+// cycle ran longer than 25 minutes or two wakes' windows overlapped (see
+// `checkCycleOverrun` in lib/document-state-checks.mjs for the arithmetic).
+async function checkCycleOverrunAudit() {
+  const name = 'no document cycle ran > 25min or overlapped another wake in 24h';
+
+  if (!(await tableExists('scraper_steps'))) {
+    record('m_cycle_overrun', name, 'UNVERIFIABLE', 'scraper_steps table not present (T-340 migration 0033 not applied)');
+    return;
+  }
+
+  const rows = await q(
+    `SELECT cycle_id AS "cycleId", created_at AS "createdAt", duration_ms AS "durationMs"
+       FROM scraper_steps
+      WHERE step = 'primarySourceDiscovery'
+        AND created_at > now() - interval '${STEP_LEDGER_WINDOW_HOURS} hours'
+      ORDER BY created_at ASC`
+  );
+
+  if (rows.length === 0) {
+    record('m_cycle_overrun', name, 'UNVERIFIABLE', `no primarySourceDiscovery rows in the last ${STEP_LEDGER_WINDOW_HOURS}h`);
+    return;
+  }
+
+  const violation = checkCycleOverrun(rows);
+  if (violation) notify('m_cycle_overrun', 'P1', 'primarySourceDiscovery', 'Document cycle ran long or overlapped another wake', violation);
+  record('m_cycle_overrun', name, violation === null ? 'PASS' : 'FAIL', violation ?? `${rows.length} cycle(s) checked, all within budget`);
+}
+
 // ---- (l): T-340 daily NSE status cross-check ---------------------------------
 // Our OPEN/UPCOMING set has never been checked against anything outside our own
 // pipeline. NSE's current-issue + upcoming feeds are the primary oracle for
@@ -1101,6 +1133,7 @@ async function main() {
   await checkH();
   checkI();
   await checkK();
+  await checkCycleOverrunAudit();
   await checkL();
   await checkJ();
   await checkM();

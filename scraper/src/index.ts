@@ -23,7 +23,13 @@ import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
 import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
-import { runDocumentCycle, runDocumentPurge, formatCycleReason, releaseHeldLocks } from './services/document-cycle.js';
+import {
+  runDocumentCycle,
+  runDocumentPurge,
+  formatCycleReason,
+  releaseHeldLocks,
+  getWakeBudgetMs,
+} from './services/document-cycle.js';
 import { raceWithTimeout, DEFAULT_SIGNAL_LOCK_RELEASE_TIMEOUT_MS } from './utils/race-with-timeout.js';
 import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan } from './scheduler/catch-up-cadence.js';
 import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
@@ -159,7 +165,18 @@ async function runStep(cycleId: string, step: StepName, fn: () => Promise<StepRe
  * SIGTERM before SIGKILL, so the normal restart path frees the lock at once.
  */
 const CYCLE_LOCK_RESOURCE = 'scraper:cycle';
-const CYCLE_LOCK_TTL_MS = 25 * 60 * 1000;
+/**
+ * Cadence D-13 / cycle-overrun RCA: the document cycle's discovery+extraction
+ * work now shares ONE wake budget (`getWakeBudgetMs()`,
+ * `DOCUMENT_CYCLE_WAKE_BUDGET_MS`, default 20 min — `document-cycle.ts`), so
+ * the lock TTL is derived from that SAME budget plus 5 minutes of slack,
+ * rather than a separately-hardcoded number that could silently drift out of
+ * sync with it. This keeps the round-3 M1 invariant (TTL shorter than PM2's
+ * 30-minute restart, so a killed cycle's lock is always gone before the next
+ * cycle starts) while guaranteeing the TTL is always >= the longest a
+ * legitimate cycle can now run.
+ */
+const CYCLE_LOCK_TTL_MS = getWakeBudgetMs() + 5 * 60 * 1000;
 const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */

@@ -595,6 +595,73 @@ describe('W-124 round 2 — MAJOR-2: LISTED enrichment is bounded to listedCap *
   });
 });
 
+describe('Round 3 reviewer fix — the post-budget-trip reservation pass has its own deadline', () => {
+  afterEach(() => {
+    delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
+  });
+
+  it('stops reserving LISTED rows once the reservation deadline is reached, counting the rest as listedReservedSkippedByDeadline', async () => {
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '3';
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    dbExecuteMock.mockResolvedValue({
+      rows: [listedCandidateRow('listed-1'), listedCandidateRow('listed-2'), listedCandidateRow('listed-3')],
+    });
+
+    // Fake clock: each processCandidate call (via runIpoMock) advances it, so
+    // the FIRST reserved LISTED visit fits inside a tiny wake budget and the
+    // rest do not.
+    let clock = 0;
+    const now = () => clock;
+    runIpoMock.mockImplementation((ipo: { id: string }) => {
+      clock += 2 * 60_000; // 2 min per visit
+      return {
+        ipoId: ipo.id,
+        companyName: 'Test Co',
+        stage: 'LISTED',
+        skipped: false,
+        skipReason: '',
+        due: [],
+        found: [],
+        notYetFiled: [],
+        notFound: [],
+        blocked: [],
+        notApplicable: [],
+        superseded: [],
+        leadManagers: [],
+        attempts: [],
+        networkCalls: 0,
+      };
+    });
+
+    // wakeBudgetMs=3min, PURGE_RESERVE_MS default 2min -> reservation deadline
+    // = startedAt(0) + 1min, so only the first 2-minute-costing visit fits.
+    const summary = await runDocumentCycle({
+      budgetMs: 0,
+      extractionBudgetMs: 999_999,
+      wakeBudgetMs: 3 * 60_000,
+      now,
+    });
+
+    expect(summary.listedReserved).toBe(3);
+    expect(summary.listedProcessedAfterBudget).toBe(1);
+    expect(summary.listedReservedSkippedByDeadline).toBe(2);
+  });
+
+  it('a fast reservation pass (finishes well inside the deadline) is unaffected — existing #328/W-136 behavior unchanged', async () => {
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '2';
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    dbExecuteMock.mockResolvedValue({
+      rows: [listedCandidateRow('listed-1'), listedCandidateRow('listed-2'), listedCandidateRow('listed-3')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    expect(summary.listedProcessedAfterBudget).toBe(2);
+    expect(summary.listedReserved).toBe(2);
+    expect(summary.listedReservedSkippedByDeadline).toBe(0);
+  });
+});
+
 describe('W-101 — PURGE_CANDIDATES_SQL', () => {
   it('casts status to text before upper() — no bare upper(i.status)', () => {
     expect(PURGE_CANDIDATES_SQL).toContain('i.status::text');

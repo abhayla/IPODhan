@@ -84,3 +84,29 @@ export function isMarketHoursIST(now: Date): boolean {
   const inWindow = minutesOfDay >= 10 * 60 && minutesOfDay < 17 * 60;
   return isWeekday && inWindow;
 }
+
+/**
+ * 0 = Sunday .. 6 = Saturday, in IST — exported so other cadence-gated code
+ * (the document cycle's Sunday/Saturday calendar gate, T-cadence-D13) reuses
+ * this module's IST calendar arithmetic instead of re-deriving it.
+ */
+export function istWeekday(now: Date): number {
+  return toIstClock(now).weekday;
+}
+
+/**
+ * "YYYY-MM-DD" for `now` in IST — matches the `market_holidays.date` column
+ * format. Built from UTC getters on an already-IST-shifted epoch instant
+ * (never `.toISOString()` on it) so this never trips the T-327 naive-parse
+ * ratchet (`date-tz-parse-ratchet.test.ts`) — `getUTCFullYear`/`getUTCMonth`/
+ * `getUTCDate` are TZ-agnostic reads of the shifted instant, not a
+ * local-midnight parse of a raw string.
+ */
+export function istDateIso(now: Date): string {
+  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
+  const ist = new Date(istMs);
+  const year = ist.getUTCFullYear();
+  const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(ist.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}

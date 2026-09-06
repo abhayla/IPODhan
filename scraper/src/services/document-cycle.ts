@@ -59,6 +59,12 @@ import {
   FILING_EXTRACTION_LOCK_TTL_MS,
 } from './filing-auto-persist.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
+import {
+  computeCalendarGate,
+  CALENDAR_GATE_ELIGIBLE_STAGES,
+  type CalendarGateReason,
+  type HolidayLookup,
+} from './document-cycle-calendar-gate.js';
 
 /** MAJOR-1: key + TTL for the cycle-level extraction lock (document-cycle.ts). */
 const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
@@ -135,7 +141,50 @@ export async function releaseHeldLocks(): Promise<void> {
  * `CYCLE_BUDGET` in document-state-machine.ts) — this round's touch-scope
  * kept that file untouched.
  */
-const DEFAULT_EXTRACTION_BUDGET_MS = 25 * 60 * 1000;
+export const DEFAULT_EXTRACTION_BUDGET_MS = 25 * 60 * 1000;
+
+/**
+ * Cadence decision D-13 / cycle-overrun RCA (2026-09-06 observed 1,210-1,278s
+ * document cycles): discovery (`CYCLE_BUDGET.DISCOVERY_MS`) and extraction
+ * (`DEFAULT_EXTRACTION_BUDGET_MS`) used to be two INDEPENDENT budgets — a
+ * worst case of 60s + 25min = ~26min per document cycle, on top of whatever
+ * the rest of the same pm2 wake (live numbers, aggregators, purge) spent,
+ * against a 30-minute wake. This is the ONE budget the two share: extraction
+ * gets whatever discovery did not use, capped so discovery + extraction +
+ * the purge reservation below can never together exceed this number. Default
+ * 20 min leaves 10 min of the 30-min wake for everything else in the same
+ * `runCycle` invocation (`scraper/src/index.ts`).
+ */
+export const DEFAULT_WAKE_BUDGET_MS = 20 * 60 * 1000;
+
+/**
+ * Fixed reservation, subtracted from the wake budget before computing
+ * extraction's share — `triggerDocumentPurge()` (`index.ts`) runs `runDocumentPurge()`
+ * as a separate step in the SAME wake, after this cycle returns. Without a
+ * reservation, a wake budget fully spent on discovery+extraction leaves the
+ * purge step nothing, and a slow purge (file deletes) has no ceiling of its
+ * own to fall back to.
+ */
+export const PURGE_RESERVE_MS = 2 * 60 * 1000;
+
+/**
+ * Reviewer MEDIUM (round 3): the post-budget-trip reservation loop (purge
+ * slot + up to `listedCap` LISTED rows, below) previously had NO time
+ * ceiling of its own — a slow reserved visit could push the wake past
+ * `wakeBudgetMs` even though the extraction budget correctly floors at 0.
+ * This caps the reservation pass to whichever is earlier: the wake budget
+ * minus the purge reservation, or this fixed ceiling from the moment the
+ * discovery budget trips.
+ */
+export const RESERVATION_CEILING_MS = 3 * 60 * 1000;
+
+/** `DOCUMENT_CYCLE_WAKE_BUDGET_MS` env override, default `DEFAULT_WAKE_BUDGET_MS`. */
+export function getWakeBudgetMs(): number {
+  const raw = process.env.DOCUMENT_CYCLE_WAKE_BUDGET_MS;
+  if (!raw) return DEFAULT_WAKE_BUDGET_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WAKE_BUDGET_MS;
+}
 
 export interface DocumentCycleSummary {
   ipos: number;
@@ -197,11 +246,27 @@ export interface DocumentCycleSummary {
    */
   listedReserved: number;
   /**
+   * Round 3 reviewer fix: LISTED rows that WOULD have been reserved (within
+   * `listedCap`) but were skipped because the reservation deadline
+   * (`startedAt + wakeBudgetMs - PURGE_RESERVE_MS`, or `RESERVATION_CEILING_MS`
+   * from the trip point, whichever is earlier) was already reached.
+   */
+  listedReservedSkippedByDeadline: number;
+  /**
    * W-136: LISTED candidates actually processed via the post-budget-trip
    * reservation (a subset of `listedReserved` — can be lower only if fewer
    * unprocessed LISTED candidates existed than the cap).
    */
   listedProcessedAfterBudget: number;
+  /**
+   * Cadence D-13: CLOSED/LISTED/WITHDRAWN candidates skipped this cycle
+   * because a calendar gate (Sunday/Saturday/NSE holiday) made only
+   * UPCOMING/PRE_OPEN/OPEN candidates eligible for network work. 0 on an
+   * ungated (normal trading day) cycle.
+   */
+  calendarSkipped: number;
+  /** Why the gate fired this cycle, or null when it did not. */
+  calendarGateReason: CalendarGateReason | null;
 }
 
 /** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0` — the ledger `reason`. */
@@ -209,7 +274,8 @@ export function formatCycleReason(s: DocumentCycleSummary): string {
   return (
     `ipos=${s.ipos} skipped=${s.skipped} found=${s.found} not_yet=${s.notYetFiled} ` +
     `blocked=${s.blocked} calls=${s.networkCalls} extraction_blocked=${s.extractionBlocked} ` +
-    `extraction_failed=${s.extractionFailed}${s.budgetExhausted ? ' budget=exhausted' : ''}`
+    `extraction_failed=${s.extractionFailed}${s.budgetExhausted ? ' budget=exhausted' : ''}` +
+    `${s.calendarGateReason ? ` calendar_gate=${s.calendarGateReason} calendar_skipped=${s.calendarSkipped}` : ''}`
   );
 }
 
@@ -227,7 +293,9 @@ export function summarize(
     skippedUnenriched?: number;
     reserved?: number;
     processedAfterBudget?: number;
-  } = { cap: 0, deferred: 0 }
+    reservedSkippedByDeadline?: number;
+  } = { cap: 0, deferred: 0 },
+  calendarInfo: { skipped: number; reason: CalendarGateReason | null } = { skipped: 0, reason: null }
 ): DocumentCycleSummary {
   return {
     ipos: results.length,
@@ -247,6 +315,9 @@ export function summarize(
     listedSkippedUnenriched: listedInfo.skippedUnenriched ?? 0,
     listedReserved: listedInfo.reserved ?? 0,
     listedProcessedAfterBudget: listedInfo.processedAfterBudget ?? 0,
+    listedReservedSkippedByDeadline: listedInfo.reservedSkippedByDeadline ?? 0,
+    calendarSkipped: calendarInfo.skipped,
+    calendarGateReason: calendarInfo.reason,
   };
 }
 
@@ -801,12 +872,22 @@ export async function demoteMissingFiles(
  * state table remembers where we stopped.
  */
 export async function runDocumentCycle(
-  options: { budgetMs?: number; extractionBudgetMs?: number; now?: () => number } = {}
+  options: {
+    budgetMs?: number;
+    /** Explicit override — bypasses the shared wake-budget arithmetic below (tests / callers that know better). */
+    extractionBudgetMs?: number;
+    now?: () => number;
+    /** Cadence D-13 calendar gate — one shared wake budget for discovery + extraction. Test-injectable. */
+    wakeBudgetMs?: number;
+    holidayLookup?: HolidayLookup;
+    gateNow?: Date;
+  } = {}
 ): Promise<DocumentCycleSummary> {
   const budgetMs = options.budgetMs ?? CYCLE_BUDGET.DISCOVERY_MS;
-  const extractionBudgetMs = options.extractionBudgetMs ?? DEFAULT_EXTRACTION_BUDGET_MS;
+  const wakeBudgetMs = options.wakeBudgetMs ?? getWakeBudgetMs();
   const now = options.now ?? Date.now;
   const startedAt = now();
+  const calendarGate = await computeCalendarGate(options.gateNow ?? new Date(startedAt), options.holidayLookup);
   const redis = getRedisClient();
   const store = new DocumentFetchStateRepository(db as never, redis as never);
   const documents = new DocumentRepository(db as never, redis as never);
@@ -861,8 +942,29 @@ export async function runDocumentCycle(
       counter,
     });
 
-    const { candidates, listedCap, listedDeferred, listedComplete, listedEnriched, listedSkippedUnenriched } =
+    const { candidates: allCandidates, listedCap, listedDeferred, listedComplete, listedEnriched, listedSkippedUnenriched } =
       await loadCandidateIpos({ store, documents });
+
+    // Cadence D-13: on a calendar-gated wake (Sunday/Saturday/NSE holiday),
+    // CLOSED/LISTED/WITHDRAWN candidates get no network work this cycle —
+    // only UPCOMING/PRE_OPEN/OPEN candidates (still moving toward listing)
+    // stay eligible. The state table remembers where every skipped candidate
+    // is, so nothing is lost — it is simply picked up the next non-gated cycle.
+    let calendarSkipped = 0;
+    const candidates = calendarGate.gated
+      ? allCandidates.filter((c) => {
+          const eligible = CALENDAR_GATE_ELIGIBLE_STAGES.has(c.stage);
+          if (!eligible) calendarSkipped++;
+          return eligible;
+        })
+      : allCandidates;
+    if (calendarGate.gated) {
+      logger.info(
+        { reason: calendarGate.reason, calendarSkipped, eligible: candidates.length, total: allCandidates.length },
+        'Document cycle: calendar gate — live-only'
+      );
+    }
+
     const results: IpoRunResult[] = [];
     let budgetExhausted = false;
     // Item 7 / F4: tallied AFTER pass 2 (below), across every candidate — see
@@ -1014,13 +1116,25 @@ export async function runDocumentCycle(
     const processedIds = new Set<string>();
     let listedReserved = 0;
     let listedProcessedAfterBudget = 0;
+    let listedReservedSkippedByDeadline = 0;
 
     for (let i = 0; i < candidates.length; i++) {
       const ipo = candidates[i];
       const isPurgeCandidate = ipo.issue?.withdrawn === true;
 
       if (now() - startedAt >= budgetMs) {
-        if (purgeReserved && !purgeProcessed) {
+        // Round 3 reviewer fix: the reservation pass below (purge slot + up to
+        // `listedCap` LISTED rows) previously ran with no ceiling of its own —
+        // a slow reserved visit could push the wake past `wakeBudgetMs` even
+        // though the extraction budget correctly floors at 0. Bound it to
+        // whichever is earlier: the wake budget minus the purge reservation,
+        // or a fixed ceiling from this trip point.
+        const reservationDeadline = Math.min(
+          startedAt + wakeBudgetMs - PURGE_RESERVE_MS,
+          now() + RESERVATION_CEILING_MS
+        );
+
+        if (purgeReserved && !purgeProcessed && now() < reservationDeadline) {
           const purgeIdx = candidates.findIndex(
             (c, idx) => idx >= i && c.issue?.withdrawn === true
           );
@@ -1048,6 +1162,10 @@ export async function runDocumentCycle(
           .filter((c) => lifecycleRank(c) === 3 && !processedIds.has(c.id));
         listedReserved = Math.min(listedCap, remainingListed.length);
         for (const listedCandidate of remainingListed.slice(0, listedCap)) {
+          if (now() >= reservationDeadline) {
+            listedReservedSkippedByDeadline++;
+            continue;
+          }
           await processCandidate(listedCandidate);
           processedIds.add(listedCandidate.id);
           listedProcessedAfterBudget++;
@@ -1063,6 +1181,7 @@ export async function runDocumentCycle(
             purgeProcessed,
             listedReserved,
             listedProcessedAfterBudget,
+            listedReservedSkippedByDeadline,
           },
           'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot and up to listedCap LISTED slots are reserved regardless of budget'
         );
@@ -1080,6 +1199,16 @@ export async function runDocumentCycle(
     // acquired above; gated the same way the old per-IPO hook was, just moved
     // out from under the discovery budget. Non-fatal per candidate — one IPO's
     // extraction failure must not stop the rest.
+    //
+    // Cycle-overrun RCA: extraction gets whatever is LEFT of the shared wake
+    // budget after discovery (PASS 1, above) — never the fixed
+    // `DEFAULT_EXTRACTION_BUDGET_MS` on top of it — with `PURGE_RESERVE_MS`
+    // held back for the purge step that runs later in the same wake
+    // (`triggerDocumentPurge` in index.ts). `options.extractionBudgetMs`
+    // (tests, or a caller with a better estimate) bypasses this arithmetic.
+    const extractionBudgetMs =
+      options.extractionBudgetMs ??
+      Math.max(0, Math.min(DEFAULT_EXTRACTION_BUDGET_MS, wakeBudgetMs - (now() - startedAt) - PURGE_RESERVE_MS));
     if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
       if (!lockToken) {
         // Logged once above when the lock failed.
@@ -1182,7 +1311,9 @@ export async function runDocumentCycle(
         skippedUnenriched: listedSkippedUnenriched,
         reserved: listedReserved,
         processedAfterBudget: listedProcessedAfterBudget,
-      }
+        reservedSkippedByDeadline: listedReservedSkippedByDeadline,
+      },
+      { skipped: calendarSkipped, reason: calendarGate.reason }
     );
 
     // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
