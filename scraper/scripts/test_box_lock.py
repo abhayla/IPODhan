@@ -79,6 +79,33 @@ def test_acquire_returns_false_when_another_holder_keeps_the_lock_past_the_wait(
     os.close(holder_fd)
 
 
+def test_acquire_fails_open_on_an_unexpected_errno_instead_of_treating_it_as_contention(tmp_path, monkeypatch, capsys):
+    """Round 3 (minor): only EAGAIN/EACCES/EWOULDBLOCK are REAL contention —
+    any other errno (ENOLCK: no locks available/exhausted; EBADF: the fd
+    itself is bad) is an environment problem, not another extractor holding
+    the box lock, and must fail-open immediately rather than waiting out the
+    full `wait_s` only to report `False`."""
+    import errno as errno_module
+
+    class RaisesUnexpectedErrno:
+        LOCK_EX = 2
+        LOCK_NB = 4
+
+        def flock(self, fd, flags):
+            raise OSError(errno_module.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(box_lock, "fcntl", RaisesUnexpectedErrno())
+    _reset_lock_fd(monkeypatch)
+    lock_path = str(tmp_path / "extractor.lock")
+
+    result = box_lock.acquire(lock_path, wait_s=5)
+
+    assert result is True
+    err = capsys.readouterr().err
+    assert "unexpected errno" in err
+    assert "running unlocked (W-178c)" in err
+
+
 def test_acquire_polls_and_succeeds_once_the_lock_file_content_changes_are_irrelevant(tmp_path, monkeypatch):
     """A lock is per (device, inode), not per fd — acquiring, closing, and
     reopening the SAME path must be able to re-acquire (no stale-lock leak
@@ -134,3 +161,94 @@ def test_resolve_lock_path_honours_env_override(monkeypatch):
 def test_resolve_lock_path_blank_env_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("EXTRACTOR_BOX_LOCK", "   ")
     assert box_lock.resolve_lock_path() == box_lock.DEFAULT_EXTRACTOR_BOX_LOCK
+
+
+# ---------------------------------------------------------------------------
+# Round 3: cross-language contract test — a REAL held `fcntl.flock` (this
+# test process) must make a REAL `extract_filing.py` / `anchor_report_text.py`
+# subprocess exit 75 with "extractor busy" on stderr. Every other test in
+# this file exercises `box_lock.acquire()` in-process against a FAKE
+# `fcntl`; this is the one test that proves the two python entrypoints wire
+# `box_lock.acquire()` into their own `main()` correctly, and that the
+# contract (`EXTRACTOR_BUSY_EXIT_CODE` = 75 in `low-priority-spawn.ts`) holds
+# across the process boundary, not just inside `box_lock.py`'s own unit
+# tests. `fcntl` only exists on POSIX platforms — Windows dev boxes (this
+# laptop) and Windows CI runners skip; the ubuntu `pr-gate.yml` python job
+# (which runs `pytest scripts/`, per `scraper/package.json`'s test config)
+# collects and runs it for real.
+import subprocess
+import sys as _sys
+
+import pytest
+
+try:
+    import fcntl as _real_fcntl
+except ImportError:
+    _real_fcntl = None
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+pytestmark_skip_reason = "fcntl/flock box lock is POSIX-only (Linux VPS + ubuntu pr-gate job); this dev box is Windows"
+
+
+@pytest.mark.skipif(_real_fcntl is None, reason=pytestmark_skip_reason)
+def test_extract_filing_exits_75_when_a_real_flock_holds_the_box_lock(tmp_path):
+    lock_path = str(tmp_path / "extractor.lock")
+
+    # Hold the REAL lock from THIS test process for the subprocess's whole
+    # lifetime — a separate `os.open()` on the same path, exactly like a
+    # concurrent extractor would.
+    holder_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    _real_fcntl.flock(holder_fd, _real_fcntl.LOCK_EX | _real_fcntl.LOCK_NB)
+    try:
+        env = dict(os.environ)
+        env["EXTRACTOR_BOX_LOCK"] = lock_path
+        env["EXTRACTOR_LOCK_WAIT_S"] = "0"
+
+        proc = subprocess.run(
+            [
+                _sys.executable,
+                os.path.join(_SCRIPTS_DIR, "extract_filing.py"),
+                "nonexistent.pdf",
+                "--doc-type",
+                "RHP",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert proc.returncode == 75
+        assert "extractor busy" in proc.stderr
+    finally:
+        os.close(holder_fd)
+
+
+@pytest.mark.skipif(_real_fcntl is None, reason=pytestmark_skip_reason)
+def test_anchor_report_text_exits_75_when_a_real_flock_holds_the_box_lock(tmp_path):
+    lock_path = str(tmp_path / "extractor.lock")
+
+    holder_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    _real_fcntl.flock(holder_fd, _real_fcntl.LOCK_EX | _real_fcntl.LOCK_NB)
+    try:
+        env = dict(os.environ)
+        env["EXTRACTOR_BOX_LOCK"] = lock_path
+        env["ANCHOR_LOCK_WAIT_S"] = "0"
+
+        proc = subprocess.run(
+            [
+                _sys.executable,
+                os.path.join(_SCRIPTS_DIR, "anchor_report_text.py"),
+                "nonexistent.pdf",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert proc.returncode == 75
+        assert "extractor busy" in proc.stderr
+    finally:
+        os.close(holder_fd)

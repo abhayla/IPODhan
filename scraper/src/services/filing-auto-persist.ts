@@ -395,13 +395,23 @@ export interface ExtractionStatePatchContext {
   /** Explicit `undefined` leaves `extraction_error` untouched; pass `null` to clear it. */
   error?: string | null;
   retryCount?: number;
+  /**
+   * Round 3 (MAJOR-1): explicit override for `updatedAt`, used ONLY by the
+   * busy-box revert path — a busy skip must restore the row's ORIGINAL
+   * `updatedAt`, not stamp a new one, because `documentExtractionBlocked`'s
+   * backoff gate anchors its wait window on `updatedAt`. Any other caller
+   * omits this and gets the real "now" below.
+   */
+  updatedAt?: Date;
 }
 
 /**
  * THE single function every extraction-status write goes through. Pure, so
  * every transition in the module doc comment's state table is a plain
- * input/output test with no database. Always stamps `updatedAt: now` — the
- * ONE thing every transition in the table has in common (round-3 MAJOR-1).
+ * input/output test with no database. Stamps `updatedAt: now` for every
+ * REAL transition — the one exception is `ctx.updatedAt` (round 3 MAJOR-1),
+ * which the busy-revert path uses to restore the row's exact pre-attempt
+ * `updatedAt` instead of advancing the backoff clock on a skip.
  */
 export function buildExtractionStatePatch(
   transition: ExtractionStatus,
@@ -410,7 +420,7 @@ export function buildExtractionStatePatch(
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {
     extractionStatus: transition,
-    updatedAt: now,
+    updatedAt: ctx.updatedAt ?? now,
   };
   if (ctx.error !== undefined) patch.extractionError = ctx.error;
   if (transition === 'COMPLETED') patch.extractedAt = now;
@@ -953,6 +963,8 @@ export interface AutoPersistDeps {
     status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PENDING' | 'MANUAL_REVIEW';
     error?: string | null;
     retryCount?: number;
+    /** Round 3 (MAJOR-1): busy-revert-only override, see `ExtractionStatePatchContext.updatedAt`. */
+    updatedAt?: Date;
   }) => Promise<void>;
   /** Stamp `document_fetch_state.extracted_at` + `extractor_version`. */
   setFetchStateExtracted: (args: {
@@ -1046,7 +1058,7 @@ export function buildAutoPersistDeps(
     runAnchorPersist: (args) => runAnchorAutoPersist(args, persisterDeps, redis),
     persistFiling: persistFilingExtraction,
     persisterDeps,
-    async setDocumentExtractionState({ documentId, status, error, retryCount }) {
+    async setDocumentExtractionState({ documentId, status, error, retryCount, updatedAt }) {
       // Round 4: the REAL writer. It does not compute the patch itself — it
       // hands `buildExtractionStatePatch` (the ONE pure function every status
       // write goes through) the same args the caller already decided, and
@@ -1055,8 +1067,9 @@ export function buildAutoPersistDeps(
       // untouched — see `ExtractionStatePatchContext`); `retry_count` is
       // written verbatim when the caller supplies it (MAJOR-A) — the
       // increment/reset arithmetic lives at the call site (`processPendingFilings`),
-      // never here.
-      const patch = buildExtractionStatePatch(status as ExtractionStatus, { error, retryCount }, new Date());
+      // never here. `updatedAt`, when given, overrides the real "now" —
+      // round 3 (MAJOR-1) busy-revert only.
+      const patch = buildExtractionStatePatch(status as ExtractionStatus, { error, retryCount, updatedAt }, new Date());
       await db.update(documentsTable).set(patch as never).where(eq(documentsTable.id, documentId));
     },
     async setFetchStateExtracted({ stateId, extractedAt, extractorVersion }) {
@@ -1124,9 +1137,13 @@ async function runAnchorDocument(
     /** W-178c round 2: the row's status BEFORE this attempt's IN_PROGRESS
      * stamp — restored verbatim on a busy-box revert. */
     previousStatus: ExtractionStatus;
+    /** Round 3 (MAJOR-1): the row's `updatedAt` BEFORE this attempt's
+     * IN_PROGRESS stamp — restored verbatim on a busy-box revert so the
+     * backoff clock (`documentExtractionBlocked`) does not advance on a skip. */
+    previousUpdatedAt?: Date | null;
     stateId?: string;
   }
-): Promise<{ persisted: boolean }> {
+): Promise<{ persisted: boolean; busy?: boolean }> {
   const { version, result, retryCountAtStamp } = ctx;
 
   if (!deps.runAnchorPersist) {
@@ -1196,9 +1213,11 @@ async function runAnchorDocument(
   }
 
   // W-178c round 2: box busy is NOT a failure — revert to the row's EXACT
-  // pre-attempt state (status, retryCount, and error untouched), same shape
-  // as the filing-loop busy branch above, and refund both the shared and
-  // anchor-specific spawn budgets this attempt consumed.
+  // pre-attempt state (status, retryCount, error, AND updatedAt untouched —
+  // round 3 MAJOR-1 added updatedAt to the restore, since the backoff gate
+  // anchors on it), same shape as the filing-loop busy branch above, and
+  // refund both the shared and anchor-specific spawn budgets this attempt
+  // consumed.
   if (outcome.kind === 'busy') {
     result.skipped.push(`${ANCHOR_DOC_TYPE}: another extractor holds the box lock (W-178c)`);
     logger.warn({ ipoId: ipo.id }, 'extractor skipped this cycle: another extractor holds the box lock (W-178c)');
@@ -1210,9 +1229,15 @@ async function runAnchorDocument(
         documentId: doc.id,
         status: ctx.previousStatus,
         retryCount: ctx.previousRetryCount,
+        ...(ctx.previousUpdatedAt ? { updatedAt: ctx.previousUpdatedAt } : {}),
       })
       .catch(() => undefined);
-    return { persisted: false };
+    // Round 3 (MINOR-4): the filing-loop busy branch restores `doc.retryCount`
+    // in-place so a later re-read of this same object in the SAME cycle sees
+    // the pre-attempt value, not the in-flight IN_PROGRESS stamp — the anchor
+    // branch must do the same.
+    doc.retryCount = ctx.previousRetryCount;
+    return { persisted: false, busy: true };
   }
 
   result.failed++;
@@ -1520,6 +1545,9 @@ export async function processPendingFilings(
       // W-178c round 2: same "pre-attempt status" capture as the filing loop
       // above — `doc.extractionStatus` is never mutated here either.
       const previousStatus = (doc.extractionStatus as ExtractionStatus | null) ?? 'PENDING';
+      // Round 3 (MAJOR-1): same "pre-attempt updatedAt" capture, restored
+      // verbatim on a busy revert so the backoff clock does not advance.
+      const previousUpdatedAt = doc.updatedAt ?? null;
       const newRetryCount = revivingAfterManualReview ? 1 : previousRetryCount + 1;
       doc.retryCount = newRetryCount;
 
@@ -1543,9 +1571,21 @@ export async function processPendingFilings(
         retryCountAtStamp: newRetryCount,
         previousRetryCount,
         previousStatus,
+        previousUpdatedAt,
         stateId: stateIdByDocType.get(ANCHOR_DOC_TYPE),
       });
       if (outcome.persisted) anyPersisted = true;
+      // Round 3 (MAJOR-2): a busy box is a signal about the WHOLE box, not
+      // this one document — every remaining candidate would just wait
+      // `ANCHOR_LOCK_WAIT_S` and hit the same busy lock. End this cycle's
+      // anchor pass on the FIRST busy instead of burning the wait on each.
+      if (outcome.busy) {
+        logger.warn(
+          { ipoId: ipo.id },
+          'box busy: ending the extraction pass for this cycle (W-178c)'
+        );
+        break;
+      }
     }
   };
 
@@ -1584,6 +1624,12 @@ export async function processPendingFilings(
     // value when the busy-revert branch below reads it. A row revived from
     // MANUAL_REVIEW must go back to MANUAL_REVIEW on a busy box, not PENDING.
     const previousStatus = (doc.extractionStatus as ExtractionStatus | null) ?? 'PENDING';
+    // Round 3 (MAJOR-1): the document's own `updatedAt` BEFORE this attempt's
+    // IN_PROGRESS stamp — restored verbatim on a busy revert (below) so the
+    // backoff gate (`documentExtractionBlocked`, anchored on `updatedAt`)
+    // does not treat a busy skip as a real attempt and push the row's next
+    // eligible retry forward.
+    const previousUpdatedAt = doc.updatedAt ?? null;
     const newRetryCount = revivingAfterManualReview ? 1 : previousRetryCount + 1;
     // Mutate the shared reference: the W-45 and persist failure paths below
     // read `doc.retryCount` for the SAME "already counted at the stamp" value
@@ -1605,9 +1651,12 @@ export async function processPendingFilings(
     const run = deps.runExtractor({ pdfPath, docType, sme, issueSizeRupees });
 
     if (isExtractorFailure(run)) {
-      // W-178c round 2: box busy is NOT a failure of this document — revert
-      // the IN_PROGRESS stamp taken above to EXACTLY the row's pre-attempt
-      // state, so the next cycle sees a genuinely unchanged document:
+      // W-178c round 2 (round 3 MAJOR-1 corrected the false claim below —
+      // `updatedAt` was NOT restored until now, so the backoff gate anchored
+      // on it treated every busy skip as a real attempt): box busy is NOT a
+      // failure of this document — revert the IN_PROGRESS stamp taken above
+      // to EXACTLY the row's pre-attempt state, so the next cycle sees a
+      // genuinely unchanged document:
       //  - status: `previousStatus` (never a hardcoded 'PENDING') — a row
       //    revived from MANUAL_REVIEW (`revivingAfterManualReview`) goes
       //    back to MANUAL_REVIEW, not PENDING, since a busy box told us
@@ -1617,7 +1666,12 @@ export async function processPendingFilings(
       //    omitting it (rather than passing `null`) leaves whatever error
       //    string the row already carried (e.g. a `HARD_FAILURE:N` marker on
       //    a FAILED row) untouched instead of clobbering it with NULL;
-      //  - retryCount: `previousRetryCount`, as before.
+      //  - retryCount: `previousRetryCount`, as before;
+      //  - updatedAt: `previousUpdatedAt` (round 3 MAJOR-1) — WITHOUT this,
+      //    `setDocumentExtractionState` stamps `new Date()` on the revert
+      //    write itself, which pushes `documentExtractionBlocked`'s backoff
+      //    window (and the 24h HARD_FAILURE floor) forward on every busy
+      //    skip, exactly as if the row had genuinely been retried.
       // Also refunds the per-cycle spawn budget this attempt consumed above
       // — a contended cycle must not burn a spawn slot on an attempt that
       // never actually ran.
@@ -1633,12 +1687,23 @@ export async function processPendingFilings(
             documentId: doc.id,
             status: previousStatus,
             retryCount: previousRetryCount,
+            ...(previousUpdatedAt ? { updatedAt: previousUpdatedAt } : {}),
           });
         } catch {
           /* already logged by the writer; a stuck IN_PROGRESS status must not fail the cycle */
         }
         doc.retryCount = previousRetryCount;
-        continue;
+        // Round 3 (MAJOR-2): a busy box is a signal about the WHOLE box, not
+        // this one document — every remaining candidate in `pendingForThisCall`
+        // would just wait `EXTRACTOR_LOCK_WAIT_S` (90s) each and hit the same
+        // busy lock, burning up to ~16 waits inside the 25-minute cycle
+        // budget. End the filing pass for this cycle on the FIRST busy
+        // instead (the anchor pass below has its own, matching break).
+        logger.warn(
+          { ipoId: ipo.id },
+          'box busy: ending the extraction pass for this cycle (W-178c)'
+        );
+        break;
       }
       result.failed++;
       // W-137: a killed/memory-ceiling extractor is a HARD failure — embed

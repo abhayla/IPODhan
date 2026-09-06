@@ -617,6 +617,70 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     ).toBe(false);
   });
 
+  it("W-178c round 3 (MAJOR-1): a busy revert restores the row's ORIGINAL updatedAt — the backoff clock must not advance on a skip", async () => {
+    const spawnBudget = { remaining: 2 };
+    const originalUpdatedAt = new Date('2026-01-01T00:00:00.000Z');
+    const d = deps({
+      spawnBudget,
+      loadDocuments: vi.fn(async () => [
+        doc({ extractionStatus: 'FAILED', retryCount: 5, updatedAt: originalUpdatedAt }),
+      ]),
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'extractor skipped this cycle: another extractor holds the box lock (W-178c)',
+        busy: true,
+      })),
+    });
+
+    await processPendingFilings(IPO, d);
+
+    const revertCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(revertCall).toBeDefined();
+    // The stored updatedAt is the ORIGINAL pre-attempt value, not a fresh
+    // `new Date()` stamp from the revert write itself — otherwise
+    // `documentExtractionBlocked`'s backoff gate (anchored on `updatedAt`)
+    // would push this FAILED row's next-due-at forward on every contended
+    // hit, exactly as if it had genuinely been retried.
+    expect(revertCall[0].updatedAt).toBe(originalUpdatedAt);
+    expect(revertCall[0]).toMatchObject({ documentId: 'doc-1', status: 'FAILED', retryCount: 5 });
+    expect(revertCall[0]).not.toHaveProperty('error');
+  });
+
+  it('W-178c round 3 (MAJOR-2): a busy result on the FIRST candidate ends the filing pass for this cycle — the second candidate is never spawned, and the budget is refunded once', async () => {
+    const spawnBudget = { remaining: 5 };
+    const runExtractor = vi.fn(() => ({
+      ok: false as const,
+      error: 'extractor skipped this cycle: another extractor holds the box lock (W-178c)',
+      busy: true,
+    }));
+    const d = deps({
+      spawnBudget,
+      loadDocuments: vi.fn(async () => [
+        doc({ id: 'doc-ad', type: 'PRICE_BAND_AD', sha256: 'b'.repeat(64) }),
+        doc({ id: 'doc-rhp', type: 'RHP' }),
+      ]),
+      loadStates: vi.fn(async () => [
+        { id: 's1', docType: 'PRICE_BAND_AD', documentId: 'doc-ad', extractedAt: null, extractorVersion: null },
+        { id: 's2', docType: 'RHP', documentId: 'doc-rhp', extractedAt: null, extractorVersion: null },
+      ]),
+      runExtractor,
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    // Only the FIRST candidate is ever handed to the extractor — the second
+    // is left untouched this cycle rather than burning its own 90s wait on
+    // a box that just told the first candidate it is busy.
+    expect(runExtractor).toHaveBeenCalledTimes(1);
+    expect(result.spawned).toBe(0);
+    // The one spawn-budget slot consumed by the first (never-actually-run)
+    // attempt is refunded exactly once — never decremented again for the
+    // skipped second candidate.
+    expect(spawnBudget.remaining).toBe(5);
+  });
+
   it('a document-load failure returns an empty result instead of throwing', async () => {
     const d = deps({
       loadDocuments: vi.fn(async () => {
@@ -1924,6 +1988,65 @@ describe('W-142 — the outcome map written to documents.extraction_status', () 
     expect(manualReviewCall).toBeDefined();
     expect(manualReviewCall).toMatchObject({ documentId: 'anchor-1', retryCount: 10 });
     expect(manualReviewCall).not.toHaveProperty('error');
+  });
+
+  it("W-178c round 3 (MAJOR-1): a busy outcome restores the anchor row's ORIGINAL updatedAt, not a fresh stamp", async () => {
+    const originalUpdatedAt = new Date('2026-01-01T00:00:00.000Z');
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [
+        anchorDoc({ extractionStatus: 'FAILED', retryCount: 5, updatedAt: originalUpdatedAt }),
+      ]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'busy' as const,
+        reason: 'anchor: anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)',
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    const revertCall = stateCalls(d).find((c) => c.status === 'FAILED');
+    expect(revertCall).toBeDefined();
+    expect(revertCall.updatedAt).toBe(originalUpdatedAt);
+    expect(revertCall).toMatchObject({ documentId: 'anchor-1', retryCount: 5 });
+  });
+
+  it('W-178c round 3 (MINOR-4): a busy outcome restores doc.retryCount in place, not just in the write payload', async () => {
+    const candidate = anchorDoc({ retryCount: 3 });
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [candidate]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'busy' as const,
+        reason: 'anchor: anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)',
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    // The filing-loop busy branch restores `doc.retryCount` on the shared
+    // object (not only in the DB-write payload) so a later re-read of the
+    // SAME object within this cycle sees the pre-attempt value — the anchor
+    // branch must do the same.
+    expect(candidate.retryCount).toBe(3);
+  });
+
+  it('W-178c round 3 (MAJOR-2): a busy outcome on the FIRST anchor candidate ends the anchor pass for this cycle — the second is never spawned', async () => {
+    const runAnchorPersist = vi.fn(async () => ({
+      kind: 'busy' as const,
+      reason: 'anchor: anchor sidecar skipped this cycle: another extractor holds the box lock (W-178c)',
+    }));
+    const anchorSpawnBudget = { remaining: 5 };
+    const d = anchorDeps({
+      anchorSpawnBudget,
+      loadDocuments: vi.fn(async () => [
+        anchorDoc({ id: 'anchor-1' }),
+        anchorDoc({ id: 'anchor-2' }),
+      ]),
+      runAnchorPersist,
+    });
+
+    const r = await processPendingFilings(IPO, d);
+
+    expect(runAnchorPersist).toHaveBeenCalledTimes(1);
+    expect(r.anchorsSpawned).toBe(0);
+    expect(anchorSpawnBudget.remaining).toBe(5);
   });
 
   it('empty pages (W-139 shape) -> MANUAL_REVIEW naming the OCR heuristic, never an endless retry', async () => {

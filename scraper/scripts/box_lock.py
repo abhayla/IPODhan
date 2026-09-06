@@ -38,6 +38,7 @@ directory, permissions), or `fcntl` does not exist on this platform
 (Windows — every dev box), `acquire()` returns True and the extractor runs
 unlocked, exactly as if no other extractor were running.
 """
+import errno
 import os
 import sys
 import time
@@ -95,13 +96,35 @@ def acquire(lock_path, wait_s):
         )
         return True
 
+    # Round 3 (minor): only the errnos a REAL held lock raises under
+    # LOCK_NB count as contention (EAGAIN on Linux, EACCES on some BSD/mac
+    # flock shims, EWOULDBLOCK -- the same value as EAGAIN on most
+    # platforms but a distinct symbol on a few). Any OTHER errno (ENOLCK --
+    # no locks available/exhausted, EBADF -- the fd itself is bad) is an
+    # environment problem, not contention, and must fail-open (same as the
+    # file-cannot-be-created branch above) instead of being misreported as
+    # "another extractor holds the box lock".
+    contention_errnos = {
+        errno.EAGAIN,
+        errno.EACCES,
+        getattr(errno, "EWOULDBLOCK", errno.EAGAIN),
+    }
     deadline = time.monotonic() + max(0, wait_s)
     while True:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             _lock_fd = fd  # keep the fd (and the lock) alive for process lifetime
             return True
-        except OSError:
+        except OSError as exc:
+            if exc.errno not in contention_errnos:
+                sys.stderr.write("box lock flock() failed with unexpected errno ")
+                sys.stderr.write(str(exc.errno))
+                sys.stderr.write(" (")
+                sys.stderr.write(str(exc))
+                sys.stderr.write("); running unlocked (W-178c)")
+                sys.stderr.write(chr(10))
+                os.close(fd)
+                return True
             if time.monotonic() >= deadline:
                 os.close(fd)
                 return False
