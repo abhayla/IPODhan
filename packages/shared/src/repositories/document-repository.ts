@@ -57,6 +57,18 @@ export class DocumentRepository
   }
 
   /**
+   * Invalidate the cached `findByIPO` listing for one IPO. Public so a
+   * caller that writes `documents` rows through a RAW `db.update(...)`
+   * (bypassing every method on this class) can still clear the cache-aside
+   * key this class owns, instead of duplicating `getDocumentsKey` + a
+   * `redis.del` at the call site. Fail-open on a Redis error, same as every
+   * other cache invalidation in this class (`deleteCache`).
+   */
+  async invalidateForIpo(ipoId: string): Promise<void> {
+    await this.deleteCache(getDocumentsKey(ipoId));
+  }
+
+  /**
    * Create a new document
    */
   async create(data: DocumentInsert): Promise<Document> {

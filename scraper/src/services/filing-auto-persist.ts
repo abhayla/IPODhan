@@ -1085,7 +1085,31 @@ export function buildAutoPersistDeps(
       // never here. `updatedAt`, when given, overrides the real "now" —
       // round 3 (MAJOR-1) busy-revert only.
       const patch = buildExtractionStatePatch(status as ExtractionStatus, { error, retryCount, updatedAt }, new Date());
-      await db.update(documentsTable).set(patch as never).where(eq(documentsTable.id, documentId));
+      const rows = await db
+        .update(documentsTable)
+        .set(patch as never)
+        .where(eq(documentsTable.id, documentId))
+        .returning({ ipoId: documentsTable.ipoId });
+      // Staging incident (2026-09-06): this is a RAW `db.update`, so it never
+      // goes through `DocumentRepository`'s own write methods and never hit
+      // their `deleteCache(getDocumentsKey(ipoId))` calls — `findByIPO`'s
+      // cache-aside listing (1h TTL) kept serving the PRE-write row on the
+      // very next cycle, so the gate re-evaluated a stale retryCount/status
+      // and re-stamped/re-spawned instead of backing off. EVERY status write
+      // (IN_PROGRESS/FAILED/COMPLETED/MANUAL_REVIEW all funnel through this
+      // one function) must invalidate that key. Fail-open on a Redis error —
+      // a missed invalidation costs one stale read, not the cycle.
+      const ipoId = rows[0]?.ipoId;
+      if (ipoId) {
+        try {
+          await documentRepository.invalidateForIpo(ipoId);
+        } catch (cacheError) {
+          logger.warn(
+            { documentId, ipoId, error: cacheError instanceof Error ? cacheError.message : String(cacheError) },
+            'Could not invalidate documents cache after a status write (non-fatal)'
+          );
+        }
+      }
     },
     async setFetchStateExtracted({ stateId, extractedAt, extractorVersion }) {
       const { DocumentFetchStateRepository } = await import('@ipodhan/shared');
