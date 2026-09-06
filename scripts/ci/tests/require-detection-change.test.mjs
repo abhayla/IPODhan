@@ -153,3 +153,113 @@ test('python script change alone -> fail', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('pytest-style test file (test_*.py) counts as a test -> pass', () => {
+  const dir = initRepo();
+  try {
+    baseSetup(dir);
+    commitFile(
+      dir,
+      'scraper/scripts/test_extract_filing_rupee_glyph.py',
+      '# pytest\n',
+      'test(scraper): rupee glyph regression'
+    );
+    const res = runGate(dir, 'base-marker', 'HEAD');
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /PASS/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const REGISTRY_PATH = 'docs/reviews/failure-classes.md';
+const REGISTRY_HEADER =
+  '| class_id | feature | symptom (user-visible) | first_seen | fix_prs | detection_check | status |\n' +
+  '|---|---|---|---|---|---|---|\n';
+
+test('registry row added with detection_check=unguarded + scraper change -> fail', () => {
+  const dir = initRepo();
+  try {
+    baseSetup(dir);
+    commitFile(dir, REGISTRY_PATH, REGISTRY_HEADER, 'docs: seed registry');
+    git(dir, ['branch', '-f', 'base-marker']);
+    commitFile(
+      dir,
+      'scraper/src/services/foo.ts',
+      'export const x = 1;\n',
+      'fix(scraper): tweak foo'
+    );
+    commitFile(
+      dir,
+      REGISTRY_PATH,
+      REGISTRY_HEADER + '| new-class | foo | bad value | Sep 2026 | none yet | unguarded | unguarded |\n',
+      'docs(registry): add new-class row'
+    );
+    const res = runGate(dir, 'base-marker', 'HEAD');
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stderr, /FAIL/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('registry row added naming a real check + scraper change -> pass', () => {
+  const dir = initRepo();
+  try {
+    baseSetup(dir);
+    commitFile(dir, REGISTRY_PATH, REGISTRY_HEADER, 'docs: seed registry');
+    git(dir, ['branch', '-f', 'base-marker']);
+    commitFile(
+      dir,
+      'scraper/src/services/foo.ts',
+      'export const x = 1;\n',
+      'fix(scraper): tweak foo'
+    );
+    commitFile(
+      dir,
+      REGISTRY_PATH,
+      REGISTRY_HEADER +
+        '| new-class | foo | bad value | Sep 2026 | fix-pr-1 | `newCheck` (`scripts/lib/substance-checks.mjs`) | guarded |\n',
+      'docs(registry): add new-class row with real check'
+    );
+    const res = runGate(dir, 'base-marker', 'HEAD');
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /PASS/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('declaration floor: padded placeholder fails, a real sentence passes', () => {
+  const padded = initRepo();
+  try {
+    baseSetup(padded);
+    commitFile(
+      padded,
+      'scraper/src/services/foo.ts',
+      'export const x = 1;\n',
+      'fix(scraper): tweak foo\n\nNo detection change: xxxxxxxxxxxxxxxxxxxxxx'
+    );
+    const res = runGate(padded, 'base-marker', 'HEAD');
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    assert.match(res.stderr, /FAIL/);
+  } finally {
+    rmSync(padded, { recursive: true, force: true });
+  }
+
+  const real = initRepo();
+  try {
+    baseSetup(real);
+    commitFile(
+      real,
+      'scraper/src/services/foo.ts',
+      'export const x = 1;\n',
+      'fix(scraper): tweak foo\n\nNo detection change: this is a pure formatting fix with no data impact.'
+    );
+    const res = runGate(real, 'base-marker', 'HEAD');
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /PASS/);
+  } finally {
+    rmSync(real, { recursive: true, force: true });
+  }
+});

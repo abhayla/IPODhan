@@ -24,15 +24,27 @@ const TRIGGER_GLOBS = [
 
 const TEST_PATH_HINT = /(^|\/)(tests?|__tests__)\//i;
 const TEST_FILE_HINT = /\.(test|spec)\.(mjs|ts|tsx|js|py)$/i;
+const PYTEST_FILE_HINT = /(^|\/)(test_[^/]*|conftest)\.py$/i;
 
 const EXEMPT_GLOBS = [
   /^scripts\/lib\/substance-checks\.mjs$/,
   /^scripts\/audit-.*\.mjs$/,
   /^scraper\/src\/utils\/data-validation\.ts$/,
-  /^docs\/reviews\/failure-classes\.md$/,
 ];
 
-const DECLARATION_RE = /^No detection change: .{20,}$/m;
+const REGISTRY_FILE = 'docs/reviews/failure-classes.md';
+
+// A "No detection change: <reason>" declaration must be a real sentence, not
+// a padded placeholder — require at least 4 whitespace-separated words that
+// each contain a letter (rejects `xxxxxxxxxxxxxxxxxxxxxx`, which satisfies a
+// bare length check but explains nothing).
+const DECLARATION_LINE_RE = /^No detection change: (.+)$/m;
+function hasRealDeclaration(text) {
+  const match = DECLARATION_LINE_RE.exec(text);
+  if (!match) return false;
+  const words = match[1].trim().split(/\s+/).filter((w) => /[a-zA-Z]/.test(w));
+  return words.length >= 4;
+}
 
 function sh(args, opts = {}) {
   return execFileSync(args[0], args.slice(1), {
@@ -68,10 +80,10 @@ function getChangedFiles(base, head) {
       const out = sh(['git', 'diff', '--name-only', `${base}..${head}`]);
       return out ? out.split('\n').filter(Boolean) : [];
     } catch (e2) {
-      throw new Error(
-        `require-detection-change: could not diff ${range} (${e.message}); ` +
-          `and fallback ${base}..${head} also failed (${e2.message})`
+      console.error(
+        `require-detection-change: FAIL — could not diff ${base} vs ${head} (git range unresolvable; is the base ref fetched?)`
       );
+      process.exit(1);
     }
   }
 }
@@ -101,10 +113,45 @@ function getPrBody(prNumber) {
   }
 }
 
+// A registry-only edit only counts as a detection change if the diff ADDS or
+// CHANGES a `docs/reviews/failure-classes.md` table row whose detection_check
+// column names a real, non-empty check (not `none`/`unguarded`) — merely
+// touching the registry file (e.g. adding an `unguarded` row) is not a
+// detection change, it is an honest admission that one doesn't exist yet.
+function getRegistryRowChange(base, head) {
+  let diff;
+  try {
+    diff = sh(['git', 'diff', `${base}...${head}`, '--', REGISTRY_FILE]);
+  } catch {
+    try {
+      diff = sh(['git', 'diff', `${base}..${head}`, '--', REGISTRY_FILE]);
+    } catch {
+      return false;
+    }
+  }
+  for (const line of diff.split('\n')) {
+    if (!line.startsWith('+') || line.startsWith('+++')) continue;
+    const content = line.slice(1);
+    if (!/^\s*\|.*\|\s*$/.test(content)) continue;
+    const cells = content
+      .split('|')
+      .slice(1, -1)
+      .map((c) => c.trim());
+    if (cells.length !== 7) continue;
+    const detectionCheck = cells[5].toLowerCase();
+    if (!detectionCheck) continue;
+    if (/^-+$/.test(detectionCheck)) continue; // markdown table separator row
+    if (detectionCheck === 'detection_check') continue; // header row
+    if (detectionCheck === 'none' || detectionCheck === 'unguarded') continue;
+    return true;
+  }
+  return false;
+}
+
 function classify(files) {
   const triggering = files.filter((f) => TRIGGER_GLOBS.some((re) => re.test(f)));
   const triggeringNonTest = triggering.filter(
-    (f) => !TEST_PATH_HINT.test(f) && !TEST_FILE_HINT.test(f)
+    (f) => !TEST_PATH_HINT.test(f) && !TEST_FILE_HINT.test(f) && !PYTEST_FILE_HINT.test(f)
   );
   const exemptTouched = files.filter((f) => EXEMPT_GLOBS.some((re) => re.test(f)));
   return { triggeringNonTest, exemptTouched };
@@ -134,12 +181,19 @@ function main() {
     process.exit(0);
   }
 
+  if (files.includes(REGISTRY_FILE) && getRegistryRowChange(base, head)) {
+    console.log(
+      `require-detection-change: PASS — detection change present (${REGISTRY_FILE} row names a real check)`
+    );
+    process.exit(0);
+  }
+
   let text = getCommitMessages(base, head);
   if (env.GH_PR_NUMBER) {
     text += '\n' + getPrBody(env.GH_PR_NUMBER);
   }
 
-  if (DECLARATION_RE.test(text)) {
+  if (hasRealDeclaration(text)) {
     console.log(
       'require-detection-change: PASS — no detection-check file touched, but a valid ' +
         '"No detection change: ..." declaration was found'
