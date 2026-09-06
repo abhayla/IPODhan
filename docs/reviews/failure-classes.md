@@ -39,3 +39,95 @@ independently re-flag the bad value in the DB even if a write path let it throug
 15 rows: 7 `guarded` (an audit check independently re-verifies the DB), 8 `unguarded` (fixed at a
 write path or in ops config, but nothing independently re-checks it — this is exactly the shape
 that let share-count-as-issue-size recur in September after its August fix).
+
+## Nightly audit -> GitHub issues (recurrence loop, part 2)
+
+A `guarded` row in the table above only means a check EXISTS and RUNS nightly. It says nothing
+about whether a FAIL that check reports actually gets looked at — `docs/reviews/round-7-detection-
+rca.md` and the walks above are full of checks that ran clean for weeks while a defect it would
+have caught sat unfixed, because a FAIL line in a cron log nobody reads is not a tracked work
+item. Part 2 closes that gap: every FAIL or UNVERIFIABLE from `scripts/audit-detection-floor.mjs`
+becomes — and stays — a GitHub issue until the check passes again.
+
+**Mechanism.**
+
+1. `scripts/audit-detection-floor.mjs` writes `<STATE_DIR>/findings-latest.json` on every run
+   (gate mode or plain report mode): `{ runDate, generatedAt, gate, results, findings }`, where
+   `findings[checkId]` is the list of offending rows (`{ rowKey, title, body }`, capped at 200 per
+   check) collected during that run. This file is a snapshot, not an append log — it is
+   overwritten every run.
+2. `scripts/audit-findings-to-issues.mjs` reads that file and, for every check currently FAIL or
+   UNVERIFIABLE, syncs ONE GitHub issue titled `[nightly-audit] <checkId>: <name>`:
+   - no open issue exists -> **create** it, labeled `nightly-audit` plus either `needs-decision`
+     (the check's rows are data already sitting wrong in the DB — a human decides the repair) or
+     `pipeline-failure` (the check's rows are a broken piece of machinery — a worker fixes it in
+     code). An UNVERIFIABLE check always gets `needs-decision`, because "the audit went blind" is
+     never something a worker can code-fix without first finding out why.
+   - an open issue exists and the failing row-key set is UNCHANGED since the last run -> do
+     nothing (no comment). This mirrors the digest de-duplication `audit-detection-floor.mjs`
+     itself already does for Notifier pages (see that file's header comment on the "~72 pages a
+     night" incident) — a bot commenting on its own unchanged issue every night is the same noise
+     class in a different channel.
+   - an open issue exists and the row-key set CHANGED -> comment listing which row keys are new
+     and which resolved, so the issue's history reads as a timeline instead of a wall of
+     repeated dumps.
+   - the check is back to PASS and an open issue exists -> comment `PASS on <date>` and close it.
+3. Classification of `needs-decision` vs `pipeline-failure` for a FAIL is currently a static map
+   (`DATA_REPAIR_CHECK_IDS` in `audit-findings-to-issues.mjs`) rather than a field in
+   `docs/reviews/detection-checks.json`, because only one check (`listed_rotation_stall`) carries
+   a `registryRow` today. When a check's `detection-checks.json` entry does carry a `registryRow`,
+   its text is included in the issue body so a reader lands on the right registry row without
+   guessing.
+4. A per-run `--max-issues` cap (default 30) stops one very bad night from opening dozens of
+   issues in a single run; anything past the cap is logged, not filed, and picked up on the next
+   run.
+
+**Fail-open, by design.** This step runs on a production root cron on the VPS, and its own repo
+rule is that a missing tool or a network blip must never turn a healthy audit into a failed one.
+`scripts/audit-findings-to-issues.mjs` exits 0 and prints `ISSUES-SKIP: <reason>` whenever `gh` is
+missing, `gh auth status` fails, the findings file does not exist yet, or any `gh` call throws —
+never a non-zero exit from this step. `scripts/vps-data-audit-cron.sh` additionally wraps the call
+in `|| true` as a second, redundant layer of the same guarantee.
+
+**Dry-run switch.** `AUDIT_ISSUES_DRY_RUN=1` (or the script's own `--dry-run` flag) makes every
+`gh` command something the script would have run — printed, never executed, exit 0 — for exercising
+this on the box the first night before trusting it with real issue creation:
+
+```bash
+AUDIT_ISSUES_DRY_RUN=1 node scripts/audit-findings-to-issues.mjs
+# or, off the box against a saved findings-latest.json:
+node scripts/audit-findings-to-issues.mjs --dry-run /path/to/findings-latest.json
+```
+
+**Cron step [4/5] DEFAULTS TO DRY-RUN.** `scripts/vps-data-audit-cron.sh` does not rely on anyone
+remembering to set `AUDIT_ISSUES_DRY_RUN=1` — it stays dry-run on every tick until a marker file
+exists, so the very first cron run on a fresh box cannot file every currently-FAILing check as a
+real issue in one shot. Go live with:
+
+```bash
+touch /root/data-audit-ipodhan/state/issues-live
+```
+
+Setting `AUDIT_ISSUES_DRY_RUN=1` in the cron's environment still forces dry-run even after the
+marker exists — the env override always wins over the marker.
+
+**State.** `<STATE_DIR>/issues-sync-state.json` — `{ [checkId]: { issueNumber, firstSeen,
+lastRowKeys, closedAt? } }` — lives next to `findings-latest.json` in the audit's own state dir and
+is the only way the script knows "unchanged since last night" vs "this is new". A closed entry is
+KEPT, never deleted, precisely so a PASS->FAIL flap re-attaches to the SAME issue instead of
+opening a new one every cycle. Losing this file is recoverable, not silent-failure-shaped: the next
+run just re-discovers issues (open OR closed — `gh issue list --state all`) by title and treats
+every row as new (one extra comment, not a duplicate issue or a reopen, because the title match
+still finds the existing issue in whatever state it is in).
+
+**Human-closed issues are never reopened or recreated.** A check that a human closed as "won't fix"
+or "accepted legacy" while it still FAILs gets a comment only when the failing row-key set actually
+changes since the issue was closed — never a reopen, never a duplicate issue. See `planIssueSync()`
+in `scripts/audit-findings-to-issues.mjs` for the exact rule.
+
+**Public-repo caveat.** Issue bodies and comments embed real data from tonight's run — company
+names, dates, price/lot values, row keys — pulled straight from the production database. `abhayla/
+IPODhan` is a public repo, so this mechanism publishes that data to anyone who can read its Issues
+tab. Nothing here is a secret (it already renders on the live site), but it is a step beyond "a
+private log file on the VPS" and should be kept in mind before pointing this mechanism at a check
+whose row detail is more sensitive than public IPO data.
