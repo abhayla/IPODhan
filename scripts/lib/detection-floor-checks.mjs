@@ -39,8 +39,25 @@ export const ISSUE_SIZE_FLOOR_RUPEES = {
   SME: 1_00_00_000, // Rs 1 Cr
 };
 
-// issue_size vs (sharesOffered x priceRangeMax) must agree within this tolerance.
-export const ISSUE_SIZE_CONSISTENCY_TOLERANCE = 0.25;
+// issue_size vs (sharesOffered x priceRangeMax) plausibility band (T-452).
+//
+// `ipos.issue_size` is the TOTAL issue size INCLUDING OFS (owner decision
+// 2026-09-07; schema.ts documents fresh_issue + ofs_issue summing to
+// issue_size). `subscriptions.shares_offered` is the NET public offer
+// (excludes anchor/market-maker allocations). Because the numerator (total,
+// incl. OFS + anchor) is structurally larger than the denominator's basis
+// (net public offer only), total / (shares x cap) LEGITIMATELY runs
+// 1.0-1.9x on real rows (Meesho 1.76x, Wakefit 1.82x, Aequs 1.77x) — a
+// SYMMETRIC +/-25% band around 1.0 false-positived every one of them. The
+// band is now ONE-SIDED under the total-incl-OFS definition: a ratio far
+// BELOW 1 still means "share count stored as rupees" (wrong unit down —
+// c_issue_size_floor already catches most of this class by an absolute
+// floor, this check catches it relative to the row's own shares/price); a
+// ratio far ABOVE the upper multiple means "wrong unit up" (e.g. a value
+// scaled by 100x). Values legitimately clearing 1.0-1.9x from OFS/anchor
+// inclusion must NOT fail.
+export const ISSUE_SIZE_CONSISTENCY_LOWER_MULTIPLIER = 0.75;
+export const ISSUE_SIZE_CONSISTENCY_UPPER_MULTIPLIER = 3.0;
 
 // SEBI retail lot-value window (lot_size x upper price band), in rupees, by segment.
 // MAINBOARD book-built retail applications are steered to ~Rs10k-15k; SME minimum
@@ -115,8 +132,11 @@ export function checkIssueSizeSharesConsistency(row) {
   if (size === null || size <= 0 || shares === null || shares <= 0 || price === null || price <= 0) return null;
   const estimated = shares * price;
   const ratio = size / estimated;
-  if (ratio < 1 - ISSUE_SIZE_CONSISTENCY_TOLERANCE || ratio > 1 + ISSUE_SIZE_CONSISTENCY_TOLERANCE) {
-    return `issue_size (${size}) diverges from shares_offered x price_range_max (${shares} x ${price} = ${estimated}) by more than ${ISSUE_SIZE_CONSISTENCY_TOLERANCE * 100}% (ratio ${ratio.toFixed(3)})`;
+  if (ratio < ISSUE_SIZE_CONSISTENCY_LOWER_MULTIPLIER) {
+    return `issue_size (${size}) is far BELOW shares_offered x price_range_max (${shares} x ${price} = ${estimated}, ratio ${ratio.toFixed(3)} < ${ISSUE_SIZE_CONSISTENCY_LOWER_MULTIPLIER}) — looks like a share count or wrong-unit value stored in issue_size, not the total issue size incl. OFS`;
+  }
+  if (ratio > ISSUE_SIZE_CONSISTENCY_UPPER_MULTIPLIER) {
+    return `issue_size (${size}) is far ABOVE shares_offered x price_range_max (${shares} x ${price} = ${estimated}, ratio ${ratio.toFixed(3)} > ${ISSUE_SIZE_CONSISTENCY_UPPER_MULTIPLIER}) — looks like a wrong-unit-up value, not the total issue size incl. OFS`;
   }
   return null;
 }

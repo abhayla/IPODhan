@@ -5,7 +5,19 @@ import {
   PRODUCTION_DATABASE_NAME,
   dropIpoCacheKeys,
   validateOverwriteAboveFloorRequiresSlug,
+  parseSlugArg,
+  upsertIssueSizeProvenance,
+  stampIssueSizeProvenanceIfMissing,
+  BACKFILL_UPDATED_BY,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
+
+/** Builds a mocked db/tx exposing the exact chain the provenance helpers call. */
+function mockSelectReturning(rows: unknown[]) {
+  const limit = vi.fn().mockResolvedValue(rows);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  return { select: vi.fn().mockReturnValue({ from }), from, where, limit };
+}
 
 describe('validateOverwriteAboveFloorRequiresSlug (round-4: refuse a whole-table overwrite)', () => {
   it('refuses --overwrite-above-floor with no --slug', () => {
@@ -198,5 +210,137 @@ describe('resolveDatabaseName / PRODUCTION_DATABASE_NAME (prod guard)', () => {
     expect(resolveDatabaseName({ DATABASE_URL: 'postgres://u:p@host:5432/ipodhan' } as NodeJS.ProcessEnv)).toBe(
       PRODUCTION_DATABASE_NAME
     );
+  });
+});
+
+describe('parseSlugArg (T-452: --slug as the LAST argv token used to crash)', () => {
+  it('returns null slugs when --slug is absent', () => {
+    expect(parseSlugArg(['node', 'script.js', '--apply'])).toEqual({ slugs: null });
+  });
+
+  it('parses a comma-separated slug list', () => {
+    expect(parseSlugArg(['node', 'script.js', '--slug', 'a,b,c'])).toEqual({ slugs: ['a', 'b', 'c'] });
+  });
+
+  it('trims whitespace and drops empty entries', () => {
+    expect(parseSlugArg(['node', 'script.js', '--slug', ' a , b ,,c '])).toEqual({ slugs: ['a', 'b', 'c'] });
+  });
+
+  it('reports a usage error instead of crashing when --slug is the LAST argv token', () => {
+    const result = parseSlugArg(['node', 'script.js', '--apply', '--slug']);
+    expect(result.slugs).toBe(null);
+    expect(result.error).toMatch(/--slug requires a comma-separated value/);
+  });
+
+  it('reports a usage error when --slug is immediately followed by another flag', () => {
+    const result = parseSlugArg(['node', 'script.js', '--slug', '--apply']);
+    expect(result.slugs).toBe(null);
+    expect(result.error).toMatch(/--slug requires a comma-separated value/);
+  });
+});
+
+describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts field_sources in the same transaction)', () => {
+  it('inserts with previousSource=null when no field_sources row exists yet (never fabricated)', async () => {
+    const sel = mockSelectReturning([]); // no existing row
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    await upsertIssueSizeProvenance(txLike, {
+      ipoId: 'ipo-1',
+      previousValue: 17_683_000,
+      source: 'CHITTORGARH',
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ipoId: 'ipo-1',
+        tableName: 'ipos',
+        fieldName: 'issueSize',
+        source: 'CHITTORGARH',
+        previousValue: '17683000',
+        previousSource: null,
+        updatedBy: BACKFILL_UPDATED_BY,
+      })
+    );
+    expect(onConflictDoUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('carries the EXISTING row source as previousSource, never overwriting it with a guess', async () => {
+    const sel = mockSelectReturning([{ source: 'NSE' }]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    await upsertIssueSizeProvenance(txLike, {
+      ipoId: 'ipo-2',
+      previousValue: null,
+      source: 'ADMIN',
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'ADMIN', previousValue: null, previousSource: 'NSE' })
+    );
+  });
+
+  it('uses ADMIN for the --overwrite-above-floor definitional path and CHITTORGARH for the below-floor source-backed path', async () => {
+    // Asserted at the call-site level via the source text, since main() itself
+    // is not unit-tested (network/DB side effects — file header). This proves
+    // BOTH literal source values appear as the `source:` argument passed to
+    // upsertIssueSizeProvenance in the write transaction.
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = fileURLToPath(new URL('../../../scripts/backfill-issue-size-chittorgarh-detail.ts', import.meta.url));
+    const source = readFileSync(path, 'utf8');
+    expect(source).toMatch(/source: RECHECK_ABOVE_FLOOR \? 'ADMIN' : 'CHITTORGARH'/);
+  });
+});
+
+describe('stampIssueSizeProvenanceIfMissing (T-452: idempotent re-run durability for the "OK never touched" case)', () => {
+  it('stamps ADMIN provenance when no field_sources row exists', async () => {
+    const sel = mockSelectReturning([]);
+    const values = vi.fn().mockResolvedValue(undefined);
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    const didStamp = await stampIssueSizeProvenanceIfMissing(txLike, {
+      ipoId: 'ipo-3',
+      currentValue: 54_210_000_000,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(didStamp).toBe(true);
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ipoId: 'ipo-3',
+        tableName: 'ipos',
+        fieldName: 'issueSize',
+        source: 'ADMIN',
+        previousValue: '54210000000',
+        previousSource: null,
+        updatedBy: BACKFILL_UPDATED_BY,
+      })
+    );
+  });
+
+  it('does NOT stamp (and does not insert) when a field_sources row already exists', async () => {
+    const sel = mockSelectReturning([{ id: 'existing-row' }]);
+    const insert = vi.fn();
+    const txLike = { select: sel.select, insert } as any;
+
+    const didStamp = await stampIssueSizeProvenanceIfMissing(txLike, {
+      ipoId: 'ipo-4',
+      currentValue: 12_890_000_000,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(didStamp).toBe(false);
+    expect(insert).not.toHaveBeenCalled();
   });
 });
