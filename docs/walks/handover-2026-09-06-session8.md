@@ -131,3 +131,5 @@ read `grep -h af03ab82 ~/.pm2/logs/ipodhan-scraper-staging-out.log | grep RHP | 
 cut `release/prod-2026-09-07`, Rule 6 brief 20:30, deploy window 21:00-23:30, rollback `-f ref=f9b67d0a`.
 Not in the release: the cadence conformance build (`IPODhan-cadence`, in progress; review against the 2026-09-03 decision).
 Scraper tsc baseline is now 88 (main, after #333 changed the shared package) — not 87.
+7. Calendar gate scope: the cadence build (#336) gates Saturdays and market holidays like Sundays (live issues still fetch).
+   The 2026-09-03 decision text names Sunday only. Recommendation: keep Sat + holidays. Owner to confirm or narrow.
