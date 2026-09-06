@@ -100,8 +100,22 @@ node scripts/audit-findings-to-issues.mjs --dry-run /path/to/findings-latest.jso
 ```
 
 **State.** `<STATE_DIR>/issues-sync-state.json` — `{ [checkId]: { issueNumber, firstSeen,
-lastRowKeys } }` — lives next to `findings-latest.json` in the audit's own state dir and is the
-only way the script knows "unchanged since last night" vs "this is new". Losing this file is
-recoverable, not silent-failure-shaped: the next run just re-discovers open issues by title via
-`gh issue list` and treats every row as new (one extra comment, not a duplicate issue, because the
-title match still finds the existing open issue).
+lastRowKeys, closedAt? } }` — lives next to `findings-latest.json` in the audit's own state dir and
+is the only way the script knows "unchanged since last night" vs "this is new". A closed entry is
+KEPT, never deleted, precisely so a PASS->FAIL flap re-attaches to the SAME issue instead of
+opening a new one every cycle. Losing this file is recoverable, not silent-failure-shaped: the next
+run just re-discovers issues (open OR closed — `gh issue list --state all`) by title and treats
+every row as new (one extra comment, not a duplicate issue or a reopen, because the title match
+still finds the existing issue in whatever state it is in).
+
+**Human-closed issues are never reopened or recreated.** A check that a human closed as "won't fix"
+or "accepted legacy" while it still FAILs gets a comment only when the failing row-key set actually
+changes since the issue was closed — never a reopen, never a duplicate issue. See `planIssueSync()`
+in `scripts/audit-findings-to-issues.mjs` for the exact rule.
+
+**Public-repo caveat.** Issue bodies and comments embed real data from tonight's run — company
+names, dates, price/lot values, row keys — pulled straight from the production database. `abhayla/
+IPODhan` is a public repo, so this mechanism publishes that data to anyone who can read its Issues
+tab. Nothing here is a secret (it already renders on the live site), but it is a step beyond "a
+private log file on the VPS" and should be kept in mind before pointing this mechanism at a check
+whose row detail is more sensitive than public IPO data.
