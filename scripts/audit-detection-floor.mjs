@@ -491,15 +491,15 @@ async function checkM() {
   // comment. FAIL-level, joins `documents` to its sibling `document_fetch_state`
   // row (same ipo+doc_type) so all three stuck shapes are caught in one check.
   const extractionStuckRows = await q(`
-    SELECT i.company_name, i.slug, i.status AS ipo_status, d.doc_type,
+    SELECT i.company_name, i.slug, i.status AS ipo_status, d.type AS doc_type,
            d.extraction_status, d.extraction_error, d.updated_at AS doc_updated_at,
            fs.state AS fetch_state
       FROM documents d
       JOIN ipos i ON i.id = d.ipo_id
-      LEFT JOIN document_fetch_state fs ON fs.ipo_id = d.ipo_id AND fs.doc_type = d.doc_type
+      LEFT JOIN document_fetch_state fs ON fs.ipo_id = d.ipo_id AND fs.doc_type = d.type
      WHERE i.${REAL_IPO}
        AND i.status IN ('UPCOMING','OPEN','CLOSED','LISTED')
-       AND d.doc_type IN ('DRHP','RHP','PROSPECTUS')
+       AND d.type IN ('DRHP','RHP','PROSPECTUS')
   `);
   const nowMs = Date.now();
   const extractionStuck = extractionStuckRows
