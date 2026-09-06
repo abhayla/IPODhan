@@ -132,4 +132,71 @@ describe('listed-rotation-stall-null-fetch-state — rotation-stamp guard', () =
     // for an IPO that already has real history.
     expect(rows.length).toBe(1);
   });
+
+  it('stamps a fetch-state row when plan.due is empty but the plan is NOT skipIpo (bookkeeping-only cycle)', async () => {
+    // listed-rotation-stamp-on-every-visit (round 2): every currently-due
+    // type for LISTED is already closed (FOUND) except CORRIGENDUM, which
+    // has been attempted before and is therefore permanently past due once
+    // LISTED (W-40) — so this cycle's only work is the `toMarkNotApplicable`
+    // bookkeeping pass, `plan.due` ends up empty, but `plan.skipIpo` is
+    // false (there IS bookkeeping to do). That used to fall through the
+    // `if (plan.due.length === 0)` early return without ever bumping
+    // `last_attempt_at`, because the bookkeeping `update()` calls only set
+    // `state`/`nextRetryAt`, never `lastAttemptAt`.
+    const { runner, store } = makeRunner(throwingFetcher);
+    const ipo: DiscoveryIpo = {
+      id: 'ipo-nothing-due',
+      companyName: 'Nothing Due Ltd.',
+      symbol: 'NDUE',
+      segment: 'MAINBOARD',
+      stage: 'LISTED',
+    };
+
+    const closedTypes = [
+      'DRHP',
+      'RHP',
+      'PRICE_BAND_AD',
+      'RATIOS_BASIS_ISSUE_PRICE',
+      'ANCHOR_ALLOCATION_REPORT',
+      'ADDENDUM',
+      'PROSPECTUS',
+      'BASIS_OF_ALLOTMENT_AD',
+    ];
+    for (const docType of closedTypes) {
+      const row = await store.ensureRow(ipo.id, docType);
+      await store.update(row.id, { state: 'FOUND' });
+    }
+    // CORRIGENDUM: attempted before (attempts >= 1) and never found — LISTED
+    // makes it permanently past due, so this cycle marks it NOT_APPLICABLE
+    // rather than leaving it due.
+    const corrigendum = await store.ensureRow(ipo.id, 'CORRIGENDUM');
+    await store.update(corrigendum.id, { state: 'NOT_YET_FILED', attempts: 1 });
+
+    const existingRows = (await store.listForIpo(ipo.id)).map((r) => ({
+      docType: r.docType as never,
+      state: r.state,
+      attempts: r.attempts,
+      nextRetryAt: r.nextRetryAt,
+      blockedSinceAt: r.blockedSinceAt,
+      filingDate: r.filingDate,
+      extractorVersion: r.extractorVersion,
+      lastAttemptAt: r.lastAttemptAt,
+    }));
+
+    const result = await runner.runIpo(ipo, existingRows);
+    expect(result.skipped).toBe(false);
+    expect(result.due).toEqual([]);
+
+    const corrigendumRow = await store.listForIpo(ipo.id).then((rs) =>
+      rs.find((r) => r.docType === 'CORRIGENDUM')
+    );
+    expect(corrigendumRow?.state).toBe('NOT_APPLICABLE');
+
+    // The rotation stamp must land on SOME row for this IPO (the fix falls
+    // back to the first existing documents row's type, or the stage's first
+    // due type) — proving the visit is no longer invisible to the LISTED
+    // rotation order.
+    const stamped = await store.listForIpo(ipo.id);
+    expect(stamped.some((r) => r.lastAttemptAt?.getTime() === NOW.getTime())).toBe(true);
+  });
 });

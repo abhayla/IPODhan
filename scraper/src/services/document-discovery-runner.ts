@@ -1772,7 +1772,18 @@ export class DocumentDiscoveryRunner {
     // about documents it is not looking for. Caught by the acceptance run: the
     // cycle after an RHP was found still made a BSE call for an IPO with an
     // empty due list.
+    //
+    // Rotation-stall guard, round 2 (listed-rotation-stamp-on-every-visit): a
+    // `skipIpo === false` plan with an EMPTY due list (every currently-due type
+    // already closed/not-yet-retryable; the only work this cycle was the
+    // `toMarkNotApplicable`/`toMarkSuperseded` bookkeeping above) never reaches
+    // the `for (const docType of plan.due)` loop below, so no `last_attempt_at`
+    // is ever bumped for this visit — the bookkeeping `update()` calls above set
+    // `state`/`nextRetryAt` only, never `lastAttemptAt`. Same symptom as the
+    // `skipIpo` branch above: the IPO re-sorts to the front of the LISTED
+    // rotation forever. Stamp every visit here too so this exit also ages out.
     if (plan.due.length === 0) {
+      await this.stampRotationTouch(ipo, plan);
       result.networkCalls = this.deps.counter.count(ipo.id) - callsBefore;
       return result;
     }
