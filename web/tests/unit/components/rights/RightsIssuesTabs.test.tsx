@@ -4,7 +4,7 @@
  * an equally hardcoded `availableYears: ['2024','2025','2026']`), hiding
  * every currently-open 2026 rights issue on first paint.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { RightsIssuesTabs } from '@/components/rights/RightsIssuesTabs';
@@ -29,8 +29,15 @@ function makeRights(overrides: Partial<RightsIssueData>): RightsIssueData {
   };
 }
 
+// T-454 (#253): fixtures below are dated relative to this fixed instant, not
+// the real wall clock — a run on any later real date must see the same
+// tab membership. Without freezing the clock, the "2026-only" rows drift
+// out of "latest year with data" once the real date passes them.
+const FIXED_NOW = '2026-06-15T00:00:00.000Z';
+
 describe('RightsIssuesTabs', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ now: new Date(FIXED_NOW) });
     (useRouter as ReturnType<typeof vi.fn>).mockReturnValue({
       push: vi.fn(),
       replace: vi.fn(),
@@ -38,6 +45,10 @@ describe('RightsIssuesTabs', () => {
     (useSearchParams as ReturnType<typeof vi.fn>).mockReturnValue(
       new URLSearchParams('tab=upcoming')
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('does NOT hardcode the upcoming-tab default year to 2025 — a 2026-only upcoming rights issue is visible', () => {
