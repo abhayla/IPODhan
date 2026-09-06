@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { getIPOBySlugKey, getIPOByIdKey, getIPODetailKey } from '@/lib/cache/cache-keys';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { logger } from '@/lib/logger';
 
@@ -292,9 +293,9 @@ export async function PATCH(
     const updatedIPO = await ipoRepository.update(id, updateData);
 
     // Invalidate cache
-    await redis.del(`ipo:slug:${existingIPO.slug}`);
-    await redis.del(`ipo:id:${id}`);
-    await redis.del(`ipo:detail:${existingIPO.slug}`);
+    await redis.del(getIPOBySlugKey(existingIPO.slug));
+    await redis.del(getIPOByIdKey(id));
+    await redis.del(getIPODetailKey(existingIPO.slug));
     await redis.del('ipo:list:*');
 
     const duration = Date.now() - startTime;

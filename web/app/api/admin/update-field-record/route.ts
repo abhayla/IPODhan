@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { getDocumentsKey, getPeerCompaniesKey, getIPOByIdKey, getReviewInvalidationKeys } from '@/lib/cache/cache-keys';
 import {
   documents,
   peerCompanies,
@@ -189,11 +190,47 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
 
     // Invalidate relevant caches
     try {
+      // The real read-side cache key for each one-to-many table comes from
+      // its own shared key helper — there is no single generic
+      // `<table>:ipo:<id>` shape that every repository reads. Before this
+      // fix, a hand-typed fallback invented a key nothing ever consumed
+      // (e.g. documents' real key is getDocumentsKey(ipoId), not a
+      // table-prefixed ipo-id string), leaving stale rows cached for up to
+      // 1h after an admin edit. Each table is branched explicitly; an
+      // unrecognized table logs instead of inventing a key.
+      const entityKeys: string[] = [];
+      const wildcardPatterns: string[] = [];
+
+      if (tableName === 'documents') {
+        entityKeys.push(getDocumentsKey(ipoId));
+      } else if (tableName === 'peer_companies') {
+        entityKeys.push(getPeerCompaniesKey(ipoId));
+      } else if (tableName === 'ipo_reviews') {
+        for (const key of getReviewInvalidationKeys(ipoId)) {
+          if (key.includes('*')) {
+            wildcardPatterns.push(key);
+          } else {
+            entityKeys.push(key);
+          }
+        }
+      } else {
+        console.warn(
+          `[Admin API] No cache-key mapping for table "${tableName}" — skipping entity-level invalidation`
+        );
+      }
+
       await redis.del(
-        `ipo:id:${ipoId}`,
-        `${tableName}:ipo:${ipoId}`,
+        getIPOByIdKey(ipoId),
+        ...entityKeys,
         `${tableName}:record:${recordId}`
       );
+
+      for (const pattern of wildcardPatterns) {
+        const matchingKeys = await redis.keys(pattern);
+        if (matchingKeys.length > 0) {
+          await redis.del(...matchingKeys);
+        }
+      }
 
       // Invalidate list caches
       const listKeys = await redis.keys(`${tableName}:list:*`);
