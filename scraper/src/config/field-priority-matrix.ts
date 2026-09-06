@@ -417,8 +417,28 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // rule (consolidation's actual lookup key, and the more deliberate T-434
   // ordering); validation is the STRICTER of the two bounds (min:1e6 from
   // issue_size, max:999999990000 from issueSize).
+  // T-453 (owner 2026-09-07, schema.ts ~1102): NSE/BSE do not publish a
+  // rupee issue size — nse-api-client.ts computeNSEIssueSizeRupees and
+  // bse-api-scraper.ts computeBSEIssueSize DERIVE it as (noOfSharesOffered /
+  // net offer) x price, which excludes the offer-for-sale portion. The
+  // site's definition of issueSize is TOTAL incl. OFS. Chittorgarh's list
+  // API field 'Total Issue Amount (Incl.Firm reservations) (Rs.cr.)'
+  // (chittorgarh-scraper.ts, chittorgarh-rights-debt-adapter.ts) is read
+  // directly from the source — not shares x price — and matches the printed
+  // total (verified for Meesho/Wakefit/Aequs: exchange-derived figures
+  // undercounted by the OFS share). CHITTORGARH is moved above NSE/BSE for
+  // the same reason T-434 ranked DRHP above NSE: a source-backed total beats
+  // a share-count-derived exchange figure. DRHP still outranks CHITTORGARH
+  // (the offer document is the primary source; Chittorgarh transcribes it).
+  // W-55: canonical entry for issue_size/issueSize (was two diverging entries —
+  // issue_size ranked NSE above DRHP and used {min:1e6,max:1e12}; issueSize ranked
+  // DRHP above NSE (T-434, filing beats a share-count-derived exchange figure) and
+  // used {min:0,max:999999990000}). Sources/order/threshold from the camelCase
+  // rule (consolidation's actual lookup key, and the more deliberate T-434
+  // ordering); validation is the STRICTER of the two bounds (min:1e6 from
+  // issue_size, max:999999990000 from issueSize).
   issueSize: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 80,
     description: 'Total issue size (₹) - amounts may arrive as Cr text or raw rupees depending on source. Plausibility (segment floor + shares x band coherence) is enforced record-level, not here — see collectImplausibleIssueSizeFields.',
