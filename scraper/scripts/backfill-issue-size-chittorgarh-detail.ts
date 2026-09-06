@@ -58,8 +58,28 @@ import logger from '../src/utils/logger.js';
 const APPLY = process.argv.includes('--apply');
 const limitIdx = process.argv.indexOf('--limit');
 const LIMIT = limitIdx >= 0 ? parseInt(process.argv[limitIdx + 1], 10) : Infinity;
-const slugIdx = process.argv.indexOf('--slug');
-const SLUGS = slugIdx >= 0 ? process.argv[slugIdx + 1].split(',').map((s) => s.trim()).filter(Boolean) : null;
+
+/**
+ * T-452: `--slug` as the LAST argv token used to crash (`argv[slugIdx+1]` is
+ * `undefined`, and `.split` on `undefined` throws before any usage message
+ * prints). Pure so the crash-fix is unit-testable without spawning the CLI.
+ */
+export function parseSlugArg(argv: string[]): { slugs: string[] | null; error?: string } {
+  const idx = argv.indexOf('--slug');
+  if (idx < 0) return { slugs: null };
+  const next = argv[idx + 1];
+  if (next === undefined || next.startsWith('--')) {
+    return {
+      slugs: null,
+      error:
+        'backfill-issue-size: --slug requires a comma-separated value, e.g. --slug windlas-biotech-ipo,aaa-technologies-ipo',
+    };
+  }
+  return { slugs: next.split(',').map((s) => s.trim()).filter(Boolean) };
+}
+
+const slugParse = parseSlugArg(process.argv);
+const SLUGS = slugParse.slugs;
 // Round-N residue: rows ABOVE the segment floor can still carry the wrong unit
 // (Windlas Biotech 47 Cr stored vs 401 Cr real; AAA Technologies, Induss,
 // Banganga, Sanmitra similar) — invisible to the below-floor selection above.
@@ -290,10 +310,180 @@ export function validateOverwriteAboveFloorRequiresSlug(
   return { ok: true };
 }
 
+/** `updated_by` stamp on every field_sources row this tool writes (T-452). */
+export const BACKFILL_UPDATED_BY = 'backfill-issue-size-chittorgarh-detail';
+
+/**
+ * T-452 round 2: BOTH write paths are labelled ADMIN, not CHITTORGARH for
+ * below-floor / ADMIN for above-floor. The tool's values are source-backed
+ * (Chittorgarh detail page), cross-checked (segment floor + shares-x-cap
+ * gate), and owner-authorized (the repair is an intentional definitional
+ * correction) — CHITTORGARH-labelled repairs stayed revertible by a later
+ * NSE/BSE scrape (exactly the bug this task fixes) until the field-priority
+ * matrix is reordered; ADMIN always wins regardless of matrix order.
+ * `updated_by` stays the tool's own name, so provenance still shows this was
+ * a tool repair, not a human edit through the admin UI.
+ */
+export const WRITE_DATA_LINEAGE = { note: 'repair: chittorgarh-detail source-backed, cross-checked, owner-authorized (T-452)' };
+
+/** Lineage note for an exact-match provenance stamp (round 2, item 1). */
+export const STAMP_DATA_LINEAGE = { note: 'stamp: owner definition total-incl-OFS 2026-09-07' };
+
+/**
+ * T-452 RCA: this tool repaired `ipos.issue_size` with a raw update and wrote
+ * NO `field_sources` row, so the consolidation service (field-priority-matrix
+ * issueSize: ADMIN > DRHP > NSE > BSE > CHITTORGARH > MONEYCONTROL) had no
+ * provenance to beat a later NSE/BSE scrape's derived (and structurally
+ * different — shares_offered x price cap, not total incl. OFS) figure, which
+ * could then silently revert the repair. Every WRITE this tool makes now
+ * upserts the matching `field_sources` row in the SAME transaction as the
+ * `ipos` update (shape mirrors `FieldSourcesRepository.trackFieldUpdate`,
+ * packages/shared/src/repositories/field-sources-repository.ts).
+ *
+ * `previousSource` is read from whatever row already exists — never
+ * fabricated — so a row with no prior tracked source stays NULL.
+ * `dataLineage` is ALWAYS set (round 2, item 3) — a prior source's stale
+ * lineage never survives an upsert this tool performs.
+ */
+export async function upsertIssueSizeProvenance(
+  txLike: {
+    select: typeof db.select;
+    insert: typeof db.insert;
+  },
+  params: {
+    ipoId: string;
+    previousValue: number | null;
+    updatedBy: string;
+  }
+): Promise<void> {
+  const existing = await txLike
+    .select({ source: schema.fieldSources.source })
+    .from(schema.fieldSources)
+    .where(
+      and(
+        eq(schema.fieldSources.ipoId, params.ipoId),
+        eq(schema.fieldSources.tableName, 'ipos'),
+        eq(schema.fieldSources.fieldName, 'issueSize')
+      )
+    )
+    .limit(1);
+  const previousSource = existing[0]?.source ?? null;
+  const previousValue = params.previousValue === null ? null : String(params.previousValue);
+
+  await txLike
+    .insert(schema.fieldSources)
+    .values({
+      ipoId: params.ipoId,
+      tableName: 'ipos',
+      fieldName: 'issueSize',
+      source: 'ADMIN',
+      confidence: 100,
+      previousValue,
+      previousSource,
+      dataLineage: WRITE_DATA_LINEAGE,
+      updatedAt: new Date(),
+      updatedBy: params.updatedBy,
+    })
+    .onConflictDoUpdate({
+      target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.fieldName],
+      set: {
+        source: 'ADMIN',
+        confidence: 100,
+        previousValue,
+        previousSource,
+        dataLineage: WRITE_DATA_LINEAGE,
+        updatedAt: new Date(),
+        updatedBy: params.updatedBy,
+      },
+    });
+}
+
+/**
+ * T-452 round 2 (item 1): the round-1 "stamp if missing" logic left 8 real
+ * staging rows revertible — they already carried an OLD CHITTORGARH/BSE
+ * `field_sources` row from a prior write path, so "if none exists" silently
+ * skipped them ("stamped 0"). The fix stamps ADMIN provenance whenever the
+ * STORED value is EXACTLY EQUAL (numeric, in rupees — never the 40% "OK"
+ * band) to the source figure, REGARDLESS of whether a provenance row already
+ * exists — an existing CHITTORGARH/BSE row is exactly the case that must be
+ * upgraded, not skipped. `previousValue` stays the stored value (this call
+ * never changes `ipos.issue_size` — the row was already correct); the caller
+ * is responsible for gating on `--apply`, `--overwrite-above-floor`,
+ * `--slug`, and exact equality — this function unconditionally stamps once
+ * called.
+ */
+export async function stampExactMatchProvenance(
+  txLike: {
+    select: typeof db.select;
+    insert: typeof db.insert;
+  },
+  params: {
+    ipoId: string;
+    storedValue: number;
+    updatedBy: string;
+  }
+): Promise<{ stamped: boolean; previousSource: string | null }> {
+  const existing = await txLike
+    .select({ source: schema.fieldSources.source })
+    .from(schema.fieldSources)
+    .where(
+      and(
+        eq(schema.fieldSources.ipoId, params.ipoId),
+        eq(schema.fieldSources.tableName, 'ipos'),
+        eq(schema.fieldSources.fieldName, 'issueSize')
+      )
+    )
+    .limit(1);
+  const previousSource = existing[0]?.source ?? null;
+
+  // Idempotent re-run (round 2, item 4d): a row already carrying ADMIN
+  // provenance from a prior stamp is a no-op — re-inserting identical data
+  // would just churn `updated_at`/`updated_by` for no informational gain,
+  // and the caller's "second run stamps 0" contract needs a real signal.
+  if (previousSource === 'ADMIN') {
+    return { stamped: false, previousSource };
+  }
+
+  const previousValue = String(params.storedValue);
+
+  await txLike
+    .insert(schema.fieldSources)
+    .values({
+      ipoId: params.ipoId,
+      tableName: 'ipos',
+      fieldName: 'issueSize',
+      source: 'ADMIN',
+      confidence: 100,
+      previousValue,
+      previousSource,
+      dataLineage: STAMP_DATA_LINEAGE,
+      updatedAt: new Date(),
+      updatedBy: params.updatedBy,
+    })
+    .onConflictDoUpdate({
+      target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.fieldName],
+      set: {
+        source: 'ADMIN',
+        confidence: 100,
+        previousValue,
+        previousSource,
+        dataLineage: STAMP_DATA_LINEAGE,
+        updatedAt: new Date(),
+        updatedBy: params.updatedBy,
+      },
+    });
+  return { stamped: true, previousSource };
+}
+
 async function main() {
   console.log('='.repeat(80));
   console.log(`ISSUE-SIZE BACKFILL (Chittorgarh detail pages, W-177 repair) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  if (slugParse.error) {
+    console.error(slugParse.error);
+    process.exit(1);
+  }
 
   const overwriteGuard = validateOverwriteAboveFloorRequiresSlug(OVERWRITE_ABOVE_FLOOR, SLUGS);
   if (!overwriteGuard.ok) {
@@ -399,7 +589,7 @@ async function main() {
   console.log(`matched to a Chittorgarh detail URL: ${matched.length} (unmatched: ${candidates.length - matched.length})`);
 
   // 4. Fetch + extract + decide.
-  let sourced = 0, written = 0, skipped = 0, fetchFailed = 0, ok = 0, flagged = 0;
+  let sourced = 0, written = 0, skipped = 0, fetchFailed = 0, ok = 0, flagged = 0, stamped = 0, writeFailures = 0;
   const skipReasons: Record<string, number> = {};
   let fetched = 0;
 
@@ -440,7 +630,36 @@ async function main() {
       `  ${c.slug}: old=${current ?? "NULL"} source=${value ?? 'none'} cap=${c.priceRangeMax} -> ${decision.status} (${decision.reason})`
     );
 
-    if (decision.status === 'OK') ok++;
+    if (decision.status === 'OK') {
+      ok++;
+      // T-452 round 2 (item 1): stamp ADMIN provenance ONLY on an EXACT
+      // numeric match (never the 40%-band OK case, never dry-run, never
+      // without --slug — --overwrite-above-floor already requires --slug via
+      // validateOverwriteAboveFloorRequiresSlug above, SLUGS is re-checked
+      // here defensively) — REGARDLESS of whether a provenance row already
+      // exists, so an old CHITTORGARH/BSE row on an already-correct value
+      // gets upgraded to ADMIN, not left revertible.
+      const exactMatch = current !== null && value !== null && current === value;
+      if (APPLY && OVERWRITE_ABOVE_FLOOR && SLUGS && SLUGS.length > 0 && exactMatch) {
+        try {
+          const stampResult = await db.transaction((tx) =>
+            stampExactMatchProvenance(tx, { ipoId: c.id, storedValue: current as number, updatedBy: BACKFILL_UPDATED_BY })
+          );
+          if (stampResult.stamped) {
+            stamped++;
+            console.log(`    STAMPED ${c.slug} provenance ADMIN (was ${stampResult.previousSource ?? 'none'})`);
+          } else {
+            console.log(`    STAMP SKIP ${c.slug}: already ADMIN (idempotent)`);
+          }
+        } catch (err) {
+          writeFailures++;
+          logger.warn(
+            { slug: c.slug, error: err instanceof Error ? err.message : String(err) },
+            'provenance stamp failed'
+          );
+        }
+      }
+    }
     if (decision.status === 'FLAG') flagged++;
 
     if (!decision.write) {
@@ -459,11 +678,25 @@ async function main() {
       // Postgres) — a plain eq guard silently dropped every NULL-row write.
       // `IS NOT DISTINCT FROM` treats NULL=NULL as true, so the guard works
       // identically for NULL, '0', and a below-floor positive value.
-      const result = await db
-        .update(schema.ipos)
-        .set({ issueSize: String(value), updatedAt: new Date() })
-        .where(and(eq(schema.ipos.id, c.id), sql`${schema.ipos.issueSize} IS NOT DISTINCT FROM ${c.issueSize}`))
-        .returning({ id: schema.ipos.id });
+      // T-452: the ipos update and its field_sources provenance row write in
+      // the SAME transaction — a repair that lands the value without the
+      // provenance row is the exact defect this fix closes (a later
+      // NSE/BSE scrape had nothing to lose to and could silently revert it).
+      const result = await db.transaction(async (tx) => {
+        const updated = await tx
+          .update(schema.ipos)
+          .set({ issueSize: String(value), updatedAt: new Date() })
+          .where(and(eq(schema.ipos.id, c.id), sql`${schema.ipos.issueSize} IS NOT DISTINCT FROM ${c.issueSize}`))
+          .returning({ id: schema.ipos.id });
+        if (updated.length > 0) {
+          await upsertIssueSizeProvenance(tx, {
+            ipoId: c.id,
+            previousValue: current,
+            updatedBy: BACKFILL_UPDATED_BY,
+          });
+        }
+        return updated;
+      });
       if (result.length > 0) {
         written++;
         console.log(`    WROTE ${c.slug} issue_size ${current ?? 'NULL'} -> ${value}`);
@@ -484,7 +717,7 @@ async function main() {
         console.log(`    SKIP ${c.slug}: row changed since selection (IS NOT DISTINCT FROM guard missed)`);
       }
     } catch (err) {
-      fetchFailed++; // treat as a hard failure for the exit code
+      writeFailures++; // T-452 round 2 (item 3): a hard failure for the exit code, tracked separately from fetch failures
       logger.error({ slug: c.slug, error: err instanceof Error ? err.message : String(err) }, 'issue_size update failed');
     }
   }
@@ -492,14 +725,18 @@ async function main() {
   const reasonsStr = Object.entries(skipReasons).map(([k, v]) => `${k}=${v}`).join(', ') || 'none';
   console.log(`\nconsidered ${candidates.length}, sourced ${sourced}, written ${written}, skipped ${skipped} (${reasonsStr})`);
   if (RECHECK_ABOVE_FLOOR) {
-    console.log(`recheck: ${matched.length} rows, ok ${ok}, flagged ${flagged}, written ${written}`);
+    console.log(`recheck: ${matched.length} rows, ok ${ok}, flagged ${flagged}, written ${written}, stamped ${stamped}`);
     if (flagged > 0 && !OVERWRITE_ABOVE_FLOOR) {
       console.log('FLAGGED rows above need owner review — re-run with --apply --overwrite-above-floor (and --allow-prod on prod) to write.');
     }
   }
   if (!APPLY) console.log('DRY-RUN: re-run with --apply to write.');
   console.log('='.repeat(80));
-  process.exit(fetchFailed > 0 && written === 0 && APPLY ? 1 : fetchFailed > 0 && !APPLY && sourced === 0 ? 1 : 0);
+  // T-452 round 2 (item 3): ANY write or stamp failure is a hard exit-1,
+  // regardless of how many OTHER rows succeeded (writeFailures > 0 no longer
+  // masked by written > 0 from unrelated rows). Dry-run's "everything failed
+  // to fetch" case is preserved separately.
+  process.exit(writeFailures > 0 ? 1 : fetchFailed > 0 && !APPLY && sourced === 0 ? 1 : 0);
 }
 
 /**

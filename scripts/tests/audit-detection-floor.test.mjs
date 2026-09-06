@@ -80,6 +80,38 @@ test('(c) PASSES when issue_size agrees with sharesOffered x priceRangeMax withi
   assert.equal(checkIssueSizeSharesConsistency(row), null);
 });
 
+// T-452: real staging rows the SYMMETRIC +/-25% band false-positived because
+// ipos.issue_size is the TOTAL incl. OFS while shares_offered is the NET
+// public offer — the one-sided 0.75x-3.0x band must PASS all three.
+test('(c) T-452 PASSES the real meesho-ltd row (total incl. OFS runs 1.76x the net-offer estimate)', () => {
+  const row = { issueSize: 54_210_000_000, sharesOffered: 277_938_446, priceRangeMax: 111 };
+  assert.equal(checkIssueSizeSharesConsistency(row), null);
+});
+
+test('(c) T-452 PASSES the real wakefit row (1.82x)', () => {
+  const row = { issueSize: 12_890_000_000, sharesOffered: 36_353_276, priceRangeMax: 195 };
+  assert.equal(checkIssueSizeSharesConsistency(row), null);
+});
+
+test('(c) T-452 PASSES the real aequs row (1.77x)', () => {
+  const row = { issueSize: 9_220_000_000, sharesOffered: 42_026_913, priceRangeMax: 124 };
+  assert.equal(checkIssueSizeSharesConsistency(row), null);
+});
+
+test('(c) T-452 still FAILS a share-count-as-rupees row (issue_size == sharesOffered, ratio far below 0.75x)', () => {
+  const row = { issueSize: 17_683_000, sharesOffered: 17_683_000, priceRangeMax: 100 };
+  const violation = checkIssueSizeSharesConsistency(row);
+  assert.ok(violation !== null);
+  assert.match(violation, /far BELOW/);
+});
+
+test('(c) T-452 FAILS a wrong-unit-up row (ratio far above 3.0x)', () => {
+  const row = { issueSize: 100_000_000_000, sharesOffered: 1_000_000, priceRangeMax: 100 }; // ratio = 1000x
+  const violation = checkIssueSizeSharesConsistency(row);
+  assert.ok(violation !== null);
+  assert.match(violation, /far ABOVE/);
+});
+
 // ---- (d) lot x band SEBI window + corporate-action shape -------------------
 
 test('(d) FAILS on ICICI-Pru-AMC-shaped lot x band (Rs2,16,500 per lot)', () => {

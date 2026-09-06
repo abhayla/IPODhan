@@ -29,14 +29,14 @@
     },
     {
       "id": "c_issue_size_consistency",
-      "findingClass": "issue_size disagrees with an independently-derivable estimate (shares_offered x price)",
+      "findingClass": "issue_size (total incl. OFS) falls outside a one-sided plausibility band against shares_offered x price_range_max",
       "round7Findings": [
         "P1-3"
       ],
-      "failThreshold": "issue_size diverges from shares_offered x price_range_max by more than 25%, when both are present",
+      "failThreshold": "issue_size < 0.75x OR issue_size > 3.0x of shares_offered x price_range_max, when both are present (T-452, 2026-09-07: redefined from a symmetric +/-25% band)",
       "severity": "P1",
       "unverifiableWhen": "shares_offered not yet scraped for the row (skipped, not a violation)",
-      "note": "subscriptions.shares_offered is the NET public offer (anchor allocation excluded), so an anchor-heavy issue's issue_size can legitimately diverge from shares_offered x price_range_max by more than this check's 25% band by design - open design item, owner sign-off needed before tightening/loosening the threshold."
+      "note": "T-452 owner decision 2026-09-07: ipos.issue_size is the TOTAL issue size INCLUDING OFS (schema.ts documents fresh_issue + ofs_issue summing to issue_size); subscriptions.shares_offered is the NET public offer (anchor/market-maker excluded). Under this definition, issue_size / (shares_offered x price_range_max) legitimately runs 1.0-1.9x on real rows (Meesho 1.76x, Wakefit 1.82x, Aequs 1.77x) - the prior symmetric +/-25% band false-positived every one of them. The band is now one-sided: below 0.75x still flags a share-count/wrong-unit-down value; above 3.0x flags a wrong-unit-up value. This closed the design item the prior note left open."
     },
     {
       "id": "d_lot_band_window",

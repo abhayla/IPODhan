@@ -5,7 +5,19 @@ import {
   PRODUCTION_DATABASE_NAME,
   dropIpoCacheKeys,
   validateOverwriteAboveFloorRequiresSlug,
+  parseSlugArg,
+  upsertIssueSizeProvenance,
+  stampExactMatchProvenance,
+  BACKFILL_UPDATED_BY,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
+
+/** Builds a mocked db/tx exposing the exact chain the provenance helpers call. */
+function mockSelectReturning(rows: unknown[]) {
+  const limit = vi.fn().mockResolvedValue(rows);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  return { select: vi.fn().mockReturnValue({ from }), from, where, limit };
+}
 
 describe('validateOverwriteAboveFloorRequiresSlug (round-4: refuse a whole-table overwrite)', () => {
   it('refuses --overwrite-above-floor with no --slug', () => {
@@ -198,5 +210,178 @@ describe('resolveDatabaseName / PRODUCTION_DATABASE_NAME (prod guard)', () => {
     expect(resolveDatabaseName({ DATABASE_URL: 'postgres://u:p@host:5432/ipodhan' } as NodeJS.ProcessEnv)).toBe(
       PRODUCTION_DATABASE_NAME
     );
+  });
+});
+
+describe('parseSlugArg (T-452: --slug as the LAST argv token used to crash)', () => {
+  it('returns null slugs when --slug is absent', () => {
+    expect(parseSlugArg(['node', 'script.js', '--apply'])).toEqual({ slugs: null });
+  });
+
+  it('parses a comma-separated slug list', () => {
+    expect(parseSlugArg(['node', 'script.js', '--slug', 'a,b,c'])).toEqual({ slugs: ['a', 'b', 'c'] });
+  });
+
+  it('trims whitespace and drops empty entries', () => {
+    expect(parseSlugArg(['node', 'script.js', '--slug', ' a , b ,,c '])).toEqual({ slugs: ['a', 'b', 'c'] });
+  });
+
+  it('reports a usage error instead of crashing when --slug is the LAST argv token', () => {
+    const result = parseSlugArg(['node', 'script.js', '--apply', '--slug']);
+    expect(result.slugs).toBe(null);
+    expect(result.error).toMatch(/--slug requires a comma-separated value/);
+  });
+
+  it('reports a usage error when --slug is immediately followed by another flag', () => {
+    const result = parseSlugArg(['node', 'script.js', '--slug', '--apply']);
+    expect(result.slugs).toBe(null);
+    expect(result.error).toMatch(/--slug requires a comma-separated value/);
+  });
+});
+
+describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts field_sources in the same transaction)', () => {
+  it('inserts with previousSource=null when no field_sources row exists yet (never fabricated), source ADMIN, lineage set', async () => {
+    const sel = mockSelectReturning([]); // no existing row
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    await upsertIssueSizeProvenance(txLike, {
+      ipoId: 'ipo-1',
+      previousValue: 17_683_000,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ipoId: 'ipo-1',
+        tableName: 'ipos',
+        fieldName: 'issueSize',
+        source: 'ADMIN',
+        previousValue: '17683000',
+        previousSource: null,
+        dataLineage: expect.objectContaining({ note: expect.stringMatching(/repair:/) }),
+        updatedBy: BACKFILL_UPDATED_BY,
+      })
+    );
+    expect(onConflictDoUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('carries the EXISTING row source as previousSource, never overwriting it with a guess (still writes ADMIN)', async () => {
+    const sel = mockSelectReturning([{ source: 'NSE' }]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    await upsertIssueSizeProvenance(txLike, {
+      ipoId: 'ipo-2',
+      previousValue: null,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'ADMIN', previousValue: null, previousSource: 'NSE' })
+    );
+  });
+
+  it('(round 2, item 2) labels BOTH write paths ADMIN — the write-transaction call site no longer branches on RECHECK_ABOVE_FLOOR', async () => {
+    // Asserted at the source-text level, since main() itself is not
+    // unit-tested (network/DB side effects — file header).
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = fileURLToPath(new URL('../../../scripts/backfill-issue-size-chittorgarh-detail.ts', import.meta.url));
+    const source = readFileSync(path, 'utf8');
+    expect(source).not.toMatch(/source: RECHECK_ABOVE_FLOOR \? 'ADMIN' : 'CHITTORGARH'/);
+    expect(source).not.toMatch(/'CHITTORGARH'/); // no CHITTORGARH-labelled write path remains
+  });
+});
+
+describe('stampExactMatchProvenance (T-452 round 2, item 1: exact-match ADMIN stamp regardless of existing provenance)', () => {
+  it('(a) upgrades an existing CHITTORGARH row to ADMIN when the stored value is exactly the source figure', async () => {
+    const sel = mockSelectReturning([{ source: 'CHITTORGARH' }]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    const result = await stampExactMatchProvenance(txLike, {
+      ipoId: 'ipo-5',
+      storedValue: 54_210_000_000,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(result).toEqual({ stamped: true, previousSource: 'CHITTORGARH' });
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ipoId: 'ipo-5',
+        source: 'ADMIN',
+        previousValue: '54210000000',
+        previousSource: 'CHITTORGARH',
+        dataLineage: expect.objectContaining({ note: expect.stringMatching(/total-incl-OFS 2026-09-07/) }),
+        updatedBy: BACKFILL_UPDATED_BY,
+      })
+    );
+  });
+
+  it('(a) upgrades an existing BSE row (Phychem-shaped, live) to ADMIN', async () => {
+    const sel = mockSelectReturning([{ source: 'BSE' }]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    const result = await stampExactMatchProvenance(txLike, {
+      ipoId: 'ipo-phychem',
+      storedValue: 9_220_000_000,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(result).toEqual({ stamped: true, previousSource: 'BSE' });
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ source: 'ADMIN', previousSource: 'BSE' }));
+  });
+
+  it('(d) is idempotent: a second stamp of an already-ADMIN row stamps 0 (no insert)', async () => {
+    const sel = mockSelectReturning([{ source: 'ADMIN' }]); // already stamped by a prior run
+    const insert = vi.fn();
+    const txLike = { select: sel.select, insert } as any;
+
+    const result = await stampExactMatchProvenance(txLike, {
+      ipoId: 'ipo-5',
+      storedValue: 54_210_000_000,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(result).toEqual({ stamped: false, previousSource: 'ADMIN' });
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('(b)/(c) the caller only invokes the stamp on an EXACT match with --apply --overwrite-above-floor --slug (source-text proof, since main() is not unit-tested)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = fileURLToPath(new URL('../../../scripts/backfill-issue-size-chittorgarh-detail.ts', import.meta.url));
+    const source = readFileSync(path, 'utf8');
+    // (b) never the 40%-band OK case — gated on exact numeric equality, not decision.status alone
+    expect(source).toMatch(/const exactMatch = current !== null && value !== null && current === value;/);
+    // (c)/never-without-slug — gated on APPLY, OVERWRITE_ABOVE_FLOOR, and SLUGS together
+    expect(source).toMatch(/if \(APPLY && OVERWRITE_ABOVE_FLOOR && SLUGS && SLUGS\.length > 0 && exactMatch\)/);
+  });
+});
+
+describe('(e) below-floor write path also writes ADMIN (round 2, item 2)', () => {
+  it('the ipos-update transaction upserts provenance without a source override — upsertIssueSizeProvenance itself always writes ADMIN', async () => {
+    const sel = mockSelectReturning([]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    // Below-floor repair: e.g. Annu Projects, current=17,683,000 (share count stored as rupees).
+    await upsertIssueSizeProvenance(txLike, { ipoId: 'ipo-annu', previousValue: 17_683_000, updatedBy: BACKFILL_UPDATED_BY });
+
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ source: 'ADMIN' }));
   });
 });
