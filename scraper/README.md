@@ -418,300 +418,91 @@ Scraper logs are structured JSON for easy parsing by PM2 and monitoring tools:
 - **Error Logs**: Validation failures, database errors, retry attempts
 - **Performance Logs**: Execution time, bottleneck identification
 
-## Scheduler (Story 7.4)
+## Scheduling (due-step cycle)
 
 ### Overview
 
-The IPODhan scheduler automatically runs scrapers at defined intervals based on market hours, ensuring real-time data updates without manual intervention. It includes comprehensive cache invalidation, health checks, and daily summary reporting.
+There is no standalone scheduler process. Production and staging both run the same
+one-shot command, `tsx src/index.ts --source=all`, under PM2's `--cron-restart` (a
+fresh process spawned on the cron expression, not a long-lived daemon) — see
+`scripts/deploy-linux.sh`. Every wake, `src/scheduler/due-step-cycle.ts` (S-02) decides
+what is actually due for *this* run; most wakes do little or nothing.
 
-### Features
+**Removed 2026-09-06:** the old `SchedulerService` / `scheduler/index.ts` /
+`scheduler/config.ts` cron-tier scheduler documented below through 2026-09-05 was
+never wired into the Linux deployment (it shipped for a Windows PM2 target that was
+retired in Aug 2026) and has been deleted along with `npm run scheduler` /
+`scheduler:dev` / `scheduler:test`. `docs/scraper/scheduler-liveness.md` has the
+history.
 
-- **Automated Scraping**: Runs NSE and BSE scrapers automatically based on market hours
-- **Market-Aware Intervals**:
-  - **Market Hours** (9 AM-5 PM weekdays): Every 15 minutes
-  - **After Hours** (5 PM-9 AM weekdays): Every 30 minutes
-  - **Weekends**: Every 1 hour
-- **Job Locking**: Redis-based distributed locks prevent overlapping runs
-- **Health Checks**: Runs every 5 minutes to monitor scraper health
-- **Daily Summaries**: Generates comprehensive reports at 8 AM daily
-- **Cache Invalidation**: Automatically invalidates Redis cache after scraper runs
-- **Graceful Shutdown**: Stops jobs cleanly on SIGTERM/SIGINT
+### Cadence
+
+- **PM2 cron:** prod wakes on `*/30 * * * *` (`:00`/`:30`), staging is offset by 15
+  minutes (`:15`/`:45`) so the two never compete for the same source in the same
+  minute (`SCRAPER_CRON` env var per environment).
+- **Discovery:** the due-step cycle checks four fixed IST slots per day —
+  08:30, 11:00, 14:00, 17:30 — and runs discovery once the most recent slot has
+  passed since the last run (catch-up-safe: a missed slot due to a down process or a
+  slow prior cycle still fires on the next wake).
+- **Live numbers (GMP/subscription) for OPEN IPOs:** run on every wake inside
+  10:00-17:00 IST.
+- **Aggregator sources:** run once daily.
+- **Closed/listed IPOs:** excluded from the live-numbers hot path — quiet outside
+  their own discovery/aggregator cadence.
+
+All cadence and slot logic lives in `src/scheduler/due-step-cycle.ts` as pure,
+clock-injectable functions — see `scraper/tests/unit/scheduler/` for the cadence
+test suite, and `docs/scraper/scheduler-liveness.md` for the T-311 liveness
+investigation this design resolved.
 
 ### Environment Variables
 
 ```bash
-# Scheduler Configuration (Story 7.4)
-SCRAPER_ENABLED=true              # Enable/disable scheduler (default: true)
-SCRAPER_INTERVAL_MODE=prod        # dev | prod (affects cron intervals)
+ENABLE_DUE_STEP_SCHEDULER=true   # gates the due-step decision logic (default: on in prod)
+SCRAPER_CRON="*/30 * * * *"      # PM2 --cron-restart expression; staging uses "15,45 * * * *"
 ```
 
-**Interval Modes:**
-- **prod**: Production intervals (15/30/60 min)
-- **dev**: Development intervals (30/120/120 min - slower for testing)
-
-### Running the Scheduler
+### Running Locally
 
 ```bash
-# Start scheduler in production mode
-npm run scheduler
-
-# Start scheduler in development mode (with hot reload)
-npm run scheduler:dev
-
-# Start scheduler in test mode
-npm run scheduler:test
+# Run the scraper once, same entrypoint prod/staging use every wake
+npm start                    # = tsx src/index.ts --source=all
 ```
 
-### Scheduler Jobs
-
-| Job | Schedule (Prod) | Schedule (Dev) | Description |
-|-----|----------------|----------------|-------------|
-| NSE Market Hours | */15 9-17 * * 1-5 | */30 9-17 * * 1-5 | Every 15 min during market hours (Mon-Fri 9AM-5PM) |
-| NSE After Hours | */30 0-8,18-23 * * 1-5 | 0 */2 0-8,18-23 * * 1-5 | Every 30 min after hours (Mon-Fri) |
-| NSE Weekends | 0 */1 * * 0,6 | 0 */2 * * 0,6 | Every hour on Sat-Sun |
-| BSE Market Hours | */15 9-17 * * 1-5 | */30 9-17 * * 1-5 | Every 15 min during market hours (Mon-Fri 9AM-5PM) |
-| BSE After Hours | */30 0-8,18-23 * * 1-5 | 0 */2 0-8,18-23 * * 1-5 | Every 30 min after hours (Mon-Fri) |
-| BSE Weekends | 0 */1 * * 0,6 | 0 */2 * * 0,6 | Every hour on Sat-Sun |
-| Health Check | */5 * * * * | */10 * * * * | Every 5 minutes (24/7) |
-| Daily Summary | 0 8 * * * | Disabled | 8 AM daily (disabled in dev) |
-
-### Job Locking
-
-The scheduler uses Redis-based distributed locks to prevent overlapping job executions:
-
-- **Lock Key Format**: `scheduler:lock:{jobName}`
-- **Lock TTL**:
-  - NSE/BSE scrapers: 5 minutes
-  - Health check: 1 minute
-  - Daily summary: 2 minutes
-- **Lock Metadata**: Includes job name, process ID, acquisition time, and TTL
-- **Auto-Expiration**: Locks expire automatically via Redis TTL (prevents deadlocks)
-- **Cleanup**: Locks are released on job completion or process termination
-
-### Cache Invalidation
-
-After each successful scraper run, the scheduler invalidates all relevant cache keys:
-
-**Invalidated Keys:**
-- `ipo:detail:{slug}` - Specific IPO detail pages
-- `ipos:list:*` - All IPO listing variations
-- `ipo:search:*` - All IPO search results
-- `subscription:latest:{slug}` - Latest subscription data
-- `subscription:history:{slug}:*` - Subscription history
-- `dashboard:stats` - Dashboard statistics
-
-**Performance:**
-- Uses Redis `SCAN` for pattern matching (non-blocking, production-safe)
-- Batch deletion using Redis pipeline
-- Typically < 50ms for 1000+ keys
-
-### Health Checks
-
-The health check job monitors scraper health and alerts on failures:
-
-**Monitoring:**
-- Last successful scrape time (from `last_scraped_at` database field)
-- Consecutive failure count (from Redis)
-- Time since last scrape
-
-**Thresholds:**
-- **WARNING**: Scraper hasn't run in 1+ hour OR 3+ consecutive failures
-- **ALERT**: Scraper hasn't run in 2+ hours OR 5+ consecutive failures
-
-**Health Status:**
-- **HEALTHY**: All scrapers ran within last hour
-- **DEGRADED**: Any scraper shows WARNING
-- **CRITICAL**: Any scraper shows ALERT
-
-**Logs:**
-```json
-{
-  "level": "warn",
-  "job": "health-check",
-  "msg": "WARNING: NSE scraper has 3 consecutive failures",
-  "source": "NSE",
-  "consecutiveFailures": 3,
-  "status": "DEGRADED"
-}
-```
-
-### Daily Summaries
-
-The daily summary job runs at 8 AM and generates comprehensive metrics:
-
-**Report Includes:**
-- Total IPOs scraped (last 24 hours)
-- IPOs by source (NSE, BSE, API)
-- Scraper success/failure rates
-- Subscription updates
-- Average scrape duration
-- Errors encountered
-
-**Example Log:**
-```json
-{
-  "level": "info",
-  "job": "daily-summary",
-  "msg": "Daily summary report generated",
-  "report": {
-    "date": "2025-10-08",
-    "iposScraped": 42,
-    "nseSuccessRate": 95.5,
-    "bseSuccessRate": 92.3,
-    "subscriptionUpdates": 156,
-    "avgScrapeDuration": 35000
-  }
-}
-```
+There is no `npm run scheduler` — the "schedule" is the PM2 cron wrapper plus the
+due-step decision inside a single `--source=all` run.
 
 ### Production Deployment
 
-Deploy scheduler on VPS using PM2:
+The deploy script (`scripts/deploy-linux.sh`) owns starting the scraper under PM2 —
+nothing here needs to be run by hand:
 
-**PM2 Ecosystem File** (`ecosystem.config.js`):
-```javascript
-module.exports = {
-  apps: [{
-    name: 'ipodhan-scheduler',
-    script: 'npm',
-    args: 'run scheduler',
-    cwd: '/var/www/ipodhan/scraper',
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '512M',
-    env: {
-      NODE_ENV: 'production',
-      SCRAPER_ENABLED: 'true',
-      SCRAPER_INTERVAL_MODE: 'prod'
-    },
-    error_file: './logs/scheduler-err.log',
-    out_file: './logs/scheduler-out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    min_uptime: '10s',
-    max_restarts: 10,
-    restart_delay: 4000
-  }]
-};
-```
-
-**Deployment Commands:**
 ```bash
-# Start scheduler
-pm2 start ecosystem.config.js
-
-# Monitor scheduler
-pm2 monit
-
-# View logs
-pm2 logs ipodhan-scheduler
-
-# Restart scheduler
-pm2 restart ipodhan-scheduler
-
-# Stop scheduler
-pm2 stop ipodhan-scheduler
-
-# Delete scheduler
-pm2 delete ipodhan-scheduler
+pm2 start tsx/dist/cli.mjs --name ipodhan-scraper \
+  --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" \
+  -- src/index.ts --source=all
 ```
 
-### Graceful Shutdown
+Operate it like any PM2 app:
 
-The scheduler handles SIGTERM/SIGINT signals gracefully:
-
-1. Stop accepting new job executions
-2. Wait for running jobs to complete (30 second timeout)
-3. Release all Redis job locks
-4. Close database and Redis connections
-5. Exit with code 0
-
-**Logs:**
-```json
-{
-  "level": "info",
-  "signal": "SIGTERM",
-  "msg": "Received shutdown signal"
-}
-{
-  "level": "info",
-  "msg": "Scheduler stopped gracefully"
-}
-```
-
-### Monitoring
-
-Monitor scheduler health via PM2 logs:
-
-**Key Metrics:**
-- Job execution frequency (actual vs expected)
-- Job success/failure rates
-- Average job duration
-- Lock conflicts (jobs skipped due to locks)
-- Cache invalidation performance
-
-**Example Logs:**
-```json
-{
-  "level": "info",
-  "job": "nse-market-hours",
-  "status": "success",
-  "duration": 45000,
-  "result": {
-    "iposProcessed": 15,
-    "iposUpdated": 12,
-    "iposInserted": 3
-  }
-}
+```bash
+pm2 logs ipodhan-scraper       # tail logs
+pm2 status ipodhan-scraper     # confirm alive + last exit
 ```
 
 ### Troubleshooting
 
-#### Scheduler Not Starting
+#### Scraper wake did nothing useful
 
-**Issue**: Scheduler fails to start
+**Cause:** the due-step cycle correctly decided nothing was due this wake (e.g.
+outside 10:00-17:00 IST with no discovery slot passed). Check the run's log line for
+which steps it considered and skipped — this is expected behavior, not a fault.
 
-**Solution**:
-1. Check environment variables: `SCRAPER_ENABLED=true`
-2. Verify Redis is running: `redis-cli ping`
-3. Check logs for errors: `pm2 logs ipodhan-scheduler`
+#### Cron wake not happening
 
-#### Jobs Not Executing
-
-**Issue**: Jobs registered but not running
-
-**Solution**:
-1. Verify cron expressions are valid
-2. Check timezone is correct (Asia/Kolkata)
-3. Look for lock conflicts in logs
-
-#### Jobs Skipped (Lock Already Held)
-
-**Issue**: Logs show "Job skipped: lock already held"
-
-**Solution**:
-- Job is taking longer than interval (expected behavior)
-- Check job duration in logs
-- Consider increasing lock TTL if needed
-- Verify no orphaned locks: `redis-cli KEYS "scheduler:lock:*"`
-
-#### Cache Invalidation Fails
-
-**Issue**: Cache not being invalidated
-
-**Solution**:
-1. Verify Redis connection
-2. Check cache invalidation logs
-3. Manually flush cache: `redis-cli FLUSHDB` (development only)
-
-#### High Memory Usage
-
-**Issue**: Scheduler consuming too much memory
-
-**Solution**:
-1. Check PM2 max_memory_restart setting (default: 512MB)
-2. Verify no memory leaks in scraper code
-3. Monitor with `pm2 monit`
+1. `pm2 describe ipodhan-scraper` — confirm `cron_restart` matches `SCRAPER_CRON`.
+2. `pm2 logs ipodhan-scraper` — confirm the process is exiting cleanly each cycle
+   (a hung process blocks the next cron-triggered restart).
 
 ## BSE Scraper Implementation (Story 7.2)
 

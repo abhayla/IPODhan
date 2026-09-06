@@ -2,18 +2,19 @@
  * Listing-performance cadence guard for the one-shot production scraper.
  *
  * T-176 (docs/monitoring/scrape-cadence-measurement.md) confirmed the dedicated
- * `listingPerformanceUpdate` scheduler job (`scheduler/config.ts`,
- * `scheduler/jobs/listing-performance-update.ts`) never runs in production —
- * the only scraper process PM2 manages is the one-shot `--source=all` CLI
- * (`scraper/src/index.ts`) on a flat 30-minute cron, 24/7. That entrypoint has
- * no notion of the dedicated job's market-hours/after-hours/weekends tiers.
+ * `listingPerformanceUpdate` scheduler job (formerly `scheduler/config.ts` +
+ * `scheduler/jobs/listing-performance-update.ts`, removed as dead code — never
+ * ran in production) never fired — the only scraper process PM2 manages is
+ * the one-shot `--source=all` CLI (`scraper/src/index.ts`), whose cadence is
+ * now owned by `due-step-cycle.ts`, on a flat 30-minute cron, 24/7. That
+ * entrypoint has no notion of the old job's market-hours/after-hours/weekends
+ * tiers.
  *
- * This guard reproduces the ORIGINAL cadence intent
- * (`PROD_SCHEDULES.listingPerformanceUpdate` in `scheduler/config.ts`:
- * "Market Hours: Every 30 minutes; After Hours: Every 2 hours; Weekends: Every
- * 4 hours") on top of the flat 30-min one-shot trigger, so wiring the job into
- * the live path doesn't hammer NSE/BSE with a per-IPO live-price fetch loop
- * every single cycle outside trading hours.
+ * This guard reproduces the ORIGINAL cadence intent ("Market Hours: Every 30
+ * minutes; After Hours: Every 2 hours; Weekends: Every 4 hours") on top of
+ * the flat 30-min one-shot trigger, so wiring the job into the live path
+ * doesn't hammer NSE/BSE with a per-IPO live-price fetch loop every single
+ * cycle outside trading hours.
  */
 
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
