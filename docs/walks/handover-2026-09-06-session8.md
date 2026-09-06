@@ -133,3 +133,11 @@ Not in the release: the cadence conformance build (`IPODhan-cadence`, in progres
 Scraper tsc baseline is now 88 (main, after #333 changed the shared package) — not 87.
 7. Calendar gate scope: the cadence build (#336) gates Saturdays and market holidays like Sundays (live issues still fetch).
    The 2026-09-03 decision text names Sunday only. Recommendation: keep Sat + holidays. Owner to confirm or narrow.
+
+## Update 00:50 IST 2026-09-07: cadence merged; release candidate sha
+- #336 (calendar gate, wake budget, overrun check, reservation deadline) merged to main d3fbbc16 at 00:48; staging soaks it.
+- Release candidate for `release/prod-2026-09-07`: **086b7d1f** (main after #335, before the cadence merge). Cut at
+  d3fbbc16 instead only if the cadence soak reads clean at 19:00 (weekday behaviour unchanged for live IPOs, cycles under
+  the wake budget, `calendarSkipped` only on gated days, `m_cycle_overrun` PASS).
+- Owed proofs unchanged: 1b (HARD_FAILURE:2 on staging after ~01:26 IST) and 5 (03:45 dry-run log).
+- Scraper tsc baseline 88. Worktrees: none. Open PRs: only the three legacy ones (#236, #239, #276), untouched.
