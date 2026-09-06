@@ -111,16 +111,34 @@ function computeTimerState(closeDate: string, upiCutoffTime: string, status: UPI
   return { timeLeft: seconds, urgencyLevel };
 }
 
+// SSR-safe default for every render that is not guaranteed to match between
+// the server and the client's pre-hydration render (#206). It is a fixed
+// literal — never derived from `Date.now()` — so the server's render and the
+// client's own first render (which independently re-invokes this component
+// with its OWN clock reading, possibly seconds or, with a stale ISR cache,
+// minutes apart) always compute the identical value here. Every DOM-shape
+// and cosmetic decision below (Alert mount, "Closes:" line, icon, alert/badge
+// variant, message text) is keyed off this gated value until the component
+// has mounted; only the countdown NUMBER (`formatTimeLeft(timeLeft)`, inside
+// the pre-existing `suppressHydrationWarning` element) is allowed to show
+// the real, live-computed value pre-mount, because a text-only mismatch on a
+// single element is exactly what `suppressHydrationWarning` is for — a
+// urgency-level change is a DOM-shape change, which it cannot cover.
+const SSR_SAFE_URGENCY: UrgencyLevel = 'normal';
+
 export function UPIDeadlineTimer({
   closeDate,
   upiCutoffTime = '5:00 PM',
   status = 'OPEN'
 }: UPIDeadlineTimerProps) {
-  const [{ timeLeft, urgencyLevel }, setTimerState] = useState<TimerState>(() =>
+  const [{ timeLeft, urgencyLevel: liveUrgencyLevel }, setTimerState] = useState<TimerState>(() =>
     computeTimerState(closeDate, upiCutoffTime, status)
   );
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+
     if (status !== 'OPEN') {
       return;
     }
@@ -139,6 +157,10 @@ export function UPIDeadlineTimer({
   if (status !== 'OPEN') {
     return null;
   }
+
+  // Every structural/cosmetic branch below reads `urgencyLevel` off this
+  // mount-gated value, never the live one directly — see SSR_SAFE_URGENCY.
+  const urgencyLevel: UrgencyLevel = mounted ? liveUrgencyLevel : SSR_SAFE_URGENCY;
 
   // Format time remaining
   const formatTimeLeft = (seconds: number): string => {
@@ -251,7 +273,7 @@ export function UPIDeadlineTimer({
            urgencyLevel === 'warning' ? 'Closing Soon' :
            'Open'}
         </Badge>
-        {timeLeft > 0 && (
+        {urgencyLevel !== 'expired' && (
           <p className="text-xs text-gray-500 mt-1">
             Closes: {format(parseISO(closeDate), 'MMM dd, yyyy')} at {upiCutoffTime} IST
           </p>
@@ -276,56 +298,4 @@ export function UPIDeadlineTimer({
   }
 
   return timerDisplay;
-}
-
-// Inline timer component for headers/cards
-export function UPIDeadlineTimerInline({
-  closeDate,
-  upiCutoffTime = '5:00 PM',
-  status = 'OPEN'
-}: UPIDeadlineTimerProps) {
-  const [{ timeLeft, urgencyLevel }, setTimerState] = useState<TimerState>(() =>
-    computeTimerState(closeDate, upiCutoffTime, status)
-  );
-
-  useEffect(() => {
-    if (status !== 'OPEN') {
-      return;
-    }
-
-    const tick = () => setTimerState(computeTimerState(closeDate, upiCutoffTime, status));
-
-    tick();
-    const timer = setInterval(tick, 1000);
-
-    return () => clearInterval(timer);
-  }, [closeDate, upiCutoffTime, status]);
-
-  if (status !== 'OPEN' || timeLeft === 0) {
-    return null;
-  }
-
-  const days = Math.floor(timeLeft / 86400);
-  const hours = Math.floor((timeLeft % 86400) / 3600);
-  const minutes = Math.floor((timeLeft % 3600) / 60);
-
-  const formatCompact = () => {
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  };
-
-  return (
-    <Badge
-      variant={
-        urgencyLevel === 'critical' ? 'destructive' :
-        urgencyLevel === 'warning' ? 'secondary' :
-        'outline'
-      }
-      className="inline-flex items-center gap-1"
-    >
-      <Clock className="h-3 w-3" />
-      UPI: {formatCompact()}
-    </Badge>
-  );
 }

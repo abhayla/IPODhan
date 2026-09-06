@@ -77,4 +77,35 @@ describe('UPIDeadlineTimer hydration (T-302C F1)', () => {
     const warnings = await probeHydration('2026-08-24', serverNow);
     expect(warnings).toEqual([]);
   });
+
+  // Issue #206 (T-302C2): the per-second TEXT drift covered above is a
+  // different class from a STRUCTURAL drift — `urgencyLevel` crossing a
+  // boundary between the server render and the client's first render
+  // changes which elements are mounted (the Alert wrapper, the "Closes:"
+  // line), which `suppressHydrationWarning` on the countdown text node
+  // cannot cover. Each case below pins the server's `Date.now()` one
+  // second before a boundary and lets the probe's fixed +2000ms client
+  // clock cross it, reproducing the exact crossing the checker found.
+  //
+  // cutoff for closeDate '2026-08-24' with the default "5:00 PM" cutoff
+  // is 2026-08-24T11:30:00.000Z (17:00 IST − 5:30 UTC offset).
+  const CUTOFF_MS = new Date('2026-08-24T11:30:00.000Z').getTime();
+
+  it.each([
+    [
+      '24h boundary: normal -> warning (Alert wrapper mounts)',
+      CUTOFF_MS - 86401 * 1000, // 24h + 1s left => normal on the server
+    ],
+    [
+      '2h boundary: warning -> critical (Alert text/variant changes)',
+      CUTOFF_MS - 7201 * 1000, // 2h + 1s left => warning on the server
+    ],
+    [
+      'expiry boundary: critical -> expired ("Closes:" line unmounts)',
+      CUTOFF_MS - 1 * 1000, // 1s left => critical on the server
+    ],
+  ])('produces zero hydration warnings crossing the %s', async (_label, serverNow) => {
+    const warnings = await probeHydration('2026-08-24', serverNow);
+    expect(warnings).toEqual([]);
+  });
 });
