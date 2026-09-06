@@ -203,3 +203,56 @@ describe('parseAnchorReport - prose bid price is a REAL fallback, not dead code 
     expect(amountMatchesPrice('9,99,999', 481600, 83)).toBeNull();
   });
 });
+
+describe('parseAnchorReport - W-170b: a percent-bearing footnote AFTER the Total row must not demote it', () => {
+  // Ashutosh Fibre's page 0 text, with one extra line inserted right after the
+  // real (blank-named) Total row: a percent-bearing footnote/restated note
+  // that has neither a name nor a genuine share count - the exact shape that
+  // used to become the "last percent-bearing record" and make the real Total
+  // fail `isLastPercentBearingRecord`.
+  const TOTAL_LINE = '#  |  | 17,43,600 | 100.00% |  | 16,04,11,200';
+  const FOOTNOTE_LINE = '#  |  | Note | 60.00%';
+  const ORACLE = { investors: 5, bidPrice: 92, totalShares: 1743600, totalAmountRupees: 160411200 };
+
+  function pageWithLineAfterTotal(extraLine: string): string {
+    const lines = ashutosh.pages[0].split('\n');
+    const totalIdx = lines.indexOf(TOTAL_LINE);
+    if (totalIdx === -1) throw new Error('fixture Total line moved - update TOTAL_LINE');
+    return [...lines.slice(0, totalIdx + 1), extraLine, ...lines.slice(totalIdx + 1)].join('\n');
+  }
+
+  it('still recognises the Total row (not counted as a 6th investor) when a blank-named, non-~100% footnote follows it', () => {
+    const pages = [pageWithLineAfterTotal(FOOTNOTE_LINE), ashutosh.pages[1]];
+    const result = parseAnchorReport(pages);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.value.bidPrice).toBe(ORACLE.bidPrice);
+    expect(result.value.rows).toHaveLength(ORACLE.investors);
+    expect(result.value.totalShares).toBe(ORACLE.totalShares);
+    expect(result.value.totalAmountRupees).toBe(ORACLE.totalAmountRupees);
+    expect(result.value.percentageCheckPassed).toBe(true);
+  });
+
+  it('negative case: a genuinely investor-shaped row (name + shares + percent) after the Total still leaves the Total unrecognised, same as before this fix', () => {
+    // A real investor-shaped line (has a name AND a share count) after the
+    // Total is NOT a footnote - it means the letter's structure is not what
+    // `looksLikeTotalRow` assumes, so the guard still refuses to trust the
+    // blank-named ~100% row as the Total (unchanged from the pre-W-170b
+    // behaviour, which also rejected this shape via the old
+    // "last percent-bearing record" rule for the same underlying reason:
+    // an investor-shaped record follows it).
+    const EXTRA_INVESTOR_LINE = '# 6 | EXTRA INVESTOR | 50,000 | 5.00% | 92 | 46,00,000';
+    const pages = [pageWithLineAfterTotal(EXTRA_INVESTOR_LINE), ashutosh.pages[1]];
+    const result = parseAnchorReport(pages);
+    // The blank-named Total row is no longer recognised as the Total, so it
+    // (and the extra trailing row) are read as ordinary investor rows -
+    // `totalShares` no longer equals the letter's true total, proving the
+    // Total was NOT correctly separated out (matching pre-fix behaviour for
+    // this shape, not a new pass).
+    if (result.ok) {
+      expect(result.value.totalShares).not.toBe(ORACLE.totalShares);
+    } else {
+      expect(result.ok).toBe(false);
+    }
+  });
+});
