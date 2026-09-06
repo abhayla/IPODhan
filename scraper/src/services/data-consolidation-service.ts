@@ -2162,11 +2162,34 @@ export class DataConsolidationService {
   /**
    * Fallback consolidation when features are disabled
    * Simply accepts all incoming data
+   *
+   * T-455 (issue #174, T-284C checker F1/F2): this branch used to run
+   * completely silently — no warning at all, structured or otherwise — so a
+   * row could take the accept-all/zero-conflict-detection path for months
+   * (the exact T-282/T-283 production symptom) with nothing to alert on.
+   * The warn below fires on EVERY call to this function, regardless of why
+   * it was reached (ENABLE_DATA_CONSOLIDATION off, or CONSOLIDATION_PERCENTAGE
+   * excluding this ipoId) — the caller (consolidateIPOData) is the only
+   * place that decides to take this branch, so logging unconditionally here
+   * is equivalent to logging on every possible fallback trigger.
    */
   private fallbackConsolidation(
     input: ConsolidateIPODataInput,
     startTime: number
   ): ConsolidationResult {
+    logger.warn(
+      {
+        ipoId: input.ipoId,
+        source: input.source,
+        flag: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+        percentage: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
+        reason: !FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION
+          ? 'ENABLE_DATA_CONSOLIDATION is false/unset'
+          : 'CONSOLIDATION_PERCENTAGE rollout excludes this ipoId',
+      },
+      '[DataConsolidation] fallback mode — accepting incoming data with zero conflict detection'
+    );
+
     const fieldResults: FieldConsolidationResult[] = [];
 
     for (const [fieldName, incomingValue] of Object.entries(
