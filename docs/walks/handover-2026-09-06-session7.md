@@ -89,3 +89,10 @@ Worker rounds: ~26 Sonnet, ~15 Opus, ~7.5 M tokens. GitHub: 1 prod deploy, 12 PR
 
 ### Session totals so far (2026-09-06 00:30-04:55 IST)
 Worker rounds: ~10 Sonnet (W-168b x2, W-145 fix, W-169b x2, W-169c, W-169d, W-169e, W-170 review, W-177 RCA), 0 Opus. GitHub: 0 prod deploys, 9 PRs merged, ~14 hosted gate runs, 5 real staging deploys (superseded ones auto-cancelled). Worktrees: 8 removed, 1 created and removed (W-164b). Laptop: two background waits killed for memory.
+
+### 2026-09-06 12:55 IST update (daytime): W-164c (#317) and W-178 (#318) merged; tonight bundle = main 6039504a+
+- W-178 (HIGH, prod reliability): both slots extracted at :00/:30 at nice 0 on 2 vCPUs -> nginx starved -> Cloudflare 522 (10 of 25 sweep pages; W-163/W-172 same class). Fix on main: extractors at nice 10 (env EXTRACTOR_NICE), staging cron 15,45; W-178c (per-box flock) tomorrow. Owner offered an immediate VPS mitigation (restart staging scraper with the offset cron); not applied without the word.
+- W-164c: the prod-verify launcher never ran on Windows (file:/// guard); fixed; the sweep is real again (15 pass / 10 x 522 today = W-178).
+- W-171 RCA: DRHP path emits a cover band (no exclusion); Kanohar is MAINBOARD, the hold was the lot x cap retail-range check; fix proposal recorded (tomorrow unless the brief accepts).
+- W-163: the exact Kanohar API URL still 522 at the edge while a query-string variant is 200; purge at Cloudflare in tonight verification (owner word).
+- Stash guard hook live (user-level, 31 tests, live-proven). Hook timeouts explicit 60 s (#316).
