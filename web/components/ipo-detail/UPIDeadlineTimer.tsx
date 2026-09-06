@@ -111,20 +111,22 @@ function computeTimerState(closeDate: string, upiCutoffTime: string, status: UPI
   return { timeLeft: seconds, urgencyLevel };
 }
 
-// SSR-safe default for every render that is not guaranteed to match between
-// the server and the client's pre-hydration render (#206). It is a fixed
-// literal — never derived from `Date.now()` — so the server's render and the
-// client's own first render (which independently re-invokes this component
-// with its OWN clock reading, possibly seconds or, with a stale ISR cache,
-// minutes apart) always compute the identical value here. Every DOM-shape
-// and cosmetic decision below (Alert mount, "Closes:" line, icon, alert/badge
-// variant, message text) is keyed off this gated value until the component
-// has mounted; only the countdown NUMBER (`formatTimeLeft(timeLeft)`, inside
-// the pre-existing `suppressHydrationWarning` element) is allowed to show
-// the real, live-computed value pre-mount, because a text-only mismatch on a
-// single element is exactly what `suppressHydrationWarning` is for — a
-// urgency-level change is a DOM-shape change, which it cannot cover.
-const SSR_SAFE_URGENCY: UrgencyLevel = 'normal';
+// Round 2 (#346 review, medium finding): the round-1 fix rendered a fixed
+// 'normal' urgency pre-mount, which showed a genuinely misleading green
+// "Open" badge + no Alert for an IPO that is actually seconds from its
+// cutoff — a false all-clear, then a layout jump when the real Alert
+// mounted. Pre-mount now renders a NEUTRAL placeholder instead: the same
+// DOM shape and reserved vertical space the Alert will occupy, but
+// `aria-hidden`, `invisible` (no color, no role="alert", no urgency text)
+// — so the two renders agree structurally (`mounted` is `false` on both
+// the server and the client's pre-hydration render, so nothing here is
+// `Date.now()`-derived) without ever claiming a state that isn't true yet.
+// The live countdown NUMBER (`formatTimeLeft(timeLeft)`, inside the
+// pre-existing `suppressHydrationWarning` element) is the one exception —
+// a text-only mismatch on a single element is exactly what
+// `suppressHydrationWarning` is for.
+const ALERT_PLACEHOLDER_MESSAGE =
+  'Critical: Less than 2 hours remaining! Complete your UPI mandate approval immediately to avoid application rejection.';
 
 export function UPIDeadlineTimer({
   closeDate,
@@ -158,9 +160,8 @@ export function UPIDeadlineTimer({
     return null;
   }
 
-  // Every structural/cosmetic branch below reads `urgencyLevel` off this
-  // mount-gated value, never the live one directly — see SSR_SAFE_URGENCY.
-  const urgencyLevel: UrgencyLevel = mounted ? liveUrgencyLevel : SSR_SAFE_URGENCY;
+  // Only meaningful once `mounted` — every usage below is guarded by it.
+  const urgencyLevel: UrgencyLevel = liveUrgencyLevel;
 
   // Format time remaining
   const formatTimeLeft = (seconds: number): string => {
@@ -235,13 +236,14 @@ export function UPIDeadlineTimer({
   const timerDisplay = (
     <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
       <div className="flex items-center gap-3">
-        {getIcon()}
+        {mounted ? getIcon() : <Clock className="h-4 w-4 invisible" aria-hidden="true" />}
         <div>
           <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
             UPI Mandate Deadline
           </p>
           <p
             className={`text-2xl font-bold ${
+              !mounted ? 'text-gray-700 dark:text-gray-300' :
               urgencyLevel === 'critical' ? 'text-red-600' :
               urgencyLevel === 'warning' ? 'text-yellow-600' :
               urgencyLevel === 'expired' ? 'text-gray-500' :
@@ -267,13 +269,17 @@ export function UPIDeadlineTimer({
         </div>
       </div>
       <div className="text-right">
-        <Badge variant={getBadgeVariant()}>
-          {urgencyLevel === 'expired' ? 'Closed' :
-           urgencyLevel === 'critical' ? 'Critical' :
-           urgencyLevel === 'warning' ? 'Closing Soon' :
-           'Open'}
+        <Badge variant={mounted ? getBadgeVariant() : 'outline'} aria-hidden={!mounted || undefined}>
+          {mounted
+            ? (urgencyLevel === 'expired' ? 'Closed' :
+               urgencyLevel === 'critical' ? 'Critical' :
+               urgencyLevel === 'warning' ? 'Closing Soon' :
+               'Open')
+            // Neutral placeholder, not a claim — sized like the real
+            // labels so the badge doesn't resize once mounted.
+            : '            '}
         </Badge>
-        {urgencyLevel !== 'expired' && (
+        {(!mounted || urgencyLevel !== 'expired') && (
           <p className="text-xs text-gray-500 mt-1">
             Closes: {format(parseISO(closeDate), 'MMM dd, yyyy')} at {upiCutoffTime} IST
           </p>
@@ -281,6 +287,29 @@ export function UPIDeadlineTimer({
       </div>
     </div>
   );
+
+  // Pre-mount: reserve the Alert's vertical space (same component, same
+  // classes, so the height matches exactly) without claiming role="alert"
+  // or any urgency — invisible, aria-hidden, neutral icon, longest-case
+  // placeholder text so mounting never SHRINKS it either. `role={undefined}`
+  // overrides the Alert component's own `role="alert"` (prop spread order —
+  // see web/components/ui/alert.tsx).
+  if (!mounted) {
+    return (
+      <div className="space-y-3">
+        {timerDisplay}
+        <Alert
+          variant="default"
+          role={undefined}
+          aria-hidden="true"
+          className="invisible"
+        >
+          <Clock className="h-4 w-4" />
+          <AlertDescription>{ALERT_PLACEHOLDER_MESSAGE}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   // Alert message
   if (urgencyLevel === 'critical' || urgencyLevel === 'warning') {
