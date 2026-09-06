@@ -43,7 +43,7 @@ gh run view <id> --log | grep -E "probe port|release_scraper_cycle_locks|Deployi
 ```
 Rollback = the same command with `-f ref=<previous sha>` (must be an ancestor on the same release branch).
 The deploy log IS the Actions run log (`scripts/deploy-linux.sh` prints `==> ...` lines); nothing is written on the box.
-Every push to `main` auto-deploys staging EXCEPT markdown-only pushes (`paths-ignore: '**/*.md'`), so ledger/docs pushes are free; batch code pushes.
+NEVER push a non-md file straight to `main`: the write-ratchet (`scripts/check-write-ratchet.mjs`) scans the whole tree incl. docs/, and a raw-SQL template pushed to main on 2026-09-06 turned every open PR gate red. Code-like files go through a PR. Every push to `main` auto-deploys staging EXCEPT markdown-only pushes (`paths-ignore: '**/*.md'`), so ledger/docs pushes are free; batch code pushes.
 Tag after verification: `git tag -a prod-<date> <sha> -m "..." && git push origin prod-<date>` (a tag push does not deploy).
 
 ## 4. Post-deploy verification
