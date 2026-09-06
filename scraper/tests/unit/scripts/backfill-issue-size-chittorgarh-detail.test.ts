@@ -7,7 +7,7 @@ import {
   validateOverwriteAboveFloorRequiresSlug,
   parseSlugArg,
   upsertIssueSizeProvenance,
-  stampIssueSizeProvenanceIfMissing,
+  stampExactMatchProvenance,
   BACKFILL_UPDATED_BY,
 } from '../../../scripts/backfill-issue-size-chittorgarh-detail.js';
 
@@ -240,7 +240,7 @@ describe('parseSlugArg (T-452: --slug as the LAST argv token used to crash)', ()
 });
 
 describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts field_sources in the same transaction)', () => {
-  it('inserts with previousSource=null when no field_sources row exists yet (never fabricated)', async () => {
+  it('inserts with previousSource=null when no field_sources row exists yet (never fabricated), source ADMIN, lineage set', async () => {
     const sel = mockSelectReturning([]); // no existing row
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
@@ -250,7 +250,6 @@ describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts fiel
     await upsertIssueSizeProvenance(txLike, {
       ipoId: 'ipo-1',
       previousValue: 17_683_000,
-      source: 'CHITTORGARH',
       updatedBy: BACKFILL_UPDATED_BY,
     });
 
@@ -260,16 +259,17 @@ describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts fiel
         ipoId: 'ipo-1',
         tableName: 'ipos',
         fieldName: 'issueSize',
-        source: 'CHITTORGARH',
+        source: 'ADMIN',
         previousValue: '17683000',
         previousSource: null,
+        dataLineage: expect.objectContaining({ note: expect.stringMatching(/repair:/) }),
         updatedBy: BACKFILL_UPDATED_BY,
       })
     );
     expect(onConflictDoUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it('carries the EXISTING row source as previousSource, never overwriting it with a guess', async () => {
+  it('carries the EXISTING row source as previousSource, never overwriting it with a guess (still writes ADMIN)', async () => {
     const sel = mockSelectReturning([{ source: 'NSE' }]);
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
@@ -279,7 +279,6 @@ describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts fiel
     await upsertIssueSizeProvenance(txLike, {
       ipoId: 'ipo-2',
       previousValue: null,
-      source: 'ADMIN',
       updatedBy: BACKFILL_UPDATED_BY,
     });
 
@@ -288,59 +287,101 @@ describe('upsertIssueSizeProvenance (T-452: RCA — every WRITE now upserts fiel
     );
   });
 
-  it('uses ADMIN for the --overwrite-above-floor definitional path and CHITTORGARH for the below-floor source-backed path', async () => {
-    // Asserted at the call-site level via the source text, since main() itself
-    // is not unit-tested (network/DB side effects — file header). This proves
-    // BOTH literal source values appear as the `source:` argument passed to
-    // upsertIssueSizeProvenance in the write transaction.
+  it('(round 2, item 2) labels BOTH write paths ADMIN — the write-transaction call site no longer branches on RECHECK_ABOVE_FLOOR', async () => {
+    // Asserted at the source-text level, since main() itself is not
+    // unit-tested (network/DB side effects — file header).
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const path = fileURLToPath(new URL('../../../scripts/backfill-issue-size-chittorgarh-detail.ts', import.meta.url));
     const source = readFileSync(path, 'utf8');
-    expect(source).toMatch(/source: RECHECK_ABOVE_FLOOR \? 'ADMIN' : 'CHITTORGARH'/);
+    expect(source).not.toMatch(/source: RECHECK_ABOVE_FLOOR \? 'ADMIN' : 'CHITTORGARH'/);
+    expect(source).not.toMatch(/'CHITTORGARH'/); // no CHITTORGARH-labelled write path remains
   });
 });
 
-describe('stampIssueSizeProvenanceIfMissing (T-452: idempotent re-run durability for the "OK never touched" case)', () => {
-  it('stamps ADMIN provenance when no field_sources row exists', async () => {
-    const sel = mockSelectReturning([]);
-    const values = vi.fn().mockResolvedValue(undefined);
+describe('stampExactMatchProvenance (T-452 round 2, item 1: exact-match ADMIN stamp regardless of existing provenance)', () => {
+  it('(a) upgrades an existing CHITTORGARH row to ADMIN when the stored value is exactly the source figure', async () => {
+    const sel = mockSelectReturning([{ source: 'CHITTORGARH' }]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
     const txLike = { select: sel.select, insert } as any;
 
-    const didStamp = await stampIssueSizeProvenanceIfMissing(txLike, {
-      ipoId: 'ipo-3',
-      currentValue: 54_210_000_000,
+    const result = await stampExactMatchProvenance(txLike, {
+      ipoId: 'ipo-5',
+      storedValue: 54_210_000_000,
       updatedBy: BACKFILL_UPDATED_BY,
     });
 
-    expect(didStamp).toBe(true);
+    expect(result).toEqual({ stamped: true, previousSource: 'CHITTORGARH' });
     expect(insert).toHaveBeenCalledTimes(1);
     expect(values).toHaveBeenCalledWith(
       expect.objectContaining({
-        ipoId: 'ipo-3',
-        tableName: 'ipos',
-        fieldName: 'issueSize',
+        ipoId: 'ipo-5',
         source: 'ADMIN',
         previousValue: '54210000000',
-        previousSource: null,
+        previousSource: 'CHITTORGARH',
+        dataLineage: expect.objectContaining({ note: expect.stringMatching(/total-incl-OFS 2026-09-07/) }),
         updatedBy: BACKFILL_UPDATED_BY,
       })
     );
   });
 
-  it('does NOT stamp (and does not insert) when a field_sources row already exists', async () => {
-    const sel = mockSelectReturning([{ id: 'existing-row' }]);
-    const insert = vi.fn();
+  it('(a) upgrades an existing BSE row (Phychem-shaped, live) to ADMIN', async () => {
+    const sel = mockSelectReturning([{ source: 'BSE' }]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
     const txLike = { select: sel.select, insert } as any;
 
-    const didStamp = await stampIssueSizeProvenanceIfMissing(txLike, {
-      ipoId: 'ipo-4',
-      currentValue: 12_890_000_000,
+    const result = await stampExactMatchProvenance(txLike, {
+      ipoId: 'ipo-phychem',
+      storedValue: 9_220_000_000,
       updatedBy: BACKFILL_UPDATED_BY,
     });
 
-    expect(didStamp).toBe(false);
+    expect(result).toEqual({ stamped: true, previousSource: 'BSE' });
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ source: 'ADMIN', previousSource: 'BSE' }));
+  });
+
+  it('(d) is idempotent: a second stamp of an already-ADMIN row stamps 0 (no insert)', async () => {
+    const sel = mockSelectReturning([{ source: 'ADMIN' }]); // already stamped by a prior run
+    const insert = vi.fn();
+    const txLike = { select: sel.select, insert } as any;
+
+    const result = await stampExactMatchProvenance(txLike, {
+      ipoId: 'ipo-5',
+      storedValue: 54_210_000_000,
+      updatedBy: BACKFILL_UPDATED_BY,
+    });
+
+    expect(result).toEqual({ stamped: false, previousSource: 'ADMIN' });
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('(b)/(c) the caller only invokes the stamp on an EXACT match with --apply --overwrite-above-floor --slug (source-text proof, since main() is not unit-tested)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = fileURLToPath(new URL('../../../scripts/backfill-issue-size-chittorgarh-detail.ts', import.meta.url));
+    const source = readFileSync(path, 'utf8');
+    // (b) never the 40%-band OK case — gated on exact numeric equality, not decision.status alone
+    expect(source).toMatch(/const exactMatch = current !== null && value !== null && current === value;/);
+    // (c)/never-without-slug — gated on APPLY, OVERWRITE_ABOVE_FLOOR, and SLUGS together
+    expect(source).toMatch(/if \(APPLY && OVERWRITE_ABOVE_FLOOR && SLUGS && SLUGS\.length > 0 && exactMatch\)/);
+  });
+});
+
+describe('(e) below-floor write path also writes ADMIN (round 2, item 2)', () => {
+  it('the ipos-update transaction upserts provenance without a source override — upsertIssueSizeProvenance itself always writes ADMIN', async () => {
+    const sel = mockSelectReturning([]);
+    const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
+    const insert = vi.fn().mockReturnValue({ values });
+    const txLike = { select: sel.select, insert } as any;
+
+    // Below-floor repair: e.g. Annu Projects, current=17,683,000 (share count stored as rupees).
+    await upsertIssueSizeProvenance(txLike, { ipoId: 'ipo-annu', previousValue: 17_683_000, updatedBy: BACKFILL_UPDATED_BY });
+
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ source: 'ADMIN' }));
   });
 });
