@@ -220,6 +220,17 @@ if [ "$SLOT" = "prod" ]; then
 else
   KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-2}"
 fi
+
+# W-178: prod and staging both ran --cron-restart="*/30 * * * *" — both slots'
+# extractors spawned in the same :00/:30 window on the same 2-vCPU box, and
+# with two python processes at ~100% CPU each nginx/Next got starved long
+# enough for Cloudflare to return 522s. Staging's cron is offset to :15/:45
+# so at most one slot's extractor is ever running at a time.
+if [ "$SLOT" = "prod" ]; then
+  SCRAPER_CRON="${SCRAPER_CRON_OVERRIDE:-*/30 * * * *}"
+else
+  SCRAPER_CRON="${SCRAPER_CRON_OVERRIDE:-15,45 * * * *}"
+fi
 PROBE_PORT="${DEPLOY_PROBE_PORT:-3999}"
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-30}"
 MUTEX_MAX_WAIT="${DEPLOY_MUTEX_MAX_WAIT_SECONDS:-600}"
@@ -414,7 +425,7 @@ release_scraper_cycle_locks() {
   fi
 
   local key value ttl released=0
-  # The scraper runs under pm2 with --cron-restart=*/30 -- a fresh cycle can
+  # The scraper runs under pm2 with --cron-restart=$SCRAPER_CRON -- a fresh cycle can
   # start (and take a NEW lock with a NEW token) in the window between our
   # GET and our DEL. A plain DEL after GET would then delete a lock we never
   # read, releasing a cycle that is actually still running. EVAL makes the
@@ -477,7 +488,7 @@ resume_scraper() {
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
   ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all ) \
+      --no-autorestart --cron-restart="$SCRAPER_CRON" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
 trap resume_scraper EXIT
@@ -1155,7 +1166,7 @@ restart_pm2() {
     log "[dry-run] pm2 delete $PM2_WEB_APP"
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=$SCRAPER_CRON -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1183,7 +1194,7 @@ restart_pm2() {
   # `python`/`python3` happens to resolve on PATH.
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all )
+      --no-autorestart --cron-restart="$SCRAPER_CRON" -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 

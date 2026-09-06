@@ -2200,3 +2200,37 @@ if [ "$FAILED" -ne 0 ]; then
 fi
 
 echo "deploy-linux.test.sh: all cases passed"
+
+# --- Case 31: W-178 — per-slot scraper cron. Prod keeps */30, staging is ---
+# --- offset to :15/:45 (both slots extracting at :00/:30 starved nginx --
+# --- long enough for Cloudflare to 522), and SCRAPER_CRON_OVERRIDE wins  ---
+# --- over both defaults. Read from the dry-run log's pm2-start line so   ---
+# --- this never spawns a real pm2.                                      ---
+unset SCRAPER_CRON_OVERRIDE 2>/dev/null || true
+
+ROOT31="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT31"
+
+bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31-prod.log 2>&1 || fail "case 31: prod dry-run failed"
+if grep -qF -- '--cron-restart=*/30 * * * *' /tmp/deploy-test-31-prod.log; then
+  pass "case 31: prod dry-run pm2 start carries the default */30 * * * * cron"
+else
+  fail "case 31: prod dry-run pm2 start did not carry the default */30 * * * * cron"
+fi
+
+bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-31-staging.log 2>&1 || fail "case 31: staging dry-run failed"
+if grep -qF -- '--cron-restart=15,45 * * * *' /tmp/deploy-test-31-staging.log; then
+  pass "case 31: staging dry-run pm2 start carries the offset 15,45 * * * * cron (not prod's */30)"
+else
+  fail "case 31: staging dry-run pm2 start did not carry the offset 15,45 * * * * cron"
+fi
+
+export SCRAPER_CRON_OVERRIDE="7,37 * * * *"
+bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31-override.log 2>&1 || fail "case 31: override dry-run failed"
+if grep -qF -- '--cron-restart=7,37 * * * *' /tmp/deploy-test-31-override.log; then
+  pass "case 31: SCRAPER_CRON_OVERRIDE wins over the prod default"
+else
+  fail "case 31: SCRAPER_CRON_OVERRIDE was not honoured on prod dry-run"
+fi
+unset SCRAPER_CRON_OVERRIDE
+unset DEPLOY_ROOT

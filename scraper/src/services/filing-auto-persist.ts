@@ -84,7 +84,7 @@
  * are no longer READ to decide whether this cycle may spawn python.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -189,6 +189,7 @@ export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
  * `MEMORY_ABORT_KILLED_RE` and `isMemoryAbortStderr` keeps working.
  */
 import { isMemoryAbortStderr } from './memory-abort-stderr.js';
+import { withLowPriority } from '../utils/low-priority-spawn.js';
 export {
   MEMORY_ABORT_STDERR_RE,
   MEMORY_ABORT_KILLED_RE,
@@ -710,7 +711,52 @@ export interface ExtractorRunner {
   }): ExtractorResult;
 }
 
-/** The one `spawnSync` call, factored so the ENOENT-retry can call it twice with a different binary. */
+/**
+ * A GNU-coreutils `nice` that cannot exec its target prints
+ * `nice: 'python': No such file or directory` (or the BusyBox/POSIX
+ * equivalent) to stderr and exits 127 — the shell "command not found"
+ * convention. `spawnSync`'s own `result.error` only reports an ENOENT for
+ * the DIRECTLY-spawned binary, which under `withLowPriority` is `nice`
+ * itself (already PATH-checked, so effectively never ENOENT) — a missing
+ * `python`/`PYTHON_BIN` inside the wrapper would otherwise look like an
+ * ordinary nonzero exit and silently break `defaultExtractorRunner`'s
+ * ENOENT-retry (W-111) and its "PYTHON_BIN explicitly set but missing"
+ * hard-fail (W-111 round 2). This re-synthesizes the same
+ * `NodeJS.ErrnoException`-shaped `result.error` those callers already
+ * check, so the retry logic below needs no awareness that `nice` is
+ * involved at all.
+ */
+function remapNiceExecFailure(
+  result: SpawnSyncReturns<string>,
+  originalBin: string
+): SpawnSyncReturns<string> {
+  if (result.error || result.status !== 127) return result;
+  const stderr = String(result.stderr ?? '');
+  const looksLikeMissingExec =
+    stderr.includes(originalBin) && /no such file or directory|not found/i.test(stderr);
+  if (!looksLikeMissingExec) return result;
+  const enoent = new Error(`spawnSync ${originalBin} ENOENT`) as NodeJS.ErrnoException;
+  enoent.code = 'ENOENT';
+  enoent.path = originalBin;
+  return { ...result, error: enoent };
+}
+
+/**
+ * The one `spawnSync` call, factored so the ENOENT-retry can call it twice
+ * with a different binary.
+ *
+ * W-178: wrapped through `withLowPriority` so the extractor never contends
+ * for CPU at nice-0 against nginx/Next on the VPS. This wraps the OUTSIDE
+ * of the call (which binary + argv `spawnSync` execs) — `memory_guard.py`'s
+ * `RLIMIT_AS` ceiling still applies INSIDE the python process exactly as
+ * before; the two are independent and compose in either order (see
+ * `low-priority-spawn.ts`'s module comment). `remapNiceExecFailure` keeps
+ * a missing `python`/`PYTHON_BIN` detectable as ENOENT the same way it was
+ * before `nice` sat in front of it, so the ENOENT-retry/hard-fail logic in
+ * `defaultExtractorRunner` below is unchanged and still re-wraps correctly
+ * on the python3 retry (each retry calls this function again, which wraps
+ * the NEW bin the same way).
+ */
 function spawnExtractor(
   bin: string,
   script: string,
@@ -724,12 +770,14 @@ function spawnExtractor(
   if (typeof issueSizeRupees === 'number' && Number.isFinite(issueSizeRupees) && issueSizeRupees > 0) {
     args.push('--issue-size', String(Math.round(issueSizeRupees)));
   }
-  return spawnSync(bin, args, {
+  const wrapped = withLowPriority(bin, args);
+  const result = spawnSync(wrapped.bin, wrapped.args, {
     encoding: 'utf8',
     timeout: EXTRACT_TIMEOUT_MS,
     maxBuffer: 64 * 1024 * 1024,
     cwd: path.dirname(script),
   });
+  return wrapped.bin === 'nice' ? remapNiceExecFailure(result, bin) : result;
 }
 
 /**
