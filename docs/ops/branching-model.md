@@ -23,6 +23,7 @@ Rules
    branch PR'd into `main`.
 
 Current lines
+- `release/prod-2026-09-06` = f9b67d0a (cut 13:35 IST 2026-09-06 after a full local pass on that sha; deploy candidate for the 21:00-23:30 window; rollback = `-f ref=d38b72aa`, an ancestor).
 - `release/prod-2026-09-05` = d38b72aa (cut 16:05 IST 2026-09-05; deploy candidate for the 21:00-23:30 window).
 - production before that: 8cd287d5 (no branch; rollback = `-f ref=8cd287d5` from the same release branch, since 8cd287d5 is an ancestor).
 
