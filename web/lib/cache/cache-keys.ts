@@ -31,6 +31,7 @@ export const CacheTTL = {
   REVIEW_SUMMARY: 900, // 15 minutes (Story 11.16 requirement)
   PIPELINE_STEPS: 60, // 1 minute - S-01 per-IPO step ledger / admin grid
   SLUG_REDIRECT: 604800, // 7 days — retired slugs are immutable once written (P3-1, T-278)
+  SLUG_REDIRECT_MISS: 120, // 2 min — a miss can flip to a redirect at any time (#170); short-lived to absorb bot slug-scans without a 7-day stale-404 window
 } as const;
 
 /**

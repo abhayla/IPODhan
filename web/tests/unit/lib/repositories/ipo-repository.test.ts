@@ -1078,6 +1078,129 @@ describe('IPORepository', () => {
       expect(result).toBeNull();
     });
 
+    // Issue #170 round 1 (T-278C3 checker finding, non-blocking): a MISS was
+    // being cached under the 7-day SLUG_REDIRECT TTL with no invalidation
+    // path — a renamed IPO's old slug would keep 404ing for up to 7 days
+    // after the redirect row is written (scraper duplicate-sweep-job.ts, a
+    // separate process, has no hook to bust this repo's Redis key).
+    //
+    // Issue #170 round 2: `findRedirectSlug` runs on EVERY /ipos/<slug>
+    // request before the existence check (web/app/ipos/[slug]/page.tsx), so
+    // never caching a miss at all lets a bot scanning random slugs hit
+    // Postgres on every single request. The fix is a SHORT negative TTL
+    // (CacheTTL.SLUG_REDIRECT_MISS = 120s) for a miss, vs. the long
+    // CacheTTL.SLUG_REDIRECT (7 days) for a found redirect.
+    it('caches a miss under the short SLUG_REDIRECT_MISS TTL (120s), not the 7-day TTL (#170 round 2)', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const liveSelectMiss = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]), // not live
+      };
+      const redirectSelectMiss = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]), // no redirect row yet
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelectMiss)
+        .mockReturnValueOnce(redirectSelectMiss);
+
+      const result = await repository.findRedirectSlug('about-to-be-renamed');
+
+      expect(result).toBeNull();
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        'ipo:slug-redirect:about-to-be-renamed',
+        120,
+        'null'
+      );
+    });
+
+    it('caches a found redirect under the long 7-day SLUG_REDIRECT TTL (#170 round 2)', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const liveSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const redirectSelect = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ currentSlug: 'renamed-target-slug' }]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelect)
+        .mockReturnValueOnce(redirectSelect);
+
+      const result = await repository.findRedirectSlug('retired-slug-2');
+
+      expect(result).toBe('renamed-target-slug');
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        'ipo:slug-redirect:retired-slug-2',
+        604800,
+        JSON.stringify('renamed-target-slug')
+      );
+    });
+
+    it('a miss cached at 120s expires and a redirect written after it resolves on the next lookup once Redis reports the key gone', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const liveSelectMiss = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const redirectSelectMiss = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelectMiss)
+        .mockReturnValueOnce(redirectSelectMiss);
+
+      const firstLookup = await repository.findRedirectSlug('about-to-be-renamed-2');
+      expect(firstLookup).toBeNull();
+      expect(mockRedis.setex).toHaveBeenCalledWith(
+        'ipo:slug-redirect:about-to-be-renamed-2',
+        120,
+        'null'
+      );
+
+      // Simulate the 120s TTL having expired (Redis evicts the key) and the
+      // redirect row now existing (scraper wrote it in the interim).
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      const liveSelectAfterWrite = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const redirectSelectAfterWrite = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ currentSlug: 'renamed-target-slug-2' }]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelectAfterWrite)
+        .mockReturnValueOnce(redirectSelectAfterWrite);
+
+      const secondLookup = await repository.findRedirectSlug('about-to-be-renamed-2');
+      expect(secondLookup).toBe('renamed-target-slug-2');
+    });
+
     // T-278F2 (checker round 2 finding): a poisoned/stale `ipo:slug-redirect:*`
     // cache entry must NOT be able to shadow a currently-live slug. Round 1's
     // guard sat inside the getFromCache miss callback, so a cache HIT skipped

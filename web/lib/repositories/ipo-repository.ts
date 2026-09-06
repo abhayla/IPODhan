@@ -48,6 +48,7 @@ import {
 } from './live-metrics-merge';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
 import { logger } from '../logger';
+import { withRetry, trackRetry } from '../db/connection-retry';
 import type {
   IPO,
   IPOInsert,
@@ -1175,19 +1176,54 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * own "retired slugs are immutable once written" comment) — and even a
    * stale/wrong cached mapping can no longer shadow a live slug, because the
    * live check above already returned null before the cache was ever read.
+   *
+   * MISSES were caching under the 7-day `SLUG_REDIRECT` TTL (#170, T-278C3
+   * checker finding): the redirect row is written by a separate process
+   * (scraper's duplicate-sweep-job.ts) with no hook into this repo's Redis,
+   * so a cached "no redirect yet" result had no invalidation path and could
+   * keep 404ing a freshly-renamed IPO's old slug for up to 7 days. Round 2
+   * (#170): a MISS is still cached — `findRedirectSlug` runs on EVERY
+   * `/ipos/<slug>` request before the existence check
+   * (web/app/ipos/[slug]/page.tsx), so never caching it lets a bot scanning
+   * random slugs hit Postgres on every request — but under the SHORT
+   * `CacheTTL.SLUG_REDIRECT_MISS` (120s), not the 7-day TTL. A FOUND
+   * redirect still gets the long TTL — that mapping is genuinely immutable
+   * once written. This bypasses `BaseRepository.getFromCache` (which has no
+   * per-outcome TTL) and calls `this.redis`/`this.setCache` directly.
    */
   async findRedirectSlug(oldSlug: string): Promise<string | null> {
-    const [live] = await this.db
-      .select({ id: ipos.id })
-      .from(ipos)
-      .where(eq(ipos.slug, oldSlug))
-      .limit(1);
+    const [live] = await withRetry(
+      () =>
+        this.db
+          .select({ id: ipos.id })
+          .from(ipos)
+          .where(eq(ipos.slug, oldSlug))
+          .limit(1),
+      {
+        maxRetries: 3,
+        context: `live-slug guard for: ${oldSlug}`,
+        onRetry: trackRetry,
+      }
+    );
     if (live) return null;
 
     const cacheKey = getSlugRedirectKey(oldSlug);
 
-    return this.getFromCache(
-      cacheKey,
+    let cached: string | null = null;
+    try {
+      cached = await this.redis.get(cacheKey);
+    } catch (error) {
+      console.error(
+        `[Cache] Error getting key ${cacheKey}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+    if (cached) {
+      // currentSlug is a plain string — no Date fields to revive here.
+      return JSON.parse(cached) as string;
+    }
+
+    const currentSlug = await withRetry(
       async () => {
         const [row] = await this.db
           .select({ currentSlug: ipos.slug })
@@ -1198,8 +1234,29 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
         return row?.currentSlug ?? null;
       },
-      CacheTTL.SLUG_REDIRECT
+      {
+        maxRetries: 3,
+        context: `cache-aside query for key: ${cacheKey}`,
+        onRetry: trackRetry,
+      }
     );
+
+    // A found redirect is genuinely immutable once written -> long TTL. A
+    // miss is cached too (round 2, #170), but SHORT-lived: findRedirectSlug
+    // runs on every /ipos/<slug> request before the existence check
+    // (web/app/ipos/[slug]/page.tsx), so never caching a miss lets a bot
+    // scanning random slugs hit Postgres on every single request. 120s caps
+    // that Postgres load while staying far short of the old 7-day stale-404
+    // window a genuinely renamed IPO could otherwise sit in.
+    const ttl = currentSlug ? CacheTTL.SLUG_REDIRECT : CacheTTL.SLUG_REDIRECT_MISS;
+    this.setCache(cacheKey, currentSlug, ttl).catch((error) => {
+      console.error(
+        `[Cache] Error setting key ${cacheKey}:`,
+        error instanceof Error ? error.message : error
+      );
+    });
+
+    return currentSlug;
   }
 
   /**
