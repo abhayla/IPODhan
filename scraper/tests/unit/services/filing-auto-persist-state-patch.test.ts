@@ -11,21 +11,29 @@ import { describe, it, expect, vi } from 'vitest';
  * writer had zero coverage.
  */
 
-const { setMock, dbUpdateMock, db } = vi.hoisted(() => {
+const { setMock, dbUpdateMock, db, invalidateForIpoMock } = vi.hoisted(() => {
   const setMock = vi.fn(async () => undefined);
+  const invalidateForIpoMock = vi.fn(async () => undefined);
   const dbUpdateSet = vi.fn((patch: unknown) => {
     setMock(patch);
-    return { where: vi.fn(async () => undefined) };
+    return {
+      where: vi.fn(() => ({
+        // Cache-invalidation fix (2026-09-06): the real writer now reads the
+        // updated row's ipoId back via `.returning()` to invalidate
+        // `DocumentRepository`'s `findByIPO` cache-aside key.
+        returning: vi.fn(async () => [{ ipoId: 'ipo-1' }]),
+      })),
+    };
   });
   const dbUpdateMock = vi.fn(() => ({ set: dbUpdateSet }));
-  return { setMock, dbUpdateMock, db: { update: dbUpdateMock } };
+  return { setMock, dbUpdateMock, db: { update: dbUpdateMock }, invalidateForIpoMock };
 });
 
 vi.mock('@ipodhan/shared', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   db,
   getRedisClient: () => ({}),
-  DocumentRepository: vi.fn().mockImplementation(() => ({})),
+  DocumentRepository: vi.fn().mockImplementation(() => ({ invalidateForIpo: invalidateForIpoMock })),
   DocumentFetchStateRepository: vi.fn().mockImplementation(() => ({})),
 }));
 vi.mock('../../../src/scheduler/cache-invalidator.js', () => ({
@@ -96,6 +104,7 @@ describe('the REAL setDocumentExtractionState writer passes the patch to db.upda
   it('forwards exactly what buildExtractionStatePatch produces', async () => {
     setMock.mockClear();
     dbUpdateMock.mockClear();
+    invalidateForIpoMock.mockClear();
     const deps = buildAutoPersistDeps({} as never);
 
     const now = new Date();
@@ -108,5 +117,6 @@ describe('the REAL setDocumentExtractionState writer passes the patch to db.upda
     expect(appliedPatch).toEqual(expectedPatch);
     expect(appliedPatch.updatedAt).toBeInstanceOf(Date);
     expect((appliedPatch.updatedAt as Date).getTime()).toBeGreaterThanOrEqual(now.getTime());
+    expect(invalidateForIpoMock).toHaveBeenCalledWith('ipo-1');
   });
 });
