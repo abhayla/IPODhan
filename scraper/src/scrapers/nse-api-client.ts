@@ -575,7 +575,11 @@ export function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | '
     listingExchange: 'NSE',
     segment,
     offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
-    sector: data.sector?.trim() || undefined,
+    // T-455 (issue #242, round-7 P3-1): NSE payloads carry no `sector`/`industry`
+    // field on any endpoint this client hits (verified against every captured
+    // fixture in tests/fixtures/nse/) — `data.sector` was always `undefined`, so
+    // this key never wrote a real value. Omitted, not read, until a real NSE
+    // source for sector is found (see field-priority-matrix.ts `sector`).
     status,
     lotSize: parseInt(data.lotSize) || undefined,
     faceValue: parseFloat(data.faceValue) || undefined,
