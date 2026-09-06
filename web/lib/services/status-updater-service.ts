@@ -13,6 +13,7 @@ import { getDb } from '@/lib/db';
 import { ipos } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { getIPOBySlugKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 
 export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED';
@@ -174,8 +175,8 @@ export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
   if (changedSlugs.length > 0) {
     for (const { slug, id } of changedSlugs) {
       try {
-        await redis.del(`ipo:slug:${slug}`);
-        await redis.del(`ipo:id:${id}`);
+        await redis.del(getIPOBySlugKey(slug));
+        await redis.del(getIPOByIdKey(id));
       } catch (error) {
         console.error(`[Status Updater] Cache invalidation failed for ${slug}:`, error);
       }
