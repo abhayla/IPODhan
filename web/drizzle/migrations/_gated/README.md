@@ -51,3 +51,10 @@ Apply each via the tunnel (`localhost:15432`) with a read-back after. Note: the 
 journal is currently out of sync (pre-existing `extraction_status` enum drift blocks a
 clean `db:generate`), so these are hand-authored rather than generated — record the
 forked numbering when they are eventually folded into the journal.
+
+9. `idx_document_fetch_state_ipo` (schema.ts ~:742) — **FUTURE GATED DROP, not yet
+   parked as a numbered file here**: the new composite index
+   `document_fetch_state(ipo_id, last_attempt_at)` (added alongside migration
+   `20260906090638_icy_firelord`) makes this single-column index a redundant
+   leading prefix. Do not drop it now — add a numbered drop file here once the
+   composite index has been observed serving the relevant queries in prod.
