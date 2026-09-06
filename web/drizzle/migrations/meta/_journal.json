@@ -232,6 +232,13 @@
       "when": 1789031999000,
       "tag": "0049_ipo_details_ad_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789032000000,
+      "tag": "20260906090638_icy_firelord",
+      "breakpoints": true
     }
   ]
 }

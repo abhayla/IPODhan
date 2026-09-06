@@ -740,6 +740,12 @@ export const documentFetchState = pgTable(
       table.nextRetryAt
     ),
     ipoIdx: index('idx_document_fetch_state_ipo').on(table.ipoId),
+    // The rotation cycle's GROUP BY ipo_id / MAX(last_attempt_at) scan
+    // (document-cycle.ts CANDIDATE_IPOS_SQL) — every 30-min wake.
+    ipoLastAttemptIdx: index('idx_document_fetch_state_ipo_last_attempt').on(
+      table.ipoId,
+      table.lastAttemptAt
+    ),
   })
 );
 
