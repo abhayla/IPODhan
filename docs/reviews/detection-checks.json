@@ -88,9 +88,27 @@
       "round7Findings": [
         "P2-6"
       ],
-      "failThreshold": "(empty value2 OR value1==value2) / total unresolved >= 5%",
+      "failThreshold": "(empty value2 OR value1==value2) / total unresolved >= 5% OR total unresolved > 500 (#191 F2, unbounded-growth ceiling, T-285 11,493-row incident)",
       "severity": "P2",
       "unverifiableWhen": "data_conflicts table not present"
+    },
+    {
+      "id": "g_repeated_warn",
+      "findingClass": "a scraper_logs FAILURE/PARTIAL message repeats so often it stops functioning as a signal while the underlying rows still write through",
+      "round7Findings": [],
+      "failThreshold": "any single (truncated) error_message occurs more than 20 times in scraper_logs (status FAILURE/PARTIAL) in the last 24h",
+      "severity": "P2",
+      "unverifiableWhen": "scraper_logs table not present",
+      "note": "#191 F1 (T-297 D6): the InvIT/REIT unit-price WARN was logged 20+ times per cycle every cycle (T-272 P2-2) while the mis-typed rows were written anyway and rendered as ₹0.00."
+    },
+    {
+      "id": "g_inert_detector",
+      "findingClass": "the conflict detector reports zero new conflicts while an independent invariant (checkPriceBand) is demonstrably violated on live IPO rows — the detector is inert, not the data clean",
+      "round7Findings": [],
+      "failThreshold": "checkPriceBand violations on offering_type=IPO rows > 0 AND data_conflicts rows inserted (detected_at) in the last 24h == 0",
+      "severity": "P1",
+      "unverifiableWhen": "data_conflicts or ipos table not present",
+      "note": "#191 F3 (T-297 D6), the important one — a detector reporting zero looks like health unless cross-checked against an invariant independently known to be violated: conflictsDetected read 0 every cycle across 3,760 fields consolidated from 6 sources while T-272 P1-1 simultaneously proved real disagreements existed."
     },
     {
       "id": "g_freshness_per_type",
