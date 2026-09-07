@@ -466,12 +466,12 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     const ipoId = existingIPO?.id;
 
     // S-02 §5 (T-484, #351 — see docs/reviews/failure-classes.md row
-    // "status-restricted run drops newly announced IPO" for the full RCA):
-    // an EXISTING row still skips on its own stored status; a brand-new row
-    // (no existing match) is in-scope exactly when its OWN validated status
-    // (the value the write path would persist) falls inside allowedStatuses
-    // — the S-02 intent is "never touch out-of-scope rows", not "never
-    // discover new rows".
+    // "status-restricted aggregator run drops a name discovery hasn't
+    // reached yet" for the full RCA): an EXISTING row still skips on its own
+    // stored status; a brand-new row (no existing match) is in-scope exactly
+    // when its OWN validated status (the value the write path would
+    // persist) falls inside allowedStatuses — the S-02 intent is "never
+    // touch out-of-scope rows", not "never discover new rows".
     if (this.allowedStatuses) {
       if (existingIPO) {
         if (!this.allowedStatuses.has(existingIPO.status)) {

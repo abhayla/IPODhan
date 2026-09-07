@@ -88,6 +88,15 @@ exchange-only rows are kept for audit.
 - **Discovery job**: BSE board + NSE lists, 4x/day (08:30, 11:00, 14:00, 17:30 IST). New name
   creates the `ipos` row plus ledger rows for all steps at NOT_DUE. Withdrawn/status flips are
   detected here too.
+- **Aggregators (Chittorgarh, Moneycontrol) may also CREATE a row** (T-484, #351, 2026-09-07,
+  architect, owner go): for a name whose validated status is UPCOMING/OPEN and that the
+  discovery job has not yet created — typically an early-announced SME name Chittorgarh/
+  Moneycontrol sees before it reaches the NSE/BSE board, once-daily aggregator cadence. Every
+  validation guard still runs before the create (long-window/no-substance, corporate-action
+  shape, bare-scrip-code name, offering_type, name sanitizer, identity resolver) — this is not a
+  bypass of discovery's checks, only a second row-creating source honouring the same guards.
+  Counted per cycle as `createdUnderRestriction` in the aggregator summary log. Decided after
+  prod was found to have silently missed 6 live IPOs this way.
 - **Reconcile job** (every cycle): for each IPO not LISTED+10d: derive stage (existing
   `deriveLifecycleStage`), set DUE on steps whose window is open and whose status is NOT_DUE,
   NOT_AVAILABLE_YET, or FAILED past its backoff; then execute due steps in catalogue order.
