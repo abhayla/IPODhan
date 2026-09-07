@@ -67,6 +67,11 @@ import {
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
+import { checkPriceBand } from './lib/substance-checks.mjs';
+import {
+  classifyRepeatedMessages, classifyConflictBacklogCeiling, classifyInertDetector,
+  REPEATED_MESSAGE_MAX_OCCURRENCES_24H, CONFLICT_BACKLOG_MAX_UNRESOLVED,
+} from './lib/signal-health-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -464,14 +469,64 @@ async function checkE_unknownSlug404() {
 // ---- (f): conflict noise ratio ------------------------------------------------
 async function checkF() {
   if (!(await tableExists('data_conflicts'))) {
-    record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5%', 'UNVERIFIABLE', 'data_conflicts table not present');
+    record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog < ceiling', 'UNVERIFIABLE', 'data_conflicts table not present');
     return;
   }
   const [{ total }] = await q(`SELECT count(*)::int total FROM data_conflicts WHERE resolved_at IS NULL`);
   const [{ noise }] = await q(`SELECT count(*)::int noise FROM data_conflicts WHERE resolved_at IS NULL AND (value2 IS NULL OR value2 = '' OR value1 = value2)`);
   const cls = classifyConflictNoiseRatio(total, noise);
   if (cls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts noise ratio too high', `${noise}/${total} (${(cls.ratio * 100).toFixed(1)}%) unresolved conflicts are noise (empty value2 or value1==value2)`);
-  record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5%', cls.fail ? 'FAIL' : 'PASS', `${noise}/${total} = ${(cls.ratio * 100).toFixed(1)}%`);
+  // F2 (#191): absolute backlog ceiling, independent of the noise RATIO above —
+  // a backlog can be 100% genuine disagreements by ratio and still be
+  // unbounded because nothing prunes/upserts it (T-285 P2-3, 11,493 rows).
+  const ceilingCls = classifyConflictBacklogCeiling(total);
+  if (ceilingCls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts unresolved backlog exceeds ceiling', `${total} unresolved conflicts > ${ceilingCls.ceiling} ceiling (unbounded-growth class, T-285)`);
+  const fail = cls.fail || ceilingCls.fail;
+  record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog < ceiling', fail ? 'FAIL' : 'PASS', `${noise}/${total} = ${(cls.ratio * 100).toFixed(1)}% noise; ${total}/${ceilingCls.ceiling} backlog`);
+}
+
+// ---- (g1): repeated-WARN detector (#191 F1) ---------------------------------
+// A validation warning logged 20+ times per cycle while the mis-typed rows
+// still write through stops being a signal (T-272 P2-2, InvIT/REIT). Groups
+// scraper_logs FAILURE/PARTIAL rows by their (truncated) error message over
+// the last 24h; any single message occurring more than the threshold FAILs.
+async function checkG1_repeatedWarn() {
+  if (!(await tableExists('scraper_logs'))) {
+    record('g_repeated_warn', `no single scraper_logs message repeats >${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}x/24h`, 'UNVERIFIABLE', 'scraper_logs table not present');
+    return;
+  }
+  const rows = await q(`
+    SELECT left(error_message, 120) AS message, count(*)::int AS count
+      FROM scraper_logs
+     WHERE status IN ('FAILURE', 'PARTIAL')
+       AND error_message IS NOT NULL
+       AND created_at > now() - interval '24 hours'
+     GROUP BY 1
+     HAVING count(*) > $1
+     ORDER BY count(*) DESC`, [REPEATED_MESSAGE_MAX_OCCURRENCES_24H]);
+  const cls = classifyRepeatedMessages(rows);
+  for (const o of cls.offenders.slice(0, MAX_OFFENDERS)) {
+    notify('g_repeated_warn', 'P2', o.message, 'scraper_logs message repeated beyond threshold', `"${o.message}" logged ${o.count}x in the last 24h (>${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}) — a signal that repeats forever stops being a signal`);
+  }
+  record('g_repeated_warn', `no single scraper_logs message repeats >${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}x/24h`, cls.fail ? 'FAIL' : 'PASS', `${cls.offenders.length} offending message(s)`);
+}
+
+// ---- (g3): inert detector (#191 F3) ------------------------------------------
+// The important one, per the issue: a detector reporting zero is
+// indistinguishable from a healthy system UNLESS cross-checked against an
+// invariant independently known to be violated (T-272 P3-5, conflictsDetected
+// read 0 across 3,760 fields while real disagreements demonstrably existed).
+async function checkG3_inertDetector() {
+  if (!(await tableExists('data_conflicts')) || !(await tableExists('ipos'))) {
+    record('g_inert_detector', 'price-band violations without any conflicts inserted in 24h -> detector inert', 'UNVERIFIABLE', 'data_conflicts or ipos table not present');
+    return;
+  }
+  const priceRows = await q(`SELECT price_range_min, price_range_max FROM ipos WHERE ${REAL_IPO}`);
+  const violations = priceRows.filter((r) => checkPriceBand(r) !== null).length;
+  const [{ inserted }] = await q(`SELECT count(*)::int inserted FROM data_conflicts WHERE detected_at > now() - interval '24 hours'`);
+  const cls = classifyInertDetector(violations, inserted);
+  if (cls.fail) notify('g_inert_detector', 'P1', 'aggregate', 'conflict detector appears inert', `${violations} IPO row(s) fail checkPriceBand (real corruption exists) but 0 data_conflicts rows were inserted in the last 24h — the detector is inert, not the data clean`);
+  record('g_inert_detector', 'price-band violations without any conflicts inserted in 24h -> detector inert', cls.fail ? 'FAIL' : 'PASS', `${cls.violations} price-band violation(s), ${cls.inserted} conflict(s) inserted/24h`);
 }
 
 // ---- (m): document_fetch_state — did the document machine do its job? ---------
@@ -1187,6 +1242,8 @@ async function main() {
   await checkE();
   await checkE_unknownSlug404();
   await checkF();
+  await checkG1_repeatedWarn();
+  await checkG3_inertDetector();
   await checkG();
   await checkH();
   checkI();
