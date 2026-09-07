@@ -339,3 +339,6 @@ IPODhan-t*/
 
 # W-142 local investigation scratch (downloaded ZIPs/PDFs — never commit)
 .scratch/
+
+# T-496 failure-delta local state (per-slot previous failure sets, laptop-only)
+/scripts/ops/state/
