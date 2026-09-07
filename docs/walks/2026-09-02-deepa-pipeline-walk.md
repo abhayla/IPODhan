@@ -1099,3 +1099,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 13:33 IST — #397 merged (stop-guard round 4; 19/19 on main). T-494 never-escalates floor check (#396) dispatched (Sonnet, Tier B). Queue now: T-494 building; owner-gated items only otherwise; 19:00 staging read next.
 
 - 13:38 IST — T-494 built: PR #398 (4th shape of checkExtractionStuck: FAILED, no HARD_FAILURE, retry_count 3..10, live window, past the 48h floor; retry_count wired into the floor query; staging run clean). Reproduced by me: 66/66 + 105/105 + registry --check PASS. Note: the worker junction-linked node_modules from the main checkout into its worktree; the helper removes it via wt-rm (links deleted as links). Tier B dispatched.
+
+- 13:45 IST — tick: no agents running. VPS prod f9b67d0a, staging 25bd7fa0 (main after #397); last cycles prod 333 s / 38 calls / 0 failed (long but clean), staging 16 s / 15 calls / 0; disk 57%, load 0.65, OOM 0. Landed: #398 merged (never-escalates detection; #396 closed). Worktrees: relverify only. Stash: the 10 pre-existing.
