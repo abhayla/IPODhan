@@ -111,7 +111,14 @@
 # test hook — colon-separated release dirs to simulate as "still referenced
 # by a live pm2 process" during pruning), DEPLOY_DRYRUN_VERSION_MISMATCH
 # (dry-run test hook — set to force the post-flip /api/version sha check to
-# simulate a mismatch).
+# simulate a mismatch), ALLOW_UNMERGED_DEPLOY (escape hatch for the G-I #194
+# deployed-sha lineage gate below — deploy a sha that is NOT an ancestor of
+# origin/main; logs loudly and fires a Notifier P2), DEPLOY_TEST_LINEAGE_SHA
+# (dry-run test hook — set to exercise the REAL lineage check in --dry-run
+# against an explicit sha, since $SHA in dry-run is normally the test
+# runner's own unmerged branch tip), DEPLOY_LINEAGE_REPO_ROOT (test hook —
+# run the lineage check's git commands against a different repo, e.g. a
+# shallow clone, instead of $REPO_ROOT).
 
 set -Eeuo pipefail
 
@@ -1170,6 +1177,115 @@ if ! probe_release; then
 fi
 if [ "$PROBE_CLEANUP_FAILED" -ne 0 ]; then
   fatal "pre-flip probe cleanup failed for $RELEASE_NAME — a stray process may still be listening on PROBE_PORT $PROBE_PORT; refusing to flip $CURRENT_LINK. Investigate and kill it manually before retrying."
+fi
+
+# --------------------------------- 8.5 deployed-sha lineage gate (G-I, #194)
+# T-264 P2-4: prod once served 1a0b76f, a commit that existed only on an
+# unmerged branch (origin/fleet/T-261-gmp-subscription-coverage), while
+# simultaneously MISSING main's merged fix — prod carried unreviewed code
+# AND lacked a merged fix at the same time. The served-SHA probe
+# (scripts/deploy-status.mjs) only proves served==deployed; it never proves
+# deployed IS on origin/main. This is the missing half, and it runs here —
+# the last gate before the flip — so a FATAL leaves 'current' untouched,
+# exactly like the health probe above.
+#
+# Escape hatch: a genuine hotfix committed only on a release branch (not yet
+# merged to main) is a real scenario release/prod-<date> branches don't
+# cover on their own — ALLOW_UNMERGED_DEPLOY=1 bypasses the refusal, but
+# logs loudly and fires a Notifier P2 naming the sha, so the bypass is
+# visible rather than silent.
+notify_unmerged_deploy() {
+  local bad_sha="$1" check_repo_root="$2"
+  local branch_hint
+  branch_hint="$(cd "$check_repo_root" && git branch -r --contains "$bad_sha" 2>/dev/null | tr -d ' ' | paste -sd, - || true)"
+  [ -z "$branch_hint" ] && branch_hint="(no remote branch found containing it)"
+
+  local notifier_env="${NOTIFIER_ENV:-/root/notifier/.env}"
+  local global_env="${DEPLOY_GLOBAL_ENV:-/root/Abhay/GLOBAL.env}"
+  if [ -f "$notifier_env" ]; then
+    set -a; source "$notifier_env"; set +a
+  elif [ -f "$global_env" ]; then
+    set -a; source "$global_env"; set +a
+  fi
+
+  if [ -z "${NOTIFIER_KEY_IPODHAN:-}" ]; then
+    warn "NOTIFY-SKIP: NOTIFIER_KEY_IPODHAN not set — cannot POST the ALLOW_UNMERGED_DEPLOY P2 for $bad_sha"
+    return 0
+  fi
+
+  local body="$bad_sha ($branch_hint) deployed to slot $SLOT via ALLOW_UNMERGED_DEPLOY=1 — NOT an ancestor of origin/main."
+  local payload
+  payload="$(python3 -c "
+import json, sys
+print(json.dumps({
+  'project': 'ipodhan',
+  'severity': 'P2',
+  'title': 'Unmerged-branch deploy (ALLOW_UNMERGED_DEPLOY)',
+  'body': sys.argv[1],
+  'type': 'deploy-lineage',
+  'dedupeKey': 'deploy-lineage-' + sys.argv[2],
+}))
+" "$body" "$SLOT-$bad_sha" 2>/dev/null || true)"
+  if [ -n "$payload" ]; then
+    curl -s -m 15 -X POST "${DEPLOY_NOTIFIER_URL:-http://127.0.0.1:3300/notify}" \
+      -H "X-Api-Key: $NOTIFIER_KEY_IPODHAN" -H "Content-Type: application/json" \
+      -d "$payload" >/dev/null 2>&1 || warn "Notifier POST failed for the ALLOW_UNMERGED_DEPLOY P2 (non-fatal)"
+  else
+    warn "could not build the Notifier payload for the ALLOW_UNMERGED_DEPLOY P2 (python3 unavailable?)"
+  fi
+}
+
+assert_deployed_sha_lineage() {
+  local check_sha="$1"
+  local check_repo_root="${DEPLOY_LINEAGE_REPO_ROOT:-$REPO_ROOT}"
+
+  local fetch_err="/tmp/deploy-lineage-fetch-$$.err"
+  if ! (cd "$check_repo_root" && git fetch origin main --quiet) 2>"$fetch_err"; then
+    local msg; msg="$(cat "$fetch_err" 2>/dev/null)"; rm -f "$fetch_err"
+    fatal "deployed-sha lineage check: 'git fetch origin main' failed ($msg) — cannot verify $check_sha is on origin/main"
+  fi
+  rm -f "$fetch_err"
+
+  local is_shallow=0
+  [ -f "$check_repo_root/.git/shallow" ] && is_shallow=1
+
+  if ! (cd "$check_repo_root" && git merge-base --is-ancestor "$check_sha" origin/main) 2>/dev/null; then
+    if [ "$is_shallow" -eq 1 ]; then
+      log "shallow checkout detected ($check_repo_root/.git/shallow) — deepening history before the lineage verdict"
+      (cd "$check_repo_root" && git fetch origin main --quiet --deepen=1000000) 2>/dev/null \
+        || (cd "$check_repo_root" && git fetch --unshallow origin main --quiet) 2>/dev/null || true
+      if (cd "$check_repo_root" && git merge-base --is-ancestor "$check_sha" origin/main) 2>/dev/null; then
+        log "lineage OK (after deepen): $check_sha is on origin/main"
+        return 0
+      fi
+    fi
+
+    if [ "${ALLOW_UNMERGED_DEPLOY:-0}" = "1" ]; then
+      warn "ALLOW_UNMERGED_DEPLOY=1 — $check_sha is NOT an ancestor of origin/main; deploying anyway (escape hatch). Firing a Notifier P2."
+      notify_unmerged_deploy "$check_sha" "$check_repo_root"
+      return 0
+    fi
+
+    fatal "$check_sha is not an ancestor of origin/main - refusing to flip (set ALLOW_UNMERGED_DEPLOY=1 to override for a deliberate hotfix — this fires a Notifier P2 naming the sha)"
+  fi
+
+  log "lineage OK: $check_sha is on origin/main"
+}
+
+if (( DRY_RUN )); then
+  if [ -n "${DEPLOY_TEST_LINEAGE_SHA:-}" ]; then
+    # dry-run test hook (mirrors DEPLOY_FAIL_BUILD/DEPLOY_FAIL_PREFLIGHT):
+    # $SHA in --dry-run defaults to the test runner's OWN branch tip
+    # (COMMITISH defaults to HEAD), which is never an ancestor of
+    # origin/main pre-merge — checking it for real would fail every OTHER
+    # dry-run case in scripts/tests/deploy-linux.test.sh. Only run the real
+    # check when a test explicitly opts in with a specific sha to verify.
+    assert_deployed_sha_lineage "$DEPLOY_TEST_LINEAGE_SHA"
+  else
+    log "[dry-run] skipping deployed-sha lineage check (set DEPLOY_TEST_LINEAGE_SHA to exercise it)"
+  fi
+else
+  assert_deployed_sha_lineage "$SHA"
 fi
 
 # ------------------------------------------------------- 9. atomic pointer flip

@@ -2260,3 +2260,135 @@ else
 fi
 unset SCRAPER_CRON_OVERRIDE
 unset DEPLOY_ROOT
+
+# --- Case 32: G-I (#194) — deployed-sha lineage gate before the flip -------
+# T-264 P2-4: prod once served 1a0b76f, a commit that existed only on an
+# unmerged branch, while missing main's merged fix. The served-SHA probe
+# only proves served==deployed; it never proved deployed is ON origin/main.
+# These cases exercise the REAL `git fetch origin main` + `git merge-base
+# --is-ancestor` check against this repo's actual history via the
+# DEPLOY_TEST_LINEAGE_SHA dry-run test hook — NOT against $SHA (which in
+# dry-run defaults to the test runner's own PR branch tip, never yet an
+# ancestor of origin/main pre-merge; checking it for real would fail every
+# OTHER case in this suite).
+REPO_ROOT_FOR_TEST="$(cd "$SCRIPT_DIR/../.." && pwd)"
+(cd "$REPO_ROOT_FOR_TEST" && git fetch origin main --quiet) 2>/tmp/deploy-test-32-fetch.log \
+  || { fail "case 32 setup: 'git fetch origin main' failed"; cat /tmp/deploy-test-32-fetch.log; }
+ORIGIN_MAIN_SHA="$(cd "$REPO_ROOT_FOR_TEST" && git rev-parse origin/main)"
+
+# --- Case 32a: ancestor of origin/main -> proceeds, logs "lineage OK" ------
+ROOT32A="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT32A"
+export DEPLOY_TEST_LINEAGE_SHA="$ORIGIN_MAIN_SHA"
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32a.log 2>&1; then
+  if grep -qF "lineage OK: $ORIGIN_MAIN_SHA is on origin/main" /tmp/deploy-test-32a.log; then
+    pass "case 32a: sha on origin/main proceeds and logs lineage OK"
+  else
+    fail "case 32a: expected a 'lineage OK' line naming $ORIGIN_MAIN_SHA"
+    cat /tmp/deploy-test-32a.log
+  fi
+else
+  fail "case 32a: dry-run deploy of an origin/main-ancestor sha should have exited 0"
+  cat /tmp/deploy-test-32a.log
+fi
+unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
+
+# --- Case 32b: NOT an ancestor of origin/main -> exit 1, FATAL names the ---
+# --- sha, and 'current' is never flipped (built via `git commit-tree` —   -
+# --- a real, valid dangling commit object on top of origin/main's tip     -
+# --- that was never merged back into it, i.e. exactly the "unmerged       -
+# --- branch" shape from T-264 P2-4, with no working-tree/branch mutation).
+NON_ANCESTOR_SHA="$(cd "$REPO_ROOT_FOR_TEST" && \
+  git commit-tree "$(git rev-parse "$ORIGIN_MAIN_SHA^{tree}")" \
+    -p "$ORIGIN_MAIN_SHA" -m "test: dangling commit for #194 lineage test (never merged)")"
+ROOT32B="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT32B"
+export DEPLOY_TEST_LINEAGE_SHA="$NON_ANCESTOR_SHA"
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32b.log 2>&1; then
+  fail "case 32b: an unmerged-branch sha should have refused to deploy, but it exited 0"
+  cat /tmp/deploy-test-32b.log
+else
+  if grep -qF "FATAL: $NON_ANCESTOR_SHA is not an ancestor of origin/main" /tmp/deploy-test-32b.log; then
+    pass "case 32b: unmerged-branch sha exits non-zero with a FATAL line naming the sha"
+  else
+    fail "case 32b: expected a FATAL line naming $NON_ANCESTOR_SHA"
+    cat /tmp/deploy-test-32b.log
+  fi
+  if grep -q '==> Flipping ' /tmp/deploy-test-32b.log; then
+    fail "case 32b: log reached the flip line — the lineage gate did not abort before it"
+  else
+    pass "case 32b: no flip line reached before the lineage abort"
+  fi
+fi
+unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
+
+# --- Case 32c: escape hatch ALLOW_UNMERGED_DEPLOY=1 -> proceeds, logs loudly
+ROOT32C="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT32C"
+export DEPLOY_TEST_LINEAGE_SHA="$NON_ANCESTOR_SHA"
+export ALLOW_UNMERGED_DEPLOY=1
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32c.log 2>&1; then
+  if grep -qF "ALLOW_UNMERGED_DEPLOY=1" /tmp/deploy-test-32c.log && grep -qF "$NON_ANCESTOR_SHA" /tmp/deploy-test-32c.log; then
+    pass "case 32c: escape hatch proceeds and logs loudly, naming the sha"
+  else
+    fail "case 32c: expected a loud ALLOW_UNMERGED_DEPLOY log line naming $NON_ANCESTOR_SHA"
+    cat /tmp/deploy-test-32c.log
+  fi
+  if grep -q '==> Flipping ' /tmp/deploy-test-32c.log; then
+    pass "case 32c: deploy proceeded to the flip under the escape hatch"
+  else
+    fail "case 32c: escape hatch should have let the deploy reach the flip"
+  fi
+else
+  fail "case 32c: ALLOW_UNMERGED_DEPLOY=1 should have let the deploy proceed, but it exited non-zero"
+  cat /tmp/deploy-test-32c.log
+fi
+unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT ALLOW_UNMERGED_DEPLOY
+
+# --- Case 32d: shallow checkout — the check must deepen, not false-refuse -
+# --- a real ancestor it simply can't see yet at depth 1. Uses a REAL       -
+# --- --depth 1 clone of the actual GitHub origin (network required, same  -
+# --- as `git fetch origin main` above) and DEPLOY_LINEAGE_REPO_ROOT to    -
+# --- point the check at it while the script itself still runs from here.
+ORIGIN_URL="$(cd "$REPO_ROOT_FOR_TEST" && git remote get-url origin)"
+SHALLOW_DIR="$(mktemp -d)"
+if git clone --depth 1 --branch main "$ORIGIN_URL" "$SHALLOW_DIR" >/tmp/deploy-test-32d-clone.log 2>&1 \
+  && [ -f "$SHALLOW_DIR/.git/shallow" ]; then
+  OLDER_ANCESTOR_SHA="$(cd "$REPO_ROOT_FOR_TEST" && git rev-parse origin/main~5)"
+  ROOT32D="$(fresh_root)"
+  export DEPLOY_ROOT="$ROOT32D"
+  export DEPLOY_TEST_LINEAGE_SHA="$OLDER_ANCESTOR_SHA"
+  export DEPLOY_LINEAGE_REPO_ROOT="$SHALLOW_DIR"
+  if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32d.log 2>&1; then
+    if grep -qF "shallow checkout detected" /tmp/deploy-test-32d.log \
+      && grep -qF "lineage OK" /tmp/deploy-test-32d.log; then
+      pass "case 32d: shallow checkout deepens then confirms lineage OK for a real ancestor"
+    else
+      fail "case 32d: expected a shallow-deepen line then a lineage OK line"
+      cat /tmp/deploy-test-32d.log
+    fi
+  else
+    fail "case 32d: a real ancestor sha should proceed even from a shallow checkout (after deepening)"
+    cat /tmp/deploy-test-32d.log
+  fi
+  unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT DEPLOY_LINEAGE_REPO_ROOT
+else
+  skip "case 32d: could not create a real shallow clone of $ORIGIN_URL (no network in this environment) — see /tmp/deploy-test-32d-clone.log"
+fi
+rm -rf "$SHALLOW_DIR" 2>/dev/null || true
+
+# --- Case 32e: non-dry-run path also calls the lineage check (no test hook
+# --- gate) — proven statically since a real deploy needs a real box; the
+# --- guard is that assert_deployed_sha_lineage "$SHA" appears in the
+# --- non-DRY_RUN branch, not behind a dry-run-only conditional.
+if grep -qF 'assert_deployed_sha_lineage "$SHA"' "$DEPLOY_SCRIPT"; then
+  pass "case 32e: the real (non-dry-run) deploy path calls the lineage check unconditionally"
+else
+  fail "case 32e: expected assert_deployed_sha_lineage \"\$SHA\" wired into the real deploy path"
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+  echo "deploy-linux.test.sh: FAILED"
+  exit 1
+fi
+echo "deploy-linux.test.sh: all cases passed (including case 32)"

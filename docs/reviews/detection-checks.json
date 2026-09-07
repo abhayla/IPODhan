@@ -329,6 +329,17 @@
       "failThreshold": "any UPCOMING/OPEN/CLOSED/LISTED IPO's DRHP/RHP/PROSPECTUS document has extraction_status=MANUAL_REVIEW, a sibling document_fetch_state.state=EXTRACT_FAILED, or extraction_status=FAILED with an extraction_error starting HARD_FAILURE:, for more than 48h",
       "severity": "P1",
       "unverifiableWhen": "never - always runs against documents/document_fetch_state joined to ipos"
+    },
+    {
+      "id": "g_deployed_sha_lineage",
+      "findingClass": "the sha deploy-linux.sh is about to flip to is not an ancestor of origin/main (T-264 P2-4: prod once served a commit that existed only on an unmerged branch while missing main's merged fix)",
+      "round7Findings": [],
+      "sourceTask": "T-297 discovery-coverage meta-analysis (#194)",
+      "registryClass": "deployed-artifact-lineage-unverified",
+      "failThreshold": "DEPLOY_SHA is not `git merge-base --is-ancestor`-reachable from origin/main at flip time (checked immediately before the atomic `current` symlink flip, after the pre-flip health probe)",
+      "severity": "P1",
+      "unverifiableWhen": "never for a real deploy (git fetch origin main + merge-base always run before the flip); ALLOW_UNMERGED_DEPLOY=1 deliberately bypasses it for a genuine pre-merge hotfix and fires a Notifier P2 naming the sha+branch so the bypass is never silent",
+      "note": "this is a deploy-time gate in scripts/deploy-linux.sh (assert_deployed_sha_lineage), not a scripts/audit-detection-floor.mjs cron check — it is NOT wired into vps-data-audit-cron.sh's nightly run. Listed here so round reviews can cite the class as covered. Test coverage: scripts/tests/deploy-linux.test.sh case 32 (a-e)."
     }
   ],
   "notCoveredByThisManifest": [
