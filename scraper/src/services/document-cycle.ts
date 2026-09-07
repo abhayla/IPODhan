@@ -1097,14 +1097,14 @@ export async function runDocumentCycle(
       // T-503 / #416: this same discovery fetch parsed real lead-manager
       // names off the BSE/NSE core-API payload (result.leadManagers) — write
       // them through the shared path when the main scrape cycle never
-      // populated the field (recordDiscoveredLeadManagers is write-once, so
-      // this never overwrites a ranked source's value). Non-fatal — this is
-      // bookkeeping-adjacent discovery data, never a reason to fail a cycle.
-      if (result.leadManagers.length > 0) {
+      // populated the field. recordDiscoveredLeadManagers's write-once guard
+      // is now a SQL WHERE clause evaluated at write time (not a snapshot
+      // read here), so it never overwrites a ranked source's value even
+      // under a concurrent cycle. Non-fatal — bookkeeping-adjacent discovery
+      // data, never a reason to fail a cycle.
+      if (result.leadManagers.length > 0 && result.leadManagerSource) {
         try {
-          await recordDiscoveredLeadManagers(ipoRepository, ipo.id, result.leadManagers, {
-            leadManagers: ipo.leadManagers ?? null,
-          });
+          await recordDiscoveredLeadManagers(ipo.id, result.leadManagers, result.leadManagerSource);
         } catch (error) {
           logger.warn(
             { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },

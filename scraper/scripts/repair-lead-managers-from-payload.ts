@@ -24,30 +24,30 @@
  * Dry-run by default (`npx tsx scripts/repair-lead-managers-from-payload.ts`
  * with the tunnel env exported); `--apply` writes; `--allow-prod` required on
  * top of `--apply` against the `ipodhan` database (openRepairDb refuses
- * otherwise). Ledger written to
- * `D:/Abhay/GetWorkDone/evidence/2026-09-08-T-503/lead-managers-repair-ledger.json`.
+ * otherwise). Ledger written repo-relative to
+ * `evidence/2026-09-08-T-503/lead-managers-repair-ledger.json` via
+ * `repair-tool.ts`'s `writeLedgerFile`.
  */
 import { Pool } from 'pg';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { parseBseParties } from '../src/services/bse-party-parser.js';
-// T-503: `@ipodhan/shared/db` (the aggregator) conflicts with repair-tool.js's
-// own `@ipodhan/shared/db/schema` import in this tsx/esbuild module graph —
-// reproduced with repair-dates-and-leadmanagers-t299.ts too (pre-existing,
-// not introduced here): "does not provide an export named
-// configureUtcTimestampParsing" even though the export exists. The deep
-// import below resolves straight to the same file without going through the
-// aggregator and sidesteps it.
-import { configureUtcTimestampParsing } from '@ipodhan/shared/db/timezone-config';
-import { openRepairDb, type ExecuteLike } from './lib/repair-tool.js';
-import { pathToFileURL } from 'node:url';
+import { recordDiscoveredLeadManagers } from '../src/services/data-persister.js';
+import { db } from '@ipodhan/shared/db';
+import { openRepairDb, writeLedgerFile, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
-configureUtcTimestampParsing();
+// Importing `db` above already runs `configureUtcTimestampParsing()` at
+// module load (packages/shared/src/db/index.ts). Writes route through
+// `recordDiscoveredLeadManagers` (data-persister.ts) — no IPORepository/redis
+// needed here (that door owns its own field_sources + cache concerns).
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
-const LEDGER_DIR = 'D:/Abhay/GetWorkDone/evidence/2026-09-08-T-503';
-const LEDGER_PATH = `${LEDGER_DIR}/lead-managers-repair-ledger.json`;
+// Repo-relative, not a hardcoded D:/ path (#417 round 2 MINOR): scripts/ ->
+// repo root is two levels up.
+const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const LEDGER_PATH = join(REPO_ROOT, 'evidence', '2026-09-08-T-503', 'lead-managers-repair-ledger.json');
 
 const BSE_API_BASE = 'https://api.bseindia.com/BseIndiaAPI/api/';
 const BSE_HEADERS = {
@@ -67,47 +67,10 @@ const pool = new Pool({
   password: process.env.DATABASE_PASSWORD,
 });
 
-// Same drizzle-sql -> pg.query forwarder as repair-dates-and-leadmanagers-t299.ts
-// (see that file's header for why a raw pg Pool is used here).
-function mapSqlToPgQuery(query: unknown): { text: string; params: unknown[] } {
-  const q = query as { queryChunks?: unknown[] } | undefined;
-  if (!q || !Array.isArray(q.queryChunks)) {
-    throw new Error(
-      'repair-lead-managers-from-payload: cannot forward this query to pool.query() — expected a drizzle-orm sql`` object with .queryChunks, got: ' +
-        JSON.stringify(query)
-    );
-  }
-  let text = '';
-  const params: unknown[] = [];
-  for (const chunk of q.queryChunks) {
-    if (typeof chunk === 'string') {
-      text += chunk;
-      continue;
-    }
-    const c = chunk as { value?: unknown } | undefined;
-    if (c && Array.isArray(c.value)) {
-      // drizzle-orm StringChunk: a raw SQL fragment, not a bound parameter.
-      text += c.value.join('');
-    } else if (c && 'value' in c) {
-      // drizzle-orm Param: a bound parameter.
-      params.push(c.value);
-      text += `$${params.length}`;
-    } else {
-      throw new Error(
-        `repair-lead-managers-from-payload: cannot forward unsupported SQL chunk to pool.query(): ${JSON.stringify(chunk)}`
-      );
-    }
-  }
-  return { text, params };
-}
-
-const repairDbGuard: ExecuteLike = {
-  execute: async (query: unknown) => {
-    const { text, params } = mapSqlToPgQuery(query);
-    const result = await pool.query(text, params);
-    return { rows: result.rows };
-  },
-};
+// `db` (the shared drizzle handle, same DATABASE_HOST/PORT/NAME env as `pool`
+// below) already implements ExecuteLike's `.execute(sql\`...\`)` natively —
+// no raw-SQL forwarder needed for the guard.
+const repairDbGuard: ExecuteLike = db;
 
 async function fetchBseLeadManagers(ipoNo: number): Promise<string[] | null> {
   const url = `${BSE_API_BASE}GetMkt_ISSUE_BBS_IPO/w?IPO_NO=${ipoNo}`;
@@ -127,7 +90,6 @@ async function main() {
   console.log(`LEAD MANAGERS FROM BSE PAYLOAD REPAIR (T-503 / #416) - ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
 
-  mkdirSync(LEDGER_DIR, { recursive: true });
   const ledger: unknown[] = [];
 
   const { dbName } = await openRepairDb(repairDbGuard, {
@@ -187,14 +149,13 @@ async function main() {
     console.log(`  ${APPLY ? 'UPDATE' : 'would update'}: ${row.slug} lead_managers -> ${JSON.stringify(sanitized)}`);
 
     if (APPLY) {
-      // Write-once, mirroring recordDiscoveredLeadManagers: re-check emptiness
-      // at write time so a concurrent scraper cycle's write always wins.
-      const result = await pool.query(
-        `update ipos set lead_managers = $1::jsonb, updated_at = now()
-          where id = $2 and (lead_managers is null or jsonb_array_length(lead_managers) = 0)`,
-        [JSON.stringify(sanitized), row.id]
-      );
-      if (result.rowCount && result.rowCount > 0) written++;
+      // Sanctioned door: the SAME transactional, write-once, provenance-
+      // tracking function the code fix added (data-persister.ts). Its WHERE
+      // guard is evaluated by Postgres inside the UPDATE, so a concurrent
+      // scraper cycle's write always wins over this repair — no separate
+      // pre-read needed here.
+      const { written: didWrite } = await recordDiscoveredLeadManagers(row.id, rawNames, 'BSE');
+      if (didWrite) written++;
       else console.log(`    (no-op: ${row.slug}.lead_managers was filled concurrently — write-once guard held)`);
     }
   }
@@ -205,7 +166,7 @@ async function main() {
       `skipped no bse_ipo_no: ${skippedNoIpoNo} | skipped fetch failed: ${skippedFetchFailed} | skipped sanitized empty: ${skippedSanitizedEmpty}`
   );
 
-  writeFileSync(LEDGER_PATH, JSON.stringify({ apply: APPLY, dbName, generatedAt: new Date().toISOString(), ledger }, null, 1));
+  writeLedgerFile(LEDGER_PATH, { apply: APPLY, dbName, generatedAt: new Date().toISOString(), ledger });
   console.log(`Ledger written: ${LEDGER_PATH}`);
 
   await pool.end();

@@ -23,7 +23,8 @@ import { DataConsolidationService, collectImplausibleIssueSizeFields, MAINBOARD_
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
-import { ipoDemandGraph, ipoDetails } from '@ipodhan/shared/db/schema';
+import { ipoDemandGraph, ipoDetails, ipos as iposTable, fieldSources as fieldSourcesTable } from '@ipodhan/shared/db/schema';
+import { eq as eqOp, and as andOp, or as orOp, isNull as isNullOp } from 'drizzle-orm';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
 import { initStepLedger } from './step-ledger.js';
 import {
@@ -2261,9 +2262,17 @@ export async function recordBseDiscoveryMetadata(
   logger.debug({ ipoId, ...patch }, 'Recorded BSE discovery metadata');
 }
 
-/** Minimal shape `recordDiscoveredLeadManagers` needs from the repository. */
-export interface DiscoveredLeadManagerWriter {
-  update(id: string, data: { leadManagers?: string[] | null; updatedAt?: Date }): Promise<unknown>;
+/**
+ * Minimal transactional shape `recordDiscoveredLeadManagers` needs — matches
+ * the subset of `NodePgDatabase` it calls (`transaction`/`update`/`select`/
+ * `insert`), injectable so tests can supply a fake transaction without a
+ * live database.
+ */
+export interface TransactionalIposWriter {
+  transaction<T>(fn: (tx: TransactionalIposWriter) => Promise<T>): Promise<T>;
+  update: typeof db.update;
+  select: typeof db.select;
+  insert: typeof db.insert;
 }
 
 /**
@@ -2283,30 +2292,98 @@ export interface DiscoveredLeadManagerWriter {
  * the gap between the recorded payload count and the 0 names ever stored
  * (Steamhouse India, 2026-09-08: payload count 1, stored 0).
  *
- * Write-once, like `recordDocumentSourceHints`'s `companyWebsite`: fills only
- * an EMPTY field. This discovery fetch has no field-priority-matrix rank of
- * its own, so it must never silently overwrite a value a ranked source
- * (ADMIN/DRHP/NSE/BSE main-scrape/MONEYCONTROL) already wrote — it only
- * closes the gap when nothing else ever did. `sanitizeLeadManagers` is
- * re-applied so this write path enforces the same pollution guard as every
- * other `lead_managers` write (`sanitizeIpoWriteFields`, line ~928 below).
+ * Round 2 (#417 review): TWO fixes over the first cut.
+ *  1. Write-once is now a SQL WHERE guard evaluated by Postgres inside the
+ *     UPDATE itself (`lead_managers IS NULL OR jsonb_array_length(...) = 0`),
+ *     not a read-then-write check against a cycle-start snapshot — the first
+ *     cut's `existing` snapshot could go stale between the read and the
+ *     write (TOCTOU): a concurrent scraper cycle's write in that window would
+ *     have been silently clobbered.
+ *  2. The write now records WHO said so: a `field_sources` provenance row
+ *     (source `BSE`/`NSE`, `previousSource` carried through) is upserted in
+ *     the SAME transaction as the `ipos` update, mirroring
+ *     `FieldSourcesRepository.trackFieldUpdate`'s upsert shape — a hard fact
+ *     with no provenance row was the MAJOR finding: nothing else at this call
+ *     site records who vouches for `leadManagers`.
+ *
+ * This discovery fetch has no field-priority-matrix rank of its own, so it
+ * must never silently overwrite a value a ranked source (ADMIN/DRHP/NSE/BSE
+ * main-scrape/MONEYCONTROL) already wrote — the WHERE guard is what enforces
+ * that now, not a pre-check. `sanitizeLeadManagers` is re-applied so this
+ * write path enforces the same pollution guard as every other `lead_managers`
+ * write (`sanitizeIpoWriteFields`, line ~928 below).
  *
  * Lives HERE, not in `document-cycle.ts`, for the same reason as
  * `recordBseDiscoveryMetadata`: `scraper-write-path.md` and the R0 write
  * ratchet require every `ipos` write to go through the shared write path.
+ *
+ * Known gap (MINOR, #417 review): the NSE-sourced arm (BSE unreachable,
+ * `document-discovery-runner.ts` falls back to `parseNseLeadManagers`) has no
+ * nightly detection — `m_brlm_count` only compares against
+ * `bse_payload_lead_manager_count`, which is BSE-only by design (F-2). A
+ * follow-up issue tracks a check over rows with an NSE-sourced payload; not
+ * built here.
  */
 export async function recordDiscoveredLeadManagers(
-  ipoRepository: DiscoveredLeadManagerWriter,
   ipoId: string,
   names: string[] | null | undefined,
-  existing?: { leadManagers?: string[] | null }
-): Promise<void> {
-  if (existing?.leadManagers && existing.leadManagers.length > 0) return;
+  source: 'BSE' | 'NSE',
+  dbLike: TransactionalIposWriter = db as unknown as TransactionalIposWriter
+): Promise<{ written: boolean }> {
   const sanitized = sanitizeLeadManagers(names);
-  if (!sanitized || sanitized.length === 0) return;
+  if (!sanitized || sanitized.length === 0) return { written: false };
 
-  await ipoRepository.update(ipoId, { leadManagers: sanitized, updatedAt: new Date() });
-  logger.debug({ ipoId, leadManagerCount: sanitized.length }, 'Recorded discovered lead managers');
+  const written = await dbLike.transaction(async (tx) => {
+    const updated = await tx
+      .update(iposTable)
+      .set({ leadManagers: sanitized, updatedAt: new Date() })
+      .where(
+        andOp(
+          eqOp(iposTable.id, ipoId),
+          orOp(isNullOp(iposTable.leadManagers), sqlOp`jsonb_array_length(${iposTable.leadManagers}) = 0`)
+        )
+      )
+      .returning({ id: iposTable.id });
+
+    if (updated.length === 0) return false;
+
+    const previous = await tx
+      .select({ source: fieldSourcesTable.source })
+      .from(fieldSourcesTable)
+      .where(
+        andOp(
+          eqOp(fieldSourcesTable.ipoId, ipoId),
+          eqOp(fieldSourcesTable.tableName, 'ipos'),
+          eqOp(fieldSourcesTable.fieldName, 'leadManagers')
+        )
+      )
+      .limit(1);
+
+    const provenanceRow = {
+      source: source as never,
+      confidence: 100,
+      previousValue: null,
+      previousSource: (previous[0]?.source ?? null) as never,
+      dataLineage: null as never,
+      updatedAt: new Date(),
+      updatedBy: 'SYSTEM',
+    };
+
+    await tx
+      .insert(fieldSourcesTable)
+      .values({ ipoId, tableName: 'ipos', fieldName: 'leadManagers', ...provenanceRow })
+      .onConflictDoUpdate({
+        target: [fieldSourcesTable.ipoId, fieldSourcesTable.tableName, fieldSourcesTable.fieldName],
+        set: provenanceRow,
+      });
+
+    return true;
+  });
+
+  if (written) {
+    logger.debug({ ipoId, leadManagerCount: sanitized.length, source }, 'Recorded discovered lead managers');
+  }
+  return { written };
 }
 
 /**
