@@ -257,5 +257,14 @@ class NoOveraskGuardWaitExemptionTest(unittest.TestCase):
         )
 
 
+    # -- round 4 (2026-09-07, Tier A on round 3): "check"/"job" + "going" are
+    # ordinary prose; a textbook narrate-and-stop must not clear B through them. --
+
+    def test_check_remaining_before_going_ahead_still_blocked(self):
+        self.assert_blocked(
+            "Next, I'll fix the job check that keeps going wrong."
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
