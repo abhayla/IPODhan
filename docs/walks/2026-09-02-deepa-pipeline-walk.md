@@ -1217,3 +1217,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 04:20 IST — #417 round 2 pushed (9d0a5145): repair through the persister door, field_sources provenance in the same transaction, SQL WHERE guard for write-once, repo-relative ledger; NSE-arm detection gap filed as #418. Reproduced by me: write-ratchet PASS 57, lint OK, 140/140 across the three test sets. Tier A re-check dispatched; gate running.
 
 - 04:22 IST — #417 Tier A round 2: PASS WITH NOTES (persister door, provenance in-transaction, SQL write-once all confirmed; MINOR: the writer never invalidates the IPO cache -> up to 15 min staleness, filed #419; INFO: NSE-only payload rows outside the repair filter, #418). Safe for the prod repair on the owner's word. Gate finishing; the 04:47 pass merges.
+
+- 04:46 IST — tick via failure-delta: prod NEW 0 (SAME 8), staging NEW 0 / GONE 2 (two anchor refusals cleared) / SAME 3. Prod f0c66b6b 04:30 wake 41 s / 89 calls / 1 tracked; staging 2c8d77f2 04:21 wake 242 s / 74 calls / 3 known; disk 57%, load 0.31, OOM 0; stash the 10 pre-existing; no agents. #417 merge attempt above.
