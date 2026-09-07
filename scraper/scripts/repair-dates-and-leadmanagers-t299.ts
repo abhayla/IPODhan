@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: the 3 date-incoherent rows (T-296 P2-7) and the 1 lead_managers
  * pollution row (T-296 P2-8) named in the T-299 contract.
@@ -44,6 +43,7 @@ import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+import { openRepairDb, type ExecuteLike } from './lib/repair-tool.js';
 
 configureUtcTimestampParsing();
 
@@ -60,6 +60,18 @@ const pool = new Pool({
   password: process.env.DATABASE_PASSWORD,
 });
 
+// repair-tool.ts's openRepairDb() calls dbLike.execute(sql`SELECT current_database() AS name`)
+// (a drizzle-orm SQL object) — this tool uses a raw `pg` Pool (see the file
+// header for why), so this adapter runs the one literal query openRepairDb
+// ever issues via .execute() directly through pool.query() rather than
+// trying to convert the drizzle SQL object to pg's text/params shape.
+const repairDbGuard: ExecuteLike = {
+  execute: async () => {
+    const result = await pool.query('SELECT current_database() AS name');
+    return { rows: result.rows };
+  },
+};
+
 async function main() {
   console.log('='.repeat(80));
   console.log(`DATES + LEAD_MANAGERS REPAIR (T-299 P2-7/P2-8) - ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
@@ -67,6 +79,12 @@ async function main() {
 
   mkdirSync(LEDGER_DIR, { recursive: true });
   const ledger: any[] = [];
+
+  await openRepairDb(repairDbGuard, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'repair-dates-and-leadmanagers-t299',
+  });
 
   const dateFixes: Array<{
     slug: string;

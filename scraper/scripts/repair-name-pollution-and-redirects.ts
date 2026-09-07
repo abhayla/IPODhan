@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: name-pollution cleanup + duplicate-merge + ipo_slug_redirects (P3-1,
  * T-278). Recreates the one-off manual operation that produced the 17 redirect
@@ -52,6 +51,7 @@ import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import { eq, sql } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 
@@ -130,6 +130,12 @@ async function main() {
   console.log('='.repeat(80));
   console.log(`NAME-POLLUTION + REDIRECT REPAIR (T-278 P3-1 recreate) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'repair-name-pollution-and-redirects',
+  });
 
   const rows = (await db
     .select({

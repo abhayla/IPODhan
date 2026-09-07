@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: registrar_id for the 9 rows now trivially matchable after extending
  * the matcher with `^address`-suffix stripping, glued-legal-suffix space
@@ -23,6 +22,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
 import { eq, isNull, isNotNull, and } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 
@@ -30,6 +30,12 @@ async function main() {
   console.log('='.repeat(80));
   console.log(`REGISTRAR_ID REPAIR (T-278F, matcher extension) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'repair-registrar-id-t278f',
+  });
 
   const registrars = await db
     .select({ id: schema.registrars.id, name: schema.registrars.name, shortName: schema.registrars.shortName })

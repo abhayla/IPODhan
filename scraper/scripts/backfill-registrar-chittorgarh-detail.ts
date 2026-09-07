@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: registrar for genuine IPOs from Chittorgarh per-IPO detail pages (B7, #8).
  *
@@ -23,6 +22,7 @@ import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-n
 import { extractRegistrarFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
 import { fillDiscoveryGapsFromReport82 } from './lib/chittorgarh-report82-discovery.js';
 import logger from '../src/utils/logger.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 const limitIdx = process.argv.indexOf('--limit');
@@ -77,6 +77,12 @@ async function main() {
   console.log('='.repeat(80));
   console.log(`REGISTRAR BACKFILL (Chittorgarh detail pages via report-118 discovery) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'backfill-registrar-chittorgarh-detail',
+  });
 
   const discovery = new Map<string, DiscoveryEntry>();
   for (const fy of FISCAL_YEARS) {
