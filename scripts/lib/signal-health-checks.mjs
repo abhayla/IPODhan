@@ -36,14 +36,64 @@ export function classifyConflictBacklogCeiling(unresolvedTotal, ceiling = CONFLI
   return { fail: total > ceiling, total, ceiling };
 }
 
-// ---- F3: inert detector ------------------------------------------------------
+// ---- F2 (round 2): shrink-only ratchet baseline -----------------------------
+// The flat 500 ceiling above is red forever on staging (14,252 unresolved,
+// well above 500 today) — an absolute ceiling only works once the backlog is
+// already under it. Ratchet instead: compare today's unresolved count against
+// a checked-in per-database baseline. A RISE (new backlog growth, the T-285
+// unbounded-growth class) FAILs; a FALL WARNs with the delta and the baseline
+// is only ever lowered via an explicit rebaseline that refuses to raise it
+// (see rebaselineConflictBacklog below and --rebaseline-conflicts in
+// audit-detection-floor.mjs). No baseline entry yet for this database is
+// UNVERIFIABLE, not PASS — an unseeded ratchet gates nothing silently.
+export function classifyConflictBacklogRatchet(currentTotal, baselineTotal) {
+  const total = Number(currentTotal) || 0;
+  if (baselineTotal === null || baselineTotal === undefined) {
+    return { status: 'UNVERIFIABLE', total, baseline: null, delta: null };
+  }
+  const baseline = Number(baselineTotal) || 0;
+  const delta = total - baseline;
+  if (delta > 0) return { status: 'FAIL', total, baseline, delta };
+  if (delta < 0) return { status: 'WARN', total, baseline, delta };
+  return { status: 'PASS', total, baseline, delta: 0 };
+}
+
+// Pure merge helper for `--rebaseline-conflicts`: returns the NEXT baseline
+// map for a database, refusing to raise an existing entry (shrink-only). The
+// caller (audit-detection-floor.mjs) is responsible for reading/writing the
+// JSON file — this function only decides the number, so it is unit-testable
+// without touching the filesystem.
+export function nextRatchetBaseline(existingBaseline, measuredTotal) {
+  const measured = Number(measuredTotal) || 0;
+  if (existingBaseline === null || existingBaseline === undefined) return measured;
+  const existing = Number(existingBaseline) || 0;
+  return Math.min(existing, measured);
+}
+
+// ---- F3: inert detector (WINDOWED — T-465 round 2) ---------------------------
 // The important one: a detector reporting zero is indistinguishable from a
 // healthy system UNLESS cross-checked against an invariant independently
-// known to be violated. If rows are failing checkPriceBand (real
-// corruption/disagreement exists) but the conflict detector inserted NOTHING
-// in the same window, the detector is inert — not the data clean.
-export function classifyInertDetector(priceBandViolationCount, conflictsInsertedLast24h) {
-  const violations = Number(priceBandViolationCount) || 0;
-  const inserted = Number(conflictsInsertedLast24h) || 0;
-  return { fail: violations > 0 && inserted === 0, violations, inserted };
+// known to be violated — but the cross-check must compare LIKE WITH LIKE.
+// Round 1 compared a snapshot of violations over ALL rows (any age, any
+// cause) against conflicts inserted in the trailing 24h: a violation caught
+// days ago with no new writes, or an absolute-implausibility violation that
+// never involves cross-source disagreement, was wrongly called "inert".
+//
+// Round 2: both sides are windowed to the SAME 24h period —
+// `windowPopulationSize` is the count of rows whose relevant fields were
+// WRITTEN in that window (the population the cross-check is even about);
+// `violationsInWindow` is checkPriceBand violations among THOSE rows;
+// `conflictsInsertedInWindow` is data_conflicts rows detected in the same
+// window. An empty windowed population (nothing written) means the
+// cross-check has nothing to say — SKIP, not PASS or FAIL, so a quiet night
+// is never silently read as "detector healthy".
+export function classifyInertDetector(windowPopulationSize, violationsInWindow, conflictsInsertedInWindow) {
+  const population = Number(windowPopulationSize) || 0;
+  const inserted = Number(conflictsInsertedInWindow) || 0;
+  if (population === 0) {
+    return { status: 'SKIP', population, violations: 0, inserted };
+  }
+  const violations = Number(violationsInWindow) || 0;
+  const fail = violations > 0 && inserted === 0;
+  return { status: fail ? 'FAIL' : 'PASS', population, violations, inserted };
 }

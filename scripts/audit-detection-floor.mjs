@@ -69,8 +69,8 @@ import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-serve
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 import { checkPriceBand } from './lib/substance-checks.mjs';
 import {
-  classifyRepeatedMessages, classifyConflictBacklogCeiling, classifyInertDetector,
-  REPEATED_MESSAGE_MAX_OCCURRENCES_24H, CONFLICT_BACKLOG_MAX_UNRESOLVED,
+  classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
+  REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
 } from './lib/signal-health-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -89,6 +89,17 @@ if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
 }
 
 const GATE = process.argv.includes('--gate');
+// T-465 round 2: seeds/lowers config/conflict-backlog-baseline.json for the
+// CURRENT database (current_database()) — never raises an existing entry.
+const REBASELINE_CONFLICTS = process.argv.includes('--rebaseline-conflicts');
+const CONFLICT_BASELINE_PATH = join(REPO_ROOT, 'config', 'conflict-backlog-baseline.json');
+function readConflictBaseline() {
+  try { return JSON.parse(readFileSync(CONFLICT_BASELINE_PATH, 'utf8')); }
+  catch { return { databases: {} }; }
+}
+function writeConflictBaseline(data) {
+  writeFileSync(CONFLICT_BASELINE_PATH, JSON.stringify(data, null, 2) + '\n');
+}
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
 
@@ -466,23 +477,48 @@ async function checkE_unknownSlug404() {
   );
 }
 
-// ---- (f): conflict noise ratio ------------------------------------------------
+// ---- (f): conflict noise ratio + shrink-only backlog ratchet ----------------
 async function checkF() {
   if (!(await tableExists('data_conflicts'))) {
-    record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog < ceiling', 'UNVERIFIABLE', 'data_conflicts table not present');
+    record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog within shrink-only ratchet baseline', 'UNVERIFIABLE', 'data_conflicts table not present');
     return;
   }
+  const [{ dbName }] = await q(`SELECT current_database() AS "dbName"`);
   const [{ total }] = await q(`SELECT count(*)::int total FROM data_conflicts WHERE resolved_at IS NULL`);
   const [{ noise }] = await q(`SELECT count(*)::int noise FROM data_conflicts WHERE resolved_at IS NULL AND (value2 IS NULL OR value2 = '' OR value1 = value2)`);
   const cls = classifyConflictNoiseRatio(total, noise);
   if (cls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts noise ratio too high', `${noise}/${total} (${(cls.ratio * 100).toFixed(1)}%) unresolved conflicts are noise (empty value2 or value1==value2)`);
-  // F2 (#191): absolute backlog ceiling, independent of the noise RATIO above —
-  // a backlog can be 100% genuine disagreements by ratio and still be
-  // unbounded because nothing prunes/upserts it (T-285 P2-3, 11,493 rows).
-  const ceilingCls = classifyConflictBacklogCeiling(total);
-  if (ceilingCls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts unresolved backlog exceeds ceiling', `${total} unresolved conflicts > ${ceilingCls.ceiling} ceiling (unbounded-growth class, T-285)`);
-  const fail = cls.fail || ceilingCls.fail;
-  record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog < ceiling', fail ? 'FAIL' : 'PASS', `${noise}/${total} = ${(cls.ratio * 100).toFixed(1)}% noise; ${total}/${ceilingCls.ceiling} backlog`);
+
+  // F2 (#191, round 2): a flat 500-row ceiling is red forever on a database
+  // that starts above 500 (staging: 14,252) — a ratchet instead: FAIL only on
+  // a RISE above this database's checked-in baseline (T-285 unbounded-growth
+  // class), WARN (not FAIL) with the delta on a fall, and the baseline is
+  // only ever lowered by an explicit `--rebaseline-conflicts` run, which
+  // itself refuses to raise a stored baseline.
+  if (REBASELINE_CONFLICTS) {
+    const baseline = readConflictBaseline();
+    const existing = baseline.databases[dbName]?.unresolved ?? null;
+    const next = nextRatchetBaseline(existing, total);
+    baseline.databases[dbName] = { unresolved: next, recordedAt: new Date().toISOString() };
+    writeConflictBaseline(baseline);
+    console.log(`[REBASELINE] data_conflicts backlog for "${dbName}": ${existing ?? '(none)'} -> ${next}`);
+  }
+  const baselineNow = readConflictBaseline();
+  const baselineEntry = baselineNow.databases[dbName]?.unresolved ?? null;
+  const ratchetCls = classifyConflictBacklogRatchet(total, baselineEntry);
+  if (ratchetCls.status === 'FAIL') {
+    notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts unresolved backlog ROSE above its shrink-only baseline', `${total} unresolved > baseline ${ratchetCls.baseline} for database "${dbName}" (+${ratchetCls.delta}) — unbounded-growth class, T-285`);
+  }
+
+  const status = cls.fail || ratchetCls.status === 'FAIL' ? 'FAIL'
+    : ratchetCls.status === 'UNVERIFIABLE' ? 'UNVERIFIABLE'
+    : 'PASS';
+  const ratchetDetail = ratchetCls.status === 'UNVERIFIABLE'
+    ? `no ratchet baseline seeded for database "${dbName}" — run --rebaseline-conflicts to seed`
+    : ratchetCls.status === 'WARN'
+      ? `backlog fell ${Math.abs(ratchetCls.delta)} below baseline ${ratchetCls.baseline} (WARN; baseline not auto-lowered, rerun --rebaseline-conflicts to lower it)`
+      : `${total} vs baseline ${ratchetCls.baseline} (${ratchetCls.delta >= 0 ? '+' : ''}${ratchetCls.delta})`;
+  record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog within shrink-only ratchet baseline', status, `${noise}/${total} = ${(cls.ratio * 100).toFixed(1)}% noise; ${ratchetDetail}`);
 }
 
 // ---- (g1): repeated-WARN detector (#191 F1) ---------------------------------
@@ -511,22 +547,31 @@ async function checkG1_repeatedWarn() {
   record('g_repeated_warn', `no single scraper_logs message repeats >${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}x/24h`, cls.fail ? 'FAIL' : 'PASS', `${cls.offenders.length} offending message(s)`);
 }
 
-// ---- (g3): inert detector (#191 F3) ------------------------------------------
+// ---- (g3): inert detector, WINDOWED (#191 F3, T-465 round 2) ----------------
 // The important one, per the issue: a detector reporting zero is
 // indistinguishable from a healthy system UNLESS cross-checked against an
 // invariant independently known to be violated (T-272 P3-5, conflictsDetected
 // read 0 across 3,760 fields while real disagreements demonstrably existed).
+// Round 2: compares LIKE WITH LIKE — violations are counted only among rows
+// whose relevant fields were WRITTEN in the same trailing-24h window the
+// conflict count is windowed to (round 1 compared an all-time violation
+// snapshot against a 24h conflict count: a violation caught days ago with no
+// new activity, or one that never involves cross-source disagreement, was
+// wrongly called "inert"). An empty windowed population (nothing written)
+// SKIPs — the cross-check has nothing to say, so a quiet night is never
+// silently read as "detector healthy".
 async function checkG3_inertDetector() {
   if (!(await tableExists('data_conflicts')) || !(await tableExists('ipos'))) {
-    record('g_inert_detector', 'price-band violations without any conflicts inserted in 24h -> detector inert', 'UNVERIFIABLE', 'data_conflicts or ipos table not present');
+    record('g_inert_detector', 'windowed price-band violations without any windowed conflicts inserted -> detector inert', 'UNVERIFIABLE', 'data_conflicts or ipos table not present');
     return;
   }
-  const priceRows = await q(`SELECT price_range_min, price_range_max FROM ipos WHERE ${REAL_IPO}`);
+  const priceRows = await q(`SELECT price_range_min, price_range_max FROM ipos WHERE ${REAL_IPO} AND updated_at > now() - interval '24 hours'`);
+  const population = priceRows.length;
   const violations = priceRows.filter((r) => checkPriceBand(r) !== null).length;
   const [{ inserted }] = await q(`SELECT count(*)::int inserted FROM data_conflicts WHERE detected_at > now() - interval '24 hours'`);
-  const cls = classifyInertDetector(violations, inserted);
-  if (cls.fail) notify('g_inert_detector', 'P1', 'aggregate', 'conflict detector appears inert', `${violations} IPO row(s) fail checkPriceBand (real corruption exists) but 0 data_conflicts rows were inserted in the last 24h — the detector is inert, not the data clean`);
-  record('g_inert_detector', 'price-band violations without any conflicts inserted in 24h -> detector inert', cls.fail ? 'FAIL' : 'PASS', `${cls.violations} price-band violation(s), ${cls.inserted} conflict(s) inserted/24h`);
+  const cls = classifyInertDetector(population, violations, inserted);
+  if (cls.status === 'FAIL') notify('g_inert_detector', 'P1', 'aggregate', 'conflict detector appears inert', `${cls.violations} of ${cls.population} IPO row(s) written in the last 24h fail checkPriceBand (real corruption exists) but 0 data_conflicts rows were inserted in that SAME window — the detector is inert, not the data clean`);
+  record('g_inert_detector', 'windowed price-band violations without any windowed conflicts inserted -> detector inert', cls.status, `${cls.violations} violation(s) among ${cls.population} row(s) written/24h, ${cls.inserted} conflict(s) inserted/24h`);
 }
 
 // ---- (m): document_fetch_state — did the document machine do its job? ---------
