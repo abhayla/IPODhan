@@ -1,0 +1,11 @@
+{
+  "id": "m_cycle_overrun",
+  "findingClass": "the document cycle (scraper/src/services/document-cycle.ts, primarySourceDiscovery step) runs longer than its wake budget, or two wakes' cycles overlap — the class fixed one write path in August (w177-detection-rca.md) and recurred on this path in September because no independent check re-verified cycle duration",
+  "round7Findings": [
+    "cycle-overrun RCA (2026-09-06, observed 1,210-1,278s document cycles / 105-115 network calls per cycle on a Sunday)"
+  ],
+  "failThreshold": "any primarySourceDiscovery row in scraper_steps (created_at, duration_ms) over the last 24h with duration_ms > 25 minutes, OR two rows for different cycleIds whose [start, end) wall-clock windows overlap (checkCycleOverrun in scripts/lib/document-state-checks.mjs, unit-tested in scripts/tests/document-state-checks.test.mjs).",
+  "severity": "P1",
+  "unverifiableWhen": "the scraper_steps table is absent (migration 0033 not applied), or it has zero primarySourceDiscovery rows in the last 24h (ENABLE_DOCUMENT_STATE_MACHINE off, or the writer has not run yet).",
+  "section": "checks"
+}

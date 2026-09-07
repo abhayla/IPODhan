@@ -1,0 +1,5 @@
+{
+  "id": "nc-09-g-seo-surface-completeness-g-seo-surface-190-t",
+  "section": "notCoveredByThisManifest",
+  "note": "g_seo_surface_completeness / g_seo_surface (#190, T-464) — sitemap completeness vs the ROUTES SSOT + live IPO slugs, duplicate IPO slug groups, and page-type <title> collisions. HTTP-only, run inside scripts/audit-prod.mjs (three record() calls prefixed g_seo_surface:), not audit-detection-floor.mjs, so it cannot be a checks[] entry here — this manifest's own wire-or-retire test requires every declared id to be record()-ed by audit-detection-floor.mjs. Predicates live in scripts/lib/seo-surface-checks.mjs (self-tested by scripts/tests/seo-surface-checks.test.mjs); auditScript for this class is scripts/audit-prod.mjs."
+}

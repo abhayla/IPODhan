@@ -1,0 +1,10 @@
+{
+  "id": "m_found_not_extracted",
+  "findingClass": "a document was downloaded and then never read, so the fields it carries stay empty while the pipeline looks healthy",
+  "round7Findings": [],
+  "sourceTask": "T-403",
+  "failThreshold": "any row FOUND for more than 48h once the extractor is wired; deliberately INERT while ENABLE_DRHP_EXTRACTION is off, since FOUND is terminal by design until WP C",
+  "severity": "P2",
+  "unverifiableWhen": "document_fetch_state table not present",
+  "section": "checks"
+}

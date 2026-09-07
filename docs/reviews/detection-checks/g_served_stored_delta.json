@@ -1,0 +1,13 @@
+{
+  "id": "g_served_stored_delta",
+  "findingClass": "an API and its backing table each look correct in isolation while a stale cache key or wrong filter silently serves a different row count than the DB holds (T-272 P1-2: /api/registrars served 41 rows while the DB held 15 -- 26 unit-test fixture rows stranded in a 7-day Redis key after an integration suite was pointed at production)",
+  "round7Findings": [],
+  "sourceTask": "#186 (T-460), filed by T-297 discovery-coverage meta-analysis (D5 serving-vs-storage delta)",
+  "registryClass": "serving-vs-storage-drift",
+  "failThreshold": "for any of /api/registrars, /api/ipos?status=OPEN&limit=100, /api/ipos?status=UPCOMING&limit=100, /api/market-holidays?year=<current>: served row count (live HTTP JSON body) != stored row count (matching filtered DB query) -- exact equality, not a tolerance",
+  "severity": "P1",
+  "unverifiableWhen": "the live HTTP fetch or the matching DB query fails (marked unverifiable, not a false PASS)",
+  "auditScript": "scripts/audit-ipo-coverage.mjs --gate (evaluateServedVsStoredDelta)",
+  "selfTest": "scripts/tests/audit-ipo-coverage-served-stored.test.mjs",
+  "section": "checks"
+}

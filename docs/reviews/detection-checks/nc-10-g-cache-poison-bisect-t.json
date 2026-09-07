@@ -1,0 +1,5 @@
+{
+  "id": "nc-10-g-cache-poison-bisect-t",
+  "section": "notCoveredByThisManifest",
+  "note": "g_cache_poison_bisect (T-463, issue #189) — a paginated list API's cache poisoned exactly at the page's default `limit` parameter value (limit=20 once served 240 stale rows with blank issuePrice for 19h while limit=19/21 served the correct set). This is an HTTP-only prod probe, not a nightly DB-row audit: `scripts/audit-prod.mjs` runs `bisectDefaultParameter()` (from `scripts/lib/cache-poison-bisect.mjs`) against GET /api/ipos/history at limit=19/20/21. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly DB audit. Guarded instead by `scripts/tests/cache-poison-bisect.test.mjs`."
+}

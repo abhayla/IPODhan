@@ -1,0 +1,5 @@
+{
+  "id": "nc-05-g-duplicate-identity-188-c2-two-different-genuine-ipos-holdi",
+  "section": "notCoveredByThisManifest",
+  "note": "g_duplicate_identity (#188 C2: two different genuine IPOs holding byte-identical date/band/lot/issue_size) — owned by scripts/audit-ipo-coverage.mjs --gate (HARD, MUST be 0, except entries on config/duplicate-identity-allowlist.json which WARN)"
+}

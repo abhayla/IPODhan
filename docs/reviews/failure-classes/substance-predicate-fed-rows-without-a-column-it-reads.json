@@ -1,0 +1,9 @@
+{
+  "class_id": "substance predicate fed rows without a column it reads",
+  "feature": "scripts/audit-ipo-coverage.mjs, scripts/audit-substance-plausibility.mjs (SUBSTANCE_CHECKS row-builder queries)",
+  "symptom": "a `SUBSTANCE_CHECKS` predicate reads `row.<col>` but the audit script's SELECT never selected `<col>`, so the predicate silently sees `undefined` and never flags a real violation (recurred: `audit-ipo-coverage.mjs` omitted `i.segment`; `audit-substance-plausibility.mjs` independently omitted `i.issue_type`, no-opping the two fixed-price-degenerate-band checks)",
+  "first_seen": "T-297 (`audit-ipo-coverage.mjs` / segment); Sep 2026 (review-gap round, `audit-substance-plausibility.mjs` / issue_type, this PR)",
+  "fix_prs": "T-297 fix (added `i.segment`) + this PR (added `i.issue_type`, plus an `evaluated N rows` print)",
+  "detection_check": "`scripts/tests/audit-ipo-coverage.test.mjs` and `scripts/tests/audit-substance-plausibility.test.mjs` — both statically extract every `row.<col>` a `SUBSTANCE_CHECKS` predicate reads and assert the script's SELECT selects it, so deleting a column turns the test red without a live DB",
+  "status": "guarded"
+}

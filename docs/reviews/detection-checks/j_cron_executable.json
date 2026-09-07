@@ -1,0 +1,11 @@
+{
+  "id": "j_cron_executable",
+  "findingClass": "a cron-invoked script is committed without the executable bit, so a direct cron invocation fails silently",
+  "round7Findings": [
+    "P3-5"
+  ],
+  "failThreshold": "git-tracked mode of a cron entrypoint script lacks any execute bit",
+  "severity": "P2",
+  "unverifiableWhen": "git ls-files fails (corrupt checkout)",
+  "section": "checks"
+}

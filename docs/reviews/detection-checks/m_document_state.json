@@ -1,0 +1,10 @@
+{
+  "id": "m_document_state",
+  "findingClass": "the document_fetch_state table is absent, so the whole document pipeline is invisible to the audit tonight",
+  "round7Findings": [],
+  "sourceTask": "T-403",
+  "failThreshold": "never FAILs — reports UNVERIFIABLE, because \"the audit could not see\" is not \"documents are healthy\"",
+  "severity": "P2",
+  "unverifiableWhen": "document_fetch_state table not present (migration 0035 not applied)",
+  "section": "checks"
+}
