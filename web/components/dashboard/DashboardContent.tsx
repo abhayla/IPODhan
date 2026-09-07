@@ -19,6 +19,7 @@ interface DashboardContentProps {
   initialStatus?: string;
   initialSegment?: string;
   initialSearch?: string;
+  sectors?: string[];
 }
 
 export function DashboardContent({
@@ -27,8 +28,12 @@ export function DashboardContent({
   initialView,
   initialStatus,
   initialSegment,
-  initialSearch
+  initialSearch,
+  sectors
 }: DashboardContentProps) {
+  // Tests that mock FilterBar (and don't exercise the sector dropdown) don't
+  // pass this prop; treat "not provided" as the SectorFilter's client-fetch
+  // fallback (undefined), never as an empty options list.
   const view = (initialView === 'list' ? 'list' : 'grid') as 'grid' | 'list';
 
   // Note: Keyboard shortcuts are now handled globally by GlobalKeyboardShortcuts component
@@ -72,7 +77,7 @@ export function DashboardContent({
 
       {/* Filter Bar */}
       <div className="animate-in slide-in-from-right duration-500 delay-200">
-        <FilterBar />
+        <FilterBar sectors={sectors} />
       </div>
 
       {/* Smart Default Filters (Phase 5: Personalization) */}

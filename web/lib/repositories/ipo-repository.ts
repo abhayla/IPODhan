@@ -42,6 +42,7 @@ import {
   getFuzzySearchKey,
   getSlugRedirectKey,
   getSlugFallbackMissKey,
+  getReferenceKey,
 } from '../cache/cache-keys';
 import { parseNaiveTimestampAsUtc } from '../../../packages/shared/src/db/timezone-config';
 import {
@@ -982,6 +983,34 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     } catch (error) {
       throw new DatabaseError('Failed to count IPOs', undefined, error);
     }
+  }
+
+  /**
+   * Find every distinct, non-empty sector across all IPOs, sorted alphabetically.
+   * Backs the dashboard sector filter's option list. Server components call
+   * this directly (no HTTP) so the filter's options render in the initial
+   * HTML instead of arriving via a client-side fetch after mount.
+   *
+   * Cached separately from `/api/sectors` (which keeps its own 1h Redis
+   * cache at key 'sectors' — untouched here) under CacheTTL.REFERENCE (7d),
+   * matching how registrars/holidays are cached as static reference data.
+   */
+  async findDistinctSectors(): Promise<string[]> {
+    return this.getFromCache(
+      getReferenceKey('sectors'),
+      async () => {
+        const result = await this.db
+          .selectDistinct({ sector: ipos.sector })
+          .from(ipos)
+          .where(sql`${ipos.sector} IS NOT NULL AND ${ipos.sector} != ''`)
+          .orderBy(ipos.sector);
+
+        return result
+          .map((row) => row.sector)
+          .filter((sector): sector is string => sector !== null && sector !== '');
+      },
+      CacheTTL.REFERENCE
+    );
   }
 
   /**

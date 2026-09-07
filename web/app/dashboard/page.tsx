@@ -50,7 +50,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     };
 
     // Fetch data from repository (includes Redis caching)
-    const result = await ipoRepository.findAll(filters);
+    const [result, sectors] = await Promise.all([
+      ipoRepository.findAll(filters),
+      ipoRepository.findDistinctSectors(),
+    ]);
 
     // Transform repository response to API format
     const response = {
@@ -97,6 +100,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           initialStatus={status}
           initialSegment={segment}
           initialSearch={search}
+          sectors={sectors}
         />
       </>
     );
