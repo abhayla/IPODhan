@@ -1,0 +1,50 @@
+{
+  "_spec": "Stage 5 golden. Values transcribed from the two frozen, hand-made oracles in this repo, NOT from extractor output: (a) docs/reviews/fixtures/deepa-jewellers-expected.json -> RHP block (hand-transcribed from the real Deepa Jewellers RHP dated 25-Aug-2026; see its own _source note), and (b) scraper/tests/integration/oracle/ather-energy.json (frozen Chittorgarh oracle, Rs crore; this file converts to the extractor's Rs million by x10). Written BEFORE this stage was ever run, per scraper/tests/unit/pipeline-stages/README.md rule 1. If the extractor disagrees with a number here, that is a finding about the extractor, never a stale golden.",
+  "_input": "Both input fixtures are REAL captured page text from the real PDFs, copied verbatim from scraper/tests/fixtures/extractor/{deepa-rhp-pages,ather-rhp-real}.json (README rule 2). They are fed to the real scraper/scripts/extract_financials_pdf.py through its documented --texts seam (README rule 3).",
+  "cases": {
+    "deepa-rhp": {
+      "input": {
+        "fixture": "deepa-rhp-pages.json",
+        "document": "Deepa Jewellers Limited RHP dated 2026-08-25, 52 captured pages",
+        "seam": "python scripts/extract_financials_pdf.py --texts <fixture>",
+        "oracle": "docs/reviews/fixtures/deepa-jewellers-expected.json#RHP"
+      },
+      "redByDesign": {
+        "netWorth": "S5-R1: the oracle transcribes net_worth_by_fy 2380.70 / 1332.08 / 925.53 from the real Deepa RHP, and financial_data.net_worth is a real column, but extract_financials_pdf.py emits no netWorth for this document at all (it does for Ather). Stage 6 therefore has nothing to persist for net worth on an SME RHP of this shape. RED BY DESIGN - a finding about the extractor, not a stale golden (README rule 1)."
+      },
+      "expected": {
+        "unit": "millions",
+        "annualYears": [2026, 2025, 2024],
+        "lowConfidence": false,
+        "metrics": {
+          "revenue": { "2026": 19266.76, "2025": 13970.1, "2024": 10245.68 },
+          "totalIncome": { "2026": 19277.25, "2025": 14001.0, "2024": 10257.29 },
+          "profit": { "2026": 1047.88, "2025": 405.8, "2024": 243.47 },
+          "eps": { "2026": 12.78, "2025": 4.95, "2024": 2.97 },
+          "netWorth": { "2026": 2380.7, "2025": 1332.08, "2024": 925.53 }
+        }
+      }
+    },
+    "ather-rhp": {
+      "input": {
+        "fixture": "ather-rhp-pages.json",
+        "document": "Ather Energy Limited RHP, restated P&L pages 368-369 as captured by pdfplumber",
+        "seam": "python scripts/extract_financials_pdf.py --texts <fixture>",
+        "oracle": "scraper/tests/integration/oracle/ather-energy.json (Rs crore; x10 = Rs million)"
+      },
+      "expected": {
+        "unit": "millions",
+        "annualYears": [2024, 2023, 2022],
+        "lowConfidence": false,
+        "metrics": {
+          "revenue": { "2024": 17538 },
+          "totalIncome": { "2024": 17891, "2023": 18018, "2022": 4138 },
+          "profit": { "2024": -10597, "2023": -8645, "2022": -3441 },
+          "eps": { "2024": -47 },
+          "netWorth": { "2024": 5459, "2023": 6137, "2022": 2249 }
+        }
+      }
+    }
+  },
+  "tolerancePct": 1
+}

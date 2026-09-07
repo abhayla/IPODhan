@@ -5,7 +5,7 @@ pipeline stage, run in order, each **fixture-in / expected-output-file-out**. En
 only ever reveal the *next* stage's defect; isolating stages surfaces every reachable defect in
 one pass.
 
-## Layout (part 2 — stages 5–8 — MUST follow this)
+## Layout (MUST follow this)
 
 ```
 scraper/tests/unit/pipeline-stages/
@@ -37,10 +37,10 @@ Rules, all load-bearing:
 | 0 | DB rebuild from journal | `stage-0-db-rebuild.test.ts` | done (part 1) |
 | 1 | Discover IPO | — | existing orchestrator unit tests |
 | 2–4 | Resolve links / download+verify / state machine | — | on the T-403 branch |
-| 5 | Extract | — | part 2 |
-| 6 | Persist with precedence | — | part 2 |
-| 7 | Supersede | — | part 2 |
-| 8 | Render | — | part 2 |
+| 5 | Extract | `stage-5-extract.test.ts` | done (part 2) |
+| 6 | Persist with precedence | `stage-6-persist-precedence.test.ts` | done (part 2) — 4 red-by-design |
+| 7 | Supersede | `stage-7-supersede.test.ts` | done (part 2) — 2 red-by-design |
+| 8 | Render | `web/tests/unit/pipeline-stages/stage-8-render.test.tsx` | done (part 2) — 2 red-by-design |
 | 9 | VPS runtime preflight | `stage-9-runtime-preflight.test.ts` | done (part 1) |
 
 ## Running
@@ -54,6 +54,27 @@ cd scraper && npx vitest run tests/unit/pipeline-stages          # offline arms 
 STAGE0_DATABASE_URL='postgresql://<user>:<pw>@localhost:15432/ipodhan_test' \
   npx vitest run tests/unit/pipeline-stages/stage-0-db-rebuild.test.ts
 ```
+
+Stage 8 lives under `web/`, not here: it is the only rung that renders React, and web's vitest
+config is the jsdom + `@vitejs/plugin-react` one. It follows the same layout rules and is gated
+the same way — pr-gate.yml already runs `npm run test:unit` in `./web`, whose include glob is
+`tests/unit/**/*.test.{ts,tsx}`.
+
+```bash
+cd web && npx vitest run tests/unit/pipeline-stages                # stage 8 offline arm
+STAGE8_LIVE_URL='https://staging.ipodhan.com/ipos/<slug>' npx vitest run tests/unit/pipeline-stages   # stage 8 live arm (read-only)
+# from scraper/: STAGE5_RHP_PDF='D:/path/to/a-real.pdf' npx vitest run tests/unit/pipeline-stages/stage-5-extract.test.ts
+```
+
+## Red by design
+
+Stages 6, 7 and 8 assert spec requirements the product does not meet yet — issue #258 is the
+HARNESS, and it says explicitly: "Out of scope: building stage 6 persistence-precedence logic
+itself". Those cases are `test.fails` with the golden id and the spec line they come from
+(`S6-R1..R4`, `S7-R1..R2`, `S8-R1..R2`, and `S5-R1` for a metric the extractor never emits).
+`test.fails` inverts the verdict: the case reports green while the product is broken, and turns
+RED the day someone implements it — which is the signal to delete the `.fails` and keep the
+assertion. The `redByDesign` block in each golden is the readable list.
 
 Stage 9 needs `bash` on PATH (Git Bash on Windows) and no VPS access — it drives the real
 `scripts/preflight-runtime.sh` against fake executable shims.

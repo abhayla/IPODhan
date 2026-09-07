@@ -1,0 +1,92 @@
+{
+  "_spec": "Stage 7 golden, written from docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6 row 7 ('Supersede | Prospectus after RHP | decideSupersession / markSuperseded | old row is_active=false, only carried fields overwritten | functions exist, unwired') plus the seven behaviours the DEEPA walk step I3 records as the contract (docs/walks/2026-09-02-deepa-pipeline-walk.md line I3) and the ordering rules R3/R4/E1 in the decideSupersession doc comment. Written BEFORE this file ran (README rule 1); if the function disagrees with a scenario here, that is a finding.",
+  "_input": "Each scenario's `input` block IS the fixture: the document rows the pipeline holds and the one arriving. Document types, filing dates and precedence come from scraper/src/services/document-types.ts (PROSPECTUS 100 > CORRIGENDUM 80 > PRICE_BAND_AD 70 > RHP 50 > DRHP 10) and the real Deepa/Skyways filing calendar (RHP 25-Aug-2026, corrigendum days later, prospectus after listing price is set).",
+  "scenarios": {
+    "prospectus-after-rhp": {
+      "spec": "I3: PROSPECTUS supersedes RHP + PRICE_BAND_AD",
+      "input": {
+        "existing": { "docType": "RHP", "filingDate": "2026-08-25", "sha256": "a1" },
+        "incoming": { "docType": "PROSPECTUS", "filingDate": "2026-09-08", "sha256": "b2" },
+        "alsoHeld": ["RHP", "PRICE_BAND_AD"]
+      },
+      "expected": { "action": "supersede", "supersededTypes": ["RHP", "PRICE_BAND_AD"] }
+    },
+    "corrigendum-after-rhp": {
+      "spec": "I3: CORRIGENDUM supersedes RHP",
+      "input": {
+        "existing": { "docType": "RHP", "filingDate": "2026-08-25", "sha256": "a1" },
+        "incoming": { "docType": "CORRIGENDUM", "filingDate": "2026-08-27", "sha256": "c3" },
+        "alsoHeld": ["RHP"]
+      },
+      "expected": { "action": "supersede", "supersededTypes": ["RHP"] }
+    },
+    "newer-corrigendum-deactivates-older": {
+      "spec": "I3 + R4: a newer filing of the SAME type deactivates the older one",
+      "input": {
+        "existing": { "docType": "CORRIGENDUM", "filingDate": "2026-08-27", "sha256": "c3" },
+        "incoming": { "docType": "CORRIGENDUM", "filingDate": "2026-08-29", "sha256": "c4" },
+        "alsoHeld": ["CORRIGENDUM"]
+      },
+      "expected": { "action": "supersede", "supersededTypes": ["CORRIGENDUM"] }
+    },
+    "older-filing-arriving-later-is-ignored": {
+      "spec": "I3 + E1: ordering is by filing_date, never by fetch order",
+      "input": {
+        "existing": { "docType": "CORRIGENDUM", "filingDate": "2026-08-29", "sha256": "c4" },
+        "incoming": { "docType": "CORRIGENDUM", "filingDate": "2026-08-27", "sha256": "c3" },
+        "alsoHeld": ["CORRIGENDUM"]
+      },
+      "expected": { "action": "none" }
+    },
+    "same-sha-other-url": {
+      "spec": "I3 + R3: identical sha256 reached us by another URL - update the URL list only",
+      "input": {
+        "existing": { "docType": "RHP", "filingDate": "2026-08-25", "sha256": "a1" },
+        "incoming": { "docType": "RHP", "filingDate": "2026-08-25", "sha256": "a1" },
+        "alsoHeld": ["RHP"]
+      },
+      "expected": { "action": "update_url_only" }
+    },
+    "late-drhp-supersedes-nothing": {
+      "spec": "I3: a DRHP discovered after the RHP supersedes nothing (DRHP precedence 10)",
+      "input": {
+        "existing": { "docType": "RHP", "filingDate": "2026-08-25", "sha256": "a1" },
+        "incoming": { "docType": "DRHP", "filingDate": "2026-01-14", "sha256": "d5" },
+        "alsoHeld": ["RHP"]
+      },
+      "expected": { "action": "none" }
+    },
+    "null-filing-date-kept-as-is": {
+      "spec": "I3: a same-type incoming with no filing date is not newer, so the held row stays",
+      "input": {
+        "existing": { "docType": "RHP", "filingDate": "2026-08-25", "sha256": "a1" },
+        "incoming": { "docType": "RHP", "filingDate": null, "sha256": "a9" },
+        "alsoHeld": ["RHP"]
+      },
+      "expected": { "action": "none" }
+    },
+    "first-document-ever": {
+      "spec": "row 7 boundary: nothing held yet, so nothing can be superseded",
+      "input": {
+        "existing": null,
+        "incoming": { "docType": "RHP", "filingDate": "2026-08-25", "sha256": "a1" },
+        "alsoHeld": []
+      },
+      "expected": { "action": "none" }
+    }
+  },
+  "redByDesign": [
+    {
+      "id": "S7-R1",
+      "claim": "some production code path calls decideSupersession",
+      "spec": "section 6 row 7 'Exists today?': 'functions exist, unwired (T-403 section 8.4)'",
+      "observedToday": "the only callers of decideSupersession are tests; scraper/src has no non-test caller, so no real filing is ever superseded in prod"
+    },
+    {
+      "id": "S7-R2",
+      "claim": "some production code path calls markSuperseded, so the old row's state actually changes",
+      "spec": "section 6 row 7 expected: 'old row is_active=false'",
+      "observedToday": "DocumentFetchStateRepository.markSuperseded is documented NOT YET WIRED; the only callers are the integration test"
+    }
+  ]
+}
