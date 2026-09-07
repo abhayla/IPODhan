@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -62,9 +62,21 @@ test('regenerated detection-checks.json has the same check/notCovered ids as ori
   // assertion blocked #377, the first PR to add a check after the split).
   if (extraInLocal.length > 0) console.log(`parity: check id(s) added vs ${ref}: ${extraInLocal.join(', ')}`);
 
-  const localNc = new Set(local.notCoveredByThisManifest);
-  const mainNc = new Set(main.notCoveredByThisManifest);
-  const missingNc = [...mainNc].filter((n) => !localNc.has(n));
+  // notCovered entries are free text in the aggregate; a PR may legitimately reword one
+  // (#391 extended the nc-14 note and was blocked). Compare by the per-file source ids
+  // instead: every id present on origin/main must still exist locally.
+  const mainNcIds = new Set(
+    sh(['git', 'ls-tree', '--name-only', `${ref}:docs/reviews/detection-checks`])
+      .split(/\r?\n/)
+      .filter((f) => f.endsWith('.json') && f !== '_meta.json')
+      .map((f) => f.replace(/\.json$/, ''))
+  );
+  const localNcIds = new Set(
+    readdirSync(join(REPO_ROOT, 'docs/reviews/detection-checks'))
+      .filter((f) => f.endsWith('.json') && f !== '_meta.json')
+      .map((f) => f.replace(/\.json$/, ''))
+  );
+  const missingNc = [...mainNcIds].filter((n) => !localNcIds.has(n));
   assert.deepEqual(missingNc, [], `local aggregate is missing notCoveredByThisManifest entr(y/ies) present on ${ref}: ${missingNc.map((n) => n.slice(0, 40)).join(' | ')}`);
 });
 
