@@ -386,6 +386,14 @@ describe('AnchorInvestorsSection - Edge Cases', () => {
     ).toBeInTheDocument();
   });
 
+  it('should display the explicit source attribution line (T-458)', () => {
+    render(<AnchorInvestorsSection {...mockAnchorData} />);
+
+    expect(
+      screen.getByText('Source: exchange anchor allocation report')
+    ).toBeInTheDocument();
+  });
+
   it('should render component title correctly', () => {
     render(<AnchorInvestorsSection {...mockAnchorData} />);
 
