@@ -319,8 +319,12 @@ assert_rollout_flags_live() {
   # the key and its marker on different lines, or a `grep` without -P support
   # all collapse to the SAME symptom -- zero keys derived, loop bodies never
   # run, exit 0. That is a silent false negative on the exact class this
-  # check exists to catch. Refuse to pass quietly.
-  if [ "${#live_gate_keys[@]}" -eq 0 ] && [ "${#required_true_keys[@]}" -eq 0 ]; then
+  # check exists to catch. Refuse to pass quietly -- but only where the gate
+  # actually enforces anything (the prod slot): a non-prod caller (or a
+  # deliberately marker-less fixture, like the report_dead_flags tests'
+  # scraper-src-fake) never enforced liveness in the first place, so 0
+  # derived there is a no-op, not a regression.
+  if [ "$slot" = "prod" ] && [ "${#live_gate_keys[@]}" -eq 0 ] && [ "${#required_true_keys[@]}" -eq 0 ]; then
     echo "FATAL: rollout-flag liveness assert derived 0 flags from $flags_file (T-297 D9 / #193) — the // LIVE-GATE / // PROD-REQUIRED-TRUE marker grep matched nothing. This is refused rather than silently passed: either the marker wording changed, a field's key and marker no longer share one line, or this grep lacks -P support. Fix the markers or the grep, do not ignore this." >&2
     exit 1
   fi
