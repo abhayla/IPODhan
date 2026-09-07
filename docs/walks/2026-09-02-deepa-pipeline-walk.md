@@ -1123,3 +1123,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 16:45 IST — tick: no agents; VPS prod f9b67d0a (49 s / 16 calls / 0 failed), staging 60a7bb46 (77 s / 75 calls / 0); disk 57%, load 0.09, OOM 0; worktrees relverify only; stash the 10 pre-existing. Staging repair-held run 1: cycle 1 held (0 violations) but UNVERIFIABLE at its 41-min timeout (second cycle at 16:45 just missed); run 2 started 16:46 with a 90-min window (cycles 17:15 + 17:45), verdict before the 19:00 read.
 
 - 17:15 IST — tick: no agents; repair-held run 2 polling (no cycle observed yet at 17:15). VPS prod f9b67d0a (68 s / 26 calls / 0 failed), staging 60a7bb46 (93 s / 92 calls / extractionFailed 1, latest error line read); disk 57%, load 0.27, OOM 0; worktrees relverify only; stash the 10 pre-existing.
+
+- 17:16 IST — staging extractionFailed 1 at 16:49 = Rentomojo (UPCOMING, mainboard) PRICE_BAND_AD persist: insert into ipo_details failed, ipo_details rows 0; the log carries only the drizzle SQL/params, not the Postgres cause -> issue #402 (observability class). Prod/staging counts read.
