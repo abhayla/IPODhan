@@ -40,12 +40,14 @@ const LOG_FILE_BY_SLOT = {
 const DEFAULT_LINES = 5000;
 
 function parseArgs(argv) {
-  const args = { slot: null, fileIssues: false, lines: DEFAULT_LINES, track: [] };
+  const args = { slot: null, fileIssues: false, lines: DEFAULT_LINES, track: [], fromFile: null, stateDir: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--slot') args.slot = argv[++i];
     else if (a === '--file-issues') args.fileIssues = true;
     else if (a === '--lines') args.lines = Number(argv[++i]);
+    else if (a === '--from-file') args.fromFile = argv[++i];
+    else if (a === '--state-dir') args.stateDir = argv[++i];
     else if (a === '--track') {
       try {
         args.track.push(parseTrackArg(argv[++i] ?? '', ERROR_CLASSES));
@@ -60,7 +62,7 @@ function parseArgs(argv) {
 }
 
 function usageAndExit(code) {
-  console.log('Usage: node scripts/ops/failure-delta.mjs --slot prod|staging [--file-issues] [--lines N] [--track <ipoId>|<errorClass>=<#issue> ...]');
+  console.log('Usage: node scripts/ops/failure-delta.mjs --slot prod|staging [--file-issues] [--lines N] [--track <ipoId>|<errorClass>=<#issue> ...] [--from-file <path>] [--state-dir <dir>]');
   process.exit(code);
 }
 
@@ -93,8 +95,8 @@ function fetchLogTailOrExit(slot, lines) {
   }
 }
 
-function loadState(slot) {
-  const file = path.join(STATE_DIR, `${slot}.json`);
+function loadState(slot, stateDir = STATE_DIR) {
+  const file = path.join(stateDir, `${slot}.json`);
   if (!existsSync(file)) return { failures: {} };
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
@@ -103,9 +105,9 @@ function loadState(slot) {
   }
 }
 
-function saveState(slot, state) {
-  mkdirSync(STATE_DIR, { recursive: true });
-  const file = path.join(STATE_DIR, `${slot}.json`);
+function saveState(slot, state, stateDir = STATE_DIR) {
+  mkdirSync(stateDir, { recursive: true });
+  const file = path.join(stateDir, `${slot}.json`);
   writeFileSync(file, JSON.stringify(state, null, 2) + '\n', 'utf8');
 }
 
@@ -171,11 +173,11 @@ function main() {
     usageAndExit(2);
   }
 
-  const raw = fetchLogTailOrExit(args.slot, args.lines);
+  const raw = args.fromFile ? readFileSync(args.fromFile, 'utf8') : fetchLogTailOrExit(args.slot, args.lines);
   const parsed = parseLogLines(raw);
   const currentMap = extractFailures(parsed);
 
-  const state = loadState(args.slot);
+  const state = loadState(args.slot, args.stateDir ?? STATE_DIR);
   const { NEW, GONE, SAME } = diff(currentMap, state.failures);
 
   // Carry forward tracked status (issueNumber) AND firstSeen from the previous run, then
@@ -241,7 +243,7 @@ function main() {
       issueNumber: f.issueNumber ?? null,
     };
   }
-  saveState(args.slot, { failures: nextFailures, updatedAt: new Date().toISOString() });
+  saveState(args.slot, { failures: nextFailures, updatedAt: new Date().toISOString() }, args.stateDir ?? STATE_DIR);
 
   const untrackedCount = countUntracked(currentMap);
   if (untrackedCount > 0) {
