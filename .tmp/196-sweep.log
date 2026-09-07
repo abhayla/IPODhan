@@ -1,0 +1,4 @@
+mutation-guard-sweep: self-test (fake guard, red-then-green proof)
+SELF-TEST PASS: fake guard with a suite that never exercises it is correctly classified as a FINDING (suite stayed green under mutation, exit 0).
+
+mutation-guard-sweep: running the real GUARDS registry (this is slow — the deploy suite alone is ~5 min)
