@@ -1,0 +1,145 @@
+{
+  "_spec": "Stage 9 expected output. Written from the preflight CONTRACT (scripts/preflight-runtime.sh header: 'OK|WARN|FAIL <check name> - <detail>', exits 1 on any FAIL, 0 with --report) BEFORE this harness was run, per the T-403-round-2 lesson. If the script disagrees with a row here, the script changed behaviour - do not regenerate this file from its output.",
+  "_shims": "Each scenario is driven against the REAL script with a temp PATH of fake python3/tesseract/node/df shims plus controlled env (PREFLIGHT_ETC_TIMEZONE_FILE, PROSPECTUS_STORE_DIR, ADMIN_API_TOKEN). No VPS access, no network.",
+  "checkOrder": [
+    "python3 on PATH",
+    "python3 pdfplumber import",
+    "tesseract on PATH",
+    "process TZ (T-327)",
+    "prospectus store dir",
+    "free disk >= 2GB",
+    "node >= 20",
+    "ADMIN_API_TOKEN set"
+  ],
+  "scenarios": {
+    "all-green": {
+      "why": "a correctly provisioned box: every runtime dependency present, TZ Asia/Kolkata, store dir writable, 10GB free, node 22, token set",
+      "input": {
+        "pdfplumber": true,
+        "tesseract": true,
+        "tz": "Asia/Kolkata",
+        "storeDir": "exists",
+        "args": []
+      },
+      "exitCode": 0,
+      "verdicts": {
+        "python3 on PATH": "OK",
+        "python3 pdfplumber import": "OK",
+        "tesseract on PATH": "OK",
+        "process TZ (T-327)": "OK",
+        "prospectus store dir": "OK",
+        "free disk >= 2GB": "OK",
+        "node >= 20": "OK",
+        "ADMIN_API_TOKEN set": "OK"
+      }
+    },
+    "missing-pdfplumber": {
+      "why": "python3 present but the pdfplumber module is not installed - the exact silent-extraction-failure class stage 9 exists to catch",
+      "input": {
+        "pdfplumber": false,
+        "tesseract": true,
+        "tz": "Asia/Kolkata",
+        "storeDir": "exists",
+        "args": []
+      },
+      "exitCode": 1,
+      "verdicts": {
+        "python3 on PATH": "OK",
+        "python3 pdfplumber import": "FAIL",
+        "tesseract on PATH": "OK",
+        "process TZ (T-327)": "OK",
+        "prospectus store dir": "OK",
+        "free disk >= 2GB": "OK",
+        "node >= 20": "OK",
+        "ADMIN_API_TOKEN set": "OK"
+      }
+    },
+    "missing-tesseract": {
+      "why": "tesseract is OCR-only and degrades rather than breaks extraction, so it is a WARN and MUST NOT fail the deploy (walk step D6: no tesseract on the dev laptop)",
+      "input": {
+        "pdfplumber": true,
+        "tesseract": false,
+        "tz": "Asia/Kolkata",
+        "storeDir": "exists",
+        "args": []
+      },
+      "exitCode": 0,
+      "verdicts": {
+        "python3 on PATH": "OK",
+        "python3 pdfplumber import": "OK",
+        "tesseract on PATH": "WARN",
+        "process TZ (T-327)": "OK",
+        "prospectus store dir": "OK",
+        "free disk >= 2GB": "OK",
+        "node >= 20": "OK",
+        "ADMIN_API_TOKEN set": "OK"
+      }
+    },
+    "wrong-tz": {
+      "why": "TZ=America/New_York - the 5h30m timestamp-skew class (T-327); neither Asia/Kolkata nor a UTC alias",
+      "input": {
+        "pdfplumber": true,
+        "tesseract": true,
+        "tz": "America/New_York",
+        "storeDir": "exists",
+        "args": []
+      },
+      "exitCode": 1,
+      "verdicts": {
+        "python3 on PATH": "OK",
+        "python3 pdfplumber import": "OK",
+        "tesseract on PATH": "OK",
+        "process TZ (T-327)": "FAIL",
+        "prospectus store dir": "OK",
+        "free disk >= 2GB": "OK",
+        "node >= 20": "OK",
+        "ADMIN_API_TOKEN set": "OK"
+      }
+    },
+    "store-dir-missing": {
+      "why": "PROSPECTUS_STORE_DIR points at a directory that does not exist - downloaded prospectuses would have nowhere to land",
+      "input": {
+        "pdfplumber": true,
+        "tesseract": true,
+        "tz": "Asia/Kolkata",
+        "storeDir": "missing",
+        "args": []
+      },
+      "exitCode": 1,
+      "verdicts": {
+        "python3 on PATH": "OK",
+        "python3 pdfplumber import": "OK",
+        "tesseract on PATH": "OK",
+        "process TZ (T-327)": "OK",
+        "prospectus store dir": "FAIL",
+        "free disk >= 2GB": "OK",
+        "node >= 20": "OK",
+        "ADMIN_API_TOKEN set": "OK"
+      }
+    },
+    "report-mode-still-reports-failures": {
+      "why": "--report must report every FAIL identically but always exit 0, so a pre-deploy report never aborts the deploy",
+      "input": {
+        "pdfplumber": false,
+        "tesseract": true,
+        "tz": "Asia/Kolkata",
+        "storeDir": "exists",
+        "args": [
+          "--report"
+        ]
+      },
+      "exitCode": 0,
+      "verdicts": {
+        "python3 on PATH": "OK",
+        "python3 pdfplumber import": "FAIL",
+        "tesseract on PATH": "OK",
+        "process TZ (T-327)": "OK",
+        "prospectus store dir": "OK",
+        "free disk >= 2GB": "OK",
+        "node >= 20": "OK",
+        "ADMIN_API_TOKEN set": "OK"
+      }
+    }
+  },
+  "_input": "Each scenario declares its INPUT explicitly (pdfplumber/tesseract present, tz, storeDir, args). The input MUST NOT be derived from the expected verdicts: when it was, flipping a verdict also flipped the shim that produced it and the mutation self-healed (caught by the part-1 mutation check). Fixture in, expectation out - two separate blocks."
+}
