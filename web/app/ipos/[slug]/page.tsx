@@ -60,6 +60,13 @@ import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { ReviewRepository } from '@/lib/repositories/review-repository';
+import { IPOScoreRealtimeRepository } from '@/lib/repositories/ipo-score-realtime-repository';
+import {
+  adaptStoredScore,
+  adaptRealtimeScore,
+  type IPOScoreDisplayModel,
+} from '@/lib/adapters/ipo-score-display-adapter';
+import type { IPOScore } from '@/lib/db/types';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { IpoValuationRepository } from '@ipodhan/shared/repositories/ipo-valuation-repository';
 import { PromotersRepository } from '@ipodhan/shared/repositories/promoters-repository';
@@ -169,6 +176,34 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 }
 
+/**
+ * Resolve the IPO score for display (T-489): prefer a stored editorial
+ * `ipo_scores` row (future manual overrides) and otherwise fall back to the
+ * realtime financial-data score — via the repository directly, never the
+ * `/api/ipos/[slug]/score` HTTP route (CLAUDE.md: Server Components use
+ * repositories directly). Never throws — a scoring failure renders the
+ * existing "Score Pending" empty state rather than breaking the page.
+ */
+async function getScoreDisplayModel(
+  ipoId: string,
+  storedScore: IPOScore | null,
+  db: ConstructorParameters<typeof IPOScoreRealtimeRepository>[0],
+  redis: ConstructorParameters<typeof IPOScoreRealtimeRepository>[1]
+): Promise<IPOScoreDisplayModel | null> {
+  if (storedScore) {
+    return adaptStoredScore(storedScore);
+  }
+
+  try {
+    const scoreRepo = new IPOScoreRealtimeRepository(db, redis);
+    const realtime = await scoreRepo.getOrCalculateScore(ipoId);
+    return adaptRealtimeScore(realtime, new Date(), 'realtime-v1.0');
+  } catch (error) {
+    console.error(`[IPOScoreSection] Failed to calculate realtime score for ${ipoId}:`, error);
+    return null;
+  }
+}
+
 // ==================== PAGE COMPONENT ====================
 
 /**
@@ -219,6 +254,15 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   // Fetch review summary (Story 11.16)
   const reviewSummary = await reviewRepository.getReviewSummary(ipoWithRelations.id);
 
+  // T-489: one score display model regardless of source (stored editorial
+  // row vs. realtime financial-data score) — see getScoreDisplayModel above.
+  const scoreDisplay = await getScoreDisplayModel(
+    ipoWithRelations.id,
+    ipoWithRelations.ipoScore ?? null,
+    db,
+    redis
+  );
+
   // Transform to API response format (same as API route)
   // Extract IPO data without relations for the ipo field
   const { financialData: _, ipoFinancials: __, ipoDetails: ___, documents: ____, subscriptions: _____, gmpRecords: ______, listingPerformance: _______, peerCompanies: ________, registrarRelation, ipoScore: _________, anchorInvestor: __________, ...ipoData } = ipoWithRelations;
@@ -245,7 +289,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     },
   };
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor, documents } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoDetails, peerCompanies, financialData, anchorInvestor, documents } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -378,7 +422,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         ipoDetails.designatedExchange ||
         (allocationPct && Object.keys(allocationPct).length > 0))
   );
-  const hasScore = Boolean(ipoScore);
+  const hasScore = Boolean(scoreDisplay);
   const hasFinancials = Boolean(financialData);
   const hasGmpHistory = (gmpRecords?.length ?? 0) > 0;
   const hasBrokerReviews = Boolean(reviewSummary && (reviewSummary.totalReviews ?? 0) > 0);
@@ -621,7 +665,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             </section>
 
             {/* 6. IPO Score Section */}
-            {hasScore && <IPOScoreSection score={ipoScore || null} />}
+            {hasScore && <IPOScoreSection score={scoreDisplay} />}
 
             {/* 7. GMP History Chart */}
             {hasGmpHistory && (
