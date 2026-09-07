@@ -404,6 +404,63 @@ async function checkE() {
     status, `${offenders.length} failing, ${unreachable} unreachable (of ${publicRoutes.length})` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join(' | ')}` : ''));
 }
 
+// ---- (e2): #350 — an unknown IPO slug must 404, never resolve to a
+// different company via the fuzzy fallback. Three nonsense slugs (never a
+// real row) must each 404; one real, currently-live slug must resolve to
+// itself. Catches the NEXT member of the class: any slug the fuzzy fallback
+// starts resolving to an unrelated IPO again (threshold regression, a
+// normalization change, a new confusable pair) fails this check the same
+// night it ships.
+async function checkE_unknownSlug404() {
+  const nonsenseSlugs = [
+    'zzz-not-a-real-ipo',
+    'this-company-does-not-exist-ltd',
+    'qwzxy-industries-fake-9999',
+  ];
+
+  const offenders = [];
+  let unreachable = 0;
+  for (const slug of nonsenseSlugs) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000);
+      const res = await fetch(`${BASE_URL}/api/ipos/${slug}`, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+      if (res.status !== 404) {
+        offenders.push(`${slug} -> HTTP ${res.status} (want 404)`);
+      }
+    } catch (e) {
+      unreachable++;
+    }
+  }
+
+  const [{ slug: realSlug } = {}] = await q(
+    `SELECT slug FROM ipos WHERE ${REAL_IPO} ORDER BY listing_date DESC NULLS LAST, created_at DESC LIMIT 1`
+  );
+  let realSlugOk = null; // null = skipped (no row to test against)
+  if (realSlug) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000);
+      const res = await fetch(`${BASE_URL}/api/ipos/${realSlug}`, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+      const body = res.ok ? await res.json().catch(() => null) : null;
+      realSlugOk = res.ok && body?.data?.ipo?.slug === realSlug;
+      if (!realSlugOk) {
+        offenders.push(`${realSlug} (real slug) -> HTTP ${res.status}, resolved slug ${body?.data?.ipo?.slug ?? 'n/a'} (want itself)`);
+      }
+    } catch (e) {
+      unreachable++;
+    }
+  }
+
+  const status = offenders.length > 0 ? 'FAIL' : unreachable > 0 ? 'UNVERIFIABLE' : 'PASS';
+  record(
+    'e_unknown_slug_404',
+    `/api/ipos/<slug>: ${nonsenseSlugs.length} nonsense slugs 404, and a real slug resolves to itself (never a different IPO via the fuzzy fallback, #350)`,
+    status,
+    `${offenders.length} failing, ${unreachable} unreachable` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join(' | ')}` : realSlug ? `; real slug checked: ${realSlug}` : '; no LISTED row to check the positive case')
+  );
+}
+
 // ---- (f): conflict noise ratio ------------------------------------------------
 async function checkF() {
   if (!(await tableExists('data_conflicts'))) {
@@ -1128,6 +1185,7 @@ async function main() {
   await checkC();
   await checkD();
   await checkE();
+  await checkE_unknownSlug404();
   await checkF();
   await checkG();
   await checkH();

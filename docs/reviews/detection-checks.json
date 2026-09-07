@@ -73,6 +73,16 @@
       "unverifiableWhen": "any enumerated public route is unreachable (the sweep did not cover its whole population)"
     },
     {
+      "id": "e_unknown_slug_404",
+      "findingClass": "/api/ipos/<slug> (or the /ipos/<slug> page, same resolution path) resolves an unknown slug to a DIFFERENT IPO instead of 404ing",
+      "round7Findings": [],
+      "issue": 350,
+      "failThreshold": "any of 3 nonsense slugs (never a real row) does not return 404, OR a real currently-live slug does not resolve to itself",
+      "severity": "P1",
+      "unverifiableWhen": "a request is unreachable (timeout/network), or there is no LISTED row to run the positive case against",
+      "note": "T-485 (2026-09-07): findBySlugWithFallback used to accept any best-scoring Fuse.js fuzzy match with no floor, so 'karamtara-engineering-ltd' (no row on prod) resolved to 'Sumax Engineering Ltd.' purely on the shared word 'engineering' (measured score 0.44, 56% similarity). Fixed by resolving only via the slug-redirect table, an exact normalized company-name match, or a fuzzy match at or above an 85% similarity floor (measured: a genuine one-typo pair scores 15%, comfortably inside; the karamtara/sumax collision at 44% is rejected by more than double the margin) — everything else 404s, with the miss negative-cached per #344."
+    },
+    {
       "id": "f_conflict_noise_ratio",
       "findingClass": "the data_conflicts table is dominated by non-actionable noise, burying genuine P1 disagreements",
       "round7Findings": [
@@ -329,12 +339,25 @@
       "failThreshold": "any UPCOMING/OPEN/CLOSED/LISTED IPO's DRHP/RHP/PROSPECTUS document has extraction_status=MANUAL_REVIEW, a sibling document_fetch_state.state=EXTRACT_FAILED, or extraction_status=FAILED with an extraction_error starting HARD_FAILURE:, for more than 48h",
       "severity": "P1",
       "unverifiableWhen": "never - always runs against documents/document_fetch_state joined to ipos"
+    },
+    {
+      "id": "g_served_stored_delta",
+      "findingClass": "an API and its backing table each look correct in isolation while a stale cache key or wrong filter silently serves a different row count than the DB holds (T-272 P1-2: /api/registrars served 41 rows while the DB held 15 -- 26 unit-test fixture rows stranded in a 7-day Redis key after an integration suite was pointed at production)",
+      "round7Findings": [],
+      "sourceTask": "#186 (T-460), filed by T-297 discovery-coverage meta-analysis (D5 serving-vs-storage delta)",
+      "registryClass": "serving-vs-storage-drift",
+      "failThreshold": "for any of /api/registrars, /api/ipos?status=OPEN&limit=100, /api/ipos?status=UPCOMING&limit=100, /api/market-holidays?year=<current>: served row count (live HTTP JSON body) != stored row count (matching filtered DB query) -- exact equality, not a tolerance",
+      "severity": "P1",
+      "unverifiableWhen": "the live HTTP fetch or the matching DB query fails (marked unverifiable, not a false PASS)",
+      "auditScript": "scripts/audit-ipo-coverage.mjs --gate (evaluateServedVsStoredDelta)",
+      "selfTest": "scripts/tests/audit-ipo-coverage-served-stored.test.mjs"
     }
   ],
   "notCoveredByThisManifest": [
     "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
     "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
+    "g_rollout_flag_liveness (T-297 D9, issue #193) — a *_PERCENTAGE/ENABLE_* rollout flag silently zeroed/disabled in the prod env file (the CONSOLIDATION_PERCENTAGE=0 / T-282 class). This is a deploy-time gate, not a nightly DB-row audit: `scripts/assert-env-keys.sh`'s `assert_rollout_flags_live()` reads `// LIVE-GATE` / `// PROD-REQUIRED-TRUE` markers off `scraper/src/config/feature-flags.ts` and refuses the deploy before build, on the prod slot only. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly audit. Guarded instead by `scripts/tests/assert-env-keys.test.sh` (see `docs/reviews/failure-classes.md`, 'rollout-flag zeroed silently voids live logic').",
     "g_cache_poison_bisect (T-463, issue #189) — a paginated list API's cache poisoned exactly at the page's default `limit` parameter value (limit=20 once served 240 stale rows with blank issuePrice for 19h while limit=19/21 served the correct set). This is an HTTP-only prod probe, not a nightly DB-row audit: `scripts/audit-prod.mjs` runs `bisectDefaultParameter()` (from `scripts/lib/cache-poison-bisect.mjs`) against GET /api/ipos/history at limit=19/20/21. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly DB audit. Guarded instead by `scripts/tests/cache-poison-bisect.test.mjs`."
   ],
   "exitCodes": {
