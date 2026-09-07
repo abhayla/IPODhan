@@ -1201,3 +1201,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 01:21 IST — T-502 built: PR #414 (class-level --track persists as state.classIssues and covers later keys of the class; per-key wins; 25/25 reproduced; real prod run from a copy of the live state: 5 TRACKED, exit 0). Tier B dispatched; gate running.
 
 - 01:46 IST — tick via failure-delta: prod NEW = Glass Wall Systems anchor refusal (#347 class; tracked), prod 01:31 wake 69 s / 51 calls / 2 failed (Rentomojo #402 + Glass Wall #347); staging 01:16 wake 60 s / 74 calls / 3 known; disk 57%, load 0.27, OOM 0; stash the 10 pre-existing. #414 merge attempt above (Tier B PASS).
+
+- 02:15 IST — tick via failure-delta: prod NEW = Kanohar anchor refusal (#347 class) — tracked; class tracks re-recorded under the merged #414 script so classIssues now persist for both slots (earlier class tracks predated it). Prod 02:04 wake 117 s / 47 calls / 3 failed (all tracked), staging 2c8d77f2 (main after #414) 01:52 wake 91 s / 108 calls / 3 known; disk 57%, load 0.08, OOM 0; worktrees relverify only; stash the 10 pre-existing; no agents.
