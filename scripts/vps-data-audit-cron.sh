@@ -29,9 +29,13 @@
 #                                            FAIL/UNVERIFIABLE findings to GitHub
 #                                            issues; fail-open, never fails this cron)
 #   5. assert-schema-drift.ts              (T-330: live DB vs schema.ts; needs the DB)
-# All of 1-3 and 5 are strictly read-only: SELECT-only SQL and GET requests. Step 4
-# WRITES to GitHub (issues) but never to the database, Redis, or the local
-# filesystem outside this script's state dir.
+#   6. audit-reverse-sweep.mjs --gate      (#187/T-461: external chittorgarh.com
+#                                            calendar vs our site -- catches an
+#                                            IPO the market lists that we never
+#                                            created; non-fatal, HTML-scrape dependency)
+# All of 1-3, 5 and 6 are strictly read-only: SELECT-only SQL and GET requests.
+# Step 4 WRITES to GitHub (issues) but never to the database, Redis, or the
+# local filesystem outside this script's state dir.
 #
 # INSTALL (one manual step — a production mutation, so it is NOT done by the
 # worker that authored this file):
@@ -164,8 +168,22 @@ run_audit() {
   # migration is journaled as applied but the live DDL never actually matched
   # (ipo_scores.algorithm_version varchar(10) vs SSOT varchar(50); calendar_view
   # never created) between deploys, e.g. after an out-of-band manual DB change.
-  echo "--- [5/5] assert-schema-drift (live DB vs schema.ts) ---"
+  echo "--- [5/6] assert-schema-drift (live DB vs schema.ts) ---"
   npx tsx scripts/assert-schema-drift.ts || { failed=1; echo "GATE FAILED: assert-schema-drift"; }
+
+  # #187 (T-461), g_reverse_sweep: the reverse sweep (external chittorgarh.com
+  # calendar -> is this IPO visible on our site). Wired NON-FATAL like step 4
+  # (audit-findings-to-issues) deliberately: it depends on chittorgarh.com's
+  # public HTML shape staying stable (a scrape-parsing dependency, not a DB
+  # invariant), and this cron script itself carries the one-night-lag class
+  # (#348 -- a change to THIS file only takes effect the run after it lands,
+  # because run_audit() is defined once and bash keeps the old function body
+  # for the remainder of a tick that already started). `|| true` means a
+  # chittorgarh.com HTML-shape change can never turn a green data-integrity
+  # night into a failed cron run; its own exit code (0/1/3/2) is still
+  # printed to the log for a human to read.
+  echo "--- [6/6] audit-reverse-sweep --gate (external market calendar vs our site, #187) ---"
+  BASE_URL="https://ipodhan.com" node scripts/audit-reverse-sweep.mjs --gate || echo "NON-FATAL: audit-reverse-sweep exited $? (see docs/reviews/detection-checks.json:g_reverse_sweep)"
 
   echo "=== exit code: $failed ==="
   return "$failed"
