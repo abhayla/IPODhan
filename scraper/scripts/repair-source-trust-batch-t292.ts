@@ -80,15 +80,40 @@
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
+// #180/T-459 round 3 (R0 write ratchet, T-316): the SME/FPO class repair was
+// originally a standalone script, but ANY new file writing to `ipos` fails
+// check-write-ratchet.mjs's shrink-only baseline regardless of which write
+// pattern it uses (drizzle/repository/raw_sql/dynamic_table all count). This
+// file IS a baseline entry (patterns: ["drizzle"]) — folding the #180 repair
+// in here, using the SAME raw `db.update(schema.ipos)...` style already
+// baselined for it, adds no new writer file and no new pattern kind.
+const ALLOW_PROD = process.argv.includes('--allow-prod');
 const EVIDENCE_DIR = process.env.T292_EVIDENCE_DIR || 'D:/Abhay/GetWorkDone/evidence/2026-08-23-T-292';
 const EDITED_BY = 'system:T-292-source-trust-repair';
+const T180_CITATION =
+  'guardSmeOfferingTypeAgainstFpo class invariant (scraper/src/utils/detect-offering-type.ts): ' +
+  'the BSE-SME / NSE-SME first-time-listing platform has no genuine FPO — segment=SME rows stored ' +
+  'offering_type=FPO are a first public offer misclassified by a lower-trust source, not a real FPO ' +
+  '(T-292 Mopshop Distribution shape; #180 named 3 sibling rows the update-path guard never reached).';
+
+function assertNotProdUnlessAllowed() {
+  const dbName = (process.env.DATABASE_NAME || '').toLowerCase();
+  const urlName = (process.env.DATABASE_URL || '').toLowerCase();
+  const looksProd =
+    dbName === 'ipodhan' || (urlName.includes('/ipodhan') && !urlName.includes('ipodhan_staging') && !urlName.includes('ipodhan_test'));
+  if (looksProd && !ALLOW_PROD) {
+    console.error('Refusing to run against what looks like the PROD database without --allow-prod.');
+    console.error(`  DATABASE_NAME=${process.env.DATABASE_NAME ?? '(unset)'}`);
+    process.exit(1);
+  }
+}
 
 interface FieldChange {
   field: keyof typeof schema.ipos.$inferInsert;
@@ -113,6 +138,8 @@ async function loadRow(slug: string) {
 }
 
 async function main() {
+  assertNotProdUnlessAllowed();
+
   console.log('='.repeat(80));
   console.log(`T-292 SOURCE-TRUST BATCH REPAIR — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
@@ -193,6 +220,30 @@ async function main() {
         citation: 'chittorgarh.com/rights-issue/travels-rentals-rights-issue-2026/501/ (2026-08-23): Rights Issue, 1,12,02,685 sh @ Rs 15 = Rs 16.80 Cr (matches existing issue_size exactly), open 5 Feb, close 6 Mar, listing 11 Mar 2026',
       });
     }
+  }
+
+  // --- #180 F1 (T-459 round 3): class-level SME/FPO repair ---
+  // CLASS (not a slug list): every row where segment='SME' AND offering_type='FPO',
+  // on whichever slot DATABASE_URL points at. A genuine SME "FPO" does not occur
+  // (guardSmeOfferingTypeAgainstFpo, scraper/src/utils/detect-offering-type.ts). Three
+  // rows were named by the T-292 checker (western-overseas-study-abroad-ltd,
+  // shipwaves-online-ltd, stanbik-agro-ltd) — this queries the class directly so it
+  // also catches any other row in the same state (mopshop-distribution-ltd, above,
+  // is excluded here only because it is already handled by the P1-1 block).
+  const alreadyHandledSlugs = new Set(repairs.map((r) => r.slug));
+  const smeFpoRows = await db
+    .select()
+    .from(schema.ipos)
+    .where(and(eq(schema.ipos.segment, 'SME' as any), eq(schema.ipos.offeringType, 'FPO' as any)));
+  for (const row of smeFpoRows) {
+    if (alreadyHandledSlugs.has(row.slug)) continue;
+    repairs.push({
+      slug: row.slug,
+      id: row.id,
+      companyName: row.companyName,
+      changes: [{ field: 'offeringType', from: row.offeringType, to: 'IPO' }],
+      citation: T180_CITATION,
+    });
   }
 
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
