@@ -44,6 +44,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
 import { openRepairDb, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 
 configureUtcTimestampParsing();
 
@@ -198,7 +199,10 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
-  console.error('dates/lead_managers repair crashed:', e);
-  process.exit(1);
-});
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
+  main().catch((e) => {
+    console.error('dates/lead_managers repair crashed:', e);
+    process.exit(1);
+  });
+}

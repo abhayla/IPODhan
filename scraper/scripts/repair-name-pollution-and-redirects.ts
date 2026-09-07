@@ -51,6 +51,7 @@ import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import { eq, sql } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
+import { pathToFileURL } from 'node:url';
 import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -233,8 +234,11 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
-  logger.error({ error: e instanceof Error ? e.message : String(e) }, 'name-pollution repair crashed');
-  console.error(e);
-  process.exit(1);
-});
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
+  main().catch((e) => {
+    logger.error({ error: e instanceof Error ? e.message : String(e) }, 'name-pollution repair crashed');
+    console.error(e);
+    process.exit(1);
+  });
+}

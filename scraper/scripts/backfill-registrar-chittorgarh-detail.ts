@@ -22,6 +22,7 @@ import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-n
 import { extractRegistrarFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
 import { fillDiscoveryGapsFromReport82 } from './lib/chittorgarh-report82-discovery.js';
 import logger from '../src/utils/logger.js';
+import { pathToFileURL } from 'node:url';
 import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -165,8 +166,11 @@ async function main() {
   process.exit(failed > written ? 1 : 0);
 }
 
-main().catch((e) => {
-  logger.error({ error: e instanceof Error ? e.message : String(e) }, 'registrar detail backfill crashed');
-  console.error(e);
-  process.exit(1);
-});
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
+  main().catch((e) => {
+    logger.error({ error: e instanceof Error ? e.message : String(e) }, 'registrar detail backfill crashed');
+    console.error(e);
+    process.exit(1);
+  });
+}
