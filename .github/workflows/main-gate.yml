@@ -19,8 +19,11 @@ on:
   # GitHub Actions minutes this adds on every merge to main (T-491).
 
 concurrency:
-  group: main-gate
-  cancel-in-progress: true
+  # Per-sha group (not a fixed 'main-gate' group): two close merges must both
+  # report, never cancel-race each other and hide a red intermediate sha
+  # (round 2 review). cancel-in-progress stays false for the same reason.
+  group: main-gate-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   gate:
@@ -31,14 +34,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js 20
+        # Same version as pr-gate.yml (round 2 review) - a green main-gate
+        # must mean the same runtime pr-gate already proved, not a different one.
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build shared package
+        # Mirrors pr-gate.yml's own step - web/scraper builds depend on
+        # packages/shared/dist existing (round 2 review).
+        run: |
+          rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo
+          cd packages/shared && npx tsc
+          test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
 
       - name: Detection registry aggregates not stale (T-487)
         # Mirrors pr-gate.yml's detection-change-gate job: docs/reviews/detection-checks.json
@@ -52,7 +65,10 @@ jobs:
         working-directory: ./web
 
       - name: Run unit tests
-        run: npm run test:unit
+        # --retry=2 pages over slow-machine timeouts (e.g.
+        # SMEPerformanceTrackerClient.test.tsx) without touching
+        # web/vitest.config.ts globally (round 2 review).
+        run: npm run test:unit --workspace=web -- --retry=2
 
       - name: Notify on failure
         if: failure()

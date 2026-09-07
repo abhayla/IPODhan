@@ -54,10 +54,34 @@ test('main-gate.yml runs the three gate commands', () => {
   assert.match(text, /npm run test:unit/);
 });
 
-test('main-gate.yml declares a cancel-in-progress concurrency group', () => {
+test('main-gate.yml uses a per-sha concurrency group with cancel-in-progress false', () => {
+  // Round 2 review: a fixed `group: main-gate` + cancel-in-progress: true
+  // cancels the first of two close merges, so a red intermediate sha is
+  // never reported. The group must be scoped per-sha, and cancellation off.
   const text = readWorkflow();
   assert.match(text, /concurrency:/);
-  assert.match(text, /cancel-in-progress:\s*true/);
+  assert.match(text, /group:\s*main-gate-\$\{\{\s*github\.sha\s*\}\}/);
+  assert.match(text, /cancel-in-progress:\s*false/);
+  assert.doesNotMatch(text, /cancel-in-progress:\s*true/);
+});
+
+test('main-gate.yml uses Node 20, same as pr-gate.yml', () => {
+  // Round 2 review: a green main-gate must prove the same runtime pr-gate
+  // already proved, not a different one.
+  const text = readWorkflow();
+  assert.match(text, /node-version:\s*'20'/);
+  assert.doesNotMatch(text, /node-version:\s*'22'/);
+});
+
+test('main-gate.yml builds the shared package before the gate commands, like pr-gate.yml', () => {
+  const text = readWorkflow();
+  assert.match(text, /packages\/shared\s*&&\s*npx tsc/);
+  assert.match(text, /schema\.d\.ts/);
+});
+
+test('main-gate.yml unit test step passes --retry=2 to page over slow-machine flakes', () => {
+  const text = readWorkflow();
+  assert.match(text, /test:unit.*--\s*--retry=2/);
 });
 
 test('main-gate.yml only triggers on workflow_dispatch for now', () => {
@@ -70,14 +94,35 @@ test('main-gate.yml only triggers on workflow_dispatch for now', () => {
   assert.match(text, /owner/i);
 });
 
-test('main-gate.yml guards the Notifier alert step with if: failure()', () => {
+function getNotifierStepLines(text) {
+  const lines = text.split('\n');
+  const startIdx = lines.findIndex((l) => /^\s*- name:\s*Notify on failure\s*$/.test(l));
+  assert.notEqual(startIdx, -1, 'expected a step named "Notify on failure"');
+  const stepIndent = lines[startIdx].match(/^\s*/)[0].length;
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    const indent = line.match(/^\s*/)[0].length;
+    if (indent <= stepIndent && line.trimStart().startsWith('- name:')) {
+      endIdx = i;
+      break;
+    }
+  }
+  return lines.slice(startIdx, endIdx);
+}
+
+test('main-gate.yml guards the Notifier alert step with a real (uncommented) if: failure() key on that step', () => {
   const text = readWorkflow();
-  const notifierStepIndex = text.indexOf('NOTIFIER_URL');
-  assert.notEqual(notifierStepIndex, -1, 'expected a step referencing NOTIFIER_URL');
-  const before = text.slice(0, notifierStepIndex);
-  const lastStepStart = before.lastIndexOf('- name:');
-  const stepBlock = text.slice(lastStepStart, notifierStepIndex);
-  assert.match(stepBlock, /if:\s*failure\(\)/);
+  const stepLines = getNotifierStepLines(text);
+  // Must be an actual `if:` mapping key on the step, not text inside a `#`
+  // comment or inside the run: shell block (round 2 review: "a commented
+  // `if:` cannot satisfy it").
+  const guardLine = stepLines.find((l) => /^\s*if:\s*failure\(\)\s*$/.test(l));
+  assert.ok(guardLine, `expected an uncommented "if: failure()" key directly on the Notify step, got:\n${stepLines.join('\n')}`);
+  assert.ok(!guardLine.trimStart().startsWith('#'), 'the if: failure() guard must not be commented out');
+  const stepText = stepLines.join('\n');
+  assert.match(stepText, /NOTIFIER_URL/, 'expected the guarded step to reference NOTIFIER_URL');
 });
 
 test('main-gate.yml Notifier step skips cleanly when secrets are absent', () => {
