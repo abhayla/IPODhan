@@ -11,10 +11,40 @@
  */
 import { describe, it, expect } from 'vitest';
 import { openRepairDb } from '../../../scripts/lib/repair-tool.js';
+import { resolveApplyMode } from '../../../scripts/backfill-price-bands.js';
 
 function mockProdPool() {
   return { execute: async () => ({ rows: [{ name: 'ipodhan' }] }) };
 }
+
+// T-492 round 2 (#390 review): this tool used to default to APPLY
+// (`DRY_RUN = includes('--dry-run')`) — the one repair tool in the batch that
+// broke the "dry-run unless told otherwise" convention every other tool in
+// scripts/lib/repair-tool.ts follows. Flipped to `APPLY = includes('--apply')`;
+// `--dry-run` still parses (as a no-op) so an old invocation that passed it
+// explicitly keeps working.
+describe('backfill-price-bands.ts — dry-run by default', () => {
+  it('reports dry-run (no --apply) when invoked with no flags', () => {
+    expect(resolveApplyMode(['node', 'backfill-price-bands.ts'])).toEqual({
+      apply: false,
+      dryRun: true,
+    });
+  });
+
+  it('reports dry-run when the old --dry-run flag is passed explicitly (no-op, not required)', () => {
+    expect(resolveApplyMode(['node', 'backfill-price-bands.ts', '--dry-run'])).toEqual({
+      apply: false,
+      dryRun: true,
+    });
+  });
+
+  it('reports apply mode only when --apply is passed', () => {
+    expect(resolveApplyMode(['node', 'backfill-price-bands.ts', '--apply'])).toEqual({
+      apply: true,
+      dryRun: false,
+    });
+  });
+});
 
 describe('backfill-price-bands.ts — prod-write refusal via openRepairDb()', () => {
   it('refuses --apply against current_database()="ipodhan" without --allow-prod', async () => {
