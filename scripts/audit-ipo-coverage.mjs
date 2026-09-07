@@ -4,13 +4,14 @@
 //   node scripts/audit-ipo-coverage.mjs --gate    → report + §7 thresholded gate (exit 1 on any miss)
 // Coverage thresholds are measured against the APPLICABLE population (genuine IPOs,
 // offering_type='IPO'; LISTED-only for listing perf; etc.). No writes. Loads web/.env.local.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
+import { checkProvenanceLineage, checkDuplicateIdentity, evaluateProvenanceCeiling, classifyDuplicateGroups, applyRebaseline } from './lib/provenance-checks.mjs';
 
 // T-297 (gap G3): loading web/.env.local is now OPTIONAL. On a dev PC that file
 // carries the SSH-tunnel DSN, so it stays the default. On the Linux box — where
@@ -37,6 +38,13 @@ if (isMainModule && !process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
 }
 
 const GATE = process.argv.includes('--gate');
+// T-462 round 2: --rebaseline-provenance is the ONLY way the committed C1
+// baseline (config/provenance-lineage-baseline.json) moves DOWN — never
+// automatic, never a side effect of a normal --gate run.
+const REBASELINE_PROVENANCE = process.argv.includes('--rebaseline-provenance');
+const PROVENANCE_BASELINE_PATH = join(__dirname, '..', 'config', 'provenance-lineage-baseline.json');
+const DUPLICATE_ALLOWLIST_PATH = join(__dirname, '..', 'config', 'duplicate-identity-allowlist.json');
+
 
 // Mirror packages/shared/src/db/index.ts: use discrete DATABASE_* params only
 // when both HOST and PASSWORD are set (dev-tunnel shape); otherwise fall back
@@ -374,7 +382,7 @@ async function main() {
   // single command is the comprehensive gate — contract Stage A.5 / C-5: --gate
   // FAILs on substance smells, not just missing fields). HARD: contributes to exit.
   const subRows = await q(
-    `SELECT i.id, i.company_name, i.isin, i.segment, i.open_date, i.close_date, i.allotment_date, i.listing_date,
+    `SELECT i.id, i.slug, i.company_name, i.isin, i.segment, i.offering_type, i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
@@ -383,6 +391,53 @@ async function main() {
        LEFT JOIN listing_performance lp ON lp.ipo_id = i.id
        ${IPO_DETAILS_LATERAL_JOIN_SQL}
       WHERE i.${REAL_IPO}`
+  );
+
+  // ---- #188 PROVENANCE GATE (C1 lineage ceiling / C2 duplicate identity) ----
+  // C1: hard date/band asserted with zero field_sources lineage rows. A
+  // "declining ceiling", made concrete (T-462 round 2): FAILs only when the
+  // live count RISES above the committed per-database baseline
+  // (config/provenance-lineage-baseline.json); WARNs (with the delta) when
+  // it is at or below — so drain progress stays visible without going
+  // silent. The baseline itself moves down only via --rebaseline-provenance,
+  // never automatically — issue #188's own risk note (a hard 0-gate before
+  // the T-292 legacy-row drain completes would block unrelated PRs).
+  const sourcedIpoIdRows = await q(`SELECT DISTINCT ipo_id FROM field_sources`);
+  const sourcedIpoIds = new Set(sourcedIpoIdRows.map((r) => r.ipo_id));
+  const provenanceOffenders = checkProvenanceLineage(subRows, sourcedIpoIds);
+  // T-462 round 3: the baseline slot is keyed on the LIVE connection's own
+  // database name (never env vars, which can drift from what the pool is
+  // actually talking to).
+  const dbName = (await q(`SELECT current_database() AS name`))[0].name;
+  const provenanceBaselineFile = existsSync(PROVENANCE_BASELINE_PATH)
+    ? JSON.parse(readFileSync(PROVENANCE_BASELINE_PATH, 'utf8'))
+    : {};
+  const provenanceBaselineCount = provenanceBaselineFile[dbName]?.lineageLessRows ?? null;
+  let rebaselineResult = null;
+  if (REBASELINE_PROVENANCE) {
+    rebaselineResult = applyRebaseline(provenanceOffenders.length, provenanceBaselineCount);
+    if (rebaselineResult.applied) {
+      provenanceBaselineFile[dbName] = {
+        lineageLessRows: rebaselineResult.newBaseline,
+        recordedAt: new Date().toISOString(),
+        note: `T-462 rebaselined via --rebaseline-provenance (was ${provenanceBaselineCount ?? 'unset'}).`,
+      };
+      writeFileSync(PROVENANCE_BASELINE_PATH, JSON.stringify(provenanceBaselineFile, null, 2) + '\n', 'utf8');
+    }
+  }
+  const provenanceCeiling = evaluateProvenanceCeiling(provenanceOffenders.length, provenanceBaselineCount);
+
+  // C2: two different genuine IPOs holding byte-identical date/band/lot/
+  // issue_size (root cause #178, still unresolved). HARD for any NEW group —
+  // a group already named in config/duplicate-identity-allowlist.json (exact
+  // id-set match) reports WARN instead and does not fail the gate.
+  const duplicateIdentityGroups = checkDuplicateIdentity(subRows);
+  const duplicateAllowlistFile = existsSync(DUPLICATE_ALLOWLIST_PATH)
+    ? JSON.parse(readFileSync(DUPLICATE_ALLOWLIST_PATH, 'utf8'))
+    : { groups: [] };
+  const { allowed: allowedDuplicateGroups, stale: staleDuplicateGroups, newFails: newDuplicateGroups } = classifyDuplicateGroups(
+    duplicateIdentityGroups,
+    duplicateAllowlistFile.groups || []
   );
   const gmpExists = (await q(`SELECT to_regclass('public.gmp_records') AS reg`))[0].reg;
   if (gmpExists) {
@@ -440,6 +495,27 @@ async function main() {
   let fail = 0;
   log(`  -- Stage A invariants (HARD) --`);
   for (const s of stageA) { if (!s.ok) fail++; log(`  [${s.ok ? 'PASS' : 'FAIL'}] ${s.name} (${s.detail})`); }
+
+  log(`\n  -- Provenance gate (#188) --`);
+  if (provenanceCeiling.status === 'FAIL') fail++;
+  record('g_provenance_lineage', provenanceCeiling.status, provenanceCeiling.detail);
+  log(`  [${provenanceCeiling.status}] g_provenance_lineage (db=${dbName}) — ${provenanceCeiling.detail}`);
+  for (const r of provenanceOffenders.slice(0, 10)) log(`    - ${r.slug} (${r.company_name})`);
+  if (REBASELINE_PROVENANCE) {
+    log(`    (--rebaseline-provenance: ${rebaselineResult.applied ? `applied — ${dbName} -> ${rebaselineResult.newBaseline}` : rebaselineResult.detail})`);
+  }
+
+  const dupNewTotal = newDuplicateGroups.reduce((n, g) => n + g.length, 0);
+  if (newDuplicateGroups.length > 0) fail++;
+  record('g_duplicate_identity', newDuplicateGroups.length === 0 ? 'PASS' : 'FAIL', `${newDuplicateGroups.length} new group(s), ${dupNewTotal} row(s); ${allowedDuplicateGroups.length} allowlisted, ${staleDuplicateGroups.length} stale`);
+  log(`  [${newDuplicateGroups.length === 0 ? 'PASS' : 'FAIL'}] g_duplicate_identity — byte-identical band/lot/issue_size, NOT on the allowlist (HARD, MUST be 0): ${newDuplicateGroups.length} group(s), ${dupNewTotal} row(s)`);
+  for (const g of newDuplicateGroups) log(`    - ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
+  for (const { group: g, entry } of allowedDuplicateGroups) {
+    log(`  [WARN] g_duplicate_identity — known, allowlisted, ticket ${entry.ticket}: ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
+  }
+  for (const { group: g, entry } of staleDuplicateGroups) {
+    log(`  [WARN] g_duplicate_identity — allowlist entry stale (row repaired), remove it (ticket ${entry.ticket}): live ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
+  }
 
   log(`\n  -- Served-vs-stored delta (HARD; g_served_stored_delta, #186) --`);
   log(`  base URL: ${process.env.BASE_URL || 'https://ipodhan.com'}`);

@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
+import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
   checkFoundNotExtracted,
@@ -58,7 +59,7 @@ import {
   checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
-  findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS,
+  findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS, normalizeCompanyKey,
   buildRunPayloads, evaluateCronExecutable,
   computeExitCode, EXIT_UNVERIFIABLE, computeSummaryCounts,
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
@@ -216,63 +217,123 @@ async function tableExists(name) {
 // ~11-30s window with zero unresolved rows — and a dead monitor would mean a
 // permanent green PASS on a live wrong-date defect.
 //
-// The PRIMARY signal is now this audit's OWN live fetch of the non-NSE oracle
-// (Chittorgarh's public IPO report — the same endpoint the scraper uses),
-// compared against what `ipos` publishes. `data_conflicts` is a SECONDARY
-// signal only. A failed oracle fetch is UNVERIFIABLE, which pages (blocker 1) —
-// never a silent PASS.
-const ORACLE_REPORT_URL = (() => {
-  const year = new Date().getFullYear();
-  const range = `${year}-${(year + 1) % 100}`;
-  // perPage is pinned to 10 because the endpoint rejects any other value with
-  // "Invalid API Call" (measured 2026-08-26: 25/50/100/200 all fail) and returns
-  // the whole report regardless — same call shape as
-  // scraper/src/scrapers/chittorgarh-scraper.ts.
-  return `https://webnodejs.chittorgarh.com/cloud/report/data-read/82/1/10/${year}/${range}/0/all/0?search=&v=15-11`;
-})();
+// The PRIMARY signal is now this audit's OWN live fetch of ipowatch.in — a
+// source the scraper does NOT ingest (scraper/src/scrapers only reads NSE,
+// BSE, Moneycontrol, Chittorgarh, InvestorGain; see field-priority-matrix.ts).
+// T-472 replaced the prior Chittorgarh oracle (which IS ingested — comparing
+// against it proved nothing about a scraper defect) and extended the compare
+// from 2 fields (dates only) to all 6 fields behind GitHub #199's cited P1
+// classes: band, lot size, and issue size wrong. `data_conflicts` is a
+// SECONDARY signal only. A failed oracle fetch is UNVERIFIABLE, which pages
+// (blocker 1) — never a silent PASS.
+const IPOWATCH_LIST_URL = 'https://ipowatch.in/upcoming-ipo-list/';
+// Identifies this as the nightly audit, not a scrape masquerading as a browser
+// — ipowatch is a courtesy oracle, not a scraper source, and the fetch volume
+// here is bounded (one page per matched live IPO), so there is no reason to
+// disguise it.
+const IPOWATCH_HEADERS = {
+  'User-Agent': 'IPODhan-detection-floor-audit/1.0 (+https://ipodhan.com; non-ingested cross-check, see scripts/audit-detection-floor.mjs)',
+  Accept: 'text/html',
+};
+// Delay between successive detail-page requests so this audit does not hammer
+// ipowatch with a back-to-back burst (round-2 review note). Configurable for
+// tests/local runs; the nightly cron uses the 400ms default.
+const IPOWATCH_REQUEST_DELAY_MS = Number(process.env.IPOWATCH_REQUEST_DELAY_MS ?? 400);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// A matched-but-unreadable share this high means the page template likely
+// changed under us — the check would otherwise shrink to near-nothing without
+// ever going UNVERIFIABLE. Named, not a magic number.
+const IPOWATCH_COVERAGE_WARN_THRESHOLD = 0.5;
 
-async function fetchOracleRows() {
+async function fetchIpowatchHtml(url) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 20000);
-  const res = await fetch(ORACLE_REPORT_URL, {
-    signal: ctrl.signal,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      Accept: 'application/json',
-      Referer: 'https://www.chittorgarh.com/',
-    },
-  }).finally(() => clearTimeout(t));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const rows = data?.reportTableData;
-  if (!Array.isArray(rows) || rows.length === 0) {
-    throw new Error(`oracle returned no rows (${JSON.stringify(data).slice(0, 120)})`);
+  const res = await fetch(url, { signal: ctrl.signal, headers: IPOWATCH_HEADERS }).finally(() => clearTimeout(t));
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  return res.text();
+}
+
+// Fetches ipowatch's own figures for the SAME companies our `ipoRows` name —
+// never the whole site. The list-index page (mainboard + SME tables) maps
+// company name -> detail-page URL; only detail pages for names we can match
+// against our own live IPOs are fetched, so this stays bounded to however
+// many IPOs are actually live tonight, not every IPO ipowatch tracks.
+//
+// A detail page whose key-facts block cannot be parsed at all (structural
+// failure — wrong page, redesign) is skipped from oracleRows rather than
+// silently contributing nulls: skipping means the company is simply not
+// compared this run (same as "not found"), not a false PASS on a broken parse.
+async function fetchOracleRows(ipoRows) {
+  const listHtml = await fetchIpowatchHtml(IPOWATCH_LIST_URL);
+  const index = parseIpowatchListIndex(listHtml);
+  if (index.length === 0) throw new Error('ipowatch list index returned zero rows — page shape likely changed');
+
+  const indexByKey = new Map();
+  for (const entry of index) {
+    const k = normalizeCompanyKey(entry.companyName);
+    if (k && !indexByKey.has(k)) indexByKey.set(k, entry);
   }
-  return rows.map((r) => ({
-    companyName: String(r['Company'] || '').replace(/<[^>]+>/g, ' ').trim(),
-    values: {
-      openDate: r['~Issue_Open_Date'] || r['Opening Date'] || null,
-      closeDate: r['~IssueCloseDate'] || r['Closing Date'] || null,
-    },
-  }));
+
+  const out = [];
+  let unparseable = 0;
+  let matched = 0;
+  let first = true;
+  for (const ipo of ipoRows) {
+    const entry = indexByKey.get(normalizeCompanyKey(ipo.companyName));
+    if (!entry) continue;
+    matched += 1;
+    if (!first) await sleep(IPOWATCH_REQUEST_DELAY_MS);
+    first = false;
+    let detailHtml;
+    try {
+      detailHtml = await fetchIpowatchHtml(entry.detailUrl);
+    } catch {
+      continue; // this one company's page is unreachable; not a whole-audit failure
+    }
+    const values = parseIpowatchDetail(detailHtml);
+    if (!values) {
+      unparseable += 1;
+      continue;
+    }
+    out.push({ companyName: entry.companyName, values });
+  }
+
+  const coverageWarning = computeOracleCoverageWarning(
+    { liveCount: ipoRows.length, matched, unparseable }, IPOWATCH_COVERAGE_WARN_THRESHOLD);
+
+  return { rows: out, matchedFromIndex: index.length, matched, unparseable, coverageWarning };
 }
 
 async function checkA_B() {
-  const name = `live IPO open/close dates agree with the independent non-NSE oracle (fields: ${ORACLE_COMPARABLE_FIELDS.join(', ')})`;
+  const name = `live IPO open/close/band/lot/issue-size agree with the independent non-ingested oracle (ipowatch.in; fields: ${ORACLE_COMPARABLE_FIELDS.join(', ')})`;
 
   const ipoRows = (await q(
     `SELECT id, company_name AS "companyName", status,
-            open_date AS "openDate", close_date AS "closeDate"
+            open_date AS "openDate", close_date AS "closeDate",
+            price_range_min AS "priceRangeMin", price_range_max AS "priceRangeMax",
+            lot_size AS "lotSize", issue_size AS "issueSize"
        FROM ipos
       WHERE ${REAL_IPO} AND status IN ('${LIVE_STATUSES.join("','")}')`
   )).map((r) => ({
     id: r.id, companyName: r.companyName, status: r.status,
-    values: { openDate: r.openDate, closeDate: r.closeDate },
+    values: {
+      openDate: r.openDate, closeDate: r.closeDate,
+      priceRangeMin: r.priceRangeMin, priceRangeMax: r.priceRangeMax,
+      lotSize: r.lotSize, issueSize: r.issueSize,
+    },
   }));
 
   let oracleRows;
+  let oracleFetchNote = '';
   try {
-    oracleRows = await fetchOracleRows();
+    const fetched = await fetchOracleRows(ipoRows);
+    oracleRows = fetched.rows;
+    if (fetched.unparseable > 0) {
+      oracleFetchNote = `; ${fetched.unparseable} matched ipowatch page(s) could not be parsed and were excluded, not silently passed`;
+    }
+    if (fetched.coverageWarning) {
+      oracleFetchNote += `; WARN: ${fetched.coverageWarning}`;
+    }
   } catch (e) {
     record('a_b_live_conflict', name, 'UNVERIFIABLE',
       `could not reach the independent oracle (${e.message}) — this check is BLIND tonight, not passing`);
@@ -296,15 +357,15 @@ async function checkA_B() {
     );
   }
 
-  const violations = findLiveCrossSourceDisagreements({ ipoRows, oracleRows, conflictRows });
+  const violations = findLiveCrossSourceDisagreements({ ipoRows, oracleRows, conflictRows, oracleName: 'IPOWATCH' });
   for (const v of violations) {
     notify('a_b_live_conflict', 'P1', `${v.ipoId}-${v.fieldName}`,
       `Live IPO "${v.companyName}" publishes a disputed ${v.fieldName}`, v.message);
   }
   const primary = violations.filter((v) => v.signal === 'oracle').length;
   const detail = `${violations.length} violation(s) (${primary} from this audit's own live oracle comparison over `
-    + `${oracleRows.length} oracle rows vs ${ipoRows.length} live IPOs, ${violations.length - primary} `
-    + `data_conflicts-only${conflictSignalAvailable ? '' : '; data_conflicts absent'})`
+    + `${oracleRows.length} matched oracle rows vs ${ipoRows.length} live IPOs, ${violations.length - primary} `
+    + `data_conflicts-only${conflictSignalAvailable ? '' : '; data_conflicts absent'})${oracleFetchNote}`
     + (violations.length ? `: ${violations.slice(0, MAX_OFFENDERS).map((v) => v.message).join('; ')}` : '');
   record('a_b_live_conflict', name, violations.length === 0 ? 'PASS' : 'FAIL', detail);
 }

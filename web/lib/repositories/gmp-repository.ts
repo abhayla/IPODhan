@@ -63,7 +63,8 @@ export class GMPRepository extends BaseRepository implements IGMPRepository {
             .select()
             .from(gmpRecords)
             .where(whereClause)
-            .orderBy(desc(gmpRecords.timestamp))
+            // #358: timestamp ties reshuffled which rows the limit returned; id breaks the tie.
+            .orderBy(desc(gmpRecords.timestamp), desc(gmpRecords.id))
             .limit(limit);
 
           return results;
