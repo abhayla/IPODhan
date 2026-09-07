@@ -3,7 +3,7 @@
 //   node --test .claude/hooks/tests/wave-dispatch-gate.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -44,11 +44,33 @@ test('evaluateDispatch never blocks a pure reviewer prompt (Tier A/B + review, n
   assert.match(v.reason, /reviewer/);
 });
 
-test('round 2 regression: a build brief containing "review: Tier B" is NOT treated as a reviewer and IS blocked', () => {
-  const briefWithTierMention = 'Do X.\nBudget: 30 min, 60 tool calls\nClass: every Y\nreview: Tier B\nProof: ...';
-  const v = evaluateDispatch({ toolName: 'Agent', prompt: briefWithTierMention, unresolvedIds: ['check-x'], allowOverride: false });
-  assert.equal(v.block, true, 'Budget:+Class: makes it a build brief regardless of any Tier text');
+test('(a) round 3: reviewer brief that ALSO carries Budget:+Class: is still allowed (reviewer-first)', () => {
+  const v = evaluateDispatch({ toolName: 'Agent', prompt: REVIEWER_BRIEF, unresolvedIds: ['check-x'], allowOverride: false });
+  assert.equal(v.block, false, 'reviewer signal in the opening 200 chars must win over Budget:/Class: appearing later');
+  assert.match(v.reason, /reviewer/);
+});
+
+test('(b) round 3: build brief with "review: Tier B" AFTER the 200-char opening is still blocked', () => {
+  const padding = 'y'.repeat(200); // pushes "review: Tier B" well past char 200
+  const briefWithTierMentionLate = `Task T-1: ${padding}\nBudget: 30 min, 60 tool calls\nClass: every Y\nreview: Tier B\nProof: ...`;
+  assert.ok(briefWithTierMentionLate.indexOf('Tier B') >= 200, 'fixture sanity: Tier B must land past char 200');
+  const v = evaluateDispatch({ toolName: 'Agent', prompt: briefWithTierMentionLate, unresolvedIds: ['check-x'], allowOverride: false });
+  assert.equal(v.block, true, 'Tier text outside the opening 200 chars must not exempt a build brief');
   assert.match(v.reason, /check-x/);
+});
+
+test('(c) round 3: pins the 200-char boundary — Tier text at char ~250 in a build brief still blocks', () => {
+  const padding = 'x'.repeat(220); // pushes the Tier/review mention past char 200
+  const brief = `Task T-1: ${padding}\nreview: Tier B\nBudget: 10 min, 20 tool calls\nClass: everything`;
+  assert.ok(brief.indexOf('Tier B') >= 200, 'fixture sanity: Tier B must land past char 200');
+  const v = evaluateDispatch({ toolName: 'Agent', prompt: brief, unresolvedIds: ['check-x'], allowOverride: false });
+  assert.equal(v.block, true);
+});
+
+test('(d) round 3: dropping the "Tier B" alternative would falsely block a Tier-B-only reviewer (mutation guard)', () => {
+  const tierBReviewer = 'Tier B review of the diff.\nBudget: 20 min, 40 tool calls\nClass: n/a\nreview the changes';
+  const v = evaluateDispatch({ toolName: 'Agent', prompt: tierBReviewer, unresolvedIds: ['check-x'], allowOverride: false });
+  assert.equal(v.block, false, 'a regex that only matches "Tier A" (dropping the Tier B alternative) would wrongly block this');
 });
 
 test('evaluateDispatch allows via SIGNAL_GATE_ALLOW override regardless of everything else', () => {
@@ -114,34 +136,62 @@ function runHook(payload, env = {}) {
   }
 }
 
-test('end-to-end: with no floor-issues.json state, the hook fails open (exit 0) even for a build brief', () => {
-  // The repo's real scripts/ops/state/floor-issues.json does not exist in a
-  // clean checkout — this proves the "missing state = fail open" contract
-  // against the real file the hook reads, not a stub.
-  const code = runHook({ tool_name: 'Agent', tool_input: { prompt: BUILD_BRIEF } });
+test('end-to-end: with a state file that has no unresolved ids, the hook allows (exit 0) even for a build brief', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 't499-cli-'));
+  const stateFile = path.join(dir, 'floor-issues.json');
+  try {
+    writeFileSync(stateFile, JSON.stringify({ entries: [] }));
+    const code = runHook({ tool_name: 'Agent', tool_input: { prompt: BUILD_BRIEF } }, { WAVE_DISPATCH_GATE_STATE_FILE: stateFile });
+    assert.equal(code, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('end-to-end: missing state file (env points at a nonexistent path) fails open (exit 0)', () => {
+  const stateFile = path.join(tmpdir(), `t499-cli-missing-${Date.now()}.json`);
+  const code = runHook({ tool_name: 'Agent', tool_input: { prompt: BUILD_BRIEF } }, { WAVE_DISPATCH_GATE_STATE_FILE: stateFile });
   assert.equal(code, 0);
 });
 
 test('end-to-end: corrupt stdin JSON fails open (exit 0)', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 't499-cli-'));
+  const stateFile = path.join(dir, 'floor-issues.json');
   try {
-    execFileSync('node', [HOOK_SCRIPT], { input: '{ not valid json', encoding: 'utf-8' });
+    writeFileSync(stateFile, JSON.stringify({ entries: [{ id: 'check-x', issue: null }] }));
+    execFileSync('node', [HOOK_SCRIPT], {
+      input: '{ not valid json',
+      encoding: 'utf-8',
+      env: { ...process.env, WAVE_DISPATCH_GATE_STATE_FILE: stateFile },
+    });
     assert.ok(true);
   } catch (err) {
     assert.equal(err.status, 0, `expected exit 0 on corrupt stdin, got ${err.status}: ${err.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('end-to-end: real ISSUES_FILE with an unresolved NEW id blocks a build brief (exit 2)', () => {
-  const realStateDir = path.resolve(__dirname, '../../../scripts/ops/state');
-  const realIssuesFile = path.join(realStateDir, 'floor-issues.json');
-  const preexisting = existsSync(realIssuesFile) ? readFileSync(realIssuesFile, 'utf-8') : null;
-  mkdirSync(realStateDir, { recursive: true });
-  writeFileSync(realIssuesFile, JSON.stringify({ entries: [{ id: 'check-cli-e2e', issue: null }] }));
+test('end-to-end: a TEMP state file (never the real one) with an unresolved NEW id blocks a build brief (exit 2)', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 't499-cli-'));
+  const stateFile = path.join(dir, 'floor-issues.json');
   try {
-    const code = runHook({ tool_name: 'Agent', tool_input: { prompt: BUILD_BRIEF } });
+    writeFileSync(stateFile, JSON.stringify({ entries: [{ id: 'check-cli-e2e', issue: null }] }));
+    const code = runHook({ tool_name: 'Agent', tool_input: { prompt: BUILD_BRIEF } }, { WAVE_DISPATCH_GATE_STATE_FILE: stateFile });
     assert.equal(code, 2);
   } finally {
-    if (preexisting === null) rmSync(realIssuesFile, { force: true });
-    else writeFileSync(realIssuesFile, preexisting);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('end-to-end: same TEMP state file, but a reviewer prompt is still allowed (exit 0)', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 't499-cli-'));
+  const stateFile = path.join(dir, 'floor-issues.json');
+  try {
+    writeFileSync(stateFile, JSON.stringify({ entries: [{ id: 'check-cli-e2e', issue: null }] }));
+    const code = runHook({ tool_name: 'Agent', tool_input: { prompt: REVIEWER_BRIEF } }, { WAVE_DISPATCH_GATE_STATE_FILE: stateFile });
+    assert.equal(code, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -9,9 +9,13 @@
 // required lines per .claude/rules/defect-fix-contract.md and
 // claude-behavior.md rule 5's task-tracking pattern) while
 // scripts/ops/state/floor-issues.json still lists a NEW floor FAIL id with
-// no issue number recorded against it. Reviewer dispatches (prompt mentions
-// "Tier A" or "Tier B" together with "review") are never blocked — the
-// review IS the response to a signal, not competing queued work.
+// no issue number recorded against it. Reviewer dispatches are never
+// blocked — the review IS the response to a signal, not competing queued
+// work. Reviewer briefs in this project ALSO carry Budget:/Class: lines, so
+// the reviewer check runs FIRST, on the opening 200 chars only ("review" +
+// "Tier A"/"Tier B"); only when that's absent does Budget:+Class: mark a
+// prompt as a build brief (round 3 — round 2's Budget:/Class:-first order
+// falsely blocked every review in this project).
 //
 // Escape hatch: SIGNAL_GATE_ALLOW=1 in the environment always allows.
 // Fails open (allow, exit 0) when the state file is missing/unreadable, or
@@ -24,7 +28,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const ISSUES_FILE = path.join(REPO_ROOT, 'scripts', 'ops', 'state', 'floor-issues.json');
+// Round 3: allow tests (and any caller) to point this at a temp file instead
+// of the real per-laptop state, via WAVE_DISPATCH_GATE_STATE_FILE.
+const ISSUES_FILE = process.env.WAVE_DISPATCH_GATE_STATE_FILE
+  || path.join(REPO_ROOT, 'scripts', 'ops', 'state', 'floor-issues.json');
 
 /** Pure. Reads floor-issues.json shape { entries: [{id, issue}] } and
  * returns the ids with no issue number yet. `available: false` covers both
@@ -51,19 +58,19 @@ export function evaluateDispatch({ toolName, prompt, unresolvedIds, allowOverrid
     return { block: false, reason: 'not an Agent dispatch' };
   }
   const text = typeof prompt === 'string' ? prompt : '';
+  // Round 3: reviewer-first. In this project a real reviewer brief ALSO
+  // carries Budget:/Class: lines, so Budget:/Class: alone can't decide
+  // "build brief" — it must be checked AFTER the reviewer signal, not
+  // before. Reviewer is judged ONLY on the opening 200 chars (real build
+  // briefs open with "Task T-..."; a build brief whose own "review: Tier B"
+  // line happens to land past char 200 is not this shape and still gates).
+  const head = text.slice(0, 200);
+  const isReviewer = /\breview/i.test(head) && /\b(Tier A|Tier B)\b/.test(head);
+  if (isReviewer) {
+    return { block: false, reason: 'reviewer prompt (review + Tier A/B in the opening 200 chars) — never blocked' };
+  }
   const looksLikeBuildBrief = text.includes('Budget:') && text.includes('Class:');
-  // A build brief is a build brief regardless of any "Tier A/B" text it
-  // carries (round 2: every brief's Tier line was making it look like a
-  // reviewer and never get blocked). "Reviewer" is judged ONLY on prompts
-  // that are NOT build briefs, and only from the first 200 chars (the
-  // opening framing), so a brief that merely mentions Tier A/B deep in its
-  // body never qualifies.
   if (!looksLikeBuildBrief) {
-    const head = text.slice(0, 200);
-    const isReviewer = /\b(Tier A|Tier B)\b/.test(head) && /\breview/i.test(head);
-    if (isReviewer) {
-      return { block: false, reason: 'reviewer prompt (Tier A/B + review in the opening) — never blocked' };
-    }
     return { block: false, reason: 'not a build/wave brief (no Budget:+Class: lines)' };
   }
   if (!unresolvedIds || unresolvedIds.length === 0) {
