@@ -156,6 +156,19 @@ jobs:
         run: npx vitest run --config vitest.config.ts
         working-directory: ./scraper
 
+      - name: Run pipeline stage harness (test ladder, issue #258)
+        # T-481: the stage-isolated harness implementing
+        # docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6 - one
+        # fixture-in/expected-output-file-out test per pipeline stage. These
+        # files are already inside the full scraper unit suite above; this
+        # named step exists so a ladder regression is identifiable at a
+        # glance in the gate (and so parts 2's stages 5-8 land in a step that
+        # already exists). Runs only the offline arms - stage 0's live arm is
+        # gated on STAGE0_DATABASE_URL, which CI never sets, so it skips
+        # rather than fails. Seconds of runtime for two files.
+        run: npx vitest run --config vitest.config.ts tests/unit/pipeline-stages
+        working-directory: ./scraper
+
   python-tests:
     name: Scraper Python Extractor Tests (W-159)
     runs-on: ubuntu-latest
