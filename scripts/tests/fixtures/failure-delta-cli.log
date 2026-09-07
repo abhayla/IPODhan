@@ -1,0 +1,1 @@
+{"level":50,"time":"2026-09-07T16:16:31.384Z","pid":979909,"hostname":"srv1707492","ipoId":"b28d9d2a-cb24-4d84-8e1a-297ba828884a","docType":"PRICE_BAND_AD","error":"Failed query: insert into \"ipo_details\" ... on conflict (\"ipo_id\") do update set ...","msg":"Filing persist failed (non-fatal)"}

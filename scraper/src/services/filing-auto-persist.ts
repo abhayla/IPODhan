@@ -1904,7 +1904,12 @@ export async function processPendingFilings(
     } catch (error) {
       result.failed++;
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ ipoId: ipo.id, docType, error: message }, 'Filing persist failed (non-fatal)');
+      const cause = error instanceof Error ? (error.cause as { message?: string; code?: string } | undefined) : undefined;
+      const code = cause?.code ?? (error as { code?: string } | undefined)?.code;
+      logger.error(
+        { ipoId: ipo.id, docType, error: message, cause: cause?.message, code },
+        'Filing persist failed (non-fatal)'
+      );
       // Transition 3: a persist throw is FAILED-with-backoff, never PENDING
       // (round-3 MINOR-5 — PENDING would drop the document straight back to
       // the front of the queue with no backoff at all). `doc.retryCount`

@@ -340,7 +340,8 @@ IPODhan-t*/
 # W-142 local investigation scratch (downloaded ZIPs/PDFs — never commit)
 .scratch/
 
-# T-499 morning-read-gate laptop state (cached floor nights + the
+# T-496 failure-delta local state (per-slot previous failure sets, laptop-only)
+# and T-499 morning-read-gate laptop state (cached floor nights + the
 # floor-issues.json register the wave-dispatch gate reads) — never commit,
 # it is per-laptop cache/state, not source
-scripts/ops/state/
+/scripts/ops/state/

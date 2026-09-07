@@ -1177,3 +1177,17 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 00:08 IST — #408 Tier B PASS WITH NOTES (one mis-titled test; real run now 24 rows because #407 landed meanwhile). Waiting on gates for #408 and #406 and the #406 re-check; T-499 (morning-read gate, Tier A) and T-500 (cause-bearing failures) building.
 
 - 00:10 IST — #408 merged (merged-not-deployed register). #406 round 3 reproduced (21/21 incl. the CLI-level exit-3 test); its gate is rerunning on 4c576b5a; merge on green. T-499 (morning-read gate) and T-500 (cause-bearing failures) building.
+
+- 00:15 IST — T-499 built: PR #410 (SessionStart floor-delta + merged-not-deployed read; PreToolUse Agent gate blocks a build brief while a NEW floor FAIL has no issue; 18/18 reproduced after merging main). Tier A dispatched (hook). #406 gate read above.
+
+- 00:16 IST — T-500 built: PR #411 (persist failures log cause.message/code; coverage gate prints its reason — the real #404 cause was an AggregateError with an empty message on a dual-stack localhost refusal); reproduced 119/119 + 2/2; Tier B dispatched. #406 merge attempted above.
+
+- 00:16 IST — #406 merged 0f069207 (tick failure-delta). #410 Tier A PASS WITH NOTES: MAJOR — a build brief with "review: Tier B" was classified as a reviewer and never blocked; ssh worst case exceeded the 30 s hook timeout; the gate is inert until the VPS box pulls #407 and two nights of floor files exist (first real delta 2026-09-10) -> round 2 dispatched. #411 Tier B PASS (no findings).
+
+- 00:18 IST (09-08) — tick via failure-delta (R1/R2): prod identities = ipo 8340f7fc RHP spawn-timeout-hard (the #396 class, now escalating to hard on the new build as designed), Rentomojo persist #402, Hy-Tech anchor #347 -> tracked; staging = Steamhouse #403, Rentomojo #402, Kanohar #409 -> tracked; both slots exit 0 after tracking. Prod f0c66b6b, staging 2a752aad (main after #407); pm2 logs rotated at midnight (summaries read from the dated file). Disk 57%, load 2.2 (staging build), OOM 0. Worktrees causelogs, deploytimers, morningread, relverify — all in use; stash the 10 pre-existing. Agents: T-499 r2 and T-501 active at 00:17.
+
+- 00:20 IST — #410 round 2 reproduced: 22/22; my stdin probes on the real state path: build brief with "review: Tier B" + NEW untracked id -> exit 2 (blocked), reviewer prompt -> 0, override -> 0. Tier A confirmation dispatched (with the reviewer-brief-that-also-carries-Budget:/Class: adversarial case, since my own reviewer briefs do). #411 merge attempt above. T-501 building.
+
+- 00:21 IST — #411 merged 37b1a111 (cause-bearing failures: persist logs carry the DB cause; the coverage gate prints its reason). T-501 built: PR #412 (deploy-and-watch.sh: sha-drift refusal, exact dispatch, watch, rollback line with the previous tag sha; recipes: cron 30 min early, "session idle since" line; 9/9 reproduced, bash -n clean) -> Tier B dispatched. #410 Tier A confirmation: PASS WITH NOTES but a MAJOR flip side — reviewer briefs carry Budget:/Class: too and would be blocked -> round 3 (reviewer-first on the first 200 chars; tests use a temp state file). Five of the six mechanisms are merged or in final review; the class stays open until #410 and #412 land.
+
+- 00:22 IST — #412 Tier B PASS WITH NOTES: MEDIUM run-id race (the same workflow runs on every main push; the lookup had no branch filter) + an unguarded state write -> round 2 (branch + event + dispatch-time scoped lookup, shim test with a decoy staging run). #410 round 3 in progress.
