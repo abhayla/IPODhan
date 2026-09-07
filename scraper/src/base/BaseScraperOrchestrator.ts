@@ -457,17 +457,49 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     }) as IPO | null;
     const ipoId = existingIPO?.id;
 
-    // S-02 §5: status-restricted callers (aggregator/live refresh under the
-    // due-step scheduler) never create new rows and never touch a row whose
-    // status is outside the restriction — skip before any write/lock work.
-    if (this.allowedStatuses && (!existingIPO || !this.allowedStatuses.has(existingIPO.status))) {
-      logger.debug(
-        { scraperName, companyName: validatedIPO.companyName, status: existingIPO?.status ?? 'NEW' },
-        'IPO outside allowedStatuses restriction - skipping (due-step scheduler)'
-      );
-      processResult.skipped = true;
-      processResult.statusRestricted = true;
-      return processResult;
+    // S-02 §5 (T-484, #351): status-restricted callers (aggregator/live
+    // refresh under the due-step scheduler) never touch a row whose status
+    // is outside the restriction. For an EXISTING row that means "outside
+    // the restriction" is the row's own current status. For a row this
+    // scraper has never seen before there is no existing status to check —
+    // the S-02 intent is "never touch out-of-scope rows", not "never
+    // discover new rows", so a brand-new row is in-scope exactly when the
+    // scraper's OWN validated status for it (the same status the write path
+    // would persist) falls inside allowedStatuses. Without this, every
+    // newly announced IPO first seen during a restricted run (which, under
+    // the current due-step cadence, is EVERY Chittorgarh/Moneycontrol run —
+    // see docs/scraper/scheduler-liveness.md, no unrestricted aggregator run
+    // exists once ENABLE_DUE_STEP_SCHEDULER is on) was silently dropped and
+    // never created by any later cycle either, because there would never be
+    // an existing row to match against (2026-09-03 cadence decision;
+    // GitHub #351).
+    if (this.allowedStatuses) {
+      if (existingIPO) {
+        if (!this.allowedStatuses.has(existingIPO.status)) {
+          logger.debug(
+            { scraperName, companyName: validatedIPO.companyName, status: existingIPO.status },
+            'IPO outside allowedStatuses restriction - skipping (due-step scheduler)'
+          );
+          processResult.skipped = true;
+          processResult.statusRestricted = true;
+          return processResult;
+        }
+      } else {
+        const incomingStatus = (validatedIPO as any).status as string | undefined;
+        if (!incomingStatus || !this.allowedStatuses.has(incomingStatus)) {
+          logger.debug(
+            { scraperName, companyName: validatedIPO.companyName, status: incomingStatus ?? 'NEW' },
+            'IPO outside allowedStatuses restriction - skipping (due-step scheduler)'
+          );
+          processResult.skipped = true;
+          processResult.statusRestricted = true;
+          return processResult;
+        }
+        logger.info(
+          { scraperName, slug, companyName: validatedIPO.companyName, status: incomingStatus },
+          'created new live IPO under a status-restricted run'
+        );
+      }
     }
 
     // Step 3: PROTECTION CHECK - IPO-level lock
