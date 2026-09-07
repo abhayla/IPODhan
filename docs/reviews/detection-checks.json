@@ -1,5 +1,5 @@
 {
-  "$schema": "T-335 detection-checks manifest \u00e2\u20ac\u201d read by the round-8 review contract to classify a fresh finding as SHOULD-HAVE-BEEN-CAUGHT (a listed check already covers this finding's class) vs a genuinely new gap.",
+  "$schema": "T-335 detection-checks manifest — read by the round-8 review contract to classify a fresh finding as SHOULD-HAVE-BEEN-CAUGHT (a listed check already covers this finding's class) vs a genuinely new gap.",
   "generatedBy": "T-335",
   "sourceRca": "docs/reviews/round-7-detection-rca.md",
   "auditScript": "scripts/audit-detection-floor.mjs",
@@ -25,7 +25,7 @@
       ],
       "failThreshold": "issue_size > 0 AND issue_size < Rs10,00,00,000 for MAINBOARD, or < Rs1,00,00,000 for SME",
       "severity": "P1",
-      "unverifiableWhen": "never \u00e2\u20ac\u201d always runs against the ipos table"
+      "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
       "id": "c_issue_size_consistency",
@@ -46,7 +46,7 @@
       ],
       "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or [Rs90,000..Rs3,00,000] SME, for offering_type=IPO",
       "severity": "P1",
-      "unverifiableWhen": "never \u00e2\u20ac\u201d always runs against the ipos table"
+      "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
       "id": "d_corporate_action_shape",
@@ -56,7 +56,7 @@
       ],
       "failThreshold": "offering_type=IPO AND price_range_min==price_range_max AND lot_size==100 AND close_date-open_date in [10..14] days",
       "severity": "P1",
-      "unverifiableWhen": "never \u00e2\u20ac\u201d always runs against the ipos table"
+      "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
       "id": "e_route_sweep",
@@ -71,6 +71,16 @@
       "failThreshold": "any enumerated web/app/api/** non-admin route returns >=500, or its body matches a SQL/bound-param/stack-trace pattern",
       "severity": "P1",
       "unverifiableWhen": "any enumerated public route is unreachable (the sweep did not cover its whole population)"
+    },
+    {
+      "id": "e_unknown_slug_404",
+      "findingClass": "/api/ipos/<slug> (or the /ipos/<slug> page, same resolution path) resolves an unknown slug to a DIFFERENT IPO instead of 404ing",
+      "round7Findings": [],
+      "issue": 350,
+      "failThreshold": "any of 3 nonsense slugs (never a real row) does not return 404, OR a real currently-live slug does not resolve to itself",
+      "severity": "P1",
+      "unverifiableWhen": "a request is unreachable (timeout/network), or there is no LISTED row to run the positive case against",
+      "note": "T-485 (2026-09-07): findBySlugWithFallback used to accept any best-scoring Fuse.js fuzzy match with no floor, so 'karamtara-engineering-ltd' (no row on prod) resolved to 'Sumax Engineering Ltd.' purely on the shared word 'engineering' (measured score 0.44, 56% similarity). Fixed by resolving only via the slug-redirect table, an exact normalized company-name match, or a fuzzy match at or above an 85% similarity floor (measured: a genuine one-typo pair scores 15%, comfortably inside; the karamtara/sumax collision at 44% is rejected by more than double the margin) — everything else 404s, with the miss negative-cached per #344."
     },
     {
       "id": "f_conflict_noise_ratio",
@@ -121,21 +131,21 @@
       ],
       "failThreshold": "any scraper/src/scheduler/*.ts file not `import`-ed by scraper/src/index.ts, ecosystem.config.js, or scripts/deploy-linux.sh",
       "severity": "P2",
-      "unverifiableWhen": "never \u00e2\u20ac\u201d static analysis of the checked-out repo"
+      "unverifiableWhen": "never — static analysis of the checked-out repo"
     },
     {
       "id": "k_step_ledger_silence",
-      "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work \u00e2\u20ac\u201d skipped for an unread reason, or failing inside its non-fatal catch",
+      "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work — skipped for an unread reason, or failing inside its non-fatal catch",
       "round7Findings": [
         "P2-8 (runtime twin)"
       ],
-      "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here \u00e2\u20ac\u201d a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
+      "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here — a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
       "severity": "P1",
-      "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs \u00e2\u20ac\u201d a genuinely dead scraper is caught independently by g_freshness_per_type."
+      "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs — a genuinely dead scraper is caught independently by g_freshness_per_type."
     },
     {
       "id": "m_cycle_overrun",
-      "findingClass": "the document cycle (scraper/src/services/document-cycle.ts, primarySourceDiscovery step) runs longer than its wake budget, or two wakes' cycles overlap \u00e2\u20ac\u201d the class fixed one write path in August (w177-detection-rca.md) and recurred on this path in September because no independent check re-verified cycle duration",
+      "findingClass": "the document cycle (scraper/src/services/document-cycle.ts, primarySourceDiscovery step) runs longer than its wake budget, or two wakes' cycles overlap — the class fixed one write path in August (w177-detection-rca.md) and recurred on this path in September because no independent check re-verified cycle duration",
       "round7Findings": [
         "cycle-overrun RCA (2026-09-06, observed 1,210-1,278s document cycles / 105-115 network calls per cycle on a Sunday)"
       ],
@@ -151,17 +161,17 @@
       ],
       "failThreshold": "any step in the derived STEP_NAMES whose most recent scraper_steps rows show status=failed for >= 3 consecutive cycles (leading streak, newest-first). 2 is a blip and PASSes; a non-failed row ends the streak.",
       "severity": "P1",
-      "unverifiableWhen": "same as k_step_ledger_silence \u00e2\u20ac\u201d unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
+      "unverifiableWhen": "same as k_step_ledger_silence — unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
     },
     {
       "id": "l_nse_status_crosscheck",
       "findingClass": "our published OPEN/UPCOMING set disagrees with the exchange that actually runs the issue",
       "round7Findings": [
-        "T-340 (new coverage \u00e2\u20ac\u201d no round-7 finding; our live status set had NO independent oracle at all)"
+        "T-340 (new coverage — no round-7 finding; our live status set had NO independent oracle at all)"
       ],
-      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges \u00e2\u20ac\u201d FAILing those would be noise, and a muted channel is a dead mechanism.",
+      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges — FAILing those would be noise, and a muted channel is a dead mechanism.",
       "severity": "P1",
-      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 \u00e2\u20ac\u201d never a silent PASS (T-321 class)."
+      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 — never a silent PASS (T-321 class)."
     },
     {
       "id": "j_sector_populated",
@@ -171,7 +181,7 @@
       ],
       "failThreshold": "populated sector fraction < 50% of real IPOs",
       "severity": "P2",
-      "unverifiableWhen": "never \u00e2\u20ac\u201d always runs against the ipos table"
+      "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
       "id": "j_segment_not_null",
@@ -179,9 +189,9 @@
       "round7Findings": [
         "P3-7"
       ],
-      "failThreshold": "any offering_type=IPO row with segment IS NULL \u00e2\u20ac\u201d an empty/whitespace segment counts as blank, not only SQL NULL.",
+      "failThreshold": "any offering_type=IPO row with segment IS NULL — an empty/whitespace segment counts as blank, not only SQL NULL.",
       "severity": "P2",
-      "unverifiableWhen": "never \u00e2\u20ac\u201d always runs against the ipos table"
+      "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
       "id": "j_cron_executable",
@@ -208,7 +218,7 @@
       "findingClass": "the document_fetch_state table is absent, so the whole document pipeline is invisible to the audit tonight",
       "round7Findings": [],
       "sourceTask": "T-403",
-      "failThreshold": "never FAILs \u00e2\u20ac\u201d reports UNVERIFIABLE, because \"the audit could not see\" is not \"documents are healthy\"",
+      "failThreshold": "never FAILs — reports UNVERIFIABLE, because \"the audit could not see\" is not \"documents are healthy\"",
       "severity": "P2",
       "unverifiableWhen": "document_fetch_state table not present (migration 0035 not applied)"
     },
@@ -244,7 +254,7 @@
       "findingClass": "the document job silently stopped: a live IPO has no state rows at all, so nothing was even attempted for it",
       "round7Findings": [],
       "sourceTask": "T-403",
-      "failThreshold": "any UPCOMING/OPEN/CLOSED IPO with zero document_fetch_state rows. This is the only check that notices the machine wrote NOTHING \u00e2\u20ac\u201d every other check reads rows it wrote",
+      "failThreshold": "any UPCOMING/OPEN/CLOSED IPO with zero document_fetch_state rows. This is the only check that notices the machine wrote NOTHING — every other check reads rows it wrote",
       "severity": "P2",
       "unverifiableWhen": "document_fetch_state table not present"
     },
@@ -271,18 +281,18 @@
     },
     {
       "id": "m_document_type_classifier",
-      "findingClass": "a stored documents.type disagrees with what the classifier says the URL/title is \u00e2\u20ac\u201d the classifier fix was forward-only, so rows stored under the old wrong type stayed wrong and invisible",
+      "findingClass": "a stored documents.type disagrees with what the classifier says the URL/title is — the classifier fix was forward-only, so rows stored under the old wrong type stayed wrong and invisible",
       "round7Findings": [
         "E14"
       ],
       "sourceTask": "T-403",
-      "failThreshold": "any documents row whose stored type has a permitted REFINEMENT to what the classifier returns (RHP->PROSPECTUS, ADDENDUM->CORRIGENDUM/PRICE_BAND_AD, BASIS_OF_ALLOTMENT->BASIS_OF_ALLOTMENT_AD). An UNRELATED reclassification is not a nightly FAIL \u00e2\u20ac\u201d that is a source/classifier change for a human, surfaced by scraper/src/scripts/retype-misclassified-documents.ts",
+      "failThreshold": "any documents row whose stored type has a permitted REFINEMENT to what the classifier returns (RHP->PROSPECTUS, ADDENDUM->CORRIGENDUM/PRICE_BAND_AD, BASIS_OF_ALLOTMENT->BASIS_OF_ALLOTMENT_AD). An UNRELATED reclassification is not a nightly FAIL — that is a source/classifier change for a human, surfaced by scraper/src/scripts/retype-misclassified-documents.ts",
       "severity": "P2",
       "unverifiableWhen": "documents table not present"
     },
     {
       "id": "m_not_yet_filed_age",
-      "findingClass": "a document the pipeline can never reach settles as NOT_YET_FILED and stays there silently forever \u00e2\u20ac\u201d NOT_YET_FILED is deliberately not a failure, which is exactly what makes an unreachable document invisible (T-403 B-1: the SEBI rung could never fire for a DRHP)",
+      "findingClass": "a document the pipeline can never reach settles as NOT_YET_FILED and stays there silently forever — NOT_YET_FILED is deliberately not a failure, which is exactly what makes an unreachable document invisible (T-403 B-1: the SEBI rung could never fire for a DRHP)",
       "round7Findings": [],
       "sourceTask": "T-403",
       "failThreshold": "NOT_YET_FILED past its filing calendar: DRHP >14d from first sight, RHP >2d after open, PROSPECTUS >3d after close (listing is T+3 and a company cannot list before the Prospectus is filed), anchor report >1d after open. A row whose governing date is missing is skipped, never guessed at",
@@ -300,12 +310,12 @@
     },
     {
       "id": "m_fix_merged_not_served",
-      "findingClass": "a merged PR labelled fixes-live-bug is not yet being served in production \u00e2\u20ac\u201d the bug it fixed is still live",
+      "findingClass": "a merged PR labelled fixes-live-bug is not yet being served in production — the bug it fixed is still live",
       "round7Findings": [],
       "sourceTask": "T-425",
       "registryClass": "merged-fix-never-deployed-while-bug-live",
-      "failThreshold": "for every merged PR carrying the `fixes-live-bug` label, the served SHA's commit time (read via git log against the SHA from GET {BASE_URL}/api/version \u00e2\u20ac\u201d the same way the T-324 SHA-drift monitor reads it) is older than the PR's mergedAt for more than 24h",
-      "warnThreshold": "same comparison, but the merge is under 24h old \u00e2\u20ac\u201d a normal deploy-lag window, not yet an outage",
+      "failThreshold": "for every merged PR carrying the `fixes-live-bug` label, the served SHA's commit time (read via git log against the SHA from GET {BASE_URL}/api/version — the same way the T-324 SHA-drift monitor reads it) is older than the PR's mergedAt for more than 24h",
+      "warnThreshold": "same comparison, but the merge is under 24h old — a normal deploy-lag window, not yet an outage",
       "severity": "P1",
       "unverifiableWhen": "gh could not list merged fixes-live-bug PRs, OR the served SHA could not be read (unreachable / returned \"unknown\"), OR the served SHA has no locally-known commit time"
     },
@@ -332,21 +342,21 @@
     }
   ],
   "notCoveredByThisManifest": [
-    "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) \u00e2\u20ac\u201d owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
-    "P3-3 (always-red Production Verification GitHub Actions workflow) \u00e2\u20ac\u201d owned by T-326",
-    "P2-7 ecosystem.config.js dead-config class beyond TZ \u00e2\u20ac\u201d owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
-    "g_test_coverage_negative_grep (T-470, issue #197) \u2014 CI-time (pr-gate.yml, every PR) negative grep for untested web data components / scraper validation rules / priority-matrix field keys, enforced by web/tests/unit/meta/coverage-negative-grep.test.ts + scraper/tests/unit/meta/coverage-negative-grep.test.ts against config/coverage-negative-grep-baseline.json (shrink-only ratchet) and config/coverage-negative-grep-allowlist.json (reasoned permanent exemptions). Not a DB audit check, so it is not recorded by audit-detection-floor.mjs / this manifest's checks[] array."
+    "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
+    "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
+    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
+    "g_test_coverage_negative_grep (T-470, issue #197) — CI-time (pr-gate.yml, every PR) negative grep for untested web data components / scraper validation rules / priority-matrix field keys, enforced by web/tests/unit/meta/coverage-negative-grep.test.ts + scraper/tests/unit/meta/coverage-negative-grep.test.ts against config/coverage-negative-grep-baseline.json (shrink-only ratchet) and config/coverage-negative-grep-allowlist.json (reasoned permanent exemptions). Not a DB audit check, so it is not recorded by audit-detection-floor.mjs / this manifest's checks[] array."
   ],
   "exitCodes": {
     "0": "every check PASSed",
-    "1": "at least one check FAILed \u00e2\u20ac\u201d a defect is live",
+    "1": "at least one check FAILed — a defect is live",
     "2": "the audit itself crashed or could not start",
-    "3": "no FAIL, but at least one check is UNVERIFIABLE \u00e2\u20ac\u201d the audit was blind tonight, not green (FAIL dominates when both occur)"
+    "3": "no FAIL, but at least one check is UNVERIFIABLE — the audit was blind tonight, not green (FAIL dominates when both occur)"
   },
   "paging": {
-    "model": "one DIGEST page per check per night (title, failing-row count, first 10 rows, pointer to the full report on the box) \u00e2\u20ac\u201d never one page per row",
+    "model": "one DIGEST page per check per night (title, failing-row count, first 10 rows, pointer to the full report on the box) — never one page per row",
     "severityRule": "P1 when the check has rows that were NOT present in the previous run (state persisted in the audit state dir); P2 for an unchanged backlog",
-    "dedupeKey": "detection-floor-<checkId>-<YYYY-MM-DD> for FAIL digests; detection-floor-unverifiable-<checkId>-<YYYY-MM-DD> for UNVERIFIABLE pages \u00e2\u20ac\u201d date-scoped so the Notifier 30-minute cooldown cannot swallow the nightly digest",
+    "dedupeKey": "detection-floor-<checkId>-<YYYY-MM-DD> for FAIL digests; detection-floor-unverifiable-<checkId>-<YYYY-MM-DD> for UNVERIFIABLE pages — date-scoped so the Notifier 30-minute cooldown cannot swallow the nightly digest",
     "unverifiablePages": "every UNVERIFIABLE check pages P2; an UNVERIFIABLE check is never treated as a pass"
   }
 }
