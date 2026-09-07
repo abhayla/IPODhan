@@ -32,6 +32,25 @@ export function stripLegalSuffix(slug) {
 }
 
 /**
+ * Extracts one page's worth of IPO slugs from a /api/ipos response and says
+ * whether there is another page to fetch (T-464 round 2). A response with no
+ * `pagination` object is NOT "no more pages" — it means the check cannot
+ * tell whether it saw every live IPO, so it throws rather than silently
+ * degrading to whatever page(s) happened to load first.
+ *
+ * @param {{ data?: Array<{ slug?: string }>, pagination?: { hasMore?: boolean } }} pageJson
+ * @returns {{ slugs: string[], hasMore: boolean }}
+ */
+export function nextIpoSlugsPage(pageJson) {
+  if (!pageJson || pageJson.pagination === undefined || pageJson.pagination === null) {
+    throw new Error('pagination missing from /api/ipos response — cannot verify full slug coverage');
+  }
+  const rows = Array.isArray(pageJson.data) ? pageJson.data : [];
+  const slugs = rows.filter((r) => r && r.slug).map((r) => r.slug);
+  return { slugs, hasMore: !!pageJson.pagination.hasMore };
+}
+
+/**
  * Sub-check 1: every live 200-returning route must appear in the sitemap.
  * The T-272 P2-4 class (four segment landing pages 200'd but were absent
  * from the sitemap) — comparing against LIVE 200s (not a hardcoded list) is

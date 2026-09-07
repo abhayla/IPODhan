@@ -21,6 +21,7 @@ import {
   checkSitemapCompleteness,
   checkDuplicateSlugs,
   checkTitleCollisions,
+  nextIpoSlugsPage,
 } from './lib/seo-surface-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -144,6 +145,9 @@ function extractRoutesSsot() {
   return routes;
 }
 
+// Assumes the site serves one Next.js MetadataRoute sitemap.xml — no
+// <sitemapindex> / multi-file sitemap handling; a switch to a sitemap index
+// would need this parser updated.
 async function fetchSitemapPaths() {
   const res = await get('/sitemap.xml');
   const locs = [...(res.text || '').matchAll(/<loc>([^<]+)<\/loc>/g)].map((x) => x[1]);
@@ -159,16 +163,17 @@ async function fetchSitemapPaths() {
 
 // Paginates the public IPO list API (max page size 100) to get every live
 // IPO's slug — the "every live IPO slug" half of the sitemap-completeness
-// check, independent of the sitemap itself.
+// check, independent of the sitemap itself. Round 2 (#363 review): a
+// response with no `pagination` object used to be treated as "last page",
+// silently degrading the check to whatever page(s) loaded first — now
+// nextIpoSlugsPage() throws instead, so this check FAILs loud.
 async function fetchAllIpoSlugs() {
   const slugs = [];
-  let page = 1;
-  for (; page <= 10; page++) {
+  for (let page = 1; page <= 10; page++) {
     const res = await get(`/api/ipos?limit=100&page=${page}`);
-    const rows = res.json?.data || [];
-    for (const r of rows) if (r.slug) slugs.push(r.slug);
-    const pag = res.json?.pagination;
-    if (!pag || !pag.hasMore) break;
+    const { slugs: pageSlugs, hasMore } = nextIpoSlugsPage(res.json);
+    slugs.push(...pageSlugs);
+    if (!hasMore) break;
   }
   return slugs;
 }

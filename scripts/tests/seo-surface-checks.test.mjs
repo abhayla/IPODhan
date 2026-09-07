@@ -16,6 +16,7 @@ import {
   checkDuplicateSlugs,
   checkTitleCollisions,
   stripLegalSuffix,
+  nextIpoSlugsPage,
 } from '../lib/seo-surface-checks.mjs';
 
 // --- Sub-check 1: sitemap completeness -------------------------------------
@@ -38,6 +39,24 @@ test('checkSitemapCompleteness: FAILS red on the T-272 P2-4 shape (segment pages
     result.missing.sort(),
     ['/mainboard-ipos', '/ncd', '/ofs', '/sme-ipos'].sort()
   );
+});
+
+// --- Pagination guard (round 2, #363 review) --------------------------------
+
+test('nextIpoSlugsPage: FAILS loud (throws) when pagination is missing, instead of silently treating it as the last page', () => {
+  // The exact defect shape: a /api/ipos response with `data` but no
+  // `pagination` object used to be read as "no more pages" and silently
+  // degrade the sitemap-completeness check to the first 100 slugs.
+  const responseMissingPagination = { data: [{ slug: 'fractal-analytics-ltd' }] };
+  assert.throws(
+    () => nextIpoSlugsPage(responseMissingPagination),
+    /pagination missing from \/api\/ipos response/
+  );
+});
+
+test('nextIpoSlugsPage: reads slugs and hasMore normally when pagination is present', () => {
+  const result = nextIpoSlugsPage({ data: [{ slug: 'fractal-analytics-ltd' }], pagination: { hasMore: true } });
+  assert.deepEqual(result, { slugs: ['fractal-analytics-ltd'], hasMore: true });
 });
 
 // --- Sub-check 2: duplicate slugs -------------------------------------------
