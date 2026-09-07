@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: field_sources provenance for the 87 price-band rows the T-276
  * backfill wrote directly (T-278 P3-7, GitHub #165 F1).

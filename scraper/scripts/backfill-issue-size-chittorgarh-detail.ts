@@ -54,6 +54,18 @@ import {
   collectImplausibleIssueSizeFields,
 } from '../src/services/data-consolidation-service.js';
 import logger from '../src/utils/logger.js';
+import {
+  openRepairDb,
+  PRODUCTION_DATABASE_NAME,
+  readFieldSource,
+  upsertFieldSource,
+} from './lib/repair-tool.js';
+
+// T-490: the prod guard and the provenance upsert now live in
+// scripts/lib/repair-tool.ts — one reviewed implementation shared by every
+// repair tool. This tool's RCA (it wrote `ipos` with NO field_sources row) is
+// exactly the class the shared upsert closes. Re-exported for existing tests.
+export { PRODUCTION_DATABASE_NAME };
 
 const APPLY = process.argv.includes('--apply');
 const limitIdx = process.argv.indexOf('--limit');
@@ -90,10 +102,12 @@ const RECHECK_ABOVE_FLOOR = process.argv.includes('--recheck-above-floor');
 const OVERWRITE_ABOVE_FLOOR = process.argv.includes('--overwrite-above-floor');
 const ABOVE_FLOOR_DIVERGENCE_THRESHOLD = 0.40;
 
-/** The one database name this CLI refuses to WRITE to without --allow-prod. */
-export const PRODUCTION_DATABASE_NAME = 'ipodhan';
-
-/** Same resolution order as reset-document.ts's resolveDatabaseName. */
+/**
+ * Env-derived database name. Kept for the informational `database:` line and
+ * its unit test ONLY — it is NOT the guard (T-490 / #165 CRITICAL: initPool()
+ * prefers DATABASE_HOST, so this can read "staging" while the pool opens
+ * prod). The guard is `openRepairDb()` on the writing pool.
+ */
 export function resolveDatabaseName(env: NodeJS.ProcessEnv): string {
   const raw = env.DATABASE_URL || '';
   const fromUrl = raw
@@ -356,46 +370,16 @@ export async function upsertIssueSizeProvenance(
     updatedBy: string;
   }
 ): Promise<void> {
-  const existing = await txLike
-    .select({ source: schema.fieldSources.source })
-    .from(schema.fieldSources)
-    .where(
-      and(
-        eq(schema.fieldSources.ipoId, params.ipoId),
-        eq(schema.fieldSources.tableName, 'ipos'),
-        eq(schema.fieldSources.fieldName, 'issueSize')
-      )
-    )
-    .limit(1);
-  const previousSource = existing[0]?.source ?? null;
-  const previousValue = params.previousValue === null ? null : String(params.previousValue);
-
-  await txLike
-    .insert(schema.fieldSources)
-    .values({
-      ipoId: params.ipoId,
-      tableName: 'ipos',
-      fieldName: 'issueSize',
-      source: 'ADMIN',
-      confidence: 100,
-      previousValue,
-      previousSource,
-      dataLineage: WRITE_DATA_LINEAGE,
-      updatedAt: new Date(),
-      updatedBy: params.updatedBy,
-    })
-    .onConflictDoUpdate({
-      target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.fieldName],
-      set: {
-        source: 'ADMIN',
-        confidence: 100,
-        previousValue,
-        previousSource,
-        dataLineage: WRITE_DATA_LINEAGE,
-        updatedAt: new Date(),
-        updatedBy: params.updatedBy,
-      },
-    });
+  await upsertFieldSource(txLike, {
+    ipoId: params.ipoId,
+    tableName: 'ipos',
+    fieldName: 'issueSize',
+    source: 'ADMIN',
+    confidence: 100,
+    previousValue: params.previousValue,
+    dataLineage: WRITE_DATA_LINEAGE,
+    updatedBy: params.updatedBy,
+  });
 }
 
 /**
@@ -423,55 +407,30 @@ export async function stampExactMatchProvenance(
     updatedBy: string;
   }
 ): Promise<{ stamped: boolean; previousSource: string | null }> {
-  const existing = await txLike
-    .select({ source: schema.fieldSources.source })
-    .from(schema.fieldSources)
-    .where(
-      and(
-        eq(schema.fieldSources.ipoId, params.ipoId),
-        eq(schema.fieldSources.tableName, 'ipos'),
-        eq(schema.fieldSources.fieldName, 'issueSize')
-      )
-    )
-    .limit(1);
-  const previousSource = existing[0]?.source ?? null;
+  const previousSource = await readFieldSource(txLike, {
+    ipoId: params.ipoId,
+    tableName: 'ipos',
+    fieldName: 'issueSize',
+  });
 
   // Idempotent re-run (round 2, item 4d): a row already carrying ADMIN
   // provenance from a prior stamp is a no-op — re-inserting identical data
-  // would just churn `updated_at`/`updated_by` for no informational gain,
-  // and the caller's "second run stamps 0" contract needs a real signal.
+  // would churn `updated_at`/`updated_by` for no informational gain, and the
+  // caller's "second run stamps 0" contract needs a real signal.
   if (previousSource === 'ADMIN') {
     return { stamped: false, previousSource };
   }
 
-  const previousValue = String(params.storedValue);
-
-  await txLike
-    .insert(schema.fieldSources)
-    .values({
-      ipoId: params.ipoId,
-      tableName: 'ipos',
-      fieldName: 'issueSize',
-      source: 'ADMIN',
-      confidence: 100,
-      previousValue,
-      previousSource,
-      dataLineage: STAMP_DATA_LINEAGE,
-      updatedAt: new Date(),
-      updatedBy: params.updatedBy,
-    })
-    .onConflictDoUpdate({
-      target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.fieldName],
-      set: {
-        source: 'ADMIN',
-        confidence: 100,
-        previousValue,
-        previousSource,
-        dataLineage: STAMP_DATA_LINEAGE,
-        updatedAt: new Date(),
-        updatedBy: params.updatedBy,
-      },
-    });
+  await upsertFieldSource(txLike, {
+    ipoId: params.ipoId,
+    tableName: 'ipos',
+    fieldName: 'issueSize',
+    source: 'ADMIN',
+    confidence: 100,
+    previousValue: params.storedValue,
+    dataLineage: STAMP_DATA_LINEAGE,
+    updatedBy: params.updatedBy,
+  });
   return { stamped: true, previousSource };
 }
 
@@ -497,19 +456,15 @@ async function main() {
     );
   }
 
-  const dbName = resolveDatabaseName(process.env);
+  // T-490 (this tool's own RCA class): the guard asks the WRITING POOL, not the
+  // env, which database it is in — `resolveDatabaseName(process.env)` can read
+  // "ipodhan_staging" while initPool() (which prefers DATABASE_HOST) opens prod.
+  const { dbName } = await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'backfill-issue-size',
+  });
   console.log(`database: ${dbName || '(unresolved)'}`);
-  const isProdDb = dbName === PRODUCTION_DATABASE_NAME;
-  const allowProd = process.argv.includes('--allow-prod');
-  if (APPLY && isProdDb && !allowProd) {
-    console.error(
-      `backfill-issue-size: refusing to APPLY writes against the production database "${PRODUCTION_DATABASE_NAME}" — pass --allow-prod to override.`
-    );
-    process.exit(1);
-  }
-  if (APPLY && isProdDb && allowProd) {
-    console.log(`ALLOW-PROD: writing against "${PRODUCTION_DATABASE_NAME}" (--allow-prod given).`);
-  }
 
   // 1. Discovery map (report 118 historical + report 82 upcoming fallback) —
   //    identical approach to the lot-size backfill.

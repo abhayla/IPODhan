@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: the 3 date-incoherent rows (T-296 P2-7) and the 1 lead_managers
  * pollution row (T-296 P2-8) named in the T-299 contract.

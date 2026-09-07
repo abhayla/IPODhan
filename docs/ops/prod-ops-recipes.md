@@ -98,6 +98,14 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
   `ipodhan_app` for app tables anyway.
 
 ## 8. Data repair tools (productized; never hand SQL)
+
+**Shared guards (T-490):** every repair/backfill tool imports `scraper/scripts/lib/repair-tool.ts` - `openRepairDb()`
+(prints `current_database(): <name>` from the WRITING pool and refuses a prod `--apply` without `--allow-prod`),
+`upsertFieldSource()` (keeps `previous_source`, takes `previous_value` from the caller's ledger),
+`buildAlreadyRepairedSet()` (per-field idempotency) and `writeLedgerFile()`. CI enforces it:
+`scripts/ci/require-repair-tool-module.mjs` fails a PR whose new `scraper/scripts/{repair,backfill}-*.ts` neither
+imports the module nor carries `// repair-tool-exempt: <YYYY-MM-DD> <reason>`.
+
 ```bash
 # issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
 cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"

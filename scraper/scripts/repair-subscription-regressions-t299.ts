@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: subscription rows corrupted by the T-266 in-run-memory guard gap
  * (T-296 P1-1, T-299 fix). The old guard had no memory of what was already

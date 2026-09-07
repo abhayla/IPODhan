@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: lot_size for genuine IPOs from Chittorgarh per-IPO detail pages (B7, #8).
  *

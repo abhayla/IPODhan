@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: registrar_id for the 9 rows now trivially matchable after extending
  * the matcher with `^address`-suffix stripping, glued-legal-suffix space

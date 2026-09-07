@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * S-01 — backfill per-IPO pipeline ledger rows from an out-of-band source
  * (today: the DEEPA walk, docs/walks/2026-09-02-deepa-pipeline-walk.md).

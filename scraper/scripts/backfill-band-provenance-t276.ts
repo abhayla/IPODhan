@@ -31,55 +31,29 @@
  */
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
+import {
+  alreadyRepairedKey,
+  buildAlreadyRepairedSet,
+  decideProdWriteRefusal,
+  openRepairDb,
+  PRODUCTION_DATABASE_NAME,
+  queryCurrentDatabase,
+  upsertFieldSource,
+} from './lib/repair-tool.js';
+
+// T-490: the prod guard, the current_database() probe and the provenance
+// upsert are no longer private to this tool — they live in
+// scripts/lib/repair-tool.ts so every repair tool gets the same, reviewed
+// implementation. Re-exported here so existing callers/tests keep working.
+export { decideProdWriteRefusal, queryCurrentDatabase, PRODUCTION_DATABASE_NAME };
 
 const APPLY = process.argv.includes('--apply');
 const ledgerIdx = process.argv.indexOf('--ledger');
 const LEDGER_PATH = ledgerIdx >= 0 ? process.argv[ledgerIdx + 1] : null;
-
-/** The one database name this CLI refuses to WRITE to without --allow-prod. */
-export const PRODUCTION_DATABASE_NAME = 'ipodhan';
-
-/**
- * Round 2 (#165 review, CRITICAL): resolveDatabaseName-from-env is NOT the guard — it inspects
- * DATABASE_URL, but packages/shared/src/db/index.ts's initPool() prefers
- * DATABASE_HOST/DATABASE_PASSWORD when DATABASE_HOST is set (the tunnel env sets both DATABASE_URL
- * AND DATABASE_HOST), so the env-derived name can read "ipodhan_staging" while the pool that
- * actually opens is connected to prod. The only trustworthy source is asking the SAME pool what
- * database it is in, via `SELECT current_database()`, before any write.
- */
-export async function queryCurrentDatabase(dbLike: { execute: typeof db.execute }): Promise<string> {
-  const result = await dbLike.execute<{ name: string }>(sql`SELECT current_database() AS name`);
-  const rows = Array.isArray(result) ? result : (result as unknown as { rows: { name: string }[] }).rows;
-  const name = rows?.[0]?.name;
-  if (!name) {
-    throw new Error('backfill-band-provenance-t276: SELECT current_database() returned no row — cannot verify which database this pool is writing to.');
-  }
-  return name;
-}
-
-/**
- * Round 3 (#165 review): pure decision extracted from main() so deleting the refusal actually
- * turns a test red. `dbName` MUST be the value from `queryCurrentDatabase()` (the real pool),
- * never env-derived.
- */
-export function decideProdWriteRefusal(input: {
-  apply: boolean;
-  dbName: string;
-  allowProd: boolean;
-}): { refuse: boolean; reason?: string } {
-  const isProdDb = input.dbName === PRODUCTION_DATABASE_NAME;
-  if (input.apply && isProdDb && !input.allowProd) {
-    return {
-      refuse: true,
-      reason: `backfill-band-provenance-t276: refusing to APPLY writes against the production database "${PRODUCTION_DATABASE_NAME}" (current_database()) — pass --allow-prod to override.`,
-    };
-  }
-  return { refuse: false };
-}
 
 export interface LedgerRow {
   slug: string;
@@ -166,9 +140,10 @@ export function buildDataLineage(ledgerPath: string) {
 }
 
 /**
- * Same-transaction upsert on `unique_field_source_per_ipo`, mirroring
- * `upsertIssueSizeProvenance` in backfill-issue-size-chittorgarh-detail.ts: reads the existing
- * row (if any) to preserve `previousSource`, then upserts crediting NSE at confidence 100.
+ * T-490: thin adapter over the shared `upsertFieldSource()` — the
+ * previous_source carry, the always-set dataLineage and the conflict target
+ * now live in `scripts/lib/repair-tool.ts`. This tool only supplies the
+ * band-specific source (NSE) and the ledger's before-value.
  */
 export async function upsertBandFieldSourceProvenance(
   txLike: {
@@ -183,47 +158,16 @@ export async function upsertBandFieldSourceProvenance(
     updatedBy: string;
   }
 ): Promise<void> {
-  const existing = await txLike
-    .select({ source: schema.fieldSources.source })
-    .from(schema.fieldSources)
-    .where(
-      and(
-        eq(schema.fieldSources.ipoId, params.ipoId),
-        eq(schema.fieldSources.tableName, 'ipos'),
-        eq(schema.fieldSources.fieldName, params.fieldName)
-      )
-    )
-    .limit(1);
-  const previousSource = existing[0]?.source ?? null;
-  const previousValue = params.previousValue === null ? null : String(params.previousValue);
-  const dataLineage = buildDataLineage(params.ledgerPath);
-
-  await txLike
-    .insert(schema.fieldSources)
-    .values({
-      ipoId: params.ipoId,
-      tableName: 'ipos',
-      fieldName: params.fieldName,
-      source: 'NSE',
-      confidence: 100,
-      previousValue,
-      previousSource,
-      dataLineage,
-      updatedAt: new Date(),
-      updatedBy: params.updatedBy,
-    })
-    .onConflictDoUpdate({
-      target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.fieldName],
-      set: {
-        source: 'NSE',
-        confidence: 100,
-        previousValue,
-        previousSource,
-        dataLineage,
-        updatedAt: new Date(),
-        updatedBy: params.updatedBy,
-      },
-    });
+  await upsertFieldSource(txLike, {
+    ipoId: params.ipoId,
+    tableName: 'ipos',
+    fieldName: params.fieldName,
+    source: 'NSE',
+    confidence: 100,
+    previousValue: params.previousValue,
+    dataLineage: buildDataLineage(params.ledgerPath),
+    updatedBy: params.updatedBy,
+  });
 }
 
 async function main() {
@@ -236,20 +180,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Round 2 (#165 CRITICAL): ask the SAME pool, not the env, which database it is actually
-  // connected to — env-derived guards can lie when DATABASE_HOST is also set (the tunnel sets
-  // both DATABASE_URL and DATABASE_HOST; initPool() prefers DATABASE_HOST).
-  const dbName = await queryCurrentDatabase(db);
-  console.log(`current_database(): ${dbName}`);
-  const allowProd = process.argv.includes('--allow-prod');
-  const refusal = decideProdWriteRefusal({ apply: APPLY, dbName, allowProd });
-  if (refusal.refuse) {
-    console.error(refusal.reason);
-    process.exit(1);
-  }
-  if (APPLY && dbName === PRODUCTION_DATABASE_NAME && allowProd) {
-    console.log(`ALLOW-PROD: writing against "${PRODUCTION_DATABASE_NAME}" (--allow-prod given).`);
-  }
+  // T-490: shared guard — asks the SAME pool (not the env) which database it is in, prints
+  // `current_database(): <name>`, and refuses a prod --apply without --allow-prod.
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'backfill-band-provenance-t276',
+  });
 
   const ledger = parseAppliedLedger(readFileSync(LEDGER_PATH, 'utf-8'));
   console.log(`ledger: ${ledger.length} UPDATED rows loaded from ${LEDGER_PATH}`);
@@ -287,15 +224,11 @@ async function main() {
           )
         )
     : [];
-  const alreadyRepairedKey = (ipoId: string, fieldName: string) => `${ipoId}::${fieldName}`;
-  const alreadyRepaired = new Set(
-    existingProvenance
-      .filter(
-        (r) =>
-          r.source === 'NSE' &&
-          (r.dataLineage as { note?: string } | null)?.note === buildDataLineage('').note
-      )
-      .map((r) => alreadyRepairedKey(r.ipoId, r.fieldName))
+  // T-490: per-FIELD idempotency via the shared helper — re-upserting an already-repaired
+  // field would read this tool's own stamp as `previous_source` and erase the audit trail.
+  const alreadyRepaired = buildAlreadyRepairedSet(
+    existingProvenance,
+    (r) => r.source === 'NSE' && (r.dataLineage as { note?: string } | null)?.note === buildDataLineage('').note
   );
 
   let matched = 0;

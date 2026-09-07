@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * W-52: `createAnchorInvestors` (scraper/src/services/data-persister.ts)
  * previously wrote `investorList: JSON.stringify(anchorData.investorList)`
