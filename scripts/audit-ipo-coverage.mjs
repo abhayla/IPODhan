@@ -98,6 +98,91 @@ const CHILD = {
   ipo_reviews: 'Broker recommendations',
 };
 
+// #186 (T-460): a served list surface and its backing table can each look correct
+// in isolation while a stale Redis key (or a wrong filter) silently serves a
+// different row count than the DB holds — T-272 P1-2 caught /api/registrars
+// serving 41 rows while the DB held 15 (26 stranded test-fixture rows in a 7-day
+// cache key), and only comparing the two numbers exposed it. One entry per list
+// surface: the HTTP path, how to read its served count from the JSON body, and
+// the SQL that computes the matching stored count. Exported so the self-test
+// exercises this exact list, not a hand-copied duplicate.
+export const SERVED_VS_STORED_SURFACES = [
+  {
+    name: 'registrars',
+    path: '/api/registrars',
+    servedCount: (json) => (Array.isArray(json?.registrars) ? json.registrars.length : null),
+    // schema.ts: registrars.active (NOT is_active) — RegistrarRepository.findAll()'s
+    // default activeOnly=true filters on this exact column (T-460 real-data proof
+    // caught the wrong name: `is_active` does not exist).
+    storedSql: `SELECT count(*)::int c FROM registrars WHERE active = true`,
+  },
+  {
+    name: 'ipos.OPEN',
+    // web/app/api/ipos/route.ts caps `limit` at 100 (zod .max(100)); the plan's
+    // limit=200 4xx's with VALIDATION_ERROR (T-460 real-data proof against
+    // staging). 100 is safely above the current OPEN/UPCOMING population sizes.
+    path: '/api/ipos?status=OPEN&limit=100',
+    servedCount: (json) => (Array.isArray(json?.data) ? json.data.length : null),
+    storedSql: `SELECT count(*)::int c FROM ipos WHERE status = 'OPEN' AND offering_type = 'IPO'`,
+  },
+  {
+    name: 'ipos.UPCOMING',
+    path: '/api/ipos?status=UPCOMING&limit=100',
+    servedCount: (json) => (Array.isArray(json?.data) ? json.data.length : null),
+    storedSql: `SELECT count(*)::int c FROM ipos WHERE status = 'UPCOMING' AND offering_type = 'IPO'`,
+  },
+  {
+    name: 'market-holidays',
+    // year is injected per-call (current year) — see evaluateServedVsStoredDelta.
+    path: (year) => `/api/market-holidays?year=${year}`,
+    servedCount: (json) => (Array.isArray(json?.holidays) ? json.holidays.length : null),
+    // schema.ts: market_holidays.date / .year (NOT holiday_date) — matches the
+    // repository's own year filter (T-460 real-data proof caught the wrong name).
+    storedSql: (year) => `SELECT count(*)::int c FROM market_holidays WHERE year = ${year}`,
+  },
+];
+
+/**
+ * Assert served (live HTTP) row count == stored (DB) row count, per surface.
+ * `fetchImpl`/`query` are injected so the self-test can exercise this against
+ * fixtures with no network and no live DB (T-460 failing-test-first contract).
+ * Never throws: a fetch/parse/query failure becomes an `ok: null` (unverifiable)
+ * row rather than crashing the gate — the caller decides how to score that.
+ */
+export async function evaluateServedVsStoredDelta({ baseUrl, fetchImpl = fetch, query, year = new Date().getUTCFullYear() }) {
+  const results = [];
+  for (const surface of SERVED_VS_STORED_SURFACES) {
+    const path = typeof surface.path === 'function' ? surface.path(year) : surface.path;
+    const storedSql = typeof surface.storedSql === 'function' ? surface.storedSql(year) : surface.storedSql;
+    let served = null;
+    let stored = null;
+    let error = null;
+    try {
+      const res = await fetchImpl(baseUrl.replace(/\/$/, '') + path);
+      const json = await res.json();
+      served = surface.servedCount(json);
+      if (served === null) error = `served count unavailable (unexpected shape from ${path})`;
+    } catch (e) {
+      error = `fetch ${path} failed: ${e.message}`;
+    }
+    if (!error) {
+      try {
+        const rows = await query(storedSql);
+        stored = rows[0]?.c ?? null;
+        if (stored === null) error = `stored count unavailable (query returned no row)`;
+      } catch (e) {
+        error = `stored-count query failed: ${e.message}`;
+      }
+    }
+    results.push(
+      error
+        ? { name: surface.name, ok: null, detail: error }
+        : { name: surface.name, ok: served === stored, detail: `served ${served}, stored ${stored}` }
+    );
+  }
+  return results;
+}
+
 async function main() {
   try {
     await assertUtcSession(pool);
@@ -267,6 +352,15 @@ async function main() {
     { name: 'duplicates.groups==0', ok: dups.length === 0, detail: `${dups.length}` },
   ];
 
+  // #186 (T-460): served (live HTTP) vs stored (DB) row-count delta, per list
+  // surface — see evaluateServedVsStoredDelta above. BASE_URL defaults to prod
+  // (mirrors audit-prod.mjs) so the nightly cron compares prod-served to the
+  // prod DB it is already connected to; override for a staging/tunnel proof run.
+  const servedVsStored = await evaluateServedVsStoredDelta({
+    baseUrl: process.env.BASE_URL || 'https://ipodhan.com',
+    query: q,
+  });
+
   // ---- SUBSTANCE GATE (folded in from audit-substance-plausibility.mjs so this
   // single command is the comprehensive gate — contract Stage A.5 / C-5: --gate
   // FAILs on substance smells, not just missing fields). HARD: contributes to exit.
@@ -337,6 +431,14 @@ async function main() {
   let fail = 0;
   log(`  -- Stage A invariants (HARD) --`);
   for (const s of stageA) { if (!s.ok) fail++; log(`  [${s.ok ? 'PASS' : 'FAIL'}] ${s.name} (${s.detail})`); }
+
+  log(`\n  -- Served-vs-stored delta (HARD; g_served_stored_delta, #186) --`);
+  log(`  base URL: ${process.env.BASE_URL || 'https://ipodhan.com'}`);
+  for (const r of servedVsStored) {
+    const tag = r.ok === null ? 'SKIP' : r.ok ? 'PASS' : 'FAIL';
+    if (r.ok === false) fail++;
+    log(`  [${tag}] ${r.name.padEnd(16)} ${r.detail}`);
+  }
 
   log(`\n  -- Details-row coverage (HARD, W-151) --`);
   if (!detailsRow) {

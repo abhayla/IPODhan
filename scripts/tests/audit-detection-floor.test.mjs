@@ -574,7 +574,15 @@ test('every detection-checks.json check id is actually recorded by the audit scr
   const manifest = JSON.parse(readFileSync(new URL('../../docs/reviews/detection-checks.json', import.meta.url), 'utf8'));
   const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
   const recorded = new Set([...script.matchAll(/record\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]));
-  const declared = new Set(manifest.checks.map((c) => c.id));
+  // #186 (T-460): a check can declare its own `auditScript` when it is wired
+  // into a DIFFERENT audit (e.g. g_served_stored_delta lives in
+  // audit-ipo-coverage.mjs --gate, not this script) — exclude those from the
+  // "recorded here" half of the wire-or-retire check; they still can't be
+  // undocumented (the second half below still requires every id this script
+  // DOES record to be declared in the manifest).
+  const declared = new Set(
+    manifest.checks.filter((c) => !c.auditScript || c.auditScript === manifest.auditScript).map((c) => c.id)
+  );
 
   const paperOnly = [...declared].filter((id) => !recorded.has(id));
   assert.deepEqual(paperOnly, [], `manifest lists check(s) the audit never records: ${paperOnly.join(', ')}`);
