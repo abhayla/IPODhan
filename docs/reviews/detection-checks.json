@@ -329,23 +329,13 @@
       "failThreshold": "any UPCOMING/OPEN/CLOSED/LISTED IPO's DRHP/RHP/PROSPECTUS document has extraction_status=MANUAL_REVIEW, a sibling document_fetch_state.state=EXTRACT_FAILED, or extraction_status=FAILED with an extraction_error starting HARD_FAILURE:, for more than 48h",
       "severity": "P1",
       "unverifiableWhen": "never - always runs against documents/document_fetch_state joined to ipos"
-    },
-    {
-      "id": "g_cache_poison_bisect",
-      "findingClass": "a paginated list API's cache is poisoned exactly at the page's default `limit` parameter value while limit N-1 and N+1 serve the correct set",
-      "round7Findings": [],
-      "sourceTask": "T-463 / issue #189 (G-D)",
-      "registryClass": "default-parameter-cache-poisoning",
-      "failThreshold": "GET /api/ipos/history at limit=N-1, N, N+1 (default N=20) disagree on total, on the leading result ids, or on issuePrice null-rate by more than 10 percentage points",
-      "severity": "P1",
-      "unverifiableWhen": "the endpoint is unreachable (non-200) at any of the three probed limits",
-      "note": "audited by scripts/audit-prod.mjs (HTTP-only, no DB) via scripts/lib/cache-poison-bisect.mjs; NOT wired into scripts/vps-data-audit-cron.sh, which runs audit-detection-floor.mjs against the DB. Real incident: limit=20 served 240 stale rows with blank issuePrice for 19h while limit=19/21 served the correct 243-row set — probing only the default missed it."
     }
   ],
   "notCoveredByThisManifest": [
     "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
-    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion"
+    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
+    "g_cache_poison_bisect (T-463, issue #189) — a paginated list API's cache poisoned exactly at the page's default `limit` parameter value (limit=20 once served 240 stale rows with blank issuePrice for 19h while limit=19/21 served the correct set). This is an HTTP-only prod probe, not a nightly DB-row audit: `scripts/audit-prod.mjs` runs `bisectDefaultParameter()` (from `scripts/lib/cache-poison-bisect.mjs`) against GET /api/ipos/history at limit=19/20/21. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly DB audit. Guarded instead by `scripts/tests/cache-poison-bisect.test.mjs`."
   ],
   "exitCodes": {
     "0": "every check PASSed",
