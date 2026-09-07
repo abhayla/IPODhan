@@ -60,7 +60,7 @@ import {
   checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS,
   buildRunPayloads, evaluateCronExecutable,
-  computeExitCode, EXIT_UNVERIFIABLE,
+  computeExitCode, EXIT_UNVERIFIABLE, computeSummaryCounts,
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
@@ -1302,8 +1302,9 @@ async function main() {
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
+  const summary = computeSummaryCounts(results);
   console.log(`
-=== SUMMARY: ${results.length - failed.length - unverifiable.length} PASS, ${failed.length} FAIL, ${unverifiable.length} UNVERIFIABLE ===`);
+=== SUMMARY: ${summary.pass} PASS, ${summary.fail} FAIL, ${summary.unverifiable} UNVERIFIABLE, ${summary.skip} SKIP ===`);
 
   const previousState = readPreviousState();
   const payloads = buildRunPayloads({
