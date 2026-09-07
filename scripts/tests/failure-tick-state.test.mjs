@@ -49,6 +49,29 @@ test('--track by errorClass matches every entry of that class', () => {
   assert.equal(countUntracked(current), 1);
 });
 
+test('T-502: a persisted classIssues entry tracks a NEW key of that class, first-seen this run', () => {
+  const current = new Map([['k1', entry({ ipoId: 'never-seen-before', errorClass: 'unit-unparseable' })]]);
+  // No previousFailures entry for k1 (it is genuinely NEW this run) and no --track rule
+  // this run — only a class track persisted from an earlier run.
+  resolveTrackedState(current, {}, [], { 'unit-unparseable': 403 });
+  assert.equal(current.get('k1').issueNumber, 403);
+  assert.equal(countUntracked(current), 0);
+});
+
+test('T-502: a per-key --track this run still wins over a persisted class track', () => {
+  const current = new Map([['k1', entry({ ipoId: 'ipo-special', errorClass: 'unit-unparseable' })]]);
+  const track = [parseTrackArg('ipo-special=999', ERROR_CLASSES)];
+  resolveTrackedState(current, {}, track, { 'unit-unparseable': 403 });
+  assert.equal(current.get('k1').issueNumber, 999, 'per-key track must override the class track');
+});
+
+test('T-502: a per-key issueNumber already carried forward from a previous run is not clobbered by a class track', () => {
+  const current = new Map([['k1', entry({ ipoId: 'ipo-a', errorClass: 'unit-unparseable' })]]);
+  const previous = { k1: { ...entry({ ipoId: 'ipo-a', errorClass: 'unit-unparseable' }), issueNumber: 111 } };
+  resolveTrackedState(current, previous, [], { 'unit-unparseable': 403 });
+  assert.equal(current.get('k1').issueNumber, 111);
+});
+
 test('parseTrackArg rejects malformed input', () => {
   assert.throws(() => parseTrackArg('no-equals-sign', ERROR_CLASSES));
   assert.throws(() => parseTrackArg('ipo-1=not-a-number', ERROR_CLASSES));
