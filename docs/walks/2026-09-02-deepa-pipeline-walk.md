@@ -1135,3 +1135,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 18:15 IST — tick: no agents. VPS prod f9b67d0a (393 s / 35 calls / extractionFailed 1, the known spawn loop), staging 60a7bb46 (77 s / 73 calls / extractionFailed 2, lines read below); disk 57%, load 0.62, OOM 0; worktrees relverify only; stash the 10 pre-existing.
 
 - 18:45 IST — tick: no agents. VPS prod f9b67d0a (156 s / 53 calls / extractionFailed 1, known), staging 60a7bb46 (263 s / 58 calls / extractionFailed 3 — rising 1->2->3 over the last three cycles; error lines read for the 19:00 decision); disk 57%, load 0.02, OOM 0; worktrees relverify only; stash the 10 pre-existing.
+
+- 18:46 IST — Staging failures isolated: Rentomojo persist (3rd today, #402) + Steamhouse India PRICE_BAND_AD refused by the W-45 cross-document unit check (2 per cycle; the check is in the prod build and the release, so not a regression; the ad shape is new) -> issue #403. Nothing release-blocking; 19:00 read next.
