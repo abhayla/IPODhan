@@ -570,25 +570,53 @@ test('(k) a step that is SKIPPED every cycle still FAILS the silence check', () 
 // recorded by the audit script is a PAPER check: it makes the coverage floor
 // look wider than it is. This is wire-or-retire applied to the manifest itself.
 
+// #186 (T-460) round 2: a manifest entry can declare `auditScript` pointing at
+// a DIFFERENT file than this script (e.g. g_served_stored_delta lives in
+// audit-ipo-coverage.mjs --gate). Round 1 just excluded those from checking
+// entirely — a manifest entry naming a nonexistent file, or a real file that
+// never actually records the id, would still pass every self-test here. Fix:
+// for a foreign `auditScript`, resolve it to a real file relative to the repo
+// root and require it to contain either a `record('<id>'`-shaped call (the
+// same machine-checkable shape this script's own checks use) OR a documented
+// `// detection-check: <id>` marker comment on the recording line.
+function verifyForeignAuditScript(id, auditScriptField) {
+  const scriptPath = auditScriptField.split(/\s+/)[0]; // strip a trailing "(functionName)" note
+  const repoRoot = new URL('../../', import.meta.url);
+  let contents;
+  try {
+    contents = readFileSync(new URL(scriptPath, repoRoot), 'utf8');
+  } catch {
+    return `auditScript file does not exist: ${scriptPath}`;
+  }
+  const recordsId = new RegExp(`record\\(\\s*'${id}'`).test(contents);
+  const markedId = new RegExp(`//\\s*detection-check:\\s*${id}\\b`).test(contents);
+  if (!recordsId && !markedId) {
+    return `${scriptPath} exists but never records '${id}' (no record('${id}' call and no "// detection-check: ${id}" marker)`;
+  }
+  return null;
+}
+
 test('every detection-checks.json check id is actually recorded by the audit script, and vice versa', () => {
   const manifest = JSON.parse(readFileSync(new URL('../../docs/reviews/detection-checks.json', import.meta.url), 'utf8'));
   const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
   const recorded = new Set([...script.matchAll(/record\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]));
-  // #186 (T-460): a check can declare its own `auditScript` when it is wired
-  // into a DIFFERENT audit (e.g. g_served_stored_delta lives in
-  // audit-ipo-coverage.mjs --gate, not this script) — exclude those from the
-  // "recorded here" half of the wire-or-retire check; they still can't be
-  // undocumented (the second half below still requires every id this script
-  // DOES record to be declared in the manifest).
-  const declared = new Set(
-    manifest.checks.filter((c) => !c.auditScript || c.auditScript === manifest.auditScript).map((c) => c.id)
-  );
 
+  const ownChecks = manifest.checks.filter((c) => !c.auditScript || c.auditScript === manifest.auditScript);
+  const foreignChecks = manifest.checks.filter((c) => c.auditScript && c.auditScript !== manifest.auditScript);
+
+  const declared = new Set(ownChecks.map((c) => c.id));
   const paperOnly = [...declared].filter((id) => !recorded.has(id));
   assert.deepEqual(paperOnly, [], `manifest lists check(s) the audit never records: ${paperOnly.join(', ')}`);
 
-  const undocumented = [...recorded].filter((id) => !declared.has(id));
+  const undocumented = [...recorded].filter((id) => !declared.has(id) && !foreignChecks.some((c) => c.id === id));
   assert.deepEqual(undocumented, [], `audit records check(s) absent from the manifest: ${undocumented.join(', ')}`);
+
+  // Foreign entries are not exempt — verify each one for real (file exists,
+  // and actually records the id) rather than skipping them.
+  const foreignFailures = foreignChecks
+    .map((c) => verifyForeignAuditScript(c.id, c.auditScript))
+    .filter(Boolean);
+  assert.deepEqual(foreignFailures, [], `foreign-auditScript check(s) failed verification: ${foreignFailures.join('; ')}`);
 });
 
 // T-340 checker round-1 F2: the test above matches `record('id'` against the
@@ -622,7 +650,14 @@ test('every detection-checks.json check id is recorded by a function that is act
 
   for (const id of declared) {
     const owner = fnBodies.find((f) => new RegExp(`record\\(\\s*'${id}'`).test(f.body));
-    if (!owner) continue; // already reported as paperOnly by the text-level test above
+    // No owner function in THIS script's source means either (a) it's a paper
+    // check — already reported by the text-level test above — or (b) it's a
+    // foreign-auditScript check verified separately by
+    // verifyForeignAuditScript() in the test above (file exists + records the
+    // id, in ITS OWN file). Either way this main()-invocation check, which is
+    // specific to audit-detection-floor.mjs's own check-function structure,
+    // has nothing to assert for it here.
+    if (!owner) continue;
     const invoked = new RegExp(`\\b${owner.name}\\s*\\(`).test(mainBody);
     if (!invoked) notInvoked.push(`${id} (owner ${owner.name} defined but never called from main())`);
   }

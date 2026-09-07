@@ -65,6 +65,15 @@ const pool = createUtcPool(
 );
 
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
+
+// #186 (T-460) round 2: mirrors audit-detection-floor.mjs's own `record(id, ...)`
+// shape so a manifest entry declaring `auditScript: scripts/audit-ipo-coverage.mjs`
+// stays machine-verifiable the same way — `scripts/tests/audit-detection-floor.test.mjs`
+// greps the SOURCE TEXT of the file a foreign-`auditScript` entry names for a
+// literal `record('<id>'` call, not just a human-readable log string.
+function record(id, status, detail) {
+  console.log(`[${status}] ${id}${detail ? ' — ' + detail : ''}`);
+}
 // Genuine-IPO population predicate — MUST mirror REAL_IPO_OFFERING_TYPES in
 // packages/shared/src/utils/offering-type.ts. Non-IPO offerings are excluded.
 const REAL_IPO = `offering_type = 'IPO'`;
@@ -434,6 +443,8 @@ async function main() {
 
   log(`\n  -- Served-vs-stored delta (HARD; g_served_stored_delta, #186) --`);
   log(`  base URL: ${process.env.BASE_URL || 'https://ipodhan.com'}`);
+  const svsStatus = servedVsStored.some((r) => r.ok === false) ? 'FAIL' : servedVsStored.some((r) => r.ok === null) ? 'SKIP' : 'PASS';
+  record('g_served_stored_delta', svsStatus, servedVsStored.map((r) => `${r.name}: ${r.detail}`).join('; '));
   for (const r of servedVsStored) {
     const tag = r.ok === null ? 'SKIP' : r.ok ? 'PASS' : 'FAIL';
     if (r.ok === false) fail++;
