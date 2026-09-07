@@ -22,6 +22,9 @@ Rule 6 brief. Status: DRAFT written 12:0x IST; numbers refreshed at 20:30 before
 - Prod data runs waiting on the owner's word (NOT part of the deploy): band-provenance backfill (#379, 87 rows), SME/FPO row repair (#377).
 - Open owner decisions: main-gate push trigger (Actions spend), Karamtara issue_size, 10 pre-existing stashes, ratchet exception #241, issue-sync go-live marker, SME flip, Actions spend for #198/#252, crontab wrapper for #348.
 
+- Known live defect NOT in the bundle: prod RHP extraction for one IPO fails with `spawnSync nice ETIMEDOUT` (six times today, retryCount 7, never hard) — issue #396, RCA in progress; it costs cycle budget but does not block the deploy.
+- Open puzzle: three tooling PRs (#381, #383, #395) were closed unmerged seconds after creation with the owner's account as actor; no closer found; reopen+merge works. Not release-related.
+
 ## (d) Recommendation
 - (fill at 20:30) Default: DEPLOY the frozen f0c66b6b; RE-CUT to include #354 only on a clean 19:00 read, then one full local pass on the new cut before 21:00.
 
