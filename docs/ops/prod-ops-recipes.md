@@ -100,7 +100,8 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 ## 8. Data repair tools (productized; never hand SQL)
 ```bash
 # issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
-cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
+')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432   DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts                     # dry run (staging)
   ... --apply                                                                    # write on staging
   ... --allow-prod            (DATABASE_NAME=ipodhan)                            # prod dry run
@@ -134,6 +135,26 @@ Idempotent — skips IPOs that already have an `ipo_financials` row; a re-run wr
 `industryPe`, `peerCompanies`, `financialYearEnd` are NOT in `financial_data` and stay NULL — a named follow-up
 (issue #224), not built by this migration. Drops `ipo:detail:<slug>`/`ipo:slug:<slug>` cache keys for migrated IPOs when
 Redis is reachable (it is, from the box — this tool ran there for the staging proof).
+
+**Mandatory last step of every data-repair fix task (#192, T-466, `defect-fix-contract.md` item 5):** a
+row is not "repaired" on the strength of one clean read — three separate repairs regressed within
+minutes-to-cycles of deploy (T-281 price-band collapse re-minted 11 min later; T-282's correct guard
+never ran because `CONSOLIDATION_PERCENTAGE=0`; T-277C merged duplicates were re-created next cycle).
+`scripts/assert-repair-held.mjs` closes this: it records the invariant's violation count now (must be
+0), records a cycle marker, polls until N real scraper cycles have passed, and re-runs the invariant
+after each — FAIL loudly on any regression, UNVERIFIABLE if the scraper never touched live data in the
+window.
+```bash
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" \
+  node scripts/assert-repair-held.mjs scripts/lib/repair-invariants/issue-size-t451.mjs --cycles 2 --timeout-min 40
+# generic form — any command whose stdout's LAST line is a bare integer violation count:
+DATABASE_URL="..." node scripts/assert-repair-held.mjs "node scripts/audit-ipo-coverage.mjs --gate | tail -1" --cycles 2
+```
+Staging cycles land at :15/:45, so 2 cycles takes up to ~35 min — launch it in the background
+(`nohup ... > .tmp/proof.log 2>&1 &`) and keep working; do not block a PR gate on it (risk noted in the
+#192 plan). Exit 0 = held; exit 1 = regressed (per-cycle counts printed); exit 2 = UNVERIFIABLE (the
+invariant crashed, or the cycle marker never advanced within the timeout — never a silent pass).
 
 ## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
 Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`

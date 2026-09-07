@@ -1,0 +1,83 @@
+{
+  "_note": "T-462 round 2 (#188 C2). One entry per KNOWN duplicate-identity group (byte-identical date/band/lot/issue_size across rows). An allowlisted group WARNs instead of FAILing the gate. Remove an entry the same turn its rows are repaired/merged — this file is not a permanent exemption list.",
+  "groups": [
+    {
+      "ids": [
+        "088b0c41-b617-4698-8009-8b4f7d4bf974",
+        "0813fe46-bd13-4345-a692-c2ad324ea5d5"
+      ],
+      "slugs": [
+        "gulf-lloyds-india-ltd",
+        "gulf-lloyds-india-ltd-ct"
+      ],
+      "reason": "known clone pending repair",
+      "ticket": "#241"
+    },
+    {
+      "ids": [
+        "708946b8-128c-4b86-8776-46bd696c2825",
+        "37f19183-88a5-48da-ae0b-523b8bc27d50",
+        "c72b720f-c0b3-4833-93f8-80b547b3eedf",
+        "6c59d53b-c6e4-48e1-8c5a-4ff99cc37c66",
+        "e986b271-44c4-4fb0-a846-3a7c60cbda71"
+      ],
+      "slugs": [
+        "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo",
+        "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct",
+        "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-lt",
+        "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-o",
+        "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p"
+      ],
+      "reason": "known clone pending repair",
+      "ticket": "#241"
+    },
+    {
+      "ids": [
+        "a315822a-4084-4a40-be7a-26e2385c3ddf",
+        "6fc323b2-804c-411c-8377-0a7ccab5233e",
+        "7beadc12-720f-4427-a7e2-eef85fb5f662",
+        "1d2edb30-de60-47cf-bcdc-5c0bfbba524b",
+        "f71bbd1b-d054-427d-9662-3aa6667876fe"
+      ],
+      "slugs": [
+        "shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo",
+        "shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct",
+        "shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-lt",
+        "shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-o",
+        "shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p"
+      ],
+      "reason": "known clone pending repair",
+      "ticket": "#241"
+    },
+    {
+      "ids": [
+        "9aa0c381-3f1c-4ccf-9b97-d636bc341b67",
+        "2dfd8026-2725-4351-92dc-462aa8fba879",
+        "97a5557b-fa46-4507-9135-9c79875d2988",
+        "cc9f6035-19aa-41bc-a17c-4aafde1533ba",
+        "ef84a7f1-2e85-48e7-aa10-235b6f721fdc"
+      ],
+      "slugs": [
+        "g-v-electricals-ltd-g-v-electricals-ipo",
+        "g-v-electricals-ltd-g-v-electricals-ipo-ct",
+        "g-v-electricals-ltd-g-v-electricals-ipo-lt",
+        "g-v-electricals-ltd-g-v-electricals-ipo-o",
+        "g-v-electricals-ltd-g-v-electricals-ipo-p"
+      ],
+      "reason": "known clone pending repair",
+      "ticket": "#241"
+    },
+    {
+      "ids": [
+        "d4573623-490f-4785-9891-cc47c630257d",
+        "f69afe91-3fe5-421f-ba8e-aa94f00eadce"
+      ],
+      "slugs": [
+        "suryo-foods-industries-ltd",
+        "travels-rentals-ltd"
+      ],
+      "reason": "known clone pending repair, unresolved root cause",
+      "ticket": "#178"
+    }
+  ]
+}

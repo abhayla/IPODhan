@@ -1,20 +1,37 @@
 /**
  * Migration/repair: financial_data -> ipo_financials (T-477, issue #224).
  *
- * WHY: the site's detail-page components (FinancialTable.tsx,
- * PeerCompaniesList.tsx, ComparisonTable.tsx via
- * web/lib/repositories/ipo-repository.ts ~415-422) read `ipo_financials`,
- * which no scraper ever writes — it sat at 0 rows for all 242 IPOs (issue
- * #224) while the DRHP/pdfplumber extractor (C3b) has been filling
- * `financial_data` (168 rows on staging 2026-09-07). An unused draft of this
- * migration lived at `web/scripts/migrate-financial-data-to-ipo-financials.ts`
- * (Story 4.10) — this is that script productised per the repair-tool
- * convention (`backfill-issue-size-chittorgarh-detail.ts`): dry-run default,
- * --apply required, --allow-prod + database-name guard, idempotent (skips
- * IPOs that already have an ipo_financials row), source-backed (copies the
- * financial_data row's own `field_sources` provenance, defaulting to DRHP —
- * the C3b extractor's source — when no field_sources row exists),
- * RETURNING-checked, and cache-dropping.
+ * WHY (round-2 correction, N3 — say this plainly): `web/components/ipo/
+ * FinancialTable.tsx` reads `financialData` (the `financial_data` table) for
+ * the visible revenue/profit/PE/ROE/debt-to-equity table — that content
+ * already renders today and this migration changes NOTHING about it.
+ * `ipo_financials` has a web consumer for exactly FIVE fields: `pbRatio`,
+ * `rocePercentage`, `industryPe`, `peerCompanies` (all gated behind the
+ * "Enhanced Metrics" section, `hasEnhancedMetrics()` in FinancialTable.tsx —
+ * only rendered when at least one is present, T-477 round 2 N1) and
+ * `financialYearEnd` (`FinancialYearEndDisplay`). This migration copies
+ * `revenueFy1..debtToEquity` into `ipo_financials` too (they exist on the
+ * table and downstream/future consumers may read them), but as of this PR
+ * **none of those copied fields have a web consumer** — this run is a DATA
+ * BRIDGE (populates the table so it is no longer empty and future readers
+ * have something to read), not a visible site fix. The only user-visible
+ * effect of running this migration today is that the "Enhanced Metrics"
+ * section stays correctly HIDDEN (N1) rather than showing an N/A-filled
+ * heading, because the row now truthy-exists. The five enhanced fields
+ * themselves (the ones that WOULD be visible) are not populated here — see
+ * the NULL-fields paragraph below.
+ *
+ * An unused draft of this migration lived at
+ * `web/scripts/migrate-financial-data-to-ipo-financials.ts` (Story 4.10) —
+ * this is that script productised per the repair-tool convention
+ * (`backfill-issue-size-chittorgarh-detail.ts`): dry-run default, --apply
+ * required, --allow-prod + database-name guard, idempotent (skips IPOs that
+ * already have an ipo_financials row; onConflictDoNothing on ipo_id also
+ * protects a concurrent writer race, N4), source-backed (copies the
+ * financial_data row's own `field_sources` provenance FILTERED to
+ * table_name='financial_data', N2 — never an unrelated field's source —
+ * defaulting to DRHP, the C3b extractor's source, when no matching
+ * field_sources row exists), RETURNING-checked, and cache-dropping.
  *
  * Fields ipo_financials has that financial_data lacks (pbRatio,
  * rocePercentage, industryPe, peerCompanies, financialYearEnd) are left NULL
@@ -37,7 +54,7 @@
  */
 import { db, closePool, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 
 const { financialData, ipoFinancials, ipos, fieldSources } = schema;
@@ -213,11 +230,18 @@ async function main() {
 
   // Provenance: source per ipoId from field_sources(table_name='financial_data'),
   // defaulting to DRHP (the C3b extractor's documented source) when absent.
+  // T-477 round 2 (N2): MUST filter on table_name='financial_data' — field_sources
+  // is shared across every table (ipos, documents, ...), so an un-scoped ipoId-only
+  // lookup can copy an unrelated field's source (e.g. a 'registrar' or 'lot_size'
+  // provenance row) onto ipo_financials.
   const provenanceRows = await db
     .select({ ipoId: fieldSources.ipoId, source: fieldSources.source })
     .from(fieldSources)
     .where(
-      inArray(fieldSources.ipoId, rows.map((r) => r.ipoId))
+      and(
+        inArray(fieldSources.ipoId, rows.map((r) => r.ipoId)),
+        eq(fieldSources.tableName, 'financial_data')
+      )
     );
   const provenanceByIpo = new Map<string, string>();
   for (const p of provenanceRows) {
@@ -269,15 +293,31 @@ async function main() {
   }
 
   let written = 0;
+  let skippedConflict = 0;
   const migratedSlugs: string[] = [];
+  const migratedIpoIds: string[] = [];
   for (const w of writes) {
-    const returning = await db.insert(ipoFinancials).values(w.insert).returning({ ipoId: ipoFinancials.ipoId });
+    // T-477 round 2 (N4): onConflictDoNothing on ipo_id — a concurrent writer
+    // (another run, or a future scraper-side writer) inserting the same
+    // ipo_id between our existence check and this insert must not abort the
+    // whole run; it is a benign race, not a write failure.
+    const returning = await db
+      .insert(ipoFinancials)
+      .values(w.insert)
+      .onConflictDoNothing({ target: ipoFinancials.ipoId })
+      .returning({ ipoId: ipoFinancials.ipoId });
+    if (returning.length === 0) {
+      console.log(`  [SKIP] ${w.slug}: ipo_financials row already exists (concurrent writer) — not overwritten`);
+      skippedConflict++;
+      continue;
+    }
     if (returning.length !== 1) {
       console.error(`  [WRITE FAILED] ${w.slug}: expected 1 row RETURNING, got ${returning.length}`);
       continue;
     }
     written++;
     migratedSlugs.push(w.slug);
+    migratedIpoIds.push(w.insert.ipoId);
 
     // Provenance note per copied field.
     const copiedFields: [string, unknown][] = [
@@ -309,23 +349,29 @@ async function main() {
     }
   }
 
-  console.log(`\nwritten: ${written}/${toWrite}`);
+  console.log(`\nwritten: ${written}/${toWrite} (skipped-concurrent-conflict: ${skippedConflict})`);
 
-  // Drop web cache keys for migrated IPOs.
+  // Drop web cache keys for migrated IPOs. Addendum (round 2 follow-up):
+  // `financials:enhanced:<ipoId>` (getIpoFinancialsKey, web/lib/cache/cache-keys.ts
+  // ~151) backs IpoFinancialsRepository.findByIPO — the /api/tools/compare consumer
+  // of the migrated value columns — and is never invalidated by anything else.
   try {
     const redis = getRedisClient();
     for (const slug of migratedSlugs) {
       const keys = [`ipo:detail:${slug}`, `ipo:slug:${slug}`];
       await redis.del(...keys);
     }
-    console.log(`cache: deleted ipo:detail:*/ipo:slug:* for ${migratedSlugs.length} migrated slug(s)`);
+    for (const ipoId of migratedIpoIds) {
+      await redis.del(`financials:enhanced:${ipoId}`);
+    }
+    console.log(`cache: deleted ipo:detail:*/ipo:slug:* for ${migratedSlugs.length} migrated slug(s), financials:enhanced:* for ${migratedIpoIds.length} ipoId(s)`);
     redis.disconnect();
   } catch (e) {
-    console.log(`cache: REDIS_URL not reachable (${e instanceof Error ? e.message : String(e)}) — keys to drop manually: ${migratedSlugs.map((s) => `ipo:detail:${s}, ipo:slug:${s}`).join('; ')}`);
+    console.log(`cache: REDIS_URL not reachable (${e instanceof Error ? e.message : String(e)}) — keys to drop manually: ${migratedSlugs.map((s) => `ipo:detail:${s}, ipo:slug:${s}`).join('; ')}; ${migratedIpoIds.map((id) => `financials:enhanced:${id}`).join('; ')}`);
   }
 
   await closePool();
-  process.exit(written === toWrite ? 0 : 1);
+  process.exit(written + skippedConflict === toWrite ? 0 : 1);
 }
 
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

@@ -200,7 +200,8 @@ export class ReviewRepository
                 eq(ipoReviews.isApproved, true)
               )
             )
-            .orderBy(desc(ipoReviews.publishedDate))
+            // #358: publishedDate ties reshuffled which limited reviews were returned; id breaks the tie.
+            .orderBy(desc(ipoReviews.publishedDate), desc(ipoReviews.id))
             .limit(limit);
 
           return reviews;

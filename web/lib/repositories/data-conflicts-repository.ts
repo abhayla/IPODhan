@@ -248,7 +248,8 @@ export class DataConflictsRepository extends BaseRepository {
           .select()
           .from(dataConflicts)
           .where(isNull(dataConflicts.resolvedAt))
-          .orderBy(desc(dataConflicts.detectedAt));
+          // #358: detectedAt ties reshuffled which conflicts a `limit` cut off; id breaks the tie.
+          .orderBy(desc(dataConflicts.detectedAt), desc(dataConflicts.id));
 
         if (limit) {
           query = query.limit(limit) as typeof query;
