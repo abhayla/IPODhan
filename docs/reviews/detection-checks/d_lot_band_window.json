@@ -1,0 +1,11 @@
+{
+  "id": "d_lot_band_window",
+  "findingClass": "lot_size x price_range_max implies a retail application size SEBI would not permit",
+  "round7Findings": [
+    "P1-4"
+  ],
+  "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or [Rs90,000..Rs3,00,000] SME, for offering_type=IPO",
+  "severity": "P1",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks"
+}

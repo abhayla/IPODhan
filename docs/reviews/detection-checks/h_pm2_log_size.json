@@ -1,0 +1,11 @@
+{
+  "id": "h_pm2_log_size",
+  "findingClass": "an unrotated pm2 log file is growing unbounded, risking the 2026-06-13 disk-full class",
+  "round7Findings": [
+    "P2-11"
+  ],
+  "failThreshold": "any pm2 out/err log file exceeds 100 MB",
+  "severity": "P2",
+  "unverifiableWhen": "pm2 not reachable on the host running the audit",
+  "section": "checks"
+}

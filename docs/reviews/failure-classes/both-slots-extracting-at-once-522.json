@@ -1,0 +1,9 @@
+{
+  "class_id": "both slots extracting at once (522)",
+  "feature": "scraper cron cadence / nginx",
+  "symptom": "both staging cron slots (:00/:30) run extraction simultaneously on 2 vCPUs, starving nginx and producing Cloudflare 522s",
+  "first_seen": "walk W-178",
+  "fix_prs": "`7300e0aa`, `ea40e3c3`, `6039504a`, `252cd9d0` (cron offset to :15/:45, nice priority, TZ restore)",
+  "detection_check": "none in `substance-checks.mjs`/`audit-*.mjs` (an ops/cadence class, not a DB-row check)",
+  "status": "unguarded"
+}

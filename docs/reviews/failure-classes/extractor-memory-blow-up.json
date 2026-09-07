@@ -1,0 +1,9 @@
+{
+  "class_id": "extractor memory blow-up",
+  "feature": "scraper/scripts/*.py (pdfplumber/OCR extraction)",
+  "symptom": "Python extractor OOMs or aborts with a C-level MemoryError that the caller misclassifies as a soft/retryable failure",
+  "first_seen": "walk W-137",
+  "fix_prs": "`dfa42f7c`..`6c44ec21`..`2a6817a9` (memory ceiling, single-thread BLAS, hard-classify C-level aborts, exit 3 JSON)",
+  "detection_check": "none — this is a process-exit-code contract inside `scraper/scripts/*.py`, not a DB-row audit check; nothing in `substance-checks.mjs` or the audit scripts re-verifies extractor exit-code handling",
+  "status": "unguarded"
+}

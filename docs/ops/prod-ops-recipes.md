@@ -100,7 +100,8 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 ## 8. Data repair tools (productized; never hand SQL)
 ```bash
 # issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
-cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
+')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432   DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts                     # dry run (staging)
   ... --apply                                                                    # write on staging
   ... --allow-prod            (DATABASE_NAME=ipodhan)                            # prod dry run
@@ -116,6 +117,24 @@ Audit scripts through the tunnel (report mode; add `--gate` for exit codes): `au
 `audit-detection-floor.mjs`, `audit-substance-plausibility.mjs`, all with `DATABASE_URL=...` as above; a findings file
 for the issue sync: `DETECTION_FLOOR_STATE_DIR=<dir> node scripts/audit-detection-floor.mjs` then
 `node scripts/audit-findings-to-issues.mjs --dry-run <dir>/findings-latest.json`.
+
+```bash
+# ipo_financials empty while financial_data is populated: productized migration/repair (T-477, #224)
+# site reads ipo_financials (FinancialTable.tsx, PeerCompaniesList.tsx, ComparisonTable.tsx via
+# ipo-repository.ts ~415-422) but no scraper writes it; financial_data (DRHP/pdfplumber, C3b) is the source.
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" \
+  npx tsx scripts/migrate-financial-data-to-ipo-financials.ts                  # dry run (staging)
+  ... --apply                                                                  # write on staging
+  ... --slug a-ipo,b-ipo                                                       # scoped dry run/apply
+  ... --apply --allow-prod   (DATABASE_NAME=ipodhan)                           # prod write (owner word only)
+```
+Idempotent — skips IPOs that already have an `ipo_financials` row; a re-run writes 0. Copies `financial_data`'s own
+`field_sources` provenance per field (defaults to `DRHP`, the C3b extractor, when no field_sources row exists) into new
+`field_sources(table_name='ipo_financials', ...)` rows with `dataLineage.method='MIGRATION'`. `pbRatio`, `rocePercentage`,
+`industryPe`, `peerCompanies`, `financialYearEnd` are NOT in `financial_data` and stay NULL — a named follow-up
+(issue #224), not built by this migration. Drops `ipo:detail:<slug>`/`ipo:slug:<slug>` cache keys for migrated IPOs when
+Redis is reachable (it is, from the box — this tool ran there for the staging proof).
 
 **Mandatory last step of every data-repair fix task (#192, T-466, `defect-fix-contract.md` item 5):** a
 row is not "repaired" on the strength of one clean read — three separate repairs regressed within

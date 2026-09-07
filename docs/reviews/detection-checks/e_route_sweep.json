@@ -1,0 +1,15 @@
+{
+  "id": "e_route_sweep",
+  "findingClass": "a public API route 5xxs, or leaks SQL/stack-trace text in its response body",
+  "round7Findings": [
+    "P2-1",
+    "P2-2",
+    "P2-3",
+    "P2-4",
+    "P2-5"
+  ],
+  "failThreshold": "any enumerated web/app/api/** non-admin route returns >=500, or its body matches a SQL/bound-param/stack-trace pattern",
+  "severity": "P1",
+  "unverifiableWhen": "any enumerated public route is unreachable (the sweep did not cover its whole population)",
+  "section": "checks"
+}

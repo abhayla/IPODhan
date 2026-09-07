@@ -1,0 +1,11 @@
+{
+  "id": "j_dead_source_retire_by",
+  "findingClass": "a scraper source has been degraded/dead for many cycles with no owner decision to fix or retire it",
+  "round7Findings": [
+    "P3-6"
+  ],
+  "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
+  "severity": "P2",
+  "unverifiableWhen": "scraper_logs table not present",
+  "section": "checks"
+}

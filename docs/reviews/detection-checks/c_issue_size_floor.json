@@ -1,0 +1,11 @@
+{
+  "id": "c_issue_size_floor",
+  "findingClass": "issue_size holds a magnitude implausible for its segment (share count stored as rupees)",
+  "round7Findings": [
+    "P1-3"
+  ],
+  "failThreshold": "issue_size > 0 AND issue_size < Rs10,00,00,000 for MAINBOARD, or < Rs1,00,00,000 for SME",
+  "severity": "P1",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks"
+}

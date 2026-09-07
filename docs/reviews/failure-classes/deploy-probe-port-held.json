@@ -1,0 +1,9 @@
+{
+  "class_id": "deploy probe port held",
+  "feature": "scripts/deploy-linux.sh",
+  "symptom": "the deploy's port-probe listener is not fully killed (group signal misses a child outside the leader's process group), blocking the next deploy",
+  "first_seen": "walk W-169",
+  "fix_prs": "`d8322a00`, `37288341`, `2cc19d43` (kill by PORT, not only by pgid)",
+  "detection_check": "none in `substance-checks.mjs`/`audit-*.mjs` (mitigated by deploy-script bash tests, not a data/audit check)",
+  "status": "unguarded"
+}

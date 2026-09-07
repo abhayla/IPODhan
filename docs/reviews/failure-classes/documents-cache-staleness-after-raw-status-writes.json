@@ -1,0 +1,9 @@
+{
+  "class_id": "documents cache staleness after raw status writes",
+  "feature": "scraper/scripts/backfill-issue-size-chittorgarh-detail.ts (and any script writing `ipos` directly, bypassing the repository cache-aside layer)",
+  "symptom": "a repaired/backfilled `ipos` row (e.g. `issue_size`) stays stale behind the 15-min `IPO_DETAIL`/`IPO_LIST` Redis TTL because the write went around `IPORepository`'s cache-aside invalidation — an operator had to read a printed \"drop cache keys\" line and DEL them by hand",
+  "first_seen": "Sep 2026 (review-gap round, this PR)",
+  "fix_prs": "this PR (`dropIpoCacheKeys()` DELs `ipo:slug:<slug>` / `ipo:id:<id>` after every applied write, fail-open to the printed line + WARN if Redis is unset/unreachable); the sibling web admin route fix for the same class ships in a separate PR (`filing-auto-persist-cache-invalidation.test.ts` covers that path)",
+  "detection_check": "not one of the three sanctioned check types — guarded by `scraper/tests/unit/scripts/backfill-issue-size-chittorgarh-detail.test.ts`'s `dropIpoCacheKeys` unit test (fake redis asserts both keys are DELed) plus the pre-existing `filing-auto-persist-cache-invalidation.test.ts` for the sibling write path",
+  "status": "unguarded"
+}

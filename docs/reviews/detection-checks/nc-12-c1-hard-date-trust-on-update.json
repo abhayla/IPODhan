@@ -1,0 +1,5 @@
+{
+  "id": "c1_hard_date_trust_on_update",
+  "section": "notCoveredByThisManifest",
+  "note": "c1_hard_date_trust_on_update (#180 F2, T-459) — a single non-authoritative source asserting open_date/close_date on UPDATE onto a previously-null field with zero field_sources corroboration is not a separately-recorded check: guarded at rest by the existing g_provenance_lineage C1 lineage-ceiling gate (scripts/audit-ipo-coverage.mjs:501 — a hard date with zero field_sources lineage is the same signature) and at write-time by scraper/tests/unit/services/data-persister-180-sme-fpo-hard-date.test.ts."
+}

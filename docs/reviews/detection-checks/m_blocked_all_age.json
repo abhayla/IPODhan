@@ -1,0 +1,10 @@
+{
+  "id": "m_blocked_all_age",
+  "findingClass": "a filing has been unreachable on every source for a day or more and nobody noticed, because the P2 alert fires once on entry and then scrolls away",
+  "round7Findings": [],
+  "sourceTask": "T-403",
+  "failThreshold": "any document_fetch_state row in BLOCKED_ALL with blocked_since_at older than 24h (aged from blocked_since_at, NOT last_attempt_at: a row retried every 30 min has a fresh last-attempt forever)",
+  "severity": "P2",
+  "unverifiableWhen": "document_fetch_state table not present",
+  "section": "checks"
+}

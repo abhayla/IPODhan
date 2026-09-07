@@ -1,0 +1,13 @@
+{
+  "id": "a_b_live_conflict",
+  "findingClass": "live IPO publishes an open/close date, price band, lot size, or issue size that disagrees with an independent non-ingested oracle",
+  "round7Findings": [
+    "P1-1",
+    "P1-2"
+  ],
+  "githubIssue": "https://github.com/abhayla/IPODhan/issues/199 (G-N, T-472, 2026-09-07): extended from 2 fields (dates only, Chittorgarh oracle) to 6 fields against ipowatch.in, a source the scraper does NOT ingest -- Chittorgarh is ingested (scraper/src/scrapers/chittorgarh-scraper.ts), so comparing against it proved nothing about a scraper defect. The 4 P1s originally cited (subscription understated, band collapsed, Fascinate Textiles priced low) were invisible to a dates-only compare.",
+  "failThreshold": "any OPEN/UPCOMING IPO whose published openDate, closeDate, priceRangeMin, priceRangeMax, lotSize, or issueSize disagrees with the value this audit fetches LIVE from ipowatch.in (PRIMARY signal, owned by nothing in our pipeline) - dates and lotSize compared exactly, priceRangeMin/priceRangeMax/issueSize tolerate a 1% relative difference (ipowatch rounds, e.g. 'Approx Rs 40.88 Crores'). An unresolved data_conflicts row on a HIGH_VALUE field is a SECONDARY signal. The primary comparison is deliberately independent because the cross-source monitor resolves and re-inserts every row each 30-minute cycle (T-335C), and field_sources.previous_source is populated on 1 of 5746 prod rows so it cannot serve as the oracle.",
+  "severity": "P1",
+  "unverifiableWhen": "the ipowatch list-index fetch fails or returns no rows (the check is BLIND, and pages P2); a matched company whose detail page cannot be parsed is excluded from comparison, not silently passed",
+  "section": "checks"
+}
