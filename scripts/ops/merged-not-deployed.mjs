@@ -27,13 +27,11 @@ function git(repo, args) {
   return execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
 }
 
-// Matches "fix(...)" / "feat(...)" at the start of a subject, or an "#NNN"
-// issue reference anywhere in it — either is enough to count as a fix commit
-// worth tracking to prod.
-const FIX_SUBJECT_RE = /^(fix|feat)\(/i;
-// Non-global copy for existence checks (a global regex's .test() mutates
-// lastIndex across calls, which silently breaks every other call in a loop).
-const ISSUE_REF_TEST_RE = /#(\d+)/;
+// Round 2 (RCA RC1 — alarm fatigue: a wall of docs(walk) commits that merely
+// mention #NNN in prose hid the real fixes). Only conventional-commit types
+// that ship BEHAVIOR are tracked: fix, feat, perf, refactor. docs, chore, ci,
+// test, build, style, revert are excluded even when they reference an issue.
+const TRACKED_TYPE_RE = /^(fix|feat|perf|refactor)(\(|!|:)/i;
 const ISSUE_REF_MATCH_RE = /#(\d+)/g;
 
 export function latestProdTag(repo) {
@@ -62,7 +60,7 @@ export function collectMergedNotDeployed(repo, { tag, ref = 'origin/main' } = {}
       const [sha, committedAt, subject] = line.split('\x1f');
       return { sha, committedAt, subject };
     })
-    .filter(({ subject }) => FIX_SUBJECT_RE.test(subject) || ISSUE_REF_TEST_RE.test(subject))
+    .filter(({ subject }) => TRACKED_TYPE_RE.test(subject))
     .map(({ sha, committedAt, subject }) => {
       const issues = [...subject.matchAll(ISSUE_REF_MATCH_RE)].map((m) => m[1]);
       const committedMs = Date.parse(committedAt);
@@ -80,13 +78,20 @@ export function collectMergedNotDeployed(repo, { tag, ref = 'origin/main' } = {}
   return { prodTag, ref, commits };
 }
 
+function headlineFor(prodTag, count) {
+  const scope = prodTag
+    ? `fix/feat/perf/refactor commits since ${prodTag}`
+    : 'fix/feat/perf/refactor commits';
+  return `fixed on main, still not on prod: ${count} (${scope})`;
+}
+
 function formatTable({ prodTag, ref, commits }) {
-  const headline = `fixed on main, still failing on prod: ${commits.length}`;
+  const headline = headlineFor(prodTag, commits.length);
   if (!prodTag) {
     return [headline, `(no prod-* tag found — cannot compute the gap against ${ref})`].join('\n');
   }
   if (commits.length === 0) {
-    return [headline, `(${ref} is fully reachable from ${prodTag} for fix/feat commits)`].join('\n');
+    return [headline, `(${ref} is fully reachable from ${prodTag} for fix/feat/perf/refactor commits)`].join('\n');
   }
   const rows = commits.map((c) => {
     const issues = c.issues.length ? c.issues.map((i) => `#${i}`).join(',') : '-';
@@ -102,7 +107,7 @@ function formatTable({ prodTag, ref, commits }) {
 }
 
 function formatBrief({ prodTag, commits }) {
-  const headline = `fixed on main, still failing on prod: ${commits.length}`;
+  const headline = headlineFor(prodTag, commits.length);
   if (!prodTag || commits.length === 0) return headline;
   const top = commits
     .slice(0, 5)

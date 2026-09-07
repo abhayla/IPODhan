@@ -119,6 +119,23 @@ test('newest prod-* tag wins when multiple exist (by creation date, not name sor
   });
 });
 
+test('round 2 (RC1 alarm fatigue): a docs(walk) commit referencing #NNN is excluded, a fix() commit with an issue ref is included', () => {
+  withFixtureRepo((repo) => {
+    commit(repo, 'chore: init', '2026-09-01T00:00:00Z');
+    git(repo, ['tag', 'prod-2026-09-01']);
+    commit(repo, 'docs(walk): #406 FAIL -> round 2', '2026-09-02T00:00:00Z');
+    commit(repo, 'fix(scraper): SME rows never keep a stale FPO (#180) (#377)', '2026-09-02T01:00:00Z');
+    git(repo, ['branch', 'main-ref']);
+
+    const result = collectMergedNotDeployed(repo, { ref: 'main-ref' });
+    const subjects = result.commits.map((c) => c.subject);
+    assert.equal(result.commits.length, 1, 'only the fix() commit is tracked, not the docs(walk) one');
+    assert.ok(!subjects.some((s) => s.startsWith('docs(walk)')), 'docs(walk) commit must be excluded even though it references #406');
+    assert.ok(subjects.some((s) => s.includes('SME rows')), 'fix() commit must be included');
+    assert.deepEqual(result.commits[0].issues, ['180', '377']);
+  });
+});
+
 test('fully caught-up repo (no fix/feat commits past the tag) reports zero, not an error', () => {
   withFixtureRepo((repo) => {
     commit(repo, 'chore: init', '2026-09-01T00:00:00Z');
