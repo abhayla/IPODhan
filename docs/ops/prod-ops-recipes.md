@@ -202,6 +202,22 @@ skips cleanly, never fails, when unset). `scripts/audit-findings-to-issues.mjs -
 only on findings absent from the previous night (a brand-new check, or a rowKey that's genuinely NEW) —
 wired into the cron as a **commented-out** line pending the owner's go-live decision (T-497 contract).
 
+## 9b. Morning-read gate — SessionStart consumer + wave-dispatch refusal (T-499, signal-ownership.md)
+Every session start runs `scripts/ops/morning-read-gate.mjs` (wired as a SessionStart hook,
+`.claude/hooks/morning-read-gate.sh`): it reads the last two nights' floor files over `ssh rfp-vps`
+(read-only `cat` of the cron-written file above), caches them under `scripts/ops/state/floor/*.txt`
+(gitignored), falls back to that cache when the VPS is unreachable, and prints "floor delta:
+unavailable (<reason>)" when neither source has 2 nights — never blocks the session. It also prints
+`merged-not-deployed.mjs --brief` (T-498). Any NEW failing check id is merged into
+`scripts/ops/state/floor-issues.json` as `{id, issue: null}` (an existing `issue` number is
+preserved across re-merges). A PreToolUse hook on the `Agent` tool (`.claude/hooks/wave-dispatch-gate.sh`
+-> `scripts/ops/wave-dispatch-gate.mjs`) refuses a dispatch whose prompt looks like a build/wave brief
+(`Budget:` + `Class:` lines) while that file still lists an id with `issue: null`, naming the ids in the
+refusal; reviewer prompts (`Tier A`/`Tier B` + `review`) are never blocked. Escape hatch: `SIGNAL_GATE_ALLOW=1`.
+Fails open (allow) when the state file is missing/unreadable — file the issue and set its `issue` number
+in `floor-issues.json` to clear the gate. Tests: `.claude/hooks/tests/morning-read-gate.test.mjs` +
+`.claude/hooks/tests/wave-dispatch-gate.test.mjs` (`node --test .claude/hooks/tests/*.test.mjs`).
+
 ## 10. User-level hooks (this laptop)
 Tests: `cd ~/.claude/hooks && python -m pytest tests -q` (from inside a repo, pytest picks up the repo config and errors).
 Fix-contract hook log: `~/.claude/hooks/.fix-contract.log` (512 KB cap, rotates to `.1`); escape `AGENT_FIX_CONTRACT_ALLOW=1`.
