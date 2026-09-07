@@ -9,11 +9,12 @@ Rule 6 brief. Status: DRAFT written 12:0x IST; numbers refreshed at 20:30 before
   2. Unknown slugs 404 instead of serving a different IPO (#355) + list tiebreakers (#370) + slug negative cache (#344).
   3. SME/FPO type and hard-date guards at every write door (#377); band-provenance tool (#379) — tools are staging-run only.
   4. Score card renders the real financial score (#378; staging proof hy-tech 5/10 read 11:0x).
+  4b. Repair-tool safety (#385/#390/#393): all 11 scripts that write the IPO table now refuse prod unless explicitly allowed; 6 of them had NO guard before today. Detection: never-escalating extraction retries (#398).
   5. Audit/registry/deploy-gate work (lineage gate #353, flag liveness #352, registry per-file #375/#380/#382/#383, main gate #384 manual only).
 - Re-cut decision rule: re-cut ONLY if the 19:00 read is clean; otherwise ship f0c66b6b as frozen.
 
 ## (b) Cost so far today
-- Prod deploys: 0 (window 21:00-23:30). Staging deploys: 24 (one per code merge; docs commits are path-ignored).
+- Prod deploys: 0 (window 21:00-23:30). Staging deploys: ~34 by 13:50 (one per code merge; docs commits are path-ignored).
 - GitHub Actions runs: 96 (72 PR gates, 24 staging deploys). Review rounds: ~30 (Tier A on every prod-write tool; three tools needed 2-3 rounds each).
 - VPS disk 57% used, 43G free; releases kept 3 prod / 3 staging. OOM 0.
 
