@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: allotment_date for genuine IPOs from Chittorgarh per-IPO detail
  * pages (T-278 P3-3).
@@ -36,6 +35,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { extractAllotmentDateFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
 import logger from '../src/utils/logger.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 const limitIdx = process.argv.indexOf('--limit');
@@ -90,6 +90,12 @@ async function main() {
   console.log('='.repeat(80));
   console.log(`ALLOTMENT DATE BACKFILL (Chittorgarh detail pages via report-118 discovery) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'backfill-allotment-date-chittorgarh-detail',
+  });
 
   const discovery = new Map<string, DiscoveryEntry>();
   for (const fy of FISCAL_YEARS) {

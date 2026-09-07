@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill Missing / Collapsed Price Bands
  *
@@ -60,6 +59,7 @@ import {
   parsePriceRange,
   type NSEPastIssue,
 } from '../src/services/nse-past-issue-matcher.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -202,6 +202,12 @@ async function backfillPriceBands() {
   console.log('========================================\n');
 
   try {
+    await openRepairDb(db, {
+      apply: !DRY_RUN,
+      allowProd: process.argv.includes('--allow-prod'),
+      toolName: 'backfill-price-bands',
+    });
+
     // Step 1: Get IPOs with missing OR collapsed price bands
     console.log('Step 1: Querying IPOs with missing/collapsed price bands...\n');
 

@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: allotment_date for genuine IPOs from Chittorgarh report 118 (B7)
  *
@@ -18,6 +17,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { isAllotmentPlausible } from '../src/services/ipo-date-plausibility.js';
 import logger from '../src/utils/logger.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 const FISCAL_YEARS = [
@@ -56,6 +56,14 @@ async function main() {
   console.log('='.repeat(80));
   console.log(`ALLOTMENT-DATE BACKFILL (Chittorgarh report 118) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  // T-490/T-492: shared guard — asks the SAME pool (not env) which database it is in,
+  // prints current_database(): <name>, and refuses a prod --apply without --allow-prod.
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'backfill-allotment-date-chittorgarh',
+  });
 
   // Build normalizedName -> allotmentDate from the report (first non-null wins)
   const allotByName = new Map<string, string>();
