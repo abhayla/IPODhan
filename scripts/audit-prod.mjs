@@ -119,6 +119,15 @@ const PUBLIC_ROUTES = [
   '/fpo-listings', '/ofs', '/tools/lot-calculator', '/tools/compare', '/affiliates',
 ];
 
+// Pages that must ship real server-rendered data on first paint, not just
+// chrome + "Loading..." (T-473 / #201 zero-SSR class). `marker` matches
+// structural evidence of a real row — a table cell/link inside the page's
+// list component — rather than a specific company name, since prod data
+// changes over time.
+const ZERO_SSR_ROUTES = [
+  { route: '/history', marker: /<table[\s\S]*?<tbody[\s\S]*?<tr[\s\S]*?<\/tr>/i },
+];
+
 // Internal pages that MUST be gated (404) in production (GitHub #11).
 const GATED_ROUTES = ['/components-test', '/test/live-updates'];
 
@@ -186,6 +195,24 @@ async function run() {
   for (const r of PUBLIC_ROUTES) {
     const { status } = await get(r);
     record(`route ${r} renders`, status === 200, `HTTP ${status}`);
+  }
+
+  // 1b. Zero-SSR class detection (T-473 / #201): a page shipping ONLY chrome +
+  // "Loading..." in its server-rendered HTML is a substance-plausibility
+  // violation, not a shape one — the route renders 200 (check 1 above passes)
+  // while carrying no real data until client-side hydration fetches it. This
+  // is the check that would have caught /history before its SSR fix landed;
+  // extend ZERO_SSR_ROUTES when another page gets the same server-service
+  // wiring (mainboard-performance-service.ts pattern).
+  for (const { route, marker } of ZERO_SSR_ROUTES) {
+    const { text } = await get(route);
+    const hasRealContent = marker.test(text || '');
+    const isChromeOnly = /<div[^>]*>\s*Loading\.\.\.\s*<\/div>/i.test(text || '');
+    record(
+      `${route} server-renders real data (not chrome-only)`,
+      hasRealContent && !isChromeOnly,
+      hasRealContent ? 'real content marker found' : `no match for ${marker} — chrome-only=${isChromeOnly}`
+    );
   }
 
   // 2. Internal test pages are gated (#11)
