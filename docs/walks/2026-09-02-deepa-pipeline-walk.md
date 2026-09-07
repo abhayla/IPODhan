@@ -1199,3 +1199,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 01:15 IST — tick via failure-delta: prod NEW = ESDS RHP spawn-timeout-hard (the #396 class; tracked; class-level tracking gap filed as an issue), prod 01:00 wake 673 s (11.2 min; one 10-min extractor timeout then hard) / 75 calls / 2 failed (ESDS hard + Rentomojo #402); staging c269485f (main after #410), 01:00 wake 30 s / 5 calls / 3 known. merged-not-deployed: 28 fix/feat commits since prod-2026-09-07. Disk 57%, load 0.34, OOM 0; worktrees relverify only; stash the 10 pre-existing. No agents.
 
 - 01:21 IST — T-502 built: PR #414 (class-level --track persists as state.classIssues and covers later keys of the class; per-key wins; 25/25 reproduced; real prod run from a copy of the live state: 5 TRACKED, exit 0). Tier B dispatched; gate running.
+
+- 01:46 IST — tick via failure-delta: prod NEW = Glass Wall Systems anchor refusal (#347 class; tracked), prod 01:31 wake 69 s / 51 calls / 2 failed (Rentomojo #402 + Glass Wall #347); staging 01:16 wake 60 s / 74 calls / 3 known; disk 57%, load 0.27, OOM 0; stash the 10 pre-existing. #414 merge attempt above (Tier B PASS).
