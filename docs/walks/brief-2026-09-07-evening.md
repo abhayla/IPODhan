@@ -11,7 +11,7 @@ Rule 6 brief. Status: DRAFT written 12:0x IST; numbers refreshed at 20:30 before
   4. Score card renders the real financial score (#378; staging proof hy-tech 5/10 read 11:0x).
   4b. Repair-tool safety (#385/#390/#393): all 11 scripts that write the IPO table now refuse prod unless explicitly allowed; 6 of them had NO guard before today. Detection: never-escalating extraction retries (#398).
   5. Audit/registry/deploy-gate work (lineage gate #353, flag liveness #352, registry per-file #375/#380/#382/#383, main gate #384 manual only).
-- Re-cut risk (16:49 IST): staging (main) logged one Rentomojo PRICE_BAND_AD persist failure (insert into ipo_details, cause not logged -> #402); prod on the old build has none. Two persist-path commits merged today are NOT in the frozen cut (#377 SME/FPO guards, #365 OFS wiring); a re-cut to pick up #354 would carry them. Rule: re-cut only if the 19:00 read shows no repeat of this failure AND the #354 run created only real names; otherwise ship f0c66b6b as frozen.
+- Persist failure (16:49-17:45 IST): Rentomojo (UPCOMING, mainboard) PRICE_BAND_AD insert into ipo_details fails on staging (2x) AND on prod's old build (3x today), cause not logged (#402) — pre-existing, so NOT a re-cut regression; prod already has 1 details row for it. Two persist-path commits merged today (#377, #365) are not in the frozen cut; a re-cut would carry them.
 - Re-cut decision rule: re-cut ONLY if the 19:00 read is clean; otherwise ship f0c66b6b as frozen.
 
 ## (b) Cost so far today
