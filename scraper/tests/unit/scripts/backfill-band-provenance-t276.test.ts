@@ -3,6 +3,7 @@ import {
   parseAppliedLedger,
   decideBandProvenanceRepair,
   queryCurrentDatabase,
+  decideProdWriteRefusal,
   PRODUCTION_DATABASE_NAME,
   buildDataLineage,
   upsertBandFieldSourceProvenance,
@@ -94,6 +95,29 @@ describe('queryCurrentDatabase / production guard (#165 round 2 CRITICAL)', () =
 
   it('the production database name is exactly "ipodhan"', () => {
     expect(PRODUCTION_DATABASE_NAME).toBe('ipodhan');
+  });
+});
+
+describe('decideProdWriteRefusal (#165 round 3 — the actual refusal, mutation-testable)', () => {
+  it('refuses: --apply against "ipodhan" with no --allow-prod', () => {
+    const d = decideProdWriteRefusal({ apply: true, dbName: 'ipodhan', allowProd: false });
+    expect(d.refuse).toBe(true);
+    expect(d.reason).toMatch(/refusing to APPLY/);
+  });
+
+  it('allows: --apply against "ipodhan" WITH --allow-prod', () => {
+    const d = decideProdWriteRefusal({ apply: true, dbName: 'ipodhan', allowProd: true });
+    expect(d.refuse).toBe(false);
+  });
+
+  it('allows: dry-run (no --apply) against "ipodhan"', () => {
+    const d = decideProdWriteRefusal({ apply: false, dbName: 'ipodhan', allowProd: false });
+    expect(d.refuse).toBe(false);
+  });
+
+  it('allows: --apply against staging, regardless of --allow-prod', () => {
+    const d = decideProdWriteRefusal({ apply: true, dbName: 'ipodhan_staging', allowProd: false });
+    expect(d.refuse).toBe(false);
   });
 });
 

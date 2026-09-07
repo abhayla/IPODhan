@@ -61,6 +61,26 @@ export async function queryCurrentDatabase(dbLike: { execute: typeof db.execute 
   return name;
 }
 
+/**
+ * Round 3 (#165 review): pure decision extracted from main() so deleting the refusal actually
+ * turns a test red. `dbName` MUST be the value from `queryCurrentDatabase()` (the real pool),
+ * never env-derived.
+ */
+export function decideProdWriteRefusal(input: {
+  apply: boolean;
+  dbName: string;
+  allowProd: boolean;
+}): { refuse: boolean; reason?: string } {
+  const isProdDb = input.dbName === PRODUCTION_DATABASE_NAME;
+  if (input.apply && isProdDb && !input.allowProd) {
+    return {
+      refuse: true,
+      reason: `backfill-band-provenance-t276: refusing to APPLY writes against the production database "${PRODUCTION_DATABASE_NAME}" (current_database()) — pass --allow-prod to override.`,
+    };
+  }
+  return { refuse: false };
+}
+
 export interface LedgerRow {
   slug: string;
   afterMin: number;
@@ -221,15 +241,13 @@ async function main() {
   // both DATABASE_URL and DATABASE_HOST; initPool() prefers DATABASE_HOST).
   const dbName = await queryCurrentDatabase(db);
   console.log(`current_database(): ${dbName}`);
-  const isProdDb = dbName === PRODUCTION_DATABASE_NAME;
   const allowProd = process.argv.includes('--allow-prod');
-  if (APPLY && isProdDb && !allowProd) {
-    console.error(
-      `backfill-band-provenance-t276: refusing to APPLY writes against the production database "${PRODUCTION_DATABASE_NAME}" (current_database()) — pass --allow-prod to override.`
-    );
+  const refusal = decideProdWriteRefusal({ apply: APPLY, dbName, allowProd });
+  if (refusal.refuse) {
+    console.error(refusal.reason);
     process.exit(1);
   }
-  if (APPLY && isProdDb && allowProd) {
+  if (APPLY && dbName === PRODUCTION_DATABASE_NAME && allowProd) {
     console.log(`ALLOW-PROD: writing against "${PRODUCTION_DATABASE_NAME}" (--allow-prod given).`);
   }
 
