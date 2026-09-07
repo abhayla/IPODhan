@@ -5,21 +5,29 @@
 // Reads the last N lines of the prod or staging scraper pm2 log over ssh
 // (read-only — never writes on the VPS), resolves every failure line to an
 // identity (ipoId, docType, errorClass), keeps the previous set in a local
-// state file, and prints NEW / GONE / SAME instead of a bare count. A NEW
-// failure blocks the tick (exit 3) unless --file-issues opens a GitHub
-// issue for it and records the issue number, so the same class reads as
-// SAME (known, with a number) on the next tick.
+// state file, and prints NEW / GONE / SAME instead of a bare count.
+//
+// Round 2 (signal-ownership R2 — "no number = new = escalate this tick"):
+// an entry WITHOUT an issue number is printed as UNTRACKED and blocks the
+// tick (exit 3) on EVERY run it appears in, whether this is its first run
+// (NEW) or a later one (SAME) — a bare "known" label with no number is
+// itself the R2 violation this script exists to stop. Only an entry that
+// carries an issue number (via --file-issues or --track) prints as
+// TRACKED #NNN and exits 0.
 //
 // Usage:
 //   node scripts/ops/failure-delta.mjs --slot prod
 //   node scripts/ops/failure-delta.mjs --slot staging --file-issues
 //   node scripts/ops/failure-delta.mjs --slot prod --lines 8000
+//   node scripts/ops/failure-delta.mjs --slot staging --track b28d9d2a-cb24-4d84-8e1a-297ba828884a=402
+//   node scripts/ops/failure-delta.mjs --slot staging --track persist-insert-failed=402
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseLogLines, extractFailures } from './lib/failure-classifier.mjs';
+import { parseLogLines, extractFailures, ERROR_CLASSES } from './lib/failure-classifier.mjs';
+import { parseTrackArg, resolveTrackedState, countUntracked, formatSshFailure } from './lib/failure-tick-state.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = path.join(__dirname, 'state');
@@ -32,30 +40,57 @@ const LOG_FILE_BY_SLOT = {
 const DEFAULT_LINES = 5000;
 
 function parseArgs(argv) {
-  const args = { slot: null, fileIssues: false, lines: DEFAULT_LINES };
+  const args = { slot: null, fileIssues: false, lines: DEFAULT_LINES, track: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--slot') args.slot = argv[++i];
     else if (a === '--file-issues') args.fileIssues = true;
     else if (a === '--lines') args.lines = Number(argv[++i]);
+    else if (a === '--track') {
+      try {
+        args.track.push(parseTrackArg(argv[++i] ?? '', ERROR_CLASSES));
+      } catch (err) {
+        console.error(`error: ${err.message}`);
+        process.exit(2);
+      }
+    }
     else if (a === '--help' || a === '-h') args.help = true;
   }
   return args;
 }
 
 function usageAndExit(code) {
-  console.log('Usage: node scripts/ops/failure-delta.mjs --slot prod|staging [--file-issues] [--lines N]');
+  console.log('Usage: node scripts/ops/failure-delta.mjs --slot prod|staging [--file-issues] [--lines N] [--track <ipoId>|<errorClass>=<#issue> ...]');
   process.exit(code);
 }
 
 function fetchLogTail(slot, lines) {
   const logFile = LOG_FILE_BY_SLOT[slot];
   // Read-only: tail over ssh. Never writes on the VPS (owner rule: VPS is production).
-  const out = execFileSync('ssh', [SSH_HOST, `tail -n ${lines} ${logFile} 2>/dev/null`], {
+  // pm2-logrotate rotates at 00:00 IST, leaving the plain file empty right after midnight —
+  // also tail today's dated rotation (-q suppresses per-file headers) so a tick run just
+  // after rotation doesn't read 0 lines.
+  const base = logFile.replace(/\.log$/, '');
+  const cmd = `tail -q -n ${lines} ${logFile} ${base}__$(date +%Y-%m-%d)_00-00-00.log 2>/dev/null; true`;
+  return execFileSync('ssh', [SSH_HOST, cmd], {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
-  return out;
+}
+
+/**
+ * @param {string} slot
+ * @param {number} lines
+ * @returns {string} raw log text
+ * Exits 2 with a plain reason (R6 — failures carry their cause), never a stack trace, on ssh failure.
+ */
+function fetchLogTailOrExit(slot, lines) {
+  try {
+    return fetchLogTail(slot, lines);
+  } catch (err) {
+    console.error(formatSshFailure(err));
+    process.exit(2);
+  }
 }
 
 function loadState(slot) {
@@ -136,39 +171,37 @@ function main() {
     usageAndExit(2);
   }
 
-  const raw = fetchLogTail(args.slot, args.lines);
+  const raw = fetchLogTailOrExit(args.slot, args.lines);
   const parsed = parseLogLines(raw);
   const currentMap = extractFailures(parsed);
 
   const state = loadState(args.slot);
   const { NEW, GONE, SAME } = diff(currentMap, state.failures);
 
+  // Carry forward tracked status (issueNumber) AND firstSeen from the previous run, then
+  // apply --track overrides (e.g. for issues that already exist).
+  resolveTrackedState(currentMap, state.failures, args.track);
+
   console.log(`failure-delta --slot ${args.slot} (last ${args.lines} log lines, ${parsed.length} parsed)`);
   console.log(`NEW=${NEW.length} GONE=${GONE.length} SAME=${SAME.length}`);
   console.log('');
 
-  const newByClass = new Map();
-  for (const key of NEW) {
-    const f = currentMap.get(key);
-    console.log(`NEW   ${f.company} | ${f.docType ?? '-'} | ${f.errorClass} | ipoId=${f.ipoId}`);
-    if (!newByClass.has(f.errorClass)) newByClass.set(f.errorClass, []);
-    newByClass.get(f.errorClass).push(f);
-  }
-  for (const key of GONE) {
-    const f = state.failures[key];
-    console.log(`GONE  ${f.company} | ${f.docType ?? '-'} | ${f.errorClass} | ipoId=${f.ipoId}`);
-  }
-  for (const key of SAME) {
-    const f = currentMap.get(key);
-    const prev = state.failures[key];
-    const known = prev.issueNumber ? `known (#${prev.issueNumber})` : 'known (no issue number — R2 violation)';
-    console.log(`SAME  ${f.company} | ${f.docType ?? '-'} | ${f.errorClass} | ipoId=${f.ipoId} | ${known}`);
+  // --file-issues covers every UNTRACKED entry this run, not just NEW ones — R2 says an
+  // entry with no issue number escalates on EVERY run, so a SAME-but-untracked class (one
+  // that was NEW on a prior run and never got a number, e.g. --file-issues wasn't passed
+  // that time) must still be filable now.
+  const untrackedByClass = new Map();
+  for (const f of currentMap.values()) {
+    if (!f.issueNumber) {
+      if (!untrackedByClass.has(f.errorClass)) untrackedByClass.set(f.errorClass, []);
+      untrackedByClass.get(f.errorClass).push(f);
+    }
   }
 
   let filedCount = 0;
-  if (args.fileIssues && newByClass.size > 0) {
+  if (args.fileIssues && untrackedByClass.size > 0) {
     ensureLabel();
-    for (const [errorClass, entries] of newByClass) {
+    for (const [errorClass, entries] of untrackedByClass) {
       const issueNumber = fileIssueForClass(errorClass, entries, args.slot);
       for (const f of entries) {
         currentMap.get(keyOf(f)).issueNumber = issueNumber;
@@ -178,9 +211,26 @@ function main() {
     }
   }
 
+  // Print AFTER --track / --file-issues so the label reflects this run's final status.
+  // R2: "no number = new = escalate this tick" — an entry with no issue number is UNTRACKED
+  // on every run it appears in (NEW or SAME), never printed as "known".
+  for (const key of NEW) {
+    const f = currentMap.get(key);
+    const status = f.issueNumber ? `TRACKED #${f.issueNumber}` : 'UNTRACKED';
+    console.log(`NEW   ${f.company} | ${f.docType ?? '-'} | ${f.errorClass} | ipoId=${f.ipoId} | ${status}`);
+  }
+  for (const key of GONE) {
+    const f = state.failures[key];
+    console.log(`GONE  ${f.company} | ${f.docType ?? '-'} | ${f.errorClass} | ipoId=${f.ipoId}`);
+  }
+  for (const key of SAME) {
+    const f = currentMap.get(key);
+    const status = f.issueNumber ? `TRACKED #${f.issueNumber}` : 'UNTRACKED';
+    console.log(`SAME  ${f.company} | ${f.docType ?? '-'} | ${f.errorClass} | ipoId=${f.ipoId} | ${status}`);
+  }
+
   const nextFailures = {};
   for (const [key, f] of currentMap) {
-    const prevIssueNumber = state.failures[key]?.issueNumber ?? null;
     nextFailures[key] = {
       ipoId: f.ipoId,
       docType: f.docType,
@@ -188,18 +238,15 @@ function main() {
       hardFailure: f.hardFailure,
       company: f.company,
       firstSeen: f.firstSeen,
-      issueNumber: f.issueNumber ?? prevIssueNumber,
+      issueNumber: f.issueNumber ?? null,
     };
   }
   saveState(args.slot, { failures: nextFailures, updatedAt: new Date().toISOString() });
 
-  if (NEW.length > 0 && !args.fileIssues) {
+  const untrackedCount = countUntracked(currentMap);
+  if (untrackedCount > 0) {
     console.log('');
-    console.log(`exit 3: ${NEW.length} NEW failure(s) with no issue number. Re-run with --file-issues, or file manually and re-run.`);
-    process.exit(3);
-  }
-  if (NEW.length > 0 && args.fileIssues && filedCount === 0) {
-    // Should not happen, but never silently pass NEW without a filed issue.
+    console.log(`exit 3: ${untrackedCount} UNTRACKED failure(s) with no issue number (R2: no number = new = escalate this tick). Use --file-issues or --track <ipoId>|<errorClass>=<#issue>.`);
     process.exit(3);
   }
 }
