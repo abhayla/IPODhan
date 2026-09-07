@@ -9,6 +9,7 @@ import { eq, and, or, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-or
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import Fuse from 'fuse.js';
+import { SLUG_FALLBACK_MIN_SIMILARITY } from '../config/search';
 import { BaseRepository } from './base-repository';
 import { withEffectiveAllotmentCheckUrl } from '@ipodhan/shared/utils/registrar-display';
 import {
@@ -1307,9 +1308,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   ): Promise<IPOWithRelations | null> {
     const {
       enableFuzzy = true,
-      // #350: 0.85 (max Fuse score 0.15) is evidence-based — see the strict
-      // fuzzy-match comment below for the measured scores that set it.
-      similarityThreshold = 0.85,
+      // #350 round 2: SLUG_FALLBACK_MIN_SIMILARITY (search.ts), NOT
+      // SEARCH_CONFIG.fuzzyMatch.similarityThreshold — that constant is
+      // /api/search's raw Fuse `threshold` (opposite scale, lower=stricter)
+      // and sharing it with this fallback's floor caused round 1's defect
+      // (raising the slug-fallback floor silently loosened live search).
+      similarityThreshold = SLUG_FALLBACK_MIN_SIMILARITY,
     } = options;
 
     // Try exact match first (uses cache)
