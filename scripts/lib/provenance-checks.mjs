@@ -29,3 +29,39 @@ export function checkDuplicateIdentity(rows) {
   }
   return [...groups.values()].filter((g) => g.length > 1);
 }
+
+// T-462 round 2: C1's "declining ceiling" made concrete. `baseline` is the
+// committed per-slot count (config/provenance-lineage-baseline.json, keyed by
+// database name). FAILs only when the CURRENT count exceeds the baseline;
+// WARNs (with the delta) when it is at or below — never a silent pass, so a
+// real improvement is visible without the check going quiet. The baseline
+// itself is lowered only by the caller passing --rebaseline-provenance,
+// never automatically by this predicate.
+export function evaluateProvenanceCeiling(currentCount, baselineCount) {
+  if (baselineCount == null) {
+    return { status: 'FAIL', detail: `no committed baseline for this database — run with --rebaseline-provenance once to seed it` };
+  }
+  if (currentCount > baselineCount) {
+    return { status: 'FAIL', detail: `current ${currentCount} EXCEEDS baseline ${baselineCount} (+${currentCount - baselineCount}) — a new lineage-less row was written` };
+  }
+  const delta = baselineCount - currentCount;
+  return { status: 'WARN', detail: `current ${currentCount} <= baseline ${baselineCount}${delta > 0 ? ` (-${delta}, drain in progress)` : ' (unchanged)'}` };
+}
+
+// T-462 round 2: C2 stays HARD for any group not already named in
+// config/duplicate-identity-allowlist.json. A group matches an allowlist
+// entry only when its full id set is identical (never a partial/subset
+// match) so a NEW member joining a known group still fails as new.
+export function classifyDuplicateGroups(groups, allowlistEntries) {
+  const allowed = [];
+  const newFails = [];
+  for (const g of groups) {
+    const ids = new Set(g.map((r) => r.id));
+    const entry = (allowlistEntries || []).find(
+      (e) => Array.isArray(e.ids) && e.ids.length === ids.size && e.ids.every((id) => ids.has(id))
+    );
+    if (entry) allowed.push({ group: g, entry });
+    else newFails.push(g);
+  }
+  return { allowed, newFails };
+}

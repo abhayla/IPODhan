@@ -4,14 +4,14 @@
 //   node scripts/audit-ipo-coverage.mjs --gate    → report + §7 thresholded gate (exit 1 on any miss)
 // Coverage thresholds are measured against the APPLICABLE population (genuine IPOs,
 // offering_type='IPO'; LISTED-only for listing perf; etc.). No writes. Loads web/.env.local.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
-import { checkProvenanceLineage, checkDuplicateIdentity } from './lib/provenance-checks.mjs';
+import { checkProvenanceLineage, checkDuplicateIdentity, evaluateProvenanceCeiling, classifyDuplicateGroups } from './lib/provenance-checks.mjs';
 
 // T-297 (gap G3): loading web/.env.local is now OPTIONAL. On a dev PC that file
 // carries the SSH-tunnel DSN, so it stays the default. On the Linux box — where
@@ -38,6 +38,21 @@ if (isMainModule && !process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
 }
 
 const GATE = process.argv.includes('--gate');
+// T-462 round 2: --rebaseline-provenance is the ONLY way the committed C1
+// baseline (config/provenance-lineage-baseline.json) moves DOWN — never
+// automatic, never a side effect of a normal --gate run.
+const REBASELINE_PROVENANCE = process.argv.includes('--rebaseline-provenance');
+const PROVENANCE_BASELINE_PATH = join(__dirname, '..', 'config', 'provenance-lineage-baseline.json');
+const DUPLICATE_ALLOWLIST_PATH = join(__dirname, '..', 'config', 'duplicate-identity-allowlist.json');
+
+function resolveDbName() {
+  if (process.env.DATABASE_NAME) return process.env.DATABASE_NAME;
+  if (process.env.DATABASE_URL) {
+    try { return new URL(process.env.DATABASE_URL).pathname.replace(/^\//, '') || 'unknown'; }
+    catch { return 'unknown'; }
+  }
+  return 'unknown';
+}
 
 // Mirror packages/shared/src/db/index.ts: use discrete DATABASE_* params only
 // when both HOST and PASSWORD are set (dev-tunnel shape); otherwise fall back
@@ -283,16 +298,45 @@ async function main() {
       WHERE i.${REAL_IPO}`
   );
 
-  // ---- #188 PROVENANCE GATE (C1 lineage / C2 duplicate identity) ----
-  // C1: hard date/band asserted with zero field_sources lineage rows.
-  // Declining-ceiling WARNING until the T-292 legacy-row drain is confirmed
-  // complete (issue #188's own risk note) — never a hard 0-gate yet.
+  // ---- #188 PROVENANCE GATE (C1 lineage ceiling / C2 duplicate identity) ----
+  // C1: hard date/band asserted with zero field_sources lineage rows. A
+  // "declining ceiling", made concrete (T-462 round 2): FAILs only when the
+  // live count RISES above the committed per-database baseline
+  // (config/provenance-lineage-baseline.json); WARNs (with the delta) when
+  // it is at or below — so drain progress stays visible without going
+  // silent. The baseline itself moves down only via --rebaseline-provenance,
+  // never automatically — issue #188's own risk note (a hard 0-gate before
+  // the T-292 legacy-row drain completes would block unrelated PRs).
   const sourcedIpoIdRows = await q(`SELECT DISTINCT ipo_id FROM field_sources`);
   const sourcedIpoIds = new Set(sourcedIpoIdRows.map((r) => r.ipo_id));
   const provenanceOffenders = checkProvenanceLineage(subRows, sourcedIpoIds);
+  const dbName = resolveDbName();
+  const provenanceBaselineFile = existsSync(PROVENANCE_BASELINE_PATH)
+    ? JSON.parse(readFileSync(PROVENANCE_BASELINE_PATH, 'utf8'))
+    : {};
+  if (REBASELINE_PROVENANCE) {
+    provenanceBaselineFile[dbName] = {
+      lineageLessRows: provenanceOffenders.length,
+      recordedAt: new Date().toISOString(),
+      note: `T-462 rebaselined via --rebaseline-provenance (was ${provenanceBaselineFile[dbName]?.lineageLessRows ?? 'unset'}).`,
+    };
+    writeFileSync(PROVENANCE_BASELINE_PATH, JSON.stringify(provenanceBaselineFile, null, 2) + '\n', 'utf8');
+  }
+  const provenanceBaselineCount = provenanceBaselineFile[dbName]?.lineageLessRows ?? null;
+  const provenanceCeiling = evaluateProvenanceCeiling(provenanceOffenders.length, provenanceBaselineCount);
+
   // C2: two different genuine IPOs holding byte-identical date/band/lot/
-  // issue_size (root cause #178, still unresolved). HARD — MUST be 0.
+  // issue_size (root cause #178, still unresolved). HARD for any NEW group —
+  // a group already named in config/duplicate-identity-allowlist.json (exact
+  // id-set match) reports WARN instead and does not fail the gate.
   const duplicateIdentityGroups = checkDuplicateIdentity(subRows);
+  const duplicateAllowlistFile = existsSync(DUPLICATE_ALLOWLIST_PATH)
+    ? JSON.parse(readFileSync(DUPLICATE_ALLOWLIST_PATH, 'utf8'))
+    : { groups: [] };
+  const { allowed: allowedDuplicateGroups, newFails: newDuplicateGroups } = classifyDuplicateGroups(
+    duplicateIdentityGroups,
+    duplicateAllowlistFile.groups || []
+  );
   const gmpExists = (await q(`SELECT to_regclass('public.gmp_records') AS reg`))[0].reg;
   if (gmpExists) {
     const gmpRows = await q(
@@ -351,12 +395,18 @@ async function main() {
   for (const s of stageA) { if (!s.ok) fail++; log(`  [${s.ok ? 'PASS' : 'FAIL'}] ${s.name} (${s.detail})`); }
 
   log(`\n  -- Provenance gate (#188) --`);
-  log(`  [WARN] g_provenance_lineage — hard fact, zero field_sources lineage (declining-ceiling, not a hard gate): ${provenanceOffenders.length}`);
+  if (provenanceCeiling.status === 'FAIL') fail++;
+  log(`  [${provenanceCeiling.status}] g_provenance_lineage (db=${dbName}) — ${provenanceCeiling.detail}`);
   for (const r of provenanceOffenders.slice(0, 10)) log(`    - ${r.slug} (${r.company_name})`);
-  const dupTotal = duplicateIdentityGroups.reduce((n, g) => n + g.length, 0);
-  if (duplicateIdentityGroups.length > 0) fail++;
-  log(`  [${duplicateIdentityGroups.length === 0 ? 'PASS' : 'FAIL'}] g_duplicate_identity — byte-identical band/lot/issue_size across companies (HARD, MUST be 0): ${duplicateIdentityGroups.length} group(s), ${dupTotal} row(s)`);
-  for (const g of duplicateIdentityGroups) log(`    - ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
+  if (REBASELINE_PROVENANCE) log(`    (baseline rewritten via --rebaseline-provenance: ${dbName} -> ${provenanceOffenders.length})`);
+
+  const dupNewTotal = newDuplicateGroups.reduce((n, g) => n + g.length, 0);
+  if (newDuplicateGroups.length > 0) fail++;
+  log(`  [${newDuplicateGroups.length === 0 ? 'PASS' : 'FAIL'}] g_duplicate_identity — byte-identical band/lot/issue_size, NOT on the allowlist (HARD, MUST be 0): ${newDuplicateGroups.length} group(s), ${dupNewTotal} row(s)`);
+  for (const g of newDuplicateGroups) log(`    - ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
+  for (const { group: g, entry } of allowedDuplicateGroups) {
+    log(`  [WARN] g_duplicate_identity — known, allowlisted, ticket ${entry.ticket}: ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
+  }
 
   log(`\n  -- Details-row coverage (HARD, W-151) --`);
   if (!detailsRow) {

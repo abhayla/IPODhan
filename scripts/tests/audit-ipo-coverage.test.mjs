@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { checkIssueSizeSegmentFloor } from '../lib/substance-checks.mjs';
-import { checkProvenanceLineage, checkDuplicateIdentity } from '../lib/provenance-checks.mjs';
+import { checkProvenanceLineage, checkDuplicateIdentity, evaluateProvenanceCeiling, classifyDuplicateGroups } from '../lib/provenance-checks.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AUDIT_FILE = path.join(__dirname, '..', 'audit-ipo-coverage.mjs');
@@ -156,4 +156,60 @@ test('checkDuplicateIdentity: skips rows with issue_size null (nothing to compar
   ];
   const dupes = checkDuplicateIdentity(rows);
   assert.equal(dupes.length, 0);
+});
+
+// #188 T-462 round 2: the C1 "declining ceiling" against a committed baseline.
+test('evaluateProvenanceCeiling: FAILs when the current count rises above the baseline', () => {
+  const r = evaluateProvenanceCeiling(20, 16);
+  assert.equal(r.status, 'FAIL');
+  assert.match(r.detail, /exceeds baseline/i);
+});
+
+test('evaluateProvenanceCeiling: WARNs (baseline unchanged by the check itself) when the current count falls below the baseline', () => {
+  const r = evaluateProvenanceCeiling(10, 16);
+  assert.equal(r.status, 'WARN');
+  assert.match(r.detail, /drain in progress/);
+});
+
+test('evaluateProvenanceCeiling: WARNs when the current count equals the baseline', () => {
+  const r = evaluateProvenanceCeiling(16, 16);
+  assert.equal(r.status, 'WARN');
+});
+
+// The --rebaseline-provenance flag is the ONLY way the baseline itself moves
+// (proven at the CLI/gate level, not inside this pure predicate — this test
+// documents the predicate never lowers it on its own: calling it repeatedly
+// with a falling count never mutates its `baselineCount` input).
+test('evaluateProvenanceCeiling: never mutates its baselineCount input (only --rebaseline-provenance may lower it)', () => {
+  const baseline = { count: 16 };
+  evaluateProvenanceCeiling(10, baseline.count);
+  evaluateProvenanceCeiling(2, baseline.count);
+  assert.equal(baseline.count, 16);
+});
+
+// #188 T-462 round 2: known duplicate-identity groups are allowlisted by
+// their exact id set; a NEW group (or a partial/different id set) still fails.
+test('classifyDuplicateGroups: an allowlisted group (exact id match) is WARN-only, not a fail', () => {
+  const groups = [[{ id: 'a1' }, { id: 'a2' }]];
+  const allowlist = [{ ids: ['a1', 'a2'], reason: 'known clone pending repair', ticket: '#178' }];
+  const { allowed, newFails } = classifyDuplicateGroups(groups, allowlist);
+  assert.equal(allowed.length, 1);
+  assert.equal(newFails.length, 0);
+  assert.equal(allowed[0].entry.ticket, '#178');
+});
+
+test('classifyDuplicateGroups: a group not on the allowlist still fails', () => {
+  const groups = [[{ id: 'z1' }, { id: 'z2' }]];
+  const allowlist = [{ ids: ['a1', 'a2'], reason: 'known clone pending repair', ticket: '#178' }];
+  const { allowed, newFails } = classifyDuplicateGroups(groups, allowlist);
+  assert.equal(allowed.length, 0);
+  assert.equal(newFails.length, 1);
+});
+
+test('classifyDuplicateGroups: a superset of a known group (new member joined) is treated as new, not allowlisted', () => {
+  const groups = [[{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }]];
+  const allowlist = [{ ids: ['a1', 'a2'], reason: 'known clone pending repair', ticket: '#178' }];
+  const { allowed, newFails } = classifyDuplicateGroups(groups, allowlist);
+  assert.equal(allowed.length, 0);
+  assert.equal(newFails.length, 1);
 });
