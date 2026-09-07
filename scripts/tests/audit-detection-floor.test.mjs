@@ -8,6 +8,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { parseIpowatchDetail, parseIpowatchDate, parsePriceBand, parseRupeeAmount, computeOracleCoverageWarning } from '../lib/ipowatch-oracle-parser.mjs';
 import {
   checkNoUnresolvedConflictOnLiveIpo,
   checkIssueSizeSegmentFloor,
@@ -26,6 +29,8 @@ import {
   checkSegmentPopulatedForIpo,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
+  fieldValuesDisagree,
+  ORACLE_COMPARABLE_FIELDS,
   normalizeCompanyKey,
   buildCheckDigest,
   buildUnverifiableDigest,
@@ -952,4 +957,139 @@ test('m_extraction_stuck query: every i./d./fs.<col> reference is a real column 
     const bogus = [...referenced].filter((c) => !columns.has(c));
     assert.deepEqual(bogus, [], `extractionStuckRows query references ${alias}.<col> not present on its real table: ${bogus.join(', ')}`);
   }
+});
+
+// ---- T-472: a_b_live_conflict extended to 6 fields against a NON-INGESTED
+// oracle (ipowatch.in — the scraper never reads it) instead of Chittorgarh
+// (which the scraper DOES ingest, so comparing against it proved nothing).
+// The fixtures below are REAL pages captured 2026-09-07 (see file headers for
+// URL + date), not typed from memory — same discipline the defect-fix
+// contract requires for any parser/extractor brief.
+
+const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'ipowatch');
+const INFRAX_HTML = readFileSync(join(FIXTURES_DIR, 'infrax-renewable-detail.html'), 'utf8');
+const AMTECH_HTML = readFileSync(join(FIXTURES_DIR, 'amtech-esters-detail.html'), 'utf8');
+
+test('(a/b oracle parser) extracts all six fields from the real Infrax Renewable fixture', () => {
+  const v = parseIpowatchDetail(INFRAX_HTML);
+  assert.ok(v, 'parser returned null on a real, well-formed page');
+  assert.equal(v.openDate.slice(0, 10), '2026-09-09');
+  assert.equal(v.closeDate.slice(0, 10), '2026-09-11');
+  // Infrax is a FIXED-PRICE SME issue ("₹104 Per Share") -> min === max.
+  assert.equal(v.priceRangeMin, 104);
+  assert.equal(v.priceRangeMax, 104);
+  assert.equal(v.lotSize, 2400, 'must read the FAQ answer AFTER the key-facts block, not the "related IPO" sidebar excerpt (Q-Line Biotech, 800 shares) that appears BEFORE it in the same document');
+  assert.equal(v.issueSize, 40_88_00_00_0 /* Approx Rs 40.88 Cr */);
+});
+
+test('(a/b oracle parser) extracts a real book-built band from the Amtech Esters fixture', () => {
+  const v = parseIpowatchDetail(AMTECH_HTML);
+  assert.equal(v.priceRangeMin, 71);
+  assert.equal(v.priceRangeMax, 75);
+  assert.equal(v.lotSize, 3200);
+  assert.equal(v.issueSize, 17_88_00_00_0 /* Approx Rs 17.88 Cr */);
+});
+
+test('(a/b oracle parser) date parsing is TZ-independent (calendar day, not local midnight)', () => {
+  // Regression for the class this fix caught in dev: `new Date('September 9,
+  // 2026')` returns a DIFFERENT calendar day on a UTC box vs an IST box once
+  // read back via .toISOString().slice(0,10) -- a nightly cron (UTC) and a
+  // laptop run (IST) must never disagree about what day was published.
+  assert.equal(parseIpowatchDate('September 9, 2026'), '2026-09-09T00:00:00.000Z');
+  assert.equal(parseIpowatchDate('January 1, 2027'), '2027-01-01T00:00:00.000Z');
+});
+
+test('(a/b oracle parser) TBA/not-yet-priced fields parse to null, not zero or a false band', () => {
+  assert.deepEqual(parsePriceBand('₹[.] to ₹[.] Per Share'), { min: null, max: null });
+  assert.equal(parseRupeeAmount('Approx ₹[.] Crores'), null);
+});
+
+test('(a/b oracle parser) UNVERIFIABLE (null), never a fabricated PASS, when the key-facts block is missing', () => {
+  assert.equal(parseIpowatchDetail('<html><body>this is not an ipowatch IPO detail page</body></html>'), null);
+});
+
+test('(a/b, GitHub #199 real-data proof) Amtech Esters UPCOMING issue_size disagreement: ours=0 (data gap) vs ipowatch=Rs 17.88 Cr — FAILs, not silently skipped', () => {
+  const oracleValues = parseIpowatchDetail(AMTECH_HTML);
+  const ipoRows = [{
+    id: 'staging-amtech', companyName: 'Amtech Esters Ltd.', status: 'UPCOMING',
+    values: {
+      openDate: oracleValues.openDate, closeDate: oracleValues.closeDate, // dates agree on staging
+      priceRangeMin: 71, priceRangeMax: 75, // band agrees on staging
+      lotSize: null, // not stored on staging -- null is skipped, not compared
+      issueSize: 0, // REAL staging value, measured via the tunnel 2026-09-07 -- a data gap
+    },
+  }];
+  const violations = findLiveCrossSourceDisagreements({
+    ipoRows,
+    oracleRows: [{ companyName: 'Amtech Esters', values: oracleValues }],
+    conflictRows: [],
+    oracleName: 'IPOWATCH',
+  });
+  assert.equal(violations.length, 1, 'only issueSize should disagree');
+  assert.equal(violations[0].fieldName, 'issueSize');
+  assert.match(violations[0].message, /issueSize=0.*IPOWATCH currently says 178800000/);
+});
+
+test('(a/b, band FAILs) a wrong price band on a live IPO is caught against the real Infrax oracle values', () => {
+  const oracleValues = parseIpowatchDetail(INFRAX_HTML);
+  const ipoRows = [{
+    id: 'i-wrong-band', companyName: 'Infrax Renewable Ltd.', status: 'OPEN',
+    values: { ...oracleValues, priceRangeMin: 90, priceRangeMax: 90 }, // corrupted band, everything else agrees
+  }];
+  const violations = findLiveCrossSourceDisagreements({
+    ipoRows, oracleRows: [{ companyName: 'Infrax Renewable', values: oracleValues }], conflictRows: [], oracleName: 'IPOWATCH',
+  });
+  assert.equal(violations.length, 2, 'both priceRangeMin and priceRangeMax disagree (90 vs 104)');
+  assert.ok(violations.every((v) => v.fieldName === 'priceRangeMin' || v.fieldName === 'priceRangeMax'));
+});
+
+test('(a/b, rupee tolerance) a sub-1% rounding difference on issueSize is NOT a violation', () => {
+  const violations = findLiveCrossSourceDisagreements({
+    ipoRows: [{ id: 'i', companyName: 'Rounding Co Ltd', status: 'OPEN', values: { issueSize: 40_88_00_000 } }],
+    oracleRows: [{ companyName: 'Rounding Co', values: { issueSize: 40_50_00_000 } }], // 0.93% off
+    conflictRows: [], oracleName: 'IPOWATCH',
+  });
+  assert.equal(violations.length, 0);
+});
+
+test('(a/b, rupee tolerance) a >1% difference on priceRangeMax IS a violation', () => {
+  const violations = findLiveCrossSourceDisagreements({
+    ipoRows: [{ id: 'i', companyName: 'Over Tolerance Ltd', status: 'OPEN', values: { priceRangeMax: 100 } }],
+    oracleRows: [{ companyName: 'Over Tolerance', values: { priceRangeMax: 102 } }], // 2% off
+    conflictRows: [], oracleName: 'IPOWATCH',
+  });
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].fieldName, 'priceRangeMax');
+});
+
+test('(a/b) lotSize is compared exactly (no tolerance) — a 1-unit difference still FAILs', () => {
+  const violations = findLiveCrossSourceDisagreements({
+    ipoRows: [{ id: 'i', companyName: 'Lot Mismatch Ltd', status: 'OPEN', values: { lotSize: 2400 } }],
+    oracleRows: [{ companyName: 'Lot Mismatch', values: { lotSize: 2401 } }],
+    conflictRows: [], oracleName: 'IPOWATCH',
+  });
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].fieldName, 'lotSize');
+});
+
+test('ORACLE_COMPARABLE_FIELDS carries all six T-472 fields', () => {
+  assert.deepEqual(ORACLE_COMPARABLE_FIELDS, ['openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax', 'lotSize', 'issueSize']);
+});
+
+// ---- T-472 round 2: oracle coverage floor -----------------------------------
+
+test('(coverage floor) WARNs when zero live IPOs matched the oracle index despite live IPOs existing', () => {
+  const w = computeOracleCoverageWarning({ liveCount: 5, matched: 0, unparseable: 0 });
+  assert.match(w, /0 of 5 live IPOs matched/);
+});
+
+test('(coverage floor) WARNs when more than half of matched pages are unparseable (template drift)', () => {
+  const w = computeOracleCoverageWarning({ liveCount: 10, matched: 4, unparseable: 3 });
+  assert.match(w, /3 unparseable of 4 matched/);
+});
+
+test('(coverage floor) stays quiet (null) at or below the threshold', () => {
+  assert.equal(computeOracleCoverageWarning({ liveCount: 10, matched: 4, unparseable: 2 }), null); // exactly 50%
+  assert.equal(computeOracleCoverageWarning({ liveCount: 0, matched: 0, unparseable: 0 }), null, 'no live IPOs tonight is not a coverage problem');
+  assert.equal(computeOracleCoverageWarning({ liveCount: 10, matched: 8, unparseable: 0 }), null);
 });

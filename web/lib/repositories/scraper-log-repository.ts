@@ -120,7 +120,9 @@ export class ScraperLogRepository extends BaseRepository {
         .select()
         .from(scraperLogs)
         .where(where)
-        .orderBy(desc(scraperLogs.createdAt))
+        // #358: createdAt ties (bulk log-writes in the same run) reshuffled
+        // paginated pages between requests; id breaks the tie.
+        .orderBy(desc(scraperLogs.createdAt), desc(scraperLogs.id))
         .limit(pagination.limit)
         .offset(offset);
 

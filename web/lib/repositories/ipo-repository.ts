@@ -324,6 +324,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           const offset = (page - 1) * limit;
           const sortColumn = ipos[sortBy] || ipos.createdAt;
           const orderBy = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
+          // #358: sortColumn is rarely unique (createdAt/listingDate ties are
+          // common), so without a secondary key rows sharing the sort value
+          // reshuffle between identical requests and across page boundaries.
+          // ipos.id is the unique tiebreaker; direction pinned (not tied to
+          // sortOrder) so the tiebreak order itself never flips.
+          const tiebreakOrder = [orderBy, asc(ipos.id)] as const;
 
           const results = await this.db
             .select({
@@ -333,7 +339,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             .from(ipos)
             .leftJoin(ipoScores, eq(ipos.id, ipoScores.ipoId))
             .where(whereClause)
-            .orderBy(orderBy)
+            .orderBy(...tiebreakOrder)
             .limit(limit)
             .offset(offset);
 
@@ -436,13 +442,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               .select()
               .from(subscriptions)
               .where(eq(subscriptions.ipoId, ipo.id))
-              .orderBy(desc(subscriptions.timestamp))
+              // #358: timestamp ties (bulk-scraped rows at the same instant)
+              // reshuffled which 10 rows this "latest" limit returned; id breaks ties.
+              .orderBy(desc(subscriptions.timestamp), desc(subscriptions.id))
               .limit(10),
             this.db
               .select()
               .from(gmpRecords)
               .where(eq(gmpRecords.ipoId, ipo.id))
-              .orderBy(desc(gmpRecords.timestamp))
+              .orderBy(desc(gmpRecords.timestamp), desc(gmpRecords.id))
               .limit(10),
             this.db
               .select()
@@ -555,7 +563,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             .select()
             .from(ipos)
             .where(sql`${ipos.companyName} % ${query}`)
-            .orderBy(sql`similarity(${ipos.companyName}, ${query}) DESC`)
+            // #358: similarity() ties (e.g. two exact-companyName matches)
+            // reshuffled the limited result set between requests; id breaks the tie.
+            .orderBy(sql`similarity(${ipos.companyName}, ${query}) DESC`, asc(ipos.id))
             .limit(limit);
 
           return results;
@@ -1088,6 +1098,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             orderByClause = desc(ipos.listingDate);
           }
 
+          // #358: listing_date / listing_gain / subscription all tie often
+          // (same-day listings, equal gains, no subscription data). Without a
+          // unique secondary key, tied rows reshuffle between identical
+          // requests and across the N/N+1 page boundary — the /api/ipos/history
+          // cache-poison bisect probe (#357). id is the unique tiebreaker.
+          const tiebreakOrder = [orderByClause, asc(ipos.id)] as const;
+
           // Fetch data with joins
           const results = await this.db
             .select({
@@ -1103,7 +1120,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               eq(ipos.id, listingPerformance.ipoId)
             )
             .where(whereClause)
-            .orderBy(orderByClause)
+            .orderBy(...tiebreakOrder)
             .limit(limit)
             .offset(offset);
 
@@ -1823,6 +1840,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               orderByClause = desc(ipos.listingDate);
           }
 
+          // #358: listingDate/gain/issueSize/companyName all tie routinely
+          // (same-day listings, equal gains, duplicate names); id is the
+          // unique secondary key so paginated pages never reshuffle.
+          const tiebreakOrder = [orderByClause, asc(ipos.id)] as const;
+
           // Calculate pagination
           const offset = (page - 1) * limit;
 
@@ -1862,7 +1884,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             .from(ipos)
             .leftJoin(listingPerformance, eq(ipos.id, listingPerformance.ipoId))
             .where(whereClause)
-            .orderBy(orderByClause)
+            .orderBy(...tiebreakOrder)
             .limit(limit)
             .offset(offset);
 
@@ -1884,7 +1906,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               })
               .from(subscriptions)
               .where(inArray(subscriptions.ipoId, ipoIds))
-              .orderBy(desc(subscriptions.timestamp));
+              // #358: the map below keeps the first row per ipoId ("latest wins");
+              // timestamp ties reshuffled which row was "first" between requests.
+              .orderBy(desc(subscriptions.timestamp), desc(subscriptions.id));
 
             // Fetch latest GMP data for each IPO
             gmpData = await this.db
@@ -1894,7 +1918,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               })
               .from(gmpRecords)
               .where(inArray(gmpRecords.ipoId, ipoIds))
-              .orderBy(desc(gmpRecords.timestamp));
+              .orderBy(desc(gmpRecords.timestamp), desc(gmpRecords.id));
           }
 
           // Create maps for quick lookup
