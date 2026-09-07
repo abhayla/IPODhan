@@ -66,7 +66,8 @@ export class SubscriptionRepository
             .select()
             .from(subscriptions)
             .where(whereClause)
-            .orderBy(desc(subscriptions.timestamp))
+            // #358: timestamp ties reshuffled which rows the limit returned; id breaks the tie.
+            .orderBy(desc(subscriptions.timestamp), desc(subscriptions.id))
             .limit(limit);
 
           return results;
