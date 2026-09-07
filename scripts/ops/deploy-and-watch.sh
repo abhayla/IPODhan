@@ -71,24 +71,32 @@ if [ "${ACTUAL_SHA:0:$CMPLEN}" != "${SHA:0:$CMPLEN}" ]; then
 fi
 echo "==> sha match: origin/$REF == $SHA"
 
+DISPATCH_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "==> dispatching: gh workflow run $WORKFLOW --ref $REF -f slot=prod -f ref=$SHA"
 gh workflow run "$WORKFLOW" --ref "$REF" -f slot=prod -f ref="$SHA" \
   || die "gh workflow run failed to dispatch" 1
 
-echo "==> resolving run id"
+# Round 2: --workflow deploy-linux.yml runs on EVERY push to main too (staging
+# auto-deploy), so an unscoped --limit 1 can pick up a staging run that lands
+# in the same seconds as this prod dispatch. Scope to this exact ref + a
+# workflow_dispatch event, and require createdAt >= the dispatch timestamp
+# recorded just above, so a race never watches the wrong run.
+echo "==> resolving run id (scoped to ref=$REF, event=workflow_dispatch, createdAt >= $DISPATCH_TS)"
 RUN_ID=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  RUN_ID="$(gh run list --workflow "$WORKFLOW" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null)"
+  RUN_ID="$(gh run list --workflow "$WORKFLOW" --branch "$REF" --event workflow_dispatch \
+    --json databaseId,createdAt,headBranch \
+    --jq "[.[] | select(.createdAt >= \"$DISPATCH_TS\")][0].databaseId" 2>/dev/null)"
   [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ] && break
   sleep 3
 done
-[ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ] || die "could not resolve a run id for $WORKFLOW after dispatch" 1
+[ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ] || die "could not resolve a run id for $WORKFLOW on $REF after dispatch" 1
 echo "==> run id: $RUN_ID"
 
-mkdir -p "$STATE_DIR"
-cat > "$STATE_FILE" <<JSON
-{"runId":"$RUN_ID","ref":"$REF","sha":"$SHA","workflow":"$WORKFLOW","dispatchedAt":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
-JSON
+mkdir -p "$STATE_DIR" || die "cannot create state dir $STATE_DIR" 1
+printf '{"runId":"%s","ref":"%s","sha":"%s","workflow":"%s","dispatchedAt":"%s"}\n' \
+  "$RUN_ID" "$REF" "$SHA" "$WORKFLOW" "$DISPATCH_TS" > "$STATE_FILE" \
+  || die "cannot write state file $STATE_FILE" 1
 echo "==> wrote state file: $STATE_FILE"
 
 echo "==> watching: gh run watch $RUN_ID --exit-status"

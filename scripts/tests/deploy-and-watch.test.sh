@@ -52,8 +52,24 @@ case "\$1" in
   run)
     case "\$2" in
       list)
-        # real gh applies --jq itself and prints the already-extracted value
-        echo '999'
+        # Round 2: simulate a STAGING run (databaseId 111, createdAt BEFORE
+        # dispatch) landing alongside the real PROD run (databaseId 999,
+        # createdAt AFTER dispatch) on the same workflow. Apply the caller's
+        # real --jq expression against this fixture with the real `jq`
+        # binary, so the test proves the script's own filter (createdAt >=
+        # dispatch time) picks 999, not the first-listed 111.
+        JQ_EXPR=""
+        prev=""
+        for a in "\$@"; do
+          if [ "\$prev" = "--jq" ]; then JQ_EXPR="\$a"; fi
+          prev="\$a"
+        done
+        FIXTURE='[{"databaseId":111,"createdAt":"2020-01-01T00:00:00Z","headBranch":"release/prod-2026-09-08"},{"databaseId":999,"createdAt":"2099-01-01T00:00:00Z","headBranch":"release/prod-2026-09-08"}]'
+        if [ -n "\$JQ_EXPR" ]; then
+          echo "\$FIXTURE" | jq -r "\$JQ_EXPR"
+        else
+          echo '999'
+        fi
         exit 0
         ;;
       watch)
@@ -126,6 +142,16 @@ if grep -qF "run watch 999 --exit-status" "$GH_ARGV_LOG"; then
   pass "case 2: watches with 'gh run watch <id> --exit-status'"
 else
   fail "case 2: expected watch line not found"; cat "$GH_ARGV_LOG"
+fi
+if grep -qF -- "--branch release/prod-2026-09-08 --event workflow_dispatch" "$GH_ARGV_LOG"; then
+  pass "case 2: run list scoped to the release branch + workflow_dispatch event"
+else
+  fail "case 2: run list not scoped as expected"; cat "$GH_ARGV_LOG"
+fi
+if grep -qF "run id: 999" "$LOG2" && ! grep -qF "run id: 111" "$LOG2"; then
+  pass "case 2: picks the prod run (999) not the earlier-created staging run (111)"
+else
+  fail "case 2: did not pick the correct (dispatch-time-scoped) run id"; cat "$LOG2"
 fi
 if grep -q "probe port 3000 responded 200" "$LOG2" && grep -q "release_scraper_cycle_locks acquired" "$LOG2"; then
   pass "case 2: prints the grep of key proof log lines"
