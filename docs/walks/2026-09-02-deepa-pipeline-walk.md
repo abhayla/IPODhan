@@ -1119,3 +1119,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 15:51 IST — Staging issue_size repair applied: 27 considered, 21 written, 1 skipped (tool-guarded, current_database() ipodhan_staging); assert-repair-held --cycles 2 started on staging (log in the scratchpad); #401 updated; brief carries the prod command for the owner's go.
 
 - 16:15 IST — tick: no agents; the only background job is assert-repair-held on staging (violations 0 right after the repair, polling 2 cycles, 40-min timeout). Prod f9b67d0a (161 s / 28 calls / 0 failed), staging 60a7bb46 (74 s / 74 calls / 0); disk 57%, load 0.19, OOM 0; worktrees relverify only; stash the 10 pre-existing.
+
+- 16:45 IST — tick: no agents; VPS prod f9b67d0a (49 s / 16 calls / 0 failed), staging 60a7bb46 (77 s / 75 calls / 0); disk 57%, load 0.09, OOM 0; worktrees relverify only; stash the 10 pre-existing. Staging repair-held run 1: cycle 1 held (0 violations) but UNVERIFIABLE at its 41-min timeout (second cycle at 16:45 just missed); run 2 started 16:46 with a 90-min window (cycles 17:15 + 17:45), verdict before the 19:00 read.
