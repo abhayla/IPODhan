@@ -1,0 +1,13 @@
+{
+  "_fixtureNote": "T-478 (issue #225). Live fetch of GET https://www.nseindia.com/api/all-upcoming-issues?category=ofs on 2026-09-07T03:21Z (client's own cookie/header logic in nse-api-client.ts) returned an empty object {} (zero rows) -- itself the real-data proof of the issue's root cause: there is currently no live OFS book, consistent with /ofs frozen at 19 rows since 2026-06-08. The rows below are the REAL raw payload captured from the SAME live endpoint/session at the SAME timestamp under category=ipo (4 real items returned: Pranav Constructions, Glass Wall Systems, Prasol Chemicals, Kanohar Electricals), because the endpoint's payload schema (issueStartDate/issueEndDate/issuePrice/issueSize/series/status/symbol/companyName) is identical across all `category` values -- transformIPOData() in nse-api-client.ts (lines ~522-529) drives OFS classification purely from the `category` argument passed by the caller, never from a category-specific field inside the item. This fixture repackages one real captured item (Kanohar Electricals) as the OFS test case by driving it through transformIPOData(item, 'ofs') in the test, which is exactly the code path fetchAllIPOs('ofs') exercises for a real OFS row once NSE has one live.",
+  "rawItem": {
+    "companyName": "Kanohar Electricals Limited",
+    "issueEndDate": "10-Sep-2026",
+    "issuePrice": "Rs.601 to Rs.632",
+    "issueSize": "16949595",
+    "issueStartDate": "08-Sep-2026",
+    "series": "EQ",
+    "status": "Forthcoming",
+    "symbol": "KANOHAR"
+  }
+}
