@@ -156,10 +156,16 @@ function writeFailureClassesMd(checkOnly) {
   }
 
   if (checkOnly) {
-    return { path: CLASSES_MD, matches: updated === original, content: updated };
+    return { path: CLASSES_MD, matches: sameIgnoringEol(updated, original), content: updated };
   }
   writeFileSync(CLASSES_MD, updated, 'utf8');
   return { path: CLASSES_MD, matches: true, content: updated };
+}
+
+// Windows checkouts with core.autocrlf=true hold CRLF copies of the aggregates while the
+// generator emits LF; --check compares content, not line endings (2026-09-07).
+function sameIgnoringEol(a, b) {
+  return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
 }
 
 function main() {
@@ -170,7 +176,7 @@ function main() {
 
   if (checkOnly) {
     const existing = readFileSync(CHECKS_JSON, 'utf8');
-    results.push({ path: CHECKS_JSON, matches: checksJson === existing });
+    results.push({ path: CHECKS_JSON, matches: sameIgnoringEol(checksJson, existing) });
   } else {
     writeFileSync(CHECKS_JSON, checksJson, 'utf8');
     results.push({ path: CHECKS_JSON, matches: true });
