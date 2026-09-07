@@ -20,18 +20,31 @@ export function parseTrackArg(raw, knownClasses) {
 }
 
 /**
- * Carries forward issueNumber + firstSeen from the previous state and applies --track
- * overrides, in place, on every entry in currentMap. Does NOT decide NEW/GONE/SAME —
- * that's `diff()` in failure-delta.mjs; this only resolves tracked status.
+ * Carries forward issueNumber + firstSeen from the previous state, applies a persisted
+ * class-level track (state.classIssues) to any entry not already carrying a per-key
+ * issueNumber — including a key first seen THIS run, never before in previousFailures —
+ * then applies this run's --track overrides, in place, on every entry in currentMap.
+ * A per-key --track (matchType 'ipoId') always wins because it is applied last and only
+ * touches matching entries; a class rule this run also updates the persisted classIssues
+ * map the caller writes back to state (T-502).
+ * Does NOT decide NEW/GONE/SAME — that's `diff()` in failure-delta.mjs; this only
+ * resolves tracked status.
  * @param {Map<string, object>} currentMap keyed failures for this run (mutated)
  * @param {Record<string, object>} previousFailures state.failures from the last run
  * @param {{matchType: string, value: string, issueNumber: number}[]} trackRules
+ * @param {Record<string, number>} [classIssues] state.classIssues from the last run —
+ *   errorClass -> issue number, persisted by a prior `--track <errorClass>=<#issue>`
  */
-export function resolveTrackedState(currentMap, previousFailures, trackRules) {
+export function resolveTrackedState(currentMap, previousFailures, trackRules, classIssues = {}) {
   for (const [key, f] of currentMap) {
     const prev = previousFailures[key];
     f.issueNumber = prev?.issueNumber ?? null;
     f.firstSeen = prev?.firstSeen ?? f.firstSeen;
+  }
+  for (const f of currentMap.values()) {
+    if (f.issueNumber == null && classIssues[f.errorClass] != null) {
+      f.issueNumber = classIssues[f.errorClass];
+    }
   }
   for (const f of currentMap.values()) {
     for (const rule of trackRules) {

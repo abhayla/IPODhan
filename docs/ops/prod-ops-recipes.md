@@ -27,6 +27,9 @@ df -h / | tail -1; uptime; ls /var/www/ipodhan/releases | wc -l
 grep -h "listedSkippedUnenriched" ~/.pm2/logs/ipodhan-scraper-staging-out.log | tail -2 | grep -o '"listedCap[^}]*'
 # failure identities, NEW/GONE/SAME vs the last tick — never a bare "extractionFailed: N" count (T-496, signal-ownership R1/R2)
 node scripts/ops/failure-delta.mjs --slot prod       # or --slot staging; exit 3 = NEW failure with no issue number
+# --track <ipoId>|<errorClass>=<#issue>: a class-level track (errorClass) persists to state.classIssues and
+# covers every later key of that class automatically, including one first seen on a future run — no need to
+# repeat --track per key; a per-key --track still wins over the class track (T-502, #413)
 # extractor priority on the next cycle (expect ni=10 after the 2026-09-06 release)
 ps -o ni=,pid=,args= -p $(pgrep -f venv/prod/bin/python) 2>/dev/null
 # tick step (T-498, signal-ownership R5): fix/feat commits merged to main but not yet on the prod tag

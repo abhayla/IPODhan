@@ -21,6 +21,9 @@
 //   node scripts/ops/failure-delta.mjs --slot prod --lines 8000
 //   node scripts/ops/failure-delta.mjs --slot staging --track b28d9d2a-cb24-4d84-8e1a-297ba828884a=402
 //   node scripts/ops/failure-delta.mjs --slot staging --track persist-insert-failed=402
+//   # ^ a class-level track (errorClass) persists to state.classIssues (T-502, #413) —
+//   #   it covers every later key of that class automatically, no need to repeat --track;
+//   #   a per-key (ipoId) --track always wins over a class track for that key.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -97,11 +100,13 @@ function fetchLogTailOrExit(slot, lines) {
 
 function loadState(slot, stateDir = STATE_DIR) {
   const file = path.join(stateDir, `${slot}.json`);
-  if (!existsSync(file)) return { failures: {} };
+  if (!existsSync(file)) return { failures: {}, classIssues: {} };
   try {
-    return JSON.parse(readFileSync(file, 'utf8'));
+    const parsed = JSON.parse(readFileSync(file, 'utf8'));
+    // Backward compatible: a state file written before T-502 has no classIssues.
+    return { failures: parsed.failures ?? {}, classIssues: parsed.classIssues ?? {} };
   } catch {
-    return { failures: {} };
+    return { failures: {}, classIssues: {} };
   }
 }
 
@@ -180,9 +185,19 @@ function main() {
   const state = loadState(args.slot, args.stateDir ?? STATE_DIR);
   const { NEW, GONE, SAME } = diff(currentMap, state.failures);
 
-  // Carry forward tracked status (issueNumber) AND firstSeen from the previous run, then
-  // apply --track overrides (e.g. for issues that already exist).
-  resolveTrackedState(currentMap, state.failures, args.track);
+  // A class-level --track this run persists into state.classIssues (in addition to
+  // stamping this run's matching entries below), so a later run — including one that
+  // sees a key of this errorClass for the first time — resolves it without repeating
+  // --track (T-502, #413).
+  const classIssues = { ...state.classIssues };
+  for (const rule of args.track) {
+    if (rule.matchType === 'errorClass') classIssues[rule.value] = rule.issueNumber;
+  }
+
+  // Carry forward tracked status (issueNumber) AND firstSeen from the previous run, apply
+  // the persisted class-level track, then apply this run's --track overrides (a per-key
+  // --track always wins over a class track since it targets only that ipoId).
+  resolveTrackedState(currentMap, state.failures, args.track, classIssues);
 
   console.log(`failure-delta --slot ${args.slot} (last ${args.lines} log lines, ${parsed.length} parsed)`);
   console.log(`NEW=${NEW.length} GONE=${GONE.length} SAME=${SAME.length}`);
@@ -243,7 +258,7 @@ function main() {
       issueNumber: f.issueNumber ?? null,
     };
   }
-  saveState(args.slot, { failures: nextFailures, updatedAt: new Date().toISOString() }, args.stateDir ?? STATE_DIR);
+  saveState(args.slot, { failures: nextFailures, classIssues, updatedAt: new Date().toISOString() }, args.stateDir ?? STATE_DIR);
 
   const untrackedCount = countUntracked(currentMap);
   if (untrackedCount > 0) {
