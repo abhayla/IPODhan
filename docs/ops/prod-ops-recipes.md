@@ -28,6 +28,8 @@ grep -h "listedSkippedUnenriched" ~/.pm2/logs/ipodhan-scraper-staging-out.log | 
 grep -h "extractionFailed" ~/.pm2/logs/ipodhan-scraper-out.log | tail -1
 # extractor priority on the next cycle (expect ni=10 after the 2026-09-06 release)
 ps -o ni=,pid=,args= -p $(pgrep -f venv/prod/bin/python) 2>/dev/null
+# tick step (T-498, signal-ownership R5): fix/feat commits merged to main but not yet on the prod tag
+node scripts/ops/merged-not-deployed.mjs --brief
 ```
 Env files: `/var/www/ipodhan/shared/env/{prod,staging}/{web,scraper}.env`. Never print a URL value: values are quoted, so mask with `sed -E 's#://[^@]*@#://***@#'` AFTER stripping the key, or print only `grep -c`/key names. Edits: `cp -p $f $f.bak-<date>-<reason>` then append; a scraper.env change takes effect at the next pm2 start.
 Standing lines added 2026-09-06: `DSN_ASSERT_REDIS_DB=0` (prod) / `=1` (staging).
@@ -36,6 +38,8 @@ Layout: `/var/www/ipodhan/{releases,releases-staging,current,current-staging,sha
 ## 3. Deploy (only from a frozen release branch, one prod deploy per day, 21:00-23:30 IST)
 
 ```bash
+# brief step (T-498, signal-ownership R5): what's fixed on main but still failing on prod, before naming the cut
+node scripts/ops/merged-not-deployed.mjs --brief
 git fetch origin && git rev-parse --short origin/release/prod-<date>          # must equal the brief sha
 gh workflow run deploy-linux.yml --ref release/prod-<date> -f slot=prod -f ref=<sha>
 gh run list --workflow deploy-linux.yml --limit 1                              # get the run id
