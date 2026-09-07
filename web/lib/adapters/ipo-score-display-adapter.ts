@@ -24,6 +24,8 @@ export interface IPOScoreDisplayComponent {
   label: string;
   score: number;
   maxScore: number;
+  /** Set when the value is not a real measurement (e.g. an untracked placeholder). */
+  note?: string;
 }
 
 export interface IPOScoreDisplayModel {
@@ -65,9 +67,17 @@ function round1(value: number): number {
 
 /**
  * Adapt a stored `ipo_scores` row (0-100 total, 0-25 components) into the
- * section's 0-10 display model. Component mapping matches the one already
- * used by IPOScoreRealtimeRepository.parseStoredScore, so a stored row and a
- * realtime row that happen to describe the same IPO render the same shape.
+ * section's 0-10 display model. The 4 real columns map onto 4 of the 5
+ * realtime components — Valuation reads `sentimentScore` and Market
+ * Performance reads `sectorScore` (a deliberate swap, not a bug: the stored
+ * schema's 4 columns don't line up 1:1 by name with the realtime 5, so the
+ * mapping pairs them by the closest semantic match instead of by name).
+ * There is no 5th stored column for Fundamentals, so unlike
+ * IPOScoreRealtimeRepository.parseStoredScore (which reuses fundamentalScore
+ * a second time, double-counting it against Financial Strength) this adapter
+ * uses the SAME 0.5 placeholder the repository's own saveScore path treats
+ * as "no fundamentals data" and marks it with an explicit note, rather than
+ * silently double-counting a real column as two different bars.
  */
 export function adaptStoredScore(row: IPOScore): IPOScoreDisplayModel {
   const totalScore = round1((row.totalScore / 100) * 10);
@@ -82,7 +92,7 @@ export function adaptStoredScore(row: IPOScore): IPOScoreDisplayModel {
       { label: 'Valuation', score: round1((row.sentimentScore / 25) * 2), maxScore: 2 },
       { label: 'Subscription Demand', score: round1((row.subscriptionScore / 25) * 2), maxScore: 2 },
       { label: 'Market Performance', score: round1((row.sectorScore / 25) * 2), maxScore: 2 },
-      { label: 'Fundamentals', score: round1((row.fundamentalScore / 25) * 1), maxScore: 1 },
+      { label: 'Fundamentals', score: 0.5, maxScore: 1, note: 'Not tracked in the editorial score — placeholder' },
     ],
     reasoning: row.reasoning,
     calculatedAt: row.calculatedAt,

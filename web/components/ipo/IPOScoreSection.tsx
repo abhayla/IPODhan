@@ -32,10 +32,12 @@ function ScoreBreakdownBar({
   label,
   score,
   maxScore,
+  note,
 }: {
   label: string;
   score: number;
   maxScore: number;
+  note?: string;
 }) {
   const percentage = maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
   const tone = scoreToneClass(percentage);
@@ -54,6 +56,7 @@ function ScoreBreakdownBar({
           style={{ width: `${percentage}%` }}
         />
       </div>
+      {note && <p className="text-xs text-muted-foreground italic">{note}</p>}
     </div>
   );
 }
@@ -126,6 +129,7 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
               label={component.label}
               score={component.score}
               maxScore={component.maxScore}
+              note={component.note}
             />
           ))}
         </div>

@@ -100,17 +100,31 @@ describe('adaptStoredScore', () => {
     expect(display.ratingLabel).toBe(expectedLabel);
   });
 
-  it('produces five components scaled from the 0-25 component columns', () => {
+  it('produces four real components scaled from the 0-25 component columns', () => {
     const display = adaptStoredScore(
       makeStoredScore({ fundamentalScore: 25, sentimentScore: 25, subscriptionScore: 25, sectorScore: 25 })
     );
-    expect(display.components).toEqual([
+    expect(display.components.slice(0, 4)).toEqual([
       { label: 'Financial Strength', score: 3, maxScore: 3 },
       { label: 'Valuation', score: 2, maxScore: 2 },
       { label: 'Subscription Demand', score: 2, maxScore: 2 },
       { label: 'Market Performance', score: 2, maxScore: 2 },
-      { label: 'Fundamentals', score: 1, maxScore: 1 },
     ]);
+  });
+
+  it('does NOT double-count fundamentalScore into a fabricated Fundamentals bar — uses the honest placeholder instead', () => {
+    // Regression (round 2): fundamentalScore already backs "Financial
+    // Strength"; the stored schema has no 5th column, so reusing it for
+    // "Fundamentals" too would double-count one real column as two bars and
+    // make the five bars sum to more than the headline total.
+    const display = adaptStoredScore(makeStoredScore({ fundamentalScore: 25 }));
+    const fundamentals = display.components.find((c) => c.label === 'Fundamentals');
+    expect(fundamentals).toEqual({
+      label: 'Fundamentals',
+      score: 0.5,
+      maxScore: 1,
+      note: 'Not tracked in the editorial score — placeholder',
+    });
   });
 });
 
