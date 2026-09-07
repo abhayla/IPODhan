@@ -21,6 +21,9 @@ Rules
    back for rollback; the tag keeps the history).
 5. PR-bundle branches (`release/<date>[a-e]`, used 2026-09-03..05) are retired; a bundle is just a work
    branch PR'd into `main`.
+6. `main` is re-verified (detection registry, lint, unit tests) after every merge by
+   `.github/workflows/main-gate.yml` (T-491) — `workflow_dispatch` only for now, on `push` to `main`
+   once the owner approves the added Actions spend.
 
 Current lines
 - `release/prod-2026-09-06` = f9b67d0a, **IN PRODUCTION** since 2026-09-06 21:02 IST (run 34042205589, tag `prod-2026-09-06`); rollback = `-f ref=d38b72aa` from the same branch (an ancestor).

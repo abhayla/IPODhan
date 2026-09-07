@@ -1,0 +1,89 @@
+name: Main Post-Merge Gate
+
+# T-491: main was never independently verified after a merge landed - pr-gate.yml
+# only runs on the pull_request event, so a bad merge (or a merge commit that
+# combines two individually-green PRs into a red main) went undetected until
+# the next PR happened to touch the same code, or a deploy failed. This job
+# re-runs the same detection-registry / lint / unit-test gate against main
+# itself, on demand for now.
+#
+# Trigger is workflow_dispatch ONLY. Enabling it on every push to main is an
+# owner decision (2026-09-04 rule: batch GitHub Actions minutes, one prod
+# deploy window per day) - the push trigger below is commented out until the
+# owner approves the added Actions spend.
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # Uncomment the block above only after the owner approves the added
+  # GitHub Actions minutes this adds on every merge to main (T-491).
+
+concurrency:
+  # Per-sha group (not a fixed 'main-gate' group): two close merges must both
+  # report, never cancel-race each other and hide a red intermediate sha
+  # (round 2 review). cancel-in-progress stays false for the same reason.
+  group: main-gate-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Detection Registry, Lint & Unit Tests (main)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        # Same version as pr-gate.yml (round 2 review) - a green main-gate
+        # must mean the same runtime pr-gate already proved, not a different one.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        # Mirrors pr-gate.yml's own step - web/scraper builds depend on
+        # packages/shared/dist existing (round 2 review).
+        run: |
+          rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo
+          cd packages/shared && npx tsc
+          test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
+
+      - name: Detection registry aggregates not stale (T-487)
+        # Mirrors pr-gate.yml's detection-change-gate job: docs/reviews/detection-checks.json
+        # and docs/reviews/failure-classes.md are build products generated from
+        # per-entry source files under docs/reviews/detection-checks/ and
+        # docs/reviews/failure-classes/ - this fails if either drifted.
+        run: node scripts/build-detection-registry.mjs --check
+
+      - name: Run lint
+        run: npm run lint:ci
+        working-directory: ./web
+
+      - name: Run unit tests
+        # --retry=2 pages over slow-machine timeouts (e.g.
+        # SMEPerformanceTrackerClient.test.tsx) without touching
+        # web/vitest.config.ts globally (round 2 review).
+        run: npm run test:unit --workspace=web -- --retry=2
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          NOTIFIER_URL: ${{ secrets.NOTIFIER_URL }}
+          NOTIFIER_KEY: ${{ secrets.NOTIFIER_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$NOTIFIER_URL" ] || [ -z "$NOTIFIER_KEY" ]; then
+            echo "NOTIFIER_URL/NOTIFIER_KEY not set - skipping Notifier alert."
+            exit 0
+          fi
+          curl -sf -X POST "$NOTIFIER_URL/notify" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $NOTIFIER_KEY" \
+            -d "{\"project\":\"ipodhan\",\"severity\":\"high\",\"title\":\"main gate red at ${SHA}\",\"body\":\"${RUN_URL}\",\"type\":\"ci\",\"dedupeKey\":\"main-gate-${SHA}\"}" \
+            || echo "Notifier POST failed - continuing (do not fail the failure-notification step itself)."
