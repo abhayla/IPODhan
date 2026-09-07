@@ -17,14 +17,18 @@ export const FUZZY_MATCH_CONFIG = {
   enabled: true,
 
   /**
-   * Minimum similarity score required for a match (0.0 to 1.0)
-   * Higher values = stricter matching (more similar required)
-   * Lower values = looser matching (less similar accepted)
+   * #350 round 2 (T-485): this value is passed DIRECTLY as Fuse.js's own
+   * `threshold` option by web/app/api/search/route.ts:170 — Fuse's native
+   * scale, where LOWER is STRICTER (0 = exact match, 1 = matches anything).
+   * It is NOT a "similarity" fraction despite the field name. Do NOT raise
+   * this to make search results stricter — that LOOSENS the live search bar.
+   * findBySlugWithFallback's own strict floor lives in a SEPARATE constant
+   * (SLUG_FALLBACK_MIN_SIMILARITY below) on the opposite scale (higher =
+   * stricter) precisely so the two call sites can never be coupled again —
+   * sharing this value previously caused raising the slug-fallback floor to
+   * silently loosen /api/search's live threshold (round 1 defect, T-485).
    *
-   * Examples:
-   * - 0.8 = Very strict (80%+ similarity required)
-   * - 0.6 = Balanced (60%+ similarity required) - DEFAULT
-   * - 0.4 = Loose (40%+ similarity required)
+   * 0.6 is /api/search's long-standing production value — unchanged by #350.
    */
   similarityThreshold: 0.6,
 
@@ -42,6 +46,24 @@ export const FUZZY_MATCH_CONFIG = {
     slug: 0.3, // 30% weight
   },
 } as const;
+
+/**
+ * #350 round 2 (T-485): the minimum SIMILARITY (0.0 to 1.0, HIGHER is
+ * STRICTER — the opposite scale from FUZZY_MATCH_CONFIG.similarityThreshold
+ * above, which is a raw Fuse `threshold` where lower is stricter) required
+ * for IPORepository.findBySlugWithFallback's fuzzy step to accept a match.
+ * Deliberately its OWN constant, consumed ONLY by findBySlugWithFallback —
+ * never share this with /api/search's Fuse `threshold` again; that coupling
+ * is exactly what caused round 1's defect (raising the slug-fallback floor
+ * silently loosened the live search bar).
+ *
+ * Evidence (#350): the false-match pair 'karamtara-engineering-ltd' /
+ * 'Sumax Engineering Ltd.' scores 0.4401 (56% similarity) — must be
+ * rejected. A genuine one-character-typo pair scores 0.1485 (85%
+ * similarity) — must pass. 0.85 sits strictly between the two, with >2x
+ * margin on the passing side.
+ */
+export const SLUG_FALLBACK_MIN_SIMILARITY = 0.85;
 
 /**
  * Fallback Configuration
