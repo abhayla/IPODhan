@@ -1027,3 +1027,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 10:31 IST #375 registry round 2 (9a95599e): re-split from current main, parity test vs origin/main wired into the pr-gate, duplicate-id rejection, header restored; my own deep-compare vs origin/main: 37/37 checks, 11/11 not-covered, no missing ids; --check PASS; 110/110. Lands with #374/#376 at 10:58 if green.
 
 - 10:41 IST T-489 #378 built: one adapter (stored ipo_scores + realtime 0-10) -> the score card renders the realtime financial score via the repository with an honest caption; 31/31 + tsc 0 mine; Tier B running; staging render proof owed after merge (hy-tech 5/10).
+
+- 10:43 IST #376 MERGED (56420299). #374 gate red on the new coverage negative-grep gate (#359) for a data component vs its baseline -> worker fixing (add the real test or shrink the baseline; never widen). #378 score card Tier B PASS WITH NOTES: the stored-row path double-counted fundamentalScore as a fabricated Fundamentals bar and the doc comment claimed a parity that does not exist -> round 2 (drop the bar with an honest note). 26 PRs on main today.
