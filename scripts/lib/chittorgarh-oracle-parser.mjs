@@ -17,6 +17,13 @@
  * class) cannot also corrupt this page, because this script never reads
  * our DB or our scraper's API to build the expected set.
  *
+ * HONEST LIMIT (round 2, T-461): this is still the same publisher
+ * (chittorgarh.com) as the scraper's JSON API, just a different endpoint on
+ * it — a presence check (does chittorgarh know about this IPO at all,
+ * independent of what our DB says), weaker than a true second source. If
+ * chittorgarh itself never lists an IPO, this check cannot find it either.
+ *
+
  * KNOWN GAP (declared, not silently dropped — rule 20): this page lists
  * CURRENT (effectively OPEN) + UPCOMING IPOs only. chittorgarh's "recently
  * listed / closed" report (`/report/ipo-listing-date-check-.../25/mainboard/`)
