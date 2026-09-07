@@ -344,7 +344,8 @@
   "notCoveredByThisManifest": [
     "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
-    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion"
+    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
+    "g_rollout_flag_liveness (T-297 D9, issue #193) — a *_PERCENTAGE/ENABLE_* rollout flag silently zeroed/disabled in the prod env file (the CONSOLIDATION_PERCENTAGE=0 / T-282 class). This is a deploy-time gate, not a nightly DB-row audit: `scripts/assert-env-keys.sh`'s `assert_rollout_flags_live()` reads `// LIVE-GATE` / `// PROD-REQUIRED-TRUE` markers off `scraper/src/config/feature-flags.ts` and refuses the deploy before build, on the prod slot only. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly audit. Guarded instead by `scripts/tests/assert-env-keys.test.sh` (see `docs/reviews/failure-classes.md`, 'rollout-flag zeroed silently voids live logic')."
   ],
   "exitCodes": {
     "0": "every check PASSed",
