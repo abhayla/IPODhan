@@ -193,3 +193,35 @@ describe('BaseScraperOrchestrator — allowedStatuses gate allows in-scope NEW r
     expect(result.iposSkipped).toBe(1);
   }, 20000);
 });
+
+describe('BaseScraperOrchestrator — createdUnderRestriction proof counter (T-484 round 2, #354)', () => {
+  it('the run summary line reports createdUnderRestriction = number of in-scope new rows created', async () => {
+    resolveIpoRowMock.mockImplementation(async () => null);
+    const loggerModule = await import('../../src/utils/logger.js');
+    const infoSpy = vi.spyOn(loggerModule.default, 'info');
+
+    const { BaseScraperOrchestrator } = await import('../../src/base/BaseScraperOrchestrator.js');
+
+    class NewUpcomingOrchestrator extends BaseScraperOrchestrator<any> {
+      protected getScraperName() {
+        return 'CHITTORGARH' as const;
+      }
+      protected async scrapeData() {
+        return { ipos: [{ companyName: 'Counter Proof Ltd' }], subscriptions: [] };
+      }
+      protected validateIPO(ipo: any) {
+        return { success: true, data: { companyName: ipo.companyName, status: 'UPCOMING' } };
+      }
+    }
+
+    const orchestrator = new NewUpcomingOrchestrator();
+    (orchestrator as any).restrictToStatuses(['UPCOMING', 'OPEN']);
+    await orchestrator.run();
+
+    const summaryCall = infoSpy.mock.calls.find(
+      (call) => call[1] === 'Status restriction active (due-step scheduler) — rows outside the allowed statuses were skipped before the write door'
+    );
+    expect(summaryCall?.[0]).toMatchObject({ createdUnderRestriction: 1 });
+    infoSpy.mockRestore();
+  }, 20000);
+});
