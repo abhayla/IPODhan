@@ -1085,3 +1085,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 13:00 IST — #393 round 2 reproduced (t299 adapter forwards its SQL, 7/7; lint OK 14 exempt; ratchet 57/57); gate running at 786db74b (squash merge will fold its wip commits). #395 and #391 gates running/blocked as noted; 13:33 pass lands in order #395 -> #391 -> #393.
 
 - 13:12 IST — #395 (parity by id) was CLOSED 8 s after creation by GitHub with my own account as actor (third time today: #381 23 s, #383 6 min); no hook or workflow found yet that closes PRs (search running); reopened and merged at once. #391 now carries main post-#395 (36e73a04), parity 2/2 locally, gate rerunning. #393 gate red on the Lint/Unit job (log full of a mocked-db noise pattern this.db.select is not a function; real failing test being isolated).
+
+- 13:14 IST — #393 round 3 reproduced with DATABASE_URL unset (16/16, no process.exit); gate rerunning at 9233fbc2. PR-closer search over the repo, ~/.claude, the bus and the workflows found nothing that closes PRs; the three closures stay unexplained (mitigation: merge tooling PRs the moment they are mergeable; reopen works).
