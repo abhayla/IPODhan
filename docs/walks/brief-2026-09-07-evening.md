@@ -29,7 +29,9 @@ Rule 6 brief. Status: DRAFT written 12:0x IST; numbers refreshed at 20:30 before
 - Open puzzle: three tooling PRs (#381, #383, #395) were closed unmerged seconds after creation with the owner's account as actor; no closer found; reopen+merge works. Not release-related.
 
 ## (d) Recommendation
-- (fill at 20:30) Default: DEPLOY the frozen f0c66b6b; RE-CUT to include #354 only on a clean 19:00 read, then one full local pass on the new cut before 21:00.
+- DEPLOY tonight. Preferred cut: **B = release/prod-2026-09-07b at 60a7bb46** (today's main, soaked on staging since 13:45 IST: 7 clean cycles, max 11 min, no calendar skips, ESDS floor held; full local pass green apart from environment-only noise: load-induced component timeouts that pass alone, the known playwright-config flake, a CRLF-only workflow test). Why B over A: prod is missing 12 real IPOs that B fixes (proof: the 18:15 staging run created 7, all oracle-confirmed), plus the SME/FPO write guards, the repair-tool prod guard on 11 scripts, the score card, and server-rendered /history and dashboard sectors.
+- Cost of B: ~90 commits vs 8. Mitigations: rollback ref f9b67d0a written; one manual `main-gate.yml` dispatch on 60a7bb46 before the deploy (~2 min Actions, owner OK needed) satisfies the "one hosted gate run" rule; verification per recipes section 4 right after.
+- Conservative alternative: A = f0c66b6b (verified this morning). Choose A if you want the smallest change tonight; the 12 IPOs then wait for tomorrow's window.
 
 ## (e) If DEFER, finish first
 - Nothing outstanding on the frozen cut. A re-cut needs: 19:00 read clean + local full pass green + rollback ref f9b67d0a written in the runbook.
