@@ -1111,3 +1111,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 14:45 IST — tick: no agents; prod f9b67d0a (150 s / 30 calls / 0 failed), staging 60a7bb46 (71 s / 79 calls / extractionFailed 1 — detail line read below); disk 57%, load 0.38, OOM 0; worktrees relverify only; stash the 10 pre-existing.
 
 - 15:15 IST — tick: no agents; prod f9b67d0a (141 s / 37 calls / 0 failed), staging 60a7bb46 (73 s / 128 calls / 0 failed); disk 57%, load 0.39, OOM 0; worktrees relverify only; stash the 10 pre-existing. Owner-gated queue until the 19:00 read.
+
+- 15:45 IST — tick: no agents; prod f9b67d0a (171 s / 101 calls / 0 failed), staging 60a7bb46 (78 s / 110 calls / extractionFailed 1, latest level-50 line read); disk 57%, load 0.48, OOM 0; worktrees relverify only; stash the 10 pre-existing.
