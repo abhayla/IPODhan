@@ -9,6 +9,9 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ASSERT_SCRIPT="$SCRIPT_DIR/../assert-env-keys.sh"
 FIXTURES="$SCRIPT_DIR/fixtures/env-assert"
+# Real feature-flags.ts (not a fixture copy) so these tests prove the actual
+# LIVE-GATE / PROD-REQUIRED-TRUE markers in the shipped SSOT, not a stand-in.
+REAL_SCRAPER_SRC="$SCRIPT_DIR/../../scraper/src"
 
 FAILED=0
 
@@ -171,6 +174,59 @@ else
   echo "FAIL: flag-liveness report false-positived on ENABLE_BSE_API (has a real consumer in the fixture)"
   FAILED=1
 fi
+
+# --- T-297 D9 / #193: rollout-flag LIVENESS gate (prod slot only). T-282
+# root cause: CONSOLIDATION_PERCENTAGE=0 in prod silently voided the whole
+# consolidation pipeline while assert-env-keys.sh only checked the key was
+# PRESENT. These cases prove the mechanism reads the LIVE-GATE /
+# PROD-REQUIRED-TRUE markers straight off the real
+# scraper/src/config/feature-flags.ts and fails the deploy on a zeroed or
+# disabled live-gating flag -- and that reverting the guard (T-285 P3-1
+# mutation lesson) would flip these back to green. ---
+run_case_grep "prod slot, CONSOLIDATION_PERCENTAGE=0 -> fail naming the flag (T-282 class, #193)" 1 \
+  "CONSOLIDATION_PERCENTAGE=0" \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-zero" "$REAL_SCRAPER_SRC"
+
+run_case "prod slot, CONSOLIDATION_PERCENTAGE missing entirely -> fail (implicit 0, #193)" 1 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-missing" "$REAL_SCRAPER_SRC"
+
+run_case "prod slot, CONSOLIDATION_PERCENTAGE=25 (genuine staged rollout) -> pass (#193)" 0 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-staged" "$REAL_SCRAPER_SRC"
+
+run_case_grep "prod slot, ENABLE_DATA_CONSOLIDATION=false -> fail (PROD-REQUIRED-TRUE, #193)" 1 \
+  "ENABLE_DATA_CONSOLIDATION=false" \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-disabled-flag" "$REAL_SCRAPER_SRC"
+
+run_case "prod slot, CONSOLIDATION_PERCENTAGE=0 + ALLOW_ZERO_FLAGS=CONSOLIDATION_PERCENTAGE -> pass (deliberate ramp-down, #193)" 0 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-allowed-zero" "$REAL_SCRAPER_SRC"
+
+run_case "staging slot, CONSOLIDATION_PERCENTAGE=0 -> pass (rollout-liveness gate is prod-slot-only, #193)" 0 \
+  "$FIXTURES/slot/staging/web.env.local" "$FIXTURES/slot/staging/scraper.env" "$REAL_SCRAPER_SRC"
+
+# --- T-467 round 2 (Tier A findings) ---
+
+# HIGH: a reworded/wrapped feature-flags.ts (key and marker no longer share
+# a line) must FAIL LOUDLY naming "0 flags derived", never silently exit 0.
+run_case_grep "prod slot, marker grep derives 0 flags (reworded/wrapped feature-flags.ts) -> fail naming it (T-467 round 2 HIGH)" 1 \
+  "derived 0 flags" \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env" "$FIXTURES/scraper-src-reworded"
+
+# MEDIUM: a trailing-space value (which the app's own parseInt() accepts)
+# must still pass -- the assert must trim before validating.
+run_case "prod slot, CONSOLIDATION_PERCENTAGE=100 with trailing space -> pass (T-467 round 2 MEDIUM, trim)" 0 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-trim" "$REAL_SCRAPER_SRC"
+
+# MEDIUM (T-467 round 4): quoted value + trailing space -- trim must run
+# BEFORE and AFTER quote-stripping, or the closing quote (sitting right
+# before the trailing space) is left glued to the value.
+run_case "prod slot, CONSOLIDATION_PERCENTAGE=\"100\" quoted with trailing space -> pass (T-467 round 4 MEDIUM, trim/quote order)" 0 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-quoted-trim" "$REAL_SCRAPER_SRC"
+
+# LOW: a live-gate flag at 0 on staging is not a failure, but must print one
+# INFO line naming it (visibility, not enforcement).
+run_case_grep "staging slot, CONSOLIDATION_PERCENTAGE=0 -> pass with an INFO line naming it (T-467 round 2 LOW)" 0 \
+  "INFO: rollout flag CONSOLIDATION_PERCENTAGE=0 on slot 'staging'" \
+  "$FIXTURES/slot/staging/web.env.local" "$FIXTURES/slot/staging/scraper.env" "$REAL_SCRAPER_SRC"
 
 if [ "$FAILED" -ne 0 ]; then
   echo "assert-env-keys.test.sh: FAILED"

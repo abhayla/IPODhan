@@ -56,6 +56,17 @@ export function getSlugRedirectKey(oldSlug: string): string {
 }
 
 /**
+ * Generate cache key for a slug-fallback negative result (#350) — a slug
+ * that resolved via neither exact match, redirect table, normalized-name
+ * match, nor a strict fuzzy match. Short-lived (SLUG_REDIRECT_MISS) so a bot
+ * scanning random slugs does not repeat the redirect+all-IPOs work on every
+ * request, mirroring the #170/#344 miss-caching pattern on getSlugRedirectKey.
+ */
+export function getSlugFallbackMissKey(slug: string): string {
+  return `ipo:slug-fallback-miss:${slug}`;
+}
+
+/**
  * Generate cache key for IPO by ID
  */
 export function getIPOByIdKey(id: string): string {

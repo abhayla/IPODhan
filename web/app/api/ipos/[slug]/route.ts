@@ -19,7 +19,7 @@ import { EntityNotFoundError, DatabaseError } from '@/lib/errors/repository-erro
 import { logger } from '@/lib/logger';
 import type { IPODetailResponse } from '@/lib/db/types';
 import { readHeavyRateLimiter } from '@/lib/middleware/rate-limiter';
-import { SEARCH_CONFIG } from '@/lib/config/search';
+import { SEARCH_CONFIG, SLUG_FALLBACK_MIN_SIMILARITY } from '@/lib/config/search';
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -110,7 +110,7 @@ export async function GET(
     // ISS-027: Try exact match first, fallback to fuzzy if enabled
     const ipoWithRelations = await ipoRepository.findBySlugWithFallback(slug, {
       enableFuzzy: SEARCH_CONFIG.fallback.enabled,
-      similarityThreshold: SEARCH_CONFIG.fuzzyMatch.similarityThreshold,
+      similarityThreshold: SLUG_FALLBACK_MIN_SIMILARITY, // #350 round 2: NOT SEARCH_CONFIG.fuzzyMatch.similarityThreshold (that's /api/search's raw Fuse threshold, opposite scale)
     });
 
     if (!ipoWithRelations) {
