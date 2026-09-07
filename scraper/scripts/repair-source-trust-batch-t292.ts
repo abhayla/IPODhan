@@ -83,8 +83,10 @@ import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protec
 import { and, eq } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const APPLY = process.argv.includes('--apply');
 // #180/T-459 round 3 (R0 write ratchet, T-316): the SME/FPO class repair was
@@ -95,7 +97,10 @@ const APPLY = process.argv.includes('--apply');
 // in here, using the SAME raw `db.update(schema.ipos)...` style already
 // baselined for it, adds no new writer file and no new pattern kind.
 const ALLOW_PROD = process.argv.includes('--allow-prod');
-const EVIDENCE_DIR = process.env.T292_EVIDENCE_DIR || 'D:/Abhay/GetWorkDone/evidence/2026-08-23-T-292';
+// #180 Tier-A round: default was a hardcoded D:/ path (this laptop only) —
+// repo-relative default so the script is portable (CI, another dev machine,
+// the VPS); T292_EVIDENCE_DIR still overrides for the original evidence trail.
+const EVIDENCE_DIR = process.env.T292_EVIDENCE_DIR || path.join(__dirname, '..', '..', 'evidence', '2026-08-23-T-292');
 const EDITED_BY = 'system:T-292-source-trust-repair';
 const T180_CITATION =
   'guardSmeOfferingTypeAgainstFpo class invariant (scraper/src/utils/detect-offering-type.ts): ' +

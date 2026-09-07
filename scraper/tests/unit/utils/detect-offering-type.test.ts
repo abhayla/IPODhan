@@ -57,6 +57,21 @@ describe('guardSmeOfferingTypeAgainstFpo (T-292 P1-1 — SME/FPO cross-check)', 
     expect(guardSmeOfferingTypeAgainstFpo(null, 'FPO')).toBe('FPO');
     expect(guardSmeOfferingTypeAgainstFpo(undefined, 'FPO')).toBe('FPO');
   });
+
+  it('#180 Tier-A: does NOT flip a legitimate SME FPO when the exchange itself (NSE/BSE) is the source of the current value', () => {
+    // A real (however rare) SME FPO authoritatively reported by the exchange
+    // itself must not be silently overridden by this heuristic — that would
+    // be exactly as wrong as the original Mopshop bug, just in reverse.
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'BSE')).toBe('FPO');
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'NSE')).toBe('FPO');
+  });
+
+  it('#180 Tier-A: still flips when the source is mid/low-trust (Mopshop shape — MONEYCONTROL, CHITTORGARH, or unknown)', () => {
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'MONEYCONTROL')).toBe('IPO');
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'CHITTORGARH')).toBe('IPO');
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', null)).toBe('IPO');
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO')).toBe('IPO');
+  });
 });
 
 describe('detectOfferingTypeFromBSEIRFlag (authoritative BSE classification)', () => {

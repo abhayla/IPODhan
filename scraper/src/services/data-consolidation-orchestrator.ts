@@ -27,7 +27,8 @@ import logger from '../utils/logger.js';
 import type { ScrapedIPO } from '../utils/validators.js';
 import { computeIpoIdentitySlug } from './data-persister.js';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
-import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
+import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
+import { isAuthoritativeForHardDatesOnCreate } from '../utils/hard-date-source-trust.js';
 import type { ScraperSource } from '../config/field-priority-matrix';
 import { DataConsolidationService } from './data-consolidation-service.js';
 import type { ConsolidationResult } from './data-consolidation-service.js';
@@ -221,6 +222,43 @@ export class DataConsolidationOrchestrator {
           '[DataConsolidation] Preserved corporate-action classification — scraper IPO downgrade blocked'
         );
         consolidatedIPOData.offeringType = keptType as any;
+      }
+
+      // #180 Tier-A round (T-459): this is `consolidatedUpsertIPO` — the LIVE
+      // Phase-1 door every scraper actually goes through (BaseScraperOrchestrator
+      // Step 5), distinct from `upsertIPO` in data-persister.ts (only reached on
+      // a consolidation skip/fallback). It never applied the SME/FPO guard or the
+      // hard-date create guard at all — this is Mopshop Distribution's actual
+      // write path. Corroboration-gated the same way as data-persister.ts: only
+      // flip when the CURRENT stored value's provenance is not the exchange
+      // itself (NSE/BSE).
+      if (consolidatedIPOData.offeringType) {
+        const effectiveSegment = 'segment' in consolidatedIPOData
+          ? (consolidatedIPOData as any).segment
+          : (existingIPO?.segment ?? null);
+        let offeringTypeSource: string | null = null;
+        if (existingIPO && this.fieldSourcesRepository?.findByField) {
+          try {
+            const prov = await this.fieldSourcesRepository.findByField(existingIPO.id, 'ipos', 'offeringType');
+            offeringTypeSource = prov?.source ?? null;
+          } catch (e) {
+            logger.warn({ slug, error: e instanceof Error ? e.message : String(e) }, '[DataConsolidation] #180 F1 provenance lookup failed - guarding without corroboration signal');
+          }
+        }
+        (consolidatedIPOData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
+          effectiveSegment,
+          consolidatedIPOData.offeringType as string,
+          offeringTypeSource
+        );
+      }
+
+      // #180 Tier-A round (T-459): same create-only hard-date trust guard as
+      // data-persister.ts's upsertIPO — a brand-new row here had NO equivalent
+      // protection at all.
+      if (isNew && !isAuthoritativeForHardDatesOnCreate(source)) {
+        delete (consolidatedIPOData as any).openDate;
+        delete (consolidatedIPOData as any).closeDate;
+        delete (consolidatedIPOData as any).listingDate;
       }
 
       let ipoId: string;

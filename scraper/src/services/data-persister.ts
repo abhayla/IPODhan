@@ -948,7 +948,9 @@ export async function upsertIPO(
       // been deleted above).
       if ((ipoData as any).offeringType) {
         const effectiveSegment = 'segment' in ipoData ? (ipoData as any).segment : (existingIPO?.segment ?? null);
-        (ipoData as any).offeringType = guardSmeOfferingTypeAgainstFpo(effectiveSegment, (ipoData as any).offeringType);
+        // #180 Tier-A: `source` here IS the source asserting this incoming FPO
+        // value THIS scrape — if it's the exchange itself (NSE/BSE), trust it.
+        (ipoData as any).offeringType = guardSmeOfferingTypeAgainstFpo(effectiveSegment, (ipoData as any).offeringType, source);
       }
 
       // P2-5 (T-292): a brand-new row (no existing row = no corroborating
@@ -1097,9 +1099,19 @@ export async function upsertIPO(
               const effectiveSegment = 'segment' in finalData
                 ? (finalData as any).segment
                 : ((existingIPO as any).segment ?? null);
+              // #180 Tier-A: only flip when the CURRENT stored value's own
+              // provenance is not the exchange itself — a corroboration gate
+              // so an NSE/BSE-sourced FPO (a real one, however rare) is never
+              // silently overridden by this heuristic.
+              const offeringTypeProvenance = await getFieldSourcesRepository().findByField(
+                existingIPO.id,
+                'ipos',
+                'offeringType'
+              );
               (finalData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
                 effectiveSegment,
-                (finalData as any).offeringType
+                (finalData as any).offeringType,
+                (offeringTypeProvenance as any)?.source ?? null
               );
             }
 
@@ -1114,8 +1126,22 @@ export async function upsertIPO(
             // itself the corroborating second source, not the aggregator instead of it).
             if (!isAuthoritativeForHardDatesOnCreate(source)) {
               const fieldSourcesRepo = getFieldSourcesRepository();
+              // #180 Tier-A round: a row with ZERO field_sources rows at all has
+              // untracked/unknown provenance (e.g. seeded before source-tracking
+              // existed, or created outside the normal consolidation door) — that
+              // is a DIFFERENT situation from a row where tracking IS active but
+              // this specific field has never been corroborated. Only the latter
+              // is the F2 shape (a single weak source sneaking a value past a
+              // history that could have disagreed). Blocking the former would
+              // make it impossible to ever seed a date onto a legitimately
+              // untracked row, so it is treated as "unknown provenance", not
+              // "protected", and the guard is skipped for it.
+              const rowHasAnyTrackedProvenance = typeof (fieldSourcesRepo as any).findByIPOId === 'function'
+                ? (await fieldSourcesRepo.findByIPOId(existingIPO.id)).length > 0
+                : true; // no way to tell -> assume tracked (safer default: guard stays active)
               for (const dateField of ['openDate', 'closeDate'] as const) {
                 if (
+                  rowHasAnyTrackedProvenance &&
                   dateField in finalData &&
                   (finalData as any)[dateField] != null &&
                   (existingIPO as any)[dateField] == null
@@ -1294,6 +1320,35 @@ export async function upsertIPO(
           fallbackData.offeringType = resolveOfferingTypeKeepingClassification(
             (existingIPO as any).offeringType,
             fallbackData.offeringType
+          );
+        }
+        // #180 Tier-A round: the fallback door is `buildNonDestructiveUpdate`'s
+        // merge of ipoData over existingIPO, so — same shape as the
+        // consolidation door before this fix — a scrape that omits
+        // offeringType lets `existingIPO.offeringType` (a stale stored FPO on
+        // an SME row) flow through here completely unguarded; the pre-door
+        // guard at ~line 953 only ever saw the INCOMING payload. Re-apply the
+        // same corroboration-gated SME guard on whatever this door is about
+        // to write.
+        if ('offeringType' in fallbackData) {
+          const effectiveSegment = fallbackData.segment ?? (existingIPO as any).segment ?? null;
+          let offeringTypeSource: string | null = null;
+          try {
+            const fieldSourcesRepo = getFieldSourcesRepository();
+            const offeringTypeProvenance = typeof (fieldSourcesRepo as any).findByField === 'function'
+              ? await fieldSourcesRepo.findByField(existingIPO.id, 'ipos', 'offeringType')
+              : null;
+            offeringTypeSource = (offeringTypeProvenance as any)?.source ?? null;
+          } catch (e) {
+            logger.warn(
+              { ipoId: existingIPO.id, error: e instanceof Error ? e.message : String(e) },
+              '[DataPersister] #180 F1 fallback-door provenance lookup failed - guarding without corroboration signal'
+            );
+          }
+          fallbackData.offeringType = guardSmeOfferingTypeAgainstFpo(
+            effectiveSegment,
+            fallbackData.offeringType,
+            offeringTypeSource
           );
         }
         await ipoRepository.update(existingIPO.id, fallbackData);

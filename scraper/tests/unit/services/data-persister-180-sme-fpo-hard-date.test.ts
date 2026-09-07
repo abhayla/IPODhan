@@ -17,6 +17,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const consolidateIPODataMock = vi.fn();
 const resolveRegistrarIdMock = vi.fn().mockReturnValue(null);
 const findByFieldMock = vi.fn().mockResolvedValue(null);
+// Default: the row HAS some tracked provenance (just not for the field under
+// test) — this is the F2 shape. Tests for the "zero provenance at all" case
+// override this to [].
+const findByIPOIdMock = vi.fn().mockResolvedValue([{ id: 'fs-other', fieldName: 'status', source: 'BSE' }]);
 
 vi.mock('@ipodhan/shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@ipodhan/shared')>()),
@@ -40,6 +44,7 @@ vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
     FieldSourcesRepository: vi.fn().mockImplementation(() => ({
       bulkTrackFieldUpdates: vi.fn().mockResolvedValue(1),
       findByField: (...args: unknown[]) => findByFieldMock(...args),
+      findByIPOId: (...args: unknown[]) => findByIPOIdMock(...args),
     })),
     DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
     RegistrarRepository: vi.fn().mockImplementation(() => ({
@@ -131,6 +136,7 @@ describe('#180 F1 — SME row never keeps a stale FPO across an update that omit
     vi.clearAllMocks();
     resolveRegistrarIdMock.mockReturnValue(null);
     findByFieldMock.mockResolvedValue(null);
+    findByIPOIdMock.mockResolvedValue([{ id: "fs-other", fieldName: "status", source: "BSE" }]);
   });
 
   it('existing SME row stored FPO + a scrape omitting offeringType => the update corrects it to IPO (red before the guard extension)', async () => {
@@ -176,6 +182,7 @@ describe('#180 F2 — a single non-authoritative source cannot assert a null har
     vi.clearAllMocks();
     resolveRegistrarIdMock.mockReturnValue(null);
     findByFieldMock.mockResolvedValue(null);
+    findByIPOIdMock.mockResolvedValue([{ id: "fs-other", fieldName: "status", source: "BSE" }]);
   });
 
   it('existing row with openDate/closeDate NULL + a single MONEYCONTROL payload => dates are NOT written straight through (red before the fix)', async () => {
@@ -239,6 +246,29 @@ describe('#180 F2 — a single non-authoritative source cannot assert a null har
       ipoRepository,
       scrape({ openDate: '2026-12-01', closeDate: '2026-12-04' }),
       'NSE',
+      existingRow({ segment: 'MAINBOARD', offeringType: 'IPO', openDate: null, closeDate: null })
+    );
+
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.openDate).toBeTruthy();
+  });
+
+  it('a row with ZERO field_sources rows at all (untracked provenance) allows the date seed — not treated as protected', async () => {
+    findByIPOIdMock.mockResolvedValue([]); // no tracking has ever happened on this row
+    consolidateIPODataMock.mockResolvedValue(
+      consolidationResult({
+        status: 'UPCOMING',
+        openDate: '2026-12-01',
+        closeDate: '2026-12-04',
+      })
+    );
+    const ipoRepository = makeIpoRepository();
+
+    await upsertIPO(
+      ipoRepository,
+      scrape({ openDate: '2026-12-01', closeDate: '2026-12-04' }),
+      'MONEYCONTROL',
       existingRow({ segment: 'MAINBOARD', offeringType: 'IPO', openDate: null, closeDate: null })
     );
 
