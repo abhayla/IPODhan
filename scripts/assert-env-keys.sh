@@ -289,7 +289,6 @@ report_dead_flags() {
 assert_rollout_flags_live() {
   local scraper_env_file="$1" src_dir="$2" slot flags_file
   slot="$(basename "$(dirname "$scraper_env_file")")"
-  [ "$slot" = "prod" ] || return 0
 
   if [ -z "$src_dir" ]; then
     echo "WARN: rollout-flag liveness check (T-297 D9 / #193) skipped — no scraper src dir given." >&2
@@ -301,24 +300,58 @@ assert_rollout_flags_live() {
     return 0
   fi
 
-  local allow_zero
-  allow_zero="$(get_value "$scraper_env_file" ALLOW_ZERO_FLAGS)" || allow_zero=""
-  allow_zero="${allow_zero%\"}"; allow_zero="${allow_zero#\"}"
-  allow_zero="${allow_zero%\'}"; allow_zero="${allow_zero#\'}"
-
+  # T-467 round 2 (Tier A HIGH): the marker match is on the LINE (key + marker
+  # sharing one line), not tied to `parseInt(...)`/`process.env...` shape --
+  # a reformatted/wrapped field still matches as long as the key and its
+  # `// LIVE-GATE` / `// PROD-REQUIRED-TRUE` marker stay on the same line.
   local live_gate_keys=() required_true_keys=()
   while IFS= read -r key; do
     [ -n "$key" ] && live_gate_keys+=("$key")
-  done < <(grep -oP "^\s*\K[A-Z0-9_]+(?=:\s*parseInt\([^,]*,\s*//\s*LIVE-GATE)" "$flags_file" 2>/dev/null || true)
+  done < <(grep -oP "^\s*\K[A-Z0-9_]+(?=:.*//\s*LIVE-GATE)" "$flags_file" 2>/dev/null || true)
   while IFS= read -r key; do
     [ -n "$key" ] && required_true_keys+=("$key")
-  done < <(grep -oP "^\s*\K[A-Z0-9_]+(?=:\s*process\.env\.[A-Z0-9_]+\s*===\s*'true',\s*//\s*PROD-REQUIRED-TRUE)" "$flags_file" 2>/dev/null || true)
+  done < <(grep -oP "^\s*\K[A-Z0-9_]+(?=:.*//\s*PROD-REQUIRED-TRUE)" "$flags_file" 2>/dev/null || true)
+
+  local trim
+  trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+
+  # T-467 round 2 (Tier A HIGH): a marker-wording change, a reflow that puts
+  # the key and its marker on different lines, or a `grep` without -P support
+  # all collapse to the SAME symptom -- zero keys derived, loop bodies never
+  # run, exit 0. That is a silent false negative on the exact class this
+  # check exists to catch. Refuse to pass quietly.
+  if [ "${#live_gate_keys[@]}" -eq 0 ] && [ "${#required_true_keys[@]}" -eq 0 ]; then
+    echo "FATAL: rollout-flag liveness assert derived 0 flags from $flags_file (T-297 D9 / #193) — the // LIVE-GATE / // PROD-REQUIRED-TRUE marker grep matched nothing. This is refused rather than silently passed: either the marker wording changed, a field's key and marker no longer share one line, or this grep lacks -P support. Fix the markers or the grep, do not ignore this." >&2
+    exit 1
+  fi
+
+  local allow_zero
+  allow_zero="$(get_value "$scraper_env_file" ALLOW_ZERO_FLAGS)" || allow_zero=""
+  allow_zero="$(trim "${allow_zero%\"}")"; allow_zero="${allow_zero#\"}"
+  allow_zero="$(trim "${allow_zero%\'}")"; allow_zero="${allow_zero#\'}"
+
+  # T-467 round 2 (Tier A LOW): staging is exempt from enforcement, but a
+  # live-gate flag sitting at 0 there is still worth one INFO line -- it is
+  # never a failure, just visibility.
+  if [ "$slot" != "prod" ]; then
+    local key value
+    for key in "${live_gate_keys[@]}"; do
+      value="$(get_value "$scraper_env_file" "$key")" || value="0"
+      value="$(trim "${value%\"}")"; value="${value#\"}"
+      value="$(trim "${value%\'}")"; value="${value#\'}"
+      if printf '%s' "$value" | grep -qE '^[0-9]+$' && [ "$value" -eq 0 ]; then
+        echo "INFO: rollout flag $key=0 on slot '$slot' (non-prod; liveness gate is prod-only, T-297 D9 / #193)."
+      fi
+    done
+    return 0
+  fi
 
   local key value allowed FAILS=()
 
   for key in "${live_gate_keys[@]}"; do
     value="$(get_value "$scraper_env_file" "$key")" || value="0"
-    value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
+    value="$(trim "${value%\"}")"; value="${value#\"}"
+    value="$(trim "${value%\'}")"; value="${value#\'}"
     allowed=0
     if [ -n "$allow_zero" ] && printf '%s\n' "$allow_zero" | tr ',' '\n' | tr -d '[:space:]' | grep -qx "$key"; then
       allowed=1
@@ -340,7 +373,8 @@ assert_rollout_flags_live() {
 
   for key in "${required_true_keys[@]}"; do
     value="$(get_value "$scraper_env_file" "$key")" || value="false"
-    value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
+    value="$(trim "${value%\"}")"; value="${value#\"}"
+    value="$(trim "${value%\'}")"; value="${value#\'}"
     if [ "$value" != "true" ]; then
       FAILS+=("$key=$value — required 'true' on prod slot (T-297 D9 / #193)")
     else
