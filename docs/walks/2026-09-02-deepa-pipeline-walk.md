@@ -1095,3 +1095,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 13:26 IST — PROCESS MISS (mine): the stop-guard hook fix reached main directly in 403581c6 — I staged it on a branch, the branch commit did not land, `git checkout main` carried the staged files, and the docs(walk) commit swept them in and pushed. No PR, no review for a session hook. Not reverting (18/18 tests, behaviour change is exemption-only); Tier A review running post-hoc and a FAIL means a revert PR. Registry: staged-files-ride-along-next-commit added.
 
 - 13:29 IST — Tier A (post-hoc) on the stop-guard widening: PASS WITH NOTES, do not revert; one HIGH: check/job + going cleared the narrate flag from ordinary prose. Round 4 on PR #397 (narrowed to ci/gate/pr gate/gate job, going dropped; red-then-green test; 19/19), this time committed with the staged set checked (two files) and via a PR. #201 closed; #386 updated for batch 2.
+
+- 13:33 IST — #397 merged (stop-guard round 4; 19/19 on main). T-494 never-escalates floor check (#396) dispatched (Sonnet, Tier B). Queue now: T-494 building; owner-gated items only otherwise; 19:00 staging read next.
