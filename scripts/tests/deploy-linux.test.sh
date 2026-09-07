@@ -2260,3 +2260,197 @@ else
 fi
 unset SCRAPER_CRON_OVERRIDE
 unset DEPLOY_ROOT
+
+# --- Case 32: G-I (#194) — deployed-sha lineage gate before the flip -------
+# T-264 P2-4: prod once served 1a0b76f, a commit that existed only on an
+# unmerged branch, while missing main's merged fix. The served-SHA probe
+# only proves served==deployed; it never proved deployed is ON origin/main.
+# These cases exercise the REAL `git fetch origin main` + `git merge-base
+# --is-ancestor` check via the DEPLOY_TEST_LINEAGE_SHA dry-run test hook —
+# NOT against $SHA (which in dry-run defaults to the test runner's own PR
+# branch tip, never yet an ancestor of origin/main pre-merge; checking it
+# for real would fail every OTHER case in this suite).
+#
+# Round 3 (PR #353 review): the ORIGINAL setup fetched/cloned THIS repo's
+# real 'origin' (github.com/abhayla/IPODhan) — exit 128 on the hosted
+# pr-gate runner, whose checkout has no network/credentials for that.
+# Every case-32 sub-case now runs against a fully LOCAL git fixture: a bare
+# "upstream" repo (stands in for origin) plus a work clone that adds an
+# 'unmerged' branch never pushed upstream — all under mktemp, all file://,
+# no network anywhere in this block.
+FIXTURE_UPSTREAM="$(fresh_root)/upstream.git"
+git init -q --bare "$FIXTURE_UPSTREAM"
+
+FIXTURE_WORK="$(fresh_root)/work"
+git init -q "$FIXTURE_WORK"
+(
+  cd "$FIXTURE_WORK"
+  git config user.email "test@example.com"
+  git config user.name "deploy-linux fixture"
+  git checkout -q -b main
+  for i in 1 2 3 4 5 6; do
+    echo "commit $i" > "file$i.txt"
+    git add "file$i.txt"
+    git commit -q -m "main commit $i"
+  done
+  git remote add origin "$FIXTURE_UPSTREAM"
+  git push -q origin main
+  # 'unmerged' branch: one extra commit that is NEVER pushed to the
+  # upstream — exactly the "commit exists only on an unmerged branch" shape
+  # from T-264 P2-4. Created (and its objects thereby retained locally)
+  # BEFORE the check-repo clone below, so that clone's object store has it.
+  git checkout -q -b unmerged
+  echo "unmerged change" > unmerged.txt
+  git add unmerged.txt
+  git commit -q -m "unmerged commit (never merged to main, never pushed)"
+) >/tmp/deploy-test-32-fixture-setup.log 2>&1 \
+  || { fail "case 32 fixture setup failed"; cat /tmp/deploy-test-32-fixture-setup.log; }
+
+ORIGIN_MAIN_SHA="$(cd "$FIXTURE_WORK" && git rev-parse main)"
+OLDER_ANCESTOR_SHA="$(cd "$FIXTURE_WORK" && git rev-parse main~5)"
+NON_ANCESTOR_SHA="$(cd "$FIXTURE_WORK" && git rev-parse unmerged)"
+
+# The repo assert_deployed_sha_lineage() actually runs its git commands
+# against (via DEPLOY_LINEAGE_REPO_ROOT) for every case-32 sub-case below —
+# a clone of FIXTURE_WORK (so it holds the unmerged commit's OBJECTS too),
+# with 'origin' repointed at the bare upstream (which never received
+# 'unmerged') so `git merge-base --is-ancestor` sees exactly what a real
+# unmerged-branch deploy would: the sha is a real, resolvable commit, but
+# not reachable from origin/main.
+FIXTURE_CHECK_REPO="$(fresh_root)/check-repo"
+git clone -q "$FIXTURE_WORK" "$FIXTURE_CHECK_REPO" >/tmp/deploy-test-32-clone.log 2>&1 \
+  || { fail "case 32 fixture clone failed"; cat /tmp/deploy-test-32-clone.log; }
+(cd "$FIXTURE_CHECK_REPO" && git remote set-url origin "$FIXTURE_UPSTREAM")
+export DEPLOY_LINEAGE_REPO_ROOT="$FIXTURE_CHECK_REPO"
+
+# --- Case 32a: ancestor of origin/main -> proceeds, logs "lineage OK" ------
+ROOT32A="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT32A"
+export DEPLOY_TEST_LINEAGE_SHA="$ORIGIN_MAIN_SHA"
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32a.log 2>&1; then
+  if grep -qF "lineage OK: $ORIGIN_MAIN_SHA is on origin/main" /tmp/deploy-test-32a.log; then
+    pass "case 32a: sha on origin/main proceeds and logs lineage OK"
+  else
+    fail "case 32a: expected a 'lineage OK' line naming $ORIGIN_MAIN_SHA"
+    cat /tmp/deploy-test-32a.log
+  fi
+else
+  fail "case 32a: dry-run deploy of an origin/main-ancestor sha should have exited 0"
+  cat /tmp/deploy-test-32a.log
+fi
+unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
+
+# --- Case 32b: NOT an ancestor of origin/main -> exit 1, FATAL names the ---
+# --- sha, and 'current' is never flipped ($NON_ANCESTOR_SHA is the local  -
+# --- fixture's 'unmerged' branch tip, set up above: a real, resolvable    -
+# --- commit that was never pushed to the bare upstream, i.e. exactly the  -
+# --- "unmerged branch" shape from T-264 P2-4).
+ROOT32B="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT32B"
+export DEPLOY_TEST_LINEAGE_SHA="$NON_ANCESTOR_SHA"
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32b.log 2>&1; then
+  fail "case 32b: an unmerged-branch sha should have refused to deploy, but it exited 0"
+  cat /tmp/deploy-test-32b.log
+else
+  if grep -qF "FATAL: $NON_ANCESTOR_SHA is not an ancestor of origin/main" /tmp/deploy-test-32b.log; then
+    pass "case 32b: unmerged-branch sha exits non-zero with a FATAL line naming the sha"
+  else
+    fail "case 32b: expected a FATAL line naming $NON_ANCESTOR_SHA"
+    cat /tmp/deploy-test-32b.log
+  fi
+  if grep -q '==> Flipping ' /tmp/deploy-test-32b.log; then
+    fail "case 32b: log reached the flip line — the lineage gate did not abort before it"
+  else
+    pass "case 32b: no flip line reached before the lineage abort"
+  fi
+  # Round 2 HIGH finding: the gate used to run right before the flip (step
+  # 8.5), AFTER the build, the venv swap, and 'drizzle-kit migrate' against
+  # the live DB — an unmerged sha would already have migrated prod and left
+  # a ~3GB orphaned release dir before being refused. It now runs at step
+  # 0.5, immediately after $SHA is resolved, before any of that. Prove it by
+  # asserting the build/migrate log lines never appear at all.
+  if grep -qF 'Building release (npm ci' /tmp/deploy-test-32b.log; then
+    fail "case 32b: the build step ran before the lineage abort — gate is not early enough"
+  else
+    pass "case 32b: no build line reached before the lineage abort"
+  fi
+  if grep -qF "skipping real 'drizzle-kit migrate'" /tmp/deploy-test-32b.log || grep -qF 'Applying database migrations' /tmp/deploy-test-32b.log; then
+    fail "case 32b: the migrate step ran before the lineage abort — gate is not early enough"
+  else
+    pass "case 32b: no migrate line reached before the lineage abort"
+  fi
+fi
+unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
+
+# --- Case 32c: escape hatch ALLOW_UNMERGED_DEPLOY=1 -> proceeds, logs loudly
+ROOT32C="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT32C"
+export DEPLOY_TEST_LINEAGE_SHA="$NON_ANCESTOR_SHA"
+export ALLOW_UNMERGED_DEPLOY=1
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32c.log 2>&1; then
+  if grep -qF "ALLOW_UNMERGED_DEPLOY=1" /tmp/deploy-test-32c.log && grep -qF "$NON_ANCESTOR_SHA" /tmp/deploy-test-32c.log; then
+    pass "case 32c: escape hatch proceeds and logs loudly, naming the sha"
+  else
+    fail "case 32c: expected a loud ALLOW_UNMERGED_DEPLOY log line naming $NON_ANCESTOR_SHA"
+    cat /tmp/deploy-test-32c.log
+  fi
+  if grep -q '==> Flipping ' /tmp/deploy-test-32c.log; then
+    pass "case 32c: deploy proceeded to the flip under the escape hatch"
+  else
+    fail "case 32c: escape hatch should have let the deploy reach the flip"
+  fi
+else
+  fail "case 32c: ALLOW_UNMERGED_DEPLOY=1 should have let the deploy proceed, but it exited non-zero"
+  cat /tmp/deploy-test-32c.log
+fi
+unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT ALLOW_UNMERGED_DEPLOY
+
+# --- Case 32d: shallow checkout — the check must deepen, not false-refuse -
+# --- a real ancestor it simply can't see yet at depth 1. Round 3: uses a  -
+# --- REAL `--depth 1` clone of the LOCAL bare fixture upstream (file://,  -
+# --- no network) instead of the real GitHub origin, which exit-128'd on   -
+# --- the hosted pr-gate runner (no credentials/network for that clone).
+SHALLOW_DIR="$(fresh_root)/shallow"
+# --depth is silently ignored by git on a plain local-path clone ("use
+# file:// instead") — an explicit file:// URL is required for a REAL
+# shallow clone to be created here.
+if git clone -q --depth 1 --branch main "file://$FIXTURE_UPSTREAM" "$SHALLOW_DIR" >/tmp/deploy-test-32d-clone.log 2>&1 \
+  && [ "$(cd "$SHALLOW_DIR" && git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+  ROOT32D="$(fresh_root)"
+  export DEPLOY_ROOT="$ROOT32D"
+  export DEPLOY_TEST_LINEAGE_SHA="$OLDER_ANCESTOR_SHA"
+  export DEPLOY_LINEAGE_REPO_ROOT="$SHALLOW_DIR"
+  if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-32d.log 2>&1; then
+    if grep -qF "shallow checkout detected" /tmp/deploy-test-32d.log \
+      && grep -qF "lineage OK" /tmp/deploy-test-32d.log; then
+      pass "case 32d: shallow checkout deepens then confirms lineage OK for a real ancestor"
+    else
+      fail "case 32d: expected a shallow-deepen line then a lineage OK line"
+      cat /tmp/deploy-test-32d.log
+    fi
+  else
+    fail "case 32d: a real ancestor sha should proceed even from a shallow checkout (after deepening)"
+    cat /tmp/deploy-test-32d.log
+  fi
+  unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
+else
+  fail "case 32d: could not create a local --depth 1 clone of the fixture upstream — see /tmp/deploy-test-32d-clone.log"
+  cat /tmp/deploy-test-32d-clone.log
+fi
+unset DEPLOY_LINEAGE_REPO_ROOT
+
+# --- Case 32e: non-dry-run path also calls the lineage check (no test hook
+# --- gate) — proven statically since a real deploy needs a real box; the
+# --- guard is that assert_deployed_sha_lineage "$SHA" appears in the
+# --- non-DRY_RUN branch, not behind a dry-run-only conditional.
+if grep -qF 'assert_deployed_sha_lineage "$SHA"' "$DEPLOY_SCRIPT"; then
+  pass "case 32e: the real (non-dry-run) deploy path calls the lineage check unconditionally"
+else
+  fail "case 32e: expected assert_deployed_sha_lineage \"\$SHA\" wired into the real deploy path"
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+  echo "deploy-linux.test.sh: FAILED"
+  exit 1
+fi
+echo "deploy-linux.test.sh: all cases passed (including case 32)"
