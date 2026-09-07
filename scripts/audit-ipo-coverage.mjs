@@ -11,7 +11,7 @@ import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './l
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
-import { checkProvenanceLineage, checkDuplicateIdentity, evaluateProvenanceCeiling, classifyDuplicateGroups } from './lib/provenance-checks.mjs';
+import { checkProvenanceLineage, checkDuplicateIdentity, evaluateProvenanceCeiling, classifyDuplicateGroups, applyRebaseline } from './lib/provenance-checks.mjs';
 
 // T-297 (gap G3): loading web/.env.local is now OPTIONAL. On a dev PC that file
 // carries the SSH-tunnel DSN, so it stays the default. On the Linux box — where
@@ -45,14 +45,6 @@ const REBASELINE_PROVENANCE = process.argv.includes('--rebaseline-provenance');
 const PROVENANCE_BASELINE_PATH = join(__dirname, '..', 'config', 'provenance-lineage-baseline.json');
 const DUPLICATE_ALLOWLIST_PATH = join(__dirname, '..', 'config', 'duplicate-identity-allowlist.json');
 
-function resolveDbName() {
-  if (process.env.DATABASE_NAME) return process.env.DATABASE_NAME;
-  if (process.env.DATABASE_URL) {
-    try { return new URL(process.env.DATABASE_URL).pathname.replace(/^\//, '') || 'unknown'; }
-    catch { return 'unknown'; }
-  }
-  return 'unknown';
-}
 
 // Mirror packages/shared/src/db/index.ts: use discrete DATABASE_* params only
 // when both HOST and PASSWORD are set (dev-tunnel shape); otherwise fall back
@@ -310,19 +302,26 @@ async function main() {
   const sourcedIpoIdRows = await q(`SELECT DISTINCT ipo_id FROM field_sources`);
   const sourcedIpoIds = new Set(sourcedIpoIdRows.map((r) => r.ipo_id));
   const provenanceOffenders = checkProvenanceLineage(subRows, sourcedIpoIds);
-  const dbName = resolveDbName();
+  // T-462 round 3: the baseline slot is keyed on the LIVE connection's own
+  // database name (never env vars, which can drift from what the pool is
+  // actually talking to).
+  const dbName = (await q(`SELECT current_database() AS name`))[0].name;
   const provenanceBaselineFile = existsSync(PROVENANCE_BASELINE_PATH)
     ? JSON.parse(readFileSync(PROVENANCE_BASELINE_PATH, 'utf8'))
     : {};
-  if (REBASELINE_PROVENANCE) {
-    provenanceBaselineFile[dbName] = {
-      lineageLessRows: provenanceOffenders.length,
-      recordedAt: new Date().toISOString(),
-      note: `T-462 rebaselined via --rebaseline-provenance (was ${provenanceBaselineFile[dbName]?.lineageLessRows ?? 'unset'}).`,
-    };
-    writeFileSync(PROVENANCE_BASELINE_PATH, JSON.stringify(provenanceBaselineFile, null, 2) + '\n', 'utf8');
-  }
   const provenanceBaselineCount = provenanceBaselineFile[dbName]?.lineageLessRows ?? null;
+  let rebaselineResult = null;
+  if (REBASELINE_PROVENANCE) {
+    rebaselineResult = applyRebaseline(provenanceOffenders.length, provenanceBaselineCount);
+    if (rebaselineResult.applied) {
+      provenanceBaselineFile[dbName] = {
+        lineageLessRows: rebaselineResult.newBaseline,
+        recordedAt: new Date().toISOString(),
+        note: `T-462 rebaselined via --rebaseline-provenance (was ${provenanceBaselineCount ?? 'unset'}).`,
+      };
+      writeFileSync(PROVENANCE_BASELINE_PATH, JSON.stringify(provenanceBaselineFile, null, 2) + '\n', 'utf8');
+    }
+  }
   const provenanceCeiling = evaluateProvenanceCeiling(provenanceOffenders.length, provenanceBaselineCount);
 
   // C2: two different genuine IPOs holding byte-identical date/band/lot/
@@ -333,7 +332,7 @@ async function main() {
   const duplicateAllowlistFile = existsSync(DUPLICATE_ALLOWLIST_PATH)
     ? JSON.parse(readFileSync(DUPLICATE_ALLOWLIST_PATH, 'utf8'))
     : { groups: [] };
-  const { allowed: allowedDuplicateGroups, newFails: newDuplicateGroups } = classifyDuplicateGroups(
+  const { allowed: allowedDuplicateGroups, stale: staleDuplicateGroups, newFails: newDuplicateGroups } = classifyDuplicateGroups(
     duplicateIdentityGroups,
     duplicateAllowlistFile.groups || []
   );
@@ -398,7 +397,9 @@ async function main() {
   if (provenanceCeiling.status === 'FAIL') fail++;
   log(`  [${provenanceCeiling.status}] g_provenance_lineage (db=${dbName}) — ${provenanceCeiling.detail}`);
   for (const r of provenanceOffenders.slice(0, 10)) log(`    - ${r.slug} (${r.company_name})`);
-  if (REBASELINE_PROVENANCE) log(`    (baseline rewritten via --rebaseline-provenance: ${dbName} -> ${provenanceOffenders.length})`);
+  if (REBASELINE_PROVENANCE) {
+    log(`    (--rebaseline-provenance: ${rebaselineResult.applied ? `applied — ${dbName} -> ${rebaselineResult.newBaseline}` : rebaselineResult.detail})`);
+  }
 
   const dupNewTotal = newDuplicateGroups.reduce((n, g) => n + g.length, 0);
   if (newDuplicateGroups.length > 0) fail++;
@@ -406,6 +407,9 @@ async function main() {
   for (const g of newDuplicateGroups) log(`    - ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
   for (const { group: g, entry } of allowedDuplicateGroups) {
     log(`  [WARN] g_duplicate_identity — known, allowlisted, ticket ${entry.ticket}: ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
+  }
+  for (const { group: g, entry } of staleDuplicateGroups) {
+    log(`  [WARN] g_duplicate_identity — allowlist entry stale (row repaired), remove it (ticket ${entry.ticket}): live ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
   }
 
   log(`\n  -- Details-row coverage (HARD, W-151) --`);

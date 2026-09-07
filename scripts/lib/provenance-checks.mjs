@@ -48,20 +48,48 @@ export function evaluateProvenanceCeiling(currentCount, baselineCount) {
   return { status: 'WARN', detail: `current ${currentCount} <= baseline ${baselineCount}${delta > 0 ? ` (-${delta}, drain in progress)` : ' (unchanged)'}` };
 }
 
-// T-462 round 2: C2 stays HARD for any group not already named in
-// config/duplicate-identity-allowlist.json. A group matches an allowlist
-// entry only when its full id set is identical (never a partial/subset
-// match) so a NEW member joining a known group still fails as new.
+// T-462 round 2/3: C2 stays HARD for any group not already named in
+// config/duplicate-identity-allowlist.json.
+//  - EXACT id-set match -> allowed (WARN "known, allowlisted").
+//  - the group is a SUBSET of a known entry's ids (a superset joining is
+//    new, matched by exact-match above never firing) — no: a group that is
+//    a subset of an entry means some of the entry's rows were repaired and
+//    dropped out of the live duplicate set, so the ALLOWLIST is stale, not
+//    the group new -> stale (WARN "allowlist entry stale (row repaired),
+//    remove it"), never a fail.
+//  - anything else (no relation to any known entry, or a genuine superset
+//    with a brand-new member) -> newFails (FAIL).
 export function classifyDuplicateGroups(groups, allowlistEntries) {
   const allowed = [];
+  const stale = [];
   const newFails = [];
   for (const g of groups) {
     const ids = new Set(g.map((r) => r.id));
-    const entry = (allowlistEntries || []).find(
+    const exact = (allowlistEntries || []).find(
       (e) => Array.isArray(e.ids) && e.ids.length === ids.size && e.ids.every((id) => ids.has(id))
     );
-    if (entry) allowed.push({ group: g, entry });
-    else newFails.push(g);
+    if (exact) { allowed.push({ group: g, entry: exact }); continue; }
+    const supersetEntry = (allowlistEntries || []).find(
+      (e) => Array.isArray(e.ids) && e.ids.length > ids.size && [...ids].every((id) => e.ids.includes(id))
+    );
+    if (supersetEntry) { stale.push({ group: g, entry: supersetEntry }); continue; }
+    newFails.push(g);
   }
-  return { allowed, newFails };
+  return { allowed, stale, newFails };
+}
+
+// T-462 round 3: --rebaseline-provenance is LOWER-ONLY. Raising the baseline
+// would silently permit a regression — exactly what the ceiling exists to
+// stop. Refuses (does not write) when the current count would raise it;
+// there is deliberately no raise path here (--rebaseline-provenance-raise is
+// named in the refusal message as a future, explicit, reasoned escape
+// hatch — not implemented by this predicate).
+export function applyRebaseline(currentCount, existingBaselineCount) {
+  if (existingBaselineCount != null && currentCount > existingBaselineCount) {
+    return {
+      applied: false,
+      detail: `rebaseline refused: current ${currentCount} > baseline ${existingBaselineCount}; fix the rows or pass --rebaseline-provenance-raise with a reason`,
+    };
+  }
+  return { applied: true, newBaseline: currentCount, detail: `baseline lowered to ${currentCount} (was ${existingBaselineCount ?? 'unset'})` };
 }

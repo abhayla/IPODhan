@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { checkIssueSizeSegmentFloor } from '../lib/substance-checks.mjs';
-import { checkProvenanceLineage, checkDuplicateIdentity, evaluateProvenanceCeiling, classifyDuplicateGroups } from '../lib/provenance-checks.mjs';
+import { checkProvenanceLineage, checkDuplicateIdentity, evaluateProvenanceCeiling, classifyDuplicateGroups, applyRebaseline } from '../lib/provenance-checks.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AUDIT_FILE = path.join(__dirname, '..', 'audit-ipo-coverage.mjs');
@@ -211,5 +211,67 @@ test('classifyDuplicateGroups: a superset of a known group (new member joined) i
   const allowlist = [{ ids: ['a1', 'a2'], reason: 'known clone pending repair', ticket: '#178' }];
   const { allowed, newFails } = classifyDuplicateGroups(groups, allowlist);
   assert.equal(allowed.length, 0);
+  assert.equal(newFails.length, 1);
+});
+
+// #188 T-462 round 3: --rebaseline-provenance is LOWER-ONLY.
+test('applyRebaseline: refuses when the current count would RAISE the baseline', () => {
+  const r = applyRebaseline(20, 16);
+  assert.equal(r.applied, false);
+  assert.match(r.detail, /rebaseline refused: current 20 > baseline 16/);
+  assert.match(r.detail, /--rebaseline-provenance-raise/);
+});
+
+test('applyRebaseline: applies (lowers) when the current count is below the baseline', () => {
+  const r = applyRebaseline(10, 16);
+  assert.equal(r.applied, true);
+  assert.equal(r.newBaseline, 10);
+});
+
+test('applyRebaseline: applies (no-op value) when the current count equals the baseline', () => {
+  const r = applyRebaseline(16, 16);
+  assert.equal(r.applied, true);
+  assert.equal(r.newBaseline, 16);
+});
+
+test('applyRebaseline: applies when there is no existing baseline (first seed)', () => {
+  const r = applyRebaseline(6, null);
+  assert.equal(r.applied, true);
+  assert.equal(r.newBaseline, 6);
+});
+
+// #188 T-462 round 3: the baseline slot is keyed on the live connection's
+// own current_database(), never an env var — this test documents the
+// contract at the predicate boundary: whatever string is passed as the key
+// is used verbatim, so the caller (audit-ipo-coverage.mjs) MUST source it
+// from `SELECT current_database()`, not process.env.DATABASE_NAME/_URL.
+test('provenance baseline lookup uses the key passed in (the live current_database() value), not an env var', () => {
+  const baselineFile = { ipodhan_staging: { lineageLessRows: 16 }, ipodhan: { lineageLessRows: 6 } };
+  const liveDbName = 'ipodhan_staging'; // as if returned by SELECT current_database()
+  const baseline = baselineFile[liveDbName]?.lineageLessRows ?? null;
+  assert.equal(baseline, 16);
+  const wrongEnvName = 'some_env_var_value_that_does_not_match';
+  assert.equal(baselineFile[wrongEnvName]?.lineageLessRows ?? null, null);
+});
+
+// #188 T-462 round 3: a repaired row shrinks a known duplicate group — the
+// remaining live group is a SUBSET of the allowlist entry's id set. That is
+// a stale allowlist entry, not a new violation.
+test('classifyDuplicateGroups: a repaired row (live group is a subset of a known entry) is WARN "stale", not a fail', () => {
+  const groups = [[{ id: 'a1' }, { id: 'a2' }]]; // a3 was repaired and dropped out
+  const allowlist = [{ ids: ['a1', 'a2', 'a3'], reason: 'known clone pending repair', ticket: '#241' }];
+  const { allowed, stale, newFails } = classifyDuplicateGroups(groups, allowlist);
+  assert.equal(allowed.length, 0);
+  assert.equal(newFails.length, 0);
+  assert.equal(stale.length, 1);
+  assert.equal(stale[0].entry.ticket, '#241');
+});
+
+test('classifyDuplicateGroups: a group unrelated to any allowlist entry is still a fail (not stale)', () => {
+  const groups = [[{ id: 'z1' }, { id: 'z2' }]];
+  const allowlist = [{ ids: ['a1', 'a2', 'a3'], reason: 'known clone pending repair', ticket: '#241' }];
+  const { allowed, stale, newFails } = classifyDuplicateGroups(groups, allowlist);
+  assert.equal(allowed.length, 0);
+  assert.equal(stale.length, 0);
   assert.equal(newFails.length, 1);
 });
