@@ -37,24 +37,41 @@ export const GUARD_CALL_PATTERN = /\bopenRepairDb\s*\(/;
 /**
  * Strip comments and string literals so an import or a guard call that only
  * APPEARS inside a comment or a quoted string never satisfies the lint.
- * Regex-only (no tokenizer): one alternation matches a string OR a comment, so
- * a `//` inside a string and a quote inside a comment both behave correctly.
- * Strings collapse to `""` (keeps the code syntactically readable), comments
- * to nothing.
+ *
+ * ONE alternation, ONE pass: a block comment, a line comment, or a string
+ * literal, matched left-to-right so whichever starts first wins. This is
+ * load-bearing — running three separate `.replace()` calls in sequence
+ * (block comments, then line comments, then strings) was tried first and is
+ * WRONG: a template-literal URL like `` `https://example.com/x` `` contains
+ * `//`, so a line-comment pass that runs BEFORE the string pass treats the
+ * URL's `//` as a comment start, deletes to end of line, and leaves the
+ * backtick unclosed — which then desyncs the string-literal regex for the
+ * rest of the file (github.com/abhayla/IPODhan#386, batch 1: every one of
+ * the six Chittorgarh backfill tools fetches a `https://...` template
+ * literal, so this bug silently misclassified all six as "guard not
+ * called" even once `openRepairDb()` was correctly wired in). A single
+ * alternation never has this ordering problem because whichever token
+ * starts first (comment or string) is the one consumed.
  */
-export function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-}
-
-export function stripCommentsAndStrings(source) {
+function buildTokenPattern() {
   const BS = String.fromCharCode(92); // one backslash, built rather than escaped
   // A quoted literal: opening quote, then escaped chars or non-quote/non-backslash, then close.
   const quoted = (q) => `${q}(?:${BS}${BS}.|[^${q}${BS}${BS}])*${q}`;
-  const STRING_LITERAL = new RegExp([quoted('"'), quoted("'"), quoted('`')].join('|'), 'g');
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '') // block comments first (a quote inside one is not a string)
-    .replace(/\/\/[^\n]*/g, '') // then line comments (an apostrophe in prose is not a string)
-    .replace(STRING_LITERAL, '""'); // finally string bodies
+  return new RegExp(
+    ['/\\*[\\s\\S]*?\\*/', '//[^\n]*', quoted('"'), quoted("'"), quoted('`')].join('|'),
+    'g'
+  );
+}
+
+const TOKEN_PATTERN = buildTokenPattern();
+
+/** Comments removed, string/template literal bodies left intact. */
+export function stripComments(source) {
+  return source.replace(TOKEN_PATTERN, (m) => (m.startsWith('/') ? '' : m));
+}
+
+export function stripCommentsAndStrings(source) {
+  return source.replace(TOKEN_PATTERN, (m) => (m.startsWith('/') ? '' : '""'));
 }
 
 /** `// repair-tool-exempt: YYYY-MM-DD <reason of 10+ chars>` */

@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill Missing / Collapsed Price Bands
  *
@@ -42,13 +41,18 @@
  *
  * Run:
  * cd scraper
- * npx tsx scripts/backfill-price-bands.ts --dry-run --csv=../dry-run.csv   # review first
- * npx tsx scripts/backfill-price-bands.ts --csv=../applied.csv             # apply
+ * npx tsx scripts/backfill-price-bands.ts --csv=../dry-run.csv             # dry-run (default; review first)
+ * npx tsx scripts/backfill-price-bands.ts --apply --csv=../applied.csv     # apply
+ *
+ * T-492 round 2 (#390): dry-run is the default, matching every other repair
+ * tool (defect-fix-contract.md / repair-tool.ts). `--dry-run` is still
+ * accepted as a no-op for old invocations/scripts that pass it explicitly.
  *
  * @module scraper/scripts/backfill-price-bands
  */
 
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { db } from '@ipodhan/shared/db';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
@@ -60,8 +64,17 @@ import {
   parsePriceRange,
   type NSEPastIssue,
 } from '../src/services/nse-past-issue-matcher.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
-const DRY_RUN = process.argv.includes('--dry-run');
+// T-492 round 2: dry-run by default (repair-tool convention); --apply opts into writes.
+// --dry-run is still accepted (no-op) so an old invocation that passed it explicitly still works.
+// Extracted as a pure function so the default-mode decision is unit-testable without
+// triggering backfillPriceBands()'s unconditional network/DB calls at import time.
+export function resolveApplyMode(argv: string[]): { apply: boolean; dryRun: boolean } {
+  const apply = argv.includes('--apply');
+  return { apply, dryRun: !apply };
+}
+const { apply: APPLY, dryRun: DRY_RUN } = resolveApplyMode(process.argv);
 
 /** Exact-identifier-only by default - see the T-276 note above. */
 const IDENTITY: 'symbol' | 'symbol+name' =
@@ -202,6 +215,12 @@ async function backfillPriceBands() {
   console.log('========================================\n');
 
   try {
+    await openRepairDb(db, {
+      apply: !DRY_RUN,
+      allowProd: process.argv.includes('--allow-prod'),
+      toolName: 'backfill-price-bands',
+    });
+
     // Step 1: Get IPOs with missing OR collapsed price bands
     console.log('Step 1: Querying IPOs with missing/collapsed price bands...\n');
 
@@ -425,4 +444,9 @@ async function backfillPriceBands() {
   }
 }
 
-backfillPriceBands();
+// T-492 round 2: guarded so importing this module (e.g. from a unit test that
+// only wants resolveApplyMode) never triggers the real network/DB run.
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
+  backfillPriceBands();
+}

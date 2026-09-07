@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill Lot Size from Chittorgarh - Scraper Enhancement Option B
  *
@@ -33,6 +32,7 @@ import * as cheerio from 'cheerio';
 import logger from '../src/utils/logger.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { openRepairDb } from './lib/repair-tool.js';
 
 interface BackfillCandidate {
   id: string;
@@ -409,6 +409,12 @@ async function main() {
   if (limit) {
     console.log(`📊 Testing on first ${limit} IPOs\n`);
   }
+
+  await openRepairDb(db, {
+    apply: !dryRun,
+    allowProd: args.includes('--allow-prod'),
+    toolName: 'backfill-lot-size-from-chittorgarh',
+  });
 
   await backfillLotSizes({ dryRun, limit });
 

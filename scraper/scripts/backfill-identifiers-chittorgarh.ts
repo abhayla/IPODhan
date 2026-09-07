@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill: ipos.isin + ipos.symbol from Chittorgarh reports 25 (listing) + 20 (prospectus) (B7)
  *
@@ -17,6 +16,7 @@ import { fetchChittorgarhListingRows } from '../src/scrapers/chittorgarh-listing
 import { fetchChittorgarhProspectusRows } from '../src/scrapers/chittorgarh-document-scraper.js';
 import { fetchNseEquityMasters } from '../src/scrapers/nse-equity-master.js';
 import logger from '../src/utils/logger.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 const FY = [
@@ -32,6 +32,12 @@ async function main() {
   console.log('='.repeat(80));
   console.log(`IDENTIFIER (isin/symbol) BACKFILL — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'backfill-identifiers-chittorgarh',
+  });
 
   // name -> {isin, symbol} from both reports (first non-null wins)
   const byName = new Map<string, { isin: string | null; symbol: string | null }>();
