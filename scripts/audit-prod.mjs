@@ -14,7 +14,7 @@
  * Checks map to the GitHub issues filed 2026-06-12 (#2–#14).
  */
 
-import { bisectDefaultParameter, issuePriceNullRate } from './lib/cache-poison-bisect.mjs';
+import { bisectDefaultParameter, buildSample } from './lib/cache-poison-bisect.mjs';
 
 const BASE = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_API_TOKEN || '';
@@ -199,14 +199,7 @@ async function run() {
     const DEFAULT_LIMIT = 20;
     const sample = async (limit) => {
       const res = await get(`/api/ipos/history?limit=${limit}`);
-      const rows = res.json?.data || [];
-      return {
-        n: limit,
-        total: res.json?.pagination?.total ?? -1,
-        leadingIds: rows.slice(0, 5).map((r) => r.id ?? r.slug),
-        nullRate: issuePriceNullRate(rows),
-        httpOk: res.status === 200,
-      };
+      return buildSample(limit, res.status, res.json, res.text);
     };
     const [below, at, above] = await Promise.all([
       sample(DEFAULT_LIMIT - 1),
@@ -214,8 +207,11 @@ async function run() {
       sample(DEFAULT_LIMIT + 1),
     ]);
     if (!below.httpOk || !at.httpOk || !above.httpOk) {
+      const bad = [below, at, above].filter((s) => !s.httpOk)
+        .map((s) => `limit=${s.n} status=${s.status} body="${s.bodySnippet}"`)
+        .join('; ');
       record('cache-poison bisect /api/ipos/history', false,
-        `endpoint unreachable at one of N-1/N/N+1 (status ${below.httpOk},${at.httpOk},${above.httpOk})`);
+        `non-200 or non-JSON-array body on one of N-1/N/N+1: ${bad}`);
     } else {
       const violation = bisectDefaultParameter(below, at, above);
       record('cache-poison bisect /api/ipos/history (N-1/N/N+1 agree)', violation === null,

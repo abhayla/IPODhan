@@ -52,6 +52,32 @@ export function bisectDefaultParameter(below, at, above, nullRateToleranceDeltaP
   return reasons.length ? reasons.join('; ') : null;
 }
 
+/**
+ * Build one N-1/N/N+1 probe sample from a raw HTTP response, treating a 200
+ * with a non-JSON or wrong-shape body as a FAILED probe (round-3 finding: a
+ * 200 with an unparsed body left `json` undefined, so `rows=[]`/`total=-1`
+ * for all three samples and they trivially agreed — a silent false PASS).
+ *
+ * @param {number} n            the probed limit
+ * @param {number} status       HTTP status code
+ * @param {{data?:unknown, pagination?:{total?:number}}|undefined} json  parsed body, or undefined if not valid JSON
+ * @param {string} text         raw response body (for the failure snippet)
+ * @returns {{n:number,total:number,leadingIds:string[],nullRate:number,httpOk:boolean,status:number,bodySnippet:string}}
+ */
+export function buildSample(n, status, json, text) {
+  const shapeOk = status === 200 && Array.isArray(json?.data);
+  const rows = shapeOk ? json.data : [];
+  return {
+    n,
+    total: shapeOk ? (json.pagination?.total ?? -1) : -1,
+    leadingIds: rows.slice(0, 5).map((r) => r.id ?? r.slug),
+    nullRate: issuePriceNullRate(rows),
+    httpOk: shapeOk,
+    status,
+    bodySnippet: (text || '').slice(0, 80),
+  };
+}
+
 /** Fraction of rows whose issuePrice is null/undefined. */
 export function issuePriceNullRate(rows) {
   if (!rows || rows.length === 0) return 0;

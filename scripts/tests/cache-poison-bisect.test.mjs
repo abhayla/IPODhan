@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bisectDefaultParameter, issuePriceNullRate } from '../lib/cache-poison-bisect.mjs';
+import { bisectDefaultParameter, issuePriceNullRate, buildSample } from '../lib/cache-poison-bisect.mjs';
 
 function healthySample(n, count) {
   return {
@@ -59,6 +59,26 @@ test('PASSES when leading ids are reordered or one boundary row differs (tied se
   const above = { n: 21, total: 235, leadingIds: ['c', 'a', 'b', 'd', 'e'], nullRate: 0 };
 
   assert.equal(bisectDefaultParameter(below, at, above), null);
+});
+
+test('buildSample: a 200 with a non-JSON body is httpOk=false, not a trivial total=-1 agreement (round-3 finding)', () => {
+  const s = buildSample(20, 200, undefined, 'Internal Server Error (not json)');
+  assert.equal(s.httpOk, false);
+  assert.equal(s.total, -1);
+  assert.equal(s.n, 20);
+  assert.match(s.bodySnippet, /not json/);
+});
+
+test('buildSample: a 200 whose json lacks a data array is httpOk=false', () => {
+  const s = buildSample(21, 200, { pagination: { total: 5 } }, '{"pagination":{"total":5}}');
+  assert.equal(s.httpOk, false);
+});
+
+test('buildSample: a healthy 200 JSON array response is httpOk=true', () => {
+  const s = buildSample(19, 200, { data: [{ id: 'a', issuePrice: 100 }], pagination: { total: 1 } }, '{}');
+  assert.equal(s.httpOk, true);
+  assert.equal(s.total, 1);
+  assert.deepEqual(s.leadingIds, ['a']);
 });
 
 test('issuePriceNullRate: computes fraction of rows with null/undefined issuePrice', () => {
