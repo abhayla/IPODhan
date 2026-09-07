@@ -337,11 +337,11 @@
     },
     {
       "id": "m_extraction_stuck",
-      "findingClass": "a required document type (DRHP/RHP/PROSPECTUS) on a live-window IPO is stuck in extraction (MANUAL_REVIEW, EXTRACT_FAILED, or FAILED behind a HARD_FAILURE marker) with nothing FAIL-level watching it",
+      "findingClass": "a required document type (DRHP/RHP/PROSPECTUS) on a live-window IPO is stuck in extraction (MANUAL_REVIEW, EXTRACT_FAILED, FAILED behind a HARD_FAILURE marker, or FAILED repeatedly WITHOUT ever escalating to a HARD_FAILURE marker or MANUAL_REVIEW) with nothing FAIL-level watching it",
       "round7Findings": [],
-      "sourceTask": "round-5 review-of-the-reviews (#333 follow-up)",
+      "sourceTask": "round-5 review-of-the-reviews (#333 follow-up); 4th shape added T-494 (#396, spawnSync ETIMEDOUT never escalating)",
       "registryClass": "silent-terminal-state-invisible-to-audit",
-      "failThreshold": "any UPCOMING/OPEN/CLOSED/LISTED IPO's DRHP/RHP/PROSPECTUS document has extraction_status=MANUAL_REVIEW, a sibling document_fetch_state.state=EXTRACT_FAILED, or extraction_status=FAILED with an extraction_error starting HARD_FAILURE:, for more than 48h",
+      "failThreshold": "any UPCOMING/OPEN/CLOSED/LISTED IPO's DRHP/RHP/PROSPECTUS document has extraction_status=MANUAL_REVIEW, a sibling document_fetch_state.state=EXTRACT_FAILED, extraction_status=FAILED with an extraction_error starting HARD_FAILURE:, OR extraction_status=FAILED with retry_count between 3 and MAX_EXTRACTION_ATTEMPTS(10) exclusive and NO HARD_FAILURE: marker, for more than 48h",
       "severity": "P1",
       "unverifiableWhen": "never - always runs against documents/document_fetch_state joined to ipos"
     },
