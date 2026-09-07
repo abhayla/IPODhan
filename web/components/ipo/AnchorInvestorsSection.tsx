@@ -291,12 +291,13 @@ export function AnchorInvestorsSection({
           )}
 
           {/* Helper Text */}
-          <div className="text-xs text-muted-foreground border-t pt-4">
+          <div className="text-xs text-muted-foreground border-t pt-4 space-y-1">
             <p>
               <strong>Note:</strong> Anchor investor data is sourced from the
               company&apos;s anchor allotment details published by stock exchanges.
               Anchor allocation helps assess institutional confidence in the IPO.
             </p>
+            <p>Source: exchange anchor allocation report</p>
           </div>
         </div>
       </CardContent>
