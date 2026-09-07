@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: name-pollution cleanup + duplicate-merge + ipo_slug_redirects (P3-1,
  * T-278). Recreates the one-off manual operation that produced the 17 redirect

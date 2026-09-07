@@ -1,3 +1,4 @@
+// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Backfill (Stage E): enrich financial_data from stored RHP/Prospectus PDFs via
  * the free pdfplumber sidecar (C3b, #8). NO LLM.

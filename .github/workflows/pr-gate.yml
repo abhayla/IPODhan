@@ -105,6 +105,22 @@ jobs:
           node --test scripts/tests/check-migration-journal.test.mjs
           node scripts/ci/check-migration-journal.mjs
 
+      - name: Repair-tool module lint self-test (T-490)
+        # Mutation-proof: scripts/ci/tests/require-repair-tool-module.test.mjs
+        # imports the real predicates from the lint, so weakening the import
+        # check or accepting an undated exemption turns this red before the
+        # lint below can silently stop catching the class.
+        run: node --test scripts/ci/tests/require-repair-tool-module.test.mjs
+
+      - name: Repair-tool module - every repair/backfill tool uses the shared guards (T-490)
+        # Three repair tools each re-typed the guard pattern on 2026-09-07 and
+        # each got a different part wrong (no provenance row; an env-based prod
+        # guard the host-based pool bypasses; a direct `ipos` writer). Every
+        # scraper/scripts/{repair,backfill}-*.ts must import
+        # scraper/scripts/lib/repair-tool.ts or carry a dated
+        # `// repair-tool-exempt: <date> <reason>` line.
+        run: node scripts/ci/require-repair-tool-module.mjs
+
       - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
         # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
         # writers and the runtime-resolved dynamic-table admin route that a

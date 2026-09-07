@@ -1,0 +1,88 @@
+// T-490: mutation-proof self-test for the repair-tool-module lint.
+//
+// Imports the REAL predicates from scripts/ci/require-repair-tool-module.mjs,
+// so weakening the import check or accepting an undated exemption turns a
+// named test red before the lint can silently stop catching the class.
+//
+//   node --test scripts/ci/tests/require-repair-tool-module.test.mjs
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  classifyToolFile,
+  EXEMPTION_PATTERN,
+  MODULE_IMPORT_PATTERN,
+  TOOL_FILENAME_PATTERN,
+} from '../require-repair-tool-module.mjs';
+
+const FIXTURE_WITHOUT_IMPORT = `/** A brand-new repair tool that re-typed the guards. */
+import { db } from '@ipodhan/shared';
+const APPLY = process.argv.includes('--apply');
+if (APPLY && process.env.DATABASE_NAME === 'ipodhan') process.exit(1);
+`;
+
+const FIXTURE_WITH_IMPORT = `/** A brand-new repair tool that uses the shared module. */
+import { openRepairDb, upsertFieldSource } from './lib/repair-tool.js';
+`;
+
+test('RED: a repair-*.ts fixture that does not import the module is a violation', () => {
+  const r = classifyToolFile('repair-fixture-t000.ts', FIXTURE_WITHOUT_IMPORT);
+  assert.equal(r.verdict, 'violation');
+  assert.match(r.message, /does not import/);
+});
+
+test('RED: a backfill-*.ts fixture that does not import the module is a violation', () => {
+  const r = classifyToolFile('backfill-fixture-t000.ts', FIXTURE_WITHOUT_IMPORT);
+  assert.equal(r.verdict, 'violation');
+});
+
+test('GREEN: the same fixture passes once it imports scripts/lib/repair-tool.ts', () => {
+  const r = classifyToolFile('repair-fixture-t000.ts', FIXTURE_WITH_IMPORT);
+  assert.equal(r.verdict, 'ok');
+});
+
+test('GREEN: a dated exemption with a real reason is accepted', () => {
+  const r = classifyToolFile(
+    'repair-fixture-t000.ts',
+    `// repair-tool-exempt: 2026-09-07 read-only report, never writes to the DB\n${FIXTURE_WITHOUT_IMPORT}`
+  );
+  assert.equal(r.verdict, 'exempt');
+  assert.equal(r.date, '2026-09-07');
+});
+
+test('an UNDATED exemption is not accepted — the marker must carry a date', () => {
+  const r = classifyToolFile(
+    'repair-fixture-t000.ts',
+    `// repair-tool-exempt: read-only report, never writes to the DB\n${FIXTURE_WITHOUT_IMPORT}`
+  );
+  assert.equal(r.verdict, 'violation');
+});
+
+test('an exemption with no reason is not accepted — the marker must say why', () => {
+  const r = classifyToolFile('repair-fixture-t000.ts', `// repair-tool-exempt: 2026-09-07 nope\n${FIXTURE_WITHOUT_IMPORT}`);
+  assert.equal(r.verdict, 'violation');
+});
+
+test('non-tool files in the same directory are ignored', () => {
+  for (const name of ['reset-document.ts', 'merge-duplicate-ipos.ts', 'audit-something.mjs', 'lib']) {
+    assert.equal(classifyToolFile(name, FIXTURE_WITHOUT_IMPORT).verdict, 'not-a-tool');
+  }
+});
+
+test('MUTATION: the filename pattern still matches both tool prefixes', () => {
+  assert.ok(TOOL_FILENAME_PATTERN.test('repair-x.ts'));
+  assert.ok(TOOL_FILENAME_PATTERN.test('backfill-x.ts'));
+  assert.ok(!TOOL_FILENAME_PATTERN.test('repair-x.test.mjs'));
+});
+
+test('MUTATION: the import pattern matches a relative and a deep specifier, not an unrelated one', () => {
+  assert.ok(MODULE_IMPORT_PATTERN.test(`from './lib/repair-tool.js'`));
+  assert.ok(MODULE_IMPORT_PATTERN.test(`from '../../scraper/scripts/lib/repair-tool.js'`));
+  assert.ok(!MODULE_IMPORT_PATTERN.test(`from './lib/chittorgarh-report82-discovery.js'`));
+});
+
+test('MUTATION: the exemption pattern requires a date and a 10+ char reason', () => {
+  assert.ok(EXEMPTION_PATTERN.test('// repair-tool-exempt: 2026-09-07 a good long reason'));
+  assert.ok(!EXEMPTION_PATTERN.test('// repair-tool-exempt: 2026-09-07 short'));
+  assert.ok(!EXEMPTION_PATTERN.test('// repair-tool-exempt: no date at all here'));
+});
