@@ -1,0 +1,9 @@
+{
+  "class_id": "document cycle overrun / no calendar gate",
+  "feature": "document-cycle.ts (`runDocumentCycle`, `primarySourceDiscovery` step)",
+  "symptom": "the document cycle ran on EVERY 30-min pm2 wake with no weekday/holiday gate and two INDEPENDENT budgets (60s discovery + 25min extraction, no shared ceiling) that could together exceed the 30-min wake and the cycle lock's TTL, letting one wake overlap the next; observed 1,210-1,278s cycles and 105-115 network calls per cycle on a Sunday (2026-09-06)",
+  "first_seen": "2026-09-06 (cycle-overrun RCA; cadence decision D-13, owner 2026-09-03)",
+  "fix_prs": "calendar gate (`document-cycle-calendar-gate.ts`: Sunday/Saturday/NSE-holiday wakes make only UPCOMING/PRE_OPEN/OPEN candidates eligible for network work) + one shared wake budget (`DOCUMENT_CYCLE_WAKE_BUDGET_MS`, default 20min — extraction gets what discovery left, capped; `CYCLE_LOCK_TTL_MS` in index.ts now derived from the same budget + 5min slack instead of a separately-hardcoded number)",
+  "detection_check": "`m_cycle_overrun` (`scripts/lib/document-state-checks.mjs`, wired in `scripts/audit-detection-floor.mjs`)",
+  "status": "guarded"
+}

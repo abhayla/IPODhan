@@ -1,0 +1,9 @@
+{
+  "class_id": "registrar address pollution",
+  "feature": "scraper persist (registrar)",
+  "symptom": "`registrar` field carries an address/contact fragment instead of the registrar name",
+  "first_seen": "round-7 detection RCA (P3 batch)",
+  "fix_prs": "`checkRegistrarQuality` added",
+  "detection_check": "`registrar_quality` (`scripts/lib/substance-checks.mjs`)",
+  "status": "guarded"
+}

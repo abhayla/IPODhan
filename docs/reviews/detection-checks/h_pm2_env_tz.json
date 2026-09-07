@@ -1,0 +1,12 @@
+{
+  "id": "h_pm2_env_tz",
+  "findingClass": "a pm2 process runs without TZ in its environment, exposing new Date() parsing to the box's local time",
+  "round7Findings": [
+    "P2-7",
+    "P1-1 (enabling gap)"
+  ],
+  "failThreshold": "any pm2 process's env lacks a TZ key",
+  "severity": "P1",
+  "unverifiableWhen": "pm2 not reachable on the host running the audit (expected off the production box)",
+  "section": "checks"
+}

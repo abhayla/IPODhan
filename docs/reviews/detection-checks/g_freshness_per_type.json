@@ -1,0 +1,11 @@
+{
+  "id": "g_freshness_per_type",
+  "findingClass": "an offering_type's calendar has gone stale with no per-type freshness check to catch it",
+  "round7Findings": [
+    "P2-10"
+  ],
+  "failThreshold": "newest row age exceeds 3 days (IPO/SME) or 21 days (OFS/NCD/RIGHTS)",
+  "severity": "P2",
+  "unverifiableWhen": "no rows exist yet for that offering_type",
+  "section": "checks"
+}

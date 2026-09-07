@@ -1,0 +1,9 @@
+{
+  "class_id": "scraper locks left by deploy",
+  "feature": "scripts/deploy-linux.sh / scraper cycle locks",
+  "symptom": "a deploy that stops the scraper mid-cycle leaves the Redis cycle lock held, starving the next cron cycle",
+  "first_seen": "walk W-176",
+  "fix_prs": "`7f964415`, `648c2ba8`, `1d966477` (release locks on deploy stop; compare-and-delete on the lock token)",
+  "detection_check": "none in `substance-checks.mjs`/`audit-*.mjs`",
+  "status": "unguarded"
+}

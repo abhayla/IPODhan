@@ -1,0 +1,11 @@
+{
+  "id": "f_conflict_noise_ratio",
+  "findingClass": "the data_conflicts table is dominated by non-actionable noise, burying genuine P1 disagreements",
+  "round7Findings": [
+    "P2-6"
+  ],
+  "failThreshold": "(empty value2 OR value1==value2) / total unresolved >= 5% OR total unresolved > 500 (#191 F2, unbounded-growth ceiling, T-285 11,493-row incident)",
+  "severity": "P2",
+  "unverifiableWhen": "data_conflicts table not present",
+  "section": "checks"
+}

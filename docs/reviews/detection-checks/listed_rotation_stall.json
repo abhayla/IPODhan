@@ -1,0 +1,11 @@
+{
+  "id": "listed_rotation_stall",
+  "findingClass": "a LISTED IPO inside the 10-day window is stuck at the front of the document rotation, either with document rows and zero fetch-state rows (shape 1), or with fetch-state rows that exist but are stale (shape 2)",
+  "round7Findings": [],
+  "sourceTask": "rotation-stall-null-fetch-state (2026-09-06); stale-max-last-attempt shape added 2026-09-06 round 2 (W-136, runDocumentCycle budget-trip LISTED reservation)",
+  "registryRow": "docs/reviews/failure-classes.md - 'listed rotation stall' row",
+  "failThreshold": "shape 1: no LISTED IPO inside the LISTED_ROTATION_WINDOW_DAYS-day live window has documents on file but 0 document_fetch_state rows - MAX(last_attempt_at) sorts a 0-row IPO first forever (NULLS FIRST), so it occupies the front of the LISTED rotation queue every cycle and starves every LISTED row behind it. shape 2: no LISTED IPO inside the live window has >=1 DUE document_fetch_state row (state not in FOUND/NOT_APPLICABLE/SUPERSEDED, AND next_retry_at IS NULL OR next_retry_at <= now() - a row in a deliberate future backoff is NOT due and must not count) whose MAX(last_attempt_at) across all its rows is more than STALE_ROTATION_HOURS (24h) old, or null - a full live (OPEN/CLOSED/UPCOMING) backlog can trip the discovery budget before the LISTED tier every cycle, so rows exist but `last_attempt_at` never advances even though the cycle runs every 30 minutes",
+  "severity": "P2",
+  "unverifiableWhen": "document_fetch_state or documents table not present",
+  "section": "checks"
+}

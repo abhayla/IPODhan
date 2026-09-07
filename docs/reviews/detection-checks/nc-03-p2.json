@@ -1,0 +1,5 @@
+{
+  "id": "nc-03-p2",
+  "section": "notCoveredByThisManifest",
+  "note": "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion"
+}

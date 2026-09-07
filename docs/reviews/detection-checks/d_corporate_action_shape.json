@@ -1,0 +1,11 @@
+{
+  "id": "d_corporate_action_shape",
+  "findingClass": "a row typed offering_type=IPO matches the shape of a corporate action (demerger/scheme-of-arrangement)",
+  "round7Findings": [
+    "P1-4"
+  ],
+  "failThreshold": "offering_type=IPO AND price_range_min==price_range_max AND lot_size==100 AND close_date-open_date in [10..14] days",
+  "severity": "P1",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks"
+}

@@ -1,0 +1,5 @@
+{
+  "id": "nc-04-g-provenance-lineage-188-c1-hard-date-band-asserted-with-zer",
+  "section": "notCoveredByThisManifest",
+  "note": "g_provenance_lineage (#188 C1: hard date/band asserted with zero field_sources lineage rows) — owned by scripts/audit-ipo-coverage.mjs --gate (declining-ceiling WARNING against a committed baseline, config/provenance-lineage-baseline.json, not a hard 0-gate, until the T-292 legacy-row drain completes)"
+}

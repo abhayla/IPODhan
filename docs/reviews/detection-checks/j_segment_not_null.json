@@ -1,0 +1,11 @@
+{
+  "id": "j_segment_not_null",
+  "findingClass": "an offering_type=IPO row has a NULL segment",
+  "round7Findings": [
+    "P3-7"
+  ],
+  "failThreshold": "any offering_type=IPO row with segment IS NULL — an empty/whitespace segment counts as blank, not only SQL NULL.",
+  "severity": "P2",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks"
+}

@@ -1,0 +1,9 @@
+{
+  "class_id": "extraction stuck invisible to audit",
+  "feature": "scripts/audit-detection-floor.mjs (documents/document_fetch_state join)",
+  "symptom": "a required document type (DRHP/RHP/PROSPECTUS) reaches MANUAL_REVIEW, EXTRACT_FAILED, or FAILED behind a HARD_FAILURE marker and stays there with nothing FAIL-level watching it — `m_extract_failed` is WARN-only and keys ONLY off `document_fetch_state.state=EXTRACT_FAILED`, blind to `documents.extraction_status` entirely (`grep -rn MANUAL_REVIEW scripts/` was empty)",
+  "first_seen": "round 5 review (#333 follow-up: two ETIMEDOUTs -> 24h floor -> 10 attempts -> MANUAL_REVIEW, unseen)",
+  "fix_prs": "this PR (`checkExtractionStuck` in `scripts/lib/document-state-checks.mjs`, wired as FAIL-level `m_extraction_stuck`)",
+  "detection_check": "`m_extraction_stuck` (`scripts/audit-detection-floor.mjs`, `docs/reviews/detection-checks.json`)",
+  "status": "guarded"
+}

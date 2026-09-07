@@ -1,0 +1,11 @@
+{
+  "id": "k_step_ledger_silence",
+  "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work — skipped for an unread reason, or failing inside its non-fatal catch",
+  "round7Findings": [
+    "P2-8 (runtime twin)"
+  ],
+  "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here — a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
+  "severity": "P1",
+  "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs — a genuinely dead scraper is caught independently by g_freshness_per_type.",
+  "section": "checks"
+}

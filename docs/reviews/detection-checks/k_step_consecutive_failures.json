@@ -1,0 +1,11 @@
+{
+  "id": "k_step_consecutive_failures",
+  "findingClass": "a post-scrape step fails every cycle, hidden by its non-fatal catch, while the cycle keeps exiting 0",
+  "round7Findings": [
+    "P2-8 (runtime twin)"
+  ],
+  "failThreshold": "any step in the derived STEP_NAMES whose most recent scraper_steps rows show status=failed for >= 3 consecutive cycles (leading streak, newest-first). 2 is a blip and PASSes; a non-failed row ends the streak.",
+  "severity": "P1",
+  "unverifiableWhen": "same as k_step_ledger_silence — unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window",
+  "section": "checks"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "i_wire_or_retire",
+  "findingClass": "a scheduler/cron/job definition exists in the repo but is never imported by the prod entrypoint",
+  "round7Findings": [
+    "P2-8"
+  ],
+  "failThreshold": "any scraper/src/scheduler/*.ts file not `import`-ed by scraper/src/index.ts, ecosystem.config.js, or scripts/deploy-linux.sh",
+  "severity": "P2",
+  "unverifiableWhen": "never — static analysis of the checked-out repo",
+  "section": "checks"
+}

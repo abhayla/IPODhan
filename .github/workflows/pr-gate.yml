@@ -336,6 +336,21 @@ jobs:
       - name: Detection-change gate self-test
         run: node --test scripts/ci/tests/require-detection-change.test.mjs
 
+      - name: Detection registry generator self-test (T-487)
+        run: node --test scripts/tests/build-detection-registry.test.mjs
+
+      - name: Detection registry parity vs origin/main (T-487 round 2)
+        run: node --test scripts/tests/build-detection-registry-parity.test.mjs
+
+      - name: Detection registry aggregates not stale (T-487)
+        # One file per check/failure-class under docs/reviews/detection-checks/
+        # and docs/reviews/failure-classes/ is the source of truth; the
+        # committed detection-checks.json and the generated table in
+        # failure-classes.md are build products every existing reader still
+        # depends on. This fails the PR if someone edited a per-entry file
+        # without re-running the generator, or hand-edited an aggregate.
+        run: node scripts/build-detection-registry.mjs --check
+
       - name: Run detection-change gate
         env:
           GH_PR_NUMBER: ${{ github.event.pull_request.number }}

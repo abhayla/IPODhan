@@ -1,0 +1,9 @@
+{
+  "class_id": "degenerate price band",
+  "feature": "scraper persist (price_range_min/max)",
+  "symptom": "price band min==max or min>max stored on a non-fixed-price issue",
+  "first_seen": "pre-existing (SUBSTANCE_CHECKS design)",
+  "fix_prs": "`checkDegenerateBookbuildingBand` added to substance checks",
+  "detection_check": "`degenerate_bookbuilding_band` (`scripts/lib/substance-checks.mjs`)",
+  "status": "guarded"
+}

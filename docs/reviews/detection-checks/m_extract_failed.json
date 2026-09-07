@@ -1,0 +1,10 @@
+{
+  "id": "m_extract_failed",
+  "findingClass": "a document repeatedly fails extraction, which is a parse bug needing a human rather than a data outage",
+  "round7Findings": [],
+  "sourceTask": "T-403",
+  "failThreshold": "WARN-level only: any row in EXTRACT_FAILED",
+  "severity": "P3",
+  "unverifiableWhen": "document_fetch_state table not present",
+  "section": "checks"
+}

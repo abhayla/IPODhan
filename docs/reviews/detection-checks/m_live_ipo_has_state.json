@@ -1,0 +1,10 @@
+{
+  "id": "m_live_ipo_has_state",
+  "findingClass": "the document job silently stopped: a live IPO has no state rows at all, so nothing was even attempted for it",
+  "round7Findings": [],
+  "sourceTask": "T-403",
+  "failThreshold": "any UPCOMING/OPEN/CLOSED IPO with zero document_fetch_state rows. This is the only check that notices the machine wrote NOTHING — every other check reads rows it wrote",
+  "severity": "P2",
+  "unverifiableWhen": "document_fetch_state table not present",
+  "section": "checks"
+}

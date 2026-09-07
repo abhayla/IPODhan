@@ -1,0 +1,11 @@
+{
+  "id": "j_sector_populated",
+  "findingClass": "the sector field/facet is populated for too few real IPOs to be usable",
+  "round7Findings": [
+    "P3-1"
+  ],
+  "failThreshold": "populated sector fraction < 50% of real IPOs",
+  "severity": "P2",
+  "unverifiableWhen": "never — always runs against the ipos table",
+  "section": "checks"
+}

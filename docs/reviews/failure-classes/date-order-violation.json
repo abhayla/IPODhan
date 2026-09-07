@@ -1,0 +1,9 @@
+{
+  "class_id": "date-order violation",
+  "feature": "scraper persist (open/close/allotment/listing dates)",
+  "symptom": "open > close, or allotment before close, or listing before allotment",
+  "first_seen": "pre-existing (SUBSTANCE_CHECKS design)",
+  "fix_prs": "`checkDateOrdering`",
+  "detection_check": "`date_ordering` (`scripts/lib/substance-checks.mjs`)",
+  "status": "guarded"
+}

@@ -30,6 +30,10 @@ const EXEMPT_GLOBS = [
   /^scripts\/lib\/substance-checks\.mjs$/,
   /^scripts\/audit-.*\.mjs$/,
   /^scraper\/src\/utils\/data-validation\.ts$/,
+  // T-487: a new/changed per-entry file counts as a detection change on its
+  // own — no need to wait for the generated aggregate to be regenerated too.
+  /^docs\/reviews\/detection-checks\/[^/]+\.json$/,
+  /^docs\/reviews\/failure-classes\/[^/]+\.json$/,
 ];
 
 const REGISTRY_FILE = 'docs/reviews/failure-classes.md';

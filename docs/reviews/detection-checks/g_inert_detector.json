@@ -1,0 +1,10 @@
+{
+  "id": "g_inert_detector",
+  "findingClass": "the conflict detector reports zero new conflicts while an independent invariant (checkPriceBand) is demonstrably violated on live IPO rows — the detector is inert, not the data clean",
+  "round7Findings": [],
+  "failThreshold": "checkPriceBand violations on offering_type=IPO rows > 0 AND data_conflicts rows inserted (detected_at) in the last 24h == 0",
+  "severity": "P1",
+  "unverifiableWhen": "data_conflicts or ipos table not present",
+  "note": "#191 F3 (T-297 D6), the important one — a detector reporting zero looks like health unless cross-checked against an invariant independently known to be violated: conflictsDetected read 0 every cycle across 3,760 fields consolidated from 6 sources while T-272 P1-1 simultaneously proved real disagreements existed.",
+  "section": "checks"
+}

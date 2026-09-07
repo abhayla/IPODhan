@@ -1,0 +1,9 @@
+{
+  "class_id": "issue_size 0 or negative",
+  "feature": "scraper persist (issue_size)",
+  "symptom": "`issue_size` stored as 0 or negative on a live IPO row (a null `issue_size` is NOT caught by this check — `checkIssueSize` returns null/no-violation for a null value; the go-forward `issue_size` presence invariant in `scripts/lib/ipo-stage-completeness.mjs` (`issue_size IS NOT NULL AND issue_size > 0`) is what catches a null)",
+  "first_seen": "round-6/7 detection RCA (`docs/reviews/round-7-detection-rca.md` P1-3)",
+  "fix_prs": "round-7 fix (`[FAIL] issue_size > 0` gate)",
+  "detection_check": "`issue_size` (`scripts/lib/substance-checks.mjs`) + go-forward presence invariant (`scripts/lib/ipo-stage-completeness.mjs`)",
+  "status": "guarded"
+}

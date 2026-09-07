@@ -1,0 +1,9 @@
+{
+  "class_id": "DRHP-emitted price band",
+  "feature": "field-priority-matrix (price band)",
+  "symptom": "a DRHP-sourced price band (pre-final, often `[•]` placeholder-derived) is shown instead of the live RHP/Price-Band-Ad/exchange value",
+  "first_seen": "flagged in `docs/reviews/skyways-field-audit.md` (2026-08-27) as a live-matrix ordering question, not confirmed as a shipped bug",
+  "fix_prs": "none — matrix order (`ADMIN>NSE>BSE>DRHP`) was reviewed and left as-is for Skyways",
+  "detection_check": "none found in `substance-checks.mjs` or the audit scripts (no plausibility/source check ties price-band value to its `field_sources` origin)",
+  "status": "unguarded"
+}

@@ -1,0 +1,9 @@
+{
+  "class_id": "garbled anchor names",
+  "feature": "anchor-report-parser.ts (OCR text)",
+  "symptom": "anchor investor names published with OCR corruption (e.g. `OSWAL OT] LAL FINVEST N4 LI IITE D`)",
+  "first_seen": "walk W-81",
+  "fix_prs": "`c17d5d18` — write-time `NAME_QUALITY_FLOOR` 0.3 gate refuses to publish a book with >30% unreadable names",
+  "detection_check": "none in `substance-checks.mjs`/`audit-*.mjs` — the fix is a write-time refusal gate in the parser, not an independent audit check on stored `anchor_investors` rows",
+  "status": "unguarded"
+}

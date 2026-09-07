@@ -1,0 +1,20 @@
+{
+  "$schema": "T-335 detection-checks manifest — read by the round-8 review contract to classify a fresh finding as SHOULD-HAVE-BEEN-CAUGHT (a listed check already covers this finding's class) vs a genuinely new gap.",
+  "generatedBy": "T-335",
+  "sourceRca": "docs/reviews/round-7-detection-rca.md",
+  "auditScript": "scripts/audit-detection-floor.mjs",
+  "selfTest": "scripts/tests/audit-detection-floor.test.mjs",
+  "wiredInto": "scripts/vps-data-audit-cron.sh (cron 45 3 * * * on 72.61.240.224)",
+  "exitCodes": {
+    "0": "every check PASSed",
+    "1": "at least one check FAILed — a defect is live",
+    "2": "the audit itself crashed or could not start",
+    "3": "no FAIL, but at least one check is UNVERIFIABLE — the audit was blind tonight, not green (FAIL dominates when both occur)"
+  },
+  "paging": {
+    "model": "one DIGEST page per check per night (title, failing-row count, first 10 rows, pointer to the full report on the box) — never one page per row",
+    "severityRule": "P1 when the check has rows that were NOT present in the previous run (state persisted in the audit state dir); P2 for an unchanged backlog",
+    "dedupeKey": "detection-floor-<checkId>-<YYYY-MM-DD> for FAIL digests; detection-floor-unverifiable-<checkId>-<YYYY-MM-DD> for UNVERIFIABLE pages — date-scoped so the Notifier 30-minute cooldown cannot swallow the nightly digest",
+    "unverifiablePages": "every UNVERIFIABLE check pages P2; an UNVERIFIABLE check is never treated as a pass"
+  }
+}
