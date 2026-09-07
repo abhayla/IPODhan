@@ -3,7 +3,7 @@
 //   node --test .claude/hooks/tests/wave-dispatch-gate.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -38,10 +38,17 @@ test('evaluateDispatch BLOCKS a build/wave brief while a NEW floor FAIL id has n
   assert.match(v.reason, /check-y/);
 });
 
-test('evaluateDispatch never blocks a reviewer prompt (Tier A/B + review), even with unresolved ids', () => {
-  const v = evaluateDispatch({ toolName: 'Agent', prompt: REVIEWER_BRIEF, unresolvedIds: ['check-x'], allowOverride: false });
+test('evaluateDispatch never blocks a pure reviewer prompt (Tier A/B + review, no Budget:/Class:)', () => {
+  const v = evaluateDispatch({ toolName: 'Agent', prompt: 'Tier A review of the diff, no brief here.', unresolvedIds: ['check-x'], allowOverride: false });
   assert.equal(v.block, false);
   assert.match(v.reason, /reviewer/);
+});
+
+test('round 2 regression: a build brief containing "review: Tier B" is NOT treated as a reviewer and IS blocked', () => {
+  const briefWithTierMention = 'Do X.\nBudget: 30 min, 60 tool calls\nClass: every Y\nreview: Tier B\nProof: ...';
+  const v = evaluateDispatch({ toolName: 'Agent', prompt: briefWithTierMention, unresolvedIds: ['check-x'], allowOverride: false });
+  assert.equal(v.block, true, 'Budget:+Class: makes it a build brief regardless of any Tier text');
+  assert.match(v.reason, /check-x/);
 });
 
 test('evaluateDispatch allows via SIGNAL_GATE_ALLOW override regardless of everything else', () => {
@@ -113,4 +120,28 @@ test('end-to-end: with no floor-issues.json state, the hook fails open (exit 0) 
   // against the real file the hook reads, not a stub.
   const code = runHook({ tool_name: 'Agent', tool_input: { prompt: BUILD_BRIEF } });
   assert.equal(code, 0);
+});
+
+test('end-to-end: corrupt stdin JSON fails open (exit 0)', () => {
+  try {
+    execFileSync('node', [HOOK_SCRIPT], { input: '{ not valid json', encoding: 'utf-8' });
+    assert.ok(true);
+  } catch (err) {
+    assert.equal(err.status, 0, `expected exit 0 on corrupt stdin, got ${err.status}: ${err.stderr}`);
+  }
+});
+
+test('end-to-end: real ISSUES_FILE with an unresolved NEW id blocks a build brief (exit 2)', () => {
+  const realStateDir = path.resolve(__dirname, '../../../scripts/ops/state');
+  const realIssuesFile = path.join(realStateDir, 'floor-issues.json');
+  const preexisting = existsSync(realIssuesFile) ? readFileSync(realIssuesFile, 'utf-8') : null;
+  mkdirSync(realStateDir, { recursive: true });
+  writeFileSync(realIssuesFile, JSON.stringify({ entries: [{ id: 'check-cli-e2e', issue: null }] }));
+  try {
+    const code = runHook({ tool_name: 'Agent', tool_input: { prompt: BUILD_BRIEF } });
+    assert.equal(code, 2);
+  } finally {
+    if (preexisting === null) rmSync(realIssuesFile, { force: true });
+    else writeFileSync(realIssuesFile, preexisting);
+  }
 });

@@ -9,6 +9,7 @@ import {
   pickLatestTwo,
   computeFloorFiles,
   mergeFloorIssues,
+  parseRemoteBundle,
 } from '../../../scripts/ops/morning-read-gate.mjs';
 
 test('pickLatestTwo returns the two latest dates in [older, newer] order', () => {
@@ -20,11 +21,21 @@ test('pickLatestTwo dedupes and handles fewer than 2 dates', () => {
   assert.deepEqual(pickLatestTwo([]), []);
 });
 
-test('computeFloorFiles prefers the VPS when it has 2+ nights, and caches locally', () => {
+test('parseRemoteBundle splits the single-round-trip ssh output into dates + texts', () => {
+  const raw = '===FILE:2026-09-06===\n[PASS] a\n===FILE:2026-09-07===\n[FAIL] b "x"\n[PASS] a\n';
+  const { dates, texts } = parseRemoteBundle(raw);
+  assert.deepEqual(dates, ['2026-09-06', '2026-09-07']);
+  assert.equal(texts['2026-09-06'], '[PASS] a\n');
+  assert.equal(texts['2026-09-07'], '[FAIL] b "x"\n[PASS] a\n\n');
+});
+
+test('computeFloorFiles prefers the VPS (one fetchRemote round-trip) when it has 2+ nights, and caches locally', () => {
   const written = [];
   const runner = {
-    listRemote: () => ['2026-09-06', '2026-09-07'],
-    catRemote: (date) => `[FAIL] check-${date}  "entity"\n`,
+    fetchRemote: () => ({
+      dates: ['2026-09-06', '2026-09-07'],
+      texts: { '2026-09-06': '[PASS] check-2026-09-06\n', '2026-09-07': '[PASS] check-2026-09-07\n' },
+    }),
     listLocal: () => {
       throw new Error('should not be called — remote had enough data');
     },
@@ -42,11 +53,8 @@ test('computeFloorFiles prefers the VPS when it has 2+ nights, and caches locall
 
 test('computeFloorFiles falls back to the local cache when the VPS is unreachable', () => {
   const runner = {
-    listRemote: () => {
+    fetchRemote: () => {
       throw new Error('ssh: connect timed out');
-    },
-    catRemote: () => {
-      throw new Error('should not be called');
     },
     listLocal: () => ['2026-09-05', '2026-09-06'],
     readLocal: (date) => `[PASS] check-${date}\n`,
@@ -60,11 +68,8 @@ test('computeFloorFiles falls back to the local cache when the VPS is unreachabl
 
 test('computeFloorFiles reports "unavailable" with a reason when neither source has 2 nights', () => {
   const runner = {
-    listRemote: () => {
+    fetchRemote: () => {
       throw new Error('ssh: connection refused');
-    },
-    catRemote: () => {
-      throw new Error('should not be called');
     },
     listLocal: () => ['2026-09-06'],
     readLocal: () => {
@@ -79,10 +84,7 @@ test('computeFloorFiles reports "unavailable" with a reason when neither source 
 
 test('computeFloorFiles falls back to cache when remote has fewer than 2 nights (not just on error)', () => {
   const runner = {
-    listRemote: () => ['2026-09-07'],
-    catRemote: () => {
-      throw new Error('should not be called — only 1 remote night, caller must fall back');
-    },
+    fetchRemote: () => ({ dates: ['2026-09-07'], texts: { '2026-09-07': '[PASS] a\n' } }),
     listLocal: () => ['2026-09-05', '2026-09-06'],
     readLocal: (date) => `[PASS] check-${date}\n`,
     writeLocal: () => {},

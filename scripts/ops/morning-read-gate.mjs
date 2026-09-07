@@ -40,7 +40,14 @@ const ISSUES_FILE = path.join(REPO_ROOT, 'scripts', 'ops', 'state', 'floor-issue
 const MERGED_NOT_DEPLOYED_SCRIPT = path.join(REPO_ROOT, 'scripts', 'ops', 'merged-not-deployed.mjs');
 const REMOTE_DIR = '/root/data-audit-ipodhan/state/floor';
 const SSH_HOST = process.env.MORNING_READ_SSH_HOST || 'rfp-vps';
-const SSH_TIMEOUT_SEC = 6;
+// Round 2 fix: one ssh round-trip (not 3), bounded so the SessionStart hook
+// stays well inside its 30s timeout. Worst case:
+//   ssh connect (ConnectTimeout=4s) + ssh exec (execFileSync timeout=6s cap)
+//   + merged-not-deployed subprocess (timeout=5s cap)
+//   = 6s (ssh, which subsumes the 4s connect attempt) + 5s = 11s < 25s target.
+const SSH_CONNECT_TIMEOUT_SEC = 4;
+const SSH_EXEC_TIMEOUT_MS = 6000;
+const MERGED_NOT_DEPLOYED_TIMEOUT_MS = 5000;
 
 /** Pure. dateStrings like "2026-09-07" (from "<date>.txt" filenames) sort
  * lexicographically; returns the latest two as [olderDate, newerDate]. */
@@ -50,14 +57,38 @@ export function pickLatestTwo(dateStrings) {
 }
 
 /**
- * Resolve which two nights' floor text to diff, trying `runner.listRemote()`
- * first and falling back to `runner.listLocal()` on any remote error or
- * insufficient remote data. Pure with respect to its `runner` — no direct
- * ssh/fs calls here, so this is unit-testable with a fake runner.
+ * Parse the output of the single bounded ssh round-trip (round 2 fix: one
+ * ssh call, not three) into { dates, texts }. The remote command prints each
+ * of the newest-2 files as `===FILE:<date>===` followed by its content, so
+ * this is a pure string parse — no I/O — and unit-testable directly.
+ */
+export function parseRemoteBundle(text) {
+  const marker = /^===FILE:(.+?)===$/;
+  const dates = [];
+  const texts = {};
+  let current = null;
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(marker);
+    if (m) {
+      current = m[1].trim();
+      dates.push(current);
+      texts[current] = '';
+    } else if (current !== null) {
+      texts[current] += `${line}\n`;
+    }
+  }
+  return { dates, texts };
+}
+
+/**
+ * Resolve which two nights' floor text to diff, trying `runner.fetchRemote()`
+ * (ONE ssh round-trip — round 2 fix, was 3: a list + 2 cats) first and
+ * falling back to `runner.listLocal()` on any remote error or insufficient
+ * remote data. Pure with respect to its `runner` — no direct ssh/fs calls
+ * here, so this is unit-testable with a fake runner.
  *
  * runner: {
- *   listRemote(): string[] dates,
- *   catRemote(date): string,
+ *   fetchRemote(): { dates: string[], texts: Record<string,string> },
  *   listLocal(): string[] dates,
  *   readLocal(date): string,
  *   writeLocal(date, text): void,
@@ -65,11 +96,11 @@ export function pickLatestTwo(dateStrings) {
  */
 export function computeFloorFiles(runner) {
   try {
-    const remoteDates = runner.listRemote();
-    if (remoteDates.length >= 2) {
-      const [yDate, tDate] = pickLatestTwo(remoteDates);
-      const todayText = runner.catRemote(tDate);
-      const yesterdayText = runner.catRemote(yDate);
+    const remote = runner.fetchRemote();
+    if (remote && remote.dates.length >= 2) {
+      const [yDate, tDate] = pickLatestTwo(remote.dates);
+      const todayText = remote.texts[tDate];
+      const yesterdayText = remote.texts[yDate];
       runner.writeLocal(tDate, todayText);
       runner.writeLocal(yDate, yesterdayText);
       return { source: 'vps', todayDate: tDate, yesterdayDate: yDate, todayText, yesterdayText };
@@ -124,25 +155,20 @@ export function mergeFloorIssues(issuesFilePath, newIds, todayDate) {
 }
 
 function realRunner() {
-  const sshBase = ['-o', `ConnectTimeout=${SSH_TIMEOUT_SEC}`, '-o', 'BatchMode=yes', SSH_HOST];
-  const sshTimeoutMs = (SSH_TIMEOUT_SEC + 3) * 1000;
+  const sshBase = ['-o', `ConnectTimeout=${SSH_CONNECT_TIMEOUT_SEC}`, '-o', 'BatchMode=yes', SSH_HOST];
+  // Single command: list the newest 2 *.txt files by mtime, print each as a
+  // "===FILE:<date>===" marker followed by its content — ONE ssh round-trip
+  // instead of a listing call plus a cat per file (round 2 fix).
+  const remoteCmd =
+    `for f in $(ls -1t ${REMOTE_DIR}/*.txt 2>/dev/null | head -2); do ` +
+    `echo "===FILE:$(basename "$f" .txt)==="; cat "$f"; done`;
   return {
-    listRemote() {
-      const out = execFileSync('ssh', [...sshBase, `ls -1 ${REMOTE_DIR} 2>/dev/null`], {
+    fetchRemote() {
+      const out = execFileSync('ssh', [...sshBase, remoteCmd], {
         encoding: 'utf-8',
-        timeout: sshTimeoutMs,
+        timeout: SSH_EXEC_TIMEOUT_MS,
       });
-      return out
-        .split('\n')
-        .map((l) => l.trim())
-        .filter((l) => l.endsWith('.txt'))
-        .map((f) => f.replace(/\.txt$/, ''));
-    },
-    catRemote(date) {
-      return execFileSync('ssh', [...sshBase, `cat ${REMOTE_DIR}/${date}.txt`], {
-        encoding: 'utf-8',
-        timeout: sshTimeoutMs,
-      });
+      return parseRemoteBundle(out);
     },
     listLocal() {
       if (!existsSync(CACHE_DIR)) return [];
@@ -164,7 +190,7 @@ function printMergedNotDeployedBrief() {
   try {
     const brief = execFileSync('node', [MERGED_NOT_DEPLOYED_SCRIPT, '--brief'], {
       encoding: 'utf-8',
-      timeout: 10000,
+      timeout: MERGED_NOT_DEPLOYED_TIMEOUT_MS,
       cwd: REPO_ROOT,
     });
     console.log(brief.trim());

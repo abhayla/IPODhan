@@ -51,12 +51,19 @@ export function evaluateDispatch({ toolName, prompt, unresolvedIds, allowOverrid
     return { block: false, reason: 'not an Agent dispatch' };
   }
   const text = typeof prompt === 'string' ? prompt : '';
-  const isReviewer = /\b(Tier A|Tier B)\b/.test(text) && /\breview/i.test(text);
-  if (isReviewer) {
-    return { block: false, reason: 'reviewer prompt (Tier A/B + review) — never blocked' };
-  }
   const looksLikeBuildBrief = text.includes('Budget:') && text.includes('Class:');
+  // A build brief is a build brief regardless of any "Tier A/B" text it
+  // carries (round 2: every brief's Tier line was making it look like a
+  // reviewer and never get blocked). "Reviewer" is judged ONLY on prompts
+  // that are NOT build briefs, and only from the first 200 chars (the
+  // opening framing), so a brief that merely mentions Tier A/B deep in its
+  // body never qualifies.
   if (!looksLikeBuildBrief) {
+    const head = text.slice(0, 200);
+    const isReviewer = /\b(Tier A|Tier B)\b/.test(head) && /\breview/i.test(head);
+    if (isReviewer) {
+      return { block: false, reason: 'reviewer prompt (Tier A/B + review in the opening) — never blocked' };
+    }
     return { block: false, reason: 'not a build/wave brief (no Budget:+Class: lines)' };
   }
   if (!unresolvedIds || unresolvedIds.length === 0) {
