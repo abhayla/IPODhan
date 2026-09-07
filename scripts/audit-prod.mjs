@@ -14,6 +14,20 @@
  * Checks map to the GitHub issues filed 2026-06-12 (#2–#14).
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import {
+  checkSitemapCompleteness,
+  checkDuplicateSlugs,
+  checkTitleCollisions,
+  nextIpoSlugsPage,
+} from './lib/seo-surface-checks.mjs';
+import { bisectDefaultParameter, buildSample } from './lib/cache-poison-bisect.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dirname, '..');
+
 const BASE = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_API_TOKEN || '';
 const TIMEOUT_MS = 20000;
@@ -108,6 +122,63 @@ const PUBLIC_ROUTES = [
 // Internal pages that MUST be gated (404) in production (GitHub #11).
 const GATED_ROUTES = ['/components-test', '/test/live-updates'];
 
+// #190 / T-464 — SEO-surface completeness helpers.
+//
+// The route inventory is the ROUTES array in
+// web/tests/e2e/production-verification.spec.ts — a single already-maintained
+// SSOT. It's a Playwright spec (.ts), so it's read as source text and its
+// string-literal array extracted rather than duplicated here; duplicating the
+// list is exactly the drift class this check exists to catch (the sitemap
+// itself drifted from live routes the same way).
+function extractRoutesSsot() {
+  const specPath = join(REPO_ROOT, 'web', 'tests', 'e2e', 'production-verification.spec.ts');
+  const src = readFileSync(specPath, 'utf8');
+  const m = src.match(/const ROUTES: string\[\] = \[([\s\S]*?)\n\];/);
+  if (!m) {
+    throw new Error(
+      'ROUTES SSOT not found in production-verification.spec.ts — extraction pattern drifted from the source'
+    );
+  }
+  const routes = [];
+  const re = /'([^']+)'/g;
+  let mm;
+  while ((mm = re.exec(m[1]))) routes.push(mm[1]);
+  return routes;
+}
+
+// Assumes the site serves one Next.js MetadataRoute sitemap.xml — no
+// <sitemapindex> / multi-file sitemap handling; a switch to a sitemap index
+// would need this parser updated.
+async function fetchSitemapPaths() {
+  const res = await get('/sitemap.xml');
+  const locs = [...(res.text || '').matchAll(/<loc>([^<]+)<\/loc>/g)].map((x) => x[1]);
+  return locs.map((u) => {
+    try {
+      const p = new URL(u).pathname.replace(/\/$/, '');
+      return p || '/';
+    } catch {
+      return u;
+    }
+  });
+}
+
+// Paginates the public IPO list API (max page size 100) to get every live
+// IPO's slug — the "every live IPO slug" half of the sitemap-completeness
+// check, independent of the sitemap itself. Round 2 (#363 review): a
+// response with no `pagination` object used to be treated as "last page",
+// silently degrading the check to whatever page(s) loaded first — now
+// nextIpoSlugsPage() throws instead, so this check FAILs loud.
+async function fetchAllIpoSlugs() {
+  const slugs = [];
+  for (let page = 1; page <= 10; page++) {
+    const res = await get(`/api/ipos?limit=100&page=${page}`);
+    const { slugs: pageSlugs, hasMore } = nextIpoSlugsPage(res.json);
+    slugs.push(...pageSlugs);
+    if (!hasMore) break;
+  }
+  return slugs;
+}
+
 async function run() {
   console.log(`\n=== IPODhan production audit — ${BASE} ===\n`);
 
@@ -186,6 +257,37 @@ async function run() {
       hits.length ? hits.join('; ') : 'clean');
   }
 
+  // 6c. Cache-poisoning bisect (T-463 / issue #189, g_cache_poison_bisect).
+  // A poisoned cache entry can sit exactly at a page's default `limit` param
+  // (limit=20 once served 240 stale rows with blank issuePrice for 19h) while
+  // limit=19 and limit=21 both returned the correct 243-row set — probing
+  // only the default misses it. Probe /api/ipos/history at N-1/N/N+1 around
+  // its default limit=20 and assert equal totals, equal leading ids, and an
+  // issuePrice null-rate within 10pp across all three.
+  {
+    const DEFAULT_LIMIT = 20;
+    const sample = async (limit) => {
+      const res = await get(`/api/ipos/history?limit=${limit}`);
+      return buildSample(limit, res.status, res.json, res.text);
+    };
+    const [below, at, above] = await Promise.all([
+      sample(DEFAULT_LIMIT - 1),
+      sample(DEFAULT_LIMIT),
+      sample(DEFAULT_LIMIT + 1),
+    ]);
+    if (!below.httpOk || !at.httpOk || !above.httpOk) {
+      const bad = [below, at, above].filter((s) => !s.httpOk)
+        .map((s) => `limit=${s.n} status=${s.status} body="${s.bodySnippet}"`)
+        .join('; ');
+      record('cache-poison bisect /api/ipos/history', false,
+        `non-200 or non-JSON-array body on one of N-1/N/N+1: ${bad}`);
+    } else {
+      const violation = bisectDefaultParameter(below, at, above);
+      record('cache-poison bisect /api/ipos/history (N-1/N/N+1 agree)', violation === null,
+        violation || `N-1=${below.total} N=${at.total} N+1=${above.total}, null-rates within tolerance`);
+    }
+  }
+
   // 7. Admin-gated checks (only if token provided)
   if (ADMIN_TOKEN) {
     const status = await get('/api/admin/scraper/status', { admin: true });
@@ -220,6 +322,68 @@ async function run() {
     }
   } else {
     console.log('[SKIP] admin checks — set ADMIN_API_TOKEN to enable');
+  }
+
+  // 8. SEO-surface completeness (#190, T-464). Three sub-checks — a surface
+  // gap only exists in the RELATIONSHIP between the route inventory, the
+  // sitemap and the rendered head, never visible from any one signal alone.
+  {
+    const ssotRoutes = extractRoutesSsot().filter((r) => !r.startsWith('/ipos/'));
+    const sitemapPaths = await fetchSitemapPaths();
+
+    // 8a. every live 200 (ROUTES SSOT + every live IPO slug) is in the sitemap.
+    const live200Routes = [];
+    for (const r of ssotRoutes) {
+      const { status } = await get(r);
+      if (status === 200) live200Routes.push(r);
+    }
+    const ipoSlugs = await fetchAllIpoSlugs();
+    const ipoRoutes = ipoSlugs.map((s) => `/ipos/${s}`);
+    const sitemapCheck = checkSitemapCompleteness([...live200Routes, ...ipoRoutes], sitemapPaths);
+    record(
+      'g_seo_surface: sitemap completeness (ROUTES SSOT + live IPO slugs)',
+      sitemapCheck.pass,
+      sitemapCheck.pass
+        ? `${live200Routes.length + ipoRoutes.length} live routes, all present in sitemap`
+        : `${sitemapCheck.missing.length} missing: ${sitemapCheck.missing.slice(0, 10).join(', ')}`
+    );
+
+    // 8b. no two /ipos/* sitemap entries resolve to the same company (T-291 P2-2).
+    const sitemapIpoSlugs = sitemapPaths
+      .filter((p) => p.startsWith('/ipos/'))
+      .map((p) => p.slice('/ipos/'.length));
+    const dupCheck = checkDuplicateSlugs(sitemapIpoSlugs);
+    record(
+      'g_seo_surface: no duplicate IPO slug groups in sitemap',
+      dupCheck.pass,
+      dupCheck.pass
+        ? `${sitemapIpoSlugs.length} IPO slugs in sitemap, no duplicates`
+        : dupCheck.duplicateGroups.map((g) => `${g.base}: ${g.slugs.join(' vs ')}`).join('; ')
+    );
+
+    // 8c. no two page TYPES share a <title>, and none equals the homepage title
+    // (T-264 P3-5 / T-272 P2-3).
+    const TITLE_ROUTES = {
+      home: '/',
+      mainboardReviews: '/mainboard-ipo-reviews',
+      smeReviews: '/sme-ipo-reviews',
+      mainboardListings: '/mainboard-ipo-listings',
+      smeListings: '/sme-ipo-listings',
+    };
+    const titlesByType = {};
+    for (const [type, route] of Object.entries(TITLE_ROUTES)) {
+      const res = await get(route);
+      const m = (res.text || '').match(/<title>([^<]*)<\/title>/i);
+      titlesByType[type] = m ? m[1] : '';
+    }
+    const titleCheck = checkTitleCollisions(titlesByType, titlesByType.home);
+    record(
+      'g_seo_surface: no page-type <title> collisions',
+      titleCheck.pass,
+      titleCheck.pass
+        ? `${Object.keys(TITLE_ROUTES).length} page types checked, all titles distinct`
+        : titleCheck.collisions.map((c) => `${c.type} vs ${c.otherType}: "${c.title}"`).join('; ')
+    );
   }
 
   // Summary

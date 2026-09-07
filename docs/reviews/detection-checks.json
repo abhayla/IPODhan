@@ -88,9 +88,27 @@
       "round7Findings": [
         "P2-6"
       ],
-      "failThreshold": "(empty value2 OR value1==value2) / total unresolved >= 5%",
+      "failThreshold": "(empty value2 OR value1==value2) / total unresolved >= 5% OR total unresolved > 500 (#191 F2, unbounded-growth ceiling, T-285 11,493-row incident)",
       "severity": "P2",
       "unverifiableWhen": "data_conflicts table not present"
+    },
+    {
+      "id": "g_repeated_warn",
+      "findingClass": "a scraper_logs FAILURE/PARTIAL message repeats so often it stops functioning as a signal while the underlying rows still write through",
+      "round7Findings": [],
+      "failThreshold": "any single (truncated) error_message occurs more than 20 times in scraper_logs (status FAILURE/PARTIAL) in the last 24h",
+      "severity": "P2",
+      "unverifiableWhen": "scraper_logs table not present",
+      "note": "#191 F1 (T-297 D6): the InvIT/REIT unit-price WARN was logged 20+ times per cycle every cycle (T-272 P2-2) while the mis-typed rows were written anyway and rendered as ₹0.00."
+    },
+    {
+      "id": "g_inert_detector",
+      "findingClass": "the conflict detector reports zero new conflicts while an independent invariant (checkPriceBand) is demonstrably violated on live IPO rows — the detector is inert, not the data clean",
+      "round7Findings": [],
+      "failThreshold": "checkPriceBand violations on offering_type=IPO rows > 0 AND data_conflicts rows inserted (detected_at) in the last 24h == 0",
+      "severity": "P1",
+      "unverifiableWhen": "data_conflicts or ipos table not present",
+      "note": "#191 F3 (T-297 D6), the important one — a detector reporting zero looks like health unless cross-checked against an invariant independently known to be violated: conflictsDetected read 0 every cycle across 3,760 fields consolidated from 6 sources while T-272 P1-1 simultaneously proved real disagreements existed."
     },
     {
       "id": "g_freshness_per_type",
@@ -358,7 +376,10 @@
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
     "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
     "g_deployed_sha_lineage (T-297 discovery-coverage sweep, #194) — the sha deploy-linux.sh is about to flip to must be an ancestor of origin/main (T-264 P2-4: prod once served a commit that existed only on an unmerged branch while missing main's merged fix). This is a deploy-time gate (assert_deployed_sha_lineage() in scripts/deploy-linux.sh, run right after $SHA is resolved and again, idempotently, right before the flip), not a nightly DB-row audit — it cannot be a checks[] entry here since this manifest's own wire-or-retire test (audit-detection-floor.test.mjs) requires every declared id to be record()-ed by audit-detection-floor.mjs, and this check never runs inside that script. ALLOW_UNMERGED_DEPLOY=1 is the deliberate escape hatch for a genuine pre-merge hotfix; it fires a Notifier P2 naming the sha+branch. Guarded instead by scripts/tests/deploy-linux.test.sh case 32 (a-e) (see docs/reviews/failure-classes.md, 'deployed sha not on origin/main').",
+    "g_test_coverage_negative_grep (T-470, issue #197) — CI-time (pr-gate.yml, every PR) negative grep for untested web data components / scraper validation rules / priority-matrix field keys, enforced by web/tests/unit/meta/coverage-negative-grep.test.ts + scraper/tests/unit/meta/coverage-negative-grep.test.ts against config/coverage-negative-grep-baseline.json (shrink-only ratchet) and config/coverage-negative-grep-allowlist.json (reasoned permanent exemptions). Not a DB audit check, so it is not recorded by audit-detection-floor.mjs / this manifest's checks[] array.",
     "g_rollout_flag_liveness (T-297 D9, issue #193) — a *_PERCENTAGE/ENABLE_* rollout flag silently zeroed/disabled in the prod env file (the CONSOLIDATION_PERCENTAGE=0 / T-282 class). This is a deploy-time gate, not a nightly DB-row audit: `scripts/assert-env-keys.sh`'s `assert_rollout_flags_live()` reads `// LIVE-GATE` / `// PROD-REQUIRED-TRUE` markers off `scraper/src/config/feature-flags.ts` and refuses the deploy before build, on the prod slot only. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly audit. Guarded instead by `scripts/tests/assert-env-keys.test.sh` (see `docs/reviews/failure-classes.md`, 'rollout-flag zeroed silently voids live logic').",
+    "g_seo_surface_completeness / g_seo_surface (#190, T-464) — sitemap completeness vs the ROUTES SSOT + live IPO slugs, duplicate IPO slug groups, and page-type <title> collisions. HTTP-only, run inside scripts/audit-prod.mjs (three record() calls prefixed g_seo_surface:), not audit-detection-floor.mjs, so it cannot be a checks[] entry here — this manifest's own wire-or-retire test requires every declared id to be record()-ed by audit-detection-floor.mjs. Predicates live in scripts/lib/seo-surface-checks.mjs (self-tested by scripts/tests/seo-surface-checks.test.mjs); auditScript for this class is scripts/audit-prod.mjs.",
+    "g_cache_poison_bisect (T-463, issue #189) — a paginated list API's cache poisoned exactly at the page's default `limit` parameter value (limit=20 once served 240 stale rows with blank issuePrice for 19h while limit=19/21 served the correct set). This is an HTTP-only prod probe, not a nightly DB-row audit: `scripts/audit-prod.mjs` runs `bisectDefaultParameter()` (from `scripts/lib/cache-poison-bisect.mjs`) against GET /api/ipos/history at limit=19/20/21. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly DB audit. Guarded instead by `scripts/tests/cache-poison-bisect.test.mjs`.",
     "g_guard_mutation_sweep (T-469, #196 G-K) — a guard that survives deletion with a fully green suite is not a guard (T-285 P3-1 found the served-SHA post-flip probe and both DSN slot checks in this shape by hand). auditScript scripts/tests/mutation-guard-sweep.sh: an explicit GUARDS registry (file, anchor, mutation, suite) neutralises each guard's condition one at a time, runs its named suite, restores the file, and asserts the suite went RED under mutation — a survivor (suite stayed GREEN) is a FINDING, reported per-guard, never a single boolean. Seeded from assert-env-keys.sh (both env checks + g_rollout_flag_liveness, #352), deploy-linux.sh (the served-SHA probe + g_deployed_sha_lineage, #353), and the T-285 P3-1 data/error-cause findings (NON_IPO_WINDOW_TOO_LONG, NON_IPO_SCRIP_CODE_NAME, PG_FIELDS). It cannot be a checks[] entry here — this manifest's own wire-or-retire test (audit-detection-floor.test.mjs) requires every declared id to be record()-ed by audit-detection-floor.mjs, and a slow (~5 min) file-mutation sweep never runs inside that nightly audit; it is workflow_dispatch / nightly-cron only, never on pr-gate."
   ],
   "exitCodes": {
