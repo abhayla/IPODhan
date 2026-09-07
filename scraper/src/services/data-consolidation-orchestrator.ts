@@ -245,9 +245,13 @@ export class DataConsolidationOrchestrator {
             logger.warn({ slug, error: e instanceof Error ? e.message : String(e) }, '[DataConsolidation] #180 F1 provenance lookup failed - guarding without corroboration signal');
           }
         }
+        // #180 Tier-A round 5: trust EITHER this scrape's own `source` (the
+        // bootstrap shape — no stored provenance yet, exchange asserting now)
+        // OR the stored value's provenance (checked above).
         (consolidatedIPOData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
           effectiveSegment,
           consolidatedIPOData.offeringType as string,
+          source,
           offeringTypeSource
         );
       }

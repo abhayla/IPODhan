@@ -58,19 +58,26 @@ describe('guardSmeOfferingTypeAgainstFpo (T-292 P1-1 — SME/FPO cross-check)', 
     expect(guardSmeOfferingTypeAgainstFpo(undefined, 'FPO')).toBe('FPO');
   });
 
-  it('#180 Tier-A: does NOT flip a legitimate SME FPO when the exchange itself (NSE/BSE) is the source of the current value', () => {
-    // A real (however rare) SME FPO authoritatively reported by the exchange
-    // itself must not be silently overridden by this heuristic — that would
-    // be exactly as wrong as the original Mopshop bug, just in reverse.
+  it('#180 Tier-A: does NOT flip when the INCOMING source is the exchange itself (bootstrap shape — no stored provenance yet)', () => {
+    // Round 5: checking only the STORED value's provenance flipped a
+    // first-ever NSE/BSE-asserted SME FPO with nothing to bootstrap from —
+    // the incoming source alone (4th arg omitted = no stored signal) must
+    // also be trusted.
     expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'BSE')).toBe('FPO');
     expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'NSE')).toBe('FPO');
   });
 
-  it('#180 Tier-A: still flips when the source is mid/low-trust (Mopshop shape — MONEYCONTROL, CHITTORGARH, or unknown)', () => {
+  it('#180 Tier-A: does NOT flip when the STORED value provenance is the exchange itself, even if the incoming source is untrusted', () => {
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'MONEYCONTROL', 'BSE')).toBe('FPO');
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', null, 'NSE')).toBe('FPO');
+  });
+
+  it('#180 Tier-A: still flips only when NEITHER incoming nor stored source is the exchange (Mopshop shape — MONEYCONTROL, CHITTORGARH, or unknown, on both sides)', () => {
     expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'MONEYCONTROL')).toBe('IPO');
     expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'CHITTORGARH')).toBe('IPO');
     expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', null)).toBe('IPO');
     expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO')).toBe('IPO');
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO', 'MONEYCONTROL', 'CHITTORGARH')).toBe('IPO');
   });
 });
 

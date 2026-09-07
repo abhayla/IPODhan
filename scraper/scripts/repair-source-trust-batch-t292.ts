@@ -80,7 +80,7 @@
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -108,16 +108,42 @@ const T180_CITATION =
   'offering_type=FPO are a first public offer misclassified by a lower-trust source, not a real FPO ' +
   '(T-292 Mopshop Distribution shape; #180 named 3 sibling rows the update-path guard never reached).';
 
-function assertNotProdUnlessAllowed() {
-  const dbName = (process.env.DATABASE_NAME || '').toLowerCase();
-  const urlName = (process.env.DATABASE_URL || '').toLowerCase();
-  const looksProd =
-    dbName === 'ipodhan' || (urlName.includes('/ipodhan') && !urlName.includes('ipodhan_staging') && !urlName.includes('ipodhan_test'));
-  if (looksProd && !ALLOW_PROD) {
-    console.error('Refusing to run against what looks like the PROD database without --allow-prod.');
-    console.error(`  DATABASE_NAME=${process.env.DATABASE_NAME ?? '(unset)'}`);
+/**
+ * #180 Tier-A round 5 (same class as #379 round 1): an env-var-based prod
+ * guard (`DATABASE_NAME`/`DATABASE_URL`) trusts the CALLER's environment to
+ * honestly describe which database the pool is actually connected to — a
+ * stale/wrong env var (tunnel pointed at prod, `DATABASE_NAME` unset while
+ * `DATABASE_URL` carries the real target) silently passes. The pool itself
+ * always knows the truth: `SELECT current_database()` on the SAME connection
+ * about to be written through. Pure decision function, unit-testable without
+ * a DB (refuse/allow/dry-run all covered by
+ * scraper/tests/unit/scripts/repair-source-trust-batch-t292-prod-guard.test.ts).
+ */
+export function decideProdWriteRefusal(
+  actualDbName: string,
+  apply: boolean,
+  allowProd: boolean
+): { refuse: boolean; reason?: string } {
+  if (!apply) return { refuse: false }; // dry-run never writes — nothing to refuse
+  if (actualDbName.toLowerCase() === 'ipodhan' && !allowProd) {
+    return {
+      refuse: true,
+      reason: `refusing --apply: the writing pool's current_database() is '${actualDbName}' (looks like PROD) and --allow-prod was not passed`,
+    };
+  }
+  return { refuse: false };
+}
+
+async function assertNotProdUnlessAllowed() {
+  const r: any = await db.execute(sql.raw(`SELECT current_database() AS name`));
+  const rows = r.rows ?? r;
+  const actualDbName: string = rows?.[0]?.name ?? '';
+  const decision = decideProdWriteRefusal(actualDbName, APPLY, ALLOW_PROD);
+  if (decision.refuse) {
+    console.error(decision.reason);
     process.exit(1);
   }
+  console.log(`[prod-guard] writing pool current_database() = '${actualDbName}' (${APPLY ? 'APPLY' : 'dry-run'})`);
 }
 
 interface FieldChange {
@@ -143,7 +169,7 @@ async function loadRow(slug: string) {
 }
 
 async function main() {
-  assertNotProdUnlessAllowed();
+  await assertNotProdUnlessAllowed();
 
   console.log('='.repeat(80));
   console.log(`T-292 SOURCE-TRUST BATCH REPAIR — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
@@ -253,8 +279,23 @@ async function main() {
 
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
   const backupPath = path.join(EVIDENCE_DIR, 't292-source-trust-backup-before-apply.json');
-  fs.writeFileSync(backupPath, JSON.stringify({ mopshop, priorityJewels, suryo, travels }, null, 1));
-  console.log(`backup written: ${backupPath}`);
+  // #180 Tier-A round 5: the original backup serialized only the 4 named
+  // objects (mopshop/priorityJewels/suryo/travels) already in local scope —
+  // every row the CLASS query touches (smeFpoRows, above) was left with no
+  // rollback snapshot. Back up the full row for EVERY entry in `repairs`
+  // (named + class-discovered), keyed by id, so a rollback tool can restore
+  // any field this run wrote, not just the 4 originally-named rows.
+  const classRowsById = new Map(smeFpoRows.map((r) => [r.id, r]));
+  const namedRowsById = new Map(
+    [mopshop, priorityJewels, suryo, travels].map((r) => [r.id, r])
+  );
+  const fullClassBackup = repairs.map((r) => ({
+    slug: r.slug,
+    id: r.id,
+    row: namedRowsById.get(r.id) ?? classRowsById.get(r.id) ?? null,
+  }));
+  fs.writeFileSync(backupPath, JSON.stringify(fullClassBackup, null, 1));
+  console.log(`backup written: ${backupPath} (${fullClassBackup.length} row(s), full pre-change snapshot)`);
 
   for (const r of repairs) {
     console.log(`\n${r.companyName} (${r.slug}):`);

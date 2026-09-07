@@ -139,20 +139,42 @@ describe('#180 F1 — SME row never keeps a stale FPO across an update that omit
     findByIPOIdMock.mockResolvedValue([{ id: "fs-other", fieldName: "status", source: "BSE" }]);
   });
 
-  it('existing SME row stored FPO + a scrape omitting offeringType => the update corrects it to IPO (red before the guard extension)', async () => {
+  it('existing SME row stored FPO (untracked provenance) + a low-trust scrape omitting offeringType => the update corrects it to IPO (red before the guard extension)', async () => {
     // Consolidation's merged snapshot carries the STORED value through even
     // though this scrape reported nothing new for the field — this is what
-    // proved the guard never fired for the 3 real rows (T-292C).
+    // proved the guard never fired for the 3 real rows (T-292C). Source is
+    // deliberately NON-authoritative (MONEYCONTROL, matching the real T-292C
+    // shape) — round 5: a 'BSE' source here would now be trusted as the
+    // INCOMING signal too and must NOT flip (see the bootstrap test below).
     consolidateIPODataMock.mockResolvedValue(
       consolidationResult({ status: 'UPCOMING', offeringType: 'FPO' })
     );
     const ipoRepository = makeIpoRepository();
 
-    await upsertIPO(ipoRepository, scrape(), 'BSE', existingRow());
+    await upsertIPO(ipoRepository, scrape(), 'MONEYCONTROL', existingRow());
 
     expect(ipoRepository.update).toHaveBeenCalledTimes(1);
     const [, patch] = ipoRepository.update.mock.calls[0];
     expect(patch.offeringType).toBe('IPO');
+  });
+
+  it('#180 Tier-A round 5 (bootstrap case): NO stored provenance + this scrape IS the exchange (BSE) asserting FPO => stays FPO, never flipped', async () => {
+    // The round-4 gate checked ONLY the stored value's provenance
+    // (findByField -> null by default in this suite), so a first-ever
+    // NSE/BSE-asserted SME FPO with nothing to bootstrap from was flipped to
+    // IPO regardless of who is asserting it right now. The gate must trust
+    // the INCOMING source too when there is no stored history to check.
+    consolidateIPODataMock.mockResolvedValue(
+      consolidationResult({ status: 'UPCOMING', offeringType: 'FPO' })
+    );
+    const ipoRepository = makeIpoRepository();
+
+    await upsertIPO(ipoRepository, scrape({ offeringType: 'FPO' }), 'BSE', existingRow());
+
+    if (ipoRepository.update.mock.calls.length > 0) {
+      const [, patch] = ipoRepository.update.mock.calls[0];
+      expect(patch.offeringType).not.toBe('IPO');
+    }
   });
 
   it('MAINBOARD row stored FPO stays FPO (guard is SME-scoped only)', async () => {

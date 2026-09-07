@@ -1099,10 +1099,13 @@ export async function upsertIPO(
               const effectiveSegment = 'segment' in finalData
                 ? (finalData as any).segment
                 : ((existingIPO as any).segment ?? null);
-              // #180 Tier-A: only flip when the CURRENT stored value's own
-              // provenance is not the exchange itself — a corroboration gate
-              // so an NSE/BSE-sourced FPO (a real one, however rare) is never
-              // silently overridden by this heuristic.
+              // #180 Tier-A round 5: trust EITHER signal — this scrape's own
+              // `source` (a bootstrap-shape write: no stored provenance yet,
+              // but the exchange itself is asserting FPO right now) OR the
+              // CURRENT stored value's provenance (an exchange source vouched
+              // for it previously). Checking only the stored side flipped a
+              // first-ever NSE/BSE-asserted SME FPO with nothing to bootstrap
+              // from.
               const offeringTypeProvenance = await getFieldSourcesRepository().findByField(
                 existingIPO.id,
                 'ipos',
@@ -1111,6 +1114,7 @@ export async function upsertIPO(
               (finalData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
                 effectiveSegment,
                 (finalData as any).offeringType,
+                source,
                 (offeringTypeProvenance as any)?.source ?? null
               );
             }
@@ -1139,7 +1143,7 @@ export async function upsertIPO(
               const rowHasAnyTrackedProvenance = typeof (fieldSourcesRepo as any).findByIPOId === 'function'
                 ? (await fieldSourcesRepo.findByIPOId(existingIPO.id)).length > 0
                 : true; // no way to tell -> assume tracked (safer default: guard stays active)
-              for (const dateField of ['openDate', 'closeDate'] as const) {
+              for (const dateField of ['openDate', 'closeDate', 'listingDate'] as const) {
                 if (
                   rowHasAnyTrackedProvenance &&
                   dateField in finalData &&
@@ -1348,6 +1352,7 @@ export async function upsertIPO(
           fallbackData.offeringType = guardSmeOfferingTypeAgainstFpo(
             effectiveSegment,
             fallbackData.offeringType,
+            source,
             offeringTypeSource
           );
         }
