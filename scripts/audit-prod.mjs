@@ -14,6 +14,8 @@
  * Checks map to the GitHub issues filed 2026-06-12 (#2–#14).
  */
 
+import { bisectDefaultParameter, buildSample } from './lib/cache-poison-bisect.mjs';
+
 const BASE = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_API_TOKEN || '';
 const TIMEOUT_MS = 20000;
@@ -184,6 +186,37 @@ async function run() {
     }
     record(`no fabricated/placeholder data on ${ep}`, hits.length === 0,
       hits.length ? hits.join('; ') : 'clean');
+  }
+
+  // 6c. Cache-poisoning bisect (T-463 / issue #189, g_cache_poison_bisect).
+  // A poisoned cache entry can sit exactly at a page's default `limit` param
+  // (limit=20 once served 240 stale rows with blank issuePrice for 19h) while
+  // limit=19 and limit=21 both returned the correct 243-row set — probing
+  // only the default misses it. Probe /api/ipos/history at N-1/N/N+1 around
+  // its default limit=20 and assert equal totals, equal leading ids, and an
+  // issuePrice null-rate within 10pp across all three.
+  {
+    const DEFAULT_LIMIT = 20;
+    const sample = async (limit) => {
+      const res = await get(`/api/ipos/history?limit=${limit}`);
+      return buildSample(limit, res.status, res.json, res.text);
+    };
+    const [below, at, above] = await Promise.all([
+      sample(DEFAULT_LIMIT - 1),
+      sample(DEFAULT_LIMIT),
+      sample(DEFAULT_LIMIT + 1),
+    ]);
+    if (!below.httpOk || !at.httpOk || !above.httpOk) {
+      const bad = [below, at, above].filter((s) => !s.httpOk)
+        .map((s) => `limit=${s.n} status=${s.status} body="${s.bodySnippet}"`)
+        .join('; ');
+      record('cache-poison bisect /api/ipos/history', false,
+        `non-200 or non-JSON-array body on one of N-1/N/N+1: ${bad}`);
+    } else {
+      const violation = bisectDefaultParameter(below, at, above);
+      record('cache-poison bisect /api/ipos/history (N-1/N/N+1 agree)', violation === null,
+        violation || `N-1=${below.total} N=${at.total} N+1=${above.total}, null-rates within tolerance`);
+    }
   }
 
   // 7. Admin-gated checks (only if token provided)
