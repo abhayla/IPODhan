@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
-import { parseIpowatchListIndex, parseIpowatchDetail } from './lib/ipowatch-oracle-parser.mjs';
+import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
   checkFoundNotExtracted,
@@ -227,10 +227,23 @@ async function tableExists(name) {
 // SECONDARY signal only. A failed oracle fetch is UNVERIFIABLE, which pages
 // (blocker 1) — never a silent PASS.
 const IPOWATCH_LIST_URL = 'https://ipowatch.in/upcoming-ipo-list/';
+// Identifies this as the nightly audit, not a scrape masquerading as a browser
+// — ipowatch is a courtesy oracle, not a scraper source, and the fetch volume
+// here is bounded (one page per matched live IPO), so there is no reason to
+// disguise it.
 const IPOWATCH_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+  'User-Agent': 'IPODhan-detection-floor-audit/1.0 (+https://ipodhan.com; non-ingested cross-check, see scripts/audit-detection-floor.mjs)',
   Accept: 'text/html',
 };
+// Delay between successive detail-page requests so this audit does not hammer
+// ipowatch with a back-to-back burst (round-2 review note). Configurable for
+// tests/local runs; the nightly cron uses the 400ms default.
+const IPOWATCH_REQUEST_DELAY_MS = Number(process.env.IPOWATCH_REQUEST_DELAY_MS ?? 400);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// A matched-but-unreadable share this high means the page template likely
+// changed under us — the check would otherwise shrink to near-nothing without
+// ever going UNVERIFIABLE. Named, not a magic number.
+const IPOWATCH_COVERAGE_WARN_THRESHOLD = 0.5;
 
 async function fetchIpowatchHtml(url) {
   const ctrl = new AbortController();
@@ -263,9 +276,14 @@ async function fetchOracleRows(ipoRows) {
 
   const out = [];
   let unparseable = 0;
+  let matched = 0;
+  let first = true;
   for (const ipo of ipoRows) {
     const entry = indexByKey.get(normalizeCompanyKey(ipo.companyName));
     if (!entry) continue;
+    matched += 1;
+    if (!first) await sleep(IPOWATCH_REQUEST_DELAY_MS);
+    first = false;
     let detailHtml;
     try {
       detailHtml = await fetchIpowatchHtml(entry.detailUrl);
@@ -279,7 +297,11 @@ async function fetchOracleRows(ipoRows) {
     }
     out.push({ companyName: entry.companyName, values });
   }
-  return { rows: out, matchedFromIndex: index.length, unparseable };
+
+  const coverageWarning = computeOracleCoverageWarning(
+    { liveCount: ipoRows.length, matched, unparseable }, IPOWATCH_COVERAGE_WARN_THRESHOLD);
+
+  return { rows: out, matchedFromIndex: index.length, matched, unparseable, coverageWarning };
 }
 
 async function checkA_B() {
@@ -308,6 +330,9 @@ async function checkA_B() {
     oracleRows = fetched.rows;
     if (fetched.unparseable > 0) {
       oracleFetchNote = `; ${fetched.unparseable} matched ipowatch page(s) could not be parsed and were excluded, not silently passed`;
+    }
+    if (fetched.coverageWarning) {
+      oracleFetchNote += `; WARN: ${fetched.coverageWarning}`;
     }
   } catch (e) {
     record('a_b_live_conflict', name, 'UNVERIFIABLE',

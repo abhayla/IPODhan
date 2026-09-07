@@ -498,6 +498,11 @@ const LEGAL_SUFFIXES = new Set(['ltd', 'limited', 'pvt', 'private', 'plc', 'corp
 
 // "Lumino Industries Limited" (ours) and "Lumino Industries Ltd." (oracle, which
 // also appends single-letter status flags like a trailing " O") must key the same.
+// Matching is EXACT on the normalized key, deliberately not fuzzy: a fuzzy match
+// between two independent sources risks silently pairing two different
+// companies (the exact failure class #344/T-485 fixed for slug resolution) —
+// a live IPO simply going unmatched (skipped, not compared) is the safe failure
+// mode here, not a wrong pairing.
 export function normalizeCompanyKey(name) {
   if (!name) return '';
   return String(name)

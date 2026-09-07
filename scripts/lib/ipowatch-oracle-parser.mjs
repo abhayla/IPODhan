@@ -116,6 +116,22 @@ function extractRow(block, label) {
  * first "minimum bid is N Shares" match AT OR AFTER the key-facts block, not
  * the first match in the whole document.
  */
+// Pure coverage-floor predicate (T-472 round 2). A template change upstream
+// could silently shrink the oracle compare to near-nothing (every matched
+// page fails to parse, or nothing matches at all despite live IPOs existing)
+// while the check keeps reporting PASS — exactly the silent-pass class this
+// audit exists to prevent. Returns a WARN string, or null when coverage is
+// healthy.
+export function computeOracleCoverageWarning({ liveCount, matched, unparseable }, threshold = 0.5) {
+  if (liveCount > 0 && matched === 0) {
+    return `oracle coverage degraded (0 of ${liveCount} live IPOs matched the ipowatch index — name-matching or the list-index page shape may have changed)`;
+  }
+  if (matched > 0 && unparseable / matched > threshold) {
+    return `oracle coverage degraded (${unparseable} unparseable of ${matched} matched — detail-page template likely changed)`;
+  }
+  return null;
+}
+
 export function parseIpowatchDetail(html) {
   const blockMatch = html.match(KEY_FACTS_START);
   if (!blockMatch) return null;

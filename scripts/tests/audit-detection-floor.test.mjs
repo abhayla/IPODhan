@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseIpowatchDetail, parseIpowatchDate, parsePriceBand, parseRupeeAmount } from '../lib/ipowatch-oracle-parser.mjs';
+import { parseIpowatchDetail, parseIpowatchDate, parsePriceBand, parseRupeeAmount, computeOracleCoverageWarning } from '../lib/ipowatch-oracle-parser.mjs';
 import {
   checkNoUnresolvedConflictOnLiveIpo,
   checkIssueSizeSegmentFloor,
@@ -1074,4 +1074,22 @@ test('(a/b) lotSize is compared exactly (no tolerance) — a 1-unit difference s
 
 test('ORACLE_COMPARABLE_FIELDS carries all six T-472 fields', () => {
   assert.deepEqual(ORACLE_COMPARABLE_FIELDS, ['openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax', 'lotSize', 'issueSize']);
+});
+
+// ---- T-472 round 2: oracle coverage floor -----------------------------------
+
+test('(coverage floor) WARNs when zero live IPOs matched the oracle index despite live IPOs existing', () => {
+  const w = computeOracleCoverageWarning({ liveCount: 5, matched: 0, unparseable: 0 });
+  assert.match(w, /0 of 5 live IPOs matched/);
+});
+
+test('(coverage floor) WARNs when more than half of matched pages are unparseable (template drift)', () => {
+  const w = computeOracleCoverageWarning({ liveCount: 10, matched: 4, unparseable: 3 });
+  assert.match(w, /3 unparseable of 4 matched/);
+});
+
+test('(coverage floor) stays quiet (null) at or below the threshold', () => {
+  assert.equal(computeOracleCoverageWarning({ liveCount: 10, matched: 4, unparseable: 2 }), null); // exactly 50%
+  assert.equal(computeOracleCoverageWarning({ liveCount: 0, matched: 0, unparseable: 0 }), null, 'no live IPOs tonight is not a coverage problem');
+  assert.equal(computeOracleCoverageWarning({ liveCount: 10, matched: 8, unparseable: 0 }), null);
 });
