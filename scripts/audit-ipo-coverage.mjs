@@ -32,9 +32,33 @@ if (existsSync(envPath)) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
 }
+// T-500 (#404): a connection refused with BOTH an IPv6 and IPv4 candidate
+// (Node's Happy-Eyeballs dual-stack dial against `localhost`) rejects with an
+// `AggregateError` whose OWN `.message` is `''` — the real reasons live in
+// `.errors[]`. `console.error(err.message)` on that shape printed an EMPTY
+// LINE, so a real tunnel-down run exited 2 with no stderr at all — silence is
+// indistinguishable from a hang. Every non-zero exit in this script goes
+// through this formatter so the reason is never lost to that shape (or to
+// `err.cause`, which drizzle/pg also use to wrap the underlying error).
+function formatExitReason(err) {
+  if (err && Array.isArray(err.errors) && err.errors.length > 0) {
+    return err.errors.map((e) => formatExitReason(e)).join('; ');
+  }
+  const message = err && err.message ? err.message : String(err);
+  const cause = err && err.cause && err.cause.message ? ` (cause: ${err.cause.message})` : '';
+  return `${message}${cause}`;
+}
+
+function fatalExit(err, code) {
+  console.error(`audit-ipo-coverage: ${formatExitReason(err)}`);
+  process.exit(code);
+}
+
 if (isMainModule && !process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
-  console.error('FATAL: no DB connection configured — provide web/.env.local or DATABASE_* in the environment');
-  process.exit(2);
+  fatalExit(
+    new Error('no DB connection configured — provide web/.env.local or DATABASE_* in the environment'),
+    2
+  );
 }
 
 const GATE = process.argv.includes('--gate');
@@ -204,8 +228,7 @@ async function main() {
   try {
     await assertUtcSession(pool);
   } catch (err) {
-    console.error(err.message);
-    process.exit(2);
+    fatalExit(err, 2);
   }
   const out = [];
   const log = (s) => { out.push(s); console.log(s); };
@@ -583,5 +606,5 @@ async function main() {
 }
 
 if (isMainModule) {
-  main().catch((e) => { console.error(e); process.exit(1); });
+  main().catch((e) => fatalExit(e, 1));
 }
