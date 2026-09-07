@@ -314,6 +314,15 @@ assert_rollout_flags_live() {
 
   local trim
   trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+  # T-467 round 4 (Tier A MEDIUM): trim -> strip quotes -> trim, not
+  # strip-then-trim. A value like `"100" ` (quoted + trailing space, which
+  # the app's own env loader accepts fine) has its closing quote sitting
+  # right before the trailing space; stripping quotes BEFORE trimming left
+  # a stray `"` glued to the value ('100"', refused as non-integer) and left
+  # a quoted ALLOW_ZERO_FLAGS silently un-stripped (so the allow-list never
+  # matched). clean() trims first, strips one matching pair of quotes, then
+  # trims again.
+  clean() { local s; s="$(trim "$1")"; s="${s%\"}"; s="${s#\"}"; s="${s%\'}"; s="${s#\'}"; trim "$s"; }
 
   # T-467 round 2 (Tier A HIGH): a marker-wording change, a reflow that puts
   # the key and its marker on different lines, or a `grep` without -P support
@@ -331,8 +340,7 @@ assert_rollout_flags_live() {
 
   local allow_zero
   allow_zero="$(get_value "$scraper_env_file" ALLOW_ZERO_FLAGS)" || allow_zero=""
-  allow_zero="$(trim "${allow_zero%\"}")"; allow_zero="${allow_zero#\"}"
-  allow_zero="$(trim "${allow_zero%\'}")"; allow_zero="${allow_zero#\'}"
+  allow_zero="$(clean "$allow_zero")"
 
   # T-467 round 2 (Tier A LOW): staging is exempt from enforcement, but a
   # live-gate flag sitting at 0 there is still worth one INFO line -- it is
@@ -341,8 +349,7 @@ assert_rollout_flags_live() {
     local key value
     for key in "${live_gate_keys[@]}"; do
       value="$(get_value "$scraper_env_file" "$key")" || value="0"
-      value="$(trim "${value%\"}")"; value="${value#\"}"
-      value="$(trim "${value%\'}")"; value="${value#\'}"
+      value="$(clean "$value")"
       if printf '%s' "$value" | grep -qE '^[0-9]+$' && [ "$value" -eq 0 ]; then
         echo "INFO: rollout flag $key=0 on slot '$slot' (non-prod; liveness gate is prod-only, T-297 D9 / #193)."
       fi
@@ -354,8 +361,7 @@ assert_rollout_flags_live() {
 
   for key in "${live_gate_keys[@]}"; do
     value="$(get_value "$scraper_env_file" "$key")" || value="0"
-    value="$(trim "${value%\"}")"; value="${value#\"}"
-    value="$(trim "${value%\'}")"; value="${value#\'}"
+    value="$(clean "$value")"
     allowed=0
     if [ -n "$allow_zero" ] && printf '%s\n' "$allow_zero" | tr ',' '\n' | tr -d '[:space:]' | grep -qx "$key"; then
       allowed=1
@@ -377,8 +383,7 @@ assert_rollout_flags_live() {
 
   for key in "${required_true_keys[@]}"; do
     value="$(get_value "$scraper_env_file" "$key")" || value="false"
-    value="$(trim "${value%\"}")"; value="${value#\"}"
-    value="$(trim "${value%\'}")"; value="${value#\'}"
+    value="$(clean "$value")"
     if [ "$value" != "true" ]; then
       FAILS+=("$key=$value — required 'true' on prod slot (T-297 D9 / #193)")
     else

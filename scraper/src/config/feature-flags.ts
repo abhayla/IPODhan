@@ -42,6 +42,12 @@ export const FEATURE_FLAGS = {
    * When enabled, uses smart merging with priority matrix
    * Default: false (Phase 1)
    */
+  // T-467 round 4 (Tier A LOW): prettier-ignore -- this line is 100+ chars
+  // and a re-wrap that pushes the `// PROD-REQUIRED-TRUE` marker onto its
+  // own line breaks scripts/assert-env-keys.sh's marker grep (it requires
+  // the key and its marker to share one line). No .prettierignore exists in
+  // this repo today; this comment is belt-and-braces if one is ever added.
+  // prettier-ignore
   ENABLE_DATA_CONSOLIDATION: process.env.ENABLE_DATA_CONSOLIDATION === 'true', // PROD-REQUIRED-TRUE (T-297 D9 / #193 -- rollout-flag liveness)
 
   /**
@@ -262,6 +268,10 @@ export const FEATURE_FLAGS = {
    * Percentage of IPOs to use data consolidation (0-100)
    * Default: 0 (disabled)
    */
+  // T-467 round 4 (Tier A LOW): prettier-ignore -- same reason as
+  // ENABLE_DATA_CONSOLIDATION above: a re-wrap must not split this key from
+  // its `// LIVE-GATE` marker.
+  // prettier-ignore
   CONSOLIDATION_PERCENTAGE: parseInt(process.env.CONSOLIDATION_PERCENTAGE || '0'), // LIVE-GATE (T-297 D9 / #193 -- 0 silently disables the whole consolidation pipeline, T-282)
 
   // ==================== TESTING & DEBUG ====================

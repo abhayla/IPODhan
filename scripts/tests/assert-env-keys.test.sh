@@ -216,6 +216,12 @@ run_case_grep "prod slot, marker grep derives 0 flags (reworded/wrapped feature-
 run_case "prod slot, CONSOLIDATION_PERCENTAGE=100 with trailing space -> pass (T-467 round 2 MEDIUM, trim)" 0 \
   "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-trim" "$REAL_SCRAPER_SRC"
 
+# MEDIUM (T-467 round 4): quoted value + trailing space -- trim must run
+# BEFORE and AFTER quote-stripping, or the closing quote (sitting right
+# before the trailing space) is left glued to the value.
+run_case "prod slot, CONSOLIDATION_PERCENTAGE=\"100\" quoted with trailing space -> pass (T-467 round 4 MEDIUM, trim/quote order)" 0 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env.rollout-quoted-trim" "$REAL_SCRAPER_SRC"
+
 # LOW: a live-gate flag at 0 on staging is not a failure, but must print one
 # INFO line naming it (visibility, not enforcement).
 run_case_grep "staging slot, CONSOLIDATION_PERCENTAGE=0 -> pass with an INFO line naming it (T-467 round 2 LOW)" 0 \
