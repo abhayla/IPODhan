@@ -1,0 +1,12 @@
+{
+  "_comment": "T-451/T-452 repaired issue_size values (2026-09-06/07). Used by scripts/lib/repair-invariants/issue-size-t451.mjs as the worked-example invariant for scripts/assert-repair-held.mjs (#192, T-466). slug (real DB slugs, verified against staging 2026-09-07) -> expected issue_size in rupees.",
+  "meesho-ltd": 54210000000,
+  "wakefit-innovations-ltd": 12890000000,
+  "aequs-ltd": 9220000000,
+  "nephrocare-health-services-ltd": 8710000000,
+  "gujarat-kidney-and-super-speciality-ltd": 2510000000,
+  "exato-technologies-ltd": 370000000,
+  "ravelcare-ltd": 240000000,
+  "phychem-technologies-ltd": 150000000,
+  "deepa-jewellers-ltd": 4600000000
+}
