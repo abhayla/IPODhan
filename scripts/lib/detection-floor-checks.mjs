@@ -460,10 +460,39 @@ export function checkSegmentPopulatedForIpo(row) {
 // previous_source populated, so that comparison found ZERO disagreements on a
 // night when two were live. It is not used.
 
-// Only the fields the oracle publishes reliably. Chittorgarh's price column is
-// deliberately excluded: a lone price string is not a real band (see the T-308
-// note in chittorgarh-scraper.ts), so comparing it manufactures false positives.
-export const ORACLE_COMPARABLE_FIELDS = ['openDate', 'closeDate'];
+// T-472: extended from ['openDate','closeDate'] (the Chittorgarh-oracle era,
+// where Chittorgarh's price column was excluded because a lone price string
+// there is not a real band) to the six fields behind the P1 classes GitHub
+// #199 cited (band/lot/issue-size wrong, invisible while the only compared
+// fields were dates) — now safe because the oracle is ipowatch.in, which
+// publishes a real min/max band, not a single price string.
+export const ORACLE_COMPARABLE_FIELDS = ['openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax', 'lotSize', 'issueSize'];
+
+// Rupee-valued fields are compared with a relative tolerance: ipowatch rounds
+// ("Approx ₹40.88 Crores") and our own figures carry paisa, so an exact-equality
+// compare on these two fields alone would manufacture false positives that
+// dates/lot size (compared exactly, below) must never have.
+const RUPEE_TOLERANCE_FIELDS = new Set(['priceRangeMin', 'priceRangeMax', 'issueSize']);
+const RUPEE_TOLERANCE_PCT = 0.01;
+
+/**
+ * Field-aware disagreement: dates and lot size compare exactly (via
+ * valuesDisagree below); the three rupee fields tolerate a 1% relative
+ * difference before calling it a disagreement.
+ */
+export function fieldValuesDisagree(field, a, b) {
+  if (a === null || a === undefined || a === '') return false;
+  if (b === null || b === undefined || b === '') return false;
+  if (RUPEE_TOLERANCE_FIELDS.has(field)) {
+    const na = toNumber(a);
+    const nb = toNumber(b);
+    if (na === null || nb === null) return valuesDisagree(a, b);
+    if (na === 0 && nb === 0) return false;
+    const denom = Math.max(Math.abs(na), Math.abs(nb), 1);
+    return Math.abs(na - nb) / denom > RUPEE_TOLERANCE_PCT;
+  }
+  return valuesDisagree(a, b);
+}
 
 const LEGAL_SUFFIXES = new Set(['ltd', 'limited', 'pvt', 'private', 'plc', 'corp', 'corporation', 'inc']);
 
@@ -526,13 +555,13 @@ export function findLiveCrossSourceDisagreements({ ipoRows = [], oracleRows = []
     for (const field of ORACLE_COMPARABLE_FIELDS) {
       const ours = (ipo.values || {})[field];
       const theirs = (oracle.values || {})[field];
-      if (!valuesDisagree(ours, theirs)) continue;
+      if (!fieldValuesDisagree(field, ours, theirs)) continue;
       const key = `${ipo.id}-${field}`;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push({
         ipoId: ipo.id, companyName: ipo.companyName, fieldName: field, signal: 'oracle',
-        message: `live IPO "${ipo.companyName}" (${ipo.status}) publishes ${field}=${fmtDay(ours)}, but ${oracleName} currently says ${fmtDay(theirs)} — cross-source disagreement found by this audit's own live fetch, independent of data_conflicts`,
+        message: `live IPO "${ipo.companyName}" (${ipo.status}) publishes ${field}=${fmtFieldValue(field, ours)}, but ${oracleName} currently says ${fmtFieldValue(field, theirs)} — cross-source disagreement found by this audit's own live fetch, independent of data_conflicts`,
       });
     }
   }
@@ -557,6 +586,13 @@ export function findLiveCrossSourceDisagreements({ ipoRows = [], oracleRows = []
 function fmtDay(v) {
   const d = new Date(String(v));
   return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
+}
+
+const DATE_FIELDS = new Set(['openDate', 'closeDate']);
+
+function fmtFieldValue(field, v) {
+  if (v === null || v === undefined || v === '') return 'null';
+  return DATE_FIELDS.has(field) ? fmtDay(v) : String(v);
 }
 
 // ---- (blocker 4) page-flood control: one digest per check per night ----------
