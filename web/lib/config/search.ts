@@ -22,11 +22,17 @@ export const FUZZY_MATCH_CONFIG = {
    * Lower values = looser matching (less similar accepted)
    *
    * Examples:
+   * - 0.85 = Strict (85%+ similarity required) - DEFAULT since #350
    * - 0.8 = Very strict (80%+ similarity required)
-   * - 0.6 = Balanced (60%+ similarity required) - DEFAULT
+   * - 0.6 = Loose (60%+ similarity required) — this used to be the default
+   *   and is what let 'karamtara-engineering-ltd' resolve to the unrelated
+   *   'Sumax Engineering Ltd.' on prod (shared word 'engineering' scored
+   *   0.44, i.e. 56% similarity, which cleared 0.6's 0.4 max-score bar).
+   *   A genuine one-character-typo pair scores 0.15 (85% similarity), which
+   *   is what sets the new floor — see ipo-repository.ts findBySlugWithFallback.
    * - 0.4 = Loose (40%+ similarity required)
    */
-  similarityThreshold: 0.6,
+  similarityThreshold: 0.85,
 
   /**
    * Maximum number of fuzzy search results to return
