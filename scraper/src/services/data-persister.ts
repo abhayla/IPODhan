@@ -2261,6 +2261,54 @@ export async function recordBseDiscoveryMetadata(
   logger.debug({ ipoId, ...patch }, 'Recorded BSE discovery metadata');
 }
 
+/** Minimal shape `recordDiscoveredLeadManagers` needs from the repository. */
+export interface DiscoveredLeadManagerWriter {
+  update(id: string, data: { leadManagers?: string[] | null; updatedAt?: Date }): Promise<unknown>;
+}
+
+/**
+ * Fill `ipos.lead_managers` from names the document-discovery BSE/NSE
+ * core-API fetch already parsed, for IPOs the main scrape-cycle write path
+ * never populated the field for (T-503 / #416).
+ *
+ * RCA: `document-discovery-runner.ts` fetches BSE's (and, as a fallback,
+ * NSE's) core-API row to find documents and, as a side effect, parses its
+ * Book Running Lead Manager / Co-BRLM fields into `result.leadManagers`
+ * (`parseBseParties` / `parseNseLeadManagers`) — but `document-cycle.ts`
+ * (the only caller) forwarded ONLY the count into `bsePayloadLeadManagerCount`
+ * via `recordBseDiscoveryMetadata`; the names themselves were discarded. A
+ * BSE payload that listed a real BRLM the main scrape cycle's own BSE/DRHP
+ * source never found (or that `sanitizeLeadManagers` filtered out) left
+ * `ipos.lead_managers` null forever, while `m_brlm_count` correctly flagged
+ * the gap between the recorded payload count and the 0 names ever stored
+ * (Steamhouse India, 2026-09-08: payload count 1, stored 0).
+ *
+ * Write-once, like `recordDocumentSourceHints`'s `companyWebsite`: fills only
+ * an EMPTY field. This discovery fetch has no field-priority-matrix rank of
+ * its own, so it must never silently overwrite a value a ranked source
+ * (ADMIN/DRHP/NSE/BSE main-scrape/MONEYCONTROL) already wrote — it only
+ * closes the gap when nothing else ever did. `sanitizeLeadManagers` is
+ * re-applied so this write path enforces the same pollution guard as every
+ * other `lead_managers` write (`sanitizeIpoWriteFields`, line ~928 below).
+ *
+ * Lives HERE, not in `document-cycle.ts`, for the same reason as
+ * `recordBseDiscoveryMetadata`: `scraper-write-path.md` and the R0 write
+ * ratchet require every `ipos` write to go through the shared write path.
+ */
+export async function recordDiscoveredLeadManagers(
+  ipoRepository: DiscoveredLeadManagerWriter,
+  ipoId: string,
+  names: string[] | null | undefined,
+  existing?: { leadManagers?: string[] | null }
+): Promise<void> {
+  if (existing?.leadManagers && existing.leadManagers.length > 0) return;
+  const sanitized = sanitizeLeadManagers(names);
+  if (!sanitized || sanitized.length === 0) return;
+
+  await ipoRepository.update(ipoId, { leadManagers: sanitized, updatedAt: new Date() });
+  logger.debug({ ipoId, leadManagerCount: sanitized.length }, 'Recorded discovered lead managers');
+}
+
 /**
  * Record the document-source hints the discovery chain's later rungs need
  * (T-403 M-6): the issuer's own website and the third-party verifier page.
