@@ -1133,3 +1133,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 17:47 IST — Staging repair-held run 2: HELD, 0 violations across cycles 17:18 and 17:45 -> the issue_size repair (21 rows) survives real scraper cycles on staging; #401 updated; prod run on the owner's word (brief item).
 
 - 18:15 IST — tick: no agents. VPS prod f9b67d0a (393 s / 35 calls / extractionFailed 1, the known spawn loop), staging 60a7bb46 (77 s / 73 calls / extractionFailed 2, lines read below); disk 57%, load 0.62, OOM 0; worktrees relverify only; stash the 10 pre-existing.
+
+- 18:45 IST — tick: no agents. VPS prod f9b67d0a (156 s / 53 calls / extractionFailed 1, known), staging 60a7bb46 (263 s / 58 calls / extractionFailed 3 — rising 1->2->3 over the last three cycles; error lines read for the 19:00 decision); disk 57%, load 0.02, OOM 0; worktrees relverify only; stash the 10 pre-existing.
