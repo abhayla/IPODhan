@@ -382,6 +382,15 @@
       "unverifiableWhen": "the external calendar (both chittorgarh dashboard fetches) could not be reached at all -- BLIND, not a pass. NOTE: does not cover recently-CLOSED (30-day) IPOs -- chittorgarh's listing-date report renders client-side and ipowatch.in was unreachable from the environment this check was authored in; see scripts/lib/chittorgarh-oracle-parser.mjs 'KNOWN GAP'.",
       "auditScript": "scripts/audit-reverse-sweep.mjs --gate",
       "selfTest": "scripts/tests/audit-reverse-sweep.test.mjs"
+    },
+    {
+      "id": "c1_hard_date_trust_on_update",
+      "findingClass": "a single non-authoritative source (e.g. MONEYCONTROL) asserts open_date/close_date on the UPDATE path onto a row whose field is still NULL, with zero corroborating field_sources history — the create-path guard (isAuthoritativeForHardDatesOnCreate) never covered this because it was gated on !existingIPO (T-459/#180 F2)",
+      "sourceTask": "T-459 (#180 F2), extends T-292/#188 C1",
+      "githubIssue": "https://github.com/abhayla/IPODhan/issues/180",
+      "failThreshold": "the existing C1 lineage-ceiling gate in scripts/audit-ipo-coverage.mjs (provenanceOffenders: rows with a hard date/band asserted and ZERO field_sources rows) already surfaces this exact signature at rest -- a row an uncorroborated single source wrote a hard date onto has no field_sources lineage for that field. The write-path fix (data-persister.ts: drop openDate/closeDate on update when existing value is null, source is not authoritative, and no prior field_sources row exists for that field) stops the class at write time; C1 catches any row that slips through. No new script needed -- this entry documents the mapping so the class has a named detection id per defect-fix-contract.md item 6.",
+      "severity": "P2",
+      "unverifiableWhen": "field_sources table not present, or the C1 gate is not run (see wiredInto)"
     }
   ],
   "notCoveredByThisManifest": [

@@ -1083,6 +1083,55 @@ export async function upsertIPO(
               );
             }
 
+            // #180 F1: guardSmeOfferingTypeAgainstFpo (P1-1) only ever rewrote an
+            // INCOMING offeringType — a scrape that omits offeringType entirely
+            // (western-overseas-study-abroad-ltd, shipwaves-online-ltd,
+            // stanbik-agro-ltd: last_scraped_at Dec 2025, zero field_sources rows for
+            // offeringType) never re-enters that branch, so an existing SME row
+            // stuck at offering_type='FPO' self-heals never. Consolidation's merged
+            // snapshot carries the STORED value through into `finalData.offeringType`
+            // even with no incoming source, so re-apply the same SME guard to
+            // whatever `finalData` is about to write — this is what actually
+            // corrects the stale value once a scrape (any source) touches the row.
+            if ('offeringType' in finalData) {
+              const effectiveSegment = 'segment' in finalData
+                ? (finalData as any).segment
+                : ((existingIPO as any).segment ?? null);
+              (finalData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
+                effectiveSegment,
+                (finalData as any).offeringType
+              );
+            }
+
+            // #180 F2: isAuthoritativeForHardDatesOnCreate only gated the CREATE
+            // door (`!existingIPO`). A checker proved a single MONEYCONTROL payload
+            // writes open_date/close_date straight through consolidation onto an
+            // existing row whose dates are still NULL — corroboration only matters
+            // on the very first assertion, whichever door it comes through. Mirror
+            // the create-path guard here: a non-authoritative source may not be the
+            // FIRST to assert a null hard-date field on update either, unless a
+            // prior field_sources row already exists for that field (i.e. this is
+            // itself the corroborating second source, not the aggregator instead of it).
+            if (!isAuthoritativeForHardDatesOnCreate(source)) {
+              const fieldSourcesRepo = getFieldSourcesRepository();
+              for (const dateField of ['openDate', 'closeDate'] as const) {
+                if (
+                  dateField in finalData &&
+                  (finalData as any)[dateField] != null &&
+                  (existingIPO as any)[dateField] == null
+                ) {
+                  const priorSource = await fieldSourcesRepo.findByField(existingIPO.id, 'ipos', dateField);
+                  if (!priorSource) {
+                    logger.info(
+                      { ipoId: existingIPO.id, source, dateField },
+                      '[DataPersister] #180 F2 - dropping uncorroborated hard-date assertion on update (first touch, non-authoritative source)'
+                    );
+                    delete (finalData as any)[dateField];
+                  }
+                }
+              }
+            }
+
             // W-14: the merged-record pass already ran ONCE, before this door, and
             // removed these fields from the incoming payload (so consolidation never
             // saw them and wrote no `field_sources` provenance for them). Re-apply the
