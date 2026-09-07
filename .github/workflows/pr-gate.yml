@@ -339,6 +339,9 @@ jobs:
       - name: Detection registry generator self-test (T-487)
         run: node --test scripts/tests/build-detection-registry.test.mjs
 
+      - name: Detection registry parity vs origin/main (T-487 round 2)
+        run: node --test scripts/tests/build-detection-registry-parity.test.mjs
+
       - name: Detection registry aggregates not stale (T-487)
         # One file per check/failure-class under docs/reviews/detection-checks/
         # and docs/reviews/failure-classes/ is the source of truth; the

@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -46,5 +46,21 @@ test('build-detection-registry --check fails when the committed aggregate drifts
     assert.match(result.out, /FAIL/);
   } finally {
     writeFileSync(AGGREGATE, original, 'utf8');
+  }
+});
+
+test('build-detection-registry rejects a duplicate id across sections/files', () => {
+  const dupPath = join(REPO_ROOT, 'docs', 'reviews', 'detection-checks', '__dup_test.json');
+  writeFileSync(
+    dupPath,
+    JSON.stringify({ id: 'a_b_live_conflict', section: 'notCoveredByThisManifest', note: 'duplicate id test' }, null, 2) + '\n',
+    'utf8'
+  );
+  try {
+    const result = runCheck();
+    assert.notEqual(result.code, 0, 'expected the generator to fail on a duplicate id');
+    assert.match(result.out, /duplicate/i);
+  } finally {
+    rmSync(dupPath);
   }
 });

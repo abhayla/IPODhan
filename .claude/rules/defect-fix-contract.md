@@ -23,7 +23,9 @@ unit of work. Every defect fix (worker brief, PR body, ledger line) MUST carry t
    staging cycle whose log line names the counter that moved, a real page/PDF fixture, or the audit script run
    against the staging DB via the tunnel. A unit-tested predicate proves nothing about the SQL, markup or budget
    around it (2026-09-06: an audit crashed for three nights; a parser sourced 0 of 4 rows; a counter that could
-   never fall was accepted as proof for two rounds).
+   never fall was accepted as proof for two rounds). For a DATA-REPAIR fix specifically, the real-data proof MUST
+   include `scripts/assert-repair-held.mjs <invariant> --cycles 2` run against staging (#192, T-466) — a clean read
+   right after the repair proves nothing about whether it survives the next real scraper cycle.
 6. **Detection upgrade or declaration** — the nightly audit / CI test that will catch the NEXT member of the
    class, named (check id) or an explicit `No detection change: <reason>` (the recurrence gate enforces this for
    scraper write paths; for everything else the reviewer checks it).

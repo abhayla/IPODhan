@@ -26,6 +26,17 @@ const CLASSES_MD = join(REPO_ROOT, 'docs/reviews/failure-classes.md');
 const TABLE_START = '<!-- BEGIN GENERATED TABLE (scripts/build-detection-registry.mjs) -->';
 const TABLE_END = '<!-- END GENERATED TABLE -->';
 const COLUMNS = ['class_id', 'feature', 'symptom', 'first_seen', 'fix_prs', 'detection_check', 'status'];
+// Display labels for the markdown header — must match origin/main's table
+// header text exactly; distinct from the JSON field names in COLUMNS.
+const HEADER_LABELS = {
+  class_id: 'class_id',
+  feature: 'feature',
+  symptom: 'symptom (user-visible)',
+  first_seen: 'first_seen',
+  fix_prs: 'fix_prs',
+  detection_check: 'detection_check',
+  status: 'status',
+};
 
 function readJsonFiles(dir) {
   return readdirSync(dir)
@@ -52,6 +63,20 @@ function buildChecksJson() {
 
   checksEntries.sort((a, b) => (a.data.id < b.data.id ? -1 : a.data.id > b.data.id ? 1 : 0));
   ncEntries.sort((a, b) => (a.data.id < b.data.id ? -1 : a.data.id > b.data.id ? 1 : 0));
+
+  // Ids must be unique across BOTH sections, not just within one — two
+  // different files (even in different directories/sections) declaring the
+  // same id would silently shadow one another downstream.
+  const idOwners = new Map();
+  for (const e of entries) {
+    const id = e.data.id;
+    if (idOwners.has(id)) {
+      throw new Error(
+        `duplicate detection-checks id "${id}" in ${idOwners.get(id)} and ${e.file}`
+      );
+    }
+    idOwners.set(id, e.file);
+  }
 
   const checks = checksEntries.map((e) => {
     const { section, ...rest } = e.data;
@@ -86,7 +111,7 @@ function buildFailureClassesTable() {
     return ai < bi ? -1 : ai > bi ? 1 : 0;
   });
 
-  const header = `| ${COLUMNS.join(' | ')} |`;
+  const header = `| ${COLUMNS.map((c) => HEADER_LABELS[c]).join(' | ')} |`;
   const sep = `|${COLUMNS.map(() => '---').join('|')}|`;
   const rows = entries.map((e) => {
     const cells = COLUMNS.map((c) => mdEscape(e.data[c] ?? ''));
