@@ -249,6 +249,29 @@ function getFieldSourcesRepository(): FieldSourcesRepository {
   return fieldSourcesRepoInstance;
 }
 
+/**
+ * #180 Tier-A round 6: the source that vouches for the CURRENT stored
+ * `offeringType` value, if any — shared by every door that needs to pass
+ * `storedSource` into `guardSmeOfferingTypeAgainstFpo` so the lookup and its
+ * failure handling are written once, not re-copied per door.
+ */
+async function getStoredOfferingTypeSource(ipoId: string | undefined): Promise<string | null> {
+  if (!ipoId) return null;
+  try {
+    const fieldSourcesRepo = getFieldSourcesRepository();
+    const provenance = typeof (fieldSourcesRepo as any).findByField === 'function'
+      ? await fieldSourcesRepo.findByField(ipoId, 'ipos', 'offeringType')
+      : null;
+    return (provenance as any)?.source ?? null;
+  } catch (e) {
+    logger.warn(
+      { ipoId, error: e instanceof Error ? e.message : String(e) },
+      '[DataPersister] #180 F1 stored-provenance lookup failed - guarding without corroboration signal'
+    );
+    return null;
+  }
+}
+
 async function getConsolidationService(): Promise<DataConsolidationService> {
   if (!consolidationServiceInstance) {
     const redis = getRedisClient();
@@ -948,9 +971,18 @@ export async function upsertIPO(
       // been deleted above).
       if ((ipoData as any).offeringType) {
         const effectiveSegment = 'segment' in ipoData ? (ipoData as any).segment : (existingIPO?.segment ?? null);
-        // #180 Tier-A: `source` here IS the source asserting this incoming FPO
-        // value THIS scrape — if it's the exchange itself (NSE/BSE), trust it.
-        (ipoData as any).offeringType = guardSmeOfferingTypeAgainstFpo(effectiveSegment, (ipoData as any).offeringType, source);
+        // #180 Tier-A round 6: `source` here IS the source asserting this
+        // incoming FPO value THIS scrape (trusts a bootstrap write) — but
+        // this door also needs the STORED provenance (an existing row whose
+        // offeringType was already vouched for by NSE/BSE), same as every
+        // other door, or it silently drops that signal.
+        const storedOfferingTypeSource = await getStoredOfferingTypeSource(existingIPO?.id);
+        (ipoData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
+          effectiveSegment,
+          (ipoData as any).offeringType,
+          source,
+          storedOfferingTypeSource
+        );
       }
 
       // P2-5 (T-292): a brand-new row (no existing row = no corroborating
@@ -1106,16 +1138,12 @@ export async function upsertIPO(
               // for it previously). Checking only the stored side flipped a
               // first-ever NSE/BSE-asserted SME FPO with nothing to bootstrap
               // from.
-              const offeringTypeProvenance = await getFieldSourcesRepository().findByField(
-                existingIPO.id,
-                'ipos',
-                'offeringType'
-              );
+              const offeringTypeSource = await getStoredOfferingTypeSource(existingIPO.id);
               (finalData as any).offeringType = guardSmeOfferingTypeAgainstFpo(
                 effectiveSegment,
                 (finalData as any).offeringType,
                 source,
-                (offeringTypeProvenance as any)?.source ?? null
+                offeringTypeSource
               );
             }
 
@@ -1336,19 +1364,7 @@ export async function upsertIPO(
         // to write.
         if ('offeringType' in fallbackData) {
           const effectiveSegment = fallbackData.segment ?? (existingIPO as any).segment ?? null;
-          let offeringTypeSource: string | null = null;
-          try {
-            const fieldSourcesRepo = getFieldSourcesRepository();
-            const offeringTypeProvenance = typeof (fieldSourcesRepo as any).findByField === 'function'
-              ? await fieldSourcesRepo.findByField(existingIPO.id, 'ipos', 'offeringType')
-              : null;
-            offeringTypeSource = (offeringTypeProvenance as any)?.source ?? null;
-          } catch (e) {
-            logger.warn(
-              { ipoId: existingIPO.id, error: e instanceof Error ? e.message : String(e) },
-              '[DataPersister] #180 F1 fallback-door provenance lookup failed - guarding without corroboration signal'
-            );
-          }
+          const offeringTypeSource = await getStoredOfferingTypeSource(existingIPO.id);
           fallbackData.offeringType = guardSmeOfferingTypeAgainstFpo(
             effectiveSegment,
             fallbackData.offeringType,

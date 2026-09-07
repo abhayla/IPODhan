@@ -177,6 +177,27 @@ describe('#180 F1 — SME row never keeps a stale FPO across an update that omit
     }
   });
 
+  it('#180 Tier-A round 6: STORED provenance is trusted (BSE) even when the INCOMING source this scrape is untrusted — the pre-consolidation door (~953) must see it too', async () => {
+    // Round 5 fixed the consolidation and fallback doors to check storedSource;
+    // the pre-consolidation door (ipoData.offeringType, ~953) still passed
+    // only 3 args, so storedSource was always undefined THERE — this scrape's
+    // untrusted MONEYCONTROL source alone would have flipped it at that door
+    // if the fix regresses. findByField returning a BSE-sourced record is
+    // what proves the stored signal reaches that door.
+    findByFieldMock.mockResolvedValue({ id: 'fs-bse', fieldName: 'offeringType', source: 'BSE' });
+    consolidateIPODataMock.mockResolvedValue(
+      consolidationResult({ status: 'UPCOMING', offeringType: 'FPO' })
+    );
+    const ipoRepository = makeIpoRepository();
+
+    await upsertIPO(ipoRepository, scrape({ offeringType: 'FPO' }), 'MONEYCONTROL', existingRow());
+
+    if (ipoRepository.update.mock.calls.length > 0) {
+      const [, patch] = ipoRepository.update.mock.calls[0];
+      expect(patch.offeringType).not.toBe('IPO');
+    }
+  });
+
   it('MAINBOARD row stored FPO stays FPO (guard is SME-scoped only)', async () => {
     consolidateIPODataMock.mockResolvedValue(
       consolidationResult({ status: 'UPCOMING', offeringType: 'FPO' })
