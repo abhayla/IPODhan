@@ -154,4 +154,67 @@ describe('IPORepository — #358 deterministic tiebreaker', () => {
 
     expect(mockSelect.orderBy.mock.calls[0].length).toBeGreaterThan(1);
   });
+
+  it('findBySlug: the latest-10 subscriptions/gmpRecords queries carry a secondary key', async () => {
+    const mockIPO = {
+      id: '1',
+      slug: 'test-ipo',
+      companyName: 'Test Company',
+      registrarId: null,
+    };
+
+    // findBySlug's leading select (by slug) resolves via .limit(); every
+    // sub-query in the Promise.all shares this same mock object, so
+    // orderBy.mock.calls accumulates in source order: subscriptions (idx 0),
+    // gmpRecords (idx 1), then ipoDemandGraph (idx 2, already 2 columns).
+    const mockSelect = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([mockIPO]),
+    };
+    mockDb.select = vi.fn().mockReturnValue(mockSelect);
+
+    await repository.findBySlug('test-ipo');
+
+    expect(mockSelect.orderBy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mockSelect.orderBy.mock.calls[0].length).toBeGreaterThan(1); // subscriptions
+    expect(mockSelect.orderBy.mock.calls[1].length).toBeGreaterThan(1); // gmpRecords
+  });
+
+  it('findListings: the latest-per-ipo subscription/gmp map-builder queries carry a secondary key', async () => {
+    const mockCountSelect = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{ count: 1 }]),
+    };
+    const mockListingsSelect = {
+      from: vi.fn().mockReturnThis(),
+      leftJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      offset: vi.fn().mockResolvedValue([{ id: 'ipo-1', companyName: 'Co', slug: 'co' }]),
+    };
+    const mockSubSelect = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockResolvedValue([]),
+    };
+    const mockGmpSelect = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockResolvedValue([]),
+    };
+    mockDb.select = vi
+      .fn()
+      .mockReturnValueOnce(mockCountSelect)
+      .mockReturnValueOnce(mockListingsSelect)
+      .mockReturnValueOnce(mockSubSelect)
+      .mockReturnValueOnce(mockGmpSelect);
+
+    await repository.findListings({ category: 'MAINBOARD', page: 1, limit: 50 });
+
+    expect(mockSubSelect.orderBy.mock.calls[0].length).toBeGreaterThan(1);
+    expect(mockGmpSelect.orderBy.mock.calls[0].length).toBeGreaterThan(1);
+  });
 });
