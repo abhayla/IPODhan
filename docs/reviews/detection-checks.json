@@ -369,6 +369,18 @@
       "unverifiableWhen": "the live HTTP fetch or the matching DB query fails (marked unverifiable, not a false PASS)",
       "auditScript": "scripts/audit-ipo-coverage.mjs --gate (evaluateServedVsStoredDelta)",
       "selfTest": "scripts/tests/audit-ipo-coverage-served-stored.test.mjs"
+    },
+    {
+      "id": "g_reverse_sweep",
+      "findingClass": "an IPO the external market lists (chittorgarh.com's public dashboard) has no matching row on our site, or has one mistyped as offering_type != 'IPO' (the Mopshop shape), or its detail page 404s / renders a different company (the T-460 e_unknown_slug_404 shape) -- every OTHER check iterates OUR OWN rows and cannot find a row we never created",
+      "round7Findings": [],
+      "sourceTask": "#187 (T-461), filed by T-297 discovery-coverage meta-analysis (D2 reverse sweep); real-world instance issue #351 (prod missing Karamtara Engineering/Infrax Renewable/Rentomojo/Manipal Payment/Steamhouse India/Vinod Texworld while staging had discovered several days earlier)",
+      "registryClass": "reverse-sweep-missing-or-mistyped-external-ipo",
+      "failThreshold": "any chittorgarh.com dashboard IPO (mainboard + SME, OPEN/UPCOMING) fails any of: (a) a matching row exists on the target (slug, then normalized-name search, both compared with the trailing legal-entity suffix stripped), (b) that row's offeringType == 'IPO', (c) GET {BASE_URL}/ipos/<slug> returns 200 and the body mentions the company name",
+      "severity": "P1",
+      "unverifiableWhen": "the external calendar (both chittorgarh dashboard fetches) could not be reached at all -- BLIND, not a pass. NOTE: does not cover recently-CLOSED (30-day) IPOs -- chittorgarh's listing-date report renders client-side and ipowatch.in was unreachable from the environment this check was authored in; see scripts/lib/chittorgarh-oracle-parser.mjs 'KNOWN GAP'.",
+      "auditScript": "scripts/audit-reverse-sweep.mjs --gate",
+      "selfTest": "scripts/tests/audit-reverse-sweep.test.mjs"
     }
   ],
   "notCoveredByThisManifest": [
