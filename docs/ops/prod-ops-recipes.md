@@ -38,15 +38,31 @@ Layout: `/var/www/ipodhan/{releases,releases-staging,current,current-staging,sha
 
 ## 3. Deploy (only from a frozen release branch, one prod deploy per day, 21:00-23:30 IST)
 
+**Timers are set 30 minutes early and never wait for an idle session** (signal-ownership.md R7; T-501).
+Incident: on 2026-09-07 the 20:30/21:00 session crons fired at 22:29 (90 min late) because they only
+fire when the session is IDLE, and the session was busy through the window.
+- The deploy reminder cron/todo is created **30 minutes before the window** (20:30 for a 21:00 deploy),
+  not at the window start.
+- The Rule-6 pre-deploy brief carries a `session idle since HH:MM` line so a busy session is visible
+  BEFORE the window, not discovered after it's missed.
+- The deploy step itself is `scripts/ops/deploy-and-watch.sh <date> <sha>`, started with the harness's
+  run-in-background so dispatch + watch run inside the window regardless of what else the session is
+  doing — it never depends on the session going idle.
+
 ```bash
 # brief step (T-498, signal-ownership R5): what's fixed on main but still failing on prod, before naming the cut
 node scripts/ops/merged-not-deployed.mjs --brief
 git fetch origin && git rev-parse --short origin/release/prod-<date>          # must equal the brief sha
-gh workflow run deploy-linux.yml --ref release/prod-<date> -f slot=prod -f ref=<sha>
-gh run list --workflow deploy-linux.yml --limit 1                              # get the run id
-gh run view <id> --log | grep -E "probe port|release_scraper_cycle_locks|Deploying|rollback|migrat" # proof lines
+# single dispatch+watch command (T-501) — start in the background, do not block the session on it:
+scripts/ops/deploy-and-watch.sh <date> <sha>
+#   refuses if origin/release/prod-<date> != <sha>; dispatches gh workflow run deploy-linux.yml
+#   --ref release/prod-<date> -f slot=prod -f ref=<sha>; watches with gh run watch <id> --exit-status;
+#   prints the proof-line grep; writes the run id to scripts/ops/state/last-deploy-run.json;
+#   on a failed run, exits non-zero and prints the rollback command with -f ref=<previous prod tag sha>
 ```
-Rollback = the same command with `-f ref=<previous sha>` (must be an ancestor on the same release branch).
+Rollback = the same command with `-f ref=<previous sha>` (must be an ancestor on the same release branch),
+or `scripts/ops/deploy-and-watch.sh <date> <sha> --rollback-to <prev-sha>` to control which sha the
+printed rollback command names.
 The deploy log IS the Actions run log (`scripts/deploy-linux.sh` prints `==> ...` lines); nothing is written on the box.
 NEVER push a non-md file straight to `main`: the write-ratchet (`scripts/check-write-ratchet.mjs`) scans the whole tree incl. docs/, and a raw-SQL template pushed to main on 2026-09-06 turned every open PR gate red. Code-like files go through a PR. Every push to `main` auto-deploys staging EXCEPT markdown-only pushes (`paths-ignore: '**/*.md'`), so ledger/docs pushes are free; batch code pushes.
 Tag after verification: `git tag -a prod-<date> <sha> -m "..." && git push origin prod-<date>` (a tag push does not deploy).
