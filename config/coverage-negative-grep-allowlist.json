@@ -1,0 +1,8 @@
+{
+  "$schema": "T-470 (issue #197) — components/rules/fields intentionally shipped without a test. Every entry MUST carry a one-line reason; do not blanket-allowlist to force green (defect-fix-contract.md).",
+  "web": [],
+  "scraper": {
+    "validationRules": [],
+    "priorityMatrixFields": []
+  }
+}
