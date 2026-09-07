@@ -215,11 +215,28 @@ export async function resolveIpoRow(
   // ISIN (both null() calls short-circuit before querying).
   let keyMatch: IPO | null = isin ? await ipoRepository.findByIsin(isin) : null;
   if (keyMatch && ofsIdentityConflict(offeringType, keyMatch.offeringType)) {
-    logger.warn({
-      companyName, isin, identityOfferingType: offeringType, candidateId: keyMatch.id,
-      candidateOfferingType: keyMatch.offeringType,
-    }, '[T-478] Tier 1 ISIN match declined - OFS/IPO identity conflict');
-    keyMatch = null;
+    // T-478 round 3 (item 2): the declined candidate is the WRONG type, but
+    // a row of the RIGHT type may still exist under the same ISIN (e.g. a
+    // repeat explicit-OFS scrape whose only match is the isin tier) —
+    // re-query filtered to the incoming record's own offering_type before
+    // giving up, so a genuine refresh does not fall through to a colliding
+    // create.
+    let retried = offeringType ? await ipoRepository.findByIsin(isin, offeringType) : null;
+    // Defensive: never trust a repository call site that ignores the
+    // offeringType filter (e.g. an under-specified test double) — verify
+    // the retried candidate is actually the right type before accepting it.
+    if (retried && ofsIdentityConflict(offeringType, retried.offeringType)) retried = null;
+    if (retried) {
+      logger.info({
+        companyName, isin, offeringType, candidateId: retried.id,
+      }, '[T-478] Tier 1 ISIN match declined but a same-type row was found on retry');
+    } else {
+      logger.warn({
+        companyName, isin, identityOfferingType: offeringType, candidateId: keyMatch.id,
+        candidateOfferingType: keyMatch.offeringType,
+      }, '[T-478] Tier 1 ISIN match declined - OFS/IPO identity conflict');
+    }
+    keyMatch = retried;
   }
 
   // Tier 2: NSE/BSE ticker symbol (exact, normalized). Same NULL-safety
@@ -229,11 +246,19 @@ export async function resolveIpoRow(
   if (!keyMatch && symbol) {
     keyMatch = await ipoRepository.findBySymbol(symbol);
     if (keyMatch && ofsIdentityConflict(offeringType, keyMatch.offeringType)) {
-      logger.warn({
-        companyName, symbol, identityOfferingType: offeringType, candidateId: keyMatch.id,
-        candidateOfferingType: keyMatch.offeringType,
-      }, '[T-478] Tier 2 symbol match declined - OFS/IPO identity conflict');
-      keyMatch = null;
+      let retried = offeringType ? await ipoRepository.findBySymbol(symbol, offeringType) : null;
+      if (retried && ofsIdentityConflict(offeringType, retried.offeringType)) retried = null;
+      if (retried) {
+        logger.info({
+          companyName, symbol, offeringType, candidateId: retried.id,
+        }, '[T-478] Tier 2 symbol match declined but a same-type row was found on retry');
+      } else {
+        logger.warn({
+          companyName, symbol, identityOfferingType: offeringType, candidateId: keyMatch.id,
+          candidateOfferingType: keyMatch.offeringType,
+        }, '[T-478] Tier 2 symbol match declined - OFS/IPO identity conflict');
+      }
+      keyMatch = retried;
     }
   }
 
@@ -254,14 +279,24 @@ export async function resolveIpoRow(
     }, '[T-403] Tier 3 normalized-name match declined - segment mismatch');
     nameMatch = null;
   } else if (nameMatch && ofsIdentityConflict(offeringType, nameMatch.offeringType)) {
-    logger.warn({
-      companyName,
-      normalizedName,
-      identityOfferingType: offeringType,
-      candidateOfferingType: nameMatch.offeringType,
-      candidateId: nameMatch.id,
-    }, '[T-478] Tier 3 normalized-name match declined - OFS/IPO identity conflict');
-    nameMatch = null;
+    let retried = offeringType && normalizedName
+      ? await ipoRepository.findByNormalizedName(normalizedName, offeringType)
+      : null;
+    if (retried && ofsIdentityConflict(offeringType, retried.offeringType)) retried = null;
+    if (retried) {
+      logger.info({
+        companyName, normalizedName, offeringType, candidateId: retried.id,
+      }, '[T-478] Tier 3 normalized-name match declined but a same-type row was found on retry');
+    } else {
+      logger.warn({
+        companyName,
+        normalizedName,
+        identityOfferingType: offeringType,
+        candidateOfferingType: nameMatch.offeringType,
+        candidateId: nameMatch.id,
+      }, '[T-478] Tier 3 normalized-name match declined - OFS/IPO identity conflict');
+    }
+    nameMatch = retried;
   }
 
   if (!nameMatch) {

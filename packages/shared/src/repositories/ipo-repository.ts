@@ -375,7 +375,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * // "Midwest Ltd" and "Midwest Limited" both normalize to "midwest"
    * const ipo = await repository.findByNormalizedName('midwest');
    */
-  async findByNormalizedName(normalizedName: string): Promise<IPO | null> {
+  async findByNormalizedName(normalizedName: string, offeringType?: string): Promise<IPO | null> {
     if (!normalizedName) {
       return null;
     }
@@ -389,14 +389,17 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // same compact (whitespace-stripped) key — compare compact keys too so
       // this class of pair matches. Exact match is a subset of compact match,
       // so this can only ADD matches, never drop one the exact path already found.
-      const [ipo] = await this.db
-        .select()
-        .from(ipos)
-        .where(
-          sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName}
-              OR ${compactNormalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName.replace(/\s+/g, '')}`
-        )
-        .limit(1);
+      const nameCondition = sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName}
+              OR ${compactNormalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName.replace(/\s+/g, '')}`;
+      // T-478 round 3 (issue #225 follow-up, item 2): when a caller filters
+      // by offering_type (the identity guard's "decline, then re-query for
+      // the matching type" retry), more than one row can share a name AND
+      // that type — an explicit ORDER BY makes the pick deterministic
+      // instead of relying on Postgres's unspecified row order under LIMIT 1.
+      const query = offeringType
+        ? this.db.select().from(ipos).where(sql`(${nameCondition}) AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
+        : this.db.select().from(ipos).where(nameCondition);
+      const [ipo] = await query.limit(1);
 
       return ipo || null;
     } catch (error) {
@@ -424,18 +427,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * @param symbol - Raw (un-normalized) ticker symbol. Normalized here via
    *   trim + uppercase before comparison (source scrapers vary in case).
    */
-  async findBySymbol(symbol: string | null | undefined): Promise<IPO | null> {
+  async findBySymbol(symbol: string | null | undefined, offeringType?: string): Promise<IPO | null> {
     const normalized = symbol?.trim().toUpperCase();
     if (!normalized) {
       return null;
     }
 
     try {
-      const [ipo] = await this.db
-        .select()
-        .from(ipos)
-        .where(sql`upper(trim(${ipos.symbol})) = ${normalized}`)
-        .limit(1);
+      // T-478 round 3 (item 2): see findByNormalizedName's doc comment —
+      // same offering_type-filtered retry + deterministic ORDER BY.
+      const query = offeringType
+        ? this.db.select().from(ipos).where(sql`upper(trim(${ipos.symbol})) = ${normalized} AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
+        : this.db.select().from(ipos).where(sql`upper(trim(${ipos.symbol})) = ${normalized}`);
+      const [ipo] = await query.limit(1);
 
       return ipo || null;
     } catch (error) {
@@ -461,18 +465,18 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * @param isin - Raw (un-normalized) ISIN. Normalized here via trim +
    *   uppercase before comparison.
    */
-  async findByIsin(isin: string | null | undefined): Promise<IPO | null> {
+  async findByIsin(isin: string | null | undefined, offeringType?: string): Promise<IPO | null> {
     const normalized = isin?.trim().toUpperCase();
     if (!normalized) {
       return null;
     }
 
     try {
-      const [ipo] = await this.db
-        .select()
-        .from(ipos)
-        .where(sql`upper(trim(${ipos.isin})) = ${normalized}`)
-        .limit(1);
+      // T-478 round 3 (item 2): same offering_type-filtered retry pattern.
+      const query = offeringType
+        ? this.db.select().from(ipos).where(sql`upper(trim(${ipos.isin})) = ${normalized} AND ${ipos.offeringType} = ${offeringType}`).orderBy(ipos.id)
+        : this.db.select().from(ipos).where(sql`upper(trim(${ipos.isin})) = ${normalized}`);
+      const [ipo] = await query.limit(1);
 
       return ipo || null;
     } catch (error) {

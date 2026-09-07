@@ -458,7 +458,7 @@ const PG_ERROR_CODES = {
  * identity key), falling back to closeDate, then the current UTC year for
  * the rare case a brand-new OFS row has neither yet.
  */
-export function ofsSlugYear(scrapedIPO: { openDate?: string | Date | null; closeDate?: string | Date | null }): number {
+export function ofsSlugYear(scrapedIPO: { openDate?: string | Date | null; closeDate?: string | Date | null }): number | null {
   const candidate = scrapedIPO.openDate ?? scrapedIPO.closeDate;
   if (candidate) {
     const parsed = candidate instanceof Date ? candidate : new Date(candidate);
@@ -466,7 +466,48 @@ export function ofsSlugYear(scrapedIPO: { openDate?: string | Date | null; close
       return parsed.getUTCFullYear();
     }
   }
-  return new Date().getUTCFullYear();
+  // T-478 round 3: deliberately NEVER new Date().getUTCFullYear() here — a
+  // wall-clock fallback is exactly the round-2 bug (a Dec/Jan re-scrape of
+  // the same still-dateless OFS row would compute a DIFFERENT slug each
+  // year boundary). Callers must use a stable, non-time-dependent fallback.
+  return null;
+}
+
+/** T-478 round 3: observability counter for `ofsSlugYear` returning null (non-fatal, never gates the write). */
+export const ofsSlugYearMissingCount = { count: 0 };
+
+/**
+ * T-478 round 3 (issue #225 follow-up, item 3): the ONE place that computes
+ * an OFS row's slug — shared by every caller that needs it (upsertIPO's own
+ * insert, and the identity-resolution `slug` passed into `resolveIpoRow` by
+ * BaseScraperOrchestrator.ts / data-consolidation-orchestrator.ts) so tier 4
+ * (slug) can also find an already-created OFS row on a repeat scrape,
+ * independent of the offering_type-filtered key/name retry (item 2). A
+ * defaulted (non-explicit) 'IPO' record, or any non-OFS type, gets the plain
+ * company slug — unchanged, legacy behavior.
+ */
+export function computeIpoIdentitySlug(scrapedIPO: {
+  companyName: string;
+  offeringType?: string;
+  openDate?: string | Date | null;
+  closeDate?: string | Date | null;
+  offeringTypeExplicit?: boolean;
+}): string {
+  const baseSlug = generateSlug(scrapedIPO.companyName);
+  const isExplicitOfs = scrapedIPO.offeringType === 'OFS' && scrapedIPO.offeringTypeExplicit === true;
+  if (!isExplicitOfs) {
+    return baseSlug;
+  }
+  const year = ofsSlugYear(scrapedIPO);
+  if (year == null) {
+    logger.warn(
+      { companyName: scrapedIPO.companyName },
+      '[T-478] OFS row has no derivable open/close date for its slug year - using a stable -ofs-unknown marker (never Date.now())'
+    );
+    ofsSlugYearMissingCount.count += 1;
+    return `${baseSlug}-ofs-unknown`;
+  }
+  return `${baseSlug}-ofs-${year}`;
 }
 
 function shouldSkipRetry(error: any): boolean {
@@ -657,19 +698,19 @@ export async function upsertIPO(
   preResolvedIPO?: IPO | null
 ): Promise<string> {
   const startTime = Date.now();
-  // T-478 round 2 (issue #225 follow-up): an offering_type='OFS' row is a
-  // DIFFERENT calendar entry from the company's IPO row and must never share
-  // its slug — sharing would either throw a unique-slug violation or, once
-  // the identity guard below stops it from merging into the IPO row, still
-  // collide. The `-ofs-<year>` suffix is applied UNCONDITIONALLY for OFS
-  // (not only when a collision would occur today), so it stays collision-free
-  // even if the company's real IPO row does not exist yet. Deterministic and
-  // stable across scrape cycles (same companyName + same open-year -> same
-  // slug), so it doubles as tier 4's lookup key for a repeat OFS scrape.
-  const baseSlug = generateSlug(scrapedIPO.companyName);
-  const slug = scrapedIPO.offeringType === 'OFS'
-    ? `${baseSlug}-ofs-${ofsSlugYear(scrapedIPO)}`
-    : baseSlug;
+  // T-478 round 3 (issue #225 follow-up, CRITICAL fix): the -ofs-<year> slug
+  // (and the identity guard below) apply ONLY to an EXPLICITLY classified
+  // OFS record (offeringTypeExplicit) — every other source hard-defaults
+  // offeringType='IPO' with no real signal, and treating that default as
+  // "this is definitely an IPO, not an OFS" would decline every identity
+  // tier on a re-scrape of a legacy OFS row and attempt a colliding create
+  // (23505) every cycle. `ofsSlugYear` never falls back to the current
+  // wall-clock date (round 2's bug: a Dec/Jan re-scrape shifted the slug) —
+  // it is null when the source has no derivable date, in which case a
+  // stable, non-time-dependent `-ofs-unknown` marker is used instead (never
+  // Date.now()) so the slug cannot drift between cycles.
+  const offeringTypeExplicit = (scrapedIPO as any).offeringTypeExplicit === true;
+  const slug = computeIpoIdentitySlug(scrapedIPO);
   const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
 
   /**
@@ -717,7 +758,9 @@ export async function upsertIPO(
             openDate: scrapedIPO.openDate ?? null,
             priceRangeMin: scrapedIPO.priceRangeMin ?? null,
             segment: scrapedIPO.segment ?? null,
-            offeringType: scrapedIPO.offeringType ?? null,
+            // T-478 round 3: explicit-only, same rationale as
+            // BaseScraperOrchestrator.ts.
+            offeringType: offeringTypeExplicit ? scrapedIPO.offeringType : undefined,
           }) as IPO | null;
 
       if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {

@@ -25,7 +25,7 @@ import type {
 import { resolveIpoRow } from '@ipodhan/shared/repositories';
 import logger from '../utils/logger.js';
 import type { ScrapedIPO } from '../utils/validators.js';
-import { generateSlug } from '../utils/validators.js';
+import { computeIpoIdentitySlug } from './data-persister.js';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
 import type { ScraperSource } from '../config/field-priority-matrix';
@@ -99,7 +99,11 @@ export class DataConsolidationOrchestrator {
     preResolvedIPO?: IPO | null
   ): Promise<ConsolidatedUpsertResult> {
     const startTime = Date.now();
-    const slug = generateSlug(scrapedIPO.companyName);
+    // T-478 round 3 (item 3): OFS-aware slug (see computeIpoIdentitySlug's
+    // doc comment) — both the identity-resolution lookup key below AND the
+    // create-branch insert slug (line ~237) use this SAME value, so a
+    // repeat explicit-OFS scrape can find its own row via tier 4 too.
+    const slug = computeIpoIdentitySlug(scrapedIPO as any);
 
     // Check if consolidation is enabled
     if (!FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
@@ -156,7 +160,10 @@ export class DataConsolidationOrchestrator {
             openDate: scrapedIPO.openDate ?? null,
             priceRangeMin: scrapedIPO.priceRangeMin ?? null,
             segment: scrapedIPO.segment ?? null,
-            offeringType: scrapedIPO.offeringType ?? null,
+            // T-478 round 3: only an EXPLICITLY classified offeringType
+            // guards identity — see BaseScraperOrchestrator.ts for the
+            // full rationale.
+            offeringType: (scrapedIPO as any).offeringTypeExplicit ? scrapedIPO.offeringType : undefined,
           }) as IPO | null;
       const isNew = !existingIPO;
 

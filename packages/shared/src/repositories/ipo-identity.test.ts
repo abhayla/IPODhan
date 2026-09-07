@@ -653,3 +653,35 @@ describe('resolveIpoRow — OFS/IPO identity guard (T-478 round 2, issue #225 fo
     expect(result).toEqual(existing);
   });
 });
+
+describe('resolveIpoRow — decline-then-retry-by-type (T-478 round 3, issue #225 follow-up item 2)', () => {
+  it('tier 2 (symbol) declines the wrong-type candidate, then re-queries filtered to the correct offering_type and finds it', async () => {
+    const ipoRow = makeIpo({ id: 'row-ipo', companyName: 'Cochin Shipyard Limited', symbol: 'COCHINSHIP', offeringType: 'IPO' } as Partial<IPO>);
+    const ofsRow = makeIpo({ id: 'row-ofs', companyName: 'Cochin Shipyard Limited', symbol: 'COCHINSHIP', offeringType: 'OFS' } as Partial<IPO>);
+    const findBySymbol = vi.fn(async (_symbol: string, offeringType?: string) => {
+      if (!offeringType) return ipoRow; // unfiltered call finds the IPO row first
+      return offeringType === 'OFS' ? ofsRow : null;
+    });
+    const repo = makeRepo({ findBySymbol });
+
+    const result = await resolveIpoRow(repo, {
+      ...baseIdentity,
+      symbol: 'COCHINSHIP',
+      offeringType: 'OFS',
+    });
+
+    expect(result).toEqual(ofsRow);
+    expect(findBySymbol).toHaveBeenCalledWith('COCHINSHIP');
+    expect(findBySymbol).toHaveBeenCalledWith('COCHINSHIP', 'OFS');
+  });
+
+  it('tier 2 decline + retry finds nothing (no row of the correct type exists) -> resolves null, not the wrong-type row', async () => {
+    const ipoRow = makeIpo({ id: 'row-ipo', companyName: 'Cochin Shipyard Limited', symbol: 'COCHINSHIP', offeringType: 'IPO' } as Partial<IPO>);
+    const findBySymbol = vi.fn(async (_symbol: string, offeringType?: string) => (!offeringType ? ipoRow : null));
+    const repo = makeRepo({ findBySymbol });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, symbol: 'COCHINSHIP', offeringType: 'OFS' });
+
+    expect(result).toBeNull();
+  });
+});

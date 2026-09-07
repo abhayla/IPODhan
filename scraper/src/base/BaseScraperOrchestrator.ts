@@ -38,8 +38,7 @@ import {
   type FieldProtectionService
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
-import { generateSlug } from '../utils/validators.js';
-import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
+import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching, computeIpoIdentitySlug } from '../services/data-persister.js';
 import { recordDocumentSourceHints } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
@@ -438,7 +437,10 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     }
 
     const validatedIPO = validation.data!;
-    const slug = generateSlug(validatedIPO.companyName);
+    // T-478 round 3 (item 3): the SAME suffixed-slug computation upsertIPO
+    // uses for an explicit-OFS insert, so tier 4 (slug) can also find an
+    // already-created OFS row on a repeat scrape.
+    const slug = computeIpoIdentitySlug(validatedIPO as any);
     processResult.slug = slug;
 
     // Step 2: Resolve identity ONCE per request (T-307, write-path hardening
@@ -462,7 +464,13 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       openDate: validatedIPO.openDate ?? null,
       priceRangeMin: validatedIPO.priceRangeMin ?? null,
       segment: validatedIPO.segment ?? null,
-      offeringType: validatedIPO.offeringType ?? null,
+      // T-478 round 3: the OFS/IPO identity guard applies ONLY when the
+      // source explicitly classified this row (offeringTypeExplicit) — a
+      // defaulted 'IPO' (every non-OFS-endpoint source) must pass undefined
+      // here so a re-scrape of a legacy OFS row still resolves to it
+      // (legacy behavior), instead of declining every tier and colliding on
+      // create.
+      offeringType: (validatedIPO as any).offeringTypeExplicit ? validatedIPO.offeringType : undefined,
     }) as IPO | null;
     const ipoId = existingIPO?.id;
 

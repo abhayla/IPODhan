@@ -96,8 +96,12 @@ describe('upsertIPO — OFS never resolves to the IPO row (T-478 round 2)', () =
     };
     const ipoRepository = makeIpoRepository({
       // Tier 2 (symbol) is exactly the tier the Tier-A finding walked
-      // through — the real bug path.
-      findBySymbol: vi.fn().mockResolvedValue(existingIpoRow),
+      // through — the real bug path. Arg-aware: a real offering_type-filtered
+      // retry query (item 2) finds nothing for 'OFS' since only an IPO row
+      // exists under this symbol.
+      findBySymbol: vi.fn(async (_symbol: string, offeringType?: string) =>
+        !offeringType || offeringType === 'IPO' ? existingIpoRow : null
+      ),
     });
 
     const scrapedOfs = {
@@ -108,6 +112,7 @@ describe('upsertIPO — OFS never resolves to the IPO row (T-478 round 2)', () =
       listingExchange: 'NSE',
       segment: 'MAINBOARD',
       offeringType: 'OFS',
+      offeringTypeExplicit: true,
       status: 'UPCOMING',
     } as any;
 
@@ -136,7 +141,14 @@ describe('upsertIPO — OFS never resolves to the IPO row (T-478 round 2)', () =
       listingExchanges: ['NSE'],
     };
     const ipoRepository = makeIpoRepository({
-      findBySymbol: vi.fn().mockResolvedValue(existingOfsRow),
+      // Real findBySymbol(symbol, offeringType?) FILTERS by offeringType in
+      // SQL when given one — an arg-aware mock so the round-3 decline+retry
+      // (item 2) is tested honestly: the retry call passes offeringType:'IPO'
+      // and a real, offering_type-filtered query would find nothing (only
+      // an OFS row exists), not the OFS row itself.
+      findBySymbol: vi.fn(async (_symbol: string, offeringType?: string) =>
+        !offeringType || offeringType === 'OFS' ? existingOfsRow : null
+      ),
     });
 
     const scrapedIpo = {
@@ -147,6 +159,7 @@ describe('upsertIPO — OFS never resolves to the IPO row (T-478 round 2)', () =
       listingExchange: 'NSE',
       segment: 'MAINBOARD',
       offeringType: 'IPO',
+      offeringTypeExplicit: true,
       status: 'UPCOMING',
     } as any;
 
@@ -184,6 +197,7 @@ describe('upsertIPO — OFS never resolves to the IPO row (T-478 round 2)', () =
       listingExchange: 'NSE',
       segment: 'MAINBOARD',
       offeringType: 'OFS',
+      offeringTypeExplicit: true,
       status: 'OPEN',
     } as any;
 
@@ -192,6 +206,47 @@ describe('upsertIPO — OFS never resolves to the IPO row (T-478 round 2)', () =
     expect(ipoRepository.create).not.toHaveBeenCalled();
     expect(ipoRepository.update).toHaveBeenCalledTimes(1);
     expect(ipoRepository.update.mock.calls[0][0]).toBe('existing-cochin-ofs');
+    expect(resultId).toBe('existing-cochin-ofs');
+  });
+
+  it('T-478 round 3 CRITICAL regression: a legacy OFS row re-scraped by a DEFAULTED-IPO record (offeringTypeExplicit unset, the hard-default every non-OFS-endpoint source ships) resolves to the OFS row - no create, no 23505', async () => {
+    const existingOfsRow = {
+      id: 'existing-cochin-ofs',
+      slug: 'cochin-shipyard-ofs-2026',
+      companyName: 'Cochin Shipyard Limited',
+      symbol: 'COCHINSHIP',
+      segment: 'MAINBOARD',
+      offeringType: 'OFS',
+      listingExchanges: ['NSE'],
+      allotmentDate: null,
+      listingDate: null,
+    };
+    const ipoRepository = makeIpoRepository({
+      findBySymbol: vi.fn().mockResolvedValue(existingOfsRow),
+    });
+
+    // Exactly the shape moneycontrol-scraper.ts / bse-api-scraper.ts /
+    // chittorgarh-scraper.ts / nse-api-client.ts's non-OFS branch emit:
+    // offeringType: 'IPO' with NO offeringTypeExplicit at all.
+    const defaultedIpoScrape = {
+      companyName: 'Cochin Shipyard Limited',
+      symbol: 'COCHINSHIP',
+      openDate: '2026-09-10',
+      closeDate: '2026-09-15',
+      listingExchange: 'NSE',
+      segment: 'MAINBOARD',
+      offeringType: 'IPO',
+      status: 'UPCOMING',
+    } as any;
+
+    const resultId = await upsertIPO(ipoRepository, defaultedIpoScrape, 'NSE');
+
+    expect(ipoRepository.create).not.toHaveBeenCalled(); // no 23505-causing collision attempt
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+    expect(ipoRepository.update.mock.calls[0][0]).toBe('existing-cochin-ofs');
+    // resolveOfferingTypeKeepingClassification protects the stored 'OFS'
+    // classification from being demoted back to the defaulted 'IPO'.
+    expect(ipoRepository.update.mock.calls[0][1].offeringType).toBe('OFS');
     expect(resultId).toBe('existing-cochin-ofs');
   });
 });

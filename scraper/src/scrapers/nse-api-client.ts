@@ -575,6 +575,11 @@ export function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | '
     listingExchange: 'NSE',
     segment,
     offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
+    // T-478 round 3: true ONLY for the `category=ofs` endpoint branch above —
+    // a genuine payload signal, not the 'IPO' fallback default. Every other
+    // branch (rights/tender/ipp/series-detection/the IPO default) leaves this
+    // unset, so resolveIpoRow's OFS/IPO identity guard stays a no-op for them.
+    offeringTypeExplicit: endpointCategory === 'ofs' ? true : undefined,
     // T-455 (issue #242, round-7 P3-1): NSE payloads carry no `sector`/`industry`
     // field on any endpoint this client hits (verified against every captured
     // fixture in tests/fixtures/nse/) — `data.sector` was always `undefined`, so
