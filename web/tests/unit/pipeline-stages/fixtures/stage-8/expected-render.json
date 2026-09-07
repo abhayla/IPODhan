@@ -1,0 +1,52 @@
+{
+  "_spec": "Stage 8 golden, written from docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6 row 8 ('Render | stage-6 DB | the IPO detail page | financials section rendered, \"Awaiting data\" gone') BEFORE this stage was run (scraper/tests/unit/pipeline-stages/README.md rule 1). Rendered strings come from the component's own documented formatters: formatCurrency = `Rs<value.toFixed(2)> Cr` with 'N/A' for null, and the multi-year table's fixed FY2022 / FY2023 / FY2024 column headers.",
+  "_input": "The props are the PERSISTED shape, carried forward unchanged from stage 6's golden (scraper/tests/unit/pipeline-stages/fixtures/stage-6/expected-persist.json -> expectedWrite), i.e. the real Deepa Jewellers RHP numbers in INR crore as the persist door would have written them. Nothing here is invented for the render test.",
+  "input": {
+    "source": "stage-6 expected-persist.json#expectedWrite (real Deepa RHP, INR crore)",
+    "props": {
+      "financialData": {
+        "revenueFy2022": null,
+        "revenueFy2023": null,
+        "revenueFy2024": 1024.568,
+        "profitFy2022": null,
+        "profitFy2023": null,
+        "profitFy2024": 24.347,
+        "ebitdaFy2022": null,
+        "ebitdaFy2023": null,
+        "ebitdaFy2024": 35.771,
+        "totalIncomeFy2022": null,
+        "totalIncomeFy2023": null,
+        "totalIncomeFy2024": 1025.729,
+        "totalBorrowings": null,
+        "currentRatio": null,
+        "quickRatio": null,
+        "inventoryTurnover": null
+      }
+    }
+  },
+  "expectedText": {
+    "heading": "Enhanced Financial Metrics",
+    "rowLabels": ["Revenue", "Profit", "EBITDA", "Total Income"],
+    "values": ["₹1024.57 Cr", "₹24.35 Cr", "₹35.77 Cr", "₹1025.73 Cr"],
+    "nullPlaceholder": "N/A"
+  },
+  "expectedEmptyState": {
+    "_spec_line": "row 8 expected: the section is rendered only when stage 6 actually persisted something",
+    "case": "financialData = null (nothing persisted)",
+    "expectedOutcome": "the component renders nothing at all, so the page's Awaiting-data notice is what the reader sees"
+  },
+  "redByDesign": [
+    {
+      "id": "S8-R1",
+      "claim": "the render shows the fiscal years the document actually reports",
+      "spec": "section 6 row 8 expected: 'financials section rendered'",
+      "observedToday": "the multi-year table's columns are hard-coded FY2022 / FY2023 / FY2024; the real Deepa RHP reports FY2026 / FY2025 / FY2024, so two of its three years cannot appear on the page at all - the render half of stage 6's S6-R4"
+    },
+    {
+      "id": "S8-R2",
+      "claim": "the IPO detail page actually mounts EnhancedFinancialMetricsSection",
+      "spec": "section 6 row 8 runs: 'the IPO detail page /ipos/<slug>'",
+      "observedToday": "web/app/ipos/[slug]/page.tsx imports FinancialPerformanceCharts only; EnhancedFinancialMetricsSection is never referenced, so this component's output reaches no reader today"
+    }
+  ]
+}

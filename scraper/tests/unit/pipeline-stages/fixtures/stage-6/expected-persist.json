@@ -1,0 +1,61 @@
+{
+  "_spec": "Stage 6 golden, written from docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6 row 6 ('Persist extracted data | stage-5 JSON | createFinancialData etc. through upsertIPO precedence | rows in financial_data / peer_companies; field_sources = RHP') BEFORE this stage was run. Row 6's 'Exists today?' cell already says NO (functions exist, no precedence, no confidence), so several expectations below are RED BY DESIGN and are marked `redByDesign` with the spec line they come from. This harness does NOT implement stage 6 (issue #258 scope: 'Out of scope: building stage 6 persistence-precedence logic itself').",
+  "_input": "fixtures/stage-6/stage-5-output-deepa.json is the REAL stage-5 output: scraper/scripts/extract_financials_pdf.py run on the real Deepa Jewellers RHP page text (fixtures/stage-5/deepa-rhp-pages.json). Per the ladder, a stage is green only when its output feeds the next stage's fixture unchanged, so this file is stage 5's output byte-for-byte, not a hand-written stand-in.",
+  "input": {
+    "fixture": "stage-5-output-deepa.json",
+    "ipoId": "00000000-0000-4000-8000-0000deepa001",
+    "unit": "millions",
+    "annualYears": [2026, 2025, 2024],
+    "conversion": "the DB stores INR crore (schema.ts financial_data comment); extractor emits INR million, so crore = million / 10"
+  },
+  "expectedWrite": {
+    "_note": "The single row createFinancialData must hand to FinancialDataRepository.upsert for the input above, in INR crore.",
+    "ipoId": "00000000-0000-4000-8000-0000deepa001",
+    "revenueFy2024": 1024.568,
+    "profitFy2024": 24.347,
+    "ebitdaFy2024": 35.771,
+    "totalIncomeFy2024": 1025.729,
+    "eps": 12.78
+  },
+  "expectedFieldSources": {
+    "_spec_line": "section 6 row 6 expected column: 'field_sources = RHP'",
+    "rows": [
+      { "tableName": "financial_data", "fieldName": "revenueFy2024", "source": "RHP", "confidenceAtLeast": 90 },
+      { "tableName": "financial_data", "fieldName": "profitFy2024", "source": "RHP", "confidenceAtLeast": 90 },
+      { "tableName": "financial_data", "fieldName": "eps", "source": "RHP", "confidenceAtLeast": 90 }
+    ]
+  },
+  "expectedPrecedence": {
+    "_spec_line": "section 6 row 6 runs column: 'through upsertIPO precedence'; field-priority order ADMIN > DRHP > NSE > BSE > ... (CLAUDE.md, field-priority-matrix.ts)",
+    "case": "an existing financial_data value whose field_sources.source is ADMIN must survive an RHP-sourced write of the same field",
+    "existingSource": "ADMIN",
+    "incomingSource": "RHP",
+    "expectedOutcome": "keep the ADMIN value, record the rejected incoming value in field_sources.previous_value"
+  },
+  "redByDesign": [
+    {
+      "id": "S6-R1",
+      "claim": "createFinancialData writes field_sources rows naming the document source",
+      "spec": "section 6 row 6 expected: 'field_sources = RHP'",
+      "observedToday": "scraper/src/services/data-persister.ts createFinancialData (line ~1815) builds a FinancialDataInsert and calls financialDataRepository.upsert only; FieldSourcesRepository is never touched on this path"
+    },
+    {
+      "id": "S6-R2",
+      "claim": "the scraper_source enum can express an RHP-sourced field",
+      "spec": "section 6 row 6 expected: 'field_sources = RHP'",
+      "observedToday": "packages/shared/src/db/schema.ts scraperSourceEnum = [ADMIN, DRHP, NSE, BSE, API_FALLBACK, MONEYCONTROL, CHITTORGARH] - there is no RHP value, so an RHP-extracted field cannot be labelled correctly at all"
+    },
+    {
+      "id": "S6-R3",
+      "claim": "a higher-precedence existing value (ADMIN) survives a lower-precedence RHP write",
+      "spec": "section 6 row 6 runs: 'through upsertIPO precedence'",
+      "observedToday": "createFinancialData does an unconditional upsert - it never reads the existing row, never consults FIELD_PRIORITY_MATRIX, and has no confidence input"
+    },
+    {
+      "id": "S6-R4",
+      "claim": "the persist door can store the fiscal years the document actually reports",
+      "spec": "section 6 row 6 expected: 'rows in financial_data'",
+      "observedToday": "ScrapedFinancialData and financial_data hard-code FY2022/FY2023/FY2024 columns; the real Deepa RHP reports FY2026/FY2025/FY2024, so two of its three years have nowhere to go and are silently dropped"
+    }
+  ]
+}
