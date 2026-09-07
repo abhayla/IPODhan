@@ -2319,6 +2319,22 @@ else
   else
     pass "case 32b: no flip line reached before the lineage abort"
   fi
+  # Round 2 HIGH finding: the gate used to run right before the flip (step
+  # 8.5), AFTER the build, the venv swap, and 'drizzle-kit migrate' against
+  # the live DB — an unmerged sha would already have migrated prod and left
+  # a ~3GB orphaned release dir before being refused. It now runs at step
+  # 0.5, immediately after $SHA is resolved, before any of that. Prove it by
+  # asserting the build/migrate log lines never appear at all.
+  if grep -qF 'Building release (npm ci' /tmp/deploy-test-32b.log; then
+    fail "case 32b: the build step ran before the lineage abort — gate is not early enough"
+  else
+    pass "case 32b: no build line reached before the lineage abort"
+  fi
+  if grep -qF "skipping real 'drizzle-kit migrate'" /tmp/deploy-test-32b.log || grep -qF 'Applying database migrations' /tmp/deploy-test-32b.log; then
+    fail "case 32b: the migrate step ran before the lineage abort — gate is not early enough"
+  else
+    pass "case 32b: no migrate line reached before the lineage abort"
+  fi
 fi
 unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
 
