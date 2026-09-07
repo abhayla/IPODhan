@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: the 3 date-incoherent rows (T-296 P2-7) and the 1 lead_managers
  * pollution row (T-296 P2-8) named in the T-299 contract.
@@ -44,6 +43,8 @@ import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { sanitizeLeadManagers } from '../src/utils/validators.js';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
+import { openRepairDb, type ExecuteLike } from './lib/repair-tool.js';
+import { pathToFileURL } from 'node:url';
 
 configureUtcTimestampParsing();
 
@@ -60,6 +61,49 @@ const pool = new Pool({
   password: process.env.DATABASE_PASSWORD,
 });
 
+// repair-tool.ts's openRepairDb() calls dbLike.execute(sql`...`) with a
+// drizzle-orm SQL object (a `.queryChunks` array of string literal fragments
+// interleaved with `Param` wrappers for interpolated values). This tool uses
+// a raw `pg` Pool (see the file header for why), so this adapter FORWARDS
+// the query it is actually given — walking `.queryChunks`, concatenating
+// string fragments and turning each `Param` into a `$n` placeholder + a
+// pushed value — through pool.query(text, params), instead of hardcoding
+// the one literal query openRepairDb happens to issue today. Anything it
+// cannot map (not a drizzle SQL object, or a chunk shape it does not
+// recognize) throws rather than silently running the wrong query.
+export function mapSqlToPgQuery(query: unknown): { text: string; params: unknown[] } {
+  const q = query as { queryChunks?: unknown[] } | undefined;
+  if (!q || !Array.isArray(q.queryChunks)) {
+    throw new Error(
+      'repair-dates-and-leadmanagers-t299: cannot forward this query to pool.query() — expected a drizzle-orm sql`` object with .queryChunks, got: ' +
+        JSON.stringify(query)
+    );
+  }
+  let text = '';
+  const params: unknown[] = [];
+  for (const chunk of q.queryChunks) {
+    if (typeof chunk === 'string') {
+      text += chunk;
+    } else if (chunk && typeof chunk === 'object' && 'value' in (chunk as Record<string, unknown>)) {
+      params.push((chunk as { value: unknown }).value);
+      text += `$${params.length}`;
+    } else {
+      throw new Error(
+        `repair-dates-and-leadmanagers-t299: cannot forward unsupported SQL chunk to pool.query(): ${JSON.stringify(chunk)}`
+      );
+    }
+  }
+  return { text, params };
+}
+
+const repairDbGuard: ExecuteLike = {
+  execute: async (query: unknown) => {
+    const { text, params } = mapSqlToPgQuery(query);
+    const result = await pool.query(text, params);
+    return { rows: result.rows };
+  },
+};
+
 async function main() {
   console.log('='.repeat(80));
   console.log(`DATES + LEAD_MANAGERS REPAIR (T-299 P2-7/P2-8) - ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
@@ -67,6 +111,12 @@ async function main() {
 
   mkdirSync(LEDGER_DIR, { recursive: true });
   const ledger: any[] = [];
+
+  await openRepairDb(repairDbGuard, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'repair-dates-and-leadmanagers-t299',
+  });
 
   const dateFixes: Array<{
     slug: string;
@@ -149,7 +199,10 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
-  console.error('dates/lead_managers repair crashed:', e);
-  process.exit(1);
-});
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
+  main().catch((e) => {
+    console.error('dates/lead_managers repair crashed:', e);
+    process.exit(1);
+  });
+}

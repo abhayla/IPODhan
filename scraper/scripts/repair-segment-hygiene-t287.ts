@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-07 pre-T-490 tool, not yet migrated to scripts/lib/repair-tool.ts; migrate it (openRepairDb + upsertFieldSource + buildAlreadyRepairedSet) before its next run rather than re-typing the guards.
 /**
  * Repair: `ipos.segment` hygiene (T-287 P3-6).
  *
@@ -71,6 +70,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 const EVIDENCE_DIR = process.env.T287_EVIDENCE_DIR || 'D:/Abhay/GetWorkDone/evidence/2026-08-23-T-287';
@@ -104,6 +104,12 @@ async function main() {
   console.log('='.repeat(80));
   console.log(`SEGMENT HYGIENE REPAIR (T-287 P3-6, fix round T-287F) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: process.argv.includes('--allow-prod'),
+    toolName: 'repair-segment-hygiene-t287',
+  });
 
   const ncdNullSegment = await db
     .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, offeringType: schema.ipos.offeringType, segment: schema.ipos.segment })
