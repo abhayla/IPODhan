@@ -2266,15 +2266,62 @@ unset DEPLOY_ROOT
 # unmerged branch, while missing main's merged fix. The served-SHA probe
 # only proves served==deployed; it never proved deployed is ON origin/main.
 # These cases exercise the REAL `git fetch origin main` + `git merge-base
-# --is-ancestor` check against this repo's actual history via the
-# DEPLOY_TEST_LINEAGE_SHA dry-run test hook — NOT against $SHA (which in
-# dry-run defaults to the test runner's own PR branch tip, never yet an
-# ancestor of origin/main pre-merge; checking it for real would fail every
-# OTHER case in this suite).
-REPO_ROOT_FOR_TEST="$(cd "$SCRIPT_DIR/../.." && pwd)"
-(cd "$REPO_ROOT_FOR_TEST" && git fetch origin main --quiet) 2>/tmp/deploy-test-32-fetch.log \
-  || { fail "case 32 setup: 'git fetch origin main' failed"; cat /tmp/deploy-test-32-fetch.log; }
-ORIGIN_MAIN_SHA="$(cd "$REPO_ROOT_FOR_TEST" && git rev-parse origin/main)"
+# --is-ancestor` check via the DEPLOY_TEST_LINEAGE_SHA dry-run test hook —
+# NOT against $SHA (which in dry-run defaults to the test runner's own PR
+# branch tip, never yet an ancestor of origin/main pre-merge; checking it
+# for real would fail every OTHER case in this suite).
+#
+# Round 3 (PR #353 review): the ORIGINAL setup fetched/cloned THIS repo's
+# real 'origin' (github.com/abhayla/IPODhan) — exit 128 on the hosted
+# pr-gate runner, whose checkout has no network/credentials for that.
+# Every case-32 sub-case now runs against a fully LOCAL git fixture: a bare
+# "upstream" repo (stands in for origin) plus a work clone that adds an
+# 'unmerged' branch never pushed upstream — all under mktemp, all file://,
+# no network anywhere in this block.
+FIXTURE_UPSTREAM="$(fresh_root)/upstream.git"
+git init -q --bare "$FIXTURE_UPSTREAM"
+
+FIXTURE_WORK="$(fresh_root)/work"
+git init -q "$FIXTURE_WORK"
+(
+  cd "$FIXTURE_WORK"
+  git config user.email "test@example.com"
+  git config user.name "deploy-linux fixture"
+  git checkout -q -b main
+  for i in 1 2 3 4 5 6; do
+    echo "commit $i" > "file$i.txt"
+    git add "file$i.txt"
+    git commit -q -m "main commit $i"
+  done
+  git remote add origin "$FIXTURE_UPSTREAM"
+  git push -q origin main
+  # 'unmerged' branch: one extra commit that is NEVER pushed to the
+  # upstream — exactly the "commit exists only on an unmerged branch" shape
+  # from T-264 P2-4. Created (and its objects thereby retained locally)
+  # BEFORE the check-repo clone below, so that clone's object store has it.
+  git checkout -q -b unmerged
+  echo "unmerged change" > unmerged.txt
+  git add unmerged.txt
+  git commit -q -m "unmerged commit (never merged to main, never pushed)"
+) >/tmp/deploy-test-32-fixture-setup.log 2>&1 \
+  || { fail "case 32 fixture setup failed"; cat /tmp/deploy-test-32-fixture-setup.log; }
+
+ORIGIN_MAIN_SHA="$(cd "$FIXTURE_WORK" && git rev-parse main)"
+OLDER_ANCESTOR_SHA="$(cd "$FIXTURE_WORK" && git rev-parse main~5)"
+NON_ANCESTOR_SHA="$(cd "$FIXTURE_WORK" && git rev-parse unmerged)"
+
+# The repo assert_deployed_sha_lineage() actually runs its git commands
+# against (via DEPLOY_LINEAGE_REPO_ROOT) for every case-32 sub-case below —
+# a clone of FIXTURE_WORK (so it holds the unmerged commit's OBJECTS too),
+# with 'origin' repointed at the bare upstream (which never received
+# 'unmerged') so `git merge-base --is-ancestor` sees exactly what a real
+# unmerged-branch deploy would: the sha is a real, resolvable commit, but
+# not reachable from origin/main.
+FIXTURE_CHECK_REPO="$(fresh_root)/check-repo"
+git clone -q "$FIXTURE_WORK" "$FIXTURE_CHECK_REPO" >/tmp/deploy-test-32-clone.log 2>&1 \
+  || { fail "case 32 fixture clone failed"; cat /tmp/deploy-test-32-clone.log; }
+(cd "$FIXTURE_CHECK_REPO" && git remote set-url origin "$FIXTURE_UPSTREAM")
+export DEPLOY_LINEAGE_REPO_ROOT="$FIXTURE_CHECK_REPO"
 
 # --- Case 32a: ancestor of origin/main -> proceeds, logs "lineage OK" ------
 ROOT32A="$(fresh_root)"
@@ -2294,13 +2341,10 @@ fi
 unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
 
 # --- Case 32b: NOT an ancestor of origin/main -> exit 1, FATAL names the ---
-# --- sha, and 'current' is never flipped (built via `git commit-tree` —   -
-# --- a real, valid dangling commit object on top of origin/main's tip     -
-# --- that was never merged back into it, i.e. exactly the "unmerged       -
-# --- branch" shape from T-264 P2-4, with no working-tree/branch mutation).
-NON_ANCESTOR_SHA="$(cd "$REPO_ROOT_FOR_TEST" && \
-  git commit-tree "$(git rev-parse "$ORIGIN_MAIN_SHA^{tree}")" \
-    -p "$ORIGIN_MAIN_SHA" -m "test: dangling commit for #194 lineage test (never merged)")"
+# --- sha, and 'current' is never flipped ($NON_ANCESTOR_SHA is the local  -
+# --- fixture's 'unmerged' branch tip, set up above: a real, resolvable    -
+# --- commit that was never pushed to the bare upstream, i.e. exactly the  -
+# --- "unmerged branch" shape from T-264 P2-4).
 ROOT32B="$(fresh_root)"
 export DEPLOY_ROOT="$ROOT32B"
 export DEPLOY_TEST_LINEAGE_SHA="$NON_ANCESTOR_SHA"
@@ -2362,15 +2406,16 @@ fi
 unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT ALLOW_UNMERGED_DEPLOY
 
 # --- Case 32d: shallow checkout — the check must deepen, not false-refuse -
-# --- a real ancestor it simply can't see yet at depth 1. Uses a REAL       -
-# --- --depth 1 clone of the actual GitHub origin (network required, same  -
-# --- as `git fetch origin main` above) and DEPLOY_LINEAGE_REPO_ROOT to    -
-# --- point the check at it while the script itself still runs from here.
-ORIGIN_URL="$(cd "$REPO_ROOT_FOR_TEST" && git remote get-url origin)"
-SHALLOW_DIR="$(mktemp -d)"
-if git clone --depth 1 --branch main "$ORIGIN_URL" "$SHALLOW_DIR" >/tmp/deploy-test-32d-clone.log 2>&1 \
-  && [ -f "$SHALLOW_DIR/.git/shallow" ]; then
-  OLDER_ANCESTOR_SHA="$(cd "$REPO_ROOT_FOR_TEST" && git rev-parse origin/main~5)"
+# --- a real ancestor it simply can't see yet at depth 1. Round 3: uses a  -
+# --- REAL `--depth 1` clone of the LOCAL bare fixture upstream (file://,  -
+# --- no network) instead of the real GitHub origin, which exit-128'd on   -
+# --- the hosted pr-gate runner (no credentials/network for that clone).
+SHALLOW_DIR="$(fresh_root)/shallow"
+# --depth is silently ignored by git on a plain local-path clone ("use
+# file:// instead") — an explicit file:// URL is required for a REAL
+# shallow clone to be created here.
+if git clone -q --depth 1 --branch main "file://$FIXTURE_UPSTREAM" "$SHALLOW_DIR" >/tmp/deploy-test-32d-clone.log 2>&1 \
+  && [ "$(cd "$SHALLOW_DIR" && git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
   ROOT32D="$(fresh_root)"
   export DEPLOY_ROOT="$ROOT32D"
   export DEPLOY_TEST_LINEAGE_SHA="$OLDER_ANCESTOR_SHA"
@@ -2387,11 +2432,12 @@ if git clone --depth 1 --branch main "$ORIGIN_URL" "$SHALLOW_DIR" >/tmp/deploy-t
     fail "case 32d: a real ancestor sha should proceed even from a shallow checkout (after deepening)"
     cat /tmp/deploy-test-32d.log
   fi
-  unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT DEPLOY_LINEAGE_REPO_ROOT
+  unset DEPLOY_TEST_LINEAGE_SHA DEPLOY_ROOT
 else
-  skip "case 32d: could not create a real shallow clone of $ORIGIN_URL (no network in this environment) — see /tmp/deploy-test-32d-clone.log"
+  fail "case 32d: could not create a local --depth 1 clone of the fixture upstream — see /tmp/deploy-test-32d-clone.log"
+  cat /tmp/deploy-test-32d-clone.log
 fi
-rm -rf "$SHALLOW_DIR" 2>/dev/null || true
+unset DEPLOY_LINEAGE_REPO_ROOT
 
 # --- Case 32e: non-dry-run path also calls the lineage check (no test hook
 # --- gate) — proven statically since a real deploy needs a real box; the
