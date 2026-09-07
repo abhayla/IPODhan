@@ -1,26 +1,28 @@
 /**
  * IPOScoreSection Component (Story 4.7 - AC#4)
  * Displays comprehensive IPO scoring information on detail page
+ *
+ * T-489: renders one IPOScoreDisplayModel (0-10 scale — the API's own
+ * scale) regardless of whether it came from a stored editorial `ipo_scores`
+ * row or a realtime calculation. See web/lib/adapters/ipo-score-display-adapter.ts.
  */
 
 'use client';
 
 import { AlertCircle, TrendingUp } from 'lucide-react';
-import type { IPOScore } from '@/lib/db/types';
-import { ScoreBadge } from './ScoreBadge';
-import { VerdictBadge } from './VerdictBadge';
-import { ConfidenceBadge } from './ConfidenceBadge';
-import { ScoreBreakdown, type ScoreBreakdownData } from './ScoreBreakdown';
-import {
-  formatComponentScore,
-  getScorePercentage,
-  getScoreBgClass,
-  getScoreTextClass,
-} from '@/lib/utils/score-utils';
 import { format } from 'date-fns';
+import type { IPOScoreDisplayModel } from '@/lib/adapters/ipo-score-display-adapter';
+import { ScoreBreakdown } from './ScoreBreakdown';
 
 interface IPOScoreSectionProps {
-  score: IPOScore | null;
+  score: IPOScoreDisplayModel | null;
+}
+
+function scoreToneClass(percentage: number): { bg: string; barBg: string; text: string; border: string } {
+  if (percentage >= 76) return { bg: 'bg-green-500/10', barBg: 'bg-green-500', text: 'text-green-600 dark:text-green-400', border: 'border-green-500/30' };
+  if (percentage >= 51) return { bg: 'bg-yellow-500/10', barBg: 'bg-yellow-500', text: 'text-yellow-600 dark:text-yellow-400', border: 'border-yellow-500/30' };
+  if (percentage >= 26) return { bg: 'bg-orange-500/10', barBg: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400', border: 'border-orange-500/30' };
+  return { bg: 'bg-red-500/10', barBg: 'bg-red-500', text: 'text-red-600 dark:text-red-400', border: 'border-red-500/30' };
 }
 
 /**
@@ -29,28 +31,32 @@ interface IPOScoreSectionProps {
 function ScoreBreakdownBar({
   label,
   score,
-  maxScore = 25,
+  maxScore,
+  note,
 }: {
   label: string;
   score: number;
-  maxScore?: number;
+  maxScore: number;
+  note?: string;
 }) {
-  const percentage = getScorePercentage(score, maxScore);
+  const percentage = maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
+  const tone = scoreToneClass(percentage);
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-foreground">{label}</span>
-        <span className={`text-sm font-semibold ${getScoreTextClass(score * 4)}`}>
-          {formatComponentScore(score)}
+        <span className={`text-sm font-semibold ${tone.text}`}>
+          {score}/{maxScore}
         </span>
       </div>
       <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
         <div
-          className={`h-full transition-all duration-500 ${getScoreBgClass(score * 4)}`}
+          className={`h-full transition-all duration-500 ${tone.barBg}`}
           style={{ width: `${percentage}%` }}
         />
       </div>
+      {note && <p className="text-xs text-muted-foreground italic">{note}</p>}
     </div>
   );
 }
@@ -76,6 +82,13 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
     );
   }
 
+  const totalPercentage = Math.round((score.totalScore / score.maxScore) * 100);
+  const tone = scoreToneClass(totalPercentage);
+  const caption =
+    score.source === 'realtime'
+      ? 'Computed from financial data, subscription demand, GMP and listing performance'
+      : 'Editorial score';
+
   return (
     <div className="space-y-6 rounded-lg border bg-card p-6">
       {/* Header */}
@@ -85,22 +98,24 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
             <TrendingUp className="h-5 w-5 text-primary" />
             <h3 className="text-xl font-bold text-foreground">IPODhan Score</h3>
           </div>
-          <p className="text-sm text-muted-foreground">
-            AI-powered analysis based on multiple data points
-          </p>
+          <p className="text-sm text-muted-foreground">{caption}</p>
         </div>
-        <ScoreBadge score={score.totalScore} size="lg" />
+        <div
+          className={`inline-flex items-center gap-1 font-semibold rounded-full border text-base px-4 py-1.5 ${tone.bg} ${tone.text} ${tone.border}`}
+        >
+          {score.totalScore}/{score.maxScore}
+        </div>
       </div>
 
-      {/* Verdict and Confidence */}
+      {/* Rating and Confidence */}
       <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Verdict:</span>
-          <VerdictBadge verdict={score.verdict} />
+          <span className="text-sm font-medium text-muted-foreground">Rating:</span>
+          <span className={`text-sm font-semibold ${tone.text}`}>{score.ratingLabel}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Confidence:</span>
-          <ConfidenceBadge confidence={score.confidence} />
+          <span className="text-sm font-medium text-foreground">{score.confidencePercent}%</span>
         </div>
       </div>
 
@@ -108,22 +123,15 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
       <div className="space-y-4 pt-4">
         <h4 className="text-sm font-semibold text-foreground">Score Breakdown</h4>
         <div className="grid gap-4 md:grid-cols-2">
-          <ScoreBreakdownBar
-            label="Fundamental Score"
-            score={score.fundamentalScore}
-          />
-          <ScoreBreakdownBar
-            label="Sentiment Score"
-            score={score.sentimentScore}
-          />
-          <ScoreBreakdownBar
-            label="Subscription Score"
-            score={score.subscriptionScore}
-          />
-          <ScoreBreakdownBar
-            label="Sector Score"
-            score={score.sectorScore}
-          />
+          {score.components.map((component) => (
+            <ScoreBreakdownBar
+              key={component.label}
+              label={component.label}
+              score={component.score}
+              maxScore={component.maxScore}
+              note={component.note}
+            />
+          ))}
         </div>
       </div>
 
@@ -133,16 +141,14 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
         <div className="flex justify-center">
           <ScoreBreakdown
             data={{
-              // Map existing 4-component scores (0-25 each) to 5-component system (0-10 total)
-              // Using proportional scaling for visualization
-              financialStrength: (score.fundamentalScore / 25) * 3, // 0-3
-              valuation: (score.sectorScore / 25) * 2, // 0-2
-              subscriptionDemand: (score.subscriptionScore / 25) * 2, // 0-2
-              marketPerformance: (score.sentimentScore / 25) * 2, // 0-2
-              fundamentals: (score.fundamentalScore / 25) * 1, // 0-1
-              total: score.totalScore / 10, // Convert 0-100 to 0-10
-              rating: score.verdict,
-              confidence: score.confidence === 'HIGH' ? 90 : score.confidence === 'MEDIUM' ? 70 : 50,
+              financialStrength: score.components[0]?.score ?? 0,
+              valuation: score.components[1]?.score ?? 0,
+              subscriptionDemand: score.components[2]?.score ?? 0,
+              marketPerformance: score.components[3]?.score ?? 0,
+              fundamentals: score.components[4]?.score ?? 0,
+              total: score.totalScore,
+              rating: score.ratingLabel,
+              confidence: score.confidencePercent,
             }}
           />
         </div>
