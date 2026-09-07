@@ -1181,3 +1181,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 00:15 IST — T-499 built: PR #410 (SessionStart floor-delta + merged-not-deployed read; PreToolUse Agent gate blocks a build brief while a NEW floor FAIL has no issue; 18/18 reproduced after merging main). Tier A dispatched (hook). #406 gate read above.
 
 - 00:16 IST — T-500 built: PR #411 (persist failures log cause.message/code; coverage gate prints its reason — the real #404 cause was an AggregateError with an empty message on a dual-stack localhost refusal); reproduced 119/119 + 2/2; Tier B dispatched. #406 merge attempted above.
+
+- 00:16 IST — #406 merged 0f069207 (tick failure-delta). #410 Tier A PASS WITH NOTES: MAJOR — a build brief with "review: Tier B" was classified as a reviewer and never blocked; ssh worst case exceeded the 30 s hook timeout; the gate is inert until the VPS box pulls #407 and two nights of floor files exist (first real delta 2026-09-10) -> round 2 dispatched. #411 Tier B PASS (no findings).
