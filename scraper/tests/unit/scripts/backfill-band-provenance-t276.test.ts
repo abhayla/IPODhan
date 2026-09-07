@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   parseAppliedLedger,
   decideBandProvenanceRepair,
-  resolveDatabaseName,
+  queryCurrentDatabase,
   PRODUCTION_DATABASE_NAME,
   buildDataLineage,
   upsertBandFieldSourceProvenance,
@@ -17,11 +17,21 @@ const SAMPLE_CSV = [
 ].join('\n');
 
 describe('parseAppliedLedger (#165)', () => {
-  it('keeps only UPDATED rows with numeric afterMin/afterMax', () => {
+  it('keeps only UPDATED rows with numeric afterMin/afterMax, carrying the ledger before-band too', () => {
     const rows = parseAppliedLedger(SAMPLE_CSV);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toEqual({ slug: 'technocraft-ventures-ltd', afterMin: 200, afterMax: 212 });
-    expect(rows[1]).toEqual({ slug: 'sunshine-pictures-ltd', afterMin: 342, afterMax: 360 });
+    expect(rows[0]).toEqual({ slug: 'technocraft-ventures-ltd', afterMin: 200, afterMax: 212, beforeMin: 212, beforeMax: 212 });
+    expect(rows[1]).toEqual({ slug: 'sunshine-pictures-ltd', afterMin: 342, afterMax: 360, beforeMin: 360, beforeMax: 360 });
+  });
+
+  it('sets beforeMin/beforeMax to null when the ledger has no before-band for a row', () => {
+    const csv = [
+      'slug,companyName,dbSymbol,beforeMin,beforeMax,afterMin,afterMax,action,matchedBy,sourceEndpoint,sourceCompany,sourceSymbol,sourceRaw',
+      'no-before-ltd,No Before Ltd,NB,,,100,120,UPDATED,symbol,/x,No Before Limited,NB,Rs.100 to Rs.120',
+    ].join('\n');
+    const rows = parseAppliedLedger(csv);
+    expect(rows[0].beforeMin).toBeNull();
+    expect(rows[0].beforeMax).toBeNull();
   });
 
   it('drops SKIP_NO_MATCH / SKIP_DEGENERATE_SOURCE rows (never wrote the DB)', () => {
@@ -52,9 +62,34 @@ describe('decideBandProvenanceRepair (#165)', () => {
   });
 });
 
-describe('resolveDatabaseName / production guard (#165)', () => {
-  it('resolves the db name from DATABASE_URL', () => {
-    expect(resolveDatabaseName({ DATABASE_URL: 'postgresql://u:p@localhost:15432/ipodhan_staging' } as NodeJS.ProcessEnv)).toBe('ipodhan_staging');
+describe('queryCurrentDatabase / production guard (#165 round 2 CRITICAL)', () => {
+  it('reads the name from SELECT current_database() on the SAME pool, not from env', async () => {
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan_staging' }]);
+    const name = await queryCurrentDatabase({ execute } as any);
+    expect(name).toBe('ipodhan_staging');
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('also handles a node-postgres-shaped {rows: [...]} result', async () => {
+    const execute = vi.fn().mockResolvedValue({ rows: [{ name: 'ipodhan' }] });
+    const name = await queryCurrentDatabase({ execute } as any);
+    expect(name).toBe('ipodhan');
+  });
+
+  it('throws when the query returns no row (never silently trusts an empty result)', async () => {
+    const execute = vi.fn().mockResolvedValue([]);
+    await expect(queryCurrentDatabase({ execute } as any)).rejects.toThrow(/no row/);
+  });
+
+  it('this is the ONLY guard signal that matters when DATABASE_HOST is set alongside DATABASE_URL: the pool can be on prod even when DATABASE_URL says staging', async () => {
+    // Regression for the round-2 finding: packages/shared/src/db/index.ts prefers
+    // DATABASE_HOST/DATABASE_NAME over DATABASE_URL when DATABASE_HOST is set (the tunnel sets
+    // both). A guard built from process.env.DATABASE_URL alone can print "ipodhan_staging" while
+    // the actual pool writes to "ipodhan". queryCurrentDatabase asks the pool itself, so it
+    // can never be fooled by that mismatch.
+    const execute = vi.fn().mockResolvedValue([{ name: 'ipodhan' }]);
+    const name = await queryCurrentDatabase({ execute } as any);
+    expect(name).toBe(PRODUCTION_DATABASE_NAME);
   });
 
   it('the production database name is exactly "ipodhan"', () => {

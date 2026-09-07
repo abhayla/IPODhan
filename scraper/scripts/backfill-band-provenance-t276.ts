@@ -31,7 +31,7 @@
  */
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
@@ -43,25 +43,33 @@ const LEDGER_PATH = ledgerIdx >= 0 ? process.argv[ledgerIdx + 1] : null;
 /** The one database name this CLI refuses to WRITE to without --allow-prod. */
 export const PRODUCTION_DATABASE_NAME = 'ipodhan';
 
-/** Same resolution order as backfill-issue-size-chittorgarh-detail.ts's resolveDatabaseName. */
-export function resolveDatabaseName(env: NodeJS.ProcessEnv): string {
-  const raw = env.DATABASE_URL || '';
-  const fromUrl = raw
-    ? (() => {
-        try {
-          return new URL(raw).pathname.replace(/^\//, '');
-        } catch {
-          return '';
-        }
-      })()
-    : '';
-  return fromUrl || env.DATABASE_NAME || env.PGDATABASE || '';
+/**
+ * Round 2 (#165 review, CRITICAL): resolveDatabaseName-from-env is NOT the guard — it inspects
+ * DATABASE_URL, but packages/shared/src/db/index.ts's initPool() prefers
+ * DATABASE_HOST/DATABASE_PASSWORD when DATABASE_HOST is set (the tunnel env sets both DATABASE_URL
+ * AND DATABASE_HOST), so the env-derived name can read "ipodhan_staging" while the pool that
+ * actually opens is connected to prod. The only trustworthy source is asking the SAME pool what
+ * database it is in, via `SELECT current_database()`, before any write.
+ */
+export async function queryCurrentDatabase(dbLike: { execute: typeof db.execute }): Promise<string> {
+  const result = await dbLike.execute<{ name: string }>(sql`SELECT current_database() AS name`);
+  const rows = Array.isArray(result) ? result : (result as unknown as { rows: { name: string }[] }).rows;
+  const name = rows?.[0]?.name;
+  if (!name) {
+    throw new Error('backfill-band-provenance-t276: SELECT current_database() returned no row — cannot verify which database this pool is writing to.');
+  }
+  return name;
 }
 
 export interface LedgerRow {
   slug: string;
   afterMin: number;
   afterMax: number;
+  /** The value BEFORE the T-276 correction, per the ledger — null if the ledger lacks it
+   *  (round 2, #165 HIGH: previous_value must record what was there before T-276, never the
+   *  now-current corrected value). */
+  beforeMin: number | null;
+  beforeMax: number | null;
 }
 
 /**
@@ -78,10 +86,17 @@ export function parseAppliedLedger(csvText: string): LedgerRow[] {
   const slugIdx = idx('slug');
   const afterMinIdx = idx('afterMin');
   const afterMaxIdx = idx('afterMax');
+  const beforeMinIdx = idx('beforeMin');
+  const beforeMaxIdx = idx('beforeMax');
   const actionIdx = idx('action');
   if (slugIdx < 0 || afterMinIdx < 0 || afterMaxIdx < 0 || actionIdx < 0) {
     throw new Error('backfill-band-provenance-t276: ledger CSV missing an expected column (slug/afterMin/afterMax/action)');
   }
+  const parseNum = (v: string | undefined) => {
+    if (v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
   const rows: LedgerRow[] = [];
   for (const line of lines.slice(1)) {
     const cols = line.split(',');
@@ -90,7 +105,13 @@ export function parseAppliedLedger(csvText: string): LedgerRow[] {
     const afterMin = Number(cols[afterMinIdx]);
     const afterMax = Number(cols[afterMaxIdx]);
     if (!slug || !Number.isFinite(afterMin) || !Number.isFinite(afterMax)) continue;
-    rows.push({ slug, afterMin, afterMax });
+    rows.push({
+      slug,
+      afterMin,
+      afterMax,
+      beforeMin: beforeMinIdx >= 0 ? parseNum(cols[beforeMinIdx]) : null,
+      beforeMax: beforeMaxIdx >= 0 ? parseNum(cols[beforeMaxIdx]) : null,
+    });
   }
   return rows;
 }
@@ -195,13 +216,16 @@ async function main() {
     process.exit(1);
   }
 
-  const dbName = resolveDatabaseName(process.env);
-  console.log(`database: ${dbName || '(unresolved)'}`);
+  // Round 2 (#165 CRITICAL): ask the SAME pool, not the env, which database it is actually
+  // connected to — env-derived guards can lie when DATABASE_HOST is also set (the tunnel sets
+  // both DATABASE_URL and DATABASE_HOST; initPool() prefers DATABASE_HOST).
+  const dbName = await queryCurrentDatabase(db);
+  console.log(`current_database(): ${dbName}`);
   const isProdDb = dbName === PRODUCTION_DATABASE_NAME;
   const allowProd = process.argv.includes('--allow-prod');
   if (APPLY && isProdDb && !allowProd) {
     console.error(
-      `backfill-band-provenance-t276: refusing to APPLY writes against the production database "${PRODUCTION_DATABASE_NAME}" — pass --allow-prod to override.`
+      `backfill-band-provenance-t276: refusing to APPLY writes against the production database "${PRODUCTION_DATABASE_NAME}" (current_database()) — pass --allow-prod to override.`
     );
     process.exit(1);
   }
@@ -259,8 +283,8 @@ async function main() {
   let matched = 0;
   let skippedNoRow = 0;
   let skippedChanged = 0;
-  let skippedAlreadyRepaired = 0;
-  let written = 0;
+  let skippedAlreadyRepaired = 0; // FIELD count, not row count (round 2: per-field now)
+  let written = 0; // FIELD count
   let writeFailures = 0;
 
   for (const row of ledger) {
@@ -281,38 +305,42 @@ async function main() {
       console.log(`  SKIP ${row.slug}: ${decision.reason}`);
       continue;
     }
-    const bothFieldsAlreadyRepaired =
-      alreadyRepaired.has(alreadyRepairedKey(dbRow.id, 'priceRangeMin')) &&
-      alreadyRepaired.has(alreadyRepairedKey(dbRow.id, 'priceRangeMax'));
-    if (bothFieldsAlreadyRepaired) {
-      skippedAlreadyRepaired++;
-      console.log(`  SKIP ${row.slug}: already carries this backfill's NSE provenance stamp (idempotent no-op)`);
-      continue;
-    }
     matched++;
+    // Round 2 (#165 MEDIUM): decide per FIELD, independently — a partial prior run may have
+    // already repaired priceRangeMin but not priceRangeMax. Re-upserting an already-repaired
+    // field would overwrite its previous_source (the ORIGINAL wrong source, the audit trail)
+    // with 'NSE', since upsertBandFieldSourceProvenance reads whatever is currently there as
+    // "previous". Skipping already-repaired fields preserves that trail.
+    const fieldPlan: { fieldName: 'priceRangeMin' | 'priceRangeMax'; previousValue: number | null }[] = [
+      { fieldName: 'priceRangeMin', previousValue: row.beforeMin },
+      { fieldName: 'priceRangeMax', previousValue: row.beforeMax },
+    ].filter((f) => {
+      if (alreadyRepaired.has(alreadyRepairedKey(dbRow.id, f.fieldName))) {
+        skippedAlreadyRepaired++;
+        console.log(`  SKIP ${row.slug}.${f.fieldName}: already carries this backfill's NSE provenance stamp (idempotent no-op)`);
+        return false;
+      }
+      return true;
+    });
+    if (fieldPlan.length === 0) continue;
     if (!APPLY) {
-      console.log(`  WOULD WRITE ${row.slug}: priceRangeMin/Max -> source=NSE (band ${row.afterMin}-${row.afterMax})`);
+      console.log(`  WOULD WRITE ${row.slug}: ${fieldPlan.map((f) => f.fieldName).join(', ')} -> source=NSE (band ${row.afterMin}-${row.afterMax}, previous_value from ledger before=${row.beforeMin ?? 'null'}-${row.beforeMax ?? 'null'})`);
       continue;
     }
     try {
       await db.transaction(async (tx) => {
-        await upsertBandFieldSourceProvenance(tx, {
-          ipoId: dbRow.id,
-          fieldName: 'priceRangeMin',
-          previousValue: dbRow.priceRangeMin,
-          ledgerPath: LEDGER_PATH,
-          updatedBy: BACKFILL_UPDATED_BY,
-        });
-        await upsertBandFieldSourceProvenance(tx, {
-          ipoId: dbRow.id,
-          fieldName: 'priceRangeMax',
-          previousValue: dbRow.priceRangeMax,
-          ledgerPath: LEDGER_PATH,
-          updatedBy: BACKFILL_UPDATED_BY,
-        });
+        for (const f of fieldPlan) {
+          await upsertBandFieldSourceProvenance(tx, {
+            ipoId: dbRow.id,
+            fieldName: f.fieldName,
+            previousValue: f.previousValue,
+            ledgerPath: LEDGER_PATH,
+            updatedBy: BACKFILL_UPDATED_BY,
+          });
+        }
       });
-      written++;
-      console.log(`  WROTE ${row.slug}: field_sources priceRangeMin/priceRangeMax -> NSE`);
+      written += fieldPlan.length;
+      console.log(`  WROTE ${row.slug}: field_sources ${fieldPlan.map((f) => f.fieldName).join(', ')} -> NSE (previous_value from ledger before-band)`);
     } catch (err) {
       writeFailures++;
       logger.error({ slug: row.slug, error: err instanceof Error ? err.message : String(err) }, 'band provenance write failed');
@@ -337,7 +365,7 @@ async function main() {
     console.log('           any future direct-write script that DOES touch ipos/*.');
   }
 
-  console.log(`\nledger rows: ${ledger.length}, matched (band unchanged since T-276): ${matched}, written: ${written}, skipped-no-row: ${skippedNoRow}, skipped-changed: ${skippedChanged}, skipped-already-repaired: ${skippedAlreadyRepaired}, failures: ${writeFailures}`);
+  console.log(`\nledger rows: ${ledger.length}, matched (band unchanged since T-276): ${matched}, fields written: ${written}, skipped-no-row: ${skippedNoRow}, skipped-changed: ${skippedChanged}, fields skipped-already-repaired: ${skippedAlreadyRepaired}, failures: ${writeFailures}`);
   process.exit(writeFailures > 0 ? 1 : 0);
 }
 
