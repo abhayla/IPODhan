@@ -943,3 +943,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 05:15 IST Staging: a second anchor-report rejection (03:16, ipo 7e95970f: allocation 16.04 Cr vs a stored QIB portion of 0.28 Cr = the reference figure is wrong, not the report); added to #347 as the second sample, class widened to reference-figure validation. Release unaffected (non-fatal, backed off, nothing persisted).
 
 - 05:45 IST tick: prod f9b67d0a (05:30 cycle 164 s, extractionFailed 0), staging f0c66b6b (05:16 cycle 72 s, extractionFailed 2), disk 56%, load 0.1, OOM 0; no worktrees, no agents, 10 pre-existing stashes untouched; nothing running.
+
+- 06:15 IST tick: prod f9b67d0a (06:03 cycle 78 s, extractionFailed 0), staging f0c66b6b (05:46 cycle 68 s, extractionFailed 0 = the two FAILED rows aged out of the count), disk 56%, load 0.3, OOM 0; no worktrees, no agents, 10 pre-existing stashes untouched; nothing running.
