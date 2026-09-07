@@ -170,6 +170,17 @@ Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touc
 planned create/comment/close/reopen list). Env `AUDIT_ISSUES_DRY_RUN=1` always forces dry-run. State:
 `issues-sync-state.json` + `issues-sync.lock` in the same dir; live mode refuses when the dir is missing.
 
+## 9a. Floor delta — the nightly consumer (T-497, signal-ownership.md R3)
+Cron step [3/5] now tees the detection-floor's own `[FAIL]`/`[PASS]` lines to
+`/root/data-audit-ipodhan/state/floor/<YYYY-MM-DD>.txt` (one fixed path per night, appended if the
+step runs twice in a day), in addition to the combined `run-<date>.log`. Read two nights and diff
+them: `node scripts/ops/floor-delta.mjs <today.txt> <yesterday.txt> [--notify]` — prints NEW/GONE/SAME
+check ids and, for checks failing both nights, NEW per-check entities; exits 3 when anything is NEW
+(0 otherwise). `--notify` POSTs a summary to the Notifier (`NOTIFIER_URL`/`NOTIFIER_KEY`, GLOBAL.md §2;
+skips cleanly, never fails, when unset). `scripts/audit-findings-to-issues.mjs --new-only` files/comments
+only on findings absent from the previous night (a brand-new check, or a rowKey that's genuinely NEW) —
+wired into the cron as a **commented-out** line pending the owner's go-live decision (T-497 contract).
+
 ## 10. User-level hooks (this laptop)
 Tests: `cd ~/.claude/hooks && python -m pytest tests -q` (from inside a repo, pytest picks up the repo config and errors).
 Fix-contract hook log: `~/.claude/hooks/.fix-contract.log` (512 KB cap, rotates to `.1`); escape `AGENT_FIX_CONTRACT_ALLOW=1`.

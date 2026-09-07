@@ -129,9 +129,19 @@ run_audit() {
   # Exit codes: 0 clean, 1 a check FAILed, 3 no FAIL but at least one check was
   # UNVERIFIABLE (the audit was BLIND tonight, not green - it still pages and
   # still fails this cron run), 2 the audit crashed.
+  # T-497 (signal-ownership.md R3): tee this step's own [FAIL]/[PASS] lines to
+  # ONE fixed path per night, separate from the combined run-<date>.log (which
+  # mixes in steps 1/2/4/5/6 and gets overwritten if the cron runs twice in a
+  # day). scripts/ops/floor-delta.mjs reads two of these files to diff tonight
+  # against last night — a nightly signal with no consumer that diffs it is,
+  # per that rule, no detection at all. `tee -a` (append) is deliberate: if
+  # this step ever runs twice in one calendar day the second run's lines
+  # accumulate rather than clobbering the first, and floor-delta's [FAIL]/
+  # [PASS] parser is keyed by check id so a duplicate line changes nothing.
+  mkdir -p "$STATE_DIR/floor"
   echo "--- [3/5] audit-detection-floor --gate (round-7 coverage floor) ---"
-  BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate
-  DF_CODE=$?
+  BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate | tee -a "$STATE_DIR/floor/$DATE_TAG.txt"
+  DF_CODE=${PIPESTATUS[0]}
   case "$DF_CODE" in
     0) ;;
     3) failed=1; echo "GATE BLIND: audit-detection-floor exited 3 - at least one check was UNVERIFIABLE (not a pass)" ;;
@@ -160,6 +170,17 @@ run_audit() {
     echo "ISSUES-DRY-RUN: no $STATE_DIR/issues-live marker; touch it to go live"
     AUDIT_ISSUES_DRY_RUN=1 node scripts/audit-findings-to-issues.mjs || true
   else
+    # T-497 (contract DoD item 3): once live, file NEW-only, not every SAME
+    # finding again every night — that is what turned the nightly audit into
+    # a standing wall of red nobody read (RC1, docs/reviews/rca-2026-09-07-
+    # missed-live-defects.md). Going live at all is still gated by the
+    # issues-live marker above; the --new-only flip itself is the OWNER's
+    # separate decision (recorded in T-497's contract, not decided by this
+    # worker) — the line below is intentionally commented until that
+    # decision is made. Until uncommented, the existing (pre-T-497) live
+    # behaviour — file every FAIL/UNVERIFIABLE finding each night — is
+    # unchanged.
+    # node scripts/audit-findings-to-issues.mjs --new-only || true
     node scripts/audit-findings-to-issues.mjs || true
   fi
 

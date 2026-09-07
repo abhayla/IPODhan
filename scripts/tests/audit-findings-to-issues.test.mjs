@@ -17,6 +17,7 @@ import {
   renderCommentBody,
   parseArgs,
   buildNextState,
+  filterNewOnly,
   DEFAULT_MAX_ISSUES,
   LOCK_STALE_MS,
   localDateStamp,
@@ -476,4 +477,32 @@ test('resolveStateDirOrRefuse: dry-run mode still falls back to tmpdir() when th
 
 test('m_extraction_stuck is registered in DATA_REPAIR_CHECK_IDS (round 6, needs-decision)', () => {
   assert.ok(DATA_REPAIR_CHECK_IDS.has('m_extraction_stuck'));
+});
+
+// T-497: --new-only downgrades resolved-only/unchanged comment+reopen actions
+// to skip, but never touches create/close (signal-ownership.md R4).
+test('filterNewOnly: comment with newKeys passes through unchanged', () => {
+  const actions = [{ type: 'comment', checkId: 'c1', issueNumber: 1, newKeys: ['row-2'], resolvedKeys: [] }];
+  assert.deepEqual(filterNewOnly(actions), actions);
+});
+
+test('filterNewOnly: comment with ONLY resolvedKeys (no newKeys) is downgraded to skip', () => {
+  const actions = [{ type: 'comment', checkId: 'c1', issueNumber: 1, newKeys: [], resolvedKeys: ['row-1'] }];
+  const out = filterNewOnly(actions);
+  assert.equal(out[0].type, 'skip');
+  assert.equal(out[0].checkId, 'c1');
+});
+
+test('filterNewOnly: reopen with no newKeys is downgraded to skip', () => {
+  const actions = [{ type: 'reopen', checkId: 'c1', issueNumber: 1, newKeys: [], rowKeys: ['row-1'] }];
+  const out = filterNewOnly(actions);
+  assert.equal(out[0].type, 'skip');
+});
+
+test('filterNewOnly: create and close pass through untouched (never gated)', () => {
+  const actions = [
+    { type: 'create', checkId: 'c1', title: 't' },
+    { type: 'close', checkId: 'c2', issueNumber: 2, comment: 'PASS' },
+  ];
+  assert.deepEqual(filterNewOnly(actions), actions);
 });

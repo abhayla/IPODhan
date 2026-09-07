@@ -182,6 +182,30 @@ export function planIssueSync({ findings, issues, openIssues, previousState, tod
   return actions;
 }
 
+// T-497 (signal-ownership.md R4: "new beats standing" — a NEW failing id or
+// NEW entity is acted on before queued work; a SAME finding, reported again
+// with nothing new, is not itself an escalation). --new-only narrows
+// planIssueSync()'s already-computed actions to ones with a genuinely NEW
+// row versus the previous night: a brand-new check (`create`, no prior
+// state) always counts as new; a `comment`/`reopen` on an existing check
+// counts as new ONLY when it carries at least one newKey (a rowKey absent
+// from the previous night's lastRowKeys) — a comment/reopen whose ONLY
+// change is rows going away (resolvedKeys with no newKeys) is downgraded to
+// `skip`, because "some violations cleared" is not itself a NEW finding to
+// file. `close` actions (the check went fully PASS) always pass through —
+// closing is never gated by --new-only.
+export function filterNewOnly(actions) {
+  return actions.map((action) => {
+    if (action.type === 'comment' || action.type === 'reopen') {
+      const hasNew = (action.newKeys || []).length > 0;
+      if (!hasNew) {
+        return { type: 'skip', checkId: action.checkId, reason: '--new-only: no new rows since the previous night (resolved-only or unchanged)', issueNumber: action.issueNumber };
+      }
+    }
+    return action;
+  });
+}
+
 // MEDIUM fix, pure and testable: build the next issues-sync-state.json from
 // the actions ATTEMPTED and their per-action success/failure. A FAILED action
 // leaves the previous entry untouched — a failed create must not record an
@@ -459,10 +483,11 @@ export const DATA_REPAIR_CHECK_IDS = new Set([
 ]);
 
 export function parseArgs(argv) {
-  const opts = { dryRun: process.env.AUDIT_ISSUES_DRY_RUN === '1', maxIssues: DEFAULT_MAX_ISSUES, repo: null, findingsPath: null };
+  const opts = { dryRun: process.env.AUDIT_ISSUES_DRY_RUN === '1', maxIssues: DEFAULT_MAX_ISSUES, repo: null, findingsPath: null, newOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--dry-run') opts.dryRun = true;
+    else if (a === '--new-only') opts.newOnly = true;
     else if (a === '--repo') opts.repo = argv[++i];
     else if (a === '--max-issues') opts.maxIssues = parseInt(argv[++i], 10);
     else if (!a.startsWith('--')) opts.findingsPath = a;
@@ -636,13 +661,17 @@ async function main() {
     // Only FAIL/UNVERIFIABLE checks are candidates for create, but a check
     // that WAS bad and is now PASS still needs to be considered for close —
     // so pass every check's finding through, planIssueSync() decides.
-    const actions = planIssueSync({
+    let actions = planIssueSync({
       findings: loaded.findings,
       issues,
       previousState,
       today: loaded.runDate,
       maxIssues: opts.maxIssues,
     });
+    if (opts.newOnly) {
+      actions = filterNewOnly(actions);
+      log('--new-only: filing only findings absent from the previous night (create + rows with a new key); resolved-only/unchanged comments downgraded to skip');
+    }
 
     const logPath = join(STATE_DIR, `run-${localDateStamp()}.log`);
     // MEDIUM: capture per-action success so the state write below can skip a
