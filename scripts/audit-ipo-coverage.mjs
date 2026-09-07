@@ -11,6 +11,7 @@ import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './l
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 import { evaluateDetailsRowCoverage } from './lib/details-row-coverage.mjs';
+import { checkProvenanceLineage, checkDuplicateIdentity } from './lib/provenance-checks.mjs';
 
 // T-297 (gap G3): loading web/.env.local is now OPTIONAL. On a dev PC that file
 // carries the SSH-tunnel DSN, so it stays the default. On the Linux box — where
@@ -271,7 +272,7 @@ async function main() {
   // single command is the comprehensive gate — contract Stage A.5 / C-5: --gate
   // FAILs on substance smells, not just missing fields). HARD: contributes to exit.
   const subRows = await q(
-    `SELECT i.id, i.company_name, i.isin, i.segment, i.open_date, i.close_date, i.allotment_date, i.listing_date,
+    `SELECT i.id, i.slug, i.company_name, i.isin, i.segment, i.offering_type, i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
@@ -281,6 +282,17 @@ async function main() {
        ${IPO_DETAILS_LATERAL_JOIN_SQL}
       WHERE i.${REAL_IPO}`
   );
+
+  // ---- #188 PROVENANCE GATE (C1 lineage / C2 duplicate identity) ----
+  // C1: hard date/band asserted with zero field_sources lineage rows.
+  // Declining-ceiling WARNING until the T-292 legacy-row drain is confirmed
+  // complete (issue #188's own risk note) — never a hard 0-gate yet.
+  const sourcedIpoIdRows = await q(`SELECT DISTINCT ipo_id FROM field_sources`);
+  const sourcedIpoIds = new Set(sourcedIpoIdRows.map((r) => r.ipo_id));
+  const provenanceOffenders = checkProvenanceLineage(subRows, sourcedIpoIds);
+  // C2: two different genuine IPOs holding byte-identical date/band/lot/
+  // issue_size (root cause #178, still unresolved). HARD — MUST be 0.
+  const duplicateIdentityGroups = checkDuplicateIdentity(subRows);
   const gmpExists = (await q(`SELECT to_regclass('public.gmp_records') AS reg`))[0].reg;
   if (gmpExists) {
     const gmpRows = await q(
@@ -337,6 +349,14 @@ async function main() {
   let fail = 0;
   log(`  -- Stage A invariants (HARD) --`);
   for (const s of stageA) { if (!s.ok) fail++; log(`  [${s.ok ? 'PASS' : 'FAIL'}] ${s.name} (${s.detail})`); }
+
+  log(`\n  -- Provenance gate (#188) --`);
+  log(`  [WARN] g_provenance_lineage — hard fact, zero field_sources lineage (declining-ceiling, not a hard gate): ${provenanceOffenders.length}`);
+  for (const r of provenanceOffenders.slice(0, 10)) log(`    - ${r.slug} (${r.company_name})`);
+  const dupTotal = duplicateIdentityGroups.reduce((n, g) => n + g.length, 0);
+  if (duplicateIdentityGroups.length > 0) fail++;
+  log(`  [${duplicateIdentityGroups.length === 0 ? 'PASS' : 'FAIL'}] g_duplicate_identity — byte-identical band/lot/issue_size across companies (HARD, MUST be 0): ${duplicateIdentityGroups.length} group(s), ${dupTotal} row(s)`);
+  for (const g of duplicateIdentityGroups) log(`    - ${g.map((r) => `${r.slug} (${r.company_name})`).join(' == ')}`);
 
   log(`\n  -- Details-row coverage (HARD, W-151) --`);
   if (!detailsRow) {

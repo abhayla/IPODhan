@@ -344,7 +344,9 @@
   "notCoveredByThisManifest": [
     "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
-    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion"
+    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
+    "g_provenance_lineage (#188 C1: hard date/band asserted with zero field_sources lineage rows) — owned by scripts/audit-ipo-coverage.mjs --gate (declining-ceiling WARNING, not a hard 0-gate, until the T-292 legacy-row drain completes)",
+    "g_duplicate_identity (#188 C2: two different genuine IPOs holding byte-identical date/band/lot/issue_size) — owned by scripts/audit-ipo-coverage.mjs --gate (HARD, MUST be 0)"
   ],
   "exitCodes": {
     "0": "every check PASSed",

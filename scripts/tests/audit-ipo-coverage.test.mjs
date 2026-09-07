@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { checkIssueSizeSegmentFloor } from '../lib/substance-checks.mjs';
+import { checkProvenanceLineage, checkDuplicateIdentity } from '../lib/provenance-checks.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AUDIT_FILE = path.join(__dirname, '..', 'audit-ipo-coverage.mjs');
@@ -94,4 +95,65 @@ test('checkIssueSizeSegmentFloor: returns null (no-op) when segment is undefined
     segment: undefined,
   });
   assert.equal(violation, null);
+});
+
+// #188 C1: a hard date/band asserted with zero field_sources lineage rows
+// (T-291 P2-5 — Priority Jewels rendered Open/Close dates as fact with no
+// source row at all). Declining-ceiling WARNING, not a hard gate.
+test('checkProvenanceLineage: flags an IPO row with a hard open_date and no field_sources lineage', () => {
+  const rows = [{ id: 1, offering_type: 'IPO', open_date: '2026-12-01', close_date: null, price_range_min: null }];
+  const offenders = checkProvenanceLineage(rows, new Set());
+  assert.equal(offenders.length, 1);
+  assert.equal(offenders[0].id, 1);
+});
+
+test('checkProvenanceLineage: does not flag a row with a field_sources lineage row', () => {
+  const rows = [{ id: 2, offering_type: 'IPO', open_date: '2026-12-01', close_date: null, price_range_min: null }];
+  const offenders = checkProvenanceLineage(rows, new Set([2]));
+  assert.equal(offenders.length, 0);
+});
+
+test('checkProvenanceLineage: does not flag a row with no hard fact asserted (honest TBA)', () => {
+  const rows = [{ id: 3, offering_type: 'IPO', open_date: null, close_date: null, price_range_min: null }];
+  const offenders = checkProvenanceLineage(rows, new Set());
+  assert.equal(offenders.length, 0);
+});
+
+// #188 C2: two different companies holding byte-identical date/band/lot/
+// issue_size (root cause #178 — SURYO FOODS vs TRAVELS RENTALS). HARD, MUST be 0.
+test('checkDuplicateIdentity: flags two different companies with identical band/lot/issue_size/dates', () => {
+  const shared = {
+    offering_type: 'IPO',
+    open_date: '2026-08-01',
+    close_date: '2026-08-05',
+    issue_size: 500000000,
+    lot_size: 100,
+    price_range_min: 90,
+    price_range_max: 95,
+  };
+  const rows = [
+    { id: 10, company_name: 'SURYO FOODS INDUSTRIES LTD', ...shared },
+    { id: 11, company_name: 'TRAVELS RENTALS LTD', ...shared },
+  ];
+  const dupes = checkDuplicateIdentity(rows);
+  assert.equal(dupes.length, 1);
+  assert.equal(dupes[0].length, 2);
+});
+
+test('checkDuplicateIdentity: does not flag rows with differing issue_size', () => {
+  const rows = [
+    { id: 20, offering_type: 'IPO', open_date: '2026-08-01', close_date: '2026-08-05', issue_size: 500000000, lot_size: 100, price_range_min: 90, price_range_max: 95 },
+    { id: 21, offering_type: 'IPO', open_date: '2026-08-01', close_date: '2026-08-05', issue_size: 600000000, lot_size: 100, price_range_min: 90, price_range_max: 95 },
+  ];
+  const dupes = checkDuplicateIdentity(rows);
+  assert.equal(dupes.length, 0);
+});
+
+test('checkDuplicateIdentity: skips rows with issue_size null (nothing to compare)', () => {
+  const rows = [
+    { id: 30, offering_type: 'IPO', open_date: '2026-08-01', close_date: '2026-08-05', issue_size: null, lot_size: 100, price_range_min: 90, price_range_max: 95 },
+    { id: 31, offering_type: 'IPO', open_date: '2026-08-01', close_date: '2026-08-05', issue_size: null, lot_size: 100, price_range_min: 90, price_range_max: 95 },
+  ];
+  const dupes = checkDuplicateIdentity(rows);
+  assert.equal(dupes.length, 0);
 });
