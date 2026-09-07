@@ -231,5 +231,31 @@ class NoOveraskGuardWaitExemptionTest(unittest.TestCase):
         )
 
 
+    # -- round 3 (2026-09-07): the three genuine-wait shapes that were still
+    # blocked while every remaining item was a CI run, a scheduled landing
+    # pass, or an owner decision. Each phrase carries a B trigger ("follow-up",
+    # "remaining", "the only ... left") and must be cleared by the wait. --
+
+    def test_ci_gate_running_follow_up_allowed(self):
+        self.assert_allowed(
+            "Follow-up already building. The stage harness is on its last CI job."
+        )
+
+    def test_scheduled_landing_pass_merges_allowed(self):
+        self.assert_allowed(
+            "The remaining items are two PRs. The 13:33 landing pass merges them once the gate is green."
+        )
+
+    def test_owner_decision_only_left_allowed(self):
+        self.assert_allowed(
+            "The only item left is the prod run, which is on the owner's word."
+        )
+
+    def test_ci_wait_with_permission_question_still_blocked(self):
+        self.assert_blocked(
+            "Want me to merge it? The gate is still running."
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
