@@ -21,6 +21,9 @@
 //   node scripts/ops/failure-delta.mjs --slot prod --lines 8000
 //   node scripts/ops/failure-delta.mjs --slot staging --track b28d9d2a-cb24-4d84-8e1a-297ba828884a=402
 //   node scripts/ops/failure-delta.mjs --slot staging --track persist-insert-failed=402
+//   # ^ a class-level track (errorClass) persists to state.classIssues (T-502, #413) —
+//   #   it covers every later key of that class automatically, no need to repeat --track;
+//   #   a per-key (ipoId) --track always wins over a class track for that key.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
