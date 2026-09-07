@@ -478,6 +478,13 @@ export interface DiscoveryIpo {
    */
   slug?: string | null;
   /**
+   * T-503: `ipos.lead_managers` as currently stored, carried ONLY so
+   * `document-cycle.ts` can pass it as `existing` to
+   * `recordDiscoveredLeadManagers` (write-once: never overwrite a value a
+   * ranked source already wrote). The runner itself never reads it.
+   */
+  leadManagers?: string[] | null;
+  /**
    * W-122: carried ONLY to drive `orderAndCapCandidates`' urgency ordering in
    * document-cycle.ts (UPCOMING sorts by open date ascending). The runner
    * itself never reads it.

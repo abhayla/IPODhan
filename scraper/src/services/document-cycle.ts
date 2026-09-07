@@ -23,7 +23,7 @@
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository } from '@ipodhan/shared';
-import { recordBseDiscoveryMetadata, recordDocumentSourceHints } from './data-persister.js';
+import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
 import {
@@ -711,7 +711,7 @@ async function enrichListedCandidates(
 export const CANDIDATE_IPOS_SQL = `
     SELECT i.id, i.company_name, i.slug, i.symbol, i.segment, i.status, i.price_range_min,
            i.price_range_max, i.open_date, i.listing_date, i.bse_ipo_no,
-           i.company_website, i.verifier_url
+           i.company_website, i.verifier_url, i.lead_managers
       FROM ipos i
       LEFT JOIN (
         SELECT ipo_id, MAX(last_attempt_at) AS last_activity
@@ -788,6 +788,10 @@ export async function loadCandidateIpos(deps: {
       verifierUrl: isVerifierUrl(r.verifier_url as string | null)
         ? String(r.verifier_url).trim()
         : null,
+      // T-503: read only so `recordDiscoveredLeadManagers` can decide
+      // write-once without a second query per IPO — the runner itself never
+      // reads it.
+      leadManagers: Array.isArray(r.lead_managers) ? (r.lead_managers as string[]) : null,
       issue: deriveIssueShape(r),
       // W-122: carried only to drive the urgency ordering below; the runner
       // itself never reads these two fields.
@@ -1076,7 +1080,7 @@ export async function runDocumentCycle(
             // what the nightly co-BRLM check compares against. A count NSE
             // supplied is not a BSE payload count, so it is deliberately not
             // written here — the lead managers themselves are still carried on
-            // the result and consumed by the caller.
+            // the result and consumed below, by recordDiscoveredLeadManagers.
             bsePayloadLeadManagerCount:
               result.leadManagerSource === 'BSE' && result.leadManagers.length > 0
                 ? result.leadManagers.length
@@ -1086,6 +1090,25 @@ export async function runDocumentCycle(
           logger.warn(
             { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
             'Failed to record BSE discovery metadata (non-fatal)'
+          );
+        }
+      }
+
+      // T-503 / #416: this same discovery fetch parsed real lead-manager
+      // names off the BSE/NSE core-API payload (result.leadManagers) — write
+      // them through the shared path when the main scrape cycle never
+      // populated the field. recordDiscoveredLeadManagers's write-once guard
+      // is now a SQL WHERE clause evaluated at write time (not a snapshot
+      // read here), so it never overwrites a ranked source's value even
+      // under a concurrent cycle. Non-fatal — bookkeeping-adjacent discovery
+      // data, never a reason to fail a cycle.
+      if (result.leadManagers.length > 0 && result.leadManagerSource) {
+        try {
+          await recordDiscoveredLeadManagers(ipo.id, result.leadManagers, result.leadManagerSource);
+        } catch (error) {
+          logger.warn(
+            { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+            'Failed to record discovered lead managers (non-fatal)'
           );
         }
       }
