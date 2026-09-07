@@ -7,7 +7,7 @@
  * Includes filtering, sorting, search, and pagination functionality
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 import type { HistoricalIPO } from '@/lib/repositories/types';
 import { HistoricalFilters } from '@/components/history/HistoricalFilters';
@@ -34,23 +34,47 @@ interface HistoricalIPOResponse {
 interface HistoricalIPOsContentProps {
   availableSectors: string[];
   availableYears: string[];
+  /**
+   * Server-rendered rows for the page's initial filter set (T-473 / #201) —
+   * `undefined` means the server fetch failed/was skipped (fall back to the
+   * client fetch below); a defined array (including `[]`) means the server
+   * data is authoritative for first paint and the client's first effect run
+   * is skipped, mirroring `mainboard-performance-service.ts`'s contract.
+   */
+  initialData?: HistoricalIPO[];
+  initialPagination?: HistoricalIPOResponse['pagination'];
 }
 
-export function HistoricalIPOsContent({ availableSectors, availableYears }: HistoricalIPOsContentProps) {
+export function HistoricalIPOsContent({
+  availableSectors,
+  availableYears,
+  initialData,
+  initialPagination,
+}: HistoricalIPOsContentProps) {
   const { filters } = useHistoricalFilters();
-  const [ipos, setIpos] = useState<HistoricalIPO[]>([]);
-  const [asOf, setAsOf] = useState<string | null>(null);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    hasMore: false,
-  });
-  const [loading, setLoading] = useState(true);
+  const [ipos, setIpos] = useState<HistoricalIPO[]>(initialData ?? []);
+  const [asOf, setAsOf] = useState<string | null>(initialData !== undefined ? new Date().toISOString() : null);
+  const [pagination, setPagination] = useState(
+    initialPagination ?? {
+      page: 1,
+      limit: 20,
+      total: 0,
+      hasMore: false,
+    }
+  );
+  const [loading, setLoading] = useState(initialData === undefined);
   const [error, setError] = useState<string | null>(null);
+  // Skip the redundant client-side refetch on first mount when the server
+  // already rendered this exact filter set's data.
+  const hasServerData = useRef(initialData !== undefined);
 
   // Fetch historical IPOs data
   useEffect(() => {
+    if (hasServerData.current) {
+      hasServerData.current = false;
+      return;
+    }
+
     const fetchHistoricalIPOs = async () => {
       setLoading(true);
       setError(null);

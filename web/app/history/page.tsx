@@ -13,6 +13,7 @@ import { HistoricalIPOsContent } from './HistoricalIPOsContent';
 import { db } from '@/lib/db';
 import { ipos } from '@/lib/db';
 import { sql, eq, and } from 'drizzle-orm';
+import { getHistoricalIPOsData } from '@/lib/services/historical-ipos-service';
 
 // SEO Metadata
 export const metadata: Metadata = {
@@ -99,6 +100,31 @@ export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPO
     .map((row) => row.year.toString())
     .filter((year): year is string => year !== null);
 
+  // Server-render the default (or link-shared) filter set's rows so the
+  // first paint carries real data instead of chrome + "Loading..." — the
+  // client (HistoricalIPOsContent) skips its own first fetch when this is
+  // defined, per the mainboard-performance-service pattern (T-473 / #201).
+  const initialFilters = {
+    year: params.year || 'All',
+    sector: params.sector || 'All',
+    performance: (params.performance as 'All' | 'Positive' | 'Negative') || 'All',
+    sort: (params.sort as 'listing_date' | 'listing_gain' | 'subscription') || 'listing_date',
+    sortOrder: (params.sortOrder as 'ASC' | 'DESC') || 'DESC',
+    search: params.search || undefined,
+    page: params.page ? parseInt(params.page, 10) : 1,
+    limit: 20,
+  };
+  const initialResult = await getHistoricalIPOsData({
+    year: initialFilters.year,
+    sector: initialFilters.sector === 'All' ? undefined : initialFilters.sector,
+    performance: initialFilters.performance,
+    sort: initialFilters.sort,
+    sortOrder: initialFilters.sortOrder.toLowerCase() as 'asc' | 'desc',
+    search: initialFilters.search,
+    page: initialFilters.page,
+    limit: initialFilters.limit,
+  });
+
   // Structured data (JSON-LD) for SEO
   const structuredData = {
     '@context': 'https://schema.org',
@@ -135,7 +161,21 @@ export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPO
         }}
       >
         <Suspense fallback={<div>Loading...</div>}>
-          <HistoricalIPOsContent availableSectors={availableSectors} availableYears={availableYears} />
+          <HistoricalIPOsContent
+            availableSectors={availableSectors}
+            availableYears={availableYears}
+            initialData={initialResult?.data}
+            initialPagination={
+              initialResult
+                ? {
+                    page: initialResult.meta.page,
+                    limit: initialResult.meta.limit,
+                    total: initialResult.meta.total,
+                    hasMore: initialResult.meta.hasNext,
+                  }
+                : undefined
+            }
+          />
         </Suspense>
       </HistoricalFiltersProvider>
     </>
