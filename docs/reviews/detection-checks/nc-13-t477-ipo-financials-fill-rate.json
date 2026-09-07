@@ -1,0 +1,5 @@
+{
+  "id": "nc-13-t477-ipo-financials-fill-rate",
+  "section": "notCoveredByThisManifest",
+  "note": "T-477 / #224 (ipo_financials fill-rate, DASHBOARD row 'ipo_financials (of financial_data pop.)') — owned by audit-ipo-coverage.mjs's own checks[] array (informational threshold, not a hard gate), not duplicated here"
+}
