@@ -25,7 +25,8 @@ pm2 jlist | python3 -c "import json,sys; [print(p['name'], p['pm2_env']['status'
 df -h / | tail -1; uptime; ls /var/www/ipodhan/releases | wc -l
 # scraper cycle summaries (document discovery counters incl. listedSkippedUnenriched)
 grep -h "listedSkippedUnenriched" ~/.pm2/logs/ipodhan-scraper-staging-out.log | tail -2 | grep -o '"listedCap[^}]*'
-grep -h "extractionFailed" ~/.pm2/logs/ipodhan-scraper-out.log | tail -1
+# failure identities, NEW/GONE/SAME vs the last tick — never a bare "extractionFailed: N" count (T-496, signal-ownership R1/R2)
+node scripts/ops/failure-delta.mjs --slot prod       # or --slot staging; exit 3 = NEW failure with no issue number
 # extractor priority on the next cycle (expect ni=10 after the 2026-09-06 release)
 ps -o ni=,pid=,args= -p $(pgrep -f venv/prod/bin/python) 2>/dev/null
 # tick step (T-498, signal-ownership R5): fix/feat commits merged to main but not yet on the prod tag
