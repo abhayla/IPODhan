@@ -1177,3 +1177,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 00:08 IST — #408 Tier B PASS WITH NOTES (one mis-titled test; real run now 24 rows because #407 landed meanwhile). Waiting on gates for #408 and #406 and the #406 re-check; T-499 (morning-read gate, Tier A) and T-500 (cause-bearing failures) building.
 
 - 00:10 IST — #408 merged (merged-not-deployed register). #406 round 3 reproduced (21/21 incl. the CLI-level exit-3 test); its gate is rerunning on 4c576b5a; merge on green. T-499 (morning-read gate) and T-500 (cause-bearing failures) building.
+
+- 00:15 IST — T-499 built: PR #410 (SessionStart floor-delta + merged-not-deployed read; PreToolUse Agent gate blocks a build brief while a NEW floor FAIL has no issue; 18/18 reproduced after merging main). Tier A dispatched (hook). #406 gate read above.
