@@ -9,6 +9,7 @@ import { eq, and, or, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-or
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import Fuse from 'fuse.js';
+import { SLUG_FALLBACK_MIN_SIMILARITY } from '../config/search';
 import { BaseRepository } from './base-repository';
 import { withEffectiveAllotmentCheckUrl } from '@ipodhan/shared/utils/registrar-display';
 import {
@@ -40,6 +41,7 @@ import {
   getHistoricalIPOsKey,
   getFuzzySearchKey,
   getSlugRedirectKey,
+  getSlugFallbackMissKey,
 } from '../cache/cache-keys';
 import { parseNaiveTimestampAsUtc } from '../../../packages/shared/src/db/timezone-config';
 import {
@@ -66,6 +68,21 @@ import type {
 // tuple type for drizzle's inArray. Non-IPO offerings (OFS/NCD/RIGHTS/…) are
 // reached via an EXPLICIT offeringType filter and so bypass this default.
 const REAL_IPO_TYPE_FILTER = REAL_IPO_OFFERING_TYPES as unknown as (typeof offeringTypeEnum.enumValues)[number][];
+
+/**
+ * Normalize a company name / slug-derived search term for EXACT comparison
+ * (#350) — lowercase, collapse anything that isn't a letter or digit to a
+ * single space, and trim. Used only for an exact-equality check (rule 2 of
+ * findBySlugWithFallback's resolution order), never for scoring — it is
+ * deliberately NOT fuzzy, so two different companies with similar words
+ * never collide here the way they can in the fuzzy step.
+ */
+function normalizeCompanyIdentifier(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
@@ -1263,6 +1280,21 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * Find IPO by slug with fallback to fuzzy matching
    * ISS-027: Provides better UX when exact slug match fails
    *
+   * #350 (2026-09-07): the fallback used to accept ANY best fuzzy match
+   * regardless of how weak the score was, so a slug with no row at all
+   * (typo, retired, never-scraped, bot scan) could resolve to a completely
+   * unrelated IPO that merely shared a common word ('engineering', 'ltd').
+   * Resolution order now is: (1) exact match, (2) the slug-redirect table
+   * (a real, admin-recorded rename), (3) an EXACT match on the normalized
+   * company name (punctuation/case-only difference from a real row), (4) a
+   * fuzzy match gated by a strict, evidence-based similarity floor. Anything
+   * that clears none of these returns null (-> 404), and the null is
+   * negative-cached (#344's SLUG_REDIRECT_MISS TTL) so a bot scanning
+   * random slugs does not repeat the redirect+all-IPOs work on every hit.
+   *
+   * The API route and the page (`web/app/ipos/[slug]/page.tsx`) both call
+   * this one method for their fallback resolution, so they can never diverge.
+   *
    * @param slug - IPO slug to search for
    * @param options - Search options
    * @returns IPO with relations if found, null otherwise
@@ -1276,7 +1308,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   ): Promise<IPOWithRelations | null> {
     const {
       enableFuzzy = true,
-      similarityThreshold = 0.6,
+      // #350 round 2: SLUG_FALLBACK_MIN_SIMILARITY (search.ts), NOT
+      // SEARCH_CONFIG.fuzzyMatch.similarityThreshold — that constant is
+      // /api/search's raw Fuse `threshold` (opposite scale, lower=stricter)
+      // and sharing it with this fallback's floor caused round 1's defect
+      // (raising the slug-fallback floor silently loosened live search).
+      similarityThreshold = SLUG_FALLBACK_MIN_SIMILARITY,
     } = options;
 
     // Try exact match first (uses cache)
@@ -1290,7 +1327,37 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       return null;
     }
 
-    logger.info({ slug }, '[IPO Repository] Exact slug match failed, trying fuzzy match');
+    // Negative-cache check (#344 pattern): a slug that resolved to nothing
+    // in the last SLUG_REDIRECT_MISS window skips straight to null instead
+    // of repeating the redirect lookup + all-IPOs fetch on every request.
+    const missCacheKey = getSlugFallbackMissKey(slug);
+    let cachedMiss: string | null = null;
+    try {
+      cachedMiss = await this.redis.get(missCacheKey);
+    } catch (error) {
+      console.error(
+        `[Cache] Error getting key ${missCacheKey}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+    if (cachedMiss) {
+      return null;
+    }
+
+    logger.info({ slug }, '[IPO Repository] Exact slug match failed, trying fallback resolution');
+
+    // 1. The slug-redirect table: a real, admin-recorded rename/merge. This
+    // also runs (and is served) on the page via findRedirectSlug for the
+    // 308, but calling it again here is a cheap cache hit and is what keeps
+    // the API route (which never calls findRedirectSlug on its own) in sync
+    // with the page's resolution.
+    const redirectSlug = await this.findRedirectSlug(slug);
+    if (redirectSlug && redirectSlug !== slug) {
+      const redirectTarget = await this.findBySlug(redirectSlug);
+      if (redirectTarget) {
+        return redirectTarget;
+      }
+    }
 
     // Convert slug to search term (remove -ipo suffix and replace hyphens)
     const searchTerm = slug
@@ -1298,7 +1365,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       .replace(/-/g, ' ')
       .toLowerCase();
 
-    // Fetch all IPOs for fuzzy matching (minimal fields)
+    // Fetch all IPOs for fuzzy/normalized-name matching (minimal fields)
     const allIPOs = await this.executeQuery(
       'findAllForFuzzyMatch',
       async () => {
@@ -1310,24 +1377,50 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       }
     );
 
-    // Configure Fuse.js for fuzzy matching
+    // 2. Exact match on the normalized company name — catches a slug that
+    // differs from the real one only by punctuation/casing, without any of
+    // fuzzy matching's risk of a false positive on shared words.
+    const normalizedSearchTerm = normalizeCompanyIdentifier(searchTerm);
+    const normalizedNameMatch = allIPOs.find(
+      (ipo) => normalizeCompanyIdentifier(ipo.companyName) === normalizedSearchTerm
+    );
+    if (normalizedNameMatch) {
+      logger.info(
+        { slug, matchedSlug: normalizedNameMatch.slug },
+        '[IPO Repository] Resolved via exact normalized company-name match'
+      );
+      return await this.findBySlug(normalizedNameMatch.slug);
+    }
+
+    // 3. Fuzzy match, gated by a strict similarity floor applied to the
+    // ACTUAL computed score (not Fuse's own `threshold` option, which can
+    // let a weighted multi-key match through above its nominal cutoff —
+    // see PR #350's evidence script). Real measured scores: the karamtara/
+    // sumax false match (shared word 'engineering' only) scores 0.44 (56%
+    // similarity); a genuine one-character-typo pair scores 0.15 (85%
+    // similarity). similarityThreshold defaults to 0.85 (max allowed score
+    // 0.15) so typo-grade matches pass and shared-word collisions do not.
     const fuse = new Fuse(allIPOs, {
       keys: [
         { name: 'companyName', weight: 0.7 },
         { name: 'slug', weight: 0.3 },
       ],
-      threshold: 1 - similarityThreshold, // Fuse uses 0 (exact) to 1 (no match)
+      threshold: 1, // no internal filtering — we filter explicitly below
       includeScore: true,
     });
 
     const results = fuse.search(searchTerm);
+    const maxAllowedScore = 1 - similarityThreshold;
+    const bestMatch = results.find((r) => (r.score ?? 1) <= maxAllowedScore);
 
-    if (results.length === 0) {
-      logger.warn({ slug, searchTerm }, '[IPO Repository] No fuzzy matches found');
+    if (!bestMatch) {
+      logger.warn(
+        { slug, searchTerm, bestCandidateScore: results[0]?.score ?? null },
+        '[IPO Repository] No fuzzy match cleared the strict similarity floor'
+      );
+      await this.cacheSlugFallbackMiss(missCacheKey);
       return null;
     }
-
-    const bestMatch = results[0];
 
     logger.info(
       {
@@ -1341,7 +1434,23 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     );
 
     // Fetch full IPO details for best match (uses cache)
-    return await this.findBySlug(bestMatch.item.slug);
+    const resolved = await this.findBySlug(bestMatch.item.slug);
+    if (!resolved) {
+      await this.cacheSlugFallbackMiss(missCacheKey);
+    }
+    return resolved;
+  }
+
+  /** Negative-cache a slug that resolved to nothing, per #344/#350 (non-blocking, best-effort). */
+  private async cacheSlugFallbackMiss(missCacheKey: string): Promise<void> {
+    try {
+      await this.setCache(missCacheKey, true, CacheTTL.SLUG_REDIRECT_MISS);
+    } catch (error) {
+      console.error(
+        `[Cache] Error setting key ${missCacheKey}:`,
+        error instanceof Error ? error.message : error
+      );
+    }
   }
 
   /**

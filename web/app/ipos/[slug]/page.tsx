@@ -67,7 +67,7 @@ import { IpoIntermediariesRepository } from '@ipodhan/shared/repositories/ipo-in
 import { IpoRiskFactorsRepository } from '@ipodhan/shared/repositories/ipo-risk-factors-repository';
 import { FinancialStatementsRepository } from '@ipodhan/shared/repositories/financial-statements-repository';
 import { BrlmTrackRecordRepository } from '@ipodhan/shared/repositories/brlm-track-record-repository';
-import { SEARCH_CONFIG } from '@/lib/config/search';
+import { SEARCH_CONFIG, SLUG_FALLBACK_MIN_SIMILARITY } from '@/lib/config/search';
 import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import type { IPODetailResponse } from '@/lib/db/types';
 import {
@@ -131,7 +131,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     // Fetch IPO data using repository pattern (with fuzzy fallback)
     const ipoWithRelations = await ipoRepository.findBySlugWithFallback(slug, {
       enableFuzzy: SEARCH_CONFIG.fallback.enabled,
-      similarityThreshold: SEARCH_CONFIG.fuzzyMatch.similarityThreshold,
+      similarityThreshold: SLUG_FALLBACK_MIN_SIMILARITY, // #350 round 2: NOT SEARCH_CONFIG.fuzzyMatch.similarityThreshold (that's /api/search's raw Fuse threshold, opposite scale)
     });
 
     if (!ipoWithRelations) {
@@ -201,7 +201,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   // Fetch IPO data using repository pattern (with fuzzy fallback)
   const ipoWithRelations = await ipoRepository.findBySlugWithFallback(slug, {
     enableFuzzy: SEARCH_CONFIG.fallback.enabled,
-    similarityThreshold: SEARCH_CONFIG.fuzzyMatch.similarityThreshold,
+    similarityThreshold: SLUG_FALLBACK_MIN_SIMILARITY, // #350 round 2: NOT SEARCH_CONFIG.fuzzyMatch.similarityThreshold (that's /api/search's raw Fuse threshold, opposite scale)
   });
 
   if (!ipoWithRelations) {
