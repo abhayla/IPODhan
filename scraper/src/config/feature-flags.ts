@@ -233,6 +233,17 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_SME_FILING_AUTO_PERSIST: process.env.ENABLE_SME_FILING_AUTO_PERSIST === 'true',
 
+  /**
+   * T-478 round 2 (issue #225 follow-up): gates the NSE OFS category fetch
+   * (`fetchAllIPOs('ofs')`) wired into the discovery step. The live OFS
+   * payload SHAPE is unverified — no real OFS book has been observed since
+   * this wiring landed (the capture fixture is IPO-shaped, not OFS-shaped;
+   * see tests/fixtures/nse/). Default: false (prod stays off). Staging gets
+   * this on to observe a real OFS book and capture its fixture before prod
+   * enablement — see the follow-up issue linked from PR #362.
+   */
+  ENABLE_NSE_OFS: process.env.ENABLE_NSE_OFS === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**

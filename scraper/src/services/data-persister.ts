@@ -451,6 +451,24 @@ const PG_ERROR_CODES = {
 /**
  * Check if PostgreSQL error should skip retry (permanent errors)
  */
+/**
+ * T-478 round 2: the calendar year used in an OFS row's `-ofs-<year>` slug
+ * suffix. Prefers openDate (the year the offering actually opened — stable
+ * once known and the field this resolver already treats as the corroborating
+ * identity key), falling back to closeDate, then the current UTC year for
+ * the rare case a brand-new OFS row has neither yet.
+ */
+export function ofsSlugYear(scrapedIPO: { openDate?: string | Date | null; closeDate?: string | Date | null }): number {
+  const candidate = scrapedIPO.openDate ?? scrapedIPO.closeDate;
+  if (candidate) {
+    const parsed = candidate instanceof Date ? candidate : new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.getUTCFullYear();
+    }
+  }
+  return new Date().getUTCFullYear();
+}
+
 function shouldSkipRetry(error: any): boolean {
   const pgCode = error?.code;
   return [
@@ -639,7 +657,19 @@ export async function upsertIPO(
   preResolvedIPO?: IPO | null
 ): Promise<string> {
   const startTime = Date.now();
-  const slug = generateSlug(scrapedIPO.companyName);
+  // T-478 round 2 (issue #225 follow-up): an offering_type='OFS' row is a
+  // DIFFERENT calendar entry from the company's IPO row and must never share
+  // its slug — sharing would either throw a unique-slug violation or, once
+  // the identity guard below stops it from merging into the IPO row, still
+  // collide. The `-ofs-<year>` suffix is applied UNCONDITIONALLY for OFS
+  // (not only when a collision would occur today), so it stays collision-free
+  // even if the company's real IPO row does not exist yet. Deterministic and
+  // stable across scrape cycles (same companyName + same open-year -> same
+  // slug), so it doubles as tier 4's lookup key for a repeat OFS scrape.
+  const baseSlug = generateSlug(scrapedIPO.companyName);
+  const slug = scrapedIPO.offeringType === 'OFS'
+    ? `${baseSlug}-ofs-${ofsSlugYear(scrapedIPO)}`
+    : baseSlug;
   const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
 
   /**
@@ -687,6 +717,7 @@ export async function upsertIPO(
             openDate: scrapedIPO.openDate ?? null,
             priceRangeMin: scrapedIPO.priceRangeMin ?? null,
             segment: scrapedIPO.segment ?? null,
+            offeringType: scrapedIPO.offeringType ?? null,
           }) as IPO | null;
 
       if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {

@@ -138,6 +138,38 @@ export interface IpoIdentity {
    * contradict.
    */
   segment?: 'MAINBOARD' | 'SME' | null;
+  /**
+   * Incoming offering_type ('IPO' | 'OFS' | ...), when the caller has one.
+   * T-478 round 2 (issue #225 follow-up, the T-292/Mopshop class): an OFS
+   * record must resolve ONLY to an existing OFS row, and an IPO record must
+   * never resolve to an existing OFS row — without this guard, tier 2
+   * (symbol) or a name tier can match a listed company's genuine IPO row to
+   * an incoming OFS scrape, and the write path's
+   * `resolveOfferingTypeKeepingClassification` (which protects only a
+   * non-IPO existing value from being demoted BACK to IPO) then flips the
+   * real IPO row to OFS, stomping its dates/prices/status. A `null`/
+   * `undefined` offeringType on either side is "no information" and never
+   * excludes a candidate — same posture as `segment`.
+   */
+  offeringType?: string | null;
+}
+
+/**
+ * True when exactly one side of the match is OFS — an OFS record identifies
+ * a DIFFERENT calendar entry than the company's IPO row and must never
+ * resolve to it (or vice versa). Deliberately narrower than "any offering
+ * type mismatch": IPO<->FPO reclassification (a real, existing use of this
+ * resolver — see `guardSmeOfferingTypeAgainstFpo`) must keep resolving to
+ * the same row. Either side unset means "no information", never a conflict.
+ */
+function ofsIdentityConflict(
+  identityOfferingType: string | null | undefined,
+  candidateOfferingType: string | null | undefined
+): boolean {
+  if (!identityOfferingType || !candidateOfferingType) {
+    return false;
+  }
+  return (identityOfferingType === 'OFS') !== (candidateOfferingType === 'OFS');
 }
 
 /**
@@ -168,7 +200,7 @@ export async function resolveIpoRow(
   ipoRepository: IPORepository,
   identity: IpoIdentity
 ): Promise<IPO | IPOWithRelations | null> {
-  const { companyName, normalizedName, slug, isin, symbol, openDate, priceRangeMin, segment } = identity;
+  const { companyName, normalizedName, slug, isin, symbol, openDate, priceRangeMin, segment, offeringType } = identity;
   // T-403 Tier-A review (item 4): tracks whether the accepted `nameMatch`
   // came from the WEAK tier 3b prefix-with-corroboration path, so the
   // key/name conflict check below can prefer the higher-confidence key
@@ -182,6 +214,13 @@ export async function resolveIpoRow(
   // row with no ISIN can never "match" an existing row that also has no
   // ISIN (both null() calls short-circuit before querying).
   let keyMatch: IPO | null = isin ? await ipoRepository.findByIsin(isin) : null;
+  if (keyMatch && ofsIdentityConflict(offeringType, keyMatch.offeringType)) {
+    logger.warn({
+      companyName, isin, identityOfferingType: offeringType, candidateId: keyMatch.id,
+      candidateOfferingType: keyMatch.offeringType,
+    }, '[T-478] Tier 1 ISIN match declined - OFS/IPO identity conflict');
+    keyMatch = null;
+  }
 
   // Tier 2: NSE/BSE ticker symbol (exact, normalized). Same NULL-safety
   // guarantee as ISIN. Deliberately queries ONLY the `symbol` column, never
@@ -189,6 +228,13 @@ export async function resolveIpoRow(
   // comment, and findBySymbol's implementation enforces this by construction.
   if (!keyMatch && symbol) {
     keyMatch = await ipoRepository.findBySymbol(symbol);
+    if (keyMatch && ofsIdentityConflict(offeringType, keyMatch.offeringType)) {
+      logger.warn({
+        companyName, symbol, identityOfferingType: offeringType, candidateId: keyMatch.id,
+        candidateOfferingType: keyMatch.offeringType,
+      }, '[T-478] Tier 2 symbol match declined - OFS/IPO identity conflict');
+      keyMatch = null;
+    }
   }
 
   // Tier 3: normalized company name. T-403 Tier-A review (item 3): a
@@ -206,6 +252,15 @@ export async function resolveIpoRow(
       candidateSegment: nameMatch.segment,
       candidateId: nameMatch.id,
     }, '[T-403] Tier 3 normalized-name match declined - segment mismatch');
+    nameMatch = null;
+  } else if (nameMatch && ofsIdentityConflict(offeringType, nameMatch.offeringType)) {
+    logger.warn({
+      companyName,
+      normalizedName,
+      identityOfferingType: offeringType,
+      candidateOfferingType: nameMatch.offeringType,
+      candidateId: nameMatch.id,
+    }, '[T-478] Tier 3 normalized-name match declined - OFS/IPO identity conflict');
     nameMatch = null;
   }
 
@@ -234,7 +289,7 @@ export async function resolveIpoRow(
       // out before corroboration is even considered — an SME and a
       // mainboard offering sharing a name prefix are two different listings.
       const segmentEligible = prefixCandidates.filter(
-        (candidate) => !segmentsConflict(segment, candidate.segment)
+        (candidate) => !segmentsConflict(segment, candidate.segment) && !ofsIdentityConflict(offeringType, candidate.offeringType)
       );
 
       const corroborated = segmentEligible.filter((candidate) => {
@@ -307,6 +362,14 @@ export async function resolveIpoRow(
         candidateSegment: slugMatch.segment,
         candidateId: slugMatch.id,
       }, '[T-403] Tier 4 slug match declined - segment mismatch');
+    } else if (slugMatch && ofsIdentityConflict(offeringType, slugMatch.offeringType)) {
+      logger.warn({
+        companyName,
+        normalizedName,
+        identityOfferingType: offeringType,
+        candidateOfferingType: slugMatch.offeringType,
+        candidateId: slugMatch.id,
+      }, '[T-478] Tier 4 slug match declined - OFS/IPO identity conflict');
     } else {
       nameMatch = slugMatch;
     }
@@ -331,6 +394,14 @@ export async function resolveIpoRow(
           candidateSegment: fuzzyMatch.segment,
           candidateId: fuzzyMatch.id,
         }, '[T-403] Tier 5 fuzzy match declined - segment mismatch');
+      } else if (fuzzyMatch && ofsIdentityConflict(offeringType, fuzzyMatch.offeringType)) {
+        logger.warn({
+          companyName,
+          normalizedName,
+          identityOfferingType: offeringType,
+          candidateOfferingType: fuzzyMatch.offeringType,
+          candidateId: fuzzyMatch.id,
+        }, '[T-478] Tier 5 fuzzy match declined - OFS/IPO identity conflict');
       } else if (fuzzyMatch) {
         logger.info({
           companyName,

@@ -462,6 +462,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       openDate: validatedIPO.openDate ?? null,
       priceRangeMin: validatedIPO.priceRangeMin ?? null,
       segment: validatedIPO.segment ?? null,
+      offeringType: validatedIPO.offeringType ?? null,
     }) as IPO | null;
     const ipoId = existingIPO?.id;
 

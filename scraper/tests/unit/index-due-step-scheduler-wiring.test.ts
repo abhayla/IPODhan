@@ -206,9 +206,10 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       await main();
       expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
       expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
-      // T-478 (issue #225): the unrestricted discovery step also opts into the
-      // NSE OFS category fetch (includeOFS) — not the OPEN-only live restriction.
-      expect(runNSEScraperMock).toHaveBeenCalledWith({ includeOFS: true });
+      // T-478 (issue #225): the unrestricted discovery step wires includeOFS
+      // to ENABLE_NSE_OFS (round 2: default false, unset in this test env) —
+      // not the OPEN-only live restriction.
+      expect(runNSEScraperMock).toHaveBeenCalledWith({ includeOFS: false });
     });
 
     it('discovery: NOT due -> NSE/BSE never called', async () => {

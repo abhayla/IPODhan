@@ -8,7 +8,13 @@
  * `offering_type='OFS'` row reaches the write door via the exact same
  * consolidation/priority path as every other NSE row.
  *
- * Fixture provenance: tests/fixtures/nse/ofs-live-2026-09-07.json —
+ * Fixture provenance: tests/fixtures/nse/ofs-ipo-shaped-unverified-2026-09-07.json —
+ * UNVERIFIED-LIVE (round 2, issue #225 follow-up): this fixture's raw item is
+ * IPO-shaped, not OFS-shaped — no real live OFS payload has ever been
+ * captured/observed (category=ofs returned zero rows on capture day). The
+ * NSE OFS wiring is gated behind ENABLE_NSE_OFS (default false) until a real
+ * OFS book is observed on staging and its true payload shape captured — see
+ * the follow-up issue linked from PR #362. —
  * `category=ofs` was fetched live on 2026-09-07 and genuinely returned zero
  * rows (itself real-data confirmation of the issue: no live OFS book exists
  * right now). The fixture's raw item was captured from the SAME live NSE
@@ -17,7 +23,7 @@
  * with `category='ofs'`, exactly the transform `fetchAllIPOs('ofs')` applies.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import fixture from '../../fixtures/nse/ofs-live-2026-09-07.json';
+import fixture from '../../fixtures/nse/ofs-ipo-shaped-unverified-2026-09-07.json';
 
 const upsertIPOMock = vi.fn(async (_repo: unknown, data: any) => `id-${data.companyName}`);
 const resolveIpoRowMock = vi.fn(async () => null); // every row is brand-new for this test
