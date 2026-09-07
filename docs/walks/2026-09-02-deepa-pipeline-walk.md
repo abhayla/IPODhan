@@ -1179,3 +1179,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 00:10 IST — #408 merged (merged-not-deployed register). #406 round 3 reproduced (21/21 incl. the CLI-level exit-3 test); its gate is rerunning on 4c576b5a; merge on green. T-499 (morning-read gate) and T-500 (cause-bearing failures) building.
 
 - 00:15 IST — T-499 built: PR #410 (SessionStart floor-delta + merged-not-deployed read; PreToolUse Agent gate blocks a build brief while a NEW floor FAIL has no issue; 18/18 reproduced after merging main). Tier A dispatched (hook). #406 gate read above.
+
+- 00:16 IST — T-500 built: PR #411 (persist failures log cause.message/code; coverage gate prints its reason — the real #404 cause was an AggregateError with an empty message on a dual-stack localhost refusal); reproduced 119/119 + 2/2; Tier B dispatched. #406 merge attempted above.
