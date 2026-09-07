@@ -266,6 +266,97 @@ report_dead_flags() {
   fi
 }
 
+# T-297 D9 / #193 (rollout-flag LIVENESS). T-282 root cause:
+# CONSOLIDATION_PERCENTAGE=0 in production silently voided the entire
+# consolidation pipeline -- every field-priority rule and every guard built
+# across multiple review rounds -- while report_dead_flags() above and
+# check_file() only prove a flag is PRESENT, never that its live VALUE
+# actually turns the feature on. This asserts VALUE liveness, on the prod
+# slot only (a genuine staged rollout below 100% is legitimate on any slot;
+# only prod's live-traffic gates are asserted non-zero).
+#
+# SSOT for which flags gate live logic is scraper/src/config/feature-flags.ts
+# itself (never hand-duplicated here): a `// LIVE-GATE` comment on a
+# *_PERCENTAGE field means 0 there is a defect (must be integer 1-100); a
+# `// PROD-REQUIRED-TRUE` comment on a boolean ENABLE_* field means it must
+# be literally 'true' on the prod slot. Advisory-if-no-src-dir (mirrors
+# report_dead_flags -- deploy-linux.sh always passes the 3rd arg, so real
+# deploys are always covered; only the 2-arg test-harness calls above are
+# unaffected).
+#
+# Escape hatch for a DELIBERATE ramp-down: set ALLOW_ZERO_FLAGS=A,B in the
+# slot's own scraper.env -- logs a loud WARNING instead of failing.
+assert_rollout_flags_live() {
+  local scraper_env_file="$1" src_dir="$2" slot flags_file
+  slot="$(basename "$(dirname "$scraper_env_file")")"
+  [ "$slot" = "prod" ] || return 0
+
+  if [ -z "$src_dir" ]; then
+    echo "WARN: rollout-flag liveness check (T-297 D9 / #193) skipped — no scraper src dir given." >&2
+    return 0
+  fi
+  flags_file="$src_dir/config/feature-flags.ts"
+  if [ ! -f "$flags_file" ]; then
+    echo "WARN: rollout-flag liveness check (T-297 D9 / #193) skipped — feature-flags.ts not found at $flags_file" >&2
+    return 0
+  fi
+
+  local allow_zero
+  allow_zero="$(get_value "$scraper_env_file" ALLOW_ZERO_FLAGS)" || allow_zero=""
+  allow_zero="${allow_zero%\"}"; allow_zero="${allow_zero#\"}"
+  allow_zero="${allow_zero%\'}"; allow_zero="${allow_zero#\'}"
+
+  local live_gate_keys=() required_true_keys=()
+  while IFS= read -r key; do
+    [ -n "$key" ] && live_gate_keys+=("$key")
+  done < <(grep -oP "^\s*\K[A-Z0-9_]+(?=:\s*parseInt\([^,]*,\s*//\s*LIVE-GATE)" "$flags_file" 2>/dev/null || true)
+  while IFS= read -r key; do
+    [ -n "$key" ] && required_true_keys+=("$key")
+  done < <(grep -oP "^\s*\K[A-Z0-9_]+(?=:\s*process\.env\.[A-Z0-9_]+\s*===\s*'true',\s*//\s*PROD-REQUIRED-TRUE)" "$flags_file" 2>/dev/null || true)
+
+  local key value allowed FAILS=()
+
+  for key in "${live_gate_keys[@]}"; do
+    value="$(get_value "$scraper_env_file" "$key")" || value="0"
+    value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
+    allowed=0
+    if [ -n "$allow_zero" ] && printf '%s\n' "$allow_zero" | tr ',' '\n' | tr -d '[:space:]' | grep -qx "$key"; then
+      allowed=1
+    fi
+    if ! printf '%s' "$value" | grep -qE '^[0-9]+$'; then
+      FAILS+=("$key: non-integer value '$value' (must be an integer 0-100)")
+    elif [ "$value" -eq 0 ]; then
+      if [ "$allowed" -eq 1 ]; then
+        echo "WARNING: rollout flag $key=0 on prod — allowed via ALLOW_ZERO_FLAGS (deliberate ramp-down, confirm this is intentional)." >&2
+      else
+        FAILS+=("$key=0 — feature is silently OFF in prod (T-282 class, #193). Set >=1, or add $key to ALLOW_ZERO_FLAGS in scraper.env for a deliberate ramp-down.")
+      fi
+    elif [ "$value" -gt 100 ]; then
+      FAILS+=("$key=$value — must be in [0,100]")
+    else
+      echo "OK: rollout flag $key=$value (live, prod slot)"
+    fi
+  done
+
+  for key in "${required_true_keys[@]}"; do
+    value="$(get_value "$scraper_env_file" "$key")" || value="false"
+    value="${value%\"}"; value="${value#\"}"; value="${value%\'}"; value="${value#\'}"
+    if [ "$value" != "true" ]; then
+      FAILS+=("$key=$value — required 'true' on prod slot (T-297 D9 / #193)")
+    else
+      echo "OK: prod-required flag $key=true"
+    fi
+  done
+
+  if [ "${#FAILS[@]}" -gt 0 ]; then
+    echo "FATAL: rollout-flag liveness assert failed on prod slot — deploy refused (T-297 D9, issue #193):" >&2
+    for f in "${FAILS[@]}"; do
+      echo "  - $f" >&2
+    done
+    exit 1
+  fi
+}
+
 check_file "$WEB_ENV_FILE" "web.env.local" "${WEB_REQUIRED_KEYS[@]}"
 check_file "$SCRAPER_ENV_FILE" "scraper.env" "${SCRAPER_REQUIRED_KEYS[@]}"
 report_dead_flags "$SCRAPER_SRC_DIR"
@@ -291,5 +382,6 @@ assert_slot_dsn "$WEB_ENV_FILE" "web.env.local"
 assert_slot_dsn "$SCRAPER_ENV_FILE" "scraper.env"
 assert_slot_redis_db "$WEB_ENV_FILE" "web.env.local"
 assert_slot_redis_db "$SCRAPER_ENV_FILE" "scraper.env"
+assert_rollout_flags_live "$SCRAPER_ENV_FILE" "$SCRAPER_SRC_DIR"
 
 echo "OK: all required keys present and non-blank in $WEB_ENV_FILE and $SCRAPER_ENV_FILE"

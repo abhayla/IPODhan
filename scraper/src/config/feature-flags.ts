@@ -42,7 +42,7 @@ export const FEATURE_FLAGS = {
    * When enabled, uses smart merging with priority matrix
    * Default: false (Phase 1)
    */
-  ENABLE_DATA_CONSOLIDATION: process.env.ENABLE_DATA_CONSOLIDATION === 'true',
+  ENABLE_DATA_CONSOLIDATION: process.env.ENABLE_DATA_CONSOLIDATION === 'true', // PROD-REQUIRED-TRUE (T-297 D9 / #193 -- rollout-flag liveness)
 
   /**
    * Enable early IPO detection (SEBI monitoring)
@@ -234,6 +234,16 @@ export const FEATURE_FLAGS = {
   ENABLE_SME_FILING_AUTO_PERSIST: process.env.ENABLE_SME_FILING_AUTO_PERSIST === 'true',
 
   // ==================== ROLLOUT CONTROLS ====================
+  // T-297 D9 / #193: this file is the SSOT for which flags gate live logic
+  // in prod. `// LIVE-GATE` on a *_PERCENTAGE field and `// PROD-REQUIRED-TRUE`
+  // on a boolean field are read by scripts/assert-env-keys.sh
+  // (assert_rollout_flags_live) at deploy time on the prod slot: a LIVE-GATE
+  // percentage of 0, or a PROD-REQUIRED-TRUE flag not literally 'true', fails
+  // the deploy — this is what would have caught CONSOLIDATION_PERCENTAGE=0
+  // silently voiding the entire consolidation pipeline (T-282). A new
+  // percentage flag is deliberately NOT marked LIVE-GATE until its call site
+  // actually reads it (SOURCE_TRACKING_PERCENTAGE / CONFLICT_DETECTION_PERCENTAGE
+  // are real examples of unmarked percentage flags — see T-309 below).
 
   /**
    * Percentage of IPOs to use source tracking (0-100)
@@ -252,7 +262,7 @@ export const FEATURE_FLAGS = {
    * Percentage of IPOs to use data consolidation (0-100)
    * Default: 0 (disabled)
    */
-  CONSOLIDATION_PERCENTAGE: parseInt(process.env.CONSOLIDATION_PERCENTAGE || '0'),
+  CONSOLIDATION_PERCENTAGE: parseInt(process.env.CONSOLIDATION_PERCENTAGE || '0'), // LIVE-GATE (T-297 D9 / #193 -- 0 silently disables the whole consolidation pipeline, T-282)
 
   // ==================== TESTING & DEBUG ====================
 
