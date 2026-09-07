@@ -492,6 +492,30 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     expect(failedCall[0]).not.toHaveProperty('retryCount');
   });
 
+  it('T-500 (#402): a persist throw carries a wrapped drizzle error — the log line names cause.message and cause.code', async () => {
+    const dbError = new Error('Failed query: insert into "ipo_details" ...') as Error & {
+      cause?: { message: string; code: string };
+    };
+    dbError.cause = {
+      message: 'duplicate key value violates unique constraint "ipo_details_ipo_id_unique"',
+      code: '23505',
+    };
+    const d = deps({
+      persistFiling: vi.fn(async () => {
+        throw dbError;
+      }) as never,
+    });
+    const errorSpy = vi.spyOn(logger, 'error');
+
+    await processPendingFilings(IPO, d);
+
+    const call = errorSpy.mock.calls.find((c) => c[1] === 'Filing persist failed (non-fatal)');
+    expect(call).toBeDefined();
+    const logObj = call?.[0] as Record<string, unknown>;
+    expect(logObj.cause).toBe('duplicate key value violates unique constraint "ipo_details_ipo_id_unique"');
+    expect(logObj.code).toBe('23505');
+  });
+
   it('W-178c round 2: a busy (box-lock) extractor result reverts a PENDING document to PENDING, unchanged, and refunds the spawn budget', async () => {
     const spawnBudget = { remaining: 3 };
     const d = deps({
