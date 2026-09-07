@@ -58,7 +58,9 @@ test('regenerated detection-checks.json has the same check/notCovered ids as ori
   const missingFromLocal = [...mainIds].filter((id) => !localIds.has(id));
   const extraInLocal = [...localIds].filter((id) => !mainIds.has(id));
   assert.deepEqual(missingFromLocal, [], `local aggregate is missing check id(s) present on ${ref}: ${missingFromLocal.join(', ')}`);
-  assert.deepEqual(extraInLocal, [], `local aggregate has check id(s) not on ${ref} (ok if this PR adds them, otherwise investigate): ${extraInLocal.join(', ')}`);
+  // Additions are what PRs do; only DROPS are a parity failure (2026-09-07: this
+  // assertion blocked #377, the first PR to add a check after the split).
+  if (extraInLocal.length > 0) console.log(`parity: check id(s) added vs ${ref}: ${extraInLocal.join(', ')}`);
 
   const localNc = new Set(local.notCoveredByThisManifest);
   const mainNc = new Set(main.notCoveredByThisManifest);
@@ -66,7 +68,7 @@ test('regenerated detection-checks.json has the same check/notCovered ids as ori
   assert.deepEqual(missingNc, [], `local aggregate is missing notCoveredByThisManifest entr(y/ies) present on ${ref}: ${missingNc.map((n) => n.slice(0, 40)).join(' | ')}`);
 });
 
-test('regenerated failure-classes.md table has the same class_ids as origin/main', () => {
+test('regenerated failure-classes.md table drops no class_id present on origin/main', () => {
   const ref = originMainRef();
   if (!ref) return;
   const localText = readFileSync(join(REPO_ROOT, 'docs/reviews/failure-classes.md'), 'utf8');
@@ -77,5 +79,5 @@ test('regenerated failure-classes.md table has the same class_ids as origin/main
   const missing = [...mainIds].filter((id) => !localIds.has(id));
   const extra = [...localIds].filter((id) => !mainIds.has(id));
   assert.deepEqual(missing, [], `local failure-classes.md is missing class_id(s) present on ${ref}: ${missing.join(', ')}`);
-  assert.deepEqual(extra, [], `local failure-classes.md has class_id(s) not on ${ref}: ${extra.join(', ')}`);
+  if (extra.length > 0) console.log(`parity: class_id(s) added vs ${ref}: ${extra.join(', ')}`);
 });
