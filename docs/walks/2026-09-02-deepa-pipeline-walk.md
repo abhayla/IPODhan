@@ -1097,3 +1097,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 13:29 IST — Tier A (post-hoc) on the stop-guard widening: PASS WITH NOTES, do not revert; one HIGH: check/job + going cleared the narrate flag from ordinary prose. Round 4 on PR #397 (narrowed to ci/gate/pr gate/gate job, going dropped; red-then-green test; 19/19), this time committed with the staged set checked (two files) and via a PR. #201 closed; #386 updated for batch 2.
 
 - 13:33 IST — #397 merged (stop-guard round 4; 19/19 on main). T-494 never-escalates floor check (#396) dispatched (Sonnet, Tier B). Queue now: T-494 building; owner-gated items only otherwise; 19:00 staging read next.
+
+- 13:38 IST — T-494 built: PR #398 (4th shape of checkExtractionStuck: FAILED, no HARD_FAILURE, retry_count 3..10, live window, past the 48h floor; retry_count wired into the floor query; staging run clean). Reproduced by me: 66/66 + 105/105 + registry --check PASS. Note: the worker junction-linked node_modules from the main checkout into its worktree; the helper removes it via wt-rm (links deleted as links). Tier B dispatched.
