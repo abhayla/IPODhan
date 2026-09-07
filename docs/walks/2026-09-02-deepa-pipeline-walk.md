@@ -1107,3 +1107,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 13:59 IST — Tier A on #399: FAIL — the reconcile/--delete-branch hypothesis does not hold (gh never deletes the head branch under --auto; no hook here invokes reconcile). #399 closed unmerged, branch deleted; #400 carries the corrected timeline (#383 and #395 were observed CLOSED before I reopened them, so two intermediate closures did happen; the cause is still unknown; only the repo audit log settles it). Memory note corrected.
 
 - 14:15 IST — tick: no agents; prod f9b67d0a, staging 60a7bb46 (main after #398); last cycles prod 94 s / 38 calls / 0 failed, staging 55 s / 40 calls / 0; disk 57%, load 0.01, OOM 0; worktrees relverify only; stash the 10 pre-existing. Queue: owner-gated only until the 19:00 staging read.
+
+- 14:45 IST — tick: no agents; prod f9b67d0a (150 s / 30 calls / 0 failed), staging 60a7bb46 (71 s / 79 calls / extractionFailed 1 — detail line read below); disk 57%, load 0.38, OOM 0; worktrees relverify only; stash the 10 pre-existing.
