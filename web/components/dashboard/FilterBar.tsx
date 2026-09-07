@@ -11,7 +11,11 @@ import { ClearFiltersButton } from '@/components/filters/ClearFiltersButton';
 import { Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export function FilterBar() {
+interface FilterBarProps {
+  sectors?: string[];
+}
+
+export function FilterBar({ sectors }: FilterBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -162,6 +166,7 @@ export function FilterBar() {
         <SectorFilter
           value={sector}
           onChange={(value) => updateFilter('sector', value)}
+          initialSectors={sectors}
         />
 
         <ScoreRangeFilter

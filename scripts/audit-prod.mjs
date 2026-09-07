@@ -126,6 +126,12 @@ const PUBLIC_ROUTES = [
 // changes over time.
 const ZERO_SSR_ROUTES = [
   { route: '/history', marker: /<table[\s\S]*?<tbody[\s\S]*?<tr[\s\S]*?<\/tr>/i },
+  // T-473 part 2 / #201: the sector filter used to fetch its option list
+  // client-side only, so a no-JS visitor got a select permanently stuck in
+  // "Loading sectors..." with aria-disabled="true". Marker proves the
+  // control now ships already-resolved (never the stuck loading state) in
+  // the first response.
+  { route: '/dashboard', marker: /aria-label="Filter IPOs by sector"[^>]*aria-disabled="false"/i },
 ];
 
 // Internal pages that MUST be gated (404) in production (GitHub #11).

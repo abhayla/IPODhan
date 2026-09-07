@@ -6,6 +6,15 @@ import { Search } from 'lucide-react';
 interface SectorFilterProps {
   value: string;
   onChange: (value: string) => void;
+  /**
+   * Server-fetched sector options (dashboard page.tsx SSRs these via
+   * IPORepository.findDistinctSectors() — no HTTP). When provided, the
+   * client-side fetch below is skipped so the dropdown renders real options
+   * in the initial HTML instead of an empty/loading list until mount.
+   * Matches the initialData === undefined fallback contract documented in
+   * mainboard-performance-service.ts.
+   */
+  initialSectors?: string[];
 }
 
 interface SectorsResponse {
@@ -14,15 +23,19 @@ interface SectorsResponse {
 
 /**
  * Sector filter with searchable dropdown
- * Fetches available sectors from API on mount
+ * Uses `initialSectors` when provided (SSR); otherwise fetches from the API on mount
  * Native select implementation (replaces Radix UI to fix webpack errors)
  */
-export function SectorFilter({ value, onChange }: SectorFilterProps) {
-  const [sectors, setSectors] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function SectorFilter({ value, onChange, initialSectors }: SectorFilterProps) {
+  const [sectors, setSectors] = useState<string[]>(initialSectors ?? []);
+  const [isLoading, setIsLoading] = useState(initialSectors === undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialSectors !== undefined) {
+      return;
+    }
+
     async function fetchSectors() {
       try {
         setIsLoading(true);
@@ -43,7 +56,7 @@ export function SectorFilter({ value, onChange }: SectorFilterProps) {
     }
 
     fetchSectors();
-  }, []);
+  }, [initialSectors]);
 
   return (
     <div className="w-full lg:w-auto">
