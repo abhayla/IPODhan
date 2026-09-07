@@ -14,6 +14,8 @@
  * Checks map to the GitHub issues filed 2026-06-12 (#2–#14).
  */
 
+import { bisectDefaultParameter, issuePriceNullRate } from './lib/cache-poison-bisect.mjs';
+
 const BASE = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_API_TOKEN || '';
 const TIMEOUT_MS = 20000;
@@ -184,6 +186,41 @@ async function run() {
     }
     record(`no fabricated/placeholder data on ${ep}`, hits.length === 0,
       hits.length ? hits.join('; ') : 'clean');
+  }
+
+  // 6c. Cache-poisoning bisect (T-463 / issue #189, g_cache_poison_bisect).
+  // A poisoned cache entry can sit exactly at a page's default `limit` param
+  // (limit=20 once served 240 stale rows with blank issuePrice for 19h) while
+  // limit=19 and limit=21 both returned the correct 243-row set — probing
+  // only the default misses it. Probe /api/ipos/history at N-1/N/N+1 around
+  // its default limit=20 and assert equal totals, equal leading ids, and an
+  // issuePrice null-rate within 10pp across all three.
+  {
+    const DEFAULT_LIMIT = 20;
+    const sample = async (limit) => {
+      const res = await get(`/api/ipos/history?limit=${limit}`);
+      const rows = res.json?.data || [];
+      return {
+        n: limit,
+        total: res.json?.pagination?.total ?? -1,
+        leadingIds: rows.slice(0, 5).map((r) => r.id ?? r.slug),
+        nullRate: issuePriceNullRate(rows),
+        httpOk: res.status === 200,
+      };
+    };
+    const [below, at, above] = await Promise.all([
+      sample(DEFAULT_LIMIT - 1),
+      sample(DEFAULT_LIMIT),
+      sample(DEFAULT_LIMIT + 1),
+    ]);
+    if (!below.httpOk || !at.httpOk || !above.httpOk) {
+      record('cache-poison bisect /api/ipos/history', false,
+        `endpoint unreachable at one of N-1/N/N+1 (status ${below.httpOk},${at.httpOk},${above.httpOk})`);
+    } else {
+      const violation = bisectDefaultParameter(below, at, above);
+      record('cache-poison bisect /api/ipos/history (N-1/N/N+1 agree)', violation === null,
+        violation || `N-1=${below.total} N=${at.total} N+1=${above.total}, null-rates within tolerance`);
+    }
   }
 
   // 7. Admin-gated checks (only if token provided)
