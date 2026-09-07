@@ -120,17 +120,30 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       mockRedis.get = vi.fn().mockResolvedValue(null);
       mockRedis.set = vi.fn().mockResolvedValue('OK');
 
+      // #350: findBySlugWithFallback now also checks the slug-redirect table
+      // (a live-guard select + a redirect-join select, each ending in
+      // .limit(1)) before the all-IPOs fetch used for the normalized-name
+      // and fuzzy steps. That fetch has no .limit() of its own — it's
+      // awaited directly off .from(), so the shared builder needs its own
+      // `then` to resolve the fuzzy candidate list.
+      const allIPOs = [
+        { id: 'ipo-1', slug: 'tech-company-ipo', companyName: 'Tech Company Ltd' },
+        { id: 'ipo-2', slug: 'abc-corp-ipo', companyName: 'ABC Corporation' },
+      ];
       const mockSelectBuilder = {
         from: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
         limit: vi.fn()
-          .mockResolvedValueOnce([]) // First call: no exact match
-          .mockResolvedValueOnce([
-            // Second call: fetch all IPOs for fuzzy matching
-            { id: 'ipo-1', slug: 'tech-company-ipo', companyName: 'Tech Company Ltd' },
-            { id: 'ipo-2', slug: 'abc-corp-ipo', companyName: 'ABC Corporation' },
-          ]),
+          .mockResolvedValueOnce([]) // 1. exact match: no row
+          .mockResolvedValueOnce([]) // 2. redirect live-guard: slug not live
+          .mockResolvedValueOnce([]) // 3. redirect table join: no redirect
+          // 5. findBySlug() on the winning fuzzy match, and any related-table
+          // fan-out queries after it (financials, docs, ...) default to [].
+          .mockResolvedValue([{ id: 'ipo-1', slug: 'tech-company-ipo', companyName: 'Tech Company Ltd' }]),
         leftJoin: vi.fn().mockReturnThis(),
+        then: (resolve: (v: typeof allIPOs) => void) => resolve(allIPOs), // 4. all-IPOs fetch
       };
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);

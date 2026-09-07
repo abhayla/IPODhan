@@ -73,6 +73,16 @@
       "unverifiableWhen": "any enumerated public route is unreachable (the sweep did not cover its whole population)"
     },
     {
+      "id": "e_unknown_slug_404",
+      "findingClass": "/api/ipos/<slug> (or the /ipos/<slug> page, same resolution path) resolves an unknown slug to a DIFFERENT IPO instead of 404ing",
+      "round7Findings": [],
+      "issue": 350,
+      "failThreshold": "any of 3 nonsense slugs (never a real row) does not return 404, OR a real currently-live slug does not resolve to itself",
+      "severity": "P1",
+      "unverifiableWhen": "a request is unreachable (timeout/network), or there is no LISTED row to run the positive case against",
+      "note": "T-485 (2026-09-07): findBySlugWithFallback used to accept any best-scoring Fuse.js fuzzy match with no floor, so 'karamtara-engineering-ltd' (no row on prod) resolved to 'Sumax Engineering Ltd.' purely on the shared word 'engineering' (measured score 0.44, 56% similarity). Fixed by resolving only via the slug-redirect table, an exact normalized company-name match, or a fuzzy match at or above an 85% similarity floor (measured: a genuine one-typo pair scores 15%, comfortably inside; the karamtara/sumax collision at 44% is rejected by more than double the margin) — everything else 404s, with the miss negative-cached per #344."
+    },
+    {
       "id": "f_conflict_noise_ratio",
       "findingClass": "the data_conflicts table is dominated by non-actionable noise, burying genuine P1 disagreements",
       "round7Findings": [
