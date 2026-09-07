@@ -29,6 +29,8 @@ import {
   FOUND_UNREAD_MAX_HOURS,
   checkExtractionStuck,
   EXTRACTION_STUCK_MAX_HOURS,
+  MAX_EXTRACTION_ATTEMPTS,
+  NEVER_ESCALATES_MIN_RETRIES,
 } from '../lib/document-state-checks.mjs';
 
 const NOW = '2026-08-28T06:00:00Z';
@@ -758,4 +760,72 @@ test('m_extraction_stuck FAILs on LISTED status too (documents were still due wh
 test('m_extraction_stuck PASSes with no hoursSinceUpdate (null/undefined — never updated, defensive)', () => {
   assert.equal(checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'MANUAL_REVIEW', hoursSinceUpdate: null }), null);
   assert.equal(checkExtractionStuck({ ...STUCK_BASE, extractionStatus: 'MANUAL_REVIEW' }), null);
+});
+
+// ---- checkExtractionStuck, 4th shape (T-494, #396: never-escalates) -------
+//
+// #396's pm2 log shape: `spawnSync nice ETIMEDOUT` thrown 6 consecutive
+// cycles, retryCount climbing 6->7, extraction_status FAILED throughout,
+// extraction_error NEVER carrying a `HARD_FAILURE:` marker (the pre-3c11ba12
+// spawn-error branch never sets `hardFailure`) — so the document can retry
+// the identical error forever without ever reaching the 24h hard floor or
+// MANUAL_REVIEW (10 attempts).
+
+test('396 FAILs a document retrying the same non-escalating error past the floor', () => {
+  const v = checkExtractionStuck({
+    ...STUCK_BASE,
+    extractionStatus: 'FAILED',
+    extractionError: 'spawnSync nice ETIMEDOUT',
+    retryCount: 7,
+    hoursSinceUpdate: 96,
+  });
+  assert.notEqual(v, null);
+  assert.match(v, /never-escalates/);
+  assert.match(v, /retryCount=7/);
+});
+
+test('396 PASSes the SAME shape under the 48h floor (not yet stuck long enough)', () => {
+  const v = checkExtractionStuck({
+    ...STUCK_BASE,
+    extractionStatus: 'FAILED',
+    extractionError: 'spawnSync nice ETIMEDOUT',
+    retryCount: 7,
+    hoursSinceUpdate: 3,
+  });
+  assert.equal(v, null);
+});
+
+test('396 PASSes below NEVER_ESCALATES_MIN_RETRIES (2 retries — still ordinary backoff)', () => {
+  const v = checkExtractionStuck({
+    ...STUCK_BASE,
+    extractionStatus: 'FAILED',
+    extractionError: 'spawnSync nice ETIMEDOUT',
+    retryCount: NEVER_ESCALATES_MIN_RETRIES - 1,
+    hoursSinceUpdate: 96,
+  });
+  assert.equal(v, null);
+});
+
+test('396 PASSes at/above MAX_EXTRACTION_ATTEMPTS (that shape belongs to MANUAL_REVIEW instead)', () => {
+  const v = checkExtractionStuck({
+    ...STUCK_BASE,
+    extractionStatus: 'FAILED',
+    extractionError: 'spawnSync nice ETIMEDOUT',
+    retryCount: MAX_EXTRACTION_ATTEMPTS,
+    hoursSinceUpdate: 96,
+  });
+  assert.equal(v, null);
+});
+
+test('396 PASSes when the marker IS present (already caught by the HARD_FAILURE shape, not double-counted)', () => {
+  const v = checkExtractionStuck({
+    ...STUCK_BASE,
+    extractionStatus: 'FAILED',
+    extractionError: 'HARD_FAILURE:2:spawnSync nice ETIMEDOUT',
+    retryCount: 7,
+    hoursSinceUpdate: 96,
+  });
+  assert.notEqual(v, null);
+  assert.match(v, /HARD_FAILURE/);
+  assert.doesNotMatch(v, /never-escalates/);
 });

@@ -467,6 +467,27 @@ const LIVE_EXTRACTION_STATUSES = new Set(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'
 const HARD_FAILURE_MARKER = 'HARD_FAILURE';
 
 /**
+ * Mirror of `MAX_EXTRACTION_ATTEMPTS` in
+ * `scraper/src/services/filing-auto-persist.ts` — the retry ladder's own
+ * ceiling, above which a document is parked in MANUAL_REVIEW (already caught
+ * by the `isManualReview` shape below). Mirrored, not imported, for the same
+ * reason every other constant in this file is: this audit runs as plain Node
+ * with no TypeScript toolchain.
+ */
+export const MAX_EXTRACTION_ATTEMPTS = 10;
+
+/**
+ * How many consecutive FAILED cycles without escalation is itself the
+ * anomaly (#396). One retry is routine; two is still ordinary backoff; three
+ * with no HARD_FAILURE marker means the ordinary hard-failure ladder
+ * (`hardFailureCount >= 2` triggers the 24h floor per
+ * `documentExtractionBlocked`) never engaged even though the document keeps
+ * failing — the exact gap a spawn-level error (ETIMEDOUT on the spawn call
+ * itself, not the extractor process) fell through before commit `3c11ba12`.
+ */
+export const NEVER_ESCALATES_MIN_RETRIES = 3;
+
+/**
  * FAIL — a required document type (DRHP/RHP/PROSPECTUS) on a LIVE-window IPO
  * is stuck in extraction with nothing surfacing it.
  *
@@ -480,10 +501,28 @@ const HARD_FAILURE_MARKER = 'HARD_FAILURE';
  * `HARD_FAILURE:<n>:` marker (filing-auto-persist's own escalation ladder) —
  * `grep -rn MANUAL_REVIEW scripts/` was empty before this check.
  *
+ * 4th shape (T-494, #396): a document can also fail repeatedly WITHOUT ever
+ * tripping the `HARD_FAILURE:` marker at all — issue #396's `spawnSync nice
+ * ETIMEDOUT` is thrown by the spawn call before `defaultExtractorRunner` ever
+ * sets `hardFailure` (pre-`3c11ba12` SHA), so `documentExtractionBlocked`
+ * keeps the document on the ordinary 6h-capped exponential backoff forever:
+ * `retryCount` climbs (6->7 across six cycles, per the pm2 log), the row
+ * never reaches MANUAL_REVIEW (that needs `retryCount` past
+ * `MAX_EXTRACTION_ATTEMPTS`, i.e. 10) and never reaches the 24h hard floor
+ * (that needs a `HARD_FAILURE:` marker this error path never writes) — so
+ * neither of the first three shapes above, nor `m_extract_failed`, nor
+ * `checkStepConsecutiveFailures` (keyed on named post-scrape STEPS, not
+ * per-document rows) can see it. The DB keeps only the LATEST error text and
+ * a monotonic `retryCount`, not a per-cycle history, so this shape reads
+ * `retryCount` itself as the evidence of repetition (it only increments on a
+ * FAILED/IN_PROGRESS cycle for THIS document and only resets on COMPLETED —
+ * `filing-auto-persist.ts`'s retry ladder) rather than re-deriving "same
+ * error text" from attempts the row no longer carries.
+ *
  * Takes ONE row per (ipo, required doc type) already carrying BOTH signals —
- * the `documents.extraction_status`/`extraction_error` pair AND the sibling
- * `document_fetch_state.state` for the same (ipo, doc_type), left-joined by
- * the caller's query. Any of the three stuck shapes, older than
+ * the `documents.extraction_status`/`extraction_error`/`retry_count` triple
+ * AND the sibling `document_fetch_state.state` for the same (ipo, doc_type),
+ * left-joined by the caller's query. Any of the four stuck shapes, older than
  * EXTRACTION_STUCK_MAX_HOURS by the UTC-parsed `hoursSinceUpdate`, FAILs.
  */
 export function checkExtractionStuck(row) {
@@ -495,18 +534,32 @@ export function checkExtractionStuck(row) {
   const extractionStatus = row.extractionStatus ?? null;
   const fetchState = row.fetchState ?? null;
   const extractionError = row.extractionError ?? '';
+  const retryCount = row.retryCount === null || row.retryCount === undefined ? NaN : Number(row.retryCount);
 
   const isManualReview = extractionStatus === 'MANUAL_REVIEW';
   const isFetchStateFailed = fetchState === 'EXTRACT_FAILED';
-  const isHardFailure =
-    extractionStatus === 'FAILED' && typeof extractionError === 'string' && extractionError.startsWith(`${HARD_FAILURE_MARKER}:`);
+  const hasHardFailureMarker =
+    typeof extractionError === 'string' && extractionError.startsWith(`${HARD_FAILURE_MARKER}:`);
+  const isHardFailure = extractionStatus === 'FAILED' && hasHardFailureMarker;
+  const isNeverEscalating =
+    extractionStatus === 'FAILED' &&
+    !hasHardFailureMarker &&
+    Number.isFinite(retryCount) &&
+    retryCount >= NEVER_ESCALATES_MIN_RETRIES &&
+    retryCount < MAX_EXTRACTION_ATTEMPTS;
 
-  if (!isManualReview && !isFetchStateFailed && !isHardFailure) return null;
+  if (!isManualReview && !isFetchStateFailed && !isHardFailure && !isNeverEscalating) return null;
 
   const hours = row.hoursSinceUpdate === null || row.hoursSinceUpdate === undefined ? null : Number(row.hoursSinceUpdate);
   if (hours === null || !Number.isFinite(hours) || hours <= EXTRACTION_STUCK_MAX_HOURS) return null;
 
-  const shape = isManualReview ? 'MANUAL_REVIEW' : isFetchStateFailed ? 'EXTRACT_FAILED' : `FAILED (${HARD_FAILURE_MARKER})`;
+  const shape = isManualReview
+    ? 'MANUAL_REVIEW'
+    : isFetchStateFailed
+      ? 'EXTRACT_FAILED'
+      : isHardFailure
+        ? `FAILED (${HARD_FAILURE_MARKER})`
+        : `FAILED (never-escalates, retryCount=${retryCount})`;
   const label = row.companyName ?? row.slug ?? row.ipoId ?? 'unknown IPO';
   return `${label}: ${docType} stuck ${shape} for ${hours.toFixed(1)}h (> ${EXTRACTION_STUCK_MAX_HOURS}h) — needs-decision`;
 }

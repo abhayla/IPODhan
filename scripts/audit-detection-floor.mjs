@@ -711,7 +711,7 @@ async function checkM() {
   // row (same ipo+doc_type) so all three stuck shapes are caught in one check.
   const extractionStuckRows = await q(`
     SELECT i.company_name, i.slug, i.status AS ipo_status, d.type AS doc_type,
-           d.extraction_status, d.extraction_error, d.updated_at AS doc_updated_at,
+           d.extraction_status, d.extraction_error, d.retry_count, d.updated_at AS doc_updated_at,
            fs.state AS fetch_state
       FROM documents d
       JOIN ipos i ON i.id = d.ipo_id
@@ -729,6 +729,7 @@ async function checkM() {
       docType: r.doc_type,
       extractionStatus: r.extraction_status,
       extractionError: r.extraction_error,
+      retryCount: r.retry_count,
       fetchState: r.fetch_state,
       hoursSinceUpdate: r.doc_updated_at ? (nowMs - new Date(r.doc_updated_at).getTime()) / (1000 * 60 * 60) : null,
     }))
