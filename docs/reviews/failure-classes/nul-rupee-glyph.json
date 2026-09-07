@@ -1,0 +1,9 @@
+{
+  "class_id": "NUL rupee glyph",
+  "feature": "extract_filing.py / PDF text extraction",
+  "symptom": "the rupee glyph renders as a backtick or NUL/garbage character in extracted amounts (e.g. `` `0.50 million` ``)",
+  "first_seen": "walk W-92",
+  "fix_prs": "`aca495f0` (glyph normaliser scoped to bid-window text)",
+  "detection_check": "none in `substance-checks.mjs` or the audit scripts (round-7 RCA P3 batch names \"name glyph\" as a still-open audit gap, not shipped)",
+  "status": "unguarded"
+}

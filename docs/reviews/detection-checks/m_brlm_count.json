@@ -1,0 +1,12 @@
+{
+  "id": "m_brlm_count",
+  "findingClass": "the BSE payload lists more lead managers than we stored (the co-BRLM parser drops entries after the first \"#\"-separated one)",
+  "round7Findings": [
+    "F17"
+  ],
+  "sourceTask": "T-403",
+  "failThreshold": "array_length(lead_managers) < ipos.bse_payload_lead_manager_count for any IPO. Storing MORE is not flagged: other sources legitimately add managers BSE omits",
+  "severity": "P2",
+  "unverifiableWhen": "no IPO has a recorded bse_payload_lead_manager_count yet",
+  "section": "checks"
+}

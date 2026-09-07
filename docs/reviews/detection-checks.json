@@ -19,16 +19,6 @@
       "unverifiableWhen": "the ipowatch list-index fetch fails or returns no rows (the check is BLIND, and pages P2); a matched company whose detail page cannot be parsed is excluded from comparison, not silently passed"
     },
     {
-      "id": "c_issue_size_floor",
-      "findingClass": "issue_size holds a magnitude implausible for its segment (share count stored as rupees)",
-      "round7Findings": [
-        "P1-3"
-      ],
-      "failThreshold": "issue_size > 0 AND issue_size < Rs10,00,00,000 for MAINBOARD, or < Rs1,00,00,000 for SME",
-      "severity": "P1",
-      "unverifiableWhen": "never — always runs against the ipos table"
-    },
-    {
       "id": "c_issue_size_consistency",
       "findingClass": "issue_size (total incl. OFS) falls outside a one-sided plausibility band against shares_offered x price_range_max",
       "round7Findings": [
@@ -40,12 +30,12 @@
       "note": "T-452 owner decision 2026-09-07: ipos.issue_size is the TOTAL issue size INCLUDING OFS (schema.ts documents fresh_issue + ofs_issue summing to issue_size); subscriptions.shares_offered is the NET public offer (anchor/market-maker excluded). Under this definition, issue_size / (shares_offered x price_range_max) legitimately runs 1.0-1.9x on real rows (Meesho 1.76x, Wakefit 1.82x, Aequs 1.77x) - the prior symmetric +/-25% band false-positived every one of them. The band is now one-sided: below 0.75x still flags a share-count/wrong-unit-down value; above 3.0x flags a wrong-unit-up value. This closed the design item the prior note left open."
     },
     {
-      "id": "d_lot_band_window",
-      "findingClass": "lot_size x price_range_max implies a retail application size SEBI would not permit",
+      "id": "c_issue_size_floor",
+      "findingClass": "issue_size holds a magnitude implausible for its segment (share count stored as rupees)",
       "round7Findings": [
-        "P1-4"
+        "P1-3"
       ],
-      "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or [Rs90,000..Rs3,00,000] SME, for offering_type=IPO",
+      "failThreshold": "issue_size > 0 AND issue_size < Rs10,00,00,000 for MAINBOARD, or < Rs1,00,00,000 for SME",
       "severity": "P1",
       "unverifiableWhen": "never — always runs against the ipos table"
     },
@@ -56,6 +46,16 @@
         "P1-4"
       ],
       "failThreshold": "offering_type=IPO AND price_range_min==price_range_max AND lot_size==100 AND close_date-open_date in [10..14] days",
+      "severity": "P1",
+      "unverifiableWhen": "never — always runs against the ipos table"
+    },
+    {
+      "id": "d_lot_band_window",
+      "findingClass": "lot_size x price_range_max implies a retail application size SEBI would not permit",
+      "round7Findings": [
+        "P1-4"
+      ],
+      "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or [Rs90,000..Rs3,00,000] SME, for offering_type=IPO",
       "severity": "P1",
       "unverifiableWhen": "never — always runs against the ipos table"
     },
@@ -94,13 +94,14 @@
       "unverifiableWhen": "data_conflicts table not present"
     },
     {
-      "id": "g_repeated_warn",
-      "findingClass": "a scraper_logs FAILURE/PARTIAL message repeats so often it stops functioning as a signal while the underlying rows still write through",
-      "round7Findings": [],
-      "failThreshold": "any single (truncated) error_message occurs more than 20 times in scraper_logs (status FAILURE/PARTIAL) in the last 24h",
+      "id": "g_freshness_per_type",
+      "findingClass": "an offering_type's calendar has gone stale with no per-type freshness check to catch it",
+      "round7Findings": [
+        "P2-10"
+      ],
+      "failThreshold": "newest row age exceeds 3 days (IPO/SME) or 21 days (OFS/NCD/RIGHTS)",
       "severity": "P2",
-      "unverifiableWhen": "scraper_logs table not present",
-      "note": "#191 F1 (T-297 D6): the InvIT/REIT unit-price WARN was logged 20+ times per cycle every cycle (T-272 P2-2) while the mis-typed rows were written anyway and rendered as ₹0.00."
+      "unverifiableWhen": "no rows exist yet for that offering_type"
     },
     {
       "id": "g_inert_detector",
@@ -112,14 +113,25 @@
       "note": "#191 F3 (T-297 D6), the important one — a detector reporting zero looks like health unless cross-checked against an invariant independently known to be violated: conflictsDetected read 0 every cycle across 3,760 fields consolidated from 6 sources while T-272 P1-1 simultaneously proved real disagreements existed."
     },
     {
-      "id": "g_freshness_per_type",
-      "findingClass": "an offering_type's calendar has gone stale with no per-type freshness check to catch it",
-      "round7Findings": [
-        "P2-10"
-      ],
-      "failThreshold": "newest row age exceeds 3 days (IPO/SME) or 21 days (OFS/NCD/RIGHTS)",
+      "id": "g_repeated_warn",
+      "findingClass": "a scraper_logs FAILURE/PARTIAL message repeats so often it stops functioning as a signal while the underlying rows still write through",
+      "round7Findings": [],
+      "failThreshold": "any single (truncated) error_message occurs more than 20 times in scraper_logs (status FAILURE/PARTIAL) in the last 24h",
       "severity": "P2",
-      "unverifiableWhen": "no rows exist yet for that offering_type"
+      "unverifiableWhen": "scraper_logs table not present",
+      "note": "#191 F1 (T-297 D6): the InvIT/REIT unit-price WARN was logged 20+ times per cycle every cycle (T-272 P2-2) while the mis-typed rows were written anyway and rendered as ₹0.00."
+    },
+    {
+      "id": "g_served_stored_delta",
+      "findingClass": "an API and its backing table each look correct in isolation while a stale cache key or wrong filter silently serves a different row count than the DB holds (T-272 P1-2: /api/registrars served 41 rows while the DB held 15 -- 26 unit-test fixture rows stranded in a 7-day Redis key after an integration suite was pointed at production)",
+      "round7Findings": [],
+      "sourceTask": "#186 (T-460), filed by T-297 discovery-coverage meta-analysis (D5 serving-vs-storage delta)",
+      "registryClass": "serving-vs-storage-drift",
+      "failThreshold": "for any of /api/registrars, /api/ipos?status=OPEN&limit=100, /api/ipos?status=UPCOMING&limit=100, /api/market-holidays?year=<current>: served row count (live HTTP JSON body) != stored row count (matching filtered DB query) -- exact equality, not a tolerance",
+      "severity": "P1",
+      "unverifiableWhen": "the live HTTP fetch or the matching DB query fails (marked unverifiable, not a false PASS)",
+      "auditScript": "scripts/audit-ipo-coverage.mjs --gate (evaluateServedVsStoredDelta)",
+      "selfTest": "scripts/tests/audit-ipo-coverage-served-stored.test.mjs"
     },
     {
       "id": "h_pm2_env_tz",
@@ -153,44 +165,24 @@
       "unverifiableWhen": "never — static analysis of the checked-out repo"
     },
     {
-      "id": "k_step_ledger_silence",
-      "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work — skipped for an unread reason, or failing inside its non-fatal catch",
+      "id": "j_cron_executable",
+      "findingClass": "a cron-invoked script is committed without the executable bit, so a direct cron invocation fails silently",
       "round7Findings": [
-        "P2-8 (runtime twin)"
+        "P3-5"
       ],
-      "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here — a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
-      "severity": "P1",
-      "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs — a genuinely dead scraper is caught independently by g_freshness_per_type."
+      "failThreshold": "git-tracked mode of a cron entrypoint script lacks any execute bit",
+      "severity": "P2",
+      "unverifiableWhen": "git ls-files fails (corrupt checkout)"
     },
     {
-      "id": "m_cycle_overrun",
-      "findingClass": "the document cycle (scraper/src/services/document-cycle.ts, primarySourceDiscovery step) runs longer than its wake budget, or two wakes' cycles overlap — the class fixed one write path in August (w177-detection-rca.md) and recurred on this path in September because no independent check re-verified cycle duration",
+      "id": "j_dead_source_retire_by",
+      "findingClass": "a scraper source has been degraded/dead for many cycles with no owner decision to fix or retire it",
       "round7Findings": [
-        "cycle-overrun RCA (2026-09-06, observed 1,210-1,278s document cycles / 105-115 network calls per cycle on a Sunday)"
+        "P3-6"
       ],
-      "failThreshold": "any primarySourceDiscovery row in scraper_steps (created_at, duration_ms) over the last 24h with duration_ms > 25 minutes, OR two rows for different cycleIds whose [start, end) wall-clock windows overlap (checkCycleOverrun in scripts/lib/document-state-checks.mjs, unit-tested in scripts/tests/document-state-checks.test.mjs).",
-      "severity": "P1",
-      "unverifiableWhen": "the scraper_steps table is absent (migration 0033 not applied), or it has zero primarySourceDiscovery rows in the last 24h (ENABLE_DOCUMENT_STATE_MACHINE off, or the writer has not run yet)."
-    },
-    {
-      "id": "k_step_consecutive_failures",
-      "findingClass": "a post-scrape step fails every cycle, hidden by its non-fatal catch, while the cycle keeps exiting 0",
-      "round7Findings": [
-        "P2-8 (runtime twin)"
-      ],
-      "failThreshold": "any step in the derived STEP_NAMES whose most recent scraper_steps rows show status=failed for >= 3 consecutive cycles (leading streak, newest-first). 2 is a blip and PASSes; a non-failed row ends the streak.",
-      "severity": "P1",
-      "unverifiableWhen": "same as k_step_ledger_silence — unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
-    },
-    {
-      "id": "l_nse_status_crosscheck",
-      "findingClass": "our published OPEN/UPCOMING set disagrees with the exchange that actually runs the issue",
-      "round7Findings": [
-        "T-340 (new coverage — no round-7 finding; our live status set had NO independent oracle at all)"
-      ],
-      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges — FAILing those would be noise, and a muted channel is a dead mechanism.",
-      "severity": "P1",
-      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 — never a silent PASS (T-321 class)."
+      "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
+      "severity": "P2",
+      "unverifiableWhen": "scraper_logs table not present"
     },
     {
       "id": "j_sector_populated",
@@ -213,69 +205,34 @@
       "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
-      "id": "j_cron_executable",
-      "findingClass": "a cron-invoked script is committed without the executable bit, so a direct cron invocation fails silently",
+      "id": "k_step_consecutive_failures",
+      "findingClass": "a post-scrape step fails every cycle, hidden by its non-fatal catch, while the cycle keeps exiting 0",
       "round7Findings": [
-        "P3-5"
+        "P2-8 (runtime twin)"
       ],
-      "failThreshold": "git-tracked mode of a cron entrypoint script lacks any execute bit",
-      "severity": "P2",
-      "unverifiableWhen": "git ls-files fails (corrupt checkout)"
+      "failThreshold": "any step in the derived STEP_NAMES whose most recent scraper_steps rows show status=failed for >= 3 consecutive cycles (leading streak, newest-first). 2 is a blip and PASSes; a non-failed row ends the streak.",
+      "severity": "P1",
+      "unverifiableWhen": "same as k_step_ledger_silence — unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
     },
     {
-      "id": "j_dead_source_retire_by",
-      "findingClass": "a scraper source has been degraded/dead for many cycles with no owner decision to fix or retire it",
+      "id": "k_step_ledger_silence",
+      "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work — skipped for an unread reason, or failing inside its non-fatal catch",
       "round7Findings": [
-        "P3-6"
+        "P2-8 (runtime twin)"
       ],
-      "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
-      "severity": "P2",
-      "unverifiableWhen": "scraper_logs table not present"
+      "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here — a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
+      "severity": "P1",
+      "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs — a genuinely dead scraper is caught independently by g_freshness_per_type."
     },
     {
-      "id": "m_document_state",
-      "findingClass": "the document_fetch_state table is absent, so the whole document pipeline is invisible to the audit tonight",
-      "round7Findings": [],
-      "sourceTask": "T-403",
-      "failThreshold": "never FAILs — reports UNVERIFIABLE, because \"the audit could not see\" is not \"documents are healthy\"",
-      "severity": "P2",
-      "unverifiableWhen": "document_fetch_state table not present (migration 0035 not applied)"
-    },
-    {
-      "id": "m_blocked_all_age",
-      "findingClass": "a filing has been unreachable on every source for a day or more and nobody noticed, because the P2 alert fires once on entry and then scrolls away",
-      "round7Findings": [],
-      "sourceTask": "T-403",
-      "failThreshold": "any document_fetch_state row in BLOCKED_ALL with blocked_since_at older than 24h (aged from blocked_since_at, NOT last_attempt_at: a row retried every 30 min has a fresh last-attempt forever)",
-      "severity": "P2",
-      "unverifiableWhen": "document_fetch_state table not present"
-    },
-    {
-      "id": "m_found_not_extracted",
-      "findingClass": "a document was downloaded and then never read, so the fields it carries stay empty while the pipeline looks healthy",
-      "round7Findings": [],
-      "sourceTask": "T-403",
-      "failThreshold": "any row FOUND for more than 48h once the extractor is wired; deliberately INERT while ENABLE_DRHP_EXTRACTION is off, since FOUND is terminal by design until WP C",
-      "severity": "P2",
-      "unverifiableWhen": "document_fetch_state table not present"
-    },
-    {
-      "id": "m_extract_failed",
-      "findingClass": "a document repeatedly fails extraction, which is a parse bug needing a human rather than a data outage",
-      "round7Findings": [],
-      "sourceTask": "T-403",
-      "failThreshold": "WARN-level only: any row in EXTRACT_FAILED",
-      "severity": "P3",
-      "unverifiableWhen": "document_fetch_state table not present"
-    },
-    {
-      "id": "m_live_ipo_has_state",
-      "findingClass": "the document job silently stopped: a live IPO has no state rows at all, so nothing was even attempted for it",
-      "round7Findings": [],
-      "sourceTask": "T-403",
-      "failThreshold": "any UPCOMING/OPEN/CLOSED IPO with zero document_fetch_state rows. This is the only check that notices the machine wrote NOTHING — every other check reads rows it wrote",
-      "severity": "P2",
-      "unverifiableWhen": "document_fetch_state table not present"
+      "id": "l_nse_status_crosscheck",
+      "findingClass": "our published OPEN/UPCOMING set disagrees with the exchange that actually runs the issue",
+      "round7Findings": [
+        "T-340 (new coverage — no round-7 finding; our live status set had NO independent oracle at all)"
+      ],
+      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges — FAILing those would be noise, and a muted channel is a dead mechanism.",
+      "severity": "P1",
+      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 — never a silent PASS (T-321 class)."
     },
     {
       "id": "listed_rotation_stall",
@@ -286,6 +243,24 @@
       "failThreshold": "shape 1: no LISTED IPO inside the LISTED_ROTATION_WINDOW_DAYS-day live window has documents on file but 0 document_fetch_state rows - MAX(last_attempt_at) sorts a 0-row IPO first forever (NULLS FIRST), so it occupies the front of the LISTED rotation queue every cycle and starves every LISTED row behind it. shape 2: no LISTED IPO inside the live window has >=1 DUE document_fetch_state row (state not in FOUND/NOT_APPLICABLE/SUPERSEDED, AND next_retry_at IS NULL OR next_retry_at <= now() - a row in a deliberate future backoff is NOT due and must not count) whose MAX(last_attempt_at) across all its rows is more than STALE_ROTATION_HOURS (24h) old, or null - a full live (OPEN/CLOSED/UPCOMING) backlog can trip the discovery budget before the LISTED tier every cycle, so rows exist but `last_attempt_at` never advances even though the cycle runs every 30 minutes",
       "severity": "P2",
       "unverifiableWhen": "document_fetch_state or documents table not present"
+    },
+    {
+      "id": "m_absence_without_evidence",
+      "findingClass": "a row settles NOT_YET_FILED - 'the company has not filed it', no retry, no alert - on a rung chain in which not one source ANSWERED. T-403 Class 1, found in four consecutive rounds through four different doors (SEBI failures returning null; a 503 written as not-filed; escalation-budget refusals returning 'absent'; an unsettled EXCHANGES:no_link inherited through an escalation whose every rung was skipped). Each code fix closed the door it could see; this check watches the room",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "state = NOT_YET_FILED AND doc_type is one the exchanges cannot serve (DRHP) AND the row's own last_attempt chain for that type has zero answered rungs (every non-EXCHANGES rung is skipped: or failed:). A row with no chain recorded is skipped, never guessed at",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_blocked_all_age",
+      "findingClass": "a filing has been unreachable on every source for a day or more and nobody noticed, because the P2 alert fires once on entry and then scrolls away",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any document_fetch_state row in BLOCKED_ALL with blocked_since_at older than 24h (aged from blocked_since_at, NOT last_attempt_at: a row retried every 30 min has a fresh last-attempt forever)",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
     },
     {
       "id": "m_brlm_count",
@@ -299,44 +274,14 @@
       "unverifiableWhen": "no IPO has a recorded bse_payload_lead_manager_count yet"
     },
     {
-      "id": "m_document_type_classifier",
-      "findingClass": "a stored documents.type disagrees with what the classifier says the URL/title is — the classifier fix was forward-only, so rows stored under the old wrong type stayed wrong and invisible",
+      "id": "m_cycle_overrun",
+      "findingClass": "the document cycle (scraper/src/services/document-cycle.ts, primarySourceDiscovery step) runs longer than its wake budget, or two wakes' cycles overlap — the class fixed one write path in August (w177-detection-rca.md) and recurred on this path in September because no independent check re-verified cycle duration",
       "round7Findings": [
-        "E14"
+        "cycle-overrun RCA (2026-09-06, observed 1,210-1,278s document cycles / 105-115 network calls per cycle on a Sunday)"
       ],
-      "sourceTask": "T-403",
-      "failThreshold": "any documents row whose stored type has a permitted REFINEMENT to what the classifier returns (RHP->PROSPECTUS, ADDENDUM->CORRIGENDUM/PRICE_BAND_AD, BASIS_OF_ALLOTMENT->BASIS_OF_ALLOTMENT_AD). An UNRELATED reclassification is not a nightly FAIL — that is a source/classifier change for a human, surfaced by scraper/src/scripts/retype-misclassified-documents.ts",
-      "severity": "P2",
-      "unverifiableWhen": "documents table not present"
-    },
-    {
-      "id": "m_not_yet_filed_age",
-      "findingClass": "a document the pipeline can never reach settles as NOT_YET_FILED and stays there silently forever — NOT_YET_FILED is deliberately not a failure, which is exactly what makes an unreachable document invisible (T-403 B-1: the SEBI rung could never fire for a DRHP)",
-      "round7Findings": [],
-      "sourceTask": "T-403",
-      "failThreshold": "NOT_YET_FILED past its filing calendar: DRHP >14d from first sight, RHP >2d after open, PROSPECTUS >3d after close (listing is T+3 and a company cannot list before the Prospectus is filed), anchor report >1d after open. A row whose governing date is missing is skipped, never guessed at",
-      "severity": "P2",
-      "unverifiableWhen": "document_fetch_state table not present"
-    },
-    {
-      "id": "m_absence_without_evidence",
-      "findingClass": "a row settles NOT_YET_FILED - 'the company has not filed it', no retry, no alert - on a rung chain in which not one source ANSWERED. T-403 Class 1, found in four consecutive rounds through four different doors (SEBI failures returning null; a 503 written as not-filed; escalation-budget refusals returning 'absent'; an unsettled EXCHANGES:no_link inherited through an escalation whose every rung was skipped). Each code fix closed the door it could see; this check watches the room",
-      "round7Findings": [],
-      "sourceTask": "T-403",
-      "failThreshold": "state = NOT_YET_FILED AND doc_type is one the exchanges cannot serve (DRHP) AND the row's own last_attempt chain for that type has zero answered rungs (every non-EXCHANGES rung is skipped: or failed:). A row with no chain recorded is skipped, never guessed at",
-      "severity": "P2",
-      "unverifiableWhen": "document_fetch_state table not present"
-    },
-    {
-      "id": "m_fix_merged_not_served",
-      "findingClass": "a merged PR labelled fixes-live-bug is not yet being served in production — the bug it fixed is still live",
-      "round7Findings": [],
-      "sourceTask": "T-425",
-      "registryClass": "merged-fix-never-deployed-while-bug-live",
-      "failThreshold": "for every merged PR carrying the `fixes-live-bug` label, the served SHA's commit time (read via git log against the SHA from GET {BASE_URL}/api/version — the same way the T-324 SHA-drift monitor reads it) is older than the PR's mergedAt for more than 24h",
-      "warnThreshold": "same comparison, but the merge is under 24h old — a normal deploy-lag window, not yet an outage",
+      "failThreshold": "any primarySourceDiscovery row in scraper_steps (created_at, duration_ms) over the last 24h with duration_ms > 25 minutes, OR two rows for different cycleIds whose [start, end) wall-clock windows overlap (checkCycleOverrun in scripts/lib/document-state-checks.mjs, unit-tested in scripts/tests/document-state-checks.test.mjs).",
       "severity": "P1",
-      "unverifiableWhen": "gh could not list merged fixes-live-bug PRs, OR the served SHA could not be read (unreachable / returned \"unknown\"), OR the served SHA has no locally-known commit time"
+      "unverifiableWhen": "the scraper_steps table is absent (migration 0033 not applied), or it has zero primarySourceDiscovery rows in the last 24h (ENABLE_DOCUMENT_STATE_MACHINE off, or the writer has not run yet)."
     },
     {
       "id": "m_deploy_failure_open",
@@ -350,6 +295,35 @@
       "unverifiableWhen": "the deploy-failure-status.json file exists but could not be read/parsed (an ABSENT file is a legitimate PASS - no deploy has ever failed)"
     },
     {
+      "id": "m_document_state",
+      "findingClass": "the document_fetch_state table is absent, so the whole document pipeline is invisible to the audit tonight",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "never FAILs — reports UNVERIFIABLE, because \"the audit could not see\" is not \"documents are healthy\"",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present (migration 0035 not applied)"
+    },
+    {
+      "id": "m_document_type_classifier",
+      "findingClass": "a stored documents.type disagrees with what the classifier says the URL/title is — the classifier fix was forward-only, so rows stored under the old wrong type stayed wrong and invisible",
+      "round7Findings": [
+        "E14"
+      ],
+      "sourceTask": "T-403",
+      "failThreshold": "any documents row whose stored type has a permitted REFINEMENT to what the classifier returns (RHP->PROSPECTUS, ADDENDUM->CORRIGENDUM/PRICE_BAND_AD, BASIS_OF_ALLOTMENT->BASIS_OF_ALLOTMENT_AD). An UNRELATED reclassification is not a nightly FAIL — that is a source/classifier change for a human, surfaced by scraper/src/scripts/retype-misclassified-documents.ts",
+      "severity": "P2",
+      "unverifiableWhen": "documents table not present"
+    },
+    {
+      "id": "m_extract_failed",
+      "findingClass": "a document repeatedly fails extraction, which is a parse bug needing a human rather than a data outage",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "WARN-level only: any row in EXTRACT_FAILED",
+      "severity": "P3",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
       "id": "m_extraction_stuck",
       "findingClass": "a required document type (DRHP/RHP/PROSPECTUS) on a live-window IPO is stuck in extraction (MANUAL_REVIEW, EXTRACT_FAILED, or FAILED behind a HARD_FAILURE marker) with nothing FAIL-level watching it",
       "round7Findings": [],
@@ -360,16 +334,42 @@
       "unverifiableWhen": "never - always runs against documents/document_fetch_state joined to ipos"
     },
     {
-      "id": "g_served_stored_delta",
-      "findingClass": "an API and its backing table each look correct in isolation while a stale cache key or wrong filter silently serves a different row count than the DB holds (T-272 P1-2: /api/registrars served 41 rows while the DB held 15 -- 26 unit-test fixture rows stranded in a 7-day Redis key after an integration suite was pointed at production)",
+      "id": "m_fix_merged_not_served",
+      "findingClass": "a merged PR labelled fixes-live-bug is not yet being served in production — the bug it fixed is still live",
       "round7Findings": [],
-      "sourceTask": "#186 (T-460), filed by T-297 discovery-coverage meta-analysis (D5 serving-vs-storage delta)",
-      "registryClass": "serving-vs-storage-drift",
-      "failThreshold": "for any of /api/registrars, /api/ipos?status=OPEN&limit=100, /api/ipos?status=UPCOMING&limit=100, /api/market-holidays?year=<current>: served row count (live HTTP JSON body) != stored row count (matching filtered DB query) -- exact equality, not a tolerance",
+      "sourceTask": "T-425",
+      "registryClass": "merged-fix-never-deployed-while-bug-live",
+      "failThreshold": "for every merged PR carrying the `fixes-live-bug` label, the served SHA's commit time (read via git log against the SHA from GET {BASE_URL}/api/version — the same way the T-324 SHA-drift monitor reads it) is older than the PR's mergedAt for more than 24h",
+      "warnThreshold": "same comparison, but the merge is under 24h old — a normal deploy-lag window, not yet an outage",
       "severity": "P1",
-      "unverifiableWhen": "the live HTTP fetch or the matching DB query fails (marked unverifiable, not a false PASS)",
-      "auditScript": "scripts/audit-ipo-coverage.mjs --gate (evaluateServedVsStoredDelta)",
-      "selfTest": "scripts/tests/audit-ipo-coverage-served-stored.test.mjs"
+      "unverifiableWhen": "gh could not list merged fixes-live-bug PRs, OR the served SHA could not be read (unreachable / returned \"unknown\"), OR the served SHA has no locally-known commit time"
+    },
+    {
+      "id": "m_found_not_extracted",
+      "findingClass": "a document was downloaded and then never read, so the fields it carries stay empty while the pipeline looks healthy",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any row FOUND for more than 48h once the extractor is wired; deliberately INERT while ENABLE_DRHP_EXTRACTION is off, since FOUND is terminal by design until WP C",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_live_ipo_has_state",
+      "findingClass": "the document job silently stopped: a live IPO has no state rows at all, so nothing was even attempted for it",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any UPCOMING/OPEN/CLOSED IPO with zero document_fetch_state rows. This is the only check that notices the machine wrote NOTHING — every other check reads rows it wrote",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_not_yet_filed_age",
+      "findingClass": "a document the pipeline can never reach settles as NOT_YET_FILED and stays there silently forever — NOT_YET_FILED is deliberately not a failure, which is exactly what makes an unreachable document invisible (T-403 B-1: the SEBI rung could never fire for a DRHP)",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "NOT_YET_FILED past its filing calendar: DRHP >14d from first sight, RHP >2d after open, PROSPECTUS >3d after close (listing is T+3 and a company cannot list before the Prospectus is filed), anchor report >1d after open. A row whose governing date is missing is skipped, never guessed at",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
     }
   ],
   "notCoveredByThisManifest": [

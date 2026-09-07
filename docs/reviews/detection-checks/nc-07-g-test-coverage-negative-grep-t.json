@@ -1,0 +1,5 @@
+{
+  "id": "nc-07-g-test-coverage-negative-grep-t",
+  "section": "notCoveredByThisManifest",
+  "note": "g_test_coverage_negative_grep (T-470, issue #197) — CI-time (pr-gate.yml, every PR) negative grep for untested web data components / scraper validation rules / priority-matrix field keys, enforced by web/tests/unit/meta/coverage-negative-grep.test.ts + scraper/tests/unit/meta/coverage-negative-grep.test.ts against config/coverage-negative-grep-baseline.json (shrink-only ratchet) and config/coverage-negative-grep-allowlist.json (reasoned permanent exemptions). Not a DB audit check, so it is not recorded by audit-detection-floor.mjs / this manifest's checks[] array."
+}

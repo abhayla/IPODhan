@@ -1,0 +1,9 @@
+{
+  "class_id": "fabricated open/close dates from Moneycontrol",
+  "feature": "moneycontrol-scraper.ts",
+  "symptom": "open/close dates are ESTIMATED from listing/allotment date (listing-3, listing-10, allotment-2) and written as if scraped; recurred in `chittorgarh-scraper.ts` / `chittorgarh-rights-debt-adapter.ts` (same class, `close = open + 3` when empty)",
+  "first_seen": "2026-09-04 (W-02 class recurrence; walk W-116)",
+  "fix_prs": "hotfix `c018f4e1` + `210ad865` (estimation removed both places; matrix reordered so exchanges outrank the filing for bidding-window dates)",
+  "detection_check": "**none** — `docs/walks/2026-09-02-deepa-pipeline-walk.md` W-119 explicitly says \"No substance rule catches a fabricated date ... open, after the walk (detection upgrade for the W-116 class)\"",
+  "status": "unguarded"
+}

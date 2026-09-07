@@ -1,0 +1,9 @@
+{
+  "class_id": "exchange defaulting to BOTH for SME",
+  "feature": "data-consolidation-service.ts / data-consolidation-orchestrator.ts",
+  "symptom": "an SME IPO is stored with `listing_exchanges = [NSE, BSE]` when SME issues list on exactly one exchange",
+  "first_seen": "walk W-145",
+  "fix_prs": "`violatesSmeSingleExchange` / `collapseSmeExchanges` — write-time invariant in the consolidation service and orchestrator",
+  "detection_check": "none in `substance-checks.mjs`/`audit-*.mjs` — the guard runs only on the write path; no audit check independently re-verifies stored SME rows for a two-exchange value",
+  "status": "unguarded"
+}

@@ -1,0 +1,9 @@
+{
+  "class_id": "rollout-flag zeroed silently voids live logic",
+  "feature": "scraper/src/config/feature-flags.ts (env-driven `*_PERCENTAGE` / `ENABLE_*` rollout flags)",
+  "symptom": "a flag that gates a live code path (e.g. `CONSOLIDATION_PERCENTAGE`) sits at 0 (or a `PROD-REQUIRED-TRUE` boolean sits at `false`) in the prod env file — the guard/feature is present, tested and merged, but the value silently turns it off in production with no signal (T-282: `CONSOLIDATION_PERCENTAGE=0` voided the entire consolidation pipeline for an unknown period; presence-only checks like `assert-env-keys.sh`'s `SCRAPER_REQUIRED_KEYS` never caught it)",
+  "first_seen": "T-282 (root cause); filed as discovery gap by T-297 D9 (issue #193)",
+  "fix_prs": "this PR (`assert_rollout_flags_live()` in `scripts/assert-env-keys.sh`, reading `// LIVE-GATE` / `// PROD-REQUIRED-TRUE` markers straight off `scraper/src/config/feature-flags.ts` — no hand-duplicated flag list; prod slot only; `ALLOW_ZERO_FLAGS` escape hatch for a deliberate ramp-down)",
+  "detection_check": "not one of the three sanctioned check types (no `SUBSTANCE_CHECKS` key, no `audit-detection-floor.mjs` `record()` id, no `audit-ipo-coverage.mjs` invariant) — this is a deploy-time config gate, not a DB-row audit check; guarded by `scripts/tests/assert-env-keys.test.sh`'s rollout-liveness cases (mutation-proof: reverting `assert_rollout_flags_live()` fails the suite, per the T-285 P3-1 lesson); registered in `docs/reviews/detection-checks.json` under `notCoveredByThisManifest` (deploy-time, not the nightly DB audit)",
+  "status": "guarded"
+}
