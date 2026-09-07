@@ -36,6 +36,7 @@ import {
   EXIT_FAIL,
   EXIT_UNVERIFIABLE,
   DIGEST_MAX_ROWS,
+  computeSummaryCounts,
 } from '../lib/detection-floor-checks.mjs';
 
 // ---- (a)/(b) live IPO vs unresolved conflict --------------------------------
@@ -368,6 +369,23 @@ test('(blocker 1) a blackholed source yields an UNVERIFIABLE P2 page, not silenc
 test('(blocker 1) an all-UNVERIFIABLE night exits 3, never 0', () => {
   assert.equal(computeExitCode({ failCount: 0, unverifiableCount: 7 }), EXIT_UNVERIFIABLE);
   assert.equal(computeExitCode({ failCount: 0, unverifiableCount: 7 }), 3);
+});
+
+// T-465 round 3: a SKIP result (e.g. g_inert_detector on an empty window)
+// must appear in the summary as its OWN bucket, never counted as PASS via
+// `results.length - fail - unverifiable` subtraction.
+test('(T-465 round 3) a SKIP result is its own summary bucket, not folded into PASS', () => {
+  const results = [
+    { id: 'a', status: 'PASS' },
+    { id: 'b', status: 'FAIL' },
+    { id: 'c', status: 'UNVERIFIABLE' },
+    { id: 'g_inert_detector', status: 'SKIP' },
+  ];
+  const summary = computeSummaryCounts(results);
+  assert.equal(summary.pass, 1);
+  assert.equal(summary.fail, 1);
+  assert.equal(summary.unverifiable, 1);
+  assert.equal(summary.skip, 1);
 });
 
 test('(blocker 1) exit-code contract: 0 clean, 1 on FAIL, FAIL dominates UNVERIFIABLE', () => {

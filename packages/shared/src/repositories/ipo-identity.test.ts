@@ -570,3 +570,118 @@ describe('resolveIpoRow — existing behavior preserved (regression coverage)', 
     expect(result).toBeNull();
   });
 });
+
+describe('resolveIpoRow — OFS/IPO identity guard (T-478 round 2, issue #225 follow-up)', () => {
+  it('an incoming OFS record does NOT resolve to the company\'s existing IPO row via symbol (the T-292/Mopshop-class bug)', async () => {
+    const existingIpoRow = makeIpo({
+      id: 'row-cochin-ipo',
+      companyName: 'Cochin Shipyard Limited',
+      slug: 'cochin-shipyard-ltd',
+      symbol: 'COCHINSHIP',
+      offeringType: 'IPO',
+    } as Partial<IPO>);
+    const repo = makeRepo({ findBySymbol: vi.fn().mockResolvedValue(existingIpoRow) });
+
+    const result = await resolveIpoRow(repo, {
+      companyName: 'Cochin Shipyard',
+      normalizedName: 'cochin shipyard',
+      slug: 'cochin-shipyard-ofs-2026',
+      symbol: 'COCHINSHIP',
+      offeringType: 'OFS',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('an incoming IPO record does NOT resolve to an existing OFS row (the reverse direction)', async () => {
+    const existingOfsRow = makeIpo({
+      id: 'row-cochin-ofs',
+      companyName: 'Cochin Shipyard Limited',
+      slug: 'cochin-shipyard-ofs-2026',
+      symbol: 'COCHINSHIP',
+      offeringType: 'OFS',
+    } as Partial<IPO>);
+    const repo = makeRepo({ findBySymbol: vi.fn().mockResolvedValue(existingOfsRow) });
+
+    const result = await resolveIpoRow(repo, {
+      companyName: 'Cochin Shipyard Limited',
+      normalizedName: 'cochin shipyard limited',
+      slug: 'cochin-shipyard-ltd',
+      symbol: 'COCHINSHIP',
+      offeringType: 'IPO',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('an incoming OFS record DOES resolve to an existing OFS row (refresh path stays intact)', async () => {
+    const existingOfsRow = makeIpo({
+      id: 'row-cochin-ofs',
+      companyName: 'Cochin Shipyard Limited',
+      slug: 'cochin-shipyard-ofs-2026',
+      symbol: 'COCHINSHIP',
+      offeringType: 'OFS',
+    } as Partial<IPO>);
+    const repo = makeRepo({ findBySymbol: vi.fn().mockResolvedValue(existingOfsRow) });
+
+    const result = await resolveIpoRow(repo, {
+      companyName: 'Cochin Shipyard',
+      normalizedName: 'cochin shipyard',
+      slug: 'cochin-shipyard-ofs-2026',
+      symbol: 'COCHINSHIP',
+      offeringType: 'OFS',
+    });
+
+    expect(result).toEqual(existingOfsRow);
+  });
+
+  it('offeringType absent on either side is "no information" — never excludes a candidate (backward compatible)', async () => {
+    const existing = makeIpo({ id: 'row-1', companyName: 'Acme Ltd', symbol: 'ACME' } as Partial<IPO>);
+    const repo = makeRepo({ findBySymbol: vi.fn().mockResolvedValue(existing) });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, symbol: 'ACME' });
+
+    expect(result).toEqual(existing);
+  });
+
+  it('IPO<->FPO reclassification (a real, existing use of this resolver) still resolves to the same row — the guard is OFS-specific, not "any offering type mismatch"', async () => {
+    const existing = makeIpo({ id: 'row-1', companyName: 'Acme Ltd', symbol: 'ACME', offeringType: 'FPO' } as Partial<IPO>);
+    const repo = makeRepo({ findBySymbol: vi.fn().mockResolvedValue(existing) });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, symbol: 'ACME', offeringType: 'IPO' });
+
+    expect(result).toEqual(existing);
+  });
+});
+
+describe('resolveIpoRow — decline-then-retry-by-type (T-478 round 3, issue #225 follow-up item 2)', () => {
+  it('tier 2 (symbol) declines the wrong-type candidate, then re-queries filtered to the correct offering_type and finds it', async () => {
+    const ipoRow = makeIpo({ id: 'row-ipo', companyName: 'Cochin Shipyard Limited', symbol: 'COCHINSHIP', offeringType: 'IPO' } as Partial<IPO>);
+    const ofsRow = makeIpo({ id: 'row-ofs', companyName: 'Cochin Shipyard Limited', symbol: 'COCHINSHIP', offeringType: 'OFS' } as Partial<IPO>);
+    const findBySymbol = vi.fn(async (_symbol: string, offeringType?: string) => {
+      if (!offeringType) return ipoRow; // unfiltered call finds the IPO row first
+      return offeringType === 'OFS' ? ofsRow : null;
+    });
+    const repo = makeRepo({ findBySymbol });
+
+    const result = await resolveIpoRow(repo, {
+      ...baseIdentity,
+      symbol: 'COCHINSHIP',
+      offeringType: 'OFS',
+    });
+
+    expect(result).toEqual(ofsRow);
+    expect(findBySymbol).toHaveBeenCalledWith('COCHINSHIP');
+    expect(findBySymbol).toHaveBeenCalledWith('COCHINSHIP', 'OFS');
+  });
+
+  it('tier 2 decline + retry finds nothing (no row of the correct type exists) -> resolves null, not the wrong-type row', async () => {
+    const ipoRow = makeIpo({ id: 'row-ipo', companyName: 'Cochin Shipyard Limited', symbol: 'COCHINSHIP', offeringType: 'IPO' } as Partial<IPO>);
+    const findBySymbol = vi.fn(async (_symbol: string, offeringType?: string) => (!offeringType ? ipoRow : null));
+    const repo = makeRepo({ findBySymbol });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, symbol: 'COCHINSHIP', offeringType: 'OFS' });
+
+    expect(result).toBeNull();
+  });
+});

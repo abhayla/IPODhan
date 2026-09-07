@@ -1,0 +1,14 @@
+{
+  "_comment": "Shrink-only ratchet baseline for the data_conflicts unresolved backlog, keyed by current_database() (T-465 round 2, issue #191 F2). Regenerate ONLY via `node scripts/audit-detection-floor.mjs --rebaseline-conflicts` against each database via the tunnel — it refuses to raise an existing entry. FAIL when today's unresolved count exceeds this baseline; WARN (not FAIL) with the delta when it falls (baseline is not auto-lowered on a WARN).",
+  "generated_by": "scripts/audit-detection-floor.mjs --rebaseline-conflicts",
+  "databases": {
+    "ipodhan_staging": {
+      "unresolved": 14252,
+      "recordedAt": "2026-09-07T03:53:17.976Z"
+    },
+    "ipodhan": {
+      "unresolved": 2193,
+      "recordedAt": "2026-09-07T03:54:23.923Z"
+    }
+  }
+}

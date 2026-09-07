@@ -302,7 +302,15 @@ async function runDueStepCycle(
 
   if (isDiscoveryDue(now, lastDiscoveryRun)) {
     logger.info({ slot: mostRecentDiscoverySlotLabel(now) }, 'Due-step cycle: discovery is due — running NSE + BSE');
-    const nseOk = await runCycleStep('discovery:NSE', () => runNSEScraper());
+    // T-478 (issue #225): the OFS category lives ONLY on this unrestricted,
+    // 4x/day discovery step (never the OPEN-only "live" step below) — OFS
+    // rows can be UPCOMING/CLOSED/LISTED, not just OPEN, and discovery is
+    // where new offering_type rows are meant to first appear. One extra NSE
+    // API call per discovery run, inside the existing wake budget.
+    // Round 2 (MAJOR): the live OFS payload shape is unverified — gated
+    // behind ENABLE_NSE_OFS (default false; prod stays off until a real OFS
+    // book is observed on staging and its fixture captured).
+    const nseOk = await runCycleStep('discovery:NSE', () => runNSEScraper({ includeOFS: FEATURE_FLAGS.ENABLE_NSE_OFS }));
     const bseOk = await runCycleStep('discovery:BSE', () => runBSEScraper());
     // Round-4 MEDIUM: only stamp the cadence key when BOTH steps actually
     // succeeded — matching the aggregator block's pattern below. Stamping

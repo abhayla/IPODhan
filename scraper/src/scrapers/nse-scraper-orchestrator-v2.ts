@@ -19,6 +19,7 @@
 
 import { BaseScraperOrchestrator, ScraperResult, ScrapedData } from '../base/BaseScraperOrchestrator.js';
 import { scrapeNSEIPOs } from './nse-scraper.js';
+import { fetchAllIPOs } from './nse-api-client.js';
 import {
   validateIPOData,
   validateSubscriptionData,
@@ -76,10 +77,25 @@ export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
   private mainboardCount: number = 0;
   private validationPipeline: DataValidationPipeline;
 
+  // T-478 (issue #225): fetchAllIPOs('ofs') (nse-api-client.ts) is a dedicated,
+  // already-implemented NSE endpoint that was never wired into the production
+  // orchestrator, so offering_type='OFS' rows have had no live refresh path
+  // since 2026-06-08. Opt-in (default false) so only the caller that decided
+  // it belongs in the wake budget (the unrestricted discovery step, 4x/day —
+  // see index.ts) pays the extra API call; the OPEN-only "live" step and any
+  // other caller are unaffected.
+  private includeOFS: boolean = false;
+
   constructor() {
     super();
     // Initialize production-grade validation pipeline
     this.validationPipeline = PipelineFactory.createProductionPipeline(db);
+  }
+
+  /** T-478: opt this run into also fetching the NSE OFS category. Chainable. */
+  public enableOFS(): this {
+    this.includeOFS = true;
+    return this;
   }
 
   /**
@@ -97,12 +113,34 @@ export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
   protected async scrapeData(): Promise<ScrapedData<ScrapedIPO, ScrapedSubscription>> {
     const { ipos, subscriptions } = await scrapeNSEIPOs();
 
+    // T-478 (issue #225): one extra NSE API call, only on the discovery run
+    // that opted in via enableOFS(). Writes through the exact same
+    // consolidation/priority path as every other NSE row below (BaseScraperOrchestrator.run()
+    // -> validateIPO() -> upsert) — never a bypass. Failure here is non-fatal:
+    // an OFS fetch problem must not take down the IPO/FPO discovery run that
+    // shares this cycle.
+    let ofsIpos: ScrapedIPO[] = [];
+    if (this.includeOFS) {
+      try {
+        const ofsResult = await fetchAllIPOs('ofs');
+        ofsIpos = ofsResult.ipos;
+        logger.info({ ofsCount: ofsIpos.length }, '[NSE] OFS category fetched (T-478)');
+      } catch (error) {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          '[NSE] OFS category fetch failed (T-478) - non-fatal, IPO discovery continues'
+        );
+      }
+    }
+
+    const allIpos = [...ipos, ...ofsIpos];
+
     // T-309: tally segment counts (each ScrapedIPO already carries `segment`).
-    this.smeCount = ipos.filter((ipo) => ipo.segment === 'SME').length;
-    this.mainboardCount = ipos.filter((ipo) => ipo.segment === 'MAINBOARD').length;
+    this.smeCount = allIpos.filter((ipo) => ipo.segment === 'SME').length;
+    this.mainboardCount = allIpos.filter((ipo) => ipo.segment === 'MAINBOARD').length;
 
     return {
-      ipos,
+      ipos: allIpos,
       subscriptions
     };
   }
@@ -231,10 +269,11 @@ export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
  * @returns Promise<NSEScraperResult> - Scraper execution summary, incl. segment counts
  */
 export async function runNSEScraper(
-  opts: { allowedStatuses?: readonly string[] } = {}
+  opts: { allowedStatuses?: readonly string[]; includeOFS?: boolean } = {}
 ): Promise<NSEScraperResult> {
   const orchestrator = new NSEScraperOrchestratorV2();
   if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
+  if (opts.includeOFS) orchestrator.enableOFS();
   const baseResult = await orchestrator.run();
   return {
     ...baseResult,
