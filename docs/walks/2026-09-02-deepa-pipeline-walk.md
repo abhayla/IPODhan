@@ -1173,3 +1173,5 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
 - 00:04 IST — #407 Tier B PASS (no findings). T-498 built: PR #408 (merged-not-deployed register; 6/6 tests, a real regex lastIndex bug caught red-then-green) but the real run listed 98 rows led by docs(walk) commits — the alarm-fatigue shape again; round 2 restricts it to fix/feat/perf/refactor commits.
 
 - 00:06 IST — #407 merged 2a752aad (nightly floor delta consumer). T-496 round 2 reproduced: 20/20; staging plain run TRACKED #402/#403/#409 exit 0 (Kanohar filed as #409 by the tool); prod run showed 2 UNTRACKED (exit 3) -> tracked as #402 (Rentomojo persist) and #347 (Hy-Tech anchor refusal class) by --track. T-498 round 2 reproduced: 7/7, register now 23 fix/feat/perf/refactor commits since prod-2026-09-07 (was 98 with docs noise). Tier B re-checks dispatched for #406 and #408.
+
+- 00:08 IST — #408 Tier B PASS WITH NOTES (one mis-titled test; real run now 24 rows because #407 landed meanwhile). Waiting on gates for #408 and #406 and the #406 re-check; T-499 (morning-read gate, Tier A) and T-500 (cause-bearing failures) building.
