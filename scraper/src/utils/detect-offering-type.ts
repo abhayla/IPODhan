@@ -362,11 +362,48 @@ export function resolveOfferingTypeKeepingClassification(
  * @returns the offering type to persist — `'IPO'` in place of an incoming/existing
  *          `'FPO'` whenever the row's segment is SME, otherwise `incoming` unchanged.
  */
+/**
+ * Sources trusted enough to assert a genuine SME FPO unopposed (#180 Tier-A
+ * round: the original guard flipped FPO->IPO on segment alone, with no
+ * corroboration — indistinguishable from an authoritative exchange source
+ * genuinely reporting a real SME FPO, however rare). NSE/BSE are the
+ * exchanges themselves; a real FPO on their own board is not something a
+ * heuristic should override. Mid/low-trust aggregators (MONEYCONTROL,
+ * CHITTORGARH, API_FALLBACK) get no such benefit of the doubt — they are
+ * exactly the sources that produced the Mopshop/#180 false-FPO shape.
+ */
+const SME_FPO_TRUSTED_SOURCES = ['NSE', 'BSE'] as const;
+
+/**
+ * @returns true when `source` is trusted enough to assert a genuine SME FPO
+ * unopposed (the exchanges themselves — NSE/BSE).
+ */
+export function isTrustedSmeFpoSource(source: string | null | undefined): boolean {
+  return !!source && (SME_FPO_TRUSTED_SOURCES as readonly string[]).includes(source);
+}
+
+/**
+ * #180 Tier-A round 5: checking ONLY the stored value's provenance left a
+ * hole — a row with NO stored provenance yet (a first-ever write) whose
+ * INCOMING source IS the exchange itself (NSE/BSE genuinely reporting a real
+ * SME FPO) was still flipped to IPO, because `storedSource` was null. The
+ * gate must trust EITHER signal: the source asserting the value right now,
+ * or the source that already vouched for the stored value. Every call site
+ * MUST route through this function — a doorway that skips it silently
+ * reopens the F1 hole at that one door.
+ */
 export function guardSmeOfferingTypeAgainstFpo(
   segment: string | null | undefined,
-  incoming: string
+  incoming: string,
+  incomingSource?: string | null,
+  storedSource?: string | null
 ): string {
-  if (segment === 'SME' && incoming === 'FPO') {
+  if (
+    segment === 'SME' &&
+    incoming === 'FPO' &&
+    !isTrustedSmeFpoSource(incomingSource) &&
+    !isTrustedSmeFpoSource(storedSource)
+  ) {
     return 'IPO';
   }
   return incoming;

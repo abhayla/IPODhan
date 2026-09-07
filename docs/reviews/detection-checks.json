@@ -385,6 +385,7 @@
     }
   ],
   "notCoveredByThisManifest": [
+    "c1_hard_date_trust_on_update (#180 F2, T-459) — a single non-authoritative source asserting open_date/close_date on UPDATE onto a previously-null field with zero field_sources corroboration is not a separately-recorded check: guarded at rest by the existing g_provenance_lineage C1 lineage-ceiling gate (scripts/audit-ipo-coverage.mjs:501 — a hard date with zero field_sources lineage is the same signature) and at write-time by scraper/tests/unit/services/data-persister-180-sme-fpo-hard-date.test.ts.",
     "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
     "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",

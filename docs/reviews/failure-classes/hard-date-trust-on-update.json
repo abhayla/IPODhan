@@ -1,0 +1,9 @@
+{
+  "class_id": "hard_date_trust_on_update",
+  "feature": "scraper persister (data-persister.ts, data-consolidation-orchestrator.ts)",
+  "symptom": "open_date/close_date rendered as fact from a single uncorroborated source, written on an UPDATE not just create",
+  "first_seen": "2026-09-07 (#180 F2, T-459)",
+  "fix_prs": "#377",
+  "detection_check": "g_provenance_lineage (C1 lineage-ceiling gate, scripts/audit-ipo-coverage.mjs) — a hard date with zero field_sources lineage is the same signature this class produces; write-time guard in data-persister.ts and data-consolidation-orchestrator.ts (findByField corroboration check) covered by scraper/tests/unit/services/data-persister-180-sme-fpo-hard-date.test.ts",
+  "status": "guarded"
+}

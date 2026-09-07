@@ -150,6 +150,19 @@ export class BaseScraperOrchestrator {
           continue;
         }
 
+        // #180 Tier-A round: this write path (currently zero live callers —
+        // grep confirms nothing outside this file/its tests invokes
+        // upsertIPOWithProtection) has no equivalent of the SME/FPO
+        // classification guard or the hard-date trust guard that
+        // data-persister.ts's upsertIPO enforces. Rather than duplicate that
+        // logic here (risking the two drifting), this path refuses to change
+        // offering_type or the hard dates at all — those fields stay
+        // whatever the door that DOES have the guards last wrote.
+        if (fieldName === 'offeringType' || fieldName === 'openDate' || fieldName === 'closeDate') {
+          result.fieldsBlocked.push(fieldName);
+          continue;
+        }
+
         // Check if field is protected
         const protectionStatus = await checkFieldProtection(
           existingIPO.id,
