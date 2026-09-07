@@ -339,13 +339,26 @@
       "failThreshold": "any UPCOMING/OPEN/CLOSED/LISTED IPO's DRHP/RHP/PROSPECTUS document has extraction_status=MANUAL_REVIEW, a sibling document_fetch_state.state=EXTRACT_FAILED, or extraction_status=FAILED with an extraction_error starting HARD_FAILURE:, for more than 48h",
       "severity": "P1",
       "unverifiableWhen": "never - always runs against documents/document_fetch_state joined to ipos"
+    },
+    {
+      "id": "g_served_stored_delta",
+      "findingClass": "an API and its backing table each look correct in isolation while a stale cache key or wrong filter silently serves a different row count than the DB holds (T-272 P1-2: /api/registrars served 41 rows while the DB held 15 -- 26 unit-test fixture rows stranded in a 7-day Redis key after an integration suite was pointed at production)",
+      "round7Findings": [],
+      "sourceTask": "#186 (T-460), filed by T-297 discovery-coverage meta-analysis (D5 serving-vs-storage delta)",
+      "registryClass": "serving-vs-storage-drift",
+      "failThreshold": "for any of /api/registrars, /api/ipos?status=OPEN&limit=100, /api/ipos?status=UPCOMING&limit=100, /api/market-holidays?year=<current>: served row count (live HTTP JSON body) != stored row count (matching filtered DB query) -- exact equality, not a tolerance",
+      "severity": "P1",
+      "unverifiableWhen": "the live HTTP fetch or the matching DB query fails (marked unverifiable, not a false PASS)",
+      "auditScript": "scripts/audit-ipo-coverage.mjs --gate (evaluateServedVsStoredDelta)",
+      "selfTest": "scripts/tests/audit-ipo-coverage-served-stored.test.mjs"
     }
   ],
   "notCoveredByThisManifest": [
     "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
     "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
-    "g_test_coverage_negative_grep (T-470, issue #197) — CI-time (pr-gate.yml, every PR) negative grep for untested web data components / scraper validation rules / priority-matrix field keys, enforced by web/tests/unit/meta/coverage-negative-grep.test.ts + scraper/tests/unit/meta/coverage-negative-grep.test.ts against config/coverage-negative-grep-baseline.json (shrink-only ratchet) and config/coverage-negative-grep-allowlist.json (reasoned permanent exemptions). Not a DB audit check, so it is not recorded by audit-detection-floor.mjs / this manifest's checks[] array."
+    "g_test_coverage_negative_grep (T-470, issue #197) — CI-time (pr-gate.yml, every PR) negative grep for untested web data components / scraper validation rules / priority-matrix field keys, enforced by web/tests/unit/meta/coverage-negative-grep.test.ts + scraper/tests/unit/meta/coverage-negative-grep.test.ts against config/coverage-negative-grep-baseline.json (shrink-only ratchet) and config/coverage-negative-grep-allowlist.json (reasoned permanent exemptions). Not a DB audit check, so it is not recorded by audit-detection-floor.mjs / this manifest's checks[] array.",
+    "g_rollout_flag_liveness (T-297 D9, issue #193) — a *_PERCENTAGE/ENABLE_* rollout flag silently zeroed/disabled in the prod env file (the CONSOLIDATION_PERCENTAGE=0 / T-282 class). This is a deploy-time gate, not a nightly DB-row audit: `scripts/assert-env-keys.sh`'s `assert_rollout_flags_live()` reads `// LIVE-GATE` / `// PROD-REQUIRED-TRUE` markers off `scraper/src/config/feature-flags.ts` and refuses the deploy before build, on the prod slot only. It cannot be a `checks[]` entry here — this manifest's own wire-or-retire test (`audit-detection-floor.test.mjs`) requires every declared id to be `record()`-ed by `audit-detection-floor.mjs`, and this check never runs inside that nightly audit. Guarded instead by `scripts/tests/assert-env-keys.test.sh` (see `docs/reviews/failure-classes.md`, 'rollout-flag zeroed silently voids live logic')."
   ],
   "exitCodes": {
     "0": "every check PASSed",
