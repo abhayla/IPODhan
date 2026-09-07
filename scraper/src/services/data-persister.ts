@@ -1965,6 +1965,42 @@ export async function createIPOReviews(
  * @param objectives - Array of IPO objectives from DRHP
  * @returns void on success
  */
+/**
+ * Upsert `ipo_details.issue_type` (BOOK_BUILDING | FIXED_PRICE | HYBRID) — #222.
+ *
+ * The field-priority-matrix entry (`issueType`) registers ADMIN above
+ * CHITTORGARH, but this table has no admin-edit UI yet — so the write-time
+ * guard here is the ADMIN protection in practice: NEVER overwrite an existing
+ * value (whatever set it first — a future admin override included — wins).
+ * `ON CONFLICT ... WHERE ipo_details.issue_type IS NULL` makes that atomic:
+ * a concurrent writer can't race this into clobbering a value that arrived
+ * between the caller's read and this write.
+ *
+ * Returns true when a row was inserted or the existing NULL was filled;
+ * false when a value already existed (write was a no-op) — the caller uses
+ * this to count "actually written" vs "already had a value" in its summary.
+ */
+export async function upsertIpoDetailsIssueType(
+  ipoId: string,
+  issueType: 'BOOK_BUILDING' | 'FIXED_PRICE' | 'HYBRID'
+): Promise<boolean> {
+  const result = await db
+    .insert(ipoDetails)
+    .values({ ipoId, issueType, dataSource: 'CHITTORGARH' })
+    .onConflictDoUpdate({
+      target: ipoDetails.ipoId,
+      set: { issueType, updatedAt: new Date() },
+      setWhere: sqlOp`${ipoDetails.issueType} IS NULL`,
+    })
+    .returning({ id: ipoDetails.id });
+
+  const wrote = result.length > 0;
+  logger.info({ ipoId, issueType, wrote }, wrote
+    ? 'ipo_details.issue_type written'
+    : 'ipo_details.issue_type already set — write skipped (no overwrite)');
+  return wrote;
+}
+
 export async function updateIPOObjectives(
   ipoRepository: IPORepository,
   ipoId: string,

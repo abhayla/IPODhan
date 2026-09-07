@@ -150,6 +150,27 @@ async function main() {
     }
   }
 
+  // #222: ipo_details.issue_type fill-rate — this is the exact regression the
+  // T-475 fix closes (0/242 before the Chittorgarh detail-page visit was wired
+  // into the live cycle). Report-only (not a --gate threshold yet): the write
+  // path fills in gradually over the 30-min rotation, so a hard gate right
+  // after deploy would false-positive on day one. Named here so a FUTURE
+  // regression back to 0% is visible in the report, not silently reintroduced.
+  try {
+    const [{ filled }] = await q(
+      `SELECT count(*)::int filled FROM ipos i JOIN ipo_details d ON d.ipo_id = i.id
+        WHERE ${REAL_IPO} AND d.issue_type IS NOT NULL`
+    );
+    const pct = ((filled / realtotal) * 100).toFixed(1);
+    log(`
+=== ipo_details.issue_type FILL-RATE (#222, report-only) ===`);
+    log(`  issue_type           ${String(filled).padStart(5)} / ${realtotal}  ${pct}%`);
+  } catch (e) {
+    log(`
+=== ipo_details.issue_type FILL-RATE (#222, report-only) ===`);
+    log(`  issue_type           ERROR ${e.message}`);
+  }
+
   // ---- POLLUTION (Stage A): non-IPO rows must not be served by IPO surfaces. ----
   // Rows are NOT deleted (corporate actions stay in `ipos`, tracked by offering_type);
   // the surfaces filter them via REAL_IPO. surfaceLeak models that filter and MUST be 0.

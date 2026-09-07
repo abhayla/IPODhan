@@ -652,3 +652,41 @@ export function extractIssueSizeFromDetailHtml(
 
   return Math.round(rupees);
 }
+
+/**
+ * Extract the issue structure ("Issue Type" — book-building vs fixed-price)
+ * from a Chittorgarh per-IPO detail page (#222 — ipo_details.issue_type is
+ * 0/242; the FIXED_PRICE exemption in collectDegeneratePriceBandFields() is
+ * dead code without this signal). Rendered as:
+ *   <a title="Issue Type Description" href="/keyword/issue-type/1095/">Issue Type</a>
+ *   </span></td><td class="text-end">Bookbuilding<!-- --> <!-- -->IPO</td>
+ * React comment nodes (`<!-- -->`) sit between words (same pattern as the
+ * issue-size extractor above) — stripped before matching. Maps the page's
+ * free text to the `issue_type` enum (BOOK_BUILDING | FIXED_PRICE | HYBRID);
+ * returns null when the label is absent or the text matches neither known
+ * form — NEVER guessed from price-band shape (that ambiguity is exactly what
+ * T-305 P1 ruled out; a collapsed band looks identical to a genuine
+ * fixed-price issue by shape alone).
+ */
+export function extractIssueTypeFromDetailHtml(
+  html: string
+): 'BOOK_BUILDING' | 'FIXED_PRICE' | 'HYBRID' | null {
+  if (!html) return null;
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+
+  const m =
+    clean.match(/title="Issue Type Description"[\s\S]{0,120}?<\/a>[\s\S]{0,80}?<td[^>]*>([\s\S]{0,120}?)<\/td>/i) ??
+    clean.match(/>Issue Type<\/a>[\s\S]{0,80}?<td[^>]*>([\s\S]{0,120}?)<\/td>/i);
+  if (!m) return null;
+
+  const text = stripTags(m[1]).toLowerCase();
+  if (!text) return null;
+
+  const hasBookBuilding = /book\s*-?\s*building/.test(text);
+  const hasFixedPrice = /fixed\s*price/.test(text);
+
+  if (hasBookBuilding && hasFixedPrice) return 'HYBRID';
+  if (hasBookBuilding) return 'BOOK_BUILDING';
+  if (hasFixedPrice) return 'FIXED_PRICE';
+  return null;
+}

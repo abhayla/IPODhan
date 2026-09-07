@@ -236,6 +236,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   marketCap: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Market capitalization (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.marketCap } },
   peer_companies: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Peer-comparison payload (one-to-many) from the detail page peer table' },
   objectives: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Objects-of-issue payload (ipos.objectives jsonb) from the detail page' },
+  // #222: ipo_details.issue_type — book-building vs fixed-price, sourced ONLY from the
+  // Chittorgarh detail page's "Issue Type" row (never derived from price-band shape —
+  // T-305 P1 ruled that out: a collapsed band is indistinguishable from a genuine
+  // fixed-price issue). ADMIN can always override; CHITTORGARH is the sole live source.
+  issueType: { sources: ['ADMIN', 'CHITTORGARH'], normalization: 'none', confidenceThreshold: 80, description: 'Issue structure (BOOK_BUILDING | FIXED_PRICE | HYBRID) — ipo_details.issue_type' },
 
   roe_percentage: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
