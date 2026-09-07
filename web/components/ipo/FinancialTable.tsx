@@ -23,6 +23,25 @@ interface FinancialTableProps {
 }
 
 /**
+ * T-477 round 2 (N1): an `ipo_financials` row can exist (truthy) with every
+ * enhanced-metrics field NULL (the financial_data->ipo_financials migration
+ * copies revenue/profit/pe/roe/debtToEquity only; pbRatio/rocePercentage/
+ * industryPe/peerCompanies/financialYearEnd are a separate, not-yet-built
+ * extractor). Gating the section on row truthiness alone renders an
+ * "Enhanced Metrics" heading full of N/A cards on every migrated page.
+ * Gate on at least one real value instead.
+ */
+export function hasEnhancedMetrics(ipoFinancials?: IpoFinancials | null): boolean {
+  if (!ipoFinancials) return false;
+  return (
+    ipoFinancials.pbRatio != null ||
+    ipoFinancials.rocePercentage != null ||
+    ipoFinancials.industryPe != null ||
+    (ipoFinancials.peerCompanies?.length ?? 0) > 0
+  );
+}
+
+/**
  * FinancialTable component displays 3-year financial data in table format
  * Shows revenue, profit, EPS, P/E ratio, ROE, and NAV with trend indicators
  * Story 4.10: Enhanced with P/B Ratio, ROCE, Industry P/E, and Peer Companies
@@ -188,8 +207,8 @@ export function FinancialTable({ financialData, ipoFinancials }: FinancialTableP
           </div>
         </div>
 
-        {/* Story 4.10: Enhanced Financial Metrics Section */}
-        {ipoFinancials && (
+        {/* Story 4.10: Enhanced Financial Metrics Section — only when a real value exists (T-477 N1) */}
+        {ipoFinancials && hasEnhancedMetrics(ipoFinancials) && (
           <div className="mt-6 border-t pt-6 space-y-4">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               Enhanced Metrics

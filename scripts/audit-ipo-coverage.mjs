@@ -336,6 +336,20 @@ async function main() {
   const { c: ldCov } = await scalar(`SELECT count(*)::int c FROM ipos WHERE ${REAL_IPO} AND status='LISTED' AND listing_date IS NOT NULL`);
   add('core.listing_date', ldCov, listed, 100, 'LISTED');
 
+  // ---- T-477 (#224): ipo_financials fill-rate DASHBOARD row. financial_data
+  // (DRHP/pdfplumber, C3b) is the source; ipo_financials is what the detail
+  // page actually reads (FinancialTable.tsx, PeerCompaniesList.tsx,
+  // ComparisonTable.tsx via ipo-repository.ts ~415-422) and had NO writer
+  // until the migrate-financial-data-to-ipo-financials.ts repair tool. This
+  // is a fill-rate floor against financial_data's own population (the
+  // migration's applicable set), not against all real IPOs — an IPO with no
+  // financial_data row has nothing to migrate and is not a gap in THIS check.
+  const { c: fdDen } = await scalar(`SELECT count(*)::int c FROM ipos WHERE ${REAL_IPO} AND id IN (SELECT ipo_id FROM financial_data)`);
+  const { c: ipfCov } = await scalar(
+    `SELECT count(DISTINCT i.id)::int c FROM ipos i JOIN ipo_financials f ON f.ipo_id=i.id WHERE i.${REAL_IPO} AND i.id IN (SELECT ipo_id FROM financial_data)`
+  );
+  add('ipo_financials (of financial_data pop.)', ipfCov, fdDen, 90, 'has financial_data row');
+
   // ---- W-151: an ipo_details row for every IPO with a COMPLETED filing (HARD) ----
   // "COMPLETED" = document_fetch_state.state = 'EXTRACTED' (the terminal success
   // state of the document cycle). The persister writes the identity row even when
