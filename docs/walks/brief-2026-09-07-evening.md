@@ -21,6 +21,7 @@ Rule 6 brief. Status: DRAFT written 12:0x IST; numbers refreshed at 20:30 before
 ## (c) Pending + what the owner will see live
 - After deploy: (fill at 20:30 from the final cut) — at minimum the UPI timer hydration fix, cadence document cycle, issue_size definition (total incl. OFS) with the eight repaired rows already on prod.
 - Prod data runs waiting on the owner's word (NOT part of the deploy): band-provenance backfill (#379, 87 rows), SME/FPO row repair (#377).
+- Prod data repair waiting on the owner's word, separate from the deploy: 23 IPOs still show a share count as issue_size (#401; nightly floor FAIL on prod). Staging repair done: 27 considered / 21 written / 1 skipped; repair-held check over 2 staging cycles running. Command for prod after the go: `npx tsx scraper/scripts/backfill-issue-size-chittorgarh-detail.ts --apply --allow-prod` (dry run first), then assert-repair-held --cycles 2.
 - Open owner decisions: main-gate push trigger (Actions spend), Karamtara issue_size, 10 pre-existing stashes, ratchet exception #241, issue-sync go-live marker, SME flip, Actions spend for #198/#252, crontab wrapper for #348.
 
 - Known live defect NOT in the bundle: prod RHP extraction for one IPO fails with `spawnSync nice ETIMEDOUT` (six times today, retryCount 7, never hard) — issue #396, RCA in progress; it costs cycle budget but does not block the deploy.
