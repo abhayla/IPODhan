@@ -12,6 +12,8 @@ import {
   classifyToolFile,
   EXEMPTION_PATTERN,
   MODULE_IMPORT_PATTERN,
+  stripComments,
+  stripCommentsAndStrings,
   TOOL_FILENAME_PATTERN,
 } from '../require-repair-tool-module.mjs';
 
@@ -23,6 +25,17 @@ if (APPLY && process.env.DATABASE_NAME === 'ipodhan') process.exit(1);
 
 const FIXTURE_WITH_IMPORT = `/** A brand-new repair tool that uses the shared module. */
 import { openRepairDb, upsertFieldSource } from './lib/repair-tool.js';
+
+async function main() {
+  await openRepairDb(db, { apply: APPLY, allowProd: false, toolName: 'x' });
+}
+`;
+
+// Round 2 (Tier A MODERATE): importing the module is not USING it — a tool that
+// pulls in only writeLedgerFile still writes prod completely unguarded.
+const FIXTURE_IMPORTED_BUT_GUARD_NOT_CALLED = `import { writeLedgerFile } from './lib/repair-tool.js';
+const APPLY = process.argv.includes('--apply');
+if (APPLY && process.env.DATABASE_NAME === 'ipodhan') process.exit(1);
 `;
 
 test('RED: a repair-*.ts fixture that does not import the module is a violation', () => {
@@ -39,6 +52,46 @@ test('RED: a backfill-*.ts fixture that does not import the module is a violatio
 test('GREEN: the same fixture passes once it imports scripts/lib/repair-tool.ts', () => {
   const r = classifyToolFile('repair-fixture-t000.ts', FIXTURE_WITH_IMPORT);
   assert.equal(r.verdict, 'ok');
+});
+
+test('RED: imported but openRepairDb() never called — importing the module is not using it', () => {
+  const r = classifyToolFile('repair-fixture-t000.ts', FIXTURE_IMPORTED_BUT_GUARD_NOT_CALLED);
+  assert.equal(r.verdict, 'violation');
+  assert.equal(r.imported, true);
+  assert.equal(r.guardCalled, false);
+  assert.match(r.message, /never calls openRepairDb/);
+});
+
+test('RED: an import that only appears inside a COMMENT does not satisfy the lint', () => {
+  const commented = `// import { openRepairDb } from './lib/repair-tool.js';
+/* import { openRepairDb } from './lib/repair-tool.js'; openRepairDb(db); */
+${FIXTURE_WITHOUT_IMPORT}`;
+  const r = classifyToolFile('repair-fixture-t000.ts', commented);
+  assert.equal(r.verdict, 'violation');
+  assert.equal(r.imported, false);
+  assert.equal(r.guardCalled, false);
+});
+
+test('RED: an import and a guard call that only appear inside a STRING do not satisfy the lint', () => {
+  const stringy = `const template = "import { openRepairDb } from './lib/repair-tool.js';";
+const call = 'openRepairDb(db)';
+${FIXTURE_WITHOUT_IMPORT}`;
+  const r = classifyToolFile('repair-fixture-t000.ts', stringy);
+  assert.equal(r.verdict, 'violation');
+  assert.equal(r.guardCalled, false);
+});
+
+test('MUTATION: stripCommentsAndStrings removes comments and string bodies but keeps real code', () => {
+  const stripped = stripCommentsAndStrings(
+    `import { openRepairDb } from './lib/repair-tool.js';\n// openRepairDb(fake);\nconst s = 'openRepairDb(';\nopenRepairDb(db);\n`
+  );
+  assert.match(stripped, /openRepairDb\(db\)/);
+  assert.equal((stripped.match(/openRepairDb\s*\(/g) || []).length, 1);
+});
+
+test('MUTATION: stripComments keeps string literals, so a real import specifier still matches', () => {
+  assert.match(stripComments(FIXTURE_WITH_IMPORT), /lib\/repair-tool\.js/);
+  assert.doesNotMatch(stripComments(`// from './lib/repair-tool.js'`), /repair-tool/);
 });
 
 test('GREEN: a dated exemption with a real reason is accepted', () => {
@@ -76,9 +129,11 @@ test('MUTATION: the filename pattern still matches both tool prefixes', () => {
 });
 
 test('MUTATION: the import pattern matches a relative and a deep specifier, not an unrelated one', () => {
-  assert.ok(MODULE_IMPORT_PATTERN.test(`from './lib/repair-tool.js'`));
-  assert.ok(MODULE_IMPORT_PATTERN.test(`from '../../scraper/scripts/lib/repair-tool.js'`));
-  assert.ok(!MODULE_IMPORT_PATTERN.test(`from './lib/chittorgarh-report82-discovery.js'`));
+  assert.ok(MODULE_IMPORT_PATTERN.test(`import { openRepairDb } from './lib/repair-tool.js';`));
+  assert.ok(MODULE_IMPORT_PATTERN.test(`import {\n  openRepairDb,\n} from '../../scraper/scripts/lib/repair-tool.js';`));
+  assert.ok(!MODULE_IMPORT_PATTERN.test(`import { x } from './lib/chittorgarh-report82-discovery.js';`));
+  // must be at statement position — a bare specifier inside an expression is not an import
+  assert.ok(!MODULE_IMPORT_PATTERN.test(`const s = "from './lib/repair-tool.js'";`));
 });
 
 test('MUTATION: the exemption pattern requires a date and a 10+ char reason', () => {

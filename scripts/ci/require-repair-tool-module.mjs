@@ -25,7 +25,37 @@ import { pathToFileURL } from 'node:url';
 export const TOOL_FILENAME_PATTERN = /^(repair|backfill)-.*\.ts$/;
 
 /** Any import specifier that resolves to the shared module. */
-export const MODULE_IMPORT_PATTERN = /from\s+['"][^'"]*lib\/repair-tool(\.js)?['"]/;
+export const MODULE_IMPORT_PATTERN = /^[ 	]*import\s[\s\S]{0,400}?from\s+['"][^'"]*lib\/repair-tool(\.js)?['"]/m;
+
+/**
+ * The guard ENTRY POINT must actually be called. Round 2 (Tier A MODERATE): a
+ * tool that imports only `writeLedgerFile` satisfied the import check while
+ * writing prod completely unguarded — importing the module is not using it.
+ */
+export const GUARD_CALL_PATTERN = /\bopenRepairDb\s*\(/;
+
+/**
+ * Strip comments and string literals so an import or a guard call that only
+ * APPEARS inside a comment or a quoted string never satisfies the lint.
+ * Regex-only (no tokenizer): one alternation matches a string OR a comment, so
+ * a `//` inside a string and a quote inside a comment both behave correctly.
+ * Strings collapse to `""` (keeps the code syntactically readable), comments
+ * to nothing.
+ */
+export function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
+
+export function stripCommentsAndStrings(source) {
+  const BS = String.fromCharCode(92); // one backslash, built rather than escaped
+  // A quoted literal: opening quote, then escaped chars or non-quote/non-backslash, then close.
+  const quoted = (q) => `${q}(?:${BS}${BS}.|[^${q}${BS}${BS}])*${q}`;
+  const STRING_LITERAL = new RegExp([quoted('"'), quoted("'"), quoted('`')].join('|'), 'g');
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '') // block comments first (a quote inside one is not a string)
+    .replace(/\/\/[^\n]*/g, '') // then line comments (an apostrophe in prose is not a string)
+    .replace(STRING_LITERAL, '""'); // finally string bodies
+}
 
 /** `// repair-tool-exempt: YYYY-MM-DD <reason of 10+ chars>` */
 export const EXEMPTION_PATTERN = /\/\/\s*repair-tool-exempt:\s*(\d{4}-\d{2}-\d{2})\s+(\S.{9,})/;
@@ -40,16 +70,32 @@ export const MODULE_PATH = path.join('scraper', 'scripts', 'lib', 'repair-tool.t
  */
 export function classifyToolFile(fileName, source) {
   if (!TOOL_FILENAME_PATTERN.test(fileName)) return { verdict: 'not-a-tool' };
-  if (MODULE_IMPORT_PATTERN.test(source)) return { verdict: 'ok' };
+
+  // The import and the call must be REAL code, not text inside a comment or a
+  // string literal. The exemption marker IS a comment, so it is matched
+  // against the original source below.
+  // The import specifier IS a string literal, so it is matched against a
+  // comment-stripped (strings intact) copy and must sit at statement position;
+  // the guard CALL is matched against the fully stripped code.
+  const imported = MODULE_IMPORT_PATTERN.test(stripComments(source));
+  const guardCalled = GUARD_CALL_PATTERN.test(stripCommentsAndStrings(source));
+  if (imported && guardCalled) return { verdict: 'ok' };
+
   const exemption = source.match(EXEMPTION_PATTERN);
   if (exemption) return { verdict: 'exempt', date: exemption[1], reason: exemption[2].trim() };
+
+  const missing = !imported
+    ? 'does not import scraper/scripts/lib/repair-tool.ts'
+    : 'imports scraper/scripts/lib/repair-tool.ts but never calls openRepairDb() — importing the module is not using it (a tool that pulls in only writeLedgerFile still writes prod unguarded)';
   return {
     verdict: 'violation',
+    imported,
+    guardCalled,
     message:
-      `${fileName} is a data-repair/backfill tool but does not import ` +
-      `scraper/scripts/lib/repair-tool.ts. Import the shared guards ` +
-      `(openRepairDb / decideProdWriteRefusal / upsertFieldSource / ` +
-      `buildAlreadyRepairedSet) instead of re-implementing them, or declare ` +
+      `${fileName} is a data-repair/backfill tool but ${missing}. Open the ` +
+      `database through openRepairDb() and use the shared guards ` +
+      `(decideProdWriteRefusal / upsertFieldSource / buildAlreadyRepairedSet) ` +
+      `instead of re-implementing them, or declare ` +
       `"// repair-tool-exempt: YYYY-MM-DD <reason>" at the top of the file.`,
   };
 }
@@ -90,6 +136,6 @@ function main() {
   console.log('[require-repair-tool-module] OK');
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
