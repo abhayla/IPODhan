@@ -60,14 +60,45 @@ const pool = new Pool({
   password: process.env.DATABASE_PASSWORD,
 });
 
-// repair-tool.ts's openRepairDb() calls dbLike.execute(sql`SELECT current_database() AS name`)
-// (a drizzle-orm SQL object) — this tool uses a raw `pg` Pool (see the file
-// header for why), so this adapter runs the one literal query openRepairDb
-// ever issues via .execute() directly through pool.query() rather than
-// trying to convert the drizzle SQL object to pg's text/params shape.
+// repair-tool.ts's openRepairDb() calls dbLike.execute(sql`...`) with a
+// drizzle-orm SQL object (a `.queryChunks` array of string literal fragments
+// interleaved with `Param` wrappers for interpolated values). This tool uses
+// a raw `pg` Pool (see the file header for why), so this adapter FORWARDS
+// the query it is actually given — walking `.queryChunks`, concatenating
+// string fragments and turning each `Param` into a `$n` placeholder + a
+// pushed value — through pool.query(text, params), instead of hardcoding
+// the one literal query openRepairDb happens to issue today. Anything it
+// cannot map (not a drizzle SQL object, or a chunk shape it does not
+// recognize) throws rather than silently running the wrong query.
+export function mapSqlToPgQuery(query: unknown): { text: string; params: unknown[] } {
+  const q = query as { queryChunks?: unknown[] } | undefined;
+  if (!q || !Array.isArray(q.queryChunks)) {
+    throw new Error(
+      'repair-dates-and-leadmanagers-t299: cannot forward this query to pool.query() — expected a drizzle-orm sql`` object with .queryChunks, got: ' +
+        JSON.stringify(query)
+    );
+  }
+  let text = '';
+  const params: unknown[] = [];
+  for (const chunk of q.queryChunks) {
+    if (typeof chunk === 'string') {
+      text += chunk;
+    } else if (chunk && typeof chunk === 'object' && 'value' in (chunk as Record<string, unknown>)) {
+      params.push((chunk as { value: unknown }).value);
+      text += `$${params.length}`;
+    } else {
+      throw new Error(
+        `repair-dates-and-leadmanagers-t299: cannot forward unsupported SQL chunk to pool.query(): ${JSON.stringify(chunk)}`
+      );
+    }
+  }
+  return { text, params };
+}
+
 const repairDbGuard: ExecuteLike = {
-  execute: async () => {
-    const result = await pool.query('SELECT current_database() AS name');
+  execute: async (query: unknown) => {
+    const { text, params } = mapSqlToPgQuery(query);
+    const result = await pool.query(text, params);
     return { rows: result.rows };
   },
 };
