@@ -48,6 +48,18 @@ export const ScrapedIPOSchema = z.object({
   offeringType: z.enum(['IPO', 'FPO', 'RIGHTS', 'OFS', 'BUYBACK', 'DELISTING', 'TENDER', 'NCD', 'BONDS', 'INVITS', 'REITS', 'IPP', 'QIP', 'PREFERENTIAL'], {
     message: 'Invalid offering type'
   }),
+  /**
+   * T-478 round 3 (issue #225 follow-up, CRITICAL fix): true ONLY when the
+   * source read the offering type from a genuine payload signal (e.g. the
+   * NSE OFS endpoint's `category=ofs`). Every other scraper hard-defaults
+   * `offeringType: 'IPO'` with no real signal (nse-api-client.ts's fallback
+   * branch, moneycontrol/bse/chittorgarh scrapers) — those MUST leave this
+   * unset/false so the identity guard in resolveIpoRow stays a no-op for
+   * them (legacy behavior). Setting it true when it should not be would
+   * make a defaulted-IPO re-scrape of a legacy OFS row decline every tier
+   * and attempt a colliding create (23505) every cycle.
+   */
+  offeringTypeExplicit: z.boolean().optional(),
   sector: z.string().max(100).optional(),
   // I4 / W-41: WITHDRAWN/POSTPONED are terminal states an exchange declares
   // (BSE public notice, NSE status text). Additive — no previously valid status

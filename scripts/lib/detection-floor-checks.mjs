@@ -673,6 +673,18 @@ export function computeExitCode({ failCount = 0, unverifiableCount = 0 }) {
   return EXIT_OK;
 }
 
+// T-465 round 3: SKIP (empty-window cross-check, "no signal", e.g.
+// g_inert_detector) is its own bucket in the summary line — it must NEVER
+// fall into PASS via `results.length - fail - unverifiable` subtraction, or
+// a quiet night with no signal reads as "healthy".
+export function computeSummaryCounts(results) {
+  const fail = results.filter((r) => r.status === 'FAIL').length;
+  const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE').length;
+  const skip = results.filter((r) => r.status === 'SKIP').length;
+  const pass = results.length - fail - unverifiable - skip;
+  return { pass, fail, unverifiable, skip };
+}
+
 /**
  * (blocker 1 + 4) RUN-LEVEL payload assembly, kept here rather than in the
  * runner so the self-tests can prove the whole night's paging behaviour from

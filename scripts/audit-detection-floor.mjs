@@ -61,13 +61,18 @@ import {
   checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS, normalizeCompanyKey,
   buildRunPayloads, evaluateCronExecutable,
-  computeExitCode, EXIT_UNVERIFIABLE,
+  computeExitCode, EXIT_UNVERIFIABLE, computeSummaryCounts,
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
 } from './lib/detection-floor-checks.mjs';
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
+import { checkPriceBand } from './lib/substance-checks.mjs';
+import {
+  classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
+  REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
+} from './lib/signal-health-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -85,6 +90,17 @@ if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
 }
 
 const GATE = process.argv.includes('--gate');
+// T-465 round 2: seeds/lowers config/conflict-backlog-baseline.json for the
+// CURRENT database (current_database()) — never raises an existing entry.
+const REBASELINE_CONFLICTS = process.argv.includes('--rebaseline-conflicts');
+const CONFLICT_BASELINE_PATH = join(REPO_ROOT, 'config', 'conflict-backlog-baseline.json');
+function readConflictBaseline() {
+  try { return JSON.parse(readFileSync(CONFLICT_BASELINE_PATH, 'utf8')); }
+  catch { return { databases: {} }; }
+}
+function writeConflictBaseline(data) {
+  writeFileSync(CONFLICT_BASELINE_PATH, JSON.stringify(data, null, 2) + '\n');
+}
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
 
@@ -497,17 +513,101 @@ async function checkE_unknownSlug404() {
   );
 }
 
-// ---- (f): conflict noise ratio ------------------------------------------------
+// ---- (f): conflict noise ratio + shrink-only backlog ratchet ----------------
 async function checkF() {
   if (!(await tableExists('data_conflicts'))) {
-    record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5%', 'UNVERIFIABLE', 'data_conflicts table not present');
+    record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog within shrink-only ratchet baseline', 'UNVERIFIABLE', 'data_conflicts table not present');
     return;
   }
+  const [{ dbName }] = await q(`SELECT current_database() AS "dbName"`);
   const [{ total }] = await q(`SELECT count(*)::int total FROM data_conflicts WHERE resolved_at IS NULL`);
   const [{ noise }] = await q(`SELECT count(*)::int noise FROM data_conflicts WHERE resolved_at IS NULL AND (value2 IS NULL OR value2 = '' OR value1 = value2)`);
   const cls = classifyConflictNoiseRatio(total, noise);
   if (cls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts noise ratio too high', `${noise}/${total} (${(cls.ratio * 100).toFixed(1)}%) unresolved conflicts are noise (empty value2 or value1==value2)`);
-  record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5%', cls.fail ? 'FAIL' : 'PASS', `${noise}/${total} = ${(cls.ratio * 100).toFixed(1)}%`);
+
+  // F2 (#191, round 2): a flat 500-row ceiling is red forever on a database
+  // that starts above 500 (staging: 14,252) — a ratchet instead: FAIL only on
+  // a RISE above this database's checked-in baseline (T-285 unbounded-growth
+  // class), WARN (not FAIL) with the delta on a fall, and the baseline is
+  // only ever lowered by an explicit `--rebaseline-conflicts` run, which
+  // itself refuses to raise a stored baseline.
+  if (REBASELINE_CONFLICTS) {
+    const baseline = readConflictBaseline();
+    const existing = baseline.databases[dbName]?.unresolved ?? null;
+    const next = nextRatchetBaseline(existing, total);
+    baseline.databases[dbName] = { unresolved: next, recordedAt: new Date().toISOString() };
+    writeConflictBaseline(baseline);
+    console.log(`[REBASELINE] data_conflicts backlog for "${dbName}": ${existing ?? '(none)'} -> ${next}`);
+  }
+  const baselineNow = readConflictBaseline();
+  const baselineEntry = baselineNow.databases[dbName]?.unresolved ?? null;
+  const ratchetCls = classifyConflictBacklogRatchet(total, baselineEntry);
+  if (ratchetCls.status === 'FAIL') {
+    notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts unresolved backlog ROSE above its shrink-only baseline', `${total} unresolved > baseline ${ratchetCls.baseline} for database "${dbName}" (+${ratchetCls.delta}) — unbounded-growth class, T-285`);
+  }
+
+  const status = cls.fail || ratchetCls.status === 'FAIL' ? 'FAIL'
+    : ratchetCls.status === 'UNVERIFIABLE' ? 'UNVERIFIABLE'
+    : 'PASS';
+  const ratchetDetail = ratchetCls.status === 'UNVERIFIABLE'
+    ? `no ratchet baseline seeded for database "${dbName}" — run --rebaseline-conflicts to seed`
+    : ratchetCls.status === 'WARN'
+      ? `backlog fell ${Math.abs(ratchetCls.delta)} below baseline ${ratchetCls.baseline} (WARN; baseline not auto-lowered, rerun --rebaseline-conflicts to lower it)`
+      : `${total} vs baseline ${ratchetCls.baseline} (${ratchetCls.delta >= 0 ? '+' : ''}${ratchetCls.delta})`;
+  record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5% AND backlog within shrink-only ratchet baseline', status, `${noise}/${total} = ${(cls.ratio * 100).toFixed(1)}% noise; ${ratchetDetail}`);
+}
+
+// ---- (g1): repeated-WARN detector (#191 F1) ---------------------------------
+// A validation warning logged 20+ times per cycle while the mis-typed rows
+// still write through stops being a signal (T-272 P2-2, InvIT/REIT). Groups
+// scraper_logs FAILURE/PARTIAL rows by their (truncated) error message over
+// the last 24h; any single message occurring more than the threshold FAILs.
+async function checkG1_repeatedWarn() {
+  if (!(await tableExists('scraper_logs'))) {
+    record('g_repeated_warn', `no single scraper_logs message repeats >${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}x/24h`, 'UNVERIFIABLE', 'scraper_logs table not present');
+    return;
+  }
+  const rows = await q(`
+    SELECT left(error_message, 120) AS message, count(*)::int AS count
+      FROM scraper_logs
+     WHERE status IN ('FAILURE', 'PARTIAL')
+       AND error_message IS NOT NULL
+       AND created_at > now() - interval '24 hours'
+     GROUP BY 1
+     HAVING count(*) > $1
+     ORDER BY count(*) DESC`, [REPEATED_MESSAGE_MAX_OCCURRENCES_24H]);
+  const cls = classifyRepeatedMessages(rows);
+  for (const o of cls.offenders.slice(0, MAX_OFFENDERS)) {
+    notify('g_repeated_warn', 'P2', o.message, 'scraper_logs message repeated beyond threshold', `"${o.message}" logged ${o.count}x in the last 24h (>${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}) — a signal that repeats forever stops being a signal`);
+  }
+  record('g_repeated_warn', `no single scraper_logs message repeats >${REPEATED_MESSAGE_MAX_OCCURRENCES_24H}x/24h`, cls.fail ? 'FAIL' : 'PASS', `${cls.offenders.length} offending message(s)`);
+}
+
+// ---- (g3): inert detector, WINDOWED (#191 F3, T-465 round 2) ----------------
+// The important one, per the issue: a detector reporting zero is
+// indistinguishable from a healthy system UNLESS cross-checked against an
+// invariant independently known to be violated (T-272 P3-5, conflictsDetected
+// read 0 across 3,760 fields while real disagreements demonstrably existed).
+// Round 2: compares LIKE WITH LIKE — violations are counted only among rows
+// whose relevant fields were WRITTEN in the same trailing-24h window the
+// conflict count is windowed to (round 1 compared an all-time violation
+// snapshot against a 24h conflict count: a violation caught days ago with no
+// new activity, or one that never involves cross-source disagreement, was
+// wrongly called "inert"). An empty windowed population (nothing written)
+// SKIPs — the cross-check has nothing to say, so a quiet night is never
+// silently read as "detector healthy".
+async function checkG3_inertDetector() {
+  if (!(await tableExists('data_conflicts')) || !(await tableExists('ipos'))) {
+    record('g_inert_detector', 'windowed price-band violations without any windowed conflicts inserted -> detector inert', 'UNVERIFIABLE', 'data_conflicts or ipos table not present');
+    return;
+  }
+  const priceRows = await q(`SELECT price_range_min, price_range_max FROM ipos WHERE ${REAL_IPO} AND updated_at > now() - interval '24 hours'`);
+  const population = priceRows.length;
+  const violations = priceRows.filter((r) => checkPriceBand(r) !== null).length;
+  const [{ inserted }] = await q(`SELECT count(*)::int inserted FROM data_conflicts WHERE detected_at > now() - interval '24 hours'`);
+  const cls = classifyInertDetector(population, violations, inserted);
+  if (cls.status === 'FAIL') notify('g_inert_detector', 'P1', 'aggregate', 'conflict detector appears inert', `${cls.violations} of ${cls.population} IPO row(s) written in the last 24h fail checkPriceBand (real corruption exists) but 0 data_conflicts rows were inserted in that SAME window — the detector is inert, not the data clean`);
+  record('g_inert_detector', 'windowed price-band violations without any windowed conflicts inserted -> detector inert', cls.status, `${cls.violations} violation(s) among ${cls.population} row(s) written/24h, ${cls.inserted} conflict(s) inserted/24h`);
 }
 
 // ---- (m): document_fetch_state — did the document machine do its job? ---------
@@ -1223,6 +1323,8 @@ async function main() {
   await checkE();
   await checkE_unknownSlug404();
   await checkF();
+  await checkG1_repeatedWarn();
+  await checkG3_inertDetector();
   await checkG();
   await checkH();
   checkI();
@@ -1236,8 +1338,9 @@ async function main() {
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
+  const summary = computeSummaryCounts(results);
   console.log(`
-=== SUMMARY: ${results.length - failed.length - unverifiable.length} PASS, ${failed.length} FAIL, ${unverifiable.length} UNVERIFIABLE ===`);
+=== SUMMARY: ${summary.pass} PASS, ${summary.fail} FAIL, ${summary.unverifiable} UNVERIFIABLE, ${summary.skip} SKIP ===`);
 
   const previousState = readPreviousState();
   const payloads = buildRunPayloads({

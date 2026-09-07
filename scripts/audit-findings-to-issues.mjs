@@ -93,6 +93,14 @@ export function planIssueSync({ findings, issues, openIssues, previousState, tod
     const rowKeys = (finding.rows || []).map((r) => r.rowKey).sort();
     const isBad = finding.status === 'FAIL' || finding.status === 'UNVERIFIABLE';
 
+    // T-465 round 3: SKIP (empty-window cross-check, "no signal") must NOT
+    // be treated as PASS — closing an open issue on a SKIP would read a
+    // quiet night as "resolved" when the check simply had nothing to say.
+    if (finding.status === 'SKIP') {
+      actions.push({ type: 'skip', checkId, reason: 'SKIP — no signal, issue left untouched' });
+      continue;
+    }
+
     if (!isBad) {
       // Now PASS. Close an OPEN issue if one exists. A CLOSED issue (already
       // resolved, by us or by a human) needs nothing further.
