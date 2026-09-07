@@ -63,7 +63,7 @@ interface IPODataBundle {
 /**
  * Rating scale thresholds
  */
-const RATING_THRESHOLDS = {
+export const RATING_THRESHOLDS = {
   EXCEPTIONAL: 9.0,    // 9.0 - 10.0
   STRONG: 7.5,         // 7.5 - 8.9
   GOOD: 6.0,           // 6.0 - 7.4
@@ -71,6 +71,20 @@ const RATING_THRESHOLDS = {
   BELOW_AVERAGE: 3.0,  // 3.0 - 4.4
   POOR: 0.0,           // 0.0 - 2.9
 } as const;
+
+/**
+ * Rating label for a 0-10 total score. Exported so display adapters (e.g. the
+ * IPOScoreSection presentation layer) derive the same band labels the API
+ * itself returns, instead of re-deriving thresholds independently (T-489).
+ */
+export function getRatingLabel(score: number): string {
+  if (score >= RATING_THRESHOLDS.EXCEPTIONAL) return 'Exceptional (Invest)';
+  if (score >= RATING_THRESHOLDS.STRONG) return 'Strong (Consider)';
+  if (score >= RATING_THRESHOLDS.GOOD) return 'Good (Moderate)';
+  if (score >= RATING_THRESHOLDS.AVERAGE) return 'Average (Neutral)';
+  if (score >= RATING_THRESHOLDS.BELOW_AVERAGE) return 'Below Average (Caution)';
+  return 'Poor (Avoid)';
+}
 
 /**
  * Industry average benchmarks (can be made dynamic later)
@@ -419,12 +433,7 @@ export class IPOScoringService {
    * Get rating label from total score
    */
   private getRatingLabel(score: number): string {
-    if (score >= RATING_THRESHOLDS.EXCEPTIONAL) return 'Exceptional (Invest)';
-    if (score >= RATING_THRESHOLDS.STRONG) return 'Strong (Consider)';
-    if (score >= RATING_THRESHOLDS.GOOD) return 'Good (Moderate)';
-    if (score >= RATING_THRESHOLDS.AVERAGE) return 'Average (Neutral)';
-    if (score >= RATING_THRESHOLDS.BELOW_AVERAGE) return 'Below Average (Caution)';
-    return 'Poor (Avoid)';
+    return getRatingLabel(score);
   }
 
   /**
