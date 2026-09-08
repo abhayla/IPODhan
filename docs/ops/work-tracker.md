@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 12:45 IST (snapshot 4).
+Last updated: 2026-09-08 13:15 IST (snapshot 5).
 
 ---
 
@@ -98,7 +98,7 @@ hand-saved, so provenance is automatic and the human step where the mistake happ
 (provenance header, identity check, shrink-only backfill allowlist, sourcing helper, pr-gate step) — BUILDING now — and
 **T-519** (revive the live-parser check as a nightly scheduled job; the answer to "why not just read the live sites") —
 QUEUED. The three October-2025 BSE snippets are sized as a follow-up, not re-captured in T-518.
-**Effort:** ~half a day + ~1 day. **Status:** APPROVED-RUNNING. **Prev:** 0% **Now:** 5%
+**Effort:** ~half a day + ~1 day. **Status:** APPROVED-RUNNING. **Prev:** 5% **Now:** 45% (T-518 built as PR #430 but Tier A FAILED it: CI is red and the new gate never executed there; six findings, two of which would break every PR in the repo; round 2 in progress. T-519 not started.)
 
 ### C2. Checks compare our data to itself, never to the outside world
 **What it is.** Audits assert internal consistency. They cannot see that a correct-looking value is wrong.
