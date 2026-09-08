@@ -58,16 +58,20 @@ describe('field priority matrix — one price-band naming scheme (T-276 / F5)', 
     }
   });
 
-  // T-278 P3-7 (#165 F1): MONEYCONTROL and DRHP are listed as valid
-  // cross-source priority fallbacks for the price band, but neither is an
-  // exchange that "republishes a corrected band mid-issue" — so neither may
-  // exercise same-source refresh, even though both appear in `sources`.
-  it('narrows same-source refresh to the exchange sources — MONEYCONTROL/DRHP may not self-refresh (#165 F1)', () => {
+  // T-278 P3-7 (#165 F1) kept MONEYCONTROL out of same-source refresh: it is a
+  // low-priority fallback that must never overwrite a value an exchange set.
+  // T-520 ADDS DRHP to the refresh list, because DRHP is now the TOP-ranked
+  // source for the price band. A top-ranked source that cannot self-refresh can
+  // never correct itself — exactly the T-276 class that froze a wrong NSE band
+  // for two days — and the offer documents genuinely do supersede one another
+  // (PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP), all mapped to the
+  // single `DRHP` enum slot by `scraperSourceForDocType`.
+  it('narrows same-source refresh: MONEYCONTROL may not self-refresh, DRHP may (T-520)', () => {
     for (const f of ['priceRangeMin', 'priceRangeMax']) {
       expect(FIELD_PRIORITY_MATRIX[f].sources).toContain('MONEYCONTROL');
       expect(FIELD_PRIORITY_MATRIX[f].sources).toContain('DRHP');
       expect(allowsSameSourceRefresh(f, 'MONEYCONTROL')).toBe(false);
-      expect(allowsSameSourceRefresh(f, 'DRHP')).toBe(false);
+      expect(allowsSameSourceRefresh(f, 'DRHP')).toBe(true);
     }
   });
 

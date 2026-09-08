@@ -1361,6 +1361,63 @@ async function sendNotifications(payloads) {
 [NOTIFY] sent ${payloads.length} digest(s) to the Notifier gateway`);
 }
 
+// ---- (p): offer-document vs website provenance share (T-520) ----------------
+// The site republished a website's transcription of the filing instead of the
+// filing itself. T-520 round 1 measured the ALL-TIME share (557 of 6,602 rows,
+// 8.4%) and gated on it — round-2 review (MAJOR 3) showed that number cannot
+// fall: if the document path died tomorrow the numerator would simply freeze
+// and the ratio would need the website denominator to roughly double, months
+// away. This check therefore counts only rows WRITTEN IN THE LAST 14 DAYS, so a
+// stall in the document path shows up within a day or two.
+const DOC_PRINTED_FIELDS = [
+  'issueSize', 'faceValue', 'priceRangeMin', 'priceRangeMax', 'lotSize',
+  'min_investment', 'issue_price', 'fresh_issue_size', 'offer_for_sale_size',
+  'registrar', 'leadManagers', 'companyName',
+];
+const DOC_PROVENANCE_WINDOW_DAYS = 14;
+// Healthy today (staging, 2026-09-08, 14-day window): 10.2% of the writes (39 doc / 342 web)
+// on these fields are document-sourced. The floor is deliberately below that so
+// normal variation does not page, and only ever gets RAISED.
+const DOC_PROVENANCE_MIN_PCT = 5;
+// Below this many rows in the window the ratio is noise, not a signal.
+const DOC_PROVENANCE_MIN_ROWS = 20;
+
+async function checkP() {
+  const name = `offer documents supply at least ${DOC_PROVENANCE_MIN_PCT}% of the provenance rows WRITTEN IN THE LAST ${DOC_PROVENANCE_WINDOW_DAYS} DAYS on the ${DOC_PRINTED_FIELDS.length} printed offer-term fields (healthy today: 10.2% measured on staging)`;
+  let rows;
+  try {
+    rows = await q(
+      `SELECT field_name AS "fieldName",
+              COUNT(*) FILTER (WHERE source = 'DRHP')::int AS "doc",
+              COUNT(*) FILTER (WHERE source <> 'DRHP' AND source <> 'ADMIN')::int AS "web"
+         FROM field_sources
+        WHERE field_name = ANY($1)
+          AND updated_at >= NOW() - ($2 || ' days')::interval
+        GROUP BY 1 ORDER BY 1`,
+      [DOC_PRINTED_FIELDS, String(DOC_PROVENANCE_WINDOW_DAYS)]
+    );
+  } catch (e) {
+    record('p_document_provenance_share', name, 'UNVERIFIABLE', `field_sources not readable: ${e.message}`);
+    return;
+  }
+
+  const totals = rows.reduce((a, r) => ({ doc: a.doc + r.doc, web: a.web + r.web }), { doc: 0, web: 0 });
+  const denom = totals.doc + totals.web;
+  if (denom < DOC_PROVENANCE_MIN_ROWS) {
+    record('p_document_provenance_share', name, 'UNVERIFIABLE',
+      `only ${denom} provenance row(s) written on the printed offer terms in the last ${DOC_PROVENANCE_WINDOW_DAYS} days — too few to judge the share (needs ${DOC_PROVENANCE_MIN_ROWS})`);
+    return;
+  }
+  const pct = (totals.doc * 100) / denom;
+  const perField = rows.map((r) => `${r.fieldName} ${r.doc}doc/${r.web}web`).join(', ');
+  if (pct < DOC_PROVENANCE_MIN_PCT) {
+    notify('p_document_provenance_share', 'P1', 'overall',
+      `offer documents supplied only ${pct.toFixed(1)}% of the last ${DOC_PROVENANCE_WINDOW_DAYS} days of provenance on printed offer terms`, perField);
+  }
+  record('p_document_provenance_share', name, pct >= DOC_PROVENANCE_MIN_PCT ? 'PASS' : 'FAIL',
+    `${totals.doc} document-sourced vs ${totals.web} website-sourced rows in the last ${DOC_PROVENANCE_WINDOW_DAYS} days = ${pct.toFixed(1)}% — ${perField}`);
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   console.log(`
@@ -1383,6 +1440,7 @@ async function main() {
   await checkM();
   await checkN();
   checkO();
+  await checkP();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
