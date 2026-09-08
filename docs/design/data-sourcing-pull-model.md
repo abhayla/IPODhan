@@ -3,9 +3,11 @@
 > ### Status — NOT SAFE TO BUILD FROM
 >
 > Reviewed 2026-09-08 by four independent passes (author, IPO domain, engineering, verification
-> model). **55 raw findings, consolidated to 40 tracked items; 14 critical.** Status per finding is
-> in `findings.json`, which is the register — not this document. As of the last check, **11 critical
-> findings are OPEN**.
+> model). Status per finding is in `findings.json`, which is the register — not this document, and
+> which is under active concurrent edit (F-41, F-42, F-43 were added by the owner/lead mid-session).
+> As of the last check, **2 critical findings are OPEN (F-03, F-43)** — F-13, F-22, F-23, F-26, F-27
+> and F-33 closed this session; F-39, F-40 (MAJOR), F-41, F-42 (MAJOR) also remain OPEN, all needing
+> the owner or a live fetch. **Do not trust a finding count typed here — read `findings.json`.**
 >
 > **Sections §0, Appendix A.0 and A.3 survive review. §1.2.1, §2, §3, §4 and §6 are being re-cut.**
 > Do not implement from those sections.
@@ -216,9 +218,12 @@ We hold the right number and publish one two years out of date.
 
 ### 1.1 How to read it
 
-All 194 populated published fields are here. **§1 gives the reasoning per group; Appendix A gives the
-implementable per-field table with per-type variations, and where the two differ Appendix A wins.** Each falls into one of six classes, and the class
-decides whether a source ranking is even meaningful:
+**240 published fields are here: 194 populated on production today, plus 46 published columns the
+offer document prints but that hold no data at all today** (F-13 — scoping this mapping to only
+what's already populated was backwards; a field is empty precisely because no document was ever read
+for it). **§1 gives the reasoning per group; Appendix A gives the implementable per-field table with
+per-type variations, and where the two differ Appendix A wins.** Each falls into one of six classes,
+and the class decides whether a source ranking is even meaningful:
 
 | Class | Meaning | Ranking |
 |---|---|---|
@@ -230,12 +235,13 @@ decides whether a source ranking is even meaningful:
 | **C** | We compute it; it has no external source | formula + named inputs, no ranking |
 | **I** | Our own pipeline produces it (bookkeeping) | writer named, no ranking |
 
-Class counts across the 194, computed from the field list rather than estimated:
-**D 117 · T 12 · X 13 · M 4 · W 1 · C 11 · I 36 = 194** (authoritative count, from the generated
+Class counts across the 240, computed from the field list rather than estimated:
+**D 162 · T 10 · X 13 · M 4 · W 1 · C 13 · I 37 = 240** (authoritative count, from the generated
 spec in Appendix A — an earlier estimate in this section was slightly off and Appendix A wins). The
-pull loop walks the D, T, X, W and M fields — **147 of the 194**. The 12 T fields are the named
-exception E-1 (§1.2.1) and are the only fields excluded from the 100% rule. The 11 C fields are recomputed after their inputs settle. The 33 I fields are written by
-the pipeline itself and are never sourced.
+pull loop walks the D, T, X, W and M fields — **190 of the 240**. The 10 T fields are the named
+exception E-1 (§1.2.1) and are the only fields excluded from the 100% rule. The 13 C fields are
+recomputed after their inputs settle (2 of them — the anchor lock-in dates — moved here from T,
+F-22). The 37 I fields are written by the pipeline itself and are never sourced.
 
 **Document type order inside rank 1**, inherited from 9db4529d: for price-dependent fields
 `PRICE_BAND_AD / CORRIGENDUM > RHP > PROSPECTUS > DRHP`; for final post-issue facts
@@ -304,10 +310,15 @@ reissued when a company extends its bidding window.** NSE and BSE update the sam
 not. Sourcing these from the document would publish a stale close date on a live IPO — the single
 most damaging error this site can make, and the reason the W-117 rule exists.
 
-**The fields in E-1 — twelve.** The owner named five and then directed (2026-09-08): *"list the
+**The fields in E-1 — ten.** The owner named five and then directed (2026-09-08): *"list the
 full timetable family for me to see and understand. Apply the same rule to all the timetable
 fields."* The full family, established by walking every date- and schedule-like field among the 194
-and testing each against one question — **does this value change when the bidding window changes?**
+fields known at the time and testing each against one question — **does this value change when the
+bidding window changes?** Two of the twelve originally named here were removed 2026-09-08 closing
+F-22: `anchor_investors.lock_in_50_percent_date` and `lock_in_remaining_date` are not independently
+sourced at all — they are **derived** (`allotment_date + 30 / + 90 days`) and move automatically
+whenever field 4 moves, so E-1 membership was never the right frame for them. See the note below the
+table.
 
 | # | Field | Contract § | Rows | Source today | Effect of E-1 |
 |---|---|---|---:|---|---|
@@ -319,10 +330,17 @@ and testing each against one question — **does this value change when the bidd
 | 6 | `ipo_details.initiation_of_refunds_date` | B4 | 7 | 7 doc (100%) | **flips** |
 | 7 | `ipo_details.credit_of_shares_date` | B5 | 3 | 3 doc (100%) | **flips** |
 | 8 | `ipos.listing_date` | B6 | 289 | 238 web · 51 exch · 0 doc | already exchange-first |
-| 9 | `anchor_investors.lock_in_50_percent_date` | — | 2 | document (no provenance row) | **flips** — it is allotment + 30 days, so it moves with field 4 |
-| 10 | `anchor_investors.lock_in_remaining_date` | — | 2 | document (no provenance row) | **flips** — allotment + 90 days |
-| 11 | `ipos.status` | — | 289 | 230 web · 56 exch · 3 doc | named by the owner; position in the timetable |
-| 12 | `ipos.listing_exchanges` | A15 | 208 | 161 web · 23 exch · 24 doc | named by the owner; **24 document values flip** |
+| 9 | `ipos.status` | — | 289 | 230 web · 56 exch · 3 doc | named by the owner; position in the timetable |
+| 10 | `ipos.listing_exchanges` | A15 | 208 | 161 web · 23 exch · 24 doc | named by the owner; **24 document values flip** |
+
+**Removed from E-1, F-22 (2026-09-08):** `anchor_investors.lock_in_50_percent_date` and
+`lock_in_remaining_date` (contract § not applicable — these have no exchange or document filing of
+their own). They are class **C**, computed as `allotment_date + 30 days` and `allotment_date + 90
+days` per the SEBI circular — **that regulation reading is UNVERIFIED against the circular text**
+and should be confirmed before this design is built from. Separately: **the live scraper does not
+compute them this way today.** `scraper/src/scrapers/anchor-investors-scraper.ts:302` derives both
+dates from the anchor **bid** date instead of the allotment date, which lands roughly a week early —
+an existing production bug, tracked separately, not fixed by this design.
 
 **Deliberately NOT in E-1, and why.** Two fields sit in the same printed table but cannot go stale,
 because they hold a **time of day rather than a date**: when a window is extended the date moves,
@@ -354,7 +372,7 @@ disagreements and bury the real ones. Verification for E-1 is the other exchange
 arithmetic (`open ≤ close < allotment < refund ≤ credit < listing`, and `listing ≤ close + 3`
 working days).
 
-**E-1 is counted, not hidden.** Check 4.3b reports the twelve E-1 fields as a fixed, named exclusion
+**E-1 is counted, not hidden.** Check 4.3b reports the ten E-1 fields as a fixed, named exclusion
 alongside the round-1 yield, so "100% of document-owned fields" is always read against a visible
 list of what was excluded and why. If that list ever grows without a decision recorded here, check
 4.6 alarms.
@@ -496,7 +514,7 @@ event wins on read.
 | 132 | `anchor_investors.total_shares_offered` | 2 | D | DOC | — | — | count keep | — | `= Σ investor_list.shares ±0` | internal |
 | 133 | `anchor_investors.total_amount_raised` | 2 | D | DOC | — | — | crore (keep) | — | `= Σ investor_list.amount ±0.5%`; `= shares × cap ±0.5%` | internal |
 | 134 | `anchor_investors.anchor_investors_count` | 2 | D | DOC | — | — | keep | — | `= len(investor_list)` | internal |
-| 135–136 | `anchor_investors.lock_in_*_date` | 2 each | **T** | **NSE** | **BSE** | CG | keep | — | 50% date ≈ allotment + 30d; remaining ≈ +90d — **recomputed whenever allotment_date moves** | internal date arithmetic. **Named exception E-1** — they move with field 4 |
+| 135–136 | `anchor_investors.lock_in_*_date` | 2 each | **C** | — | — | — | keep | — | `= allotment_date + 30d / + 90d` (SEBI circular, **UNVERIFIED** against the circular text) | derived, not sourced — **reclassed out of E-1, F-22 (2026-09-08)**; the live scraper computes both from `bid_date` instead of `allotment_date` (`anchor-investors-scraper.ts:302`), ~1 week early — a production bug, tracked separately |
 | 137 | `anchor_investors.investor_list` | 2 | D | DOC | — | — | amounts **→ Cr** | — | Σ `percent_of_issue` ≤ 100 | internal |
 
 ### 1.8 `documents` — the filing register (15 live fields)
@@ -571,6 +589,41 @@ Written once here rather than duplicated into every row.
 | **BUYBACK / TENDER** | 17 | Corporate actions, not offerings. They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 `offering_type` is the guard; §4.6 gives it a check. |
 | **FPO** | **0 today** | The brief asked for follow-on offers. **There are none on production.** The rule is written and not exercised: no draft prospectus stage, so rank 1 is the RHP or prospectus directly; everything else follows mainboard. Because no row exercises it, it carries a higher risk of being wrong than any other line in this table. |
 
+### 1.12 Retired fields — never write these
+
+Closing F-33. The public API ships 19 fields that are `null` on all 327 production IPOs, plus the
+`ipos` table carries 6 columns that are not even in `schema.ts` — orphaned, unreachable from Drizzle,
+readable only by raw SQL. None of these 25 belongs in the pull loop. Each is a stale mirror of a
+column that now lives, correctly, in a child table (`subscriptions`, `gmp_records` or
+`listing_performance`); writing to the old name would resurrect a duplicate the rest of the codebase
+has already moved past.
+
+**19 API-response fields, always null — mirrors of a child table:**
+
+| Field (API response) | Mirrors | Never write it because |
+|---|---|---|
+| `rating`, `ratingRationale` | *(nothing — no equivalent field exists anywhere)* | dead: no scraper, no table, no plan to build one |
+| `subscriptionRetail`, `subscriptionHni`, `subscriptionQib`, `subscriptionTotal` | `subscriptions.retail_subscription` / `nii_subscription` / `qib_subscription` / `total_subscription` | the real, live values are in `subscriptions`; these are a pre-migration flattening that was never removed from the response shape |
+| `gmpPrice`, `gmpPercentageHistorical`, `gmpUpdatedAtHistorical` | `gmp_records.gmp` / `.gmp_percentage` / `.timestamp` | same class — flattened historical snapshot, superseded by the per-timestamp table |
+| `listingPriceHistorical`, `listingGainPercentage`, `listingGainAmount`, `listingDateHistorical` | `listing_performance.listing_price` / `.listing_gain_percent` / (amount is derivable) / `.listing_date` | same class |
+| `currentPrice`, `currentGainPercentage`, `currentGainAmount`, `currentPriceUpdatedAt` | `listing_performance.current_price` / `.current_gain_percent` / (derivable) / `.last_updated` | same class |
+| `historicalDataSource`, `historicalDataScrapedAt` | `listing_performance.data_source` / `.last_updated` | same class |
+
+**6 orphan `ipos` columns — not in `schema.ts`, unreachable by the app, readable only by raw SQL:**
+
+`price_band_low`, `price_band_high` (mirror `ipos.price_range_min` / `_max`), `exchange` (mirror
+`ipos.listing_exchanges`), `gmp`, `gmp_percentage`, `gmp_updated_at` (mirror the three `gmp_records`
+fields above). Nothing in the application can write or read these through the ORM; they are pure
+database drift, left behind by an earlier schema shape.
+
+**The fix is not part of this design's write path — it is a two-step cleanup, sequenced so nothing
+breaks before its replacement is confirmed live:** (1) drop the 19 fields from the API response shape
+once the corresponding child-table field is confirmed populated and read by every consumer; (2) drop
+the 6 orphan columns from the database in a **gated migration**
+(`web/drizzle/migrations/_gated/`, per the CLAUDE.md troubleshooting table — destructive DDL, owner
+sign-off required, never added to `meta/_journal.json`). Until both steps land, the pull loop simply
+never targets any of these 25 — they are not in Appendix A, and they should stay out of it.
+
 ---
 
 ## 2. How we go and get it — the pull loop
@@ -584,15 +637,80 @@ Anything not cited is a proposal, not a fact. That rule exists because the first
 section asserted seven things about our own code that were false, and an implementer who trusted
 them would have built the wrong thing.
 
-### 2.1 What runs, and when
+### 2.1 What runs, and when — D-13 is the decision; this section only adds to it
 
-Discovery already runs four times a day — 08:30, 11:00, 14:00, 17:30 IST
-(`scraper/src/scheduler/due-step-cycle.ts:15`). The pull walk runs in those same four slots, plus
-whenever a document for a phase-1 IPO reaches `EXTRACTED`. It does not run on every wake.
+**The cadence is not this design's to invent.** It was decided by the owner on 2026-09-03 as **D-13**
+(`docs/walks/2026-09-02-deepa-pipeline-walk.md`, decision table) and its conformance is recorded in
+`docs/specs/per-ipo-due-step-pipeline.md` §5.1. Those two are the source of truth. Restated here only
+as far as the pull loop depends on it:
 
-Live figures — subscription, demand graph, grey-market premium — keep running on every in-hours wake,
-but only for OPEN IPOs. Measured: **6 OPEN, 13 UPCOMING**. So the expensive walk touches 19 IPOs four
-times a day, and the cheap live poll touches 6.
+| Work | Cadence (D-13) | Where it lives |
+|---|---|---|
+| Discovery | **4× a day — 08:30, 11:00, 14:00, 17:30 IST** | `due-step-cycle.ts:15` |
+| Due list | with discovery and after any filing — **not every 30 minutes** | `due-step-cycle.ts` |
+| Live numbers | every wake **in market hours, Mon–Fri 10:00–17:00 IST, OPEN IPOs only** | `due-step-cycle.ts:81-85`, `index.ts:343` |
+| Aggregators | once per filing + daily while open | `index.ts:180,346-370` |
+| Sat / Sun / NSE holiday | only UPCOMING/PRE_OPEN/OPEN candidates do network work | `document-cycle-calendar-gate.ts` |
+
+**The pull walk runs in the four discovery slots**, plus whenever a document for a phase-1 IPO
+reaches `EXTRACTED`. It does not run on every wake. Measured: **6 OPEN, 13 UPCOMING** — so the
+expensive walk touches 19 IPOs four times a day, and the cheap live poll touches 6.
+
+#### 2.1.1 One correction to how D-13 was built: grey-market premium is gated with subscription, and should not be
+
+D-13 said *"live numbers"*. The implementation put **subscription, demand graph and GMP behind one
+market-hours gate** (`scraper/src/index.ts:343` runs `live:GMP` only inside
+`isMarketHoursIST`). Those three do not have the same shape:
+
+- **Subscription and the demand graph only exist during bidding hours.** Gating them is correct.
+- **The grey market is an informal market that is most active in the evening**, and it trades at
+  weekends. Gating it to 10:00–17:00 weekdays freezes the number exactly when readers look at it.
+
+**Measured on production, 2026-09-08 22:03 IST:**
+
+| | Before the scheduler (pre-04 Sep) | After |
+|---|---:|---:|
+| GMP fetches on a Saturday or Sunday | 2,045 | **0** |
+
+and the newest `gmp_records` row was **16:02 IST while it was 22:03** — six hours stale, and it stays
+that way until 10:00 the next morning. `timestamp` is our own fetch clock, not the source's
+(`investorgain-gmp-orchestrator-v2.ts:536` sets `timestamp: new Date()`), so this is our gap, not
+InvestorGain's. Over a Friday-to-Monday weekend the published figure reaches **about 65 hours old**.
+
+**Proposed change, for the owner's word:** split the live step. Subscription and demand graph stay
+inside the market-hours gate. **GMP runs on every wake while an IPO is UPCOMING or OPEN, including
+evenings, weekends and holidays.** It is one HTTP request against one page and it is the single
+most-read number on an IPO page outside market hours.
+
+This is a change to D-13's *implementation*, not to D-13. Recorded as finding **F-41**.
+
+#### 2.1.2 An open question: nothing runs between 17:30 and 08:30
+
+Discovery has a **15-hour hole overnight**. Price band advertisements are commonly filed in the
+evening for an issue that opens the next morning; if that is the real pattern, the site shows no
+price band for the whole evening before an issue opens — the window in which people actually
+research it.
+
+**This is a hypothesis, not a measured fact, and it cannot be measured from our own data**: discovery
+only runs at those four slots, so our record of when a document "appeared" is a record of when we
+looked. A fifth slot around 21:00 IST would close it cheaply. **Owner's call, because the filing-time
+pattern is domain knowledge our data cannot supply.**
+
+#### 2.1.3 A contradiction with an existing approved spec, surfaced rather than buried
+
+`docs/specs/per-ipo-due-step-pipeline.md` §6 (source tiers S-03/S-04, decided 2026-09-03) says tier-1a
+filings are the truth for *"every static field (terms, **timeline**, financials, promoters,
+intermediaries, objects, risks)"*, and that a tier-1b exchange value must never override a filing
+value.
+
+**Exception E-1 in this design does the opposite for the bidding timetable** — it puts NSE and BSE
+above the document for open, close, allotment and listing dates, because a printed advertisement is
+never reissued when a window is extended (W-117).
+
+Both have a real reason. They cannot both stand. The design's position is that E-1 is the narrower
+and later rule and should win **for the twelve timetable fields only**, leaving §6 intact everywhere
+else — but that is a change to an approved spec and it is the owner's to confirm. Until then §6 and
+E-1 disagree in writing, and no implementer should be asked to guess which one governs.
 
 ### 2.2 The process this has to survive, which the first draft ignored
 
@@ -854,7 +972,7 @@ So every check below obeys four rules:
 | `PULL-FROZEN` | `SUPPLIED` rows whose `chosen_document_id` has been superseded | **0** | any non-zero — the guard on §2.5 |
 | `PULL-ADMIN` | fields skipped for admin reasons with no live protection row | **0** | any non-zero — the guard on §2.7 |
 | `PULL-TYPE` | plan rows whose resolved ranks do not match the IPO's current type; IPOs with a null segment | 0 / 0 | any non-zero |
-| `E1-SOURCE` | for the twelve E-1 fields, `field_sources.source` is never `DRHP` | true | any E-1 field written by the document path — **asserts the outcome, not the declared intent** |
+| `E1-SOURCE` | for the ten E-1 fields, `field_sources.source` is never `DRHP` | true | any E-1 field written by the document path — **asserts the outcome, not the declared intent** |
 | `REREAD-RECEIPT` | re-reads with a receipt hashed this cycle ÷ re-reads recorded | 1.0 | below 1.0 — the guard on §3.2 |
 | `REREAD-VERDICT` | share of re-reads ending `verified_against_document` over 7 days | below 0.95 | at or above 0.95 — a source that is never wrong is a source never actually consulted |
 | `REREAD-LATENCY` | oldest actionable disagreement with no re-read attempt | under 48 h | over 48 h, listed by IPO and field |
@@ -957,15 +1075,29 @@ Answered structurally rather than by a patch, because the pull model makes it fa
 
 ### 5.4 O-4 — the unextracted backlog, drained without starving a live IPO
 
+**Phase-1 note:** the backlog tier and its nightly window are **phase 2** (F-35 — no backlog drain in
+phase 1; the 2-vCPU box already took a 522 outage from two concurrent extractors). Phase 1 only ever
+extracts a document belonging to one of the 19 open/upcoming IPOs, on demand, inside the normal wake
+budget. Everything below describes the target state this design is building toward; it does not run
+in phase 1.
+
 **Re-measured this session: 176 unextracted, not 172.** The three causes hold:
 
 | Cause | Documents | The design's answer |
 |---|---:|---|
 | No extractor exists for the type | 78 | Build two: the **ratios / basis-for-offer-price** document (32 pending — it carries the KPIs, the WACA and the peer set, all rank-1 document fields in §1) and the **basis-of-allotment advertisement** (1, carries the final allotment). **Deliberately leave unread:** sample application forms (14), bidding centres (8), security parameters (23) — and say so in the manifest, so they report as `NOT_APPLICABLE` rather than as a backlog forever. |
-| Budget of 3 filings per cycle | 91 | Demand-ordered allocation (§2.7) plus the **backlog tier's own nightly window** (§2.3). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here. |
-| 10-minute extraction cap | the Skyways class | A separate, longer budget for large or scanned documents, run in the backlog window only, where a 40-minute extraction costs nothing. The live path keeps its 10-minute cap so it cannot blow the wake budget. |
+| Budget of 3 filings per cycle | 91 | Demand-ordered allocation (§2.7) plus the **backlog tier's own nightly window** (§2.3, **phase 2**). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here. |
+| 10-minute extraction cap | the Skyways class | A separate, longer budget for large or scanned documents, run in the backlog window only (**phase 2**), where a 40-minute extraction costs nothing. The live path keeps its 10-minute cap so it cannot blow the wake budget. |
 
 O-4 is already marked APPROVED by the owner, so this section is the *how*, not a request.
+
+**F-27 — the basis-of-allotment extractor has nowhere to write.** The extractor named in the table
+above (1 pending document) is scheduled to build, but no table or field group in this design holds
+its output. The missing field group, named so it is not silently dropped when M2/M3 lands: **allotment
+ratio, applications received, valid applications, shares allotted per category, oversubscription per
+category.** This needs a schema decision (a new table, most likely `allotment_results`, mirroring the
+shape of `ipo_valuation`) before the extractor is worth building — building the extractor first would
+produce data with nowhere to land.
 
 ### 5.5 O-5 — the document outranks websites: what is inherited and what remains
 
@@ -976,12 +1108,15 @@ deliberately keeping the exchanges first (W-117).
 
 **What remains after it, and why the ranking alone was never going to be enough:**
 
-1. **130 of 194 published fields still have no ranking at all** (§0.6). O-5 raised the document on
-   the fields the matrix knows about; the matrix does not know about two thirds of the site.
+1. **130 of 194 published fields still have no ranking at all** (§0.6, measured against the live
+   `field-priority-matrix.ts`, a different artifact from this design's Appendix A). Appendix A now
+   ranks all 240 — but **it resolves only 3 of the 11 offering types phase 1 actually needs
+   (MAINBOARD, SME-BSE, SME-NSE)**; the other 8 (F-11) are DROPPED-BY-SCOPE and **reopen for phase 2**.
 2. **The staging-cycle proof for 9db4529d is still owed.** It is listed at 90%, not 100%, for that
    reason.
 3. **Nothing re-sources the existing rows.** The flip changes who wins the *next* write. 91% of
-   today's data was written before it. That is §6.
+   today's data was written before it. That is §6 — **entirely phase 2** under the owner's
+   2026-09-08 scope cut; phase 1 touches no closed IPO's already-written rows.
 4. **The duplicate-key problem** (§0.6): 13 matrix keys in snake_case match nothing. They should be
    deleted in the same change that builds the plan, or they will quietly look like coverage.
 
@@ -1015,7 +1150,15 @@ for it until the deterministic 119 are actually being read.
 
 ---
 
-## 6. Migration: re-sourcing 91% of the data from its own documents
+## 6. Migration: re-sourcing 91% of the data from its own documents — phase 2
+
+**This entire section is phase 2.** The owner's 2026-09-08 scope cut is phase 1 = open + upcoming
+IPOs only (19 today); no closed IPO is touched, and closed IPOs are picked up afterward one at a
+time, newest close date first — the opposite of a bulk migration. Everything below describes
+re-sourcing the **existing, already-written rows of already-closed IPOs**, which by definition falls
+outside phase 1. **Findings F-09, F-10, F-11, F-24, F-25, F-30, F-31 and F-35 are DROPPED-BY-SCOPE for
+phase 1 and reopen the moment phase 2 starts** — none of them is fixed, only deferred, and none of
+this section should be read as ready to build against.
 
 ### 6.1 What we are actually facing
 
@@ -1106,7 +1249,11 @@ Everything from 4 onward is one design and should not be half-built.
 
 1. **Whether the old PDFs are still downloadable.** M1 exists because I do not know, and the answer
    decides whether the 90% target applies to the whole site or only to IPOs from here forward. I
-   would not promise the number before M1 reports.
+   would not promise the number before M1 reports. **This was the single biggest unknown in the whole
+   document, and the 2026-09-08 phase-1 scope cut defers it entirely** — M1 is inside §6, which is now
+   phase 2 (no closed IPO, no re-download of purged documents, in phase 1). Phase 1 only ever reads a
+   document that is still on disk for one of today's 19 open/upcoming IPOs, so this unknown does not
+   block phase-1 work — it blocks phase 2, and stays unanswered until phase 2 starts.
 2. **Whether `ipo_field_plan` should be a new table or columns on `field_sources`.** I have argued
    for the table. It is a real decision with a maintenance cost either way, and I would revisit it
    with the code in front of me.
@@ -1140,13 +1287,16 @@ Everything from 4 onward is one design and should not be half-built.
 
 7. ~~The timeline fields~~ **RESOLVED by the owner, 2026-09-08.** They stay on the exchanges as
    named exception E-1, NSE first and BSE second, and the owner then directed that the rule apply to
-   the **full timetable family**, not only the five he first named. E-1 is now **twelve fields**
-   (§1.2.1), established by testing every date- and schedule-like field among the 194 against one
-   question: does this value change when the bidding window changes?
+   the **full timetable family**, not only the five he first named. E-1 was established at
+   **twelve fields** by testing every date- and schedule-like field among the 194 against one
+   question — does this value change when the bidding window changes? — then reduced to **ten**
+   closing F-22 (2026-09-08): the two anchor lock-in dates are **derived** (`allotment_date + 30d /
+   + 90d`), not independently sourced, so they were never really E-1 members and are now class C
+   (§1.2.1).
 
-   The three I had missed are all in `anchor_investors` — the anchor bidding date and the two
-   lock-in expiry dates, which are computed off the allotment date and are therefore wrong by
-   exactly the amount the allotment date moves.
+   The three I had missed at the time were all in `anchor_investors` — the anchor bidding date and
+   the two lock-in expiry dates, which move with the allotment date. Two of those three (the lock-ins)
+   are the ones since reclassed out of E-1 by F-22.
 
    **Two judgement calls I made inside that instruction, both flagged rather than silent:**
    `upi_cutoff_time` and `bid_windows` are in the same printed table but hold a **time of day, not a
@@ -1178,18 +1328,24 @@ from the offer documents" is a percentage *of*.
 
 ---
 
-## Appendix A — the complete per-field source resolution (all 194 fields, all IPO types)
+## Appendix A — the complete per-field source resolution (all 240 fields, all IPO types)
 
 **This appendix is the implementable form of §1 and, where they differ, it wins.** §1 explains the
 reasoning per group; some of its rows resolve a whole table in one sentence ("all of `financial_data`
 is rank 1 DOC, rank 2 Chittorgarh, rank 3 Moneycontrol"), which is readable but not something code
-can be built from. Every one of the 194 fields below carries its own three sources, its own per-type
+can be built from. Every one of the 240 fields below carries its own three sources, its own per-type
 variation, and — where there is no rank 2 or 3 — the reason there is none, so a blank is never
 mistaken for an omission.
 
-Generated from a single specification and **checked field-for-field against production**: 194 in the
-spec, 194 populated on production, zero difference in either direction. That check is what makes this
-appendix trustworthy rather than merely long, and it must be re-run whenever a field is added.
+Generated from a single specification: **240 fields — 194 populated on production today, plus 46
+published columns the offer document prints that hold no data at all today** (`neverPopulated: true`
+in the spec), added closing F-13. Scoping this appendix to only-what's-populated was backwards: a
+field is empty precisely because no document was ever read for it. Every populated production field
+is still in the spec, zero difference. The 46 never-populated fields cannot be checked against
+production the same way — there is nothing on production to check against — so their source ranks are
+asserted from the extraction contract (`docs/reviews/wp-c-extraction-contract.md` §1) and stay
+unverified until the first document actually populates one. This must be re-run whenever a field is
+added.
 
 ### A.0 The verification this appendix passed
 
@@ -1198,7 +1354,8 @@ reading the document would not have shown. The current state:
 
 | Check | Result |
 |---|---|
-| Every spec field exists on production, and every populated production field is in the spec | **194 = 194, zero difference either way** |
+| Every populated production field is in the spec, zero difference | **194 = 194** |
+| Published columns the document prints with zero rows today (F-13), added to the spec | **46**, each flagged `neverPopulated: true` |
 | Sourced fields with fewer than three sources that give **no reason** | **0** |
 | Fields where SME silently loses a source mainboard has | **0** |
 | Exchange-specific values fetchable for a venue the stock is not listed on | **0** |
@@ -1207,16 +1364,17 @@ reading the document would not have shown. The current state:
 
 | | Fields |
 |---|---:|
-| Three sources | **113** |
-| Two sources, reason stated (§A.3 group 6) | 5 |
-| One source, reason stated (§A.3 groups 1–5) | 35 |
-| No source — computed (class C) or written by our own pipeline (class I) | 41 |
-| **Total** | **194** |
+| Three sources | **97** |
+| Two sources, reason stated (§A.3) | 22 |
+| One source, reason stated (§A.3) | 71 |
+| No source — computed (class C) or written by our own pipeline (class I) | 50 |
+| **Total** | **240** |
 
-**Not every sourced field has three, and they never will.** 40 of them have fewer because a
-second publisher does not exist, or publishes a *different* number that would be wrong to substitute
-— every one is listed with its reason in **§A.3**. Claiming three sources for the anchor investor
-list or for share counts at the floor price would mean inventing one.
+**Not every sourced field has three, and they never will.** 93 of them have fewer (22 two-source, 71
+one-source) because a second publisher does not exist, or publishes a *different* number that would
+be wrong to substitute — every one carries its reason inline in this appendix's Note column, and the
+original 40 (the fields present before this session) are narrated by name in **§A.3**. Claiming three
+sources for the anchor investor list or for share counts at the floor price would mean inventing one.
 
 **Three rounds of defects this review caught.** All were in versions already committed, and none was
 visible by reading the document:
@@ -1245,10 +1403,24 @@ visible by reading the document:
 
    Mainboard fields with three sources went **68 → 103 → 112** across the three passes.
 
-**Class counts (authoritative, superseding the estimate in §1.1): D 117 · T 12 · X 13 · M 4 · W 1 ·
-C 11 · I 36 = 194.** Of these, **55 fields have no rank 2 at all** — the reason is stated on each row
-and is almost always "no website or exchange publishes this" (CIN, the promoter tables, risk
-factors, the anchor book, the valuation table). That is a finished answer, not a gap.
+4. **The pool() resolver silently overrode a field's own `only:` declaration.** Found and fixed
+   2026-09-08 while closing F-13. Any field in a WEB_OK table (`ipos`, `ipo_details`,
+   `financial_data`, `peer_companies`, `subscriptions`, `listing_performance`, `registrars`,
+   `ipo_intermediaries`, `gmp_records`) that carried an explicit `only:` reason for having no rank 2
+   still got Chittorgarh/Moneycontrol auto-appended, so the generated row contradicted its own Note
+   column — `ipo_details.compliance_officer` read `DOC · CG · MC` next to the note "no rank 2: named
+   only in the filing". Ten already-committed fields were wrong this way (`ipos.cin`,
+   `compliance_officer`/`_phone`/`_email`, `promoter_shares_held`, `sebi_regulation_cited`,
+   `promoter_group_transactions_since_drhp`, `gmp_records.gmp`,
+   `listing_performance.current_price_bse`/`_nse`); the 46 F-13 additions would have tripled it.
+   `pool()` now returns early when `f.o.only` is set — mainboard three-source count corrected
+   **112 → 97** for that reason alone (before the 46 new fields' own contribution).
+
+**Class counts (authoritative, superseding the estimate in §1.1): D 162 · T 10 · X 13 · M 4 · W 1 ·
+C 13 · I 37 = 240.** Of these, **71 fields have no rank 2 at all** (the one-source row above) — the
+reason is stated on each row and is almost always "no website or exchange publishes this" (CIN, the
+promoter tables, risk factors, the anchor book, the valuation table, and now the 46 F-13 fields).
+That is a finished answer, not a gap.
 
 **Reading the columns.** `R1/R2/R3` are the mainboard IPO order. `SME-BSE` and `SME-NSE` give the
 resolved order for those two types, where the absent exchange is dropped rather than left as a dead
@@ -1262,7 +1434,7 @@ set is dominated by the prospectus (64). So for SME the rank-1 document order is
 the price band, share counts and market cap come from the prospectus. The earlier draft assumed the
 advertisement existed everywhere; it does not.
 
-### A.1 The 194 fields
+### A.1 The 240 fields
 
 | # | Field | Cls | R1 | R2 | R3 | SME-BSE | SME-NSE | Doc § | Note / why no lower rank |
 |---:|---|---|---|---|---|---|---|---|---|
@@ -1297,7 +1469,7 @@ advertisement existed everywhere; it does not.
 | 29 | `ipos.bse_payload_lead_manager_count` | I | BSE | — | — | BSE · — · — | BSE · — · — | — | no rank 2: BSE payload cross-check only |
 | 30 | `ipos.company_website` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | E7 |  |
 | 31 | `ipos.verifier_url` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 32 | `ipos.cin` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | E7 | no rank 2: no website or exchange publishes the CIN |
+| 32 | `ipos.cin` | D | DOC | — | — | DOC · — · — | DOC · — · — | E7 | no rank 2: no website or exchange publishes the CIN |
 | 33 | `ipo_details.company_description` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | F1 |  |
 | 34 | `ipo_details.issue_type` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | A11 |  |
 | 35 | `ipo_details.fresh_issue` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | A5 |  |
@@ -1309,163 +1481,214 @@ advertisement existed everywhere; it does not.
 | 41 | `ipo_details.exchanges` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A15 |  |
 | 42 | `ipo_details.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 43 | `ipo_details.last_verified_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 44 | `ipo_details.compliance_officer` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | E4 | no rank 2: named only in the filing |
-| 45 | `ipo_details.compliance_officer_phone` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | E4 | no rank 2: named only in the filing |
-| 46 | `ipo_details.compliance_officer_email` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | E4 | no rank 2: named only in the filing |
+| 44 | `ipo_details.compliance_officer` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
+| 45 | `ipo_details.compliance_officer_phone` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
+| 46 | `ipo_details.compliance_officer_email` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
 | 47 | `ipo_details.upi_cutoff_time` | D | DOC | NSE | CG | DOC · CG · MC | DOC · NSE · CG | B7 | clock time, not a date — deliberately NOT in E-1 |
 | 48 | `ipo_details.designated_exchange` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A14 |  |
 | 49 | `ipo_details.lot_multiple` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | A3 |  |
 | 50 | `ipo_details.allocation_pct` | D | DOC | NSE | CG | DOC · CG · MC | DOC · NSE · CG | A13 |  |
-| 51 | `ipo_details.pre_ipo_placement` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D6 | no rank 2: disclosure exists only in the filing |
+| 51 | `ipo_details.pre_ipo_placement` | D | DOC | — | — | DOC · — · — | DOC · — · — | D6 | no rank 2: disclosure exists only in the filing; stored as a boolean today, but a pre-IPO placement reduces the fresh issue and should carry an amount — issue-size fields are provisional until sourced from a PROSPECTUS |
 | 52 | `ipo_details.bid_windows` | D | DOC | NSE | CG | DOC · CG · MC | DOC · NSE · CG | B8 | clock windows, not dates — deliberately NOT in E-1 |
-| 53 | `ipo_details.promoter_shares_held` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D2 | no rank 2: capital-structure table only |
-| 54 | `ipo_details.sebi_regulation_cited` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A12 | no rank 2: printed only on the advertisement |
-| 55 | `ipo_details.promoter_group_transactions_since_drhp` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D7 | no rank 2: disclosure exists only in the filing |
-| 56 | `financial_data.revenue_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 57 | `financial_data.revenue_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 58 | `financial_data.revenue_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 59 | `financial_data.profit_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 60 | `financial_data.profit_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 61 | `financial_data.profit_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 62 | `financial_data.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 63 | `financial_data.pe_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A9 |  |
-| 64 | `financial_data.eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
-| 65 | `financial_data.roe` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
-| 66 | `financial_data.debt_to_equity` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
-| 67 | `financial_data.reserves_and_surplus` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 68 | `financial_data.total_assets` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 69 | `financial_data.total_borrowing` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 70 | `financial_data.promoter_holding_pre_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
-| 71 | `financial_data.promoter_holding_post_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
-| 72 | `financial_data.market_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 |  |
-| 73 | `financial_data.pre_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
-| 74 | `financial_data.post_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
-| 75 | `financial_data.ronw` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A10 |  |
-| 76 | `financial_data.ebitda_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 77 | `financial_data.ebitda_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 78 | `financial_data.ebitda_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 79 | `financial_data.total_income_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 80 | `financial_data.total_income_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 81 | `financial_data.total_income_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 82 | `financial_statements.fiscal_year` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
-| 83 | `financial_statements.revenue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
-| 84 | `financial_statements.total_income` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
-| 85 | `financial_statements.ebitda` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
-| 86 | `financial_statements.pat` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
-| 87 | `financial_statements.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 | CG gives the most-recent year only, not the full series |
-| 88 | `financial_statements.basis` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 89 | `financial_statements.unit` | D | DOC | — | — | DOC · — · — | DOC · — · — | C7 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 90 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 91 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 92 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 93 | `ipo_valuation.price_floor` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_min |
-| 94 | `ipo_valuation.price_cap` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_max |
-| 95 | `ipo_valuation.mcap_at_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 | CG prints a single market cap, which is the at-cap figure |
-| 96 | `ipo_valuation.pe_at_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A9 | CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap) |
-| 97 | `ipo_valuation.mcap_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A8 | no rank 2: CG prints only ONE market cap (the at-cap one); no website prints the value at the floor price |
-| 98 | `ipo_valuation.pe_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: CG prints only ONE P/E (post-issue, at cap); no website prints the value at the floor price |
-| 99 | `ipo_valuation.ronw_weighted_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | A10 | no rank 2: CG prints a single-year RoNW; the 3-year WEIGHTED average is a different metric and appears only in the advertisement |
-| 100 | `ipo_valuation.pricing_event` | I | DOC | — | — | DOC · — · — | DOC · — · — | — | no rank 2: not a sourced value - it records WHICH document produced the row (PRICE_BAND_AD vs PROSPECTUS) |
-| 101 | `ipo_valuation.shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
-| 102 | `ipo_valuation.shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
-| 103 | `ipo_valuation.fresh_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
-| 104 | `ipo_valuation.fresh_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
-| 105 | `ipo_valuation.ofs_shares` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
-| 106 | `ipo_valuation.total_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
-| 107 | `ipo_valuation.total_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
-| 108 | `ipo_valuation.face_value_multiple_floor` | C | — | — | — | — · — · — | — · — · — | — | computed: price_floor ÷ face_value |
-| 109 | `ipo_valuation.face_value_multiple_cap` | C | — | — | — | — · — · — | — · — · — | — | computed: price_cap ÷ face_value |
-| 110 | `promoters.name` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |
-| 111 | `promoters.waca` | D | DOC | — | — | DOC · — · — | DOC · — · — | D3 | no rank 2: basis-for-offer-price table only |
-| 112 | `promoters.is_promoter_group` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |
-| 113 | `ipo_intermediaries.role` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | E1–E6 |  |
-| 114 | `ipo_intermediaries.name` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | E1–E6 |  |
-| 115 | `ipo_risk_factors.seq` | D | DOC | — | — | DOC · — · — | DOC · — · — | F2 | no rank 2: risk factors exist only in the filing |
-| 116 | `ipo_risk_factors.heading` | D | DOC | — | — | DOC · — · — | DOC · — · — | F2 | no rank 2: risk factors exist only in the filing |
-| 117 | `brlm_track_record.brlm_name` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
-| 118 | `brlm_track_record.as_of_date` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: historical, never moves |
-| 119 | `brlm_track_record.issues_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
-| 120 | `brlm_track_record.closed_below_issue_price` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
-| 121 | `peer_companies.company_name` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 122 | `peer_companies.is_listed` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 123 | `peer_companies.pe_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 124 | `peer_companies.eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 125 | `peer_companies.diluted_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 126 | `peer_companies.ronw` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 127 | `peer_companies.nav` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 128 | `peer_companies.pbv_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 129 | `peer_companies.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 130 | `peer_companies.last_updated` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 131 | `anchor_investors.bid_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 132 | `anchor_investors.total_shares_offered` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
-| 133 | `anchor_investors.total_amount_raised` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
-| 134 | `anchor_investors.anchor_investors_count` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
-| 135 | `anchor_investors.investor_list` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
-| 136 | `anchor_investors.lock_in_50_percent_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 137 | `anchor_investors.lock_in_remaining_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 138 | `documents.type` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 139 | `documents.title` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 140 | `documents.url` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 141 | `documents.file_size` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 142 | `documents.uploaded_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 143 | `documents.exchange` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 144 | `documents.media_type` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 145 | `documents.sequence_number` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 146 | `documents.is_active` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 147 | `documents.extraction_status` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 148 | `documents.extracted_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 149 | `documents.extraction_error` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 150 | `documents.retry_count` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 151 | `documents.sha256` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 152 | `documents.filing_date` | D | DOC | BSE | — | DOC · BSE · — | DOC · — · — | B9 | historical — never moves; the doc-type healing rule depends on it |
-| 153 | `subscriptions.timestamp` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 154 | `subscriptions.qib_subscription` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 155 | `subscriptions.nii_subscription` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 156 | `subscriptions.retail_subscription` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 157 | `subscriptions.total_subscription` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 158 | `subscriptions.employee_subscription` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 159 | `subscriptions.b_nii_subscription` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 160 | `subscriptions.s_nii_subscription` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 161 | `subscriptions.total_shares_bid` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 162 | `subscriptions.shares_offered` | X | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: no document can carry a live figure |
-| 163 | `subscriptions.scope` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 164 | `gmp_records.timestamp` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 165 | `gmp_records.gmp` | W | IG | CG | MC | IG · CG · MC | IG · CG · MC | — | no rank 2: grey market has no official source, ever |
-| 166 | `gmp_records.source` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 167 | `gmp_records.gmp_percentage` | C | — | — | — | — · — · — | — · — · — | — | computed: gmp ÷ price_range_max × 100 |
-| 168 | `listing_performance.listing_price` | M | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: post-listing market data |
-| 169 | `listing_performance.issue_price` | C | — | — | — | — · — · — | — · — · — | — | computed: ipos.price_range_max at listing |
-| 170 | `listing_performance.listing_gain_percent` | C | — | — | — | — · — · — | — · — · — | — | computed: (listing − issue) ÷ issue × 100 |
-| 171 | `listing_performance.current_price` | M | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | no rank 2: post-listing market data |
-| 172 | `listing_performance.current_gain_percent` | C | — | — | — | — · — · — | — · — · — | — | computed: (current − issue) ÷ issue × 100 |
-| 173 | `listing_performance.last_updated` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 174 | `listing_performance.current_price_bse` | M | BSE | CG | MC | BSE · CG · MC | N/A · N/A · N/A | — | no rank 2: BSE quote by definition |
-| 175 | `listing_performance.current_price_nse` | M | NSE | CG | MC | N/A · N/A · N/A | NSE · CG · MC | — | no rank 2: NSE quote by definition |
-| 176 | `listing_performance.symbol` | C | — | — | — | — · — · — | — · — · — | — | computed: copy of ipos.symbol |
-| 177 | `listing_performance.company_name` | C | — | — | — | — · — · — | — · — · — | — | computed: copy of ipos.company_name |
-| 178 | `listing_performance.listing_date` | C | — | — | — | — · — · — | — · — · — | — | computed: copy of ipos.listing_date (E-1 sourced) |
-| 179 | `listing_performance.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 180 | `ipo_demand_graph.timestamp` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 181 | `ipo_demand_graph.price_point` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it |
-| 182 | `ipo_demand_graph.is_cut_off` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it |
-| 183 | `ipo_demand_graph.cumulative_quantity` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it |
-| 184 | `ipo_demand_graph.exchange` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it |
-| 185 | `registrars.name` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
-| 186 | `registrars.short_name` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
-| 187 | `registrars.email` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
-| 188 | `registrars.phone` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
-| 189 | `registrars.website` | D | REG | DOC | CG | REG · DOC · CG | REG · DOC · CG | E3 | the registrar itself is authoritative for its own URL |
-| 190 | `registrars.allotment_check_url` | I | REG | — | — | REG · — · — | REG · — · — | — | no rank 2: the registrar owns this URL |
-| 191 | `registrars.address` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
-| 192 | `registrars.active` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
-| 193 | `registrars.allotment_url_healthy` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 194 | `registrars.allotment_url_checked_at` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 53 | `ipo_details.promoter_shares_held` | D | DOC | — | — | DOC · — · — | DOC · — · — | D2 | no rank 2: capital-structure table only |
+| 54 | `ipo_details.sebi_regulation_cited` | D | DOC | — | — | DOC · — · — | DOC · — · — | A12 | no rank 2: printed only on the advertisement |
+| 55 | `ipo_details.promoter_group_transactions_since_drhp` | D | DOC | — | — | DOC · — · — | DOC · — · — | D7 | no rank 2: disclosure exists only in the filing |
+| 56 | `ipo_details.cut_off_price` | D | DOC | — | — | DOC · — · — | DOC · — · — | A13 | no rank 2: the cut-off price is fixed only in the offer document; no website republishes it separately from the price band |
+| 57 | `ipo_details.min_investment` | D | DOC | — | — | DOC · — · — | DOC · — · — | A13 | no rank 2: a derived investment-amount display, not separately published elsewhere |
+| 58 | `ipo_details.isin` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E7 |  |
+| 59 | `ipo_details.registrar_link` | D | DOC | — | — | DOC · — · — | DOC · — · — | E7 | no rank 2: no website separately publishes the per-IPO registrar link |
+| 60 | `ipo_details.lead_managers` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | E7 |  |
+| 61 | `ipo_details.company_address` | D | DOC | — | — | DOC · — · — | DOC · — · — | E6 | no rank 2: contact/address field — printed only in the filing |
+| 62 | `ipo_details.company_phone` | D | DOC | — | — | DOC · — · — | DOC · — · — | E6 | no rank 2: contact/address field — printed only in the filing |
+| 63 | `ipo_details.company_email` | D | DOC | — | — | DOC · — · — | DOC · — · — | E6 | no rank 2: contact/address field — printed only in the filing |
+| 64 | `ipo_details.company_city` | D | DOC | — | — | DOC · — · — | DOC · — · — | E6 | no rank 2: contact/address field — printed only in the filing |
+| 65 | `ipo_details.company_state` | D | DOC | — | — | DOC · — · — | DOC · — · — | E6 | no rank 2: contact/address field — printed only in the filing |
+| 66 | `ipo_details.company_pincode` | D | DOC | — | — | DOC · — · — | DOC · — · — | E6 | no rank 2: contact/address field — printed only in the filing |
+| 67 | `ipo_details.qib_shares_offered` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A13 | no rank 2: the exchange circular carries the allocation |
+| 68 | `ipo_details.nii_shares_offered` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A13 | no rank 2: the exchange circular carries the allocation |
+| 69 | `ipo_details.retail_shares_offered` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A13 | no rank 2: the exchange circular carries the allocation |
+| 70 | `ipo_details.retail_max_allottees` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
+| 71 | `ipo_details.employee_shares_offered` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
+| 72 | `ipo_details.anchor_shares_offered` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
+| 73 | `ipo_details.max_retail_subscription` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
+| 74 | `ipo_details.max_employee_subscription` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
+| 75 | `ipo_details.employee_discount` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A16 | no rank 2: the exchange circular carries the allocation |
+| 76 | `ipo_details.sponsor_banks` | D | DOC | — | — | DOC · — · — | DOC · — · — | B8 | no rank 2: UPI sponsor bank list is printed only in the filing |
+| 77 | `ipo_details.tick_size` | D | DOC | — | — | DOC · — · — | DOC · — · — | B8 | no rank 2: exchange bidding mechanics parameter printed only in the filing |
+| 78 | `ipo_details.ipo_market_timings` | D | DOC | — | — | DOC · — · — | DOC · — · — | B8 | no rank 2: market timing window printed only in the filing |
+| 79 | `ipo_details.category_details` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A13 | no rank 2: the exchange circular carries the allocation |
+| 80 | `ipo_details.sub_categories_upi` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | B7 | no rank 2: the exchange circular carries the allocation |
+| 81 | `financial_data.revenue_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 82 | `financial_data.revenue_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 83 | `financial_data.revenue_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 84 | `financial_data.profit_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 85 | `financial_data.profit_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 86 | `financial_data.profit_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 87 | `financial_data.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
+| 88 | `financial_data.pe_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A9 |  |
+| 89 | `financial_data.eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
+| 90 | `financial_data.roe` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
+| 91 | `financial_data.debt_to_equity` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
+| 92 | `financial_data.reserves_and_surplus` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
+| 93 | `financial_data.total_assets` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
+| 94 | `financial_data.total_borrowing` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
+| 95 | `financial_data.promoter_holding_pre_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
+| 96 | `financial_data.promoter_holding_post_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
+| 97 | `financial_data.market_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 |  |
+| 98 | `financial_data.pre_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
+| 99 | `financial_data.post_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
+| 100 | `financial_data.ronw` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A10 |  |
+| 101 | `financial_data.ebitda_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 102 | `financial_data.ebitda_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 103 | `financial_data.ebitda_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 104 | `financial_data.total_income_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 105 | `financial_data.total_income_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 106 | `financial_data.total_income_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
+| 107 | `financial_data.current_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |
+| 108 | `financial_data.quick_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |
+| 109 | `financial_data.inventory_turnover` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |
+| 110 | `financial_statements.fiscal_year` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 111 | `financial_statements.revenue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 112 | `financial_statements.total_income` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 113 | `financial_statements.ebitda` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 114 | `financial_statements.pat` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 115 | `financial_statements.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 | CG gives the most-recent year only, not the full series |
+| 116 | `financial_statements.basis` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 117 | `financial_statements.unit` | D | DOC | — | — | DOC · — · — | DOC · — · — | C7 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 118 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 119 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 120 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 121 | `financial_statements.dscr` | D | DOC | — | — | DOC · — · — | DOC · — · — | C4 | no rank 2: DSCR appears only in the Risk Factors financial tables |
+| 122 | `financial_statements.rent_expense` | D | DOC | — | — | DOC · — · — | DOC · — · — | C5 | no rank 2: rent expense line appears only in Other Financial Information |
+| 123 | `ipo_valuation.price_floor` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_min |
+| 124 | `ipo_valuation.price_cap` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_max |
+| 125 | `ipo_valuation.mcap_at_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 | CG prints a single market cap, which is the at-cap figure |
+| 126 | `ipo_valuation.pe_at_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A9 | CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap) |
+| 127 | `ipo_valuation.mcap_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A8 | no rank 2: CG prints only ONE market cap (the at-cap one); no website prints the value at the floor price |
+| 128 | `ipo_valuation.pe_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: CG prints only ONE P/E (post-issue, at cap); no website prints the value at the floor price |
+| 129 | `ipo_valuation.ronw_weighted_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | A10 | no rank 2: CG prints a single-year RoNW; the 3-year WEIGHTED average is a different metric and appears only in the advertisement |
+| 130 | `ipo_valuation.pricing_event` | I | DOC | — | — | DOC · — · — | DOC · — · — | — | no rank 2: not a sourced value - it records WHICH document produced the row (PRICE_BAND_AD vs PROSPECTUS) |
+| 131 | `ipo_valuation.shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 132 | `ipo_valuation.shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 133 | `ipo_valuation.fresh_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 134 | `ipo_valuation.fresh_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 135 | `ipo_valuation.ofs_shares` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 136 | `ipo_valuation.total_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 137 | `ipo_valuation.total_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 138 | `ipo_valuation.face_value_multiple_floor` | C | — | — | — | — · — · — | — · — · — | — | computed: price_floor ÷ face_value |
+| 139 | `ipo_valuation.face_value_multiple_cap` | C | — | — | — | — · — · — | — · — · — | — | computed: price_cap ÷ face_value |
+| 140 | `ipo_valuation.pe_not_ascertainable_reason` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: reason text printed only alongside a null PE in the document |
+| 141 | `promoters.name` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |
+| 142 | `promoters.waca` | D | DOC | — | — | DOC · — · — | DOC · — · — | D3 | no rank 2: basis-for-offer-price table only |
+| 143 | `promoters.is_promoter_group` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |
+| 144 | `ipo_intermediaries.role` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | E1–E6 |  |
+| 145 | `ipo_intermediaries.name` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | E1–E6 |  |
+| 146 | `ipo_risk_factors.seq` | D | DOC | — | — | DOC · — · — | DOC · — · — | F2 | no rank 2: risk factors exist only in the filing |
+| 147 | `ipo_risk_factors.heading` | D | DOC | — | — | DOC · — · — | DOC · — · — | F2 | no rank 2: risk factors exist only in the filing |
+| 148 | `brlm_track_record.brlm_name` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
+| 149 | `brlm_track_record.as_of_date` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: historical, never moves |
+| 150 | `brlm_track_record.issues_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
+| 151 | `brlm_track_record.closed_below_issue_price` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
+| 152 | `promoters.shares_held` | D | DOC | — | — | DOC · — · — | DOC · — · — | D2 | no rank 2: capital-structure table only |
+| 153 | `promoters.waca_last_year` | D | DOC | — | — | DOC · — · — | DOC · — · — | D4 | no rank 2: basis-for-offer-price table only |
+| 154 | `ipo_intermediaries.sebi_reg_no` | D | DOC | — | — | DOC · — · — | DOC · — · — | E3 | no rank 2: SEBI registration number printed only in the intermediaries section |
+| 155 | `ipo_intermediaries.contact_person` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
+| 156 | `ipo_intermediaries.phone` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
+| 157 | `ipo_intermediaries.email` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
+| 158 | `ipo_intermediaries.grievance_email` | D | DOC | — | — | DOC · — · — | DOC · — · — | E4 | no rank 2: named only in the filing |
+| 159 | `ipo_risk_factors.body` | D | DOC | — | — | DOC · — · — | DOC · — · — | F2 | no rank 2: risk factors exist only in the filing |
+| 160 | `ipo_risk_factors.kpis` | D | DOC | — | — | DOC · — · — | DOC · — · — | F3 | no rank 2: concentration KPIs exist only in the filing |
+| 161 | `promoter_acquisition_ranges.period` | D | DOC | — | — | DOC · — · — | DOC · — · — | D5 | no rank 2: the WACA 1y/18m/3y table exists only in the filing |
+| 162 | `promoter_acquisition_ranges.waca` | D | DOC | — | — | DOC · — · — | DOC · — · — | D5 | no rank 2: the WACA 1y/18m/3y table exists only in the filing |
+| 163 | `promoter_acquisition_ranges.cap_multiple` | D | DOC | — | — | DOC · — · — | DOC · — · — | D5 | no rank 2: the WACA 1y/18m/3y table exists only in the filing |
+| 164 | `promoter_acquisition_ranges.price_low` | D | DOC | — | — | DOC · — · — | DOC · — · — | D5 | no rank 2: the WACA 1y/18m/3y table exists only in the filing |
+| 165 | `promoter_acquisition_ranges.price_high` | D | DOC | — | — | DOC · — · — | DOC · — · — | D5 | no rank 2: the WACA 1y/18m/3y table exists only in the filing |
+| 166 | `peer_companies.company_name` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 167 | `peer_companies.is_listed` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 168 | `peer_companies.pe_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 169 | `peer_companies.eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 170 | `peer_companies.diluted_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 171 | `peer_companies.ronw` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 172 | `peer_companies.nav` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 173 | `peer_companies.pbv_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 174 | `peer_companies.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 175 | `peer_companies.last_updated` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 176 | `peer_companies.financial_statement_type` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG does not print which basis (restated/standalone) the peer figures use |
+| 177 | `anchor_investors.bid_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
+| 178 | `anchor_investors.total_shares_offered` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
+| 179 | `anchor_investors.total_amount_raised` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
+| 180 | `anchor_investors.anchor_investors_count` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
+| 181 | `anchor_investors.investor_list` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
+| 182 | `anchor_investors.lock_in_50_percent_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 30 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately |
+| 183 | `anchor_investors.lock_in_remaining_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 90 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately |
+| 184 | `documents.type` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 185 | `documents.title` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 186 | `documents.url` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 187 | `documents.file_size` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 188 | `documents.uploaded_at` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 189 | `documents.exchange` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 190 | `documents.media_type` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 191 | `documents.sequence_number` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 192 | `documents.is_active` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 193 | `documents.extraction_status` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 194 | `documents.extracted_at` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 195 | `documents.extraction_error` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 196 | `documents.retry_count` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 197 | `documents.sha256` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 198 | `documents.filing_date` | D | DOC | BSE | — | DOC · BSE · — | DOC · — · — | B9 | historical — never moves; the doc-type healing rule depends on it |
+| 199 | `subscriptions.timestamp` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 200 | `subscriptions.qib_subscription` | X | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: no document can carry a live figure |
+| 201 | `subscriptions.nii_subscription` | X | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: no document can carry a live figure |
+| 202 | `subscriptions.retail_subscription` | X | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: no document can carry a live figure |
+| 203 | `subscriptions.total_subscription` | X | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: no document can carry a live figure |
+| 204 | `subscriptions.employee_subscription` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: no document can carry a live figure |
+| 205 | `subscriptions.b_nii_subscription` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: no document can carry a live figure |
+| 206 | `subscriptions.s_nii_subscription` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: no document can carry a live figure |
+| 207 | `subscriptions.total_shares_bid` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: no document can carry a live figure |
+| 208 | `subscriptions.shares_offered` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: no document can carry a live figure |
+| 209 | `subscriptions.scope` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 210 | `gmp_records.timestamp` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 211 | `gmp_records.gmp` | W | IG | CG | — | IG · CG · — | IG · CG · — | — | no rank 2: grey market has no official source, ever |
+| 212 | `gmp_records.source` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 213 | `gmp_records.gmp_percentage` | C | — | — | — | — · — · — | — · — · — | — | computed: gmp ÷ price_range_max × 100 |
+| 214 | `listing_performance.listing_price` | M | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: post-listing market data |
+| 215 | `listing_performance.issue_price` | C | — | — | — | — · — · — | — · — · — | — | computed: ipos.price_range_max at listing |
+| 216 | `listing_performance.listing_gain_percent` | C | — | — | — | — · — · — | — · — · — | — | computed: (listing − issue) ÷ issue × 100 |
+| 217 | `listing_performance.current_price` | M | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | no rank 2: post-listing market data |
+| 218 | `listing_performance.current_gain_percent` | C | — | — | — | — · — · — | — · — · — | — | computed: (current − issue) ÷ issue × 100 |
+| 219 | `listing_performance.last_updated` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 220 | `listing_performance.current_price_bse` | M | BSE | — | — | BSE · — · — | N/A · N/A · N/A | — | no rank 2: BSE quote by definition |
+| 221 | `listing_performance.current_price_nse` | M | NSE | — | — | N/A · N/A · N/A | NSE · — · — | — | no rank 2: NSE quote by definition |
+| 222 | `listing_performance.symbol` | C | — | — | — | — · — · — | — · — · — | — | computed: copy of ipos.symbol |
+| 223 | `listing_performance.company_name` | C | — | — | — | — · — · — | — · — · — | — | computed: copy of ipos.company_name |
+| 224 | `listing_performance.listing_date` | C | — | — | — | — · — · — | — · — · — | — | computed: copy of ipos.listing_date (E-1 sourced) |
+| 225 | `listing_performance.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 226 | `ipo_demand_graph.timestamp` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 227 | `ipo_demand_graph.price_point` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book |
+| 228 | `ipo_demand_graph.is_cut_off` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book |
+| 229 | `ipo_demand_graph.cumulative_quantity` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book |
+| 230 | `ipo_demand_graph.exchange` | X | NSE | BSE | — | BSE · — · — | NSE · — · — | — | no rank 2: live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book |
+| 231 | `registrars.name` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
+| 232 | `registrars.short_name` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
+| 233 | `registrars.email` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
+| 234 | `registrars.phone` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
+| 235 | `registrars.website` | D | REG | DOC | CG | REG · DOC · CG | REG · DOC · CG | E3 | the registrar itself is authoritative for its own URL |
+| 236 | `registrars.allotment_check_url` | I | REG | — | — | REG · — · — | REG · — · — | — | no rank 2: the registrar owns this URL |
+| 237 | `registrars.address` | D | DOC | REG | CG | DOC · REG · CG | DOC · REG · CG | E3 |  |
+| 238 | `registrars.active` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
+| 239 | `registrars.allotment_url_healthy` | I | — | — | — | — · — · — | — · — · — | — |  |
+| 240 | `registrars.allotment_url_checked_at` | I | — | — | — | — · — · — | — · — · — | — |  |
 
 ### A.3 Every field with fewer than three sources, and exactly why
 
-Of the fields that are sourced at all, 40 have fewer than three. **None of them is an omission.** Each is here
-because a second or third publisher of that fact does not exist, or exists but publishes a
-*different* number that would be wrong to substitute. Grouped by reason.
+Of the fields that are sourced at all, 93 now have fewer than three (up from 40 — 46 are the F-13
+additions, closing 2026-09-08; the rest is the `pool()` bugfix in A.0's 4th defect, which corrected
+10 fields that had been silently claiming a website fallback they don't have). **None of them is an
+omission.** Each is here because a second or third publisher of that fact does not exist, or exists
+but publishes a *different* number that would be wrong to substitute. **This section still narrates,
+by name, only the original 40** — the 53 added or corrected this session carry their reason inline in
+Appendix A.1's Note column instead of being re-narrated here, to keep this section from ballooning
+every time a field is added. Grouped by reason.
 
 #### Group 1 — the value exists only at a specific price point (11 fields, 1 source)
 
@@ -1540,22 +1763,22 @@ admin-owned or registrar-owned facts that were never in the document's scope.
 
 ### A.2 Offering-type coverage
 
-How many of the 194 fields apply to each offering type. A high `N/A` count is correct, not a
+How many of the 240 fields apply to each offering type. A high `N/A` count is correct, not a
 shortfall: a buyback has no price band, no anchor book and no peer comparison.
 
 | Offering type | IPOs on prod | Fields N/A | Fields with a live resolution |
 |---|---:|---:|---:|
-| FPO | 0 | 0 | 194 |
-| RIGHTS | 8 | 34 | 160 |
-| OFS | 19 | 34 | 160 |
-| NCD | 7 | 74 | 120 |
-| INVITS | 3 | 77 | 117 |
-| REITS | 2 | 77 | 117 |
-| TENDER | 16 | 96 | 98 |
-| BUYBACK | 1 | 96 | 98 |
+| FPO | 0 | 0 | 240 |
+| RIGHTS | 8 | 35 | 205 |
+| OFS | 19 | 35 | 205 |
+| NCD | 7 | 86 | 154 |
+| INVITS | 3 | 91 | 149 |
+| REITS | 2 | 91 | 149 |
+| TENDER | 16 | 112 | 128 |
+| BUYBACK | 1 | 112 | 128 |
 
 
-**FPO shows 194 applicable and 0 N/A because it follows mainboard exactly, minus the draft-prospectus
+**FPO shows 240 applicable and 0 N/A because it follows mainboard exactly, minus the draft-prospectus
 stage. There are zero FPO rows on production, so none of it has ever been exercised — it is the least
 trustworthy column in this appendix and is flagged as such in §7.3 item 3.**
 

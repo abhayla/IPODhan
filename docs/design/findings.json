@@ -152,10 +152,11 @@
       "sev": "CRITICAL",
       "area": "field mapping",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "The mapping is scoped to fields populated today, so document-only facts can never enter",
       "detail": "About 46 document-printed columns are empty and therefore absent from the plan. Confirmed by 2 reviewers.",
-      "fix_in": "§1.1 + Appendix A"
+      "fix_in": "§1.1 + Appendix A",
+      "closed_in": "sections 1.1/1.12 + spec + Appendix A, 2026-09-08"
     },
     {
       "id": "F-14",
@@ -246,19 +247,21 @@
       "sev": "MAJOR",
       "area": "domain",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "Anchor lock-in dates are computed from the bid date; the rule is 30/90 days from allotment",
       "detail": "anchor-investors-scraper.ts:302. An existing production bug of roughly a week. UNVERIFIED against the circular.",
-      "fix_in": "Appendix A + a separate bug fix"
+      "fix_in": "Appendix A + a separate bug fix",
+      "closed_in": "spec + sections 1.2.1/1.7/7.3, 2026-09-08"
     },
     {
       "id": "F-23",
       "sev": "MAJOR",
       "area": "domain",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "Pre-IPO placement and green-shoe change the issue size after the RHP; the design stores a boolean",
-      "fix_in": "Appendix A"
+      "fix_in": "Appendix A",
+      "closed_in": "spec (ipo_details.pre_ipo_placement note), 2026-09-08"
     },
     {
       "id": "F-24",
@@ -283,19 +286,21 @@
       "sev": "MAJOR",
       "area": "domain",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "Fixed price is treated as an SME property; it is a property of issue_type",
       "detail": "A fixed-price issue has no bid book and a different allocation split. Phase 1 has SME IPOs which are commonly fixed price.",
-      "fix_in": "§1 checks"
+      "fix_in": "§1 checks",
+      "closed_in": "spec (ipo_demand_graph note), 2026-09-08"
     },
     {
       "id": "F-27",
       "sev": "MAJOR",
       "area": "domain",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "The basis-of-allotment extractor is scheduled with nowhere to write",
-      "fix_in": "Appendix A + §5.4"
+      "fix_in": "Appendix A + §5.4",
+      "closed_in": "section 5.4, 2026-09-08"
     },
     {
       "id": "F-28",
@@ -351,9 +356,10 @@
       "sev": "MAJOR",
       "area": "schema",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "The public API ships 19 fields that are null on all 327 IPOs, with no retirement plan",
-      "fix_in": "§1 + a retirement list"
+      "fix_in": "§1 + a retirement list",
+      "closed_in": "section 1.12, 2026-09-08"
     },
     {
       "id": "F-34",
@@ -424,6 +430,36 @@
       "title": "Three of the 19 phase-1 IPOs have segment = NULL, so no rank set can be resolved for them",
       "detail": "Found 2026-09-08. BSE-only UPCOMING rows. SME and mainboard have different lot-value checks.",
       "fix_in": "phase-1 precondition"
+    },
+    {
+      "id": "F-41",
+      "sev": "MAJOR",
+      "area": "cadence",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "GMP is gated to market hours with subscription, so it is stale exactly when people read it",
+      "detail": "index.ts:343 runs live:GMP only inside isMarketHoursIST. Measured 2026-09-08 22:03 IST: weekend GMP fetches 2045 before the scheduler, 0 after; newest gmp_records row 16:02 while it was 22:03. timestamp is our own fetch clock (investorgain-gmp-orchestrator-v2.ts:536). Up to ~65h stale over a weekend. Proposed: split the live step - subscription and demand graph stay gated, GMP runs every wake while UPCOMING or OPEN.",
+      "fix_in": "§2.1.1 — owner decision pending"
+    },
+    {
+      "id": "F-42",
+      "sev": "MAJOR",
+      "area": "cadence",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Discovery has a 15-hour overnight hole (17:30 to 08:30)",
+      "detail": "Hypothesis, not measured - our own data cannot show it because discovery only runs at the four slots. If price band ads are commonly filed in the evening, the site shows no band the night before an issue opens. A fifth ~21:00 slot would close it. Owner decision: domain knowledge our data cannot supply.",
+      "fix_in": "§2.1.2 — owner decision pending"
+    },
+    {
+      "id": "F-43",
+      "sev": "CRITICAL",
+      "area": "spec conflict",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "E-1 contradicts the approved source-tier spec S-03/S-04 on the timeline",
+      "detail": "per-ipo-due-step-pipeline.md §6 (2026-09-03) says tier-1a filings are truth for every static field INCLUDING the timeline, and a tier-1b exchange value must never override a filing. E-1 puts NSE/BSE above the document for the 12 timetable fields. Both have reasons; they cannot both stand. Design position: E-1 wins for those 12 only. Owner must confirm - it changes an approved spec.",
+      "fix_in": "§2.1.3 — owner decision pending"
     }
   ],
   "false_assertions": [

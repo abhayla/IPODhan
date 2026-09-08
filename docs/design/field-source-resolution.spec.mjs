@@ -60,11 +60,43 @@ add('ipo_details','upi_cutoff_time','D',['DOC','NSE','—'],{doc:'B7',note:'cloc
 add('ipo_details','designated_exchange','D',['DOC','NSE','BSE'],{doc:'A14'});
 add('ipo_details','lot_multiple','D',['DOC','BSE','—'],{doc:'A3'});
 add('ipo_details','allocation_pct','D',['DOC','NSE','—'],{doc:'A13'});
-add('ipo_details','pre_ipo_placement','D',['DOC','—','—'],{doc:'D6',only:'disclosure exists only in the filing',na:['RIGHTS','OFS','NCD','TENDER','BUYBACK']});
+// F-23: a pre-IPO placement REDUCES the fresh issue; stored as a boolean today but should carry
+// an amount. Issue-size fields (field 3, 35, 36) are therefore provisional until sourced from a
+// PROSPECTUS, which is the only document that reflects the placement having happened.
+add('ipo_details','pre_ipo_placement','D',['DOC','—','—'],{doc:'D6',only:'disclosure exists only in the filing; stored as a boolean today, but a pre-IPO placement reduces the fresh issue and should carry an amount — issue-size fields are provisional until sourced from a PROSPECTUS',na:['RIGHTS','OFS','NCD','TENDER','BUYBACK']});
 add('ipo_details','bid_windows','D',['DOC','NSE','—'],{doc:'B8',note:'clock windows, not dates — deliberately NOT in E-1'});
 add('ipo_details','promoter_shares_held','D',['DOC','—','—'],{doc:'D2',only:'capital-structure table only',na:['INVITS','REITS','NCD']});
 add('ipo_details','sebi_regulation_cited','D',['DOC','—','—'],{doc:'A12',only:'printed only on the advertisement'});
 add('ipo_details','promoter_group_transactions_since_drhp','D',['DOC','—','—'],{doc:'D7',only:'disclosure exists only in the filing',na:['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK']});
+
+// F-13: the 25 ipo_details columns the offer document prints but that hold no data on
+// production today (verified empty this session). neverPopulated marks them so the first
+// fill reads as progress, not noise.
+add('ipo_details','cut_off_price','D',['DOC','—','—'],{doc:'A13',only:'the cut-off price is fixed only in the offer document; no website republishes it separately from the price band',neverPopulated:true});
+add('ipo_details','min_investment','D',['DOC','—','—'],{doc:'A13',only:'a derived investment-amount display, not separately published elsewhere',neverPopulated:true});
+add('ipo_details','isin','D',['DOC','NSE','BSE'],{doc:'E7',neverPopulated:true});
+add('ipo_details','registrar_link','D',['DOC','—','—'],{doc:'E7',only:'no website separately publishes the per-IPO registrar link',neverPopulated:true});
+add('ipo_details','lead_managers','D',['DOC','BSE','CG'],{doc:'E7',neverPopulated:true});
+add('ipo_details','company_address','D',['DOC','—','—'],{doc:'E6',only:'contact/address field — printed only in the filing',neverPopulated:true});
+add('ipo_details','company_phone','D',['DOC','—','—'],{doc:'E6',only:'contact/address field — printed only in the filing',neverPopulated:true});
+add('ipo_details','company_email','D',['DOC','—','—'],{doc:'E6',only:'contact/address field — printed only in the filing',neverPopulated:true});
+add('ipo_details','company_city','D',['DOC','—','—'],{doc:'E6',only:'contact/address field — printed only in the filing',neverPopulated:true});
+add('ipo_details','company_state','D',['DOC','—','—'],{doc:'E6',only:'contact/address field — printed only in the filing',neverPopulated:true});
+add('ipo_details','company_pincode','D',['DOC','—','—'],{doc:'E6',only:'contact/address field — printed only in the filing',neverPopulated:true});
+add('ipo_details','qib_shares_offered','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','nii_shares_offered','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','retail_shares_offered','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','retail_max_allottees','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','employee_shares_offered','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','anchor_shares_offered','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','max_retail_subscription','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','max_employee_subscription','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','employee_discount','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','sponsor_banks','D',['DOC','—','—'],{doc:'B8',only:'UPI sponsor bank list is printed only in the filing',neverPopulated:true});
+add('ipo_details','tick_size','D',['DOC','—','—'],{doc:'B8',only:'exchange bidding mechanics parameter printed only in the filing',neverPopulated:true});
+add('ipo_details','ipo_market_timings','D',['DOC','—','—'],{doc:'B8',only:'market timing window printed only in the filing',neverPopulated:true});
+add('ipo_details','category_details','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
+add('ipo_details','sub_categories_upi','D',['DOC','NSE','—'],{doc:'B7',only:'the exchange circular carries the allocation',neverPopulated:true});
 
 // ---------- financial_data (26) ----------
 for (const y of ['2022','2023','2024']) add('financial_data',`revenue_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
@@ -76,6 +108,9 @@ for (const [c,d] of [['net_worth','C2'],['pe_ratio','A9'],['eps','C6'],['roe','�
   add('financial_data',c,'D',['DOC','CG','MC'],{doc:d,...D_FIN});
 for (const y of ['2022','2023','2024']) add('financial_data',`ebitda_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
 for (const y of ['2022','2023','2024']) add('financial_data',`total_income_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
+// F-13: KPI-table ratios the document prints but that hold no data on production today.
+for (const c of ['current_ratio','quick_ratio','inventory_turnover'])
+  add('financial_data',c,'D',['DOC','—','—'],{doc:'C9',only:'KPI table only',neverPopulated:true,...D_FIN});
 
 // ---------- financial_statements (11) ----------
 // Chittorgarh's detail page DOES carry a restated per-fiscal-year "Company Financials" table
@@ -89,6 +124,9 @@ for (const [c,d] of [['fiscal_year','C1'],['revenue','C1'],['total_income','C1']
 add('financial_statements','net_worth','D',['DOC','CG','MC'],{doc:'C2',na:FS_NA,note:'CG gives the most-recent year only, not the full series'});
 for (const [c,d] of [['basis','C8'],['unit','C7'],['eps_basic','C6'],['eps_diluted','C6'],['op_cash_flow','C3']])
   add('financial_statements',c,'D',['DOC','—','—'],{doc:d,only:'CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement',na:FS_NA});
+// F-13: printed in the RHP but not extracted today.
+add('financial_statements','dscr','D',['DOC','—','—'],{doc:'C4',only:'DSCR appears only in the Risk Factors financial tables',na:FS_NA,neverPopulated:true});
+add('financial_statements','rent_expense','D',['DOC','—','—'],{doc:'C5',only:'rent expense line appears only in Other Financial Information',na:FS_NA,neverPopulated:true});
 
 // ---------- ipo_valuation (17) ----------
 const VAL_NA = ['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'];
@@ -109,6 +147,8 @@ for (const [c,d] of [['shares_at_floor','A7'],['shares_at_cap','A7'],['fresh_sha
   add('ipo_valuation',c,'D',['DOC','—','—'],{doc:d,only:'a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap',na:VAL_NA});
 add('ipo_valuation','face_value_multiple_floor','C',['—','—','—'],{formula:'price_floor ÷ face_value'});
 add('ipo_valuation','face_value_multiple_cap','C',['—','—','—'],{formula:'price_cap ÷ face_value'});
+// F-13: printed alongside a null PE today but never extracted.
+add('ipo_valuation','pe_not_ascertainable_reason','D',['DOC','—','—'],{doc:'A9',only:'reason text printed only alongside a null PE in the document',na:VAL_NA,neverPopulated:true});
 
 // ---------- promoters (3), intermediaries (2), risk factors (2), brlm (4) ----------
 const PROM_NA = ['INVITS','REITS','NCD','TENDER','BUYBACK'];
@@ -125,19 +165,42 @@ add('brlm_track_record','as_of_date','D',['DOC','—','—'],{doc:'E2',only:'his
 add('brlm_track_record','issues_3y','D',['DOC','—','—'],{doc:'E2',only:'only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank',na:BRLM_NA});
 add('brlm_track_record','closed_below_issue_price','D',['DOC','—','—'],{doc:'E2',only:'only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank',na:BRLM_NA});
 
+// F-13: the WACA table (§D2/D4) and the intermediaries contact fields (§E1/E3/E4) and the
+// risk-factor body/KPI text (§F2/F3) the document prints but that hold no data today.
+add('promoters','shares_held','D',['DOC','—','—'],{doc:'D2',only:'capital-structure table only',na:PROM_NA,neverPopulated:true});
+add('promoters','waca_last_year','D',['DOC','—','—'],{doc:'D4',only:'basis-for-offer-price table only',na:PROM_NA,neverPopulated:true});
+add('ipo_intermediaries','sebi_reg_no','D',['DOC','—','—'],{doc:'E3',only:'SEBI registration number printed only in the intermediaries section',neverPopulated:true});
+add('ipo_intermediaries','contact_person','D',['DOC','—','—'],{doc:'E4',only:'named only in the filing',neverPopulated:true});
+add('ipo_intermediaries','phone','D',['DOC','—','—'],{doc:'E4',only:'named only in the filing',neverPopulated:true});
+add('ipo_intermediaries','email','D',['DOC','—','—'],{doc:'E4',only:'named only in the filing',neverPopulated:true});
+add('ipo_intermediaries','grievance_email','D',['DOC','—','—'],{doc:'E4',only:'named only in the filing',neverPopulated:true});
+add('ipo_risk_factors','body','D',['DOC','—','—'],{doc:'F2',only:'risk factors exist only in the filing',na:['TENDER','BUYBACK'],neverPopulated:true});
+add('ipo_risk_factors','kpis','D',['DOC','—','—'],{doc:'F3',only:'concentration KPIs exist only in the filing',na:['TENDER','BUYBACK'],neverPopulated:true});
+
+// ---------- promoter_acquisition_ranges (5) — F-13, new table ----------
+// The WACA 1y/18m/3y table (contract §D5). Document-only, same NA set as promoters.
+for (const [c,d] of [['period','D5'],['waca','D5'],['cap_multiple','D5'],['price_low','D5'],['price_high','D5']])
+  add('promoter_acquisition_ranges',c,'D',['DOC','—','—'],{doc:d,only:'the WACA 1y/18m/3y table exists only in the filing',na:PROM_NA,neverPopulated:true});
+
 // ---------- peer_companies (10) ----------
 for (const c of ['company_name','is_listed','pe_ratio','eps','diluted_eps','ronw','nav','pbv_ratio'])
   add('peer_companies',c,'D',['DOC','CG','—'],{doc:'C9',na:['NCD','INVITS','REITS','TENDER','BUYBACK']});
 add('peer_companies','data_source','I',['—','—','—'],{});
 add('peer_companies','last_updated','I',['—','—','—'],{});
+// F-13: printed in the RHP peer table but not extracted today.
+add('peer_companies','financial_statement_type','D',['DOC','—','—'],{doc:'C8',only:'CG does not print which basis (restated/standalone) the peer figures use',na:['NCD','INVITS','REITS','TENDER','BUYBACK'],neverPopulated:true});
 
 // ---------- anchor_investors (7) ----------
 const ANCH_NA = ['RIGHTS','OFS','NCD','TENDER','BUYBACK'];
 add('anchor_investors','bid_date','T',['NSE','BSE','CG'],{e1:1,na:ANCH_NA});
 for (const c of ['total_shares_offered','total_amount_raised','anchor_investors_count','investor_list'])
   add('anchor_investors',c,'D',['DOC','—','—'],{doc:'anchor report',only:'the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book',na:ANCH_NA});
-add('anchor_investors','lock_in_50_percent_date','T',['NSE','BSE','CG'],{e1:1,na:ANCH_NA});
-add('anchor_investors','lock_in_remaining_date','T',['NSE','BSE','CG'],{e1:1,na:ANCH_NA});
+// F-22: these are DERIVED (allotment_date + 30 / + 90 days per the SEBI circular — UNVERIFIED
+// against the circular text), not sourced. Reclassed from T/E-1 to C. The live scraper computes
+// them from bid_date instead (scraper/src/scrapers/anchor-investors-scraper.ts:302), roughly a
+// week early — an existing production bug, tracked separately, not fixed by this design.
+add('anchor_investors','lock_in_50_percent_date','C',['—','—','—'],{formula:'allotment_date + 30 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately',na:ANCH_NA});
+add('anchor_investors','lock_in_remaining_date','C',['—','—','—'],{formula:'allotment_date + 90 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately',na:ANCH_NA});
 
 // ---------- documents (15) ----------
 for (const c of ['type','title','url','file_size','uploaded_at','exchange','media_type','sequence_number',
@@ -175,8 +238,13 @@ add('listing_performance','data_source','I',['—','—','—'],{});
 
 // ---------- ipo_demand_graph (5) ----------
 add('ipo_demand_graph','timestamp','I',['—','—','—'],{});
+// F-26: fixed price is a property of ipo_details.issue_type, not of segment (SME is commonly
+// FIXED_PRICE but is not defined by it). These four are N/A for any FIXED_PRICE issue_type,
+// regardless of offering_type/segment — a fixed-price issue has no bid book. The `na` set below
+// is offering-type scoped only; the issue_type dimension is not modeled by this generator and
+// must be checked separately by any consumer of this table.
 for (const c of ['price_point','is_cut_off','cumulative_quantity','exchange'])
-  add('ipo_demand_graph',c,'X',['NSE','BSE','—'],{only:'live bid book; no document can carry it',na:['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK']});
+  add('ipo_demand_graph',c,'X',['NSE','BSE','—'],{only:'live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book',na:['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK']});
 
 // ---------- registrars (10) ----------
 add('registrars','name','D',['DOC','REG','CG'],{doc:'E3'});
@@ -204,6 +272,15 @@ const WEB_OK = new Set(['ipos','ipo_details','financial_data','peer_companies','
                         'listing_performance','registrars','ipo_intermediaries','gmp_records']);
 function pool(f) {
   const p = f.r.filter(x => x !== '—');
+  // A field carrying `only:` has already declared, with a stated reason, that no second or
+  // third source exists — that is what the Note column renders it as ("no rank 2: <only>").
+  // Auto-adding CG/MC here for a WEB_OK table would silently contradict that declaration.
+  // Pre-existing bug found 2026-09-08 while adding F-13's never-populated fields: ipos.cin,
+  // ipo_details.compliance_officer(+phone/+email), promoter_shares_held, sebi_regulation_cited,
+  // promoter_group_transactions_since_drhp, pre_ipo_placement, gmp_records.gmp,
+  // listing_performance.current_price_bse/_nse all showed a website rank 2/3 in Appendix A
+  // while their own Note said "no rank 2" — a contradiction, not a finding.
+  if (f.o.only) return p;
   if (!WEB_OK.has(f.t)) return p;                       // document-only tables: no website fallback
   for (const w of ['CG','MC']) if (!p.includes(w)) p.push(w);
   return p;
