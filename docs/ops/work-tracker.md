@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 16:00 IST (snapshot 14 - O-10 resolved: bidding timetable stays on the exchanges as named exception E-1, NSE then BSE; one confirmation outstanding, five fields or nine).
+Last updated: 2026-09-08 16:06 IST (snapshot 15 - E-1 applied to the full timetable family, 12 fields; 3 anchor fields found that the first pass missed; O-11 logged on the duplicate listingExchange provenance key).
 
 ---
 
@@ -208,32 +208,68 @@ model recovers.
 
 **Status:** RESOLVED, folded into the design. **Prev:** 0% **Now:** 100%
 
-### O-10. The bidding timetable stays on the exchanges — RESOLVED as named exception E-1
+### O-10. The whole bidding timetable stays on the exchanges — RESOLVED as named exception E-1
 
-**Abhay, 2026-09-08 ~16:0x IST:** "Keep those five on the exchange, as a written, named exception to
-the 100% rule. For these fields, make NSE and BSE as first and second source."
+**Abhay, 2026-09-08:** "Keep those five on the exchange, as a written, named exception to the 100%
+rule. For these fields, make NSE and BSE as first and second source." Then: "List the full timetable
+family for me to see and understand. Apply the same rule to all the timetable fields."
 
-**Applied.** Design section 1.2.1 now carries exception **E-1**, the only standing exception to the
-100% rule. Source order for these fields: round 1 **NSE**, round 2 **BSE**, round 3 Chittorgarh. The
-offer document is not a source for them at any round, and is deliberately not a verification source
-either — a printed date and an extended date legitimately differ, so comparing them would produce a
-permanent stream of false disagreements and bury the real ones. Verification is the other exchange
-plus our own date arithmetic.
+**Applied to twelve fields.** Source order for all of them: round 1 **NSE**, round 2 **BSE**, round 3
+Chittorgarh. The offer document is not a source at any round, and deliberately not a verification
+source either — a printed date and an extended date legitimately differ, so comparing them would
+produce a permanent stream of false disagreements and bury the real ones. Verification is the other
+exchange plus our own date arithmetic.
 
-**One widening I made and want you to confirm or reject.** You named five fields. I applied E-1 to
-**nine**, adding `allotment_date`, `ipo_details.basis_of_allotment_date`,
-`initiation_of_refunds_date` and `credit_of_shares_date`. Every one of those shifts when the bidding
-window shifts, which is the exact reason you gave. Leaving them document-first would reproduce the
-defect on four fields while fixing it on five — and `allotment_date` is already document-sourced on
-5 IPOs on production today. If you want E-1 held to exactly the five you named, those four move back
-to document-first; it is a one-line change.
+The family was established by testing every date- and schedule-like field among the 194 published
+fields against one question: **does this value change when the bidding window changes?**
 
-E-1 is counted, not hidden: the nightly check prints the nine excluded fields beside the round-1
-yield, so "100% of document-owned fields" is always read against a visible exclusion list, and the
-audit alarms if that list ever changes without a decision recorded in the design.
+| # | Field | Rows | Source today | Effect |
+|---|---|---:|---|---|
+| 1 | `anchor_investors.bid_date` | 2 | document | flips |
+| 2 | `ipos.open_date` | 289 | 236 web · 50 exch · 3 doc | websites demoted to round 3 |
+| 3 | `ipos.close_date` | 289 | 237 web · 49 exch · 3 doc | as above |
+| 4 | `ipos.allotment_date` | 289 | 234 web · 49 exch · 6 doc | 6 document values flip |
+| 5 | `ipo_details.basis_of_allotment_date` | 3 | 100% document | flips |
+| 6 | `ipo_details.initiation_of_refunds_date` | 7 | 100% document | flips |
+| 7 | `ipo_details.credit_of_shares_date` | 3 | 100% document | flips |
+| 8 | `ipos.listing_date` | 289 | 238 web · 51 exch | websites demoted |
+| 9 | `anchor_investors.lock_in_50_percent_date` | 2 | document | flips — allotment + 30 days |
+| 10 | `anchor_investors.lock_in_remaining_date` | 2 | document | flips — allotment + 90 days |
+| 11 | `ipos.status` | 289 | 230 web · 56 exch · 3 doc | websites demoted |
+| 12 | `ipos.listing_exchanges` | 208 | 161 web · 23 exch · 24 doc | 24 document values flip |
 
-**Status:** RESOLVED and applied; one confirmation outstanding (five fields or nine).
-**Prev:** 0% **Now:** 90%
+**Three fields I had missed in the first pass**, all in `anchor_investors`: the anchor bidding date
+and the two lock-in expiry dates. The lock-ins are computed off the allotment date, so when the
+allotment date moves they are wrong by exactly the same amount.
+
+**Two judgement calls made inside your instruction, flagged not silent.**
+`ipo_details.upi_cutoff_time` (9 rows) and `ipo_details.bid_windows` (10 rows) sit in the same
+printed timetable but hold a **time of day, not a date** — when a window is extended the date moves
+and 5 PM is still 5 PM. They stay document-first. Putting fields into an exception list that the
+exception's reason does not cover is how such a list becomes a dumping ground. Two-row change if you
+want them included for consistency.
+
+Also staying document-owned, because they record history rather than schedule:
+`documents.filing_date` (the RoC filing date never moves, and the document-type healing rule depends
+on it), `brlm_track_record.as_of_date`, and `ipo_details.designated_exchange`.
+
+E-1 is counted, not hidden: the nightly check prints the twelve excluded fields beside the round-1
+yield, and alarms if the set is ever not exactly those twelve.
+
+**Status:** RESOLVED and applied in full. **Prev:** 0% **Now:** 100%
+
+### O-11. Two provenance keys for one concept — `listingExchange` vs `listingExchanges`
+
+**Found by me while building the timetable family, 2026-09-08.** `field_sources` holds
+`ipos.listingExchange` (224 rows) and `ipos.listingExchanges` (208 rows). Only the plural matches a
+real column; the singular has been writing provenance for a column that does not exist. Any
+per-field report on that concept is split across two names and each shows about half the truth.
+
+Small and not urgent, but it is exactly the kind of thing that gets rediscovered six months later.
+Folded into the matrix cleanup already planned in the design (§7.1 item 2), alongside deleting the
+13 dead snake_case matrix keys.
+
+**Status:** LOGGED, folded into planned work, no separate decision needed. **Prev:** — **Now:** 0%
 
 ---
 
