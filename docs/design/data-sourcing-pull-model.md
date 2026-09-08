@@ -208,15 +208,17 @@ decides whether a source ranking is even meaningful:
 | Class | Meaning | Ranking |
 |---|---|---|
 | **D** | The offer document prints it | 1 document · 2 exchange · 3 website |
-| **X** | Live or exchange-governed; the printed ad goes stale by design | 1 exchange · 2 website · 3 document |
+| **T** | The bidding timetable — **named exception E-1** (§1.2.1) | 1 NSE · 2 BSE · 3 website; document is not a source |
+| **X** | Other live or exchange-governed data (subscription, demand graph) | 1 exchange · 2 website · 3 document |
 | **W** | Neither document nor exchange publishes it (grey market) | website only |
 | **M** | Market data after listing | 1 exchange · 2 website |
 | **C** | We compute it; it has no external source | formula + named inputs, no ranking |
 | **I** | Our own pipeline produces it (bookkeeping) | writer named, no ranking |
 
 Class counts across the 194, computed from the field list rather than estimated:
-**D 121 · X 22 · W 3 · M 4 · C 11 · I 33.** The pull loop walks the D, X, W and M fields — **150 of
-the 194**. The 11 C fields are recomputed after their inputs settle. The 33 I fields are written by
+**D 121 · T 9 · X 13 · W 3 · M 4 · C 11 · I 33.** The pull loop walks the D, T, X, W and M fields —
+**150 of the 194**. The 9 T fields are the named exception E-1 (§1.2.1) and are the only fields
+excluded from the 100% rule. The 11 C fields are recomputed after their inputs settle. The 33 I fields are written by
 the pipeline itself and are never sourced.
 
 **Document type order inside rank 1**, inherited from 9db4529d: for price-dependent fields
@@ -240,10 +242,10 @@ where that contract already names the section; new rows extend it in the same sh
 | 2 | `company_name` | 327 | D | DOC | NSE | BSE | keep | cover | legal-name form (ends Limited/Ltd); normalised name matches the exchange's ±1 token | CG, MC. Disagreement on the legal suffix is not a conflict; a different entity is. | — |
 | 3 | `issue_size` | 327 | D | DOC | BSE | CG | **→ Cr** | A5+A6 | `fresh + OFS = total ±0.5%`; `shares_at_cap × cap ≈ total ±0.5%`; > ₹1 cr and < ₹50,000 cr | CG, MC, BSE. Disagreement = re-read A5/A6 from the PBA, never adopt the website number. | Rights/OFS/NCD: no PBA — rank 1 becomes the offer letter, rank 2 BSE |
 | 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | `lot × floor ≥ ₹10,000` mainboard; `≥ ₹1,00,000` SME (2 lots × ₹50k floor, SEBI 2025) | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
-| 5 | `open_date` | 327 | **X** | NSE | BSE | DOC | keep | B2 | `open ≤ close`; within 90 days of the RHP filing date | CG, MC. Disagreement = exchange wins. | **Deliberate exception (W-117): exchanges outrank the document.** A printed ad is never reissued when the window is extended. |
-| 6 | `close_date` | 327 | **X** | NSE | BSE | DOC | keep | B2 | `close ≥ open`; `close ≤ open + 10` working days | CG, MC. | same as 5 |
-| 7 | `listing_date` | 266 | **X** | NSE | BSE | CG | keep | B6 | `listing > close`; `listing ≤ close + 3` working days (T+3) | CG. | same as 5. Document is not even rank 3 — the ad prints an indicative date |
-| 8 | `status` | 327 | **X** | NSE | BSE | CG | keep | — | must be a legal transition (UPCOMING→OPEN→CLOSED→LISTED); never regresses without an ADMIN row | our own date arithmetic. A status that contradicts the dates is a conflict. | WITHDRAWN / POSTPONED only from the exchange or ADMIN |
+| 5 | `open_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `open ≤ close`; within 90 days of the RHP filing date | the other exchange, then CG. **The document is NOT a verification source** — see §1.2.1 | **Named exception E-1 (§1.2.1).** Owner decision 2026-09-08. |
+| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `close ≥ open`; `close ≤ open + 10` working days | as 5 | **Named exception E-1** |
+| 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; `listing ≤ close + 3` working days (T+3) | as 5 | **Named exception E-1** |
+| 8 | `status` | 327 | **T** | **NSE** | **BSE** | CG | keep | — | must be a legal transition (UPCOMING→OPEN→CLOSED→LISTED); never regresses without an ADMIN row | our own date arithmetic. A status contradicting the dates is a conflict. | **Named exception E-1.** WITHDRAWN / POSTPONED only from the exchange or ADMIN |
 | 9 | `registrar` | 267 | D | DOC | BSE | CG | keep | E3 | resolves to a row in `registrars` by name or SEBI reg no. | CG, MC. Disagreement = re-read E3. | — |
 | 10 | `registrar_id` | 267 | **C** | — | — | — | keep | — | FK resolved from field 9 | derived; never sourced | — |
 | 11 | `rating_override` | 327 | **I** | ADMIN | — | — | keep | — | boolean, admin-only | — | — |
@@ -252,9 +254,9 @@ where that contract already names the section; new rows extend it in the same sh
 | 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | `floor < cap`; `cap ≤ 1.2 × floor` mainboard, `≤ 1.4 ×` SME; `floor ≥ face_value` | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
 | 15 | `price_range_max` | 300 | D | DOC | NSE | BSE | keep | A1 | as 14 | as 14 | as 14 |
 | 16 | `last_scraped_at` | 327 | **I** | — | — | — | keep | — | pipeline clock, UTC | — | — |
-| 17 | `listing_exchanges` | 327 | D | DOC | NSE | BSE | keep | A15 | non-empty subset of {NSE, BSE}; an SME row may not claim both unless both confirm | NSE, BSE. | **This is the only field that distinguishes SME-on-NSE from SME-on-BSE** — `ipos.exchange` is NULL on all 327 rows and `bse_scrip_code` on 0 of 327 |
+| 17 | `listing_exchanges` | 327 | **T** | **NSE** | **BSE** | CG | keep | A15 | non-empty subset of {NSE, BSE}; an SME row may not claim both unless both confirm | the other exchange | **Named exception E-1.** Also **the only field that distinguishes SME-on-NSE from SME-on-BSE** — `ipos.exchange` is NULL on all 327 rows and `bse_scrip_code` on 0 of 327 |
 | 18 | `face_value` | 327 | D | DOC | BSE | NSE | keep | A2 | one of {1,2,5,10}; `floor ≥ face_value` | CG. | — |
-| 19 | `allotment_date` | 239 | **X** | NSE | BSE | DOC | keep | B3 | `> close`, `< listing` | CG. | as 5 — the timetable moves |
+| 19 | `allotment_date` | 239 | **T** | **NSE** | **BSE** | CG | keep | B3 | `> close`, `< listing` | as 5 | **Named exception E-1** — it moves whenever the window moves |
 | 20 | `company_description` | 159 | D | DOC | CG | MC | keep | F1 | ≤ 1,200 chars; no boilerplate ("The company was incorporated…" alone fails) | CG. | — |
 | 21 | `lead_managers` | 231 | D | DOC | BSE | CG | keep | E1 | non-empty array; each name resolves or is recorded as new; count matches `bse_payload_lead_manager_count` when present | BSE, CG. **578 unresolved conflicts today** — this field is the re-read loop's first customer. | — |
 | 22 | `isin` | 150 | D | DOC | NSE | BSE | keep | E7 | `^INE[A-Z0-9]{9}$`; check digit valid | NSE, BSE. | Pre-listing an ISIN may not exist yet → `NOT_AVAILABLE_YET`, not a failure |
@@ -269,6 +271,61 @@ where that contract already names the section; new rows extend it in the same sh
 | 31 | `verifier_url` | 213 | **I** | — | — | — | keep | — | our own audit pointer | — | — |
 | 32 | `cin` | 27 | D | DOC | — | — | keep | E7 | `^[UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}$` | MCA lookup (not built). No second source exists — a document-only field. | — |
 
+### 1.2.1 Named exception E-1 — the bidding timetable stays on the exchanges
+
+**Owner decision, 2026-09-08: "keep those five on the exchange, as a written, named exception to the
+100% rule. For these fields, make NSE and BSE as first and second source."**
+
+This is the ONLY standing exception to the 100% rule in §2.1.1. It is written here, named, and
+counted — never applied silently.
+
+**Source order for every field in E-1:** round 1 **NSE**, round 2 **BSE**, round 3 Chittorgarh.
+The offer document is not a source for these fields at any round.
+
+**Why.** The price band advertisement does print an indicative timetable, so by the letter of the
+100% rule these would be document fields. But the advertisement is printed once and **is never
+reissued when a company extends its bidding window.** NSE and BSE update the same day; the PDF does
+not. Sourcing these from the document would publish a stale close date on a live IPO — the single
+most damaging error this site can make, and the reason the W-117 rule exists.
+
+**The fields in E-1 — nine, not five.** The owner named five; the same reasoning applies without
+change to four more, because every one of them shifts when the bidding window shifts. Applying the
+exception to five and leaving four on the document would reproduce the exact defect on the four.
+Listed in full so the scope is explicit and reviewable:
+
+| # | Field | Why it is in E-1 |
+|---|---|---|
+| 5 | `ipos.open_date` | named by the owner |
+| 6 | `ipos.close_date` | named by the owner |
+| 7 | `ipos.listing_date` | named by the owner |
+| 8 | `ipos.status` | named by the owner |
+| 17 | `ipos.listing_exchanges` | named by the owner |
+| 19 | `ipos.allotment_date` | **added** — moves with the window; today it is document-sourced on 5 IPOs |
+| 38 | `ipo_details.basis_of_allotment_date` | **added** — same event as 19 |
+| 39 | `ipo_details.initiation_of_refunds_date` | **added** — derived from the allotment date |
+| 40 | `ipo_details.credit_of_shares_date` | **added** — derived from the allotment date |
+
+If the owner wants E-1 held to exactly the five he named, fields 19, 38, 39 and 40 move back to
+document-first and this section records that instead. **Flagging it rather than deciding it
+silently** — it is a widening of his instruction, taken because the reason he gave applies to all
+nine, and it is trivially reversible.
+
+**On SME.** The order is NSE then BSE as instructed. For a single-exchange IPO the absent exchange
+simply has no payload and answers `NOT_PRINTED` at zero cost — an SME-on-BSE IPO therefore resolves
+on BSE in round 2, and an SME-on-NSE IPO on NSE in round 1. No separate rule is needed; the existing
+per-type source resolution in §2.2 handles it. Measured population: 106 SME-on-BSE, 61 SME-on-NSE.
+
+**The document is deliberately NOT a verification source for E-1 fields.** A printed date and an
+extended date legitimately differ, so comparing them would generate a permanent stream of false
+disagreements and bury the real ones. Verification for E-1 is the other exchange, plus our own date
+arithmetic (`open ≤ close < allotment < refund ≤ credit < listing`, and `listing ≤ close + 3`
+working days).
+
+**E-1 is counted, not hidden.** Check 4.3b reports the nine E-1 fields as a fixed, named exclusion
+alongside the round-1 yield, so "100% of document-owned fields" is always read against a visible
+list of what was excluded and why. If that list ever grows without a decision recorded here, check
+4.6 alarms.
+
 ### 1.3 `ipo_details` — issue mechanics (23 live fields)
 
 Every field here is class **D**: the offer document is the only place these are printed in full.
@@ -282,9 +339,9 @@ Rank 2 is the exchange circular where one exists, rank 3 Chittorgarh's detail pa
 | 35 | `fresh_issue` | 8 | DOC | BSE | CG | **→ Cr** | A5 | `fresh + OFS = issue_size ±0.5%` | CG | OFS-only: legitimately 0, not missing |
 | 36 | `ofs_issue` | 4 | DOC | BSE | CG | **→ Cr** | A6 | as 35 | CG | fresh-only: legitimately 0 |
 | 37 | `face_value` | 14 | DOC | BSE | — | keep | A2 | equals `ipos.face_value` | `ipos.face_value` — a mismatch is an internal conflict, not a source conflict | — |
-| 38 | `basis_of_allotment_date` | 3 | NSE | BSE | DOC | keep | B3 | `> close < listing` | CG | class **X** — the timetable moves |
-| 39 | `initiation_of_refunds_date` | 7 | NSE | BSE | DOC | keep | B4 | `≥ allotment` | CG | class **X** |
-| 40 | `credit_of_shares_date` | 3 | NSE | BSE | DOC | keep | B5 | `≥ refunds`, `≤ listing` | CG | class **X** |
+| 38 | `basis_of_allotment_date` | 3 | **NSE** | **BSE** | CG | keep | B3 | `> close < listing` | the other exchange | class **T**, **named exception E-1** |
+| 39 | `initiation_of_refunds_date` | 7 | **NSE** | **BSE** | CG | keep | B4 | `≥ allotment` | the other exchange | class **T**, **named exception E-1** |
+| 40 | `credit_of_shares_date` | 3 | **NSE** | **BSE** | CG | keep | B5 | `≥ refunds`, `≤ listing` | the other exchange | class **T**, **named exception E-1** |
 | 41 | `exchanges` | 20 | DOC | NSE | BSE | keep | A15 | equals `ipos.listing_exchanges` | internal | — |
 | 42 | `data_source` | 20 | **I** | — | — | keep | — | our own label | — | — |
 | 43 | `last_verified_at` | 20 | **I** | — | — | keep | — | pipeline clock | — | — |
@@ -785,10 +842,10 @@ previous run*, never a total.
 | 4.1 | Plan built (§2.2) | rows in `ipo_field_plan` for each live IPO = the 131 sourced fields for its type | cycle summary line | 131 for mainboard, fewer for Rights/OFS by their NOT_APPLICABLE set | any live IPO with 0 plan rows, or a count that changes without a type change |
 | 4.2 | Walk ran (§2.3) | live-tier IPOs walked this slot ÷ live-tier IPOs | cycle summary | 100% every slot | < 100% twice consecutively |
 | 4.3 | **Round-1 yield** (§2.1.1) | per IPO: of the fields the document owns, how many round 1 actually supplied. Reported as a fraction with the shortfall **named by field**, never as a bare percentage | nightly floor, diffed | **100%**. Measured today on the best-covered IPO (Deepa Jewellers): 47 of 56 document-owned fields = 84%; typical IPO = 0% | **any** document-owned field sourced from round 2 or 3 without a reason in the allowed list (§2.5) |
-| 4.3b | Exception register | every fall-through to round 2 or 3, by field identity and reason, NEW vs GONE vs SAME against yesterday | floor delta + brief | shrinking; every entry has a reason and an owner | a NEW fall-through on a live IPO, or an entry with reason `CHECK_FAILED` unchanged for 3 days |
+| 4.3b | Exception register | every fall-through to round 2 or 3, by field identity and reason, NEW vs GONE vs SAME against yesterday — printed **beside the nine E-1 fields (§1.2.1)** so the 100% is always read against a visible exclusion list | floor delta + brief | shrinking; every entry has a reason and an owner; the E-1 list is exactly the nine | a NEW fall-through on a live IPO, an entry with reason `CHECK_FAILED` unchanged for 3 days, or an E-1 list that is not the nine |
 | 4.4 | Fallback is honest | count of `EXHAUSTED` rows, **by field identity**, NEW vs GONE vs SAME | floor delta + Notifier | small and stable | any NEW field identity exhausted on a live IPO |
 | 4.5 | Checks bite (§1) | count of `CHECK_FAILED` by check name per cycle | cycle summary | non-zero is fine and expected | a check that has never failed in 30 days is probably not wired — a silent check is a failed check |
-| 4.6 | Type routing (§1.11) | SME rows using an NSE rank on a BSE-only IPO; `offering_type` outside {IPO, FPO} on the IPO pages; SME claiming both exchanges (5 today) | nightly audit | 0 / 0 / reviewed | any non-zero |
+| 4.6 | Type routing (§1.11) + **E-1 scope** | SME rows using an NSE rank on a BSE-only IPO; `offering_type` outside {IPO, FPO} on the IPO pages; SME claiming both exchanges (5 today); **any field treated as E-1 that is not one of the nine listed in §1.2.1** | nightly audit | 0 / 0 / reviewed / **exactly 9** | any non-zero, or the E-1 set changing without a decision recorded in §1.2.1 |
 | 4.7 | Units (§5.2) | every money field within its expected magnitude band after conversion (e.g. issue size in crore is 1–50,000, never 10⁹) | migration gate + nightly | 100% in band | one row out of band blocks the migration |
 | 4.8 | Re-read fires (§3.1) | actionable disagreements detected ÷ re-reads started, per day | floor | ≈ 1.0 | < 0.9 means the consumer is not consuming — the failure mode we are fixing |
 | 4.9 | Re-read resolves (§3.3) | outcomes split by `verified_against_document` / `reread_corrected` / `unresolved` | floor, diffed | corrected and verified both non-zero | 100% unresolved means the re-read is not actually re-reading |
@@ -1071,24 +1128,17 @@ Everything from 4 onward is one design and should not be half-built.
    current extraction speed, is weeks. I have not modelled it properly and I would not want the
    estimate quoted.
 
-7. **The five timeline fields are the one genuine conflict with "100% from the document", and I
-   want the owner's word on them.** The instruction is "if the field value comes from the offer
-   document then it should be extracted from the offer document." The price band advertisement
-   *does* print an indicative timetable — open date, close date, allotment date, listing date. So by
-   the letter of the rule they are document fields.
+7. ~~The five timeline fields~~ **RESOLVED by the owner, 2026-09-08: they stay on the exchanges as
+   named exception E-1, with NSE first and BSE second** (§1.2.1). The document is not a source for
+   them at any round, and is deliberately not a verification source either, because a printed date
+   and an extended date legitimately differ.
 
-   But the advertisement is printed once and **never reissued when the bidding window is extended**.
-   NSE and BSE update the same day; the PDF does not. Taking those dates from the document means
-   publishing a stale close date on a live IPO — the exact defect the W-117 rule was created to stop.
-
-   **My recommendation: keep the five on the exchange, and treat them as a named, documented
-   exception to the 100% rule rather than a silent carve-out** — the document is still read for them
-   and a disagreement is still recorded, but the exchange's value is what we publish. Reason: a
-   wrong close date on an open IPO is the most damaging single error the site can make, and it is
-   the one case where the document is knowably out of date rather than merely unread.
-
-   If the owner would rather the document win here too, the design changes in one place (the class
-   of those five fields in §1.2) and the risk moves onto the site.
+   **One thing I widened and want confirmed:** the owner named five fields; I applied E-1 to nine,
+   adding `allotment_date`, `basis_of_allotment_date`, `initiation_of_refunds_date` and
+   `credit_of_shares_date`. All four shift whenever the bidding window shifts, so leaving them
+   document-first would reproduce the exact defect E-1 exists to prevent — `allotment_date` is
+   already document-sourced on 5 IPOs today. If the owner wants E-1 held to exactly five, those four
+   move back and §1.2.1 records that instead. Trivially reversible either way.
 
 ---
 

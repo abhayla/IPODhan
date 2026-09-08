@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 15:50 IST (snapshot 13 - owner set the target at 100% per field with a three-round fallback; O-9 resolved and folded into the design, new O-10 on the five timeline fields).
+Last updated: 2026-09-08 16:00 IST (snapshot 14 - O-10 resolved: bidding timetable stays on the exchanges as named exception E-1, NSE then BSE; one confirmation outstanding, five fields or nine).
 
 ---
 
@@ -208,29 +208,32 @@ model recovers.
 
 **Status:** RESOLVED, folded into the design. **Prev:** 0% **Now:** 100%
 
-### O-10. Do the five timeline fields stay on the exchange, or move to the document?
+### O-10. The bidding timetable stays on the exchanges — RESOLVED as named exception E-1
 
-**Raised by me, 2026-09-08, as the one place O-9's rule and an existing deliberate decision collide.**
+**Abhay, 2026-09-08 ~16:0x IST:** "Keep those five on the exchange, as a written, named exception to
+the 100% rule. For these fields, make NSE and BSE as first and second source."
 
-The price band advertisement DOES print an indicative timetable — open, close, allotment and listing
-dates. By the letter of O-9 they are document fields. But the advertisement is printed once and is
-**never reissued when the bidding window is extended**; NSE and BSE update the same day, the PDF does
-not. Taking those dates from the document means publishing a stale close date on a live IPO, which is
-the exact defect the W-117 rule exists to prevent.
+**Applied.** Design section 1.2.1 now carries exception **E-1**, the only standing exception to the
+100% rule. Source order for these fields: round 1 **NSE**, round 2 **BSE**, round 3 Chittorgarh. The
+offer document is not a source for them at any round, and is deliberately not a verification source
+either — a printed date and an extended date legitimately differ, so comparing them would produce a
+permanent stream of false disagreements and bury the real ones. Verification is the other exchange
+plus our own date arithmetic.
 
-Affected: `openDate`, `closeDate`, `listingDate`, `status`, `listingExchange` — 5 of the 61 tracked
-fields on a typical IPO.
+**One widening I made and want you to confirm or reject.** You named five fields. I applied E-1 to
+**nine**, adding `allotment_date`, `ipo_details.basis_of_allotment_date`,
+`initiation_of_refunds_date` and `credit_of_shares_date`. Every one of those shifts when the bidding
+window shifts, which is the exact reason you gave. Leaving them document-first would reproduce the
+defect on four fields while fixing it on five — and `allotment_date` is already document-sourced on
+5 IPOs on production today. If you want E-1 held to exactly the five you named, those four move back
+to document-first; it is a one-line change.
 
-**My recommendation:** keep these five on the exchange, as a NAMED and documented exception to the
-100% rule rather than a silent carve-out. The document is still read for them and a disagreement is
-still recorded and visible; the exchange's value is what we publish. Reason: a wrong close date on an
-open IPO is the single most damaging error the site can make, and it is the one case where we KNOW
-the document is out of date rather than merely unread.
+E-1 is counted, not hidden: the nightly check prints the nine excluded fields beside the round-1
+yield, so "100% of document-owned fields" is always read against a visible exclusion list, and the
+audit alarms if that list ever changes without a decision recorded in the design.
 
-If you want the document to win here too, it is a one-place change in the design and the staleness
-risk moves onto the live site.
-
-**Status:** AWAITING YOUR DECISION. **Prev:** — **Now:** 0%
+**Status:** RESOLVED and applied; one confirmation outstanding (five fields or nine).
+**Prev:** 0% **Now:** 90%
 
 ---
 
