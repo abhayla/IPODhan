@@ -119,7 +119,9 @@ try {
   // --- D9: the design must not park work in a phase that does not exist ---
   // Owner, 2026-09-08: "there is no phase 2". A bucket with no date, no trigger
   // and no owner is where work disappears; ten findings had been put in one.
-  if (/phase\s*2/i.test(md)) fail('D9', 'The design names a "phase 2". There is none - every deferred item must name the EVENT that brings it into scope.');
+  // The sentence DECLARING there is no phase 2 is the fix, not the defect - exclude it.
+  var mdNoDecl = md.split(String.fromCharCode(10)).filter(function(l){ return !/There is no ..?phase/i.test(l); }).join(String.fromCharCode(10));
+  if (/phases*2/i.test(mdNoDecl)) fail('D9', 'The design names a "phase 2". There is none - every deferred item must name the EVENT that brings it into scope.');
   else ok('D9', 'No work is parked in a non-existent phase.');
   var noTrigger = findings.findings.filter(function(f){ return f.status === 'TRIGGERED' && !f.trigger; });
   if (noTrigger.length) fail('D9b', 'TRIGGERED findings with no named trigger: ' + noTrigger.map(function(f){return f.id;}).join(', '));
