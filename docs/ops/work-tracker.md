@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 13:30 IST (snapshot 6 - owner comments O-4..O-7 added and approved).
+Last updated: 2026-09-08 14:10 IST (snapshot 7 - O-8 push-vs-pull recorded).
 
 ---
 
@@ -126,6 +126,38 @@ Recorded as a standing constraint on all document-extraction work, not as a task
 
 **Status:** STANDING CONSTRAINT, not started. **Prev:** — **Now:** 0%
 
+### O-8. The write path is push, not pull — the priority list is a tie-breaker, not a shopping list
+
+**Raised by Abhay 2026-09-08 ~14:0x IST**, describing the logic he expects: for each IPO, loop every field; if that field's default source is the offer document, take it from the document; otherwise take it from the next source; and in every case verify the final value against Chittorgarh and the other IPO websites.
+
+**What we actually built is the opposite shape, and this is the root cause under O-4 and O-5.**
+
+No loop over fields exists. Each scraper wakes on its own schedule, scrapes whatever IPOs it can see, and calls one function — `DataConsolidationOrchestrator.consolidatedUpsertIPO(scrapedIPO, source, confidence)` — with exactly ONE source at a time. That function compares the arriving value against what is already stored, looks both sources up in `field-priority-matrix.ts`, and keeps the higher-ranked one (`data-consolidation-service.ts` ~1909, reason `SOURCE_PRIORITY`).
+
+**The consequence, stated plainly.** The priority list only decides a contest between sources that both happened to arrive. If the document extractor never runs for an IPO, the document's value never enters the comparison, so its rank is irrelevant. Production proves it: the offer document is ALREADY ranked first for issue size, and it supplied the value 4 times against the websites' 277. The websites do not win an argument. They win by being the only source that showed up.
+
+**Verification against other websites is not in the write path at all.** It happens hours later in a nightly audit, covers three fields, and has no feedback into the data. There is no step where a disagreement sends us back to that IPO's document to re-read the value. That loop does not exist.
+
+**On segment.** The priority list is per field, not per segment. There is no mainboard branch and SME branch. SME differed only in a single switch that skipped SME IPOs at the document step entirely — turned on for production on 2026-09-08 (O-6).
+
+| Abhay's model | What the code does today |
+|---|---|
+| Loop each IPO, then each field | No loop; each scraper pushes what it happened to find |
+| Fetch from that field's default source | Wait and see which sources arrive |
+| Fall back to the next source | The fallback is whatever else arrived |
+| Verify against other websites | Separate nightly audit, three fields, no feedback |
+| A disagreement sends you back to the document | Does not exist |
+
+**Options.**
+
+1. **Build the pull model as described (recommended, as a designed piece of work).** For each IPO, the pipeline first asks which fields the offer document can supply, ensures those are read from the document, and only then lets websites fill what is left. A website disagreement then triggers a re-read of that specific value from that IPO's document. This is what makes the offer document genuinely primary rather than nominally first in a list.
+2. **Keep push, and force the document to always arrive.** Drain the backlog, raise the extraction budget, and add a rule that a field with a document source pending is not written by a website until the document has been tried. Cheaper, and it gets most of the benefit, but it leaves the trust order implicit rather than explicit and still has no re-read loop.
+3. **Leave as is** and rely on the priority list plus the nightly audit. This is today, and today is 8.4%.
+
+**Honest cost note.** Option 1 is a redesign of the write path, not a configuration change. It touches how every value on the site is written, so it needs a design agreed before any code, a staging proof, and a Tier A review. The three tasks already in flight (T-520 priority, T-521 backlog, T-522 SME) remove real blockages and are worth having either way, but none of them turns push into pull.
+
+**Status:** AWAITING DECISION — design first, no code until the design is agreed. **Prev:** — **Now:** 0%
+
 ---
 
 ## Part 1 — Root causes: why defects survived the tests and checks
@@ -154,7 +186,7 @@ hand-saved, so provenance is automatic and the human step where the mistake happ
 (provenance header, identity check, shrink-only backfill allowlist, sourcing helper, pr-gate step) — BUILDING now — and
 **T-519** (revive the live-parser check as a nightly scheduled job; the answer to "why not just read the live sites") —
 QUEUED. The three October-2025 BSE snippets are sized as a follow-up, not re-captured in T-518.
-**Effort:** ~half a day + ~1 day. **Status:** APPROVED-RUNNING. **Prev:** 5% **Now:** 45% (T-518 built as PR #430 but Tier A FAILED it: CI is red and the new gate never executed there; six findings, two of which would break every PR in the repo; round 2 in progress. T-519 not started.)
+**Effort:** ~half a day + ~1 day. **Status:** PARTLY DONE. **Prev:** 45% **Now:** 70%. T-518 MERGED as 8b9e63cf after three rounds and two Tier A reviews: a saved page must now record its source and capture date, a page saved under the wrong company fails the PR, the escape hatch is ratcheted so it cannot grow silently, and exchange-style titles no longer fail good work. I verified each of those with my own probes AND read the pipeline this time. NOT done: the 53 existing fixtures are grandfathered, the identity check runs on zero of them in steady state, and replacing one of their contents does not trigger it - the backfill is T-523, queued. T-519 (nightly live-parser check) not started.
 
 ### C2. Checks compare our data to itself, never to the outside world
 **What it is.** Audits assert internal consistency. They cannot see that a correct-looking value is wrong.
