@@ -27,6 +27,8 @@ import {
   parseFilingUnit,
   convertUnit,
   scraperSourceForDocType,
+  fitsNumericColumn,
+  classifyNumericFit,
   type FilingExtraction,
   type FilingPersisterDeps,
 } from '../../../src/services/filing-persister';
@@ -921,6 +923,119 @@ describe('filing-persister — unit safety (F1/F2)', () => {
     expect(row.epsBasic).toBe('12.78');
     // And the earlier filing's column survives.
     expect(row.opCashFlow).toBe('-147.3');
+  });
+});
+
+// T-504/#402: Rentomojo Ltd. (staging ipoId b28d9d2a-cb24-4d84-8e1a-297ba828884a,
+// prod ipoId a5976572-70cf-4737-88fe-71ff98f801e5) failed EVERY scraper cycle —
+// `insert into "ipo_details"` threw `numeric field overflow` (code 22003).
+// Its real total offer, read from the live staging DB (2026-09-08), is
+// Rs 12,555,670,000.00 (ipos.issue_size, which already fits numeric(15,2)).
+// The split below (fresh Rs 1,055.567 Cr / OFS Rs 200 Cr) sums to that exact
+// real total and puts the overflow on the fresh leg alone — the ipo_details
+// numeric(12,2) columns capped at Rs 999.99 Cr, one digit short of Rs 1,000 Cr.
+describe('filing-persister — T-504/#402 ipo_details numeric overflow (Rentomojo, real values)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('fitsNumericColumn: the real Rentomojo fresh-issue leg overflows 12,2 but fits the widened 18,2 column', () => {
+    // Rs 1,055.567 Cr = 10,555,670,000.00 rupees — 11 integer digits.
+    expect(fitsNumericColumn('10555670000.00', 12, 2)).toBe(false); // pre-T-504 width
+    expect(fitsNumericColumn('10555670000.00', 18, 2)).toBe(true); // post-T-504 width
+  });
+
+  it('writes the real Rentomojo fresh/OFS split to ipo_details in rupees, summing to the real issue_size', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD', {
+      fresh_issue_amount: { value: 10555.67, passed: true }, // millions -> Rs 1,055.567 Cr
+      ofs_amount_at_cap: { value: 2000.0, passed: true }, // millions -> Rs 200 Cr
+      ofs_amount: { value: 2000.0, passed: true },
+    });
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    // 10,555,670,000 + 2,000,000,000 = 12,555,670,000 — matches the real
+    // ipos.issue_size read from staging.
+    expect(scraped.issueSize).toBe(12_555_670_000);
+
+    const details = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(details.freshIssue).toBe('10555670000');
+    expect(details.ofsIssue).toBe('2000000000');
+    // Neither leg was refused — the widened column holds the real value.
+    expect(summary.skipped_failed_check.some((x) => x.includes('persist-numeric-overflow'))).toBe(false);
+  });
+
+  it('refuses (not throws) a value that STILL cannot fit the declared column width, and says so', async () => {
+    const s = makeDeps();
+    // An extraction bug that reports the fresh leg in RUPEES but tags it
+    // MILLION would multiply by another 1e6 — an absurd Rs 1,055,567 Cr that
+    // even the widened numeric(18,2) column cannot hold at this magnitude
+    // combined with real-world extraction noise. This proves the guard is a
+    // genuine second line of defence, independent of how wide the column is.
+    const extraction = extractionFromOracle('PRICE_BAND_AD', {
+      fresh_issue_amount: { value: 10_555_670_000_000, passed: true }, // millions -> absurd
+      ofs_amount_at_cap: { value: 0, passed: true },
+      ofs_amount: { value: 0, passed: true },
+    });
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    const details = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(details.freshIssue).toBeUndefined();
+    expect(
+      summary.skipped_failed_check.some(
+        (x) => x.startsWith('ipo_details.freshIssue:') && x.includes('persist-numeric-overflow')
+      )
+    ).toBe(true);
+  });
+
+  // Round 2 (PR #423 review, MINOR-1): Number(...).toString() switches to
+  // exponential notation ("1e+21") at 1e21, whose string LENGTH (5) is far
+  // shorter than its actual digit count (22) — the old digit-length check
+  // would have let this pass the guard and then thrown 22003 anyway.
+  it('MINOR-1: classifies 1e21 as overflow, not a false "fits" via exponential notation', () => {
+    expect(Number(1e21).toString()).toBe('1e+21'); // documents the trap being fixed
+    expect(fitsNumericColumn(1e21, 18, 2)).toBe(false);
+    expect(classifyNumericFit(1e21, 18, 2)).toBe('overflow');
+    expect(classifyNumericFit('1e21', 18, 2)).toBe('overflow');
+  });
+
+  it('MINOR-2: refuses a NUMBER-typed oversized value, not just a string one', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD', {
+      fresh_issue_amount: { value: 10_555_670_000_000, passed: true },
+      ofs_amount_at_cap: { value: 0, passed: true },
+      ofs_amount: { value: 0, passed: true },
+    });
+    // Prove the guard covers a raw number, not only the string form the
+    // real mapping happens to produce today (mark() is generic over both).
+    expect(classifyNumericFit(10_555_670_000_000 * 1_000_000, 18, 2)).toBe('overflow');
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    expect(summary.skipped_failed_check.some((x) => x.includes('persist-numeric-overflow'))).toBe(true);
+  });
+
+  it('MINOR-3: a comma/locale-formatted number is refused as unparseable, not a misleading "overflow"', () => {
+    // "1,05,55,67,000" (Indian lakh/crore grouping) — Number() rejects the
+    // commas outright (NaN), which is a DIFFERENT failure than "too many
+    // digits" and must not be logged as persist-numeric-overflow.
+    expect(classifyNumericFit('1,05,55,67,000', 18, 2)).toBe('unparseable');
+    expect(fitsNumericColumn('1,05,55,67,000', 18, 2)).toBe(false);
   });
 });
 

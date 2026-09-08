@@ -278,7 +278,11 @@ export const ipos = pgTable(
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
-    issueSize: numeric('issue_size', { precision: 15, scale: 2 }), // in INR RUPEES (normalizeCurrency stores rupees; render via formatIssueSizeCrores) - GitHub #9
+    // T-504/#402: widened 15,2 -> 18,2 for the same class as ipo_details
+    // (every rupee-AMOUNT column below 18,2 widened together, owner
+    // 2026-09-08) — this one already had headroom to ~Rs 999,999 Cr and was
+    // never at real risk, widened for consistency across the class.
+    issueSize: numeric('issue_size', { precision: 18, scale: 2 }), // in INR RUPEES (normalizeCurrency stores rupees; render via formatIssueSizeCrores) - GitHub #9
     priceRangeMin: integer('price_range_min'), // min price per share
     priceRangeMax: integer('price_range_max'), // max price per share
     lotSize: integer('lot_size'),
@@ -1101,10 +1105,14 @@ export const ipoDetails = pgTable(
     issueType: issueTypeEnum('issue_type'),
     // in INR RUPEES (same convention as ipos.issue_size, which fresh+ofs sum to;
     // render via formatIssueSizeCrores). GitHub #8 — unit consistency.
-    freshIssue: numeric('fresh_issue', { precision: 12, scale: 2 }),
-    ofsIssue: numeric('ofs_issue', { precision: 12, scale: 2 }),
+    // T-504/#402: widened 12,2 -> 18,2 (matches every other rupee-amount
+    // column in this schema, e.g. financial_data.revenue) after Rentomojo's
+    // real Rs 1,255.567 Cr offer overflowed numeric(12,2)'s Rs 999.99 Cr cap
+    // on every scraper cycle (staging + prod, code 22003).
+    freshIssue: numeric('fresh_issue', { precision: 18, scale: 2 }),
+    ofsIssue: numeric('ofs_issue', { precision: 18, scale: 2 }),
     cutOffPrice: numeric('cut_off_price', { precision: 10, scale: 2 }),
-    minInvestment: numeric('min_investment', { precision: 12, scale: 2 }),
+    minInvestment: numeric('min_investment', { precision: 18, scale: 2 }),
     registrarLink: varchar('registrar_link', { length: 500 }),
 
     // Other fields
@@ -1140,8 +1148,8 @@ export const ipoDetails = pgTable(
 
     // NEW NSE FIELDS - Phase 1 (High Priority)
     upiCutoffTime: varchar('upi_cutoff_time', { length: 50 }), // "5:00 PM on last day"
-    maxRetailSubscription: numeric('max_retail_subscription', { precision: 12, scale: 2 }), // 200000.00
-    maxEmployeeSubscription: numeric('max_employee_subscription', { precision: 12, scale: 2 }), // 500000.00
+    maxRetailSubscription: numeric('max_retail_subscription', { precision: 18, scale: 2 }), // 200000.00
+    maxEmployeeSubscription: numeric('max_employee_subscription', { precision: 18, scale: 2 }), // 500000.00
     employeeDiscount: numeric('employee_discount', { precision: 10, scale: 2 }), // 69.00
     sponsorBanks: text('sponsor_banks').array(), // ["ICICI Bank", "Kotak Mahindra Bank"]
 
@@ -1277,7 +1285,9 @@ export const anchorInvestors = pgTable(
       .references(() => ipos.id, { onDelete: 'cascade' }),
     bidDate: date('bid_date').notNull(),
     totalSharesOffered: bigint('total_shares_offered', { mode: 'number' }).notNull(),
-    totalAmountRaised: numeric('total_amount_raised', { precision: 12, scale: 2 }).notNull(),
+    // T-504/#402: widened 12,2 -> 18,2 — a large anchor book (e.g. an
+    // LIC-sized IPO) can raise well over Rs 999.99 Cr from anchors alone.
+    totalAmountRaised: numeric('total_amount_raised', { precision: 18, scale: 2 }).notNull(),
     anchorInvestorsCount: integer('anchor_investors_count').notNull(),
     lockIn50PercentDate: date('lock_in_50_percent_date').notNull(),
     lockInRemainingDate: date('lock_in_remaining_date').notNull(),
