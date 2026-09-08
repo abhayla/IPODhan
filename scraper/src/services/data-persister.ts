@@ -2323,8 +2323,20 @@ export interface TransactionalIposWriter {
  * `bse_payload_lead_manager_count`, which is BSE-only by design (F-2). A
  * follow-up issue tracks a check over rows with an NSE-sourced payload; not
  * built here.
+ *
+ * T-513 / #419: this function writes `leadManagers` drizzle-direct inside its
+ * own transaction (never through `ipoRepository.update()`, which would defeat
+ * the SQL WHERE write-once guard above), so it never invalidated the
+ * `IPO_DETAIL`/`IPO_LIST` cache — every read served the stale (pre-write)
+ * value for up to `CacheTTL.IPO_DETAIL` / `IPO_LIST` (900s). `recordBseDiscoveryMetadata`
+ * (above) does not have this bug because it writes via `ipoRepository.update()`,
+ * which invalidates. Fix: after the transaction COMMITS (never from inside
+ * it — a rolled-back write must not drop a still-valid cache entry), call the
+ * repository's `invalidateIpoCache`, matching what `recordBseDiscoveryMetadata`
+ * gets for free via `.update()`.
  */
 export async function recordDiscoveredLeadManagers(
+  ipoRepository: Pick<IPORepository, 'invalidateIpoCache'>,
   ipoId: string,
   names: string[] | null | undefined,
   source: 'BSE' | 'NSE',
@@ -2332,6 +2344,8 @@ export async function recordDiscoveredLeadManagers(
 ): Promise<{ written: boolean }> {
   const sanitized = sanitizeLeadManagers(names);
   if (!sanitized || sanitized.length === 0) return { written: false };
+
+  let writtenSlug: string | null = null;
 
   const written = await dbLike.transaction(async (tx) => {
     const updated = await tx
@@ -2343,9 +2357,10 @@ export async function recordDiscoveredLeadManagers(
           orOp(isNullOp(iposTable.leadManagers), sqlOp`jsonb_array_length(${iposTable.leadManagers}) = 0`)
         )
       )
-      .returning({ id: iposTable.id });
+      .returning({ id: iposTable.id, slug: iposTable.slug });
 
     if (updated.length === 0) return false;
+    writtenSlug = updated[0]?.slug ?? null;
 
     const previous = await tx
       .select({ source: fieldSourcesTable.source })
@@ -2382,6 +2397,24 @@ export async function recordDiscoveredLeadManagers(
 
   if (written) {
     logger.debug({ ipoId, leadManagerCount: sanitized.length, source }, 'Recorded discovered lead managers');
+
+    // T-513 / #419: invalidate AFTER the transaction above has committed —
+    // never move this inside it, or a rolled-back write would drop a
+    // still-valid cache entry. The write itself is already durable at this
+    // point; a cache-layer failure here must never be reported as a failed
+    // write. `invalidateIpoCache` already swallows Redis errors internally,
+    // but a defensive try/catch keeps that contract even if the repository
+    // implementation changes.
+    if (writtenSlug) {
+      try {
+        await ipoRepository.invalidateIpoCache(ipoId, writtenSlug);
+      } catch (error) {
+        logger.warn(
+          { ipoId, error: error instanceof Error ? error.message : String(error) },
+          'Failed to invalidate IPO cache after recording discovered lead managers (write already committed, non-fatal)'
+        );
+      }
+    }
   }
   return { written };
 }

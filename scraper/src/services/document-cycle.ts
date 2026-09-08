@@ -1104,7 +1104,7 @@ export async function runDocumentCycle(
       // data, never a reason to fail a cycle.
       if (result.leadManagers.length > 0 && result.leadManagerSource) {
         try {
-          await recordDiscoveredLeadManagers(ipo.id, result.leadManagers, result.leadManagerSource);
+          await recordDiscoveredLeadManagers(ipoRepository, ipo.id, result.leadManagers, result.leadManagerSource);
         } catch (error) {
           logger.warn(
             { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
