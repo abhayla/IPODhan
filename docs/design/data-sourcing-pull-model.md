@@ -914,14 +914,36 @@ open or close date disagrees with the IPO it just bound to, the binding is suspe
 write nothing. A wrong binding almost always shows up here first, because two different IPOs rarely
 share a bidding window.
 
-**Measured 2026-09-08: the collision risk is not realised.** Running the same normalisation across
-all 327 production IPOs produces **zero** pairs that collapse to the same string. The aggressive
-suffix-stripping is safe on today's data because a trailing parenthetical is only stripped when it
-sits at the very end — `Glass Wall Systems (India) Limited` normalises to `glass wall systems
-(india)` and keeps its distinguishing part.
+**A measurement I read backwards, corrected 2026-09-09.** On 2026-09-08 I ran the normalisation
+across all 327 production IPOs, found **zero** pairs collapsing to the same string, and reported that
+as reassuring. **That reading was wrong, and it was wrong in the dangerous direction.**
 
-So this is a rule the design states before the pull loop starts relying on list sources, not a
-defect being repaired.
+Zero collisions does not mean the matching is safe. It means **the normaliser is too weak to ever
+merge two rows — including two rows that describe the same company.**
+
+Proven live, on an IPO that opens today:
+
+```
+ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED  ->  "asset reconstruction company (india)"
+Asset Reconstruction Co.(India) Ltd.          ->  "asset reconstruction co (india)"
+                                                                    ^^^^^^^ vs ^^
+```
+
+It strips `Limited`, `Ltd`, `Private Limited` and `Pvt Ltd` — **but not `Company` against `Co.`** So
+production carries **two rows for one mainboard IPO**, both UPCOMING, both opening 9 September, both
+priced 132–139, and the site shows it twice with different numbers (F-55). This is the **W-108
+class** from 2026-09-03 — a second *Rays of Belief* row where *"identity tiers 1–5 all missed"* —
+recurring.
+
+**So the binding rule above is necessary but not sufficient.** Exact-match on a normalised name is
+only as good as the normalisation, and a normaliser that never collides is a normaliser that never
+detects a duplicate either. Two things follow, and both belong to the loop rather than to a repair:
+
+1. **The normaliser must fold corporate-form words** — `Company`/`Co.`, `Corporation`/`Corp.`,
+   `Industries`/`Inds.` — not only the legal suffix.
+2. **Duplicate detection is a check that runs at discovery**, on a deliberately stricter key than
+   the binding key. A sweep with such a key over production finds exactly one duplicate group today:
+   this one. Binding and de-duplication want opposite error biases, so they must not share a key.
 
 #### 2.3.4 A correct page still contains other companies' numbers
 
