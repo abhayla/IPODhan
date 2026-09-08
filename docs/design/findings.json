@@ -2,7 +2,12 @@
   "meta": {
     "artefact": "docs/design/data-sourcing-pull-model.md",
     "reviewed": "2026-09-08",
-    "passes": ["author self-review", "IPO domain (independent)", "engineering (independent)", "verification model (independent)"],
+    "passes": [
+      "author self-review",
+      "IPO domain (independent)",
+      "engineering (independent)",
+      "verification model (independent)"
+    ],
     "raw_findings": 55,
     "consolidated": 40,
     "note": "55 raw findings across four passes deduplicate to 40 tracked items. Status is the point of this file: a finding with no status is a finding nobody closes."
@@ -14,55 +19,455 @@
     "BUILD-GATE": "not a design fix - a condition the build must satisfy before it ships"
   },
   "findings": [
-    {"id":"F-01","sev":"CRITICAL","area":"pull loop","phase1":true,"status":"OPEN","title":"The freeze has no release condition, and contradicts document healing","detail":"A DRHP issue size frozen in July is never corrected by the September RHP. Confirmed by 2 reviewers.","fix_in":"§2.1"},
-    {"id":"F-02","sev":"CRITICAL","area":"re-read loop","phase1":true,"status":"OPEN","title":"The freeze starves the only signal that could unfreeze a wrong value","detail":"data_conflicts rows need a second source to arrive; the freeze means rounds 2 and 3 are never asked, so §3's trigger can never fire on frozen fields.","fix_in":"§2.1 + §3.1"},
-    {"id":"F-03","sev":"CRITICAL","area":"E-1","phase1":true,"status":"OPEN","title":"E-1 points six fields at sources that do not carry them; §2.8 then deletes the data","detail":"filing-persister.ts:867-869 is the only writer of the three ipo_details dates; no exchange scraper writes them. Would blank 13 correct values on live pages.","fix_in":"§1.2.1 + §2.8"},
-    {"id":"F-04","sev":"CRITICAL","area":"write path","phase1":true,"status":"OPEN","title":"§2.8's null-write is impossible through the writer the design keeps, and fails silently","detail":"data-consolidation-service.ts:1063-1080 returns the stored value on a null incoming and logs nothing.","fix_in":"§2.8"},
-    {"id":"F-05","sev":"CRITICAL","area":"verification","phase1":true,"status":"OPEN","title":"Round-1 yield rises when extraction gets worse","detail":"The denominator is produced by the machinery under test. A mis-resolved document type shrinks it and the score goes up.","fix_in":"§2.1.1 + §4.3"},
-    {"id":"F-06","sev":"CRITICAL","area":"verification","phase1":true,"status":"OPEN","title":"Four checks are vacuous when their input collapses to zero","detail":"4.2, 4.3, 4.8, 4.13 all read healthy at 0/0. Needs a denominator floor on every ratio.","fix_in":"§4"},
-    {"id":"F-07","sev":"CRITICAL","area":"re-read loop","phase1":true,"status":"OPEN","title":"Nothing proves the re-read actually opened a file","detail":"A purged PDF plus a 404 lets an implementation confirm a wrong value forever and then defend it against the website that was right.","fix_in":"§3.3 + §4.9"},
-    {"id":"F-08","sev":"CRITICAL","area":"verification","phase1":true,"status":"OPEN","title":"Five checks are written to a log with no consumer that diffs it","detail":"Violates signal-ownership R3, which the design quotes approvingly two pages earlier.","fix_in":"§4"},
-    {"id":"F-09","sev":"CRITICAL","area":"migration","phase1":false,"status":"DROPPED-BY-SCOPE","title":"Backlog re-download is undone by decidePurge on the next cycle","detail":"document-store.ts:279 hard_cap is unconditional past 30 days. Reopens for phase 2.","fix_in":"§6"},
-    {"id":"F-10","sev":"CRITICAL","area":"checks","phase1":false,"status":"DROPPED-BY-SCOPE","title":"Checks wrong for a class silently blank that class","detail":"NCD face value 1000, pre-Dec-2023 T+6 listings, pre-2025 SME lot rule. All 19 phase-1 IPOs are current-era plain IPOs. Reopens for phase 2.","fix_in":"§1 checks"},
-    {"id":"F-11","sev":"CRITICAL","area":"field mapping","phase1":false,"status":"DROPPED-BY-SCOPE","title":"Appendix A resolves only 3 of 11 offering types","detail":"Phase 1 contains only IPO mainboard, SME-BSE and SME-NSE - exactly the 3 resolved. Reopens for phase 2.","fix_in":"Appendix A"},
-    {"id":"F-12","sev":"CRITICAL","area":"write path","phase1":true,"status":"OPEN","title":"162 of 194 fields have no consolidated writer at all","detail":"consolidatedUpsertIPO covers the ipos table only; eight child tables have their own writers. The largest single piece of build work, hidden in a bullet saying nothing changes.","fix_in":"§2.7 + §7.1"},
-    {"id":"F-13","sev":"CRITICAL","area":"field mapping","phase1":true,"status":"OPEN","title":"The mapping is scoped to fields populated today, so document-only facts can never enter","detail":"About 46 document-printed columns are empty and therefore absent from the plan. Confirmed by 2 reviewers.","fix_in":"§1.1 + Appendix A"},
-    {"id":"F-14","sev":"CRITICAL","area":"process model","phase1":true,"status":"OPEN","title":"The walk is killed at the 30-minute cron boundary as the scheduled steady state","detail":"Single pm2 instance, --cron-restart */30, worst-case pass 30 min, spawnSync blocks the SIGINT handler so the lock is held for its full 45-min TTL. Needs a per-row commit boundary and a resume point.","fix_in":"§2 (new concurrency section)"},
-
-    {"id":"F-15","sev":"MAJOR","area":"process model","phase1":true,"status":"OPEN","title":"No lock, no stated granularity, for the walk","fix_in":"§2"},
-    {"id":"F-16","sev":"MAJOR","area":"process model","phase1":true,"status":"OPEN","title":"No crash recovery; a silent LOCK_NOT_ACQUIRED marks a plan row SUPPLIED for a write that never landed","fix_in":"§2.2"},
-    {"id":"F-17","sev":"MAJOR","area":"state model","phase1":true,"status":"OPEN","title":"NOT_PRINTED vs NOT_AVAILABLE_YET is undecidable from a per-type manifest","detail":"The two have opposite permanent consequences and §2.5 gives the same example for both. Derive from lifecycle stage.","fix_in":"§2.5"},
-    {"id":"F-18","sev":"MAJOR","area":"state model","phase1":true,"status":"OPEN","title":"The NOT_AVAILABLE_YET reclaim has no bound and no backoff","fix_in":"§2.5"},
-    {"id":"F-19","sev":"MAJOR","area":"tiering","phase1":true,"status":"OPEN","title":"WITHDRAWN and POSTPONED IPOs match no tier and are never walked","detail":"Confirmed by 3 reviewers. A phase-1 IPO can become either at any time.","fix_in":"§2.3"},
-    {"id":"F-20","sev":"MAJOR","area":"plan lifecycle","phase1":true,"status":"OPEN","title":"Nothing rebuilds the plan when offering_type, segment or listing_exchanges is corrected","detail":"Measured: no committed type change in 327 IPOs, but Mopshop was stored FPO, disagreed 24 times, and was corrected by hand.","fix_in":"§2.2"},
-    {"id":"F-21","sev":"MAJOR","area":"plan lifecycle","phase1":true,"status":"OPEN","title":"An ADMIN override is a one-way door; clearing it never returns the field to the loop","fix_in":"§2.7"},
-    {"id":"F-22","sev":"MAJOR","area":"domain","phase1":true,"status":"OPEN","title":"Anchor lock-in dates are computed from the bid date; the rule is 30/90 days from allotment","detail":"anchor-investors-scraper.ts:302. An existing production bug of roughly a week. UNVERIFIED against the circular.","fix_in":"Appendix A + a separate bug fix"},
-    {"id":"F-23","sev":"MAJOR","area":"domain","phase1":true,"status":"OPEN","title":"Pre-IPO placement and green-shoe change the issue size after the RHP; the design stores a boolean","fix_in":"Appendix A"},
-    {"id":"F-24","sev":"MAJOR","area":"domain","phase1":false,"status":"DROPPED-BY-SCOPE","title":"NCD structure cannot be represented (base vs retained size, series, coupon, tenor, rating)","fix_in":"phase 2"},
-    {"id":"F-25","sev":"MAJOR","area":"domain","phase1":false,"status":"DROPPED-BY-SCOPE","title":"InvIT/REIT: §1.11 says out of scope, A.2 assigns them 117 resolvable fields","fix_in":"phase 2"},
-    {"id":"F-26","sev":"MAJOR","area":"domain","phase1":true,"status":"OPEN","title":"Fixed price is treated as an SME property; it is a property of issue_type","detail":"A fixed-price issue has no bid book and a different allocation split. Phase 1 has SME IPOs which are commonly fixed price.","fix_in":"§1 checks"},
-    {"id":"F-27","sev":"MAJOR","area":"domain","phase1":true,"status":"OPEN","title":"The basis-of-allotment extractor is scheduled with nowhere to write","fix_in":"Appendix A + §5.4"},
-    {"id":"F-28","sev":"MAJOR","area":"verification","phase1":true,"status":"OPEN","title":"A check that crashes reads as an improvement in floor-delta","detail":"It parses FAIL/PASS only; a vanished check appears as GONE and prints 'no new findings'.","fix_in":"§4 + floor-delta"},
-    {"id":"F-29","sev":"MAJOR","area":"verification","phase1":true,"status":"OPEN","title":"Check 4.8's healthy value contradicts §3.4's own bounds and would be permanently red","fix_in":"§4.8"},
-    {"id":"F-30","sev":"MAJOR","area":"migration","phase1":false,"status":"DROPPED-BY-SCOPE","title":"Four of the six migration gates are prose, not commands","fix_in":"§6"},
-    {"id":"F-31","sev":"MAJOR","area":"migration","phase1":false,"status":"DROPPED-BY-SCOPE","title":"field_sources holds one prior value, so the per-field rollback claim fails past one overwrite","fix_in":"§7.2"},
-    {"id":"F-32","sev":"MAJOR","area":"E-1","phase1":true,"status":"OPEN","title":"Check 4.6 asserts on declared ranks, not on field_sources.source - it reads intent, not outcome","fix_in":"§4.6"},
-    {"id":"F-33","sev":"MAJOR","area":"schema","phase1":true,"status":"OPEN","title":"The public API ships 19 fields that are null on all 327 IPOs, with no retirement plan","fix_in":"§1 + a retirement list"},
-    {"id":"F-34","sev":"MAJOR","area":"verification","phase1":true,"status":"OPEN","title":"No check has an id, an emitting script, a host or an owner","detail":"So §3.5's tier-differentiated issue routing cannot be built on the existing per-check-id path.","fix_in":"§4"},
-    {"id":"F-35","sev":"MAJOR","area":"infrastructure","phase1":false,"status":"DROPPED-BY-SCOPE","title":"A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two","detail":"scripts/deploy-linux.sh:231-235 records the incident. No backlog drain in phase 1.","fix_in":"§2.3 + §5.4"},
-    {"id":"F-36","sev":"MAJOR","area":"documentation","phase1":true,"status":"FIXED","title":"§1 and Appendix A contradict each other; the document says so instead of fixing it","detail":"Being closed by generating §1 from the same spec as Appendix A.","fix_in":"§1"},
-    {"id":"F-37","sev":"MAJOR","area":"verification","phase1":true,"status":"FIXED","title":"E-1 stated as both nine and twelve fields","fix_in":"§1.2.1"},
-    {"id":"F-38","sev":"MAJOR","area":"verification","phase1":true,"status":"FIXED","title":"The plan-completeness check had three different expected values (131/150/153)","detail":"Replaced with an assertion against a committed manifest sha - comparing the generator's output to a number the generator produced detects nothing.","fix_in":"§4.1"},
-    {"id":"F-39","sev":"MAJOR","area":"field mapping","phase1":true,"status":"OPEN","title":"The mapping is designed, not observed; no stage verifies a named source actually serves the field","status_note":"BUILD-GATE: becomes the first step of the build.","fix_in":"§6 M1"},
-    {"id":"F-40","sev":"MAJOR","area":"data quality","phase1":true,"status":"OPEN","title":"Three of the 19 phase-1 IPOs have segment = NULL, so no rank set can be resolved for them","detail":"Found 2026-09-08. BSE-only UPCOMING rows. SME and mainboard have different lot-value checks.","fix_in":"phase-1 precondition"}
+    {
+      "id": "F-01",
+      "sev": "CRITICAL",
+      "area": "pull loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The freeze has no release condition, and contradicts document healing",
+      "detail": "A DRHP issue size frozen in July is never corrected by the September RHP. Confirmed by 2 reviewers.",
+      "fix_in": "§2.1",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-02",
+      "sev": "CRITICAL",
+      "area": "re-read loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The freeze starves the only signal that could unfreeze a wrong value",
+      "detail": "data_conflicts rows need a second source to arrive; the freeze means rounds 2 and 3 are never asked, so §3's trigger can never fire on frozen fields.",
+      "fix_in": "§2.1 + §3.1",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-03",
+      "sev": "CRITICAL",
+      "area": "E-1",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "E-1 points six fields at sources that do not carry them; §2.8 then deletes the data",
+      "detail": "filing-persister.ts:867-869 is the only writer of the three ipo_details dates; no exchange scraper writes them. Would blank 13 correct values on live pages.",
+      "fix_in": "§1.2.1 + §2.8"
+    },
+    {
+      "id": "F-04",
+      "sev": "CRITICAL",
+      "area": "write path",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "§2.8's null-write is impossible through the writer the design keeps, and fails silently",
+      "detail": "data-consolidation-service.ts:1063-1080 returns the stored value on a null incoming and logs nothing.",
+      "fix_in": "§2.8",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-05",
+      "sev": "CRITICAL",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Round-1 yield rises when extraction gets worse",
+      "detail": "The denominator is produced by the machinery under test. A mis-resolved document type shrinks it and the score goes up.",
+      "fix_in": "§2.1.1 + §4.3",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-06",
+      "sev": "CRITICAL",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Four checks are vacuous when their input collapses to zero",
+      "detail": "4.2, 4.3, 4.8, 4.13 all read healthy at 0/0. Needs a denominator floor on every ratio.",
+      "fix_in": "§4",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-07",
+      "sev": "CRITICAL",
+      "area": "re-read loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Nothing proves the re-read actually opened a file",
+      "detail": "A purged PDF plus a 404 lets an implementation confirm a wrong value forever and then defend it against the website that was right.",
+      "fix_in": "§3.3 + §4.9",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-08",
+      "sev": "CRITICAL",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Five checks are written to a log with no consumer that diffs it",
+      "detail": "Violates signal-ownership R3, which the design quotes approvingly two pages earlier.",
+      "fix_in": "§4",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-09",
+      "sev": "CRITICAL",
+      "area": "migration",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "Backlog re-download is undone by decidePurge on the next cycle",
+      "detail": "document-store.ts:279 hard_cap is unconditional past 30 days. Reopens for phase 2.",
+      "fix_in": "§6"
+    },
+    {
+      "id": "F-10",
+      "sev": "CRITICAL",
+      "area": "checks",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "Checks wrong for a class silently blank that class",
+      "detail": "NCD face value 1000, pre-Dec-2023 T+6 listings, pre-2025 SME lot rule. All 19 phase-1 IPOs are current-era plain IPOs. Reopens for phase 2.",
+      "fix_in": "§1 checks"
+    },
+    {
+      "id": "F-11",
+      "sev": "CRITICAL",
+      "area": "field mapping",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "Appendix A resolves only 3 of 11 offering types",
+      "detail": "Phase 1 contains only IPO mainboard, SME-BSE and SME-NSE - exactly the 3 resolved. Reopens for phase 2.",
+      "fix_in": "Appendix A"
+    },
+    {
+      "id": "F-12",
+      "sev": "CRITICAL",
+      "area": "write path",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "162 of 194 fields have no consolidated writer at all",
+      "detail": "consolidatedUpsertIPO covers the ipos table only; eight child tables have their own writers. The largest single piece of build work, hidden in a bullet saying nothing changes.",
+      "fix_in": "§2.7 + §7.1",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-13",
+      "sev": "CRITICAL",
+      "area": "field mapping",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The mapping is scoped to fields populated today, so document-only facts can never enter",
+      "detail": "About 46 document-printed columns are empty and therefore absent from the plan. Confirmed by 2 reviewers.",
+      "fix_in": "§1.1 + Appendix A"
+    },
+    {
+      "id": "F-14",
+      "sev": "CRITICAL",
+      "area": "process model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The walk is killed at the 30-minute cron boundary as the scheduled steady state",
+      "detail": "Single pm2 instance, --cron-restart */30, worst-case pass 30 min, spawnSync blocks the SIGINT handler so the lock is held for its full 45-min TTL. Needs a per-row commit boundary and a resume point.",
+      "fix_in": "§2 (new concurrency section)",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-15",
+      "sev": "MAJOR",
+      "area": "process model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No lock, no stated granularity, for the walk",
+      "fix_in": "§2",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-16",
+      "sev": "MAJOR",
+      "area": "process model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No crash recovery; a silent LOCK_NOT_ACQUIRED marks a plan row SUPPLIED for a write that never landed",
+      "fix_in": "§2.2",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-17",
+      "sev": "MAJOR",
+      "area": "state model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "NOT_PRINTED vs NOT_AVAILABLE_YET is undecidable from a per-type manifest",
+      "detail": "The two have opposite permanent consequences and §2.5 gives the same example for both. Derive from lifecycle stage.",
+      "fix_in": "§2.5",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-18",
+      "sev": "MAJOR",
+      "area": "state model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The NOT_AVAILABLE_YET reclaim has no bound and no backoff",
+      "fix_in": "§2.5",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-19",
+      "sev": "MAJOR",
+      "area": "tiering",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "WITHDRAWN and POSTPONED IPOs match no tier and are never walked",
+      "detail": "Confirmed by 3 reviewers. A phase-1 IPO can become either at any time.",
+      "fix_in": "§2.3",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-20",
+      "sev": "MAJOR",
+      "area": "plan lifecycle",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Nothing rebuilds the plan when offering_type, segment or listing_exchanges is corrected",
+      "detail": "Measured: no committed type change in 327 IPOs, but Mopshop was stored FPO, disagreed 24 times, and was corrected by hand.",
+      "fix_in": "§2.2",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-21",
+      "sev": "MAJOR",
+      "area": "plan lifecycle",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "An ADMIN override is a one-way door; clearing it never returns the field to the loop",
+      "fix_in": "§2.7",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-22",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Anchor lock-in dates are computed from the bid date; the rule is 30/90 days from allotment",
+      "detail": "anchor-investors-scraper.ts:302. An existing production bug of roughly a week. UNVERIFIED against the circular.",
+      "fix_in": "Appendix A + a separate bug fix"
+    },
+    {
+      "id": "F-23",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Pre-IPO placement and green-shoe change the issue size after the RHP; the design stores a boolean",
+      "fix_in": "Appendix A"
+    },
+    {
+      "id": "F-24",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "NCD structure cannot be represented (base vs retained size, series, coupon, tenor, rating)",
+      "fix_in": "phase 2"
+    },
+    {
+      "id": "F-25",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "InvIT/REIT: §1.11 says out of scope, A.2 assigns them 117 resolvable fields",
+      "fix_in": "phase 2"
+    },
+    {
+      "id": "F-26",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Fixed price is treated as an SME property; it is a property of issue_type",
+      "detail": "A fixed-price issue has no bid book and a different allocation split. Phase 1 has SME IPOs which are commonly fixed price.",
+      "fix_in": "§1 checks"
+    },
+    {
+      "id": "F-27",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The basis-of-allotment extractor is scheduled with nowhere to write",
+      "fix_in": "Appendix A + §5.4"
+    },
+    {
+      "id": "F-28",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "A check that crashes reads as an improvement in floor-delta",
+      "detail": "It parses FAIL/PASS only; a vanished check appears as GONE and prints 'no new findings'.",
+      "fix_in": "§4 + floor-delta",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-29",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Check 4.8's healthy value contradicts §3.4's own bounds and would be permanently red",
+      "fix_in": "§4.8",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-30",
+      "sev": "MAJOR",
+      "area": "migration",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "Four of the six migration gates are prose, not commands",
+      "fix_in": "§6"
+    },
+    {
+      "id": "F-31",
+      "sev": "MAJOR",
+      "area": "migration",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "field_sources holds one prior value, so the per-field rollback claim fails past one overwrite",
+      "fix_in": "§7.2"
+    },
+    {
+      "id": "F-32",
+      "sev": "MAJOR",
+      "area": "E-1",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Check 4.6 asserts on declared ranks, not on field_sources.source - it reads intent, not outcome",
+      "fix_in": "§4.6",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-33",
+      "sev": "MAJOR",
+      "area": "schema",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The public API ships 19 fields that are null on all 327 IPOs, with no retirement plan",
+      "fix_in": "§1 + a retirement list"
+    },
+    {
+      "id": "F-34",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No check has an id, an emitting script, a host or an owner",
+      "detail": "So §3.5's tier-differentiated issue routing cannot be built on the existing per-check-id path.",
+      "fix_in": "§4",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-35",
+      "sev": "MAJOR",
+      "area": "infrastructure",
+      "phase1": false,
+      "status": "DROPPED-BY-SCOPE",
+      "title": "A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two",
+      "detail": "scripts/deploy-linux.sh:231-235 records the incident. No backlog drain in phase 1.",
+      "fix_in": "§2.3 + §5.4"
+    },
+    {
+      "id": "F-36",
+      "sev": "MAJOR",
+      "area": "documentation",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "§1 and Appendix A contradict each other; the document says so instead of fixing it",
+      "detail": "Being closed by generating §1 from the same spec as Appendix A.",
+      "fix_in": "§1"
+    },
+    {
+      "id": "F-37",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "E-1 stated as both nine and twelve fields",
+      "fix_in": "§1.2.1"
+    },
+    {
+      "id": "F-38",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The plan-completeness check had three different expected values (131/150/153)",
+      "detail": "Replaced with an assertion against a committed manifest sha - comparing the generator's output to a number the generator produced detects nothing.",
+      "fix_in": "§4.1"
+    },
+    {
+      "id": "F-39",
+      "sev": "MAJOR",
+      "area": "field mapping",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The mapping is designed, not observed; no stage verifies a named source actually serves the field",
+      "status_note": "BUILD-GATE: becomes the first step of the build.",
+      "fix_in": "§6 M1"
+    },
+    {
+      "id": "F-40",
+      "sev": "MAJOR",
+      "area": "data quality",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Three of the 19 phase-1 IPOs have segment = NULL, so no rank set can be resolved for them",
+      "detail": "Found 2026-09-08. BSE-only UPCOMING rows. SME and mainboard have different lot-value checks.",
+      "fix_in": "phase-1 precondition"
+    }
   ],
   "false_assertions": [
-    {"id":"A-1","claim":"no website publishes a restated financial statement","reality":"chittorgarh-detail-fields.ts reads CG's restated table per fiscal year","status":"FIXED"},
-    {"id":"A-2","claim":"EXTRACTIONS_PER_CYCLE = 1 is a hard limit the design must live inside","reality":"dead code - only its definition and a test asserting it equals 1","status":"OPEN"},
-    {"id":"A-3","claim":"the consolidation service stays the only writer","reality":"true for the ipos table only - 32 of 194 fields","status":"OPEN"},
-    {"id":"A-4","claim":"§2.8 writes null with a reason","reality":"a null cannot pass through consolidatedUpsertIPO","status":"OPEN"},
-    {"id":"A-5","claim":"E-1's twelve fields move to NSE then BSE","reality":"six of them are written only by filing-persister.ts","status":"OPEN"},
-    {"id":"A-6","claim":"the state machine progresses WANTED -> NOT_YET_FILED -> FOUND -> EXTRACTED","reality":"nine states; NOT_FOUND is emphatically not NOT_YET_FILED, per a comment in the code","status":"OPEN"},
-    {"id":"A-7","claim":"document healing is inherited from 9db4529d","reality":"decideSupersession is specified, unit-tested and NOT CALLED BY THE RUNNER","status":"OPEN"}
+    {
+      "id": "A-1",
+      "claim": "no website publishes a restated financial statement",
+      "reality": "chittorgarh-detail-fields.ts reads CG's restated table per fiscal year",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-2",
+      "claim": "EXTRACTIONS_PER_CYCLE = 1 is a hard limit the design must live inside",
+      "reality": "dead code - only its definition and a test asserting it equals 1",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-3",
+      "claim": "the consolidation service stays the only writer",
+      "reality": "true for the ipos table only - 32 of 194 fields",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-4",
+      "claim": "§2.8 writes null with a reason",
+      "reality": "a null cannot pass through consolidatedUpsertIPO",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-5",
+      "claim": "E-1's twelve fields move to NSE then BSE",
+      "reality": "six of them are written only by filing-persister.ts",
+      "status": "OPEN"
+    },
+    {
+      "id": "A-6",
+      "claim": "the state machine progresses WANTED -> NOT_YET_FILED -> FOUND -> EXTRACTED",
+      "reality": "nine states; NOT_FOUND is emphatically not NOT_YET_FILED, per a comment in the code",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-7",
+      "claim": "document healing is inherited from 9db4529d",
+      "reality": "decideSupersession is specified, unit-tested and NOT CALLED BY THE RUNNER",
+      "status": "FIXED"
+    }
   ]
 }

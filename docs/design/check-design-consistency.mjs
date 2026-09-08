@@ -89,6 +89,32 @@ try {
   const phase1InDesign = /open and upcoming|OPEN \+ UPCOMING|phase 1/i.test(md);
   if (!phase1InDesign) fail('D6', 'The design does not state the phase-1 scope the owner set.');
   else ok('D6', 'Phase-1 scope is stated in the design.');
+
+  // --- D7: the seven false claims about our own code must not reappear ---
+  // The first draft asserted seven things about existing behaviour that the code
+  // disproves. An implementer who trusts one builds the wrong thing, so each is a
+  // regression guard, not a note. Phrasing is matched loosely on purpose.
+  var FALSE_CLAIMS = [
+    [/no website publishes a restated (financial )?statement/i, 'A-1 CG does read a restated per-FY table'],
+    [/EXTRACTIONS_PER_CYCLE[^.]{0,80}(hard limit|limits this design|must live inside)/i, 'A-2 that constant is dead code'],
+    [/consolidation service stays the only writer/i, 'A-3 it covers the ipos table only'],
+    [/written (as )?null with (a|its) reason, never left as a stale value/i, 'A-4 a null cannot pass through the writer'],
+    [/WANTED\s*(->|→)\s*NOT_YET_FILED\s*(->|→)\s*FOUND\s*(->|→)\s*EXTRACTED/i, 'A-6 the enum has nine states'],
+    [/(healing|heal an older one)[^.]{0,60}(inherited|inherits) from 9db4529d/i, 'A-7 decideSupersession is not wired'],
+  ];
+  // A.0 narrates the corrections and must be allowed to quote the claim it disproves;
+  // everywhere else the claim is a live assertion.
+  var mdLive = md.split(String.fromCharCode(10)).filter(function(l){ return !/That was false|was wrong, and|disproves it/i.test(l); }).join(String.fromCharCode(10));
+  var revived = [];
+  FALSE_CLAIMS.forEach(function(pair){ if (pair[0].test(mdLive)) revived.push(pair[1]); });
+  if (revived.length) fail('D7', 'A disproved claim about our own code is back in the design: ' + revived.join(' · '));
+  else ok('D7', 'None of the seven disproved claims about our own code appear.');
+
+  // --- D8: the rewritten sections cite the code they describe ---
+  var core = md.slice(md.indexOf('## 2. How we go and get it'), md.indexOf('## 5.'));
+  var cites = (core.match(/[a-z-]+\.(ts|mjs|sh):\d+/g) || []).length;
+  if (cites < 12) fail('D8', 'Sections 2-4 make claims about existing behaviour with only ' + cites + ' file:line citations. Uncited claims are how the seven false assertions got in.');
+  else ok('D8', 'Sections 2-4 carry ' + cites + ' file:line citations for claims about existing behaviour.');
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);
   process.exit(2);

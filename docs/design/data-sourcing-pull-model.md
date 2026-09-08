@@ -421,8 +421,13 @@ becomes the source of truth and `financial_data` becomes a derived view of its t
 
 ### 1.5 `financial_statements` — the per-year financial rows (11 live fields)
 
-All class **D**, **document-only**: no website publishes a restated statement. Rank 1 DOC, rank 2
-none, rank 3 none. A field here that the document cannot supply stays null — there is nowhere else
+All class **D**. **Six of the eleven have Chittorgarh at rank 2 and Moneycontrol at rank 3** — CG's
+detail page carries a restated per-fiscal-year "Company Financials" table
+(`scraper/src/scrapers/chittorgarh-detail-fields.ts`, `getTableById(html,'financialTable')`) giving
+revenue, total income, EBITDA and PAT per year plus the fiscal years themselves. The five that stay
+document-only are `basis`, `unit`, `eps_basic`, `eps_diluted` and `op_cash_flow` — CG prints a single
+pre/post-issue EPS pair and no basis, unit or cash-flow line. **Appendix A is authoritative for the
+per-field ranks.** A field here that the document cannot supply stays null — there is nowhere else
 to go, and that is the correct answer, not a failure.
 
 **This table should become the source of truth for financials** (§5.2), which makes its unit
@@ -568,329 +573,301 @@ Written once here rather than duplicated into every row.
 
 ---
 
-## 2. The pull loop
+## 2. How we go and get it — the pull loop
 
-### 2.1 The shape — three rounds, and a later round can never overwrite an earlier one
+**Scope: phase 1 only.** 19 IPOs, status OPEN or UPCOMING, all `offering_type = 'IPO'`, mainboard or
+SME (measured 2026-09-08). No closed IPO is read or written. Closed IPOs follow afterwards, one at a
+time, newest close date first — that is section 6, and none of it is specified here.
 
-Today: *sources push whatever they found; the matrix arbitrates the collision.*
+Every claim below about how the system behaves today carries the file and line it was read from.
+Anything not cited is a proposal, not a fact. That rule exists because the first draft of this
+section asserted seven things about our own code that were false, and an implementer who trusted
+them would have built the wrong thing.
 
-Owner's specification, 2026-09-08 (this is the governing statement for §2 and supersedes any
-per-field interpretation earlier in this document):
+### 2.1 What runs, and when
 
-> "If the field value comes from the offer document then it should be extracted from the offer
-> document. In second round, all first round correct data should be retained and for incorrect and
-> incomplete data, second source should be checked. Then in third round, all second round correct
-> data should be retained and for incorrect and incomplete data, third source should be checked."
+Discovery already runs four times a day — 08:30, 11:00, 14:00, 17:30 IST
+(`scraper/src/scheduler/due-step-cycle.ts:15`). The pull walk runs in those same four slots, plus
+whenever a document for a phase-1 IPO reaches `EXTRACTED`. It does not run on every wake.
 
-So the loop is **source-major, in rounds**, not field-major:
+Live figures — subscription, demand graph, grey-market premium — keep running on every in-hours wake,
+but only for OPEN IPOs. Measured: **6 OPEN, 13 UPCOMING**. So the expensive walk touches 19 IPOs four
+times a day, and the cheap live poll touches 6.
 
-```
-for each IPO in the working set (§2.3):
-    plan = field_plan(IPO)                      # the sourced fields for this IPO's type, §2.2
+### 2.2 The process this has to survive, which the first draft ignored
 
-    ROUND 1 — the offer document
-      read the IPO's best available document ONCE
-      for every field the document owns:
-          extract -> CORRECT | INCORRECT | INCOMPLETE          (§2.5)
-          CORRECT   -> write it, FREEZE it. No later round may touch it.
-          INCORRECT -> do not write. Record the check that failed. Carry to round 2.
-          INCOMPLETE-> do not write. Record why. Carry to round 2.
+The scraper is **one pm2 process, not a cluster**, started
+`--no-autorestart --cron-restart="*/30 * * * *"` (`scripts/deploy-linux.sh:681-682`). Three facts
+follow, and together they set the shape of everything below:
 
-    ROUND 2 — the exchange (NSE or BSE, per the IPO's type)
-      operate ONLY on the fields round 1 left INCORRECT or INCOMPLETE
-      every round-1 CORRECT value is retained untouched
-      same three outcomes; CORRECT here freezes against round 3
+1. **`cron-restart` on a running process is a restart, not a skip.** A walk still running at the
+   thirty-minute boundary is killed.
+2. **The worst-case extraction pass is 30 minutes** — `DEFAULT_MAX_SPAWNS_PER_CYCLE = 3`
+   (`filing-auto-persist.ts:500`) × `EXTRACT_TIMEOUT_MS = 10 min` (`filing-auto-persist.ts:166`) —
+   against a 30-minute cron. So being killed mid-walk is not an edge case. **It is the normal
+   operating state.**
+3. **Extraction is `spawnSync`** (`filing-auto-persist.ts:170`), which blocks the event loop, so the
+   signal handler that releases locks (`document-cycle.ts:84-128`) cannot run during it. The process
+   is killed outright and `FILING_EXTRACTION_LOCK_KEY` stays held for its full 45-minute TTL
+   (`filing-auto-persist.ts:500-551`) — costing the next two wakes their extraction slot.
 
-    ROUND 3 — the website (Chittorgarh, Moneycontrol)
-      operate ONLY on what round 2 left INCORRECT or INCOMPLETE
-      every round-2 CORRECT value is retained untouched
+**Therefore the walk commits one field at a time and is resumable from any point.** No multi-IPO
+batch held in memory and flushed at the end; no four-pass sequence that only makes sense if it
+completes. Each field's outcome is written before the next field is attempted. A kill loses at most
+the field in flight.
 
-    AFTER ROUND 3
-      anything still unresolved is written null with its reason and raised
-      as a gap (§2.8) — never guessed, never left stale
+This replaces the first draft's four sequential passes per IPO, which were exactly the wrong shape
+for a process on a thirty-minute drumbeat.
 
-    verify(IPO)                                  # §3, separate from the rounds
-```
+### 2.3 Where the loop records what it asked
 
-Two properties this has that a priority list does not:
+The loop needs somewhere to record *what was asked and what came back*, because `field_sources`
+records only successful writes — a field never attempted and a field attempted and failed look
+identical in it, both absent.
 
-1. **The ratchet.** Freezing a correct value is *positional*, not comparative. Round 2 never gets to
-   argue with round 1; it is not asked. A priority matrix only helps when two values collide, which
-   is why the document ranking alone moved nothing (§0.3).
-2. **One fetch per source per IPO.** The document is opened once and every field it owns is taken in
-   that read. The exchange is called once for the residue. That is what makes this affordable inside
-   the existing extraction budgets (§2.7).
-
-The critical difference from today is still the word **ask**. Today nothing asks; it waits for
-whatever arrives.
-
-### 2.1.1 The target that follows from this: 100%, per field, not an average
-
-**Owner decision, 2026-09-08: the target is 100%, not 90%.** Every field the offer document prints
-is sourced from the offer document. There is no acceptable residue.
-
-This changes what we measure. A blended percentage is the wrong instrument: at "90%" nobody has to
-say *which* 10% a website is still supplying, and the ten worst fields can hide inside a good
-average forever. Instead:
-
-- The measured quantity is **round-1 yield: of the fields the document owns for this IPO, how many
-  did round 1 actually supply.** Target 100%.
-- **Every fall-through to round 2 or 3 is an exception with a named reason**, listed by field
-  identity, not summarised as a count (`signal-ownership.md` R1).
-- A legitimate fall-through exists and must be distinguishable from a failure: an ISIN does not
-  exist before listing, and a DRHP does not carry a final price band. Those are `INCOMPLETE` with
-  reason `NOT_AVAILABLE_YET`, and they resolve when the later document is filed — not by a website
-  filling the gap permanently.
-
-So the honest statement of done is: **100% of document-owned fields come from the document, and
-every exception to that is named, counted by identity, and has an owner.**
-
-### 2.2 The field plan — the new state this needs
-
-The loop cannot run without somewhere to record *what was asked and what came back*. `field_sources`
-records only what was successfully written, so a field that was never attempted and a field that was
-attempted and failed look identical: absent.
-
-This design adds one table, `ipo_field_plan`, one row per (IPO, table, field):
+One new table, `ipo_field_plan`, one row per (IPO, table, field):
 
 | Column | Purpose |
 |---|---|
 | `ipo_id`, `table_name`, `field_name` | the key |
-| `field_class` | D / X / W / M / C / I from §1.1 |
-| `rank1_source`, `rank2_source`, `rank3_source` | resolved for this IPO's type, so SME-on-NSE never lists BSE |
-| `state` | `PENDING` · `SUPPLIED` · `NOT_PRINTED` · `NOT_AVAILABLE_YET` · `CHECK_FAILED` · `EXHAUSTED` · `NOT_APPLICABLE` |
-| `chosen_source`, `chosen_rank`, `chosen_document_id`, `chosen_page` | provenance of the value that won |
-| `attempts`, `last_attempt_at`, `next_due_at` | the backoff, per field rather than per document |
-| `verify_state`, `verify_source`, `verify_value`, `disagreement_count` | the re-read loop's state (§3) |
+| `rank1_source`, `rank2_source`, `rank3_source` | resolved for this IPO's type, so an SME-on-BSE IPO never lists NSE |
+| `state` | `PENDING` · `SUPPLIED` · `NOT_PRINTED` · `NOT_AVAILABLE_YET` · `CHECK_FAILED` · `EXHAUSTED` |
+| `chosen_source`, `chosen_rank`, `chosen_document_id`, `chosen_document_type`, `chosen_sha256`, `chosen_page` | what won, and **on what evidence** — this is what makes §2.5 work |
+| `attempts`, `last_attempt_at`, `next_due_at` | per-field backoff |
+| `claimed_at`, `claim_token` | so a killed walk's in-flight row is reclaimable, mirroring `isStaleInProgress` (`document-state-machine.ts:730`) |
+| `verify_due_at`, `verify_state`, `verify_source`, `verify_value`, `disagreement_count` | §3's state, scheduled rather than accidental |
+| `manifest_version` | so the plan is reconciled when the manifest changes, never regenerated per cycle |
 
-This is the honest cost of the design: **it is a new table and a new writer**, not a configuration
-change. Everything else in §2 and §3 is logic over this table.
+**The plan row is written from the *result* of the write, never in parallel with it.**
+`consolidatedUpsertIPO` returns `skipped: true, skipReason: 'LOCK_NOT_ACQUIRED'`
+(`data-consolidation-orchestrator.ts:137-139`) when it cannot take its per-slug lock — silently. A
+plan row marked `SUPPLIED` against a write that was dropped is a false-clean state that every check
+downstream would read as success. So: a skipped return leaves the row `PENDING` with `attempts`
+untouched.
 
-Whether this becomes a new table or three new columns on `field_sources` is an implementation call I
-would take at build time; the table is cleaner because `field_sources` is keyed on a value that
-exists, and half the point here is recording the fields that do not.
+### 2.4 What the loop does, per field
 
-### 2.3 The working set, and how a live IPO is never starved
+```
+for each IPO in phase 1, at each of the four slots:
+  for each field in the plan, in dependency order:
 
-Three tiers, drained in strict order within each wake:
+    if an admin protection row exists for this field  -> skip; do not store a state (§2.7)
 
-1. **Live tier** — status UPCOMING, OPEN or CLOSED (76 IPOs today). Always drained first, always
-   fully. No budget is shared with anything below.
-2. **Recent tier** — LISTED within `LIVE_WINDOW_DAYS_AFTER_LISTING` (23 today). Drained next, so
-   post-listing facts (final allotment, listing price) land.
-3. **Backlog tier** — LISTED more than 10 days ago (**228 today**). Drained only with what the first
-   two tiers left over, and only under the migration path in §6. Its documents are already purged
-   from disk, so this tier is a re-download problem before it is an extraction problem.
+    for rank in 1, 2, 3:
+        answer = ask(source[rank])
+        SUPPLIED   -> value passes its §1 check: write it, record the evidence, stop
+        CHECK_FAILED / EXTRACT_FAILED -> record the named check or cause, try the next rank
+        NOT_PRINTED       -> this source never carries it: try the next rank, no retry, no error
+        NOT_AVAILABLE_YET -> it will exist but does not yet: try the next rank for a
+                             PROVISIONAL value, and keep the field due so rank 1 reclaims it
 
-The tiering is what answers O-4's "without starving a live IPO behind history". The current code has
-one queue and one budget; that is why 91 readable documents never drain.
+    all three ranks failed -> state = EXHAUSTED, and see §2.6
+```
 
-### 2.4 Dependency order within an IPO
+### 2.5 When a supplied value is asked for again
 
-Fields are not independent — several checks in §1 read another field. The walk runs in four passes:
+The first draft said a correct value is frozen and never re-asked. That is wrong, and it was the
+single worst error in the document: a draft prospectus filed in July gives an internally consistent
+issue size that passes its check and freezes; the September RHP prints the final, larger number; the
+site publishes the July figure for the life of the IPO.
 
-1. **Identity** — company name, CIN, ISIN, symbol, segment, offering type, listing exchanges. Until
-   these are settled, everything else risks being written onto the wrong row or the wrong ranking
-   (an SME IPO with the mainboard lot check is the Qualiance false alarm).
-2. **Terms** — price band, face value, lot size, lot multiple, issue size, fresh/OFS split, share
-   counts, market cap, allocation.
-3. **Derived and cross-checked** — PE, RONW, face-value multiples, promoter holdings, valuation
-   arithmetic; everything whose check needs pass 2 complete.
-4. **Narrative and lists** — objects, risk factors, peers, intermediaries, promoters, anchor book.
+**The rule is not "don't re-ask a correct value". It is "don't re-ask while the evidence still
+holds".**
 
-Live fields (subscription, GMP, demand graph, market price) run on their own clock (§2.6) and never
-block the four passes.
+> A field is not re-asked while `chosen_document_id` is still the best available document, of the
+> highest-precedence type, for that field.
 
-### 2.5 How the loop knows a rank-1 source "cannot supply" a field
+When a document reaches `EXTRACTED` that outranks the stored one — a higher-precedence type, or the
+same type with a newer `filing_date` — every plan row whose `chosen_document_id` it supersedes goes
+`SUPPLIED → PENDING` in the same transaction, with `superseded_by` recorded. The next slot re-asks
+those fields and the newer document wins.
 
-This is the part that has to be precise, because "no value" today means five different things and
-they are treated identically. The loop distinguishes:
+**Precondition, and it is not optional.** The design cannot inherit this from the September 8th
+merge. `decideSupersession` is *specified and unit-tested but explicitly not wired* — the code says
+so itself: *"NOT YET CALLED BY THE RUNNER, and deliberately so"*
+(`document-state-machine.ts:15-23`), and there is no non-test caller anywhere in `scraper/src`. It
+orders by `filing_date`, which is populated on **24 of 256 documents**. So wiring supersession, and
+backfilling `filing_date`, are both prerequisites of the pull loop, not parts of it.
 
-Every field ends each round in exactly one of three states — **CORRECT**, **INCORRECT**, or
-**INCOMPLETE** — in the owner's terms. Underneath, five reasons distinguish the cases that behave
-differently:
+### 2.6 When all three sources fail
 
-| Outcome | Reason | Meaning | What the round does |
+The first draft said: write null with a reason, never leave a stale value. **That is deleted, for
+two reasons.**
+
+It is not implementable through the writer this design keeps. When the incoming value is null and a
+value is stored, `consolidatedUpsertIPO` returns the stored value with reason `NO_INCOMING_VALUE`
+and logs nothing (`data-consolidation-service.ts:1063-1080`). A null cannot pass through it. The
+plan would record `EXHAUSTED` while the stale value kept serving — a silent divergence between what
+we believe and what the site shows.
+
+And it is dangerous even if it worked. Any check that is wrong for a class of IPO would delete that
+class's correct data. That is not hypothetical: the first draft's `face_value ∈ {1,2,5,10}` is wrong
+for an NCD at ₹1,000, and `listing ≤ close + 3 working days` is wrong for anything that listed
+before December 2023.
+
+**The rule instead:**
+
+> A field that currently holds a value which passed its check is never blanked. `EXHAUSTED` marks
+> the plan row, not the data. A field that has never held a value stays absent.
+
+An `EXHAUSTED` row on a live IPO is a visible gap with an owner (§4), not an edit.
+
+### 2.7 Admin overrides
+
+An admin value outranks everything. The first draft stored the field as `NOT_APPLICABLE`, which made
+the override a one-way door: clear it, and the field is frozen out of the loop forever, invisibly.
+
+`NOT_APPLICABLE` is **derived, not stored** — the walk checks for a live protection row each time it
+reaches the field. Clearing the override returns the field to the loop automatically.
+
+### 2.8 When the plan itself is wrong
+
+The ranks are resolved per IPO type. If the type is corrected, the ranks are wrong and nothing in the
+first draft rebuilt them.
+
+**Measured: no IPO has ever had a committed type change** — across all 327 rows, no stored previous
+value of `offering_type` or `segment` differs from the current one. But **a wrong type that is later
+corrected has happened**: Mopshop Distribution Ltd was stored `FPO` on Moneycontrol's word against
+Chittorgarh's `IPO`, logged the same disagreement 24 times, and was corrected by hand to `IPO`/`SME`.
+
+So `offering_type`, `segment` and `listing_exchanges` are **plan-invalidating fields**: a write to
+any of them drops and rebuilds that IPO's plan rows, keeping values whose rank-1 source is unchanged.
+
+**Phase-1 precondition:** 3 of the 19 IPOs have `segment = NULL` (BSE-only, UPCOMING). No rank set
+can be resolved for them, because SME and mainboard carry different lot-value checks. They must be
+resolved before the walk runs on them.
+
+### 2.9 Statuses outside the three the first draft named
+
+The first draft's tiers covered UPCOMING, OPEN, CLOSED and LISTED. The enum has six
+(`packages/shared/src/db/schema.ts`, `ipoStatusEnum`). A phase-1 IPO can become either of the other
+two at any time:
+
+- **POSTPONED** — stays in scope at the four-slot cadence. Its terms will be re-advertised, so its
+  document-sourced fields are invalidated when the next filing arrives (§2.5).
+- **WITHDRAWN** — terminal. The walk stops, existing values are kept, GMP and subscription polling
+  stop, and the IPO leaves the §4 denominators.
+
+### 2.10 What this needs that does not exist yet
+
+Stated plainly, because the first draft buried the largest piece of work inside a sentence saying
+nothing changes.
+
+`consolidatedUpsertIPO` consolidates **`tableName: 'ipos'` only**
+(`data-consolidation-orchestrator.ts:187`). The eight child tables — `ipo_details`,
+`financial_statements`, `ipo_valuation`, `ipo_risk_factors`, `promoters`, `anchor_investors`,
+`ipo_intermediaries`, `peer_companies` — are written by `persistFilingExtraction` through their own
+repositories, with no priority resolution and no `field_sources` rows. That is *why* they measure as
+100% document-sourced: nothing else writes them.
+
+**162 of the 194 fields therefore have no consolidated writer at all.** Extending the consolidation
+contract to those eight tables is a first-class piece of work and a hard prerequisite of the walk —
+without it, the loop has nowhere to write 84% of what it extracts.
+
+---
+
+## 3. What happens when sources disagree — the re-read loop
+
+### 3.1 Why this cannot be left to chance
+
+We already detect disagreements: `data_conflicts` holds 31,014 rows, **2,398 unresolved**, including
+all 578 `leadManagers` conflicts and 495 of the `faceValue` ones. Nothing consumes them.
+
+But a conflict row is only written when a *second* source arrives and disagrees. Under §2.4 a
+supplied field is not re-asked, so no second value is produced, so no conflict is written — the
+first draft's re-read loop could never have fired on exactly the fields it was meant to protect.
+
+**So verification is scheduled, not accidental.** `verify_due_at` on the plan row: every supplied
+field on a phase-1 IPO is checked against its rank-2 source at least weekly, and the fields with
+standing conflict counts — `leadManagers`, `faceValue`, `registrar` — every slot.
+
+### 3.2 What happens on a disagreement
+
+```
+1. re-fetch the winning document's bytes and re-hash them
+2. re-extract only this field, at the recorded page first
+3. write an extraction receipt: sha256 computed now, extractor run id, page, timestamp
+4. compare:
+     same value, check passes -> the document is confirmed; mark the other source
+                                 wrong for this field; resolve the conflict
+     different, check passes  -> the first extraction was wrong; write the correction
+     different, check fails   -> leave the stored value; do not adopt the other source
+5. still disagreeing after the bound -> unresolved_disagreement, and it becomes visible (§3.4)
+```
+
+**The website's number is never adopted.** That is the whole instruction behind this design.
+
+**But that claim is only safe if the re-read really happened.** If the file is gone and the
+re-download fails, an implementation could fall back to the cached extraction, return the same wrong
+number, and record "verified against the document" — confirming a wrong value forever and then
+defending it against the source that was right. **That is why step 3 exists: a re-read counts only
+if it produced a receipt with a hash computed from bytes on disk during this cycle.** No receipt, no
+verification.
+
+### 3.3 What stops it looping
+
+| Bound | Value |
+|---|---|
+| Re-reads per (IPO, field, document `sha256`) | **2** — a third attempt on the same bytes cannot give a different answer |
+| Re-reads per document per day | **1** — all of a document's disputed fields are re-read together |
+| Re-reads per IPO per slot | **1** |
+| Reset | a new `sha256`, or a higher-precedence document type |
+
+Keying on the bytes rather than a retry counter is what makes "we already tried this" a fact about
+the evidence instead of a number someone can reset.
+
+### 3.4 Where an unresolved disagreement ends up
+
+`unresolved_disagreement` on the plan row; a line in the nightly report with both values and both
+sources, by IPO and field name; and — for a phase-1 IPO — a GitHub issue, because a live IPO with a
+disputed price band is a user-facing defect.
+
+---
+
+## 4. How we would know it worked
+
+**The rule this section is built on.** The old version of it opened by warning that a check counting
+all-time rows can never alarm on a collapse — and then made the same mistake one level down, by
+using ratios whose *denominators* are produced by the machinery under test. If a document type
+mis-resolved, fewer fields counted as document-owned, the denominator shrank, and the score went
+**up**. The worse the extraction, the better the number.
+
+So every check below obeys four rules:
+
+1. **A named denominator floor, asserted first.** A ratio whose denominator moved more than 5%
+   overnight reports UNVERIFIABLE, never PASS.
+2. **A type-independent denominator.** What the document *should* print for this offering type — a
+   fixed constant — never what the document that happened to resolve says it prints.
+3. **An id, an emitting script, and a line in the nightly report** that the existing delta consumer
+   reads. A line in a process log is not detection.
+4. **Failures resolve to identities.** Never "12 failed" — always which IPO and which field.
+
+| id | What it asks | Healthy | Alarms when |
 |---|---|---|---|
-| **CORRECT** | `SUPPLIED` | extracted and the §1 check passed | write it, **freeze it**; no later round may touch it |
-| **INCORRECT** | `CHECK_FAILED` | extracted, but failed its arithmetic or plausibility check | do not write; record the failed check **by name**; carry to the next round |
-| **INCORRECT** | `EXTRACT_FAILED` | the source could not be read (timeout, no text layer, download failed) | record the cause; carry to the next round; the document's own retry is bounded separately (§3.4) |
-| **INCOMPLETE** | `NOT_PRINTED` | this source genuinely never carries this field (a DRHP has no final price band) | carry to the next round immediately — no retry, no error, not a defect |
-| **INCOMPLETE** | `NOT_AVAILABLE_YET` | it will be printed, but not yet (ISIN before listing; price band before the advertisement is filed) | carry to the next round **for now**, but keep the field due — when the later document arrives, round 1 runs again and **reclaims** it |
+| `PULL-PLAN` | plan rows per IPO = the committed manifest, and the manifest hash is unchanged | equal | any mismatch, or a manifest hash that moved without a commit |
+| `PULL-WALK` | every phase-1 IPO walked this slot | 19 of 19 | fewer than all, twice running — **and separately, phase-1 count ≥ 1** |
+| `PULL-YIELD` | of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied | rising toward 100% | falls, **or the denominator moves more than 5% overnight** |
+| `PULL-EXCUSED` | `NOT_PRINTED` count per (IPO, document type), NEW vs yesterday by name | stable | a document's excused set grows at all — this is what catches a mis-resolved type |
+| `PULL-EXHAUST` | `EXHAUSTED` rows by (IPO, field, reason), NEW vs GONE vs SAME | shrinking | any NEW one on a phase-1 IPO |
+| `PULL-NOBLANK` | fields that went from a value to absent this slot | **0** | any non-zero — this is the guard on §2.6 |
+| `PULL-WRITE` | plan rows marked `SUPPLIED` whose write returned `skipped` | **0** | any non-zero |
+| `PULL-FROZEN` | `SUPPLIED` rows whose `chosen_document_id` has been superseded | **0** | any non-zero — the guard on §2.5 |
+| `PULL-ADMIN` | fields skipped for admin reasons with no live protection row | **0** | any non-zero — the guard on §2.7 |
+| `PULL-TYPE` | plan rows whose resolved ranks do not match the IPO's current type; IPOs with a null segment | 0 / 0 | any non-zero |
+| `E1-SOURCE` | for the twelve E-1 fields, `field_sources.source` is never `DRHP` | true | any E-1 field written by the document path — **asserts the outcome, not the declared intent** |
+| `REREAD-RECEIPT` | re-reads with a receipt hashed this cycle ÷ re-reads recorded | 1.0 | below 1.0 — the guard on §3.2 |
+| `REREAD-VERDICT` | share of re-reads ending `verified_against_document` over 7 days | below 0.95 | at or above 0.95 — a source that is never wrong is a source never actually consulted |
+| `REREAD-LATENCY` | oldest actionable disagreement with no re-read attempt | under 48 h | over 48 h, listed by IPO and field |
+| `CHECK-ROSTER` | every id above appears in tonight's report | all present | any missing — **a check that crashed must not read as "no findings"** |
 
-The last row is what stops a website value becoming permanent by accident. If Chittorgarh fills the
-price band in round 3 on Monday because the advertisement was not yet filed, and the advertisement
-lands on Wednesday, round 1 takes the field back on Wednesday. A round-3 value is only ever
-provisional while an earlier round is still owed the field.
+`CHECK-ROSTER` exists because the current delta consumer parses only PASS and FAIL: a check that
+throws vanishes from the output and is reported as GONE, printed as "no new findings", exit 0. A
+check that dies would otherwise look like an improvement.
 
-The distinction between `NOT_PRINTED` and `NOT_AVAILABLE_YET` comes from a per-document-type field
-manifest — a static table of "which of the 194 fields does a `PRICE_BAND_AD` print" — derived from
-the extraction contract's §1, not guessed at run time.
-
-### 2.6 When it runs (this is the O-1 answer, §5.1)
-
-| Work | Cadence | Why |
-|---|---|---|
-| Document discovery | unchanged: 08:30, 11:00, 14:00, 17:30 IST (`DISCOVERY_SLOTS_IST_MINUTES`) | filings appear a few times a day, not every half hour |
-| **The pull walk, passes 1–4** | once per discovery slot per live IPO, plus once on a state change (status transition, a new document reaching FOUND) | the facts it reads change when a document arrives, not on a clock |
-| Live fields (subscription, demand graph) | every wake during market hours on OPEN IPOs only | these genuinely move minute to minute |
-| GMP | every wake while UPCOMING or OPEN | same |
-| Market price after listing | twice daily for the recent tier | it is a daily figure on the page |
-| Reference data (registrars) | weekly | 19 rows that change a few times a year |
-| Backlog tier | its own nightly window, outside market hours | never competes with a live IPO |
-
-The wake stays at 30 minutes, but outside market hours and outside the four discovery slots it
-becomes a no-op that costs nothing. That is option 2 of O-1, and §5.1 explains the choice.
-
-### 2.7 How it interacts with the existing machinery rather than bypassing it
-
-- **The document state machine stays the gatekeeper.** The pull loop never downloads a PDF itself.
-  It asks the state machine for the best available document of the types its field manifest names,
-  and gets back either a document row in state `EXTRACTED`, or a state that tells it which of the
-  five answers in §2.5 to record. The `WANTED → NOT_YET_FILED → FOUND → EXTRACTED` progression is
-  unchanged.
-- **Extraction budgets stay, but are allocated by demand rather than by queue position.** Today the
-  three spawn slots go to whatever is next in the queue. Under the pull model they go to the
-  document that unblocks the most `PENDING` rows in `ipo_field_plan`, live tier first. Same budget,
-  different order.
-- **The consolidation service stays the only writer.** The pull loop does not write to `ipos`
-  directly; it calls the same `consolidatedUpsertIPO` path with the source it chose. What changes is
-  that the call now happens *because a field needed a value*, rather than because a scraper happened
-  to run. The matrix stays as the tie-breaker for the case where two sources arrive anyway — it is
-  demoted from decision-maker to referee, which is what it was always good at.
-- **Admin protection is untouched.** An ADMIN value outranks rank 1 and the loop marks the field
-  `NOT_APPLICABLE` rather than re-fetching it.
-
-### 2.8 What happens when all three ranks fail
-
-The field is written as **null with a reason**, never left as a stale value from a previous cycle and
-never guessed. A `EXHAUSTED` row in `ipo_field_plan` is the visible artifact, and §4.4 turns the
-count of them into the coverage signal. This is the direct answer to O-3: one field's failure ends
-at that field.
-
----
-
-## 3. The re-read loop
-
-### 3.1 The trigger
-
-A verification source disagrees with the stored value. We already generate this signal —
-`data_conflicts`, 31,014 rows, 2,398 unresolved — and today it goes nowhere. The re-read loop is the
-consumer that rule R3 of `signal-ownership.md` says every signal must have.
-
-A disagreement is actionable when **all** of these hold:
-
-1. the stored value's `chosen_rank` is 1 and its `chosen_source` is `DOC`, **or** the stored value
-   came from a lower rank while rank 1 was `CHECK_FAILED` or `EXTRACT_FAILED`;
-2. the disagreeing source is a named verification source for that field in §1;
-3. the two values differ by more than the field's tolerance (§3.2);
-4. the field is not ADMIN-protected.
-
-A disagreement between two *websites* about a field whose rank 1 is the document is not interesting
-in itself — it is resolved by reading the document, which is what the loop does anyway.
-
-### 3.2 Tolerances, so we do not chase noise
-
-| Field kind | Tolerance | Reason |
-|---|---|---|
-| Money amounts | 0.5% | rounding between crore and rupees |
-| Share counts | 0 | exact integers |
-| Prices per share | ₹0.01 | exact |
-| Dates | 0 days | a date is a date |
-| Percentages, ratios | 0.5 pp | published rounding |
-| Names (company, registrar, BRLM) | normalised string equality | "Ltd" vs "Limited" is not a disagreement |
-| Free text (description) | not verified | no meaningful comparison |
-
-### 3.3 What actually happens
-
-```
-on actionable disagreement (ipo, field, stored_value, other_source, other_value):
-    doc  = ipo_field_plan.chosen_document_id     # the exact PDF the value came from
-    page = ipo_field_plan.chosen_page            # the exact page
-
-    1. ensure the file is present            # re-download from documents.url if purged
-    2. re-extract ONLY this field, from that page first, then the whole document
-    3. compare the re-read value with the stored one:
-         same, and it passes its check
-             -> the document is confirmed. Record the disagreement as
-                'verified_against_document', mark the OTHER source wrong for this field,
-                resolve the data_conflicts row. Nothing is overwritten.
-         different, and the new value passes its check
-             -> the first extraction was wrong. Write the corrected value,
-                provenance DOC with the new page, resolve the conflict as 'reread_corrected'.
-         different, and it fails its check
-             -> extraction is unreliable here. Leave the stored value, increment
-                disagreement_count, do NOT adopt the other source.
-    4. if the document and the verification source still disagree:
-         -> the value stays as the document says it,
-            the field is flagged unresolved_disagreement, and it becomes VISIBLE (§3.5)
-```
-
-**The website's number is never adopted.** That is the whole instruction in O-8 and the rule this
-loop exists to enforce. If the document says one thing and Chittorgarh says another and a careful
-re-read confirms the document, Chittorgarh is wrong and we say so.
-
-### 3.4 What stops it looping
-
-O-3 is explicit that a failure must not become a retry storm. Today the same 1 MB Rentomojo PDF was
-re-extracted seven times on one bad field. The bounds:
-
-| Bound | Value | Scope |
-|---|---|---|
-| Re-reads per (IPO, field, document `sha256`) | **2** | a third attempt on the same bytes cannot produce a different answer |
-| Re-reads per document per day | **1** | a document with many disputed fields is re-read once for all of them, together |
-| Re-reads per IPO per cycle | **1** | so one messy IPO cannot consume the extraction budget |
-| Reset condition | a new document version (different `sha256`) or a new document type | new evidence earns a new attempt |
-| After the bound | state `unresolved_disagreement`, **no further attempts**, escalate to §3.5 | the loop ends in a visible place |
-
-Keying on `sha256` rather than on document id is the part that matters: it is what makes "we already
-tried this and it did not work" a fact about the bytes rather than about a retry counter that resets.
-
-### 3.5 Where an unresolved disagreement ends up
-
-It must end somewhere a person sees, not in a table nobody reads. Three places, in order:
-
-1. `ipo_field_plan.verify_state = 'unresolved_disagreement'` with both values and both sources.
-2. A line in the **nightly detection floor** (`scripts/audit-detection-floor.mjs`), which already has
-   a same-day diffing consumer (`scripts/ops/floor-delta.mjs`, T-497). NEW entries are reported as
-   NEW by identity, per `signal-ownership.md` R1 and R3 — never as a bare count.
-3. A GitHub issue for a NEW unresolved disagreement on a **live-tier** IPO, filed by the existing
-   `audit-findings-to-issues` path, because a live IPO with a disputed price band is a
-   user-facing defect and R4 says NEW beats standing work.
-
-A backlog-tier disagreement gets (1) and (2) but not (3) — otherwise the first migration run files
-two hundred issues.
-
----
-
-## 4. How we will know each step works
-
-The lesson this section is built on, from today: **a check that counts all-time rows can never alarm
-on a collapse.** `field_sources` has 6,638 rows and will have 6,638 tomorrow even if the pipeline
-stops entirely. Every check below is therefore a *rate over the last cycle* or a *delta against the
-previous run*, never a total.
-
-| # | Step (§) | The check | Where recorded | Healthy | Alarms when |
-|---|---|---|---|---|---|
-| 4.1 | Plan built (§2.2) | plan rows for each live IPO **compared against the committed field manifest**, not against a number typed here: `plan_rows == manifest_rows(offering_type)` AND `manifest_sha == committed_sha` | nightly floor, id `PULL-PLAN` | equal, and the manifest sha unchanged | any mismatch, any live IPO with 0 plan rows, or a manifest sha that moved without a commit. **An expected count written into this document would be compared against the generator's own output and would detect nothing** — this is why the constant is not stated here |
-| 4.2 | Walk ran (§2.3) | live-tier IPOs walked this slot ÷ live-tier IPOs | cycle summary | 100% every slot | < 100% twice consecutively |
-| 4.3 | **Round-1 yield** (§2.1.1) | per IPO: of the fields the document owns, how many round 1 actually supplied. Reported as a fraction with the shortfall **named by field**, never as a bare percentage | nightly floor, diffed | **100%**. Measured today on the best-covered IPO (Deepa Jewellers): 47 of 56 document-owned fields = 84%; typical IPO = 0% | **any** document-owned field sourced from round 2 or 3 without a reason in the allowed list (§2.5) |
-| 4.3b | Exception register | every fall-through to round 2 or 3, by field identity and reason, NEW vs GONE vs SAME against yesterday — printed **beside the twelve E-1 fields (§1.2.1)** so the 100% is always read against a visible exclusion list | floor delta + brief | shrinking; every entry has a reason and an owner; the E-1 list is exactly the twelve | a NEW fall-through on a live IPO, an entry with reason `CHECK_FAILED` unchanged for 3 days, or an E-1 list that is not the twelve |
-| 4.4 | Fallback is honest | count of `EXHAUSTED` rows, **by field identity**, NEW vs GONE vs SAME | floor delta + Notifier | small and stable | any NEW field identity exhausted on a live IPO |
-| 4.5 | Checks bite (§1) | count of `CHECK_FAILED` by check name per cycle | cycle summary | non-zero is fine and expected | a check that has never failed in 30 days is probably not wired — a silent check is a failed check |
-| 4.6 | Type routing (§1.11) + **E-1 scope** | SME rows using an NSE rank on a BSE-only IPO; `offering_type` outside {IPO, FPO} on the IPO pages; SME claiming both exchanges (5 today); **any field treated as E-1 that is not one of the twelve listed in §1.2.1** | nightly audit | 0 / 0 / reviewed / **exactly 12** | any non-zero, or the E-1 set changing without a decision recorded in §1.2.1 |
-| 4.7 | Units (§5.2) | every money field within its expected magnitude band after conversion (e.g. issue size in crore is 1–50,000, never 10⁹) | migration gate + nightly | 100% in band | one row out of band blocks the migration |
-| 4.8 | Re-read fires (§3.1) | actionable disagreements detected ÷ re-reads started, per day | floor | ≈ 1.0 | < 0.9 means the consumer is not consuming — the failure mode we are fixing |
-| 4.9 | Re-read resolves (§3.3) | outcomes split by `verified_against_document` / `reread_corrected` / `unresolved` | floor, diffed | corrected and verified both non-zero | 100% unresolved means the re-read is not actually re-reading |
-| 4.10 | Bounds hold (§3.4) | max re-reads on one `sha256` in a day | cycle summary | ≤ 2 | 3+ (the Rentomojo shape has returned) |
-| 4.11 | Backlog drains (§2.3, §6) | documents moved PENDING → COMPLETED per night, and remaining, by identity | floor delta | remaining falls monotonically | flat for 3 nights |
-| 4.12 | Live is not starved | live-tier extractions per slot vs backlog-tier | cycle summary | live always first, never 0 while any live PENDING exists | a live PENDING document with 0 attempts while backlog extractions ran |
-| 4.13 | End to end | the offer-document share of doc-eligible `ipos` rows (§7.3 item 4), and the raw all-table share beside it for continuity | daily brief, previous vs current | both rise | flat or falling for 2 days |
-
-**On proof, not on green tests.** Per `.claude/rules/defect-fix-contract.md`, none of the above is
-evidence until it has run against real data. The first real-data proof for this design is a staging
-cycle whose log line names a counter that moved — specifically 4.3 rising and 4.11 falling on the
-same night — not a passing unit test and not a clean read taken immediately after a repair.
+**None of this is evidence until it has run against real data.** The first proof is a staging slot
+whose log line names a counter that moved — `PULL-YIELD` rising and `PULL-EXHAUST` falling on the
+same night. A passing unit test is not proof, and neither is a clean read taken immediately after a
+repair.
 
 ---
 
