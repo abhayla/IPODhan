@@ -487,6 +487,16 @@
       "detail": "promoters.name was marked document-only - a live CG page prints \"Company Promoters: <names>\", so CG is now rank 2. peer_companies.pbv_ratio was given CG at rank 2 - the same page carries NAV, EPS, P/E and market cap but NO P/BV, so it is now document-only. Both corrected from evidence, not assumption. This is the first real-fetch verification of any rank (partial close of F-39).",
       "fix_in": "spec, 2026-09-08",
       "closed_in": "live Chittorgarh fetch"
+    },
+    {
+      "id": "F-46",
+      "sev": "MAJOR",
+      "area": "pull loop",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "List-based sources are matched to our IPOs by NAME, which the page-identity rule does not cover",
+      "detail": "Two different identity failures, not one. (a) PER-IPO PAGE fetch - Chittorgarh detail via verifier_url - guarded by the F-44 page-identity rule; affects the 47 rank-2 fields (financial_data, financial_statements, peer_companies, ipo_valuation mcap/pe at cap, promoters.name). (b) LIST fetch - InvestorGain GMP (one report endpoint, data-read/331) and the Chittorgarh listing page - where a row is bound to our IPO by normalizeCompanyNameForMatching (investorgain-gmp-orchestrator-v2.ts:331-336, flag ENABLE_GMP_NAME_MATCH). The page-identity rule cannot help there because the page is correct; the ROW binding is what can be wrong. Exposure: gmp_records.gmp is the only field where a website is rank 1, and it is bound this way. Separately 24 distinct fields holding 4,825 values on prod come from the CG listing page by the same mechanism - segment 242, offeringType 241, listingDate 238, closeDate 237, openDate 236, isin 228, faceValue 226, issueSize 221, registrar 219, leadManagers 219. Needed: a stated binding rule (what counts as a match, what a near-match does, what an ambiguous match does) and a check on cross-bound rows.",
+      "fix_in": "§2.3.1 companion rule — row binding for list sources"
     }
   ],
   "false_assertions": [

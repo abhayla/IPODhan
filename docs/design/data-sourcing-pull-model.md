@@ -808,6 +808,42 @@ No extra request, no new dependency. And the standing check that turns a silent 
 detected one: **for every IPO holding a `verifier_url`, the nightly audit asserts the page names
 that IPO** — reported by IPO name, never as a count.
 
+#### 2.3.2 Which fields this touches, and the second identity problem it does not solve
+
+**Two different identity failures, and the rule above only fixes one.**
+
+| How we reach the source | Identity risk | Guarded by |
+|---|---|---|
+| **Per-IPO page** — Chittorgarh detail, via the stored `verifier_url` | the URL can serve another company's page | §2.3.1 above |
+| **One list for all IPOs** — InvestorGain GMP (`data-read/331`), the Chittorgarh listing page | the page is right; the **row binding** can be wrong | **nothing yet — F-46** |
+
+**Exposure of the per-IPO path, by the approved rank of the website:**
+
+| Website's rank | Fields | Which |
+|---|---:|---|
+| Rank 1 | **1** | `gmp_records.gmp` — but it is list-fetched, so §2.3.1 does not apply to it |
+| Rank 2 | **47** | nearly all of `financial_data`, `financial_statements`, `peer_companies`, plus `ipo_valuation.mcap_at_cap` / `pe_at_cap`, `promoters.name`, `ipos.sector` / `company_description` / `objectives` |
+| Rank 3 | 37 | the long tail |
+
+**Nothing where a website is rank 1 is fetched by per-IPO URL**, so the honest severity of §2.3.1 is
+medium, not high. Today the exposure is smaller still: `financial_data` and `financial_statements`
+are 100% document-sourced on production, so rank 2 is rarely reached.
+
+**The pull model is what changes that.** Its whole shape is *"when round 1 fails its check, ask round
+2"* — and round 2 for the financials **is** the Chittorgarh detail page. A path that is rare today
+becomes the path taken on every failed extraction. If the stored URL is wrong, we write another
+company's revenue, profit and net worth onto this IPO, and **every arithmetic check passes**, because
+those numbers are internally consistent for the company they actually belong to.
+
+**The second problem, unguarded (F-46).** List sources bind a row to our IPO by normalised company
+name (`investorgain-gmp-orchestrator-v2.ts:331-336`). The page-identity rule cannot help: the page
+is correct, the binding is not. Measured on production, **24 distinct fields holding 4,825 values**
+come from the Chittorgarh listing page this way — `segment` 242, `offeringType` 241, `listingDate`
+238, `closeDate` 237, `openDate` 236, `isin` 228, `faceValue` 226, `issueSize` 221, `registrar` 219,
+`leadManagers` 219 — and `gmp_records.gmp`, the one field where a website is rank 1, is bound the
+same way. This design needs a stated binding rule: what counts as a match, what a near-match does,
+and what an ambiguous match does. It does not have one yet.
+
 ### 2.4 What the loop does, per field
 
 ```
