@@ -32,6 +32,9 @@ import {
   fieldValuesDisagree,
   ORACLE_COMPARABLE_FIELDS,
   normalizeCompanyKey,
+  findLotDisagreements,
+  findMinApplicationDisagreements,
+  minApplicationLots,
   buildCheckDigest,
   buildUnverifiableDigest,
   buildRunPayloads,
@@ -335,6 +338,66 @@ test('(a/b) an IPO absent from the oracle contributes nothing (no false positive
     conflictRows: [],
   });
   assert.equal(violations.length, 0);
+});
+
+// ---- T-506 (#415): lotSize vs min-application ------------------------------
+// Qualiance International (SME, OPEN, band 120-127): ipos.lot_size = 1000
+// (the exchange lot) while ipowatch's "minimum bid is 2000 Shares" line is
+// the SME retail MINIMUM APPLICATION (2 lots, SEBI rule since 2025), not the
+// exchange lot. ORACLE_COMPARABLE_FIELDS no longer includes 'lotSize', so the
+// generic findLiveCrossSourceDisagreements() must report nothing for it; the
+// lot pair is checked (divided by the multiplier) via findLotDisagreements(),
+// and the min-application pair via findMinApplicationDisagreements().
+const QUALIANCE_IPO = [{
+  id: 'qualiance-1', companyName: 'Qualiance International Limited', status: 'OPEN', segment: 'SME',
+  values: { priceRangeMin: 120, priceRangeMax: 127, lotSize: 1000 },
+}];
+const QUALIANCE_ORACLE = [{ companyName: 'Qualiance International Ltd.', values: { lotSize: 2000 } }];
+
+test('(T-506) minApplicationLots is 2 for SME, 1 for MAINBOARD/unknown', () => {
+  assert.equal(minApplicationLots('SME'), 2);
+  assert.equal(minApplicationLots('MAINBOARD'), 1);
+  assert.equal(minApplicationLots(undefined), 1);
+});
+
+test('(T-506) the generic oracle field loop no longer flags lotSize at all', () => {
+  assert.ok(!ORACLE_COMPARABLE_FIELDS.includes('lotSize'));
+  const violations = findLiveCrossSourceDisagreements({
+    ipoRows: QUALIANCE_IPO, oracleRows: QUALIANCE_ORACLE, conflictRows: [],
+  });
+  assert.equal(violations.length, 0, 'lotSize must not appear in the generic field comparison');
+});
+
+test('(T-506) findLotDisagreements PASSES Qualiance: 1000 == 2000 / 2 (SME multiplier)', () => {
+  const violations = findLotDisagreements({ ipoRows: QUALIANCE_IPO, oracleRows: QUALIANCE_ORACLE });
+  assert.equal(violations.length, 0);
+});
+
+test('(T-506) findLotDisagreements FAILS when the exchange lot genuinely disagrees', () => {
+  const badIpo = [{ ...QUALIANCE_IPO[0], values: { ...QUALIANCE_IPO[0].values, lotSize: 500 } }];
+  const violations = findLotDisagreements({ ipoRows: badIpo, oracleRows: QUALIANCE_ORACLE });
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].fieldName, 'lotSize');
+  assert.match(violations[0].message, /implies an exchange lot of 1000/);
+});
+
+test('(T-506) findLotDisagreements PASSES a MAINBOARD IPO with no multiplier (1x)', () => {
+  const ipo = [{ id: 'mb-1', companyName: 'Mainboard One Limited', status: 'OPEN', segment: 'MAINBOARD', values: { lotSize: 50 } }];
+  const oracle = [{ companyName: 'Mainboard One Ltd.', values: { lotSize: 50 } }];
+  assert.equal(findLotDisagreements({ ipoRows: ipo, oracleRows: oracle }).length, 0);
+});
+
+test('(T-506) findMinApplicationDisagreements PASSES Qualiance: 1000 x 2 == 2000', () => {
+  const violations = findMinApplicationDisagreements({ ipoRows: QUALIANCE_IPO, oracleRows: QUALIANCE_ORACLE });
+  assert.equal(violations.length, 0);
+});
+
+test('(T-506) findMinApplicationDisagreements FAILS when the derived minimum application disagrees', () => {
+  const oracleWrong = [{ companyName: 'Qualiance International Ltd.', values: { lotSize: 3000 } }];
+  const violations = findMinApplicationDisagreements({ ipoRows: QUALIANCE_IPO, oracleRows: oracleWrong });
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].fieldName, 'minApplicationShares');
+  assert.match(violations[0].message, /minimum retail application of 2000 shares/);
 });
 
 test('valuesDisagree compares dates by calendar day, not string form', () => {
@@ -1062,18 +1125,25 @@ test('(a/b, rupee tolerance) a >1% difference on priceRangeMax IS a violation', 
   assert.equal(violations[0].fieldName, 'priceRangeMax');
 });
 
-test('(a/b) lotSize is compared exactly (no tolerance) — a 1-unit difference still FAILs', () => {
-  const violations = findLiveCrossSourceDisagreements({
-    ipoRows: [{ id: 'i', companyName: 'Lot Mismatch Ltd', status: 'OPEN', values: { lotSize: 2400 } }],
+// T-506 (#415): lotSize moved OUT of the generic exact-match loop — ipowatch's
+// figure is a minimum-BID-shares figure, not the exchange lot (see the T-506
+// block above for findLotDisagreements/findMinApplicationDisagreements,
+// which now own the lot-vs-min-application comparison with the segment
+// multiplier applied). This generic-loop test is kept as a MAINBOARD-shaped
+// exact-compare regression guard (multiplier is 1x there, so the direct
+// exact-compare semantics below still describe findLotDisagreements'
+// behavior for MAINBOARD, exercised directly rather than through the field loop).
+test('(T-506) findLotDisagreements is compared exactly (no tolerance) for MAINBOARD (1x multiplier)', () => {
+  const violations = findLotDisagreements({
+    ipoRows: [{ id: 'i', companyName: 'Lot Mismatch Ltd', status: 'OPEN', segment: 'MAINBOARD', values: { lotSize: 2400 } }],
     oracleRows: [{ companyName: 'Lot Mismatch', values: { lotSize: 2401 } }],
-    conflictRows: [], oracleName: 'IPOWATCH',
   });
   assert.equal(violations.length, 1);
   assert.equal(violations[0].fieldName, 'lotSize');
 });
 
-test('ORACLE_COMPARABLE_FIELDS carries all six T-472 fields', () => {
-  assert.deepEqual(ORACLE_COMPARABLE_FIELDS, ['openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax', 'lotSize', 'issueSize']);
+test('ORACLE_COMPARABLE_FIELDS carries the five exact/tolerance-compared fields (lotSize handled separately, T-506)', () => {
+  assert.deepEqual(ORACLE_COMPARABLE_FIELDS, ['openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax', 'issueSize']);
 });
 
 // ---- T-472 round 2: oracle coverage floor -----------------------------------

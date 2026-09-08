@@ -466,7 +466,94 @@ export function checkSegmentPopulatedForIpo(row) {
 // #199 cited (band/lot/issue-size wrong, invisible while the only compared
 // fields were dates) — now safe because the oracle is ipowatch.in, which
 // publishes a real min/max band, not a single price string.
-export const ORACLE_COMPARABLE_FIELDS = ['openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax', 'lotSize', 'issueSize'];
+//
+// T-506 (#415): 'lotSize' removed from this generic exact-match list.
+// ipowatch's "minimum bid is N Shares" line (parsed into oracle.values.lotSize
+// by scripts/lib/ipowatch-oracle-parser.mjs) is the MINIMUM APPLICATION size,
+// not the exchange lot — for SME issues SEBI has required a 2-lot minimum
+// retail application since 2025, so ipowatch prints 2x our stored
+// ipos.lot_size (Qualiance International: lot_size=1000, ipowatch=2000) while
+// ipos.lot_size correctly stores the exchange lot. Comparing the two directly
+// (the pre-T-506 behavior) manufactured a FAIL on every live SME IPO. The lot
+// pair is now compared via findLotDisagreements() (still folded into
+// a_b_live_conflict, dividing the oracle figure by the segment's minimum-lot
+// multiplier first) and the min-application pair via
+// findMinApplicationDisagreements() (its own a_b_min_application check) —
+// see scripts/audit-detection-floor.mjs checkA_B().
+export const ORACLE_COMPARABLE_FIELDS = ['openDate', 'closeDate', 'priceRangeMin', 'priceRangeMax', 'issueSize'];
+
+// SEBI ICDR minimum RETAIL application, in exchange lots, by segment. MAINBOARD
+// retail applies for exactly 1 lot; SME retail has required a minimum of 2
+// lots since SEBI's 2025 tightening (owner decision, T-506/#415). No stored
+// field carries this directly (ipos.lot_size is the exchange lot; ipo_details
+// .lotMultiple comes from the DRHP price-band-ad extractor, which is not wired
+// into the prod scraper pipeline per docs/reviews — see
+// ipo-data-source-map memory — so it is null for the vast majority of rows and
+// is not a safe general-purpose source for this ratio). Deriving the multiplier
+// from segment is therefore the class-level fix, not a per-IPO lookup.
+export function minApplicationLots(segment) {
+  return segment === 'SME' ? 2 : 1;
+}
+
+/**
+ * (a) Lot check, folded into a_b_live_conflict: our exchange lot vs the
+ * EXCHANGE lot implied by the oracle's minimum-bid-shares figure (their
+ * figure divided by the segment's minimum-application-lot multiplier).
+ */
+export function findLotDisagreements({ ipoRows = [], oracleRows = [] }) {
+  const live = ipoRows.filter((r) => LIVE_STATUSES.includes(r.status));
+  const oracleByKey = new Map();
+  for (const o of oracleRows) {
+    const k = normalizeCompanyKey(o.companyName);
+    if (k && !oracleByKey.has(k)) oracleByKey.set(k, o);
+  }
+  const out = [];
+  for (const ipo of live) {
+    const oracle = oracleByKey.get(normalizeCompanyKey(ipo.companyName));
+    if (!oracle) continue;
+    const ourLot = toNumber((ipo.values || {}).lotSize);
+    const theirsMinApp = toNumber((oracle.values || {}).lotSize);
+    if (ourLot === null || theirsMinApp === null) continue;
+    const multiplier = minApplicationLots(ipo.segment);
+    const impliedExchangeLot = theirsMinApp / multiplier;
+    if (impliedExchangeLot === ourLot) continue;
+    out.push({
+      ipoId: ipo.id, companyName: ipo.companyName, fieldName: 'lotSize', signal: 'oracle',
+      message: `live IPO "${ipo.companyName}" (${ipo.status}) publishes lotSize=${ourLot}, but IPOWATCH's minimum-bid figure of ${theirsMinApp} implies an exchange lot of ${impliedExchangeLot} (÷${multiplier} for ${ipo.segment ?? 'unknown segment'}) — cross-source disagreement found by this audit's own live fetch, independent of data_conflicts`,
+    });
+  }
+  return out;
+}
+
+/**
+ * (b) Separate check, a_b_min_application: our derived minimum RETAIL
+ * application (exchange lot x segment multiplier) vs the oracle's own
+ * "minimum bid is N Shares" figure.
+ */
+export function findMinApplicationDisagreements({ ipoRows = [], oracleRows = [] }) {
+  const live = ipoRows.filter((r) => LIVE_STATUSES.includes(r.status));
+  const oracleByKey = new Map();
+  for (const o of oracleRows) {
+    const k = normalizeCompanyKey(o.companyName);
+    if (k && !oracleByKey.has(k)) oracleByKey.set(k, o);
+  }
+  const out = [];
+  for (const ipo of live) {
+    const oracle = oracleByKey.get(normalizeCompanyKey(ipo.companyName));
+    if (!oracle) continue;
+    const ourLot = toNumber((ipo.values || {}).lotSize);
+    const theirsMinApp = toNumber((oracle.values || {}).lotSize);
+    if (ourLot === null || theirsMinApp === null) continue;
+    const multiplier = minApplicationLots(ipo.segment);
+    const ourMinApplication = ourLot * multiplier;
+    if (ourMinApplication === theirsMinApp) continue;
+    out.push({
+      ipoId: ipo.id, companyName: ipo.companyName, fieldName: 'minApplicationShares', signal: 'oracle',
+      message: `live IPO "${ipo.companyName}" (${ipo.status}) implies a minimum retail application of ${ourMinApplication} shares (lot ${ourLot} x ${multiplier} for ${ipo.segment ?? 'unknown segment'}), but IPOWATCH currently says the minimum bid is ${theirsMinApp} shares`,
+    });
+  }
+  return out;
+}
 
 // Rupee-valued fields are compared with a relative tolerance: ipowatch rounds
 // ("Approx ₹40.88 Crores") and our own figures carry paisa, so an exact-equality
