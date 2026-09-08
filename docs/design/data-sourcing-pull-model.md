@@ -648,6 +648,17 @@ weight.** They leave the API response with the other 17 (they are null either wa
 lost), but **the columns stay**, so the product decision remains open rather than being closed as a
 side effect of tidying.
 
+## 2. How we go and get it — the pull loop
+
+**Scope: phase 1 only.** 19 IPOs, status OPEN or UPCOMING, all `offering_type = 'IPO'`, mainboard or
+SME (measured 2026-09-08). No closed IPO is read or written. Closed IPOs follow afterwards, one at a
+time, newest close date first — that is section 6, and none of it is specified here.
+
+Every claim below about how the system behaves today carries the file and line it was read from.
+Anything not cited is a proposal, not a fact. That rule exists because the first draft of this
+section asserted seven things about our own code that were false, and an implementer who trusted
+them would have built the wrong thing.
+
 ### 2.1 What runs, and when — D-13 is the decision; this section only adds to it
 
 **The cadence is not this design's to invent.** It was decided by the owner on 2026-09-03 as **D-13**
