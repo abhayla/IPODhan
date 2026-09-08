@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 14:15 IST (snapshot 8).
+Last updated: 2026-09-08 14:45 IST (snapshot 9).
 
 ---
 
@@ -98,7 +98,7 @@ Raised by Abhay 2026-09-08 ~12:30 IST. Nothing here is started. Each is discusse
 
 **Risk to manage honestly.** Some current values came from websites and are correct. Flipping the priority does not retroactively rewrite them; it changes which source wins on the next write. A separate, deliberate pass is needed to re-source existing rows from their documents, and that pass must be proven on staging first.
 
-**Status:** APPROVED by the owner. **Prev:** — **Now:** 0%
+**Status:** DONE, MERGED as 9db4529d after two rounds and a Tier A review. The offer document now outranks every website on the fields it prints. Two traps the review caught and the fix closed: a wrong document value would have become permanently uncorrectable (a newer document can now heal an older one), and a re-extraction of an old draft could have overwritten a final price-band advertisement (document types are now ranked PRICE_BAND_AD/CORRIGENDUM > RHP > PROSPECTUS > DRHP). Timeline dates deliberately keep the exchanges first, because a printed advertisement is never reissued when a bidding window is extended. Full staging-cycle proof owed. **Prev:** 0% **Now:** 90%
 
 ### O-6. Switch SME document extraction on for production
 
