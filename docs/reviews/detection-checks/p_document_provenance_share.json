@@ -1,0 +1,9 @@
+{
+  "id": "p_document_provenance_share",
+  "findingClass": "the site republishes a website's transcription of the offer document instead of the document itself — the document's share of provenance rows on printed offer-term fields collapses",
+  "round7Findings": [],
+  "failThreshold": "document-sourced (source='DRHP') provenance rows are under 5% of all non-ADMIN provenance rows across issueSize, faceValue, priceRangeMin/Max, lotSize, min_investment, issue_price, fresh_issue_size, offer_for_sale_size, registrar, leadManagers, companyName",
+  "severity": "P1",
+  "unverifiableWhen": "field_sources is unreadable, or no provenance rows exist on any printed offer-term field",
+  "section": "checks"
+}

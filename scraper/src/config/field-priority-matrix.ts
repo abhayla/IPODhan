@@ -109,11 +109,22 @@ export interface FieldRules {
  *
  * **Priority Principles**:
  * 1. Admin always wins (manual override)
- * 2. DRHP is authoritative for financial data
- * 3. NSE is primary for IPO core data
- * 4. BSE is better for lot size
- * 5. Chittorgarh specializes in GMP data
- * 6. Real-time data uses latest value
+ * 2. T-520 (owner O-5, 2026-09-08): the OFFER DOCUMENT outranks EVERY website
+ *    for the fields it prints. `DRHP` is the single `scraper_source` enum slot
+ *    every offer document maps to (`filing-persister.ts` `scraperSourceForDocType`
+ *    folds DRHP / RHP / PROSPECTUS / PRICE_BAND_AD into it), so `DRHP` sits
+ *    directly after `ADMIN` on every field `docs/reviews/wp-c-extraction-contract.md`
+ *    §1 says a filing carries. Websites keep two jobs: filling fields no document
+ *    contains (live subscription, GMP, listing price/gain, status) and acting as
+ *    the second opinion that raises a `data_conflicts` row.
+ *    EXCEPTION, deliberate: the TIMELINE dates (open/close/allotment/listing)
+ *    keep NSE/BSE above DRHP — W-117: the printed ad is never revised when the
+ *    bidding window is extended, so the exchanges hold the live truth there.
+ * 3. DRHP is authoritative for financial data
+ * 4. NSE is primary for IPO core data
+ * 5. BSE is better for lot size than NSE (below the document)
+ * 6. Chittorgarh specializes in GMP data
+ * 7. Real-time data uses latest value
  */
 export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // ==================== FINANCIAL DATA (DRHP is authoritative) ====================
@@ -264,14 +275,14 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // ==================== IPO CORE DATA (NSE is primary) ====================
 
   fresh_issue_size: {
-    sources: ['ADMIN', 'NSE', 'DRHP', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 85,
     description: 'Fresh issue size',
   },
 
   offer_for_sale_size: {
-    sources: ['ADMIN', 'NSE', 'DRHP', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 85,
     description: 'Offer for sale size',
@@ -357,7 +368,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // price-band disagreement alert could never fire. Do not reintroduce it -
   // if a caller needs a snake_case key, fix the caller.
   priceRangeMin: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
     // T-276: NSE/BSE republish a corrected band mid-issue (an early scrape can
@@ -368,17 +379,17 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     // corrected band" the way the T-276 comment above describes — DRHP is a
     // static filing and MONEYCONTROL a lower-priority fallback, neither
     // should be able to self-refresh past a value NSE/BSE already set.
-    sameSourceRefreshSources: ['NSE', 'BSE'],
+    sameSourceRefreshSources: ['DRHP', 'NSE', 'BSE'],
     description: 'Minimum price in price band',
     validation: { min: 1, max: 100000 },
   },
 
   priceRangeMax: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
     sameSourceRefresh: true,
-    sameSourceRefreshSources: ['NSE', 'BSE'],
+    sameSourceRefreshSources: ['DRHP', 'NSE', 'BSE'],
     description: 'Maximum price in price band',
     validation: { min: 1, max: 100000 },
   },
@@ -458,7 +469,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   },
 
   issue_price: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 95,
     description: 'Final issue price - critical field',
@@ -565,7 +576,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // ==================== LOT SIZE (BSE is more accurate) ====================
 
   lot_size: {
-    sources: ['ADMIN', 'BSE', 'NSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
     description: 'Lot size - BSE data is more accurate historically',
@@ -574,7 +585,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // CamelCase (TypeScript field name) - consolidation service uses this
   lotSize: {
-    sources: ['ADMIN', 'BSE', 'NSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
     description: 'Lot size (camelCase) - BSE data is more accurate historically',
@@ -582,7 +593,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   },
 
   min_investment: {
-    sources: ['ADMIN', 'BSE', 'NSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 85,
     description: 'Minimum investment amount',
@@ -699,7 +710,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // (no normalization, no source priority). The normaliser in getFieldRules()
   // still resolves a `company_name` lookup to this entry.
   companyName: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'company_name',
     confidenceThreshold: 85,
     description: 'Company name - normalized',
@@ -713,7 +724,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   },
 
   registrar: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'none',
     confidenceThreshold: 85,
     description: 'Registrar name',
@@ -797,7 +808,7 @@ export function getFieldRules(fieldName: string): FieldRules {
   return (
     FIELD_PRIORITY_MATRIX[canonical] ||
     FIELD_PRIORITY_MATRIX[fieldName] || {
-      sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH', 'API_FALLBACK'],
+      sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'API_FALLBACK'],
       normalization: 'none',
       confidenceThreshold: 75,
       description: 'Default rules - NSE priority',
