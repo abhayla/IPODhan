@@ -1044,7 +1044,7 @@ phase-1 size that is **19 IPOs x ~150 sourced fields = roughly 2,850 checks a we
 wrote, we would produce about **148,000 writes a year of pure churn**, each dragging a provenance
 row and a cache invalidation with it.
 
-**The rule: verification is a read. It writes only when something changed.**
+**The rule (owner decision, 2026-09-08): verification is a read. It writes only when something changed.**
 
 | Outcome of a re-ask | What is written |
 |---|---|
@@ -1164,10 +1164,21 @@ The first draft's tiers covered UPCOMING, OPEN, CLOSED and LISTED. The enum has 
 (`packages/shared/src/db/schema.ts`, `ipoStatusEnum`). A phase-1 IPO can become either of the other
 two at any time:
 
-- **POSTPONED** — stays in scope at the four-slot cadence. Its terms will be re-advertised, so its
-  document-sourced fields are invalidated when the next filing arrives (§2.5).
-- **WITHDRAWN** — terminal. The walk stops, existing values are kept, GMP and subscription polling
-  stop, and the IPO leaves the §4 denominators.
+**Owner decision, 2026-09-08.**
+
+- **POSTPONED — not terminal, it comes back.** Stays in scope at the normal four-slot cadence. A
+  relaunched issue almost always carries a revised price band and a new window, so **its
+  document-sourced fields are invalidated the moment the relaunch filing arrives** (§2.5 trigger 3)
+  — the old terms must not survive the relaunch.
+- **WITHDRAWN — terminal.** The walk stops. **Existing values are kept as a record**, because
+  someone who applied wants to see what they applied to. The page **stays at its URL** with a clear
+  withdrawal notice rather than redirecting — people who applied will search for it. **GMP and
+  subscription polling stop**, because a withdrawn issue with a ticking grey-market premium reads as
+  live and is actively misleading. And the IPO **leaves the §4 denominators**, so a dead issue does
+  not drag the coverage numbers of the live ones.
+
+Neither status appears on production today, but `document-cycle.ts` reserves a slot every cycle for
+the withdrawal purge path, so both occur.
 
 ### 2.10 What this needs that does not exist yet
 

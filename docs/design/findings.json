@@ -220,7 +220,7 @@
       "title": "WITHDRAWN and POSTPONED IPOs match no tier and are never walked",
       "detail": "Confirmed by 3 reviewers. A phase-1 IPO can become either at any time.",
       "fix_in": "§2.3",
-      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+      "closed_in": "OWNER DECISION 2026-09-08: withdrawn = terminal, page frozen at its URL with a notice, values kept as a record, GMP and subscription polling stopped, IPO removed from the health denominators. Postponed = stays in scope at normal cadence, document-sourced fields invalidated when the relaunch filing arrives."
     },
     {
       "id": "F-20",
@@ -529,7 +529,7 @@
       "phase1": true,
       "status": "OPEN",
       "title": "W-106: valueActuallyChanged is dead, so no-op suppression cannot be verified under the pull model",
-      "detail": "Owner question 2026-09-08: how do we ensure a re-ask does not rewrite the same value? Two layers already exist (areEquivalent+normalizeChosen at data-consolidation-service.ts:919-932, and the empty-diff row gate at data-persister.ts:2258). But walk item W-106 (2026-09-03) records that valueActuallyChanged is dead on every tested path - a higher-priority source with an equivalent value is treated as convergence before the check is consulted. Filed then as a misleading counter, not a defect. Under the pull model it is the only thing separating verification confirmed 2,850 fields from verification rewrote 2,850 fields identically, so it becomes a PREREQUISITE. Scale: 19 IPOs x ~150 fields weekly = ~2,850 checks/week, ~148k writes/year if unsuppressed, each with a provenance row and a cache drop. Also protects updated_at meaning the value changed rather than we looked at it.",
+      "detail": "OWNER APPROVED the rule 2026-09-08: verification is a read; same value writes nothing but a timestamp on the plan row. Owner question 2026-09-08: how do we ensure a re-ask does not rewrite the same value? Two layers already exist (areEquivalent+normalizeChosen at data-consolidation-service.ts:919-932, and the empty-diff row gate at data-persister.ts:2258). But walk item W-106 (2026-09-03) records that valueActuallyChanged is dead on every tested path - a higher-priority source with an equivalent value is treated as convergence before the check is consulted. Filed then as a misleading counter, not a defect. Under the pull model it is the only thing separating verification confirmed 2,850 fields from verification rewrote 2,850 fields identically, so it becomes a PREREQUISITE. Scale: 19 IPOs x ~150 fields weekly = ~2,850 checks/week, ~148k writes/year if unsuppressed, each with a provenance row and a cache drop. Also protects updated_at meaning the value changed rather than we looked at it.",
       "fix_in": "§2.5.2 + check PULL-NOOP"
     }
   ],
