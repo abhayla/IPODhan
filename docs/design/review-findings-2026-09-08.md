@@ -1,5 +1,23 @@
 # Pull-model design — consolidated review findings, 2026-09-08
 
+> **`findings.json` is the register; this file is its readable form.** Status lives in the JSON so a
+> finding cannot sit in prose with nobody closing it. `check-design-consistency.mjs` reads the JSON
+> and fails if the design claims readiness while a critical finding is OPEN.
+>
+> **Where each fact lives — one home each, everything else generated or a pointer:**
+>
+> | Fact | Single source of truth | Generated from it |
+> |---|---|---|
+> | Which source serves which field | `field-source-resolution.spec.mjs` | Appendix A of the design **and** the artifact page. Never hand-edited |
+> | How the loop runs, how we verify it | `data-sourcing-pull-model.md`, rewritten in place | nothing — it is prose |
+> | Findings and their status | `findings.json` | this file |
+> | Owner decisions (O-1…O-11) | `docs/ops/work-tracker.md` Part 0 | the design points at it, never copies it |
+>
+> **No second design document will be created.** The phase-1 re-cut replaces sections of the
+> existing file. Six places to write one thing down is what produced three self-contradictions in a
+> single day; the check is what stops the fourth.
+
+
 Four independent passes over `docs/design/data-sourcing-pull-model.md`:
 
 | Pass | Lens | Findings | Critical |

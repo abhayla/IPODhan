@@ -4,7 +4,7 @@ import fs from 'fs';
 // opts.doc = extraction-contract section; opts.only = why there is no rank 2;
 // opts.e1 = named exception E-1; opts.formula = computed; opts.na = offering types where N/A
 const D_FIN = { na: ['NCD', 'INVITS', 'REITS', 'TENDER', 'BUYBACK'] };
-const F = [];
+export const F = [];
 const add = (t, c, cls, r, o = {}) => F.push({ t, c, cls, r, o });
 
 // ---------- ipos (32) ----------
@@ -247,8 +247,10 @@ for (const t of ['FPO','RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK']
   na.push(`| ${t} | ${({FPO:0,RIGHTS:8,OFS:19,NCD:7,INVITS:3,REITS:2,TENDER:16,BUYBACK:1})[t]} | ${naN} | ${F.length - naN} |`);
 }
 
-fs.writeFileSync(process.argv[2], out.join('\n') + '\n\n' + na.join('\n') + '\n');
-console.log('fields in spec:', F.length);
-console.log('class counts:', JSON.stringify(F.reduce((a, f) => (a[f.cls] = (a[f.cls] || 0) + 1, a), {})));
-console.log('E-1 fields:', F.filter(f => f.o.e1).length);
-console.log('single-source (no rank 2):', F.filter(f => f.r[1] === '—' && f.r[0] !== '—').length);
+if (process.argv[2]) {
+  fs.writeFileSync(process.argv[2], out.join('\n') + '\n\n' + na.join('\n') + '\n');
+  console.log('fields in spec:', F.length);
+  console.log('class counts:', JSON.stringify(F.reduce((a, f) => (a[f.cls] = (a[f.cls] || 0) + 1, a), {})));
+  console.log('E-1 fields:', F.filter(f => f.o.e1).length);
+  console.log('single-source (no rank 2):', F.filter(f => f.r[1] === '—' && f.r[0] !== '—').length);
+}

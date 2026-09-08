@@ -1,6 +1,20 @@
 # Data sourcing: the pull model
 
-**Status: DESIGN, awaiting Abhay's approval. No code has been written for it.**
+> ### Status — NOT SAFE TO BUILD FROM
+>
+> Reviewed 2026-09-08 by four independent passes (author, IPO domain, engineering, verification
+> model). **55 raw findings, consolidated to 40 tracked items; 14 critical.** Status per finding is
+> in `findings.json`, which is the register — not this document. As of the last check, **11 critical
+> findings are OPEN**.
+>
+> **Sections §0, Appendix A.0 and A.3 survive review. §1.2.1, §2, §3, §4 and §6 are being re-cut.**
+> Do not implement from those sections.
+>
+> **Scope (owner, 2026-09-08): phase 1 is open and upcoming IPOs only — 19 today, all plain `IPO`,
+> mainboard or SME.** No closed IPO is touched. Closed IPOs follow afterwards, one at a time, newest
+> close date first. This scope removes 8 of the 40 findings, which reopen for phase 2.
+>
+> Run `node docs/design/check-design-consistency.mjs --gate` before trusting any count in here.
 Author: this session, 2026-09-08. Origin: owner comment O-8 in `docs/ops/work-tracker.md`.
 
 Abhay's requirement, in his words: *"almost ninety percent of our data should come from the offer
@@ -1222,7 +1236,7 @@ reading the document would not have shown. The current state:
 | No source — computed (class C) or written by our own pipeline (class I) | 41 |
 | **Total** | **194** |
 
-**Not all 153 sourced fields have three, and they never will.** 40 of them have fewer because a
+**Not every sourced field has three, and they never will.** 40 of them have fewer because a
 second publisher does not exist, or publishes a *different* number that would be wrong to substitute
 — every one is listed with its reason in **§A.3**. Claiming three sources for the anchor investor
 list or for share counts at the floor price would mean inventing one.
@@ -1472,7 +1486,7 @@ advertisement existed everywhere; it does not.
 
 ### A.3 Every field with fewer than three sources, and exactly why
 
-40 of the 153 sourced fields have fewer than three. **None of them is an omission.** Each is here
+Of the fields that are sourced at all, 40 have fewer than three. **None of them is an omission.** Each is here
 because a second or third publisher of that fact does not exist, or exists but publishes a
 *different* number that would be wrong to substitute. Grouped by reason.
 
