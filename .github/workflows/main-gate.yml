@@ -10,10 +10,18 @@ name: Main Post-Merge Gate
 # Trigger: workflow_dispatch (manual) AND push to main. The owner approved
 # the added GitHub Actions spend on 2026-09-08 (T-505, decision 3) so every
 # merge to main is now independently gated, not just on-demand.
+#
+# paths-ignore (round 2 review, T-505 MAJOR): without this, a docs-only
+# commit to main (e.g. a docs(walk) ledger update) burns a full hosted
+# runner pass for zero gate value -- same paths-ignore list pr-gate.yml and
+# deploy-linux.yml already use.
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
 
 concurrency:
   # Per-sha group (not a fixed 'main-gate' group): two close merges must both
