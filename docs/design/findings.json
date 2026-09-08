@@ -430,7 +430,7 @@
       "title": "The mapping is designed, not observed; no stage verifies a named source actually serves the field",
       "status_note": "BUILD-GATE: becomes the first step of the build.",
       "fix_in": "§6 M1",
-      "closed_in": "Two live Chittorgarh fetches 2026-09-08 verified every CG-ranked field by reading the page text, not by assumption. Four ranks corrected: promoters.name gained CG (it prints Company Promoters: <names>); peer_companies.pbv_ratio lost CG (page has NAV/EPS/PE/market cap, no P/BV); financial_statements.basis and unit gained CG (table headed Financials (Restated Consolidated), footed Amount in Rs Crore, with a per-year standalone note); financial_data.pe_ratio lost CG (the PE Ratio column belongs to a Recently Listed IPOs comparison table of OTHER companies). Produced a new rule, section 2.3.4: a value is only read from the page section about THIS IPO, never by matching a label across the whole page."
+      "closed_in": "Two live Chittorgarh fetches 2026-09-08 verified every CG-ranked field by reading the page text, not by assumption. Four ranks corrected: promoters.name gained CG (it prints Company Promoters: <names>); peer_companies.pbv_ratio lost CG (page has NAV/EPS/PE/market cap, no P/BV); financial_statements.basis and unit gained CG (table headed Financials (Restated Consolidated), footed Amount in Rs Crore, with a per-year standalone note); financial_data.pe_ratio lost CG (the PE Ratio column belongs to a Recently Listed IPOs comparison table of OTHER companies). Produced a new rule, section 2.3.4: a value is only read from the page section about THIS IPO, never by matching a label across the whole page. FOURTH ROUND 2026-09-08/09: NSE, BSE and Moneycontrol verified against live payloads - 51 ranks corrected. Moneycontrol claimed 46 fields, serves 9 + subscription (all three MC scrapers map only closeDate, companyName, issueSize, listingDate, offeringType, openDate, priceRange, segment, status). NSE: 3 wrong (designated_exchange, retail_max_allottees, allocation_pct - the last a false positive on Anchor Allocation Report), 6 missing (registrar, lead_managers, issue_type, sponsor_banks, tick_size, ipo_market_timings all present in issueInfo). BSE: 1 wrong (issue_type not in its payload). Root cause fixed in the generator: pool() appended CG and MC without checking capability, breaking the design own capability-vs-priority rule; it now filters on an observed capability list, on input as well as output."
     },
     {
       "id": "F-40",
@@ -572,6 +572,26 @@
       "detail": "false on 5, null on 20. A boolean that is never true may be a detector that never fires rather than a fact that never occurs. Worth one check against a filing known to carry a pre-IPO placement clause before trusting the field.",
       "fix_in": "extractor check, phase 2 with the schema change",
       "trigger": "the same event as F-23 - one filing known to carry a placement clause, to prove the detector fires at all."
+    },
+    {
+      "id": "F-53",
+      "sev": "MAJOR",
+      "area": "sources",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Moneycontrol earns zero ranks under the corrected mapping - the scraper may be redundant",
+      "detail": "After capability verification MC never reaches the top three for any field: for all nine fields it serves, the document and both exchanges are better and available. It holds 206 provenance rows today only because the PUSH model let it win by arriving first. Under the pull model it would never be consulted. Keeping or retiring the Moneycontrol scraper is an owner decision, not a design one - but the design should not pretend it contributes.",
+      "fix_in": "owner decision"
+    },
+    {
+      "id": "F-54",
+      "sev": "MAJOR",
+      "area": "sources",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "BSE serves issue size as a SHARE COUNT, and it is ranked second for ipos.issue_size",
+      "detail": "BSE GetMkt_ISSUE_BBS_IPO returns Issue_Size_No_of_shares - a share count, not rupees. ipos.issue_size ranks BSE second. Using it directly is exactly the share-count-stored-as-issue-size class that recurrence-detection-gate.md exists for. The rank stays because BSE does serve the concept; the extractor must convert, and the section 1 arithmetic check (shares x cap = total) is what catches it if it does not. Needs an explicit conversion test before the walk uses BSE for this field.",
+      "fix_in": "extractor + a conversion test"
     }
   ],
   "false_assertions": [

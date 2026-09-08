@@ -16,7 +16,7 @@ add('ipos','open_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','close_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','listing_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','status','T',['NSE','BSE','CG'],{e1:1});
-add('ipos','registrar','D',['DOC','BSE','CG'],{doc:'E3'});
+add('ipos','registrar','D',['DOC','NSE','BSE'],{doc:'E3',note:'VERIFIED: NSE issueInfo returns "Name of the Registrar"; BSE detail returns Registrar with address'});
 add('ipos','registrar_id','C',['—','—','—'],{formula:'FK resolved from registrar'});
 add('ipos','rating_override','I',['ADMIN','—','—'],{only:'admin-only by design; no external source exists'});
 add('ipos','slug','C',['—','—','—'],{formula:'generateIPOSlug(company_name)'});
@@ -28,7 +28,7 @@ add('ipos','listing_exchanges','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','face_value','D',['DOC','BSE','NSE'],{doc:'A2',na:['INVITS','REITS']});
 add('ipos','allotment_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','company_description','D',['DOC','CG','MC'],{doc:'F1'});
-add('ipos','lead_managers','D',['DOC','BSE','CG'],{doc:'E1'});
+add('ipos','lead_managers','D',['DOC','NSE','BSE'],{doc:'E1',note:'VERIFIED: NSE returns "Book Running Lead Managers"; BSE returns Book_Running_Lead_Manager'});
 add('ipos','isin','D',['DOC','NSE','BSE'],{doc:'E7'});
 add('ipos','segment','D',['DOC','NSE','BSE'],{doc:'A15',na:['INVITS','REITS']});
 add('ipos','offering_type','D',['DOC','BSE','CG'],{doc:'A11'});
@@ -43,7 +43,7 @@ add('ipos','cin','D',['DOC','—','—'],{doc:'E7',only:'no website or exchange 
 
 // ---------- ipo_details (23) ----------
 add('ipo_details','company_description','D',['DOC','CG','MC'],{doc:'F1'});
-add('ipo_details','issue_type','D',['DOC','BSE','CG'],{doc:'A11'});
+add('ipo_details','issue_type','D',['DOC','NSE','CG'],{doc:'A11',note:'CORRECTED: NSE returns "Issue Type: Book Building". BSE detail does NOT carry it - an earlier draft ranked BSE here'});
 add('ipo_details','fresh_issue','D',['DOC','BSE','CG'],{doc:'A5',na:['OFS','TENDER','BUYBACK']});
 add('ipo_details','ofs_issue','D',['DOC','BSE','CG'],{doc:'A6',na:['RIGHTS','NCD']});
 add('ipo_details','face_value','D',['DOC','BSE','—'],{doc:'A2',na:['INVITS','REITS']});
@@ -57,9 +57,9 @@ add('ipo_details','compliance_officer','D',['DOC','—','—'],{doc:'E4',only:'n
 add('ipo_details','compliance_officer_phone','D',['DOC','—','—'],{doc:'E4',only:'named only in the filing'});
 add('ipo_details','compliance_officer_email','D',['DOC','—','—'],{doc:'E4',only:'named only in the filing'});
 add('ipo_details','upi_cutoff_time','D',['DOC','NSE','—'],{doc:'B7',note:'clock time, not a date — deliberately NOT in E-1'});
-add('ipo_details','designated_exchange','D',['DOC','NSE','BSE'],{doc:'A14'});
+add('ipo_details','designated_exchange','D',['DOC','—','—'],{doc:'A14',only:'observed absent from both exchange payloads 2026-09-09 - neither NSE issueInfo nor BSE detail names a designated exchange'});
 add('ipo_details','lot_multiple','D',['DOC','BSE','—'],{doc:'A3'});
-add('ipo_details','allocation_pct','D',['DOC','NSE','—'],{doc:'A13'});
+add('ipo_details','allocation_pct','D',['DOC','—','—'],{doc:'A13',only:'observed absent 2026-09-09 - an earlier draft matched "Anchor Allocation Report" and mistook a document link for the allocation percentages'});
 // F-23: a pre-IPO placement REDUCES the fresh issue; stored as a boolean today but should carry
 // an amount. Issue-size fields (field 3, 35, 36) are therefore provisional until sourced from a
 // PROSPECTUS, which is the only document that reflects the placement having happened.
@@ -92,9 +92,9 @@ add('ipo_details','anchor_shares_offered','D',['DOC','NSE','—'],{doc:'A16',onl
 add('ipo_details','max_retail_subscription','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
 add('ipo_details','max_employee_subscription','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
 add('ipo_details','employee_discount','D',['DOC','NSE','—'],{doc:'A16',only:'the exchange circular carries the allocation',neverPopulated:true});
-add('ipo_details','sponsor_banks','D',['DOC','—','—'],{doc:'B8',only:'UPI sponsor bank list is printed only in the filing',neverPopulated:true});
-add('ipo_details','tick_size','D',['DOC','—','—'],{doc:'B8',only:'exchange bidding mechanics parameter printed only in the filing',neverPopulated:true});
-add('ipo_details','ipo_market_timings','D',['DOC','—','—'],{doc:'B8',only:'market timing window printed only in the filing',neverPopulated:true});
+add('ipo_details','sponsor_banks','D',['DOC','NSE','BSE'],{doc:'E6',neverPopulated:true,note:'CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo "Sponsor Bank", BSE detail Sponsor_Bank. An earlier draft called it filing-only'});
+add('ipo_details','tick_size','D',['DOC','NSE','BSE'],{doc:'A1',neverPopulated:true,note:'CORRECTED 2026-09-09: BOTH exchanges carry it - NSE "Tick Size", BSE Tick_Size'});
+add('ipo_details','ipo_market_timings','D',['DOC','NSE','BSE'],{doc:'B8',neverPopulated:true,note:'CORRECTED 2026-09-09: BOTH exchanges carry it - NSE "IPO Market Timings", BSE IPO_Market_Timings'});
 add('ipo_details','category_details','D',['DOC','NSE','—'],{doc:'A13',only:'the exchange circular carries the allocation',neverPopulated:true});
 add('ipo_details','sub_categories_upi','D',['DOC','NSE','—'],{doc:'B7',only:'the exchange circular carries the allocation',neverPopulated:true});
 
@@ -281,23 +281,44 @@ const TYPES = ['MAINBOARD','SME_BSE','SME_NSE','FPO','RIGHTS','OFS','NCD','INVIT
 
 // Build the pool from the authored ranks plus the field's legitimate fallbacks.
 // FALLBACKS lists, per table, the websites that genuinely publish that table's fields.
+// ---------------- OBSERVED SOURCE CAPABILITY (verified 2026-09-08/09) ----------------
+// This is the design's own capability-vs-priority rule (§2.3.5) made real: priority may be
+// configured only WITHIN capability. An earlier generator appended CG and MC to every field in a
+// "web-covered" table without checking whether either source serves it, which produced 46 false
+// Moneycontrol ranks - MC would have been a last resort that could never fire.
+//
+// MONEYCONTROL, verified by reading all three scrapers: it maps NINE fields and subscription.
+// It carries no financials, no peers, no promoters, no valuation, no sector, no description.
+const MC_SERVES = new Set([
+  'ipos.company_name','ipos.open_date','ipos.close_date','ipos.listing_date','ipos.status',
+  'ipos.segment','ipos.offering_type','ipos.issue_size','ipos.price_range_min','ipos.price_range_max',
+  'subscriptions.qib_subscription','subscriptions.nii_subscription','subscriptions.retail_subscription',
+  'subscriptions.total_subscription',
+]);
+// CHITTORGARH, verified against two live detail pages: the restated per-FY table, KPI/valuation
+// block, peer table, promoters, registrar, lead managers, objects, sector, description.
+// It does NOT carry: pbv_ratio, this IPO's own P/E, risk factors, the anchor book.
+const CG_CANNOT = new Set([
+  'peer_companies.pbv_ratio','financial_data.pe_ratio',
+]);
 const WEB_OK = new Set(['ipos','ipo_details','financial_data','peer_companies','subscriptions',
-                        'listing_performance','registrars','ipo_intermediaries','gmp_records']);
+                        'listing_performance','registrars','ipo_intermediaries','gmp_records',
+                        'financial_statements','ipo_valuation','promoters']);
+
 function pool(f) {
-  const p = f.r.filter(x => x !== '—');
-  // A field carrying `only:` has already declared, with a stated reason, that no second or
-  // third source exists — that is what the Note column renders it as ("no rank 2: <only>").
-  // Auto-adding CG/MC here for a WEB_OK table would silently contradict that declaration.
-  // Pre-existing bug found 2026-09-08 while adding F-13's never-populated fields: ipos.cin,
-  // ipo_details.compliance_officer(+phone/+email), promoter_shares_held, sebi_regulation_cited,
-  // promoter_group_transactions_since_drhp, pre_ipo_placement, gmp_records.gmp,
-  // listing_performance.current_price_bse/_nse all showed a website rank 2/3 in Appendix A
-  // while their own Note said "no rank 2" — a contradiction, not a finding.
-  if (f.o.only) return p;
-  if (!WEB_OK.has(f.t)) return p;                       // document-only tables: no website fallback
-  for (const w of ['CG','MC']) if (!p.includes(w)) p.push(w);
+  const key = f.t + '.' + f.c;
+  // Capability is filtered on the way IN as well as the way out: a hand-authored rank naming a
+  // source that cannot serve the field is the same defect as an auto-appended one.
+  let p = f.r.filter(x => x !== '—')
+              .filter(x => !(x === 'MC' && !MC_SERVES.has(key)))
+              .filter(x => !(x === 'CG' && CG_CANNOT.has(key)));
+  if (f.o.only) return p;                 // an explicit "no rank 2" declaration wins
+  if (!WEB_OK.has(f.t)) return p;
+  if (!p.includes('CG') && !CG_CANNOT.has(key)) p.push('CG');
+  if (!p.includes('MC') && MC_SERVES.has(key)) p.push('MC');
   return p;
 }
+
 function resolve(f, type) {
   const naSet = f.o.na || [];
   const base = type.startsWith('SME') ? 'IPO' : type;
