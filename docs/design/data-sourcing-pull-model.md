@@ -14,7 +14,7 @@
 >
 > **Scope (owner, 2026-09-08): phase 1 is open and upcoming IPOs only — 19 today, all plain `IPO`,
 > mainboard or SME.** No closed IPO is touched. Closed IPOs follow afterwards, one at a time, newest
-> close date first. This scope removes 8 of the 40 findings, which reopen for phase 2.
+> close date first. This scope removes 8 of the 40 findings, which reopen for the closed-IPO work.
 >
 > Run `node docs/design/check-design-consistency.mjs --gate` before trusting any count in here.
 Author: this session, 2026-09-08. Origin: owner comment O-8 in `docs/ops/work-tracker.md`.
@@ -1134,6 +1134,49 @@ Sourcing discipline protects every sourced field and does nothing for the **13 c
 input — and a test asserts it. A formula with no cited authority is the same defect as a source rank
 with no evidence, which is what this design spent 2026-09-08 removing.
 
+#### 2.5.4 Issue-size components are provisional until the prospectus, and the check runs inside one document
+
+`ipo_details.pre_ipo_placement` is a boolean. A red herring prospectus says *"Fresh Issue of up to
+₹400 crore, subject to reduction by a Pre-IPO Placement of up to ₹80 crore"*; if the placement
+happens, the final prospectus prints ₹320 crore. A yes/no records **that** it happened, never **by
+how much** — and the issue size feeds market cap, shares at cap and the P/E, which cross-check
+against each other and therefore **agree while all being wrong**.
+
+**Measured 2026-09-08: the flag is `false` on 5 IPOs and `null` on 20. It has never once been
+`true`** across 25 extractions, which is itself worth checking — a boolean that is never true may be
+a detector that never fires rather than a fact that never occurs.
+
+**Two rules, which cost nothing and are needed before the loop runs:**
+
+1. **Issue-size fields are provisional until sourced from a `PROSPECTUS`.** An RHP figure is an
+   upper bound (*"up to"*), not a final number.
+2. **`fresh + OFS = total` is evaluated within ONE document, never across two.** Comparing a draft's
+   fresh issue against a final total fails a correct extraction — and under the deleted blanking
+   rule that failure would have destroyed the data.
+
+**This check already fails on production, which is why it belongs in the design.** Running it as
+specified over the rows that carry both components:
+
+| Company | Fresh | OFS | Total | Gap | |
+|---|---:|---:|---:|---:|---|
+| Kanohar Electricals | ₹60 cr | — | ₹1,055.74 cr | **−₹995.74 cr** | FAIL |
+| Prasol Chemicals | ₹80 cr | — | ₹500 cr | −₹420 cr | FAIL |
+| Karamtara Engineering | ₹675 cr | — | ₹875 cr | −₹200 cr | FAIL |
+| Glass Wall Systems | ₹260 cr | — | ₹427.89 cr | −₹167.89 cr | FAIL |
+| Pranav Constructions | ₹315.60 cr | — | ₹351.03 cr | −₹35.43 cr | FAIL |
+| **Asset Reconstruction Co (India)** | — | **₹732.97 cr** | **₹696.06 cr** | **+₹36.91 cr** | **FAIL** |
+| LCC Projects · Manipal Payment · Deepa Jewellers | | | | 0.00 | PASS |
+
+**Six of nine fail.** Five share one shape — a fresh issue with **no OFS recorded**, where the gap is
+almost certainly an offer-for-sale we never extracted (Kanohar: ₹60 cr fresh against a ₹1,055 cr
+total is a 17× gap). **Asset Reconstruction is different and cannot be explained away: its OFS
+exceeds its total issue size** — a component larger than the whole, on an UPCOMING mainboard IPO, on
+the live site.
+
+Under §2.6 the pull loop handles these correctly: the check fails, the existing value stays, and an
+`EXHAUSTED` row makes the gap visible instead of blanking the field. The data above shows the check
+earning its place before a line of it is built.
+
 ### 2.6 When all three sources fail
 
 The first draft said: write null with a reason, never leave a stale value. **That is deleted, for
@@ -1443,7 +1486,7 @@ Answered structurally rather than by a patch, because the pull model makes it fa
 
 ### 5.4 O-4 — the unextracted backlog, drained without starving a live IPO
 
-**Phase-1 note:** the backlog tier and its nightly window are **phase 2** (F-35 — no backlog drain in
+**Phase-1 note:** the backlog tier and its nightly window are **the closed-IPO work** (F-35 — no backlog drain in
 phase 1; the 2-vCPU box already took a 522 outage from two concurrent extractors). Phase 1 only ever
 extracts a document belonging to one of the 19 open/upcoming IPOs, on demand, inside the normal wake
 budget. Everything below describes the target state this design is building toward; it does not run
@@ -1454,8 +1497,8 @@ in phase 1.
 | Cause | Documents | The design's answer |
 |---|---:|---|
 | No extractor exists for the type | 78 | Build two: the **ratios / basis-for-offer-price** document (32 pending — it carries the KPIs, the WACA and the peer set, all rank-1 document fields in §1) and the **basis-of-allotment advertisement** (1, carries the final allotment). **Deliberately leave unread:** sample application forms (14), bidding centres (8), security parameters (23) — and say so in the manifest, so they report as `NOT_APPLICABLE` rather than as a backlog forever. |
-| Budget of 3 filings per cycle | 91 | Demand-ordered allocation (§2.7) plus the **backlog tier's own nightly window** (§2.3, **phase 2**). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here. |
-| 10-minute extraction cap | the Skyways class | A separate, longer budget for large or scanned documents, run in the backlog window only (**phase 2**), where a 40-minute extraction costs nothing. The live path keeps its 10-minute cap so it cannot blow the wake budget. |
+| Budget of 3 filings per cycle | 91 | Demand-ordered allocation (§2.7) plus the **backlog tier's own nightly window** (§2.3, **the closed-IPO work**). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here. |
+| 10-minute extraction cap | the Skyways class | A separate, longer budget for large or scanned documents, run in the backlog window only (**the closed-IPO work**), where a 40-minute extraction costs nothing. The live path keeps its 10-minute cap so it cannot blow the wake budget. |
 
 O-4 is already marked APPROVED by the owner, so this section is the *how*, not a request.
 
@@ -1479,11 +1522,11 @@ deliberately keeping the exchanges first (W-117).
 1. **130 of 194 published fields still have no ranking at all** (§0.6, measured against the live
    `field-priority-matrix.ts`, a different artifact from this design's Appendix A). Appendix A now
    ranks all 240 — but **it resolves only 3 of the 11 offering types phase 1 actually needs
-   (MAINBOARD, SME-BSE, SME-NSE)**; the other 8 (F-11) are DROPPED-BY-SCOPE and **reopen for phase 2**.
+   (MAINBOARD, SME-BSE, SME-NSE)**; the other 8 (F-11) are DROPPED-BY-SCOPE and **reopen for the closed-IPO work**.
 2. **The staging-cycle proof for 9db4529d is still owed.** It is listed at 90%, not 100%, for that
    reason.
 3. **Nothing re-sources the existing rows.** The flip changes who wins the *next* write. 91% of
-   today's data was written before it. That is §6 — **entirely phase 2** under the owner's
+   today's data was written before it. That is §6 — **entirely the closed-IPO work** under the owner's
    2026-09-08 scope cut; phase 1 touches no closed IPO's already-written rows.
 4. **The duplicate-key problem** (§0.6): 13 matrix keys in snake_case match nothing. They should be
    deleted in the same change that builds the plan, or they will quietly look like coverage.
@@ -1518,70 +1561,53 @@ for it until the deterministic 119 are actually being read.
 
 ---
 
-## 6. Migration: re-sourcing 91% of the data from its own documents — phase 2
+## 6. Re-sourcing closed IPOs — not scheduled, and each precondition has a named trigger
 
-**This entire section is phase 2.** The owner's 2026-09-08 scope cut is phase 1 = open + upcoming
-IPOs only (19 today); no closed IPO is touched, and closed IPOs are picked up afterward one at a
-time, newest close date first — the opposite of a bulk migration. Everything below describes
-re-sourcing the **existing, already-written rows of already-closed IPOs**, which by definition falls
-outside phase 1. **Findings F-09, F-10, F-11, F-24, F-25, F-30, F-31 and F-35 are DROPPED-BY-SCOPE for
-phase 1 and reopen the moment phase 2 starts** — none of them is fixed, only deferred, and none of
-this section should be read as ready to build against.
+**There is no "phase 2" (owner, 2026-09-08).** An earlier draft parked ten findings in one, which is
+how work disappears: a bucket with no date, no trigger and no owner. Every one of them now names the
+**event** that brings it into scope, and none of them names a phase.
 
-### 6.1 What we are actually facing
+**The owner's sequence for closed IPOs, in his words:** *"We will not touch any closed IPO as of now.
+Once those are done, then we will plan to check and update data for closed IPO gradually one by one
+in sequence of IPO closing date — latest closed IPO first and older IPO closed later, but one by
+one."*
 
-| | |
-|---|---:|
-| Field values sourced from websites today | 4,841 of 6,638 (72.9%) |
-| Plus exchanges | 6,035 of 6,638 (90.9%) |
-| IPOs with any document-sourced field | 27 of 327 |
-| **IPOs whose PDFs are already purged from disk** | **every IPO closed more than 7 days ago** |
-| **IPOs the state machine will not touch at all** | **228 (LISTED > 10 days)** |
+One at a time, newest close date first. Not a batch, not a migration, not a phase.
 
-The migration is therefore not "re-run the extractor". For most rows it is **re-download, then
-re-extract, then re-source** — and the re-download may fail, because we are asking an exchange
-archive for a PDF filed months ago.
+**His ordering has a property worth naming**, because it was not the reason he chose it. Measured
+against the purge rule:
 
-### 6.2 The precondition already established
+| Closed | IPOs | Their PDFs |
+|---|---:|---|
+| ≤ 7 days ago | 13 | **still on disk** |
+| 8–30 days | 35 | **inside the hard retention cap** |
+| 31–180 days | 107 | purged — must be re-downloaded |
+| > 180 days | 100 | purged, oldest |
 
-A re-extraction must resolve a **real document type**. If a re-extracted document arrives with an
-unknown or defaulted type, the document-type ranking degrades to newest-write-wins and an old draft
-can overwrite a final price band advertisement. That risk was found in the O-5 review and it applies
-with far more force here, where we would be re-extracting hundreds of old documents at once.
+**Newest-first means the first 48 are the ones whose files we still hold.** The re-download gamble —
+the largest unknown in the whole plan — is deferred until after 48 IPOs have already proven the
+machinery works.
 
-**Concretely: `documents.filing_date` is populated on 24 of 256 rows** (§1.8, field 152). The healing
-rule leans on it. Backfilling `filing_date` from the document covers is a prerequisite of the
-migration, not a part of it.
+### 6.1 What must be true before the FIRST closed IPO is touched
 
-### 6.3 The order
+These are not future work. They are **preconditions**, and each is a finding with a trigger rather
+than a line in a plan:
 
-Six stages, each gated on the previous, each proven on staging first.
-
-| Stage | What | Gate before the next |
+| Finding | What must exist first | Why, concretely |
 |---|---|---|
-| **M0** | Backfill `documents.filing_date` and re-verify `documents.type` for all 256 rows. No field writes. | filing_date ≥ 95% populated; 0 documents with an unresolvable type |
-| **M1** | Probe re-download for all purged documents. Write nothing; just record whether each URL still serves the file. | a measured table of recoverable vs lost, by IPO tier — **this is the number that decides whether the rest is even possible, and I cannot predict it** |
-| **M2** | Drain the 91 readable PENDING documents (§5.4). Live and recent tiers only. | 4.3 rank-1 reach rises; 4.11 backlog falls; 0 regressions in the nightly floor |
-| **M3** | Re-source the **live and recent tiers** (99 IPOs) field by field from their own documents, through the normal pull loop. | document share of `field_sources` for those IPOs > 60%; every §1 check passing; no field silently blanked |
-| **M4** | The units change (§5.2), applied to both the already-migrated and remaining rows, with the magnitude gate 4.7. | every money field in band; the public API shape change released deliberately |
-| **M5** | The backlog tier (228 IPOs), nightly window, in reverse chronological order — most recent first, because those are the ones people still read. | monotonic progress; live tier never starved (4.12) |
+| **F-09** | a `retain_until` pin the purge honours | `decidePurge` deletes any PDF past 30 days unconditionally (`document-store.ts:279`). Without the pin, we re-download a 2025 RHP, extract one field group, and the next cycle deletes it — a treadmill |
+| **F-10** | effective-dated checks | `face_value ∈ {1,2,5,10}` is wrong for an NCD at ₹1,000; `listing ≤ close + 3 working days` is wrong for anything that listed before Dec 2023. Applied to history as-is, these fail correct data |
+| **F-30** | each gate as a script with an exit code | four of the six are prose today. Prose cannot stop a bad run |
+| **F-31** | a `field_sources` snapshot | it holds **one** prior value, so a second overwrite loses the original. 6,600 rows — cheap before, impossible after |
+| **F-35** | a decided slot for the extractor | the box took a Cloudflare 522 outage from two concurrent extractors (`scripts/deploy-linux.sh:231-235`). A third workload needs its slot agreed, not discovered |
 
-M3 is where the 90% target is actually won or lost for the IPOs that matter. M5 is a long tail that
-may never complete, and the design should not pretend otherwise.
+### 6.2 The document-type precondition, unchanged
 
-### 6.4 What could go wrong
+A re-extraction must resolve a **real document type**, or the type ranking degrades to
+newest-write-wins and an old draft overwrites a final price band advertisement. **`documents.filing_date`
+is populated on 24 of 256 rows**, and the healing rule depends on it. Backfilling it is a
+prerequisite of the first closed IPO, not part of the work.
 
-| Risk | Likelihood | What it costs | Mitigation |
-|---|---|---|---|
-| **Old PDFs are no longer downloadable** | Likely for the oldest rows | M5 partially impossible; the 90% target is only reachable on IPOs from here forward | M1 measures it before anything is committed. If most are lost, say so and set the target on *new* IPOs only. |
-| A re-extraction writes a **wrong** value over a correct website value | Medium | Live wrong data, on pages people read | Every §1 check must pass before the write; a disagreement triggers a re-read, not an adoption; staging-first per stage; the whole thing is reversible per stage because `field_sources` records the previous value and source |
-| A mis-typed document overwrites a final value with a draft | Medium without M0 | The exact class the O-5 review caught | M0 is a hard gate; the ranking refuses to write from a document whose type is unresolved |
-| The backlog drain starves live IPOs | Medium | The user-visible IPO is the one that goes stale | Tiering (§2.3) plus check 4.12 |
-| The unit change ships half-applied | Low, high impact | Figures wrong by 10⁷ on live pages | Gate 4.7 blocks on a single out-of-band row; the conversion is one migration, not a per-table drip |
-| `ipo_field_plan` becomes stale relative to the schema | Medium over time | Fields silently drop out of the walk | The plan is generated from schema plus manifest at run time, and check 4.1 alarms when the count changes without a type change |
-| We build the loop and the document still cannot be read | Medium | The pull model faithfully reports 176 gaps | This is the correct failure. A visible gap is the point; §5.4 is what closes it. |
-
----
 
 ## 7. Cost, sequence, and what I am not sure about
 
@@ -1619,9 +1645,9 @@ Everything from 4 onward is one design and should not be half-built.
    decides whether the 90% target applies to the whole site or only to IPOs from here forward. I
    would not promise the number before M1 reports. **This was the single biggest unknown in the whole
    document, and the 2026-09-08 phase-1 scope cut defers it entirely** — M1 is inside §6, which is now
-   phase 2 (no closed IPO, no re-download of purged documents, in phase 1). Phase 1 only ever reads a
+   the closed-IPO work (no closed IPO, no re-download of purged documents, in phase 1). Phase 1 only ever reads a
    document that is still on disk for one of today's 19 open/upcoming IPOs, so this unknown does not
-   block phase-1 work — it blocks phase 2, and stays unanswered until phase 2 starts.
+   block phase-1 work — it blocks the closed-IPO work, and stays unanswered until the closed-IPO work starts.
 2. **Whether `ipo_field_plan` should be a new table or columns on `field_sources`.** I have argued
    for the table. It is a real decision with a maintenance cost either way, and I would revisit it
    with the code in front of me.

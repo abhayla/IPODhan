@@ -115,6 +115,15 @@ try {
   var cites = (core.match(/[a-z-]+\.(ts|mjs|sh):\d+/g) || []).length;
   if (cites < 12) fail('D8', 'Sections 2-4 make claims about existing behaviour with only ' + cites + ' file:line citations. Uncited claims are how the seven false assertions got in.');
   else ok('D8', 'Sections 2-4 carry ' + cites + ' file:line citations for claims about existing behaviour.');
+
+  // --- D9: the design must not park work in a phase that does not exist ---
+  // Owner, 2026-09-08: "there is no phase 2". A bucket with no date, no trigger
+  // and no owner is where work disappears; ten findings had been put in one.
+  if (/phase\s*2/i.test(md)) fail('D9', 'The design names a "phase 2". There is none - every deferred item must name the EVENT that brings it into scope.');
+  else ok('D9', 'No work is parked in a non-existent phase.');
+  var noTrigger = findings.findings.filter(function(f){ return f.status === 'TRIGGERED' && !f.trigger; });
+  if (noTrigger.length) fail('D9b', 'TRIGGERED findings with no named trigger: ' + noTrigger.map(function(f){return f.id;}).join(', '));
+  else ok('D9b', findings.findings.filter(function(f){return f.status==='TRIGGERED';}).length + ' deferred findings each name the event that brings them into scope.');
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);
   process.exit(2);

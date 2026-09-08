@@ -13,10 +13,10 @@
     "note": "55 raw findings across four passes deduplicate to 40 tracked items. Status is the point of this file: a finding with no status is a finding nobody closes."
   },
   "status_vocabulary": {
-    "OPEN": "not addressed",
+    "OPEN": "not addressed, in scope now",
     "FIXED": "addressed in the design and committed",
-    "DROPPED-BY-SCOPE": "cannot occur in phase 1 (open + upcoming IPOs only); reopens for phase 2",
-    "BUILD-GATE": "not a design fix - a condition the build must satisfy before it ships"
+    "TRIGGERED": "not in scope now; a NAMED event brings it into scope. The trigger is written on the finding, so it cannot sit in a bucket with no date",
+    "NOT-DOING": "deliberately not done, with the reason it is safe not to"
   },
   "findings": [
     {
@@ -112,30 +112,33 @@
       "sev": "CRITICAL",
       "area": "migration",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "Backlog re-download is undone by decidePurge on the next cycle",
       "detail": "document-store.ts:279 hard_cap is unconditional past 30 days. Reopens for phase 2.",
-      "fix_in": "§6"
+      "fix_in": "§6",
+      "trigger": "the first closed IPO is re-sourced. decidePurge deletes any re-downloaded PDF past 30 days, so a retain_until pin must exist BEFORE the first one is attempted - not after."
     },
     {
       "id": "F-10",
       "sev": "CRITICAL",
       "area": "checks",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "Checks wrong for a class silently blank that class",
       "detail": "NCD face value 1000, pre-Dec-2023 T+6 listings, pre-2025 SME lot rule. All 19 phase-1 IPOs are current-era plain IPOs. Reopens for phase 2.",
-      "fix_in": "§1 checks"
+      "fix_in": "§1 checks",
+      "trigger": "the first closed IPO is re-sourced. Its checks must be effective-dated first: face_value {1,2,5,10} is wrong for an NCD at 1000, and listing <= close+3 working days is wrong for anything that listed before Dec 2023."
     },
     {
       "id": "F-11",
       "sev": "CRITICAL",
       "area": "field mapping",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "Appendix A resolves only 3 of 11 offering types",
       "detail": "Phase 1 contains only IPO mainboard, SME-BSE and SME-NSE - exactly the 3 resolved. Reopens for phase 2.",
-      "fix_in": "Appendix A"
+      "fix_in": "Appendix A",
+      "trigger": "any non-IPO offering type enters the pull loop. All 19 phase-1 IPOs are plain IPO, so nothing is exposed today - but the appendix resolves only mainboard, SME-BSE and SME-NSE, and its header must say so."
     },
     {
       "id": "F-12",
@@ -259,28 +262,31 @@
       "sev": "MAJOR",
       "area": "domain",
       "phase1": true,
-      "status": "FIXED",
+      "status": "TRIGGERED",
       "title": "Pre-IPO placement and green-shoe change the issue size after the RHP; the design stores a boolean",
       "fix_in": "Appendix A",
-      "closed_in": "spec (ipo_details.pre_ipo_placement note), 2026-09-08"
+      "closed_in": "OWNER-DIRECTION 2026-09-08: schema change DEFERRED to phase 2 (the flag is false on 5 IPOs and null on 20 - never once true across 25 extractions). Two rules written now in §2.5.4: issue-size fields are provisional until sourced from a PROSPECTUS, and fresh+OFS=total is evaluated within ONE document, never across two.",
+      "trigger": "a filing carrying a live pre-IPO placement clause is extracted. Until then the boolean records nothing that is happening."
     },
     {
       "id": "F-24",
       "sev": "MAJOR",
       "area": "domain",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "NCD structure cannot be represented (base vs retained size, series, coupon, tenor, rating)",
-      "fix_in": "phase 2"
+      "fix_in": "phase 2",
+      "trigger": "an NCD needs sourcing. Face value 1000 fails the current check, and base-vs-retained size, series, coupon, tenor and rating have no fields at all."
     },
     {
       "id": "F-25",
       "sev": "MAJOR",
       "area": "domain",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "InvIT/REIT: §1.11 says out of scope, A.2 assigns them 117 resolvable fields",
-      "fix_in": "phase 2"
+      "fix_in": "phase 2",
+      "trigger": "an InvIT or REIT needs sourcing. Unit-based instruments have no lot size or face value in the share sense, and the distribution yield has no field."
     },
     {
       "id": "F-26",
@@ -329,18 +335,20 @@
       "sev": "MAJOR",
       "area": "migration",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "Four of the six migration gates are prose, not commands",
-      "fix_in": "§6"
+      "fix_in": "§6",
+      "trigger": "the first closed IPO is re-sourced. Each gate becomes a named script with an exit code before any row is rewritten."
     },
     {
       "id": "F-31",
       "sev": "MAJOR",
       "area": "migration",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "field_sources holds one prior value, so the per-field rollback claim fails past one overwrite",
-      "fix_in": "§7.2"
+      "fix_in": "§7.2",
+      "trigger": "the first closed IPO is re-sourced. field_sources holds ONE prior value, so a second overwrite loses the original - snapshot it (6,600 rows, cheap) before the first re-source, not after."
     },
     {
       "id": "F-32",
@@ -378,10 +386,11 @@
       "sev": "MAJOR",
       "area": "infrastructure",
       "phase1": false,
-      "status": "DROPPED-BY-SCOPE",
+      "status": "TRIGGERED",
       "title": "A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two",
       "detail": "scripts/deploy-linux.sh:231-235 records the incident. No backlog drain in phase 1.",
-      "fix_in": "§2.3 + §5.4"
+      "fix_in": "§2.3 + §5.4",
+      "trigger": "a backlog drain is scheduled. The box took a Cloudflare 522 outage from two concurrent extractors (deploy-linux.sh:231-235); a third workload needs its own slot decided first."
     },
     {
       "id": "F-36",
@@ -542,6 +551,27 @@
       "detail": "Raised by the owner 2026-09-08 off the anchor lock-in bug. A wrong formula takes correct inputs and produces a plausible output, so every priority rule, conflict check and arithmetic bound is blind to it - nothing disagrees. 13 computed fields had no equivalent of the source verification this design spent the day doing. Now section 2.5.3: every formula carries the authority it derives from (a regulation, a printed value, or a stored input) and a test asserts it. A formula with no cited authority is the same defect as a source rank with no evidence.",
       "fix_in": "§2.5.3",
       "closed_in": "formula audit table written, all 13 given an authority"
+    },
+    {
+      "id": "F-51",
+      "sev": "CRITICAL",
+      "area": "live data",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "fresh + OFS does not reconcile with issue_size on 6 of 9 live IPOs, and one is arithmetically impossible",
+      "detail": "Measured on prod 2026-09-08 by running the check the design specifies. FAIL: Kanohar Electricals fresh 60 Cr vs total 1055.74 Cr (gap -995.74); Prasol 80 vs 500; Karamtara 675 vs 875; Glass Wall 260 vs 427.89; Pranav 315.60 vs 351.03 - all five have NO ofs_issue recorded, so the gap is almost certainly an unextracted offer-for-sale. ASSET RECONSTRUCTION CO (INDIA): ofs_issue 732.97 Cr EXCEEDS issue_size 696.06 Cr - a component larger than the whole, impossible, on an UPCOMING mainboard IPO live on the site. PASS: LCC Projects, Manipal Payment, Deepa Jewellers (exact). Not a design defect - a live data defect the design check would have caught. Needs its own investigation and repair.",
+      "fix_in": "separate data fix, owner call"
+    },
+    {
+      "id": "F-52",
+      "sev": "MAJOR",
+      "area": "live data",
+      "phase1": true,
+      "status": "TRIGGERED",
+      "title": "pre_ipo_placement has never once been true across 25 extractions",
+      "detail": "false on 5, null on 20. A boolean that is never true may be a detector that never fires rather than a fact that never occurs. Worth one check against a filing known to carry a pre-IPO placement clause before trusting the field.",
+      "fix_in": "extractor check, phase 2 with the schema change",
+      "trigger": "the same event as F-23 - one filing known to carry a placement clause, to prove the detector fires at all."
     }
   ],
   "false_assertions": [
