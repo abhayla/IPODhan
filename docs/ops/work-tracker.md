@@ -9,7 +9,66 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 12:15 IST (snapshot 2).
+Last updated: 2026-09-08 12:35 IST (snapshot 3 - owner comments added).
+
+---
+
+## Part 0 — Owner comments, open for discussion
+
+Raised by Abhay 2026-09-08 ~12:30 IST. Nothing here is started. Each is discussed one at a time; new comments are appended to this list as they come.
+
+### O-1. Documents should not be re-scraped every 30 minutes — the frequency change was agreed and looks unimplemented
+
+**Abhay:** "We already discussed about this not to scrape the documents every thirty minutes. We had discussed to increase the frequency. Not sure why it is not being implemented."
+
+**What I found before we discuss (facts, not argument).**
+
+- The scraper PROCESS still wakes every 30 minutes on production (`*/30 * * * *`) and at :15/:45 on staging. That part is unchanged, and it is what you are seeing.
+- The agreed change WAS partly implemented and IS switched on in both environments: `ENABLE_DUE_STEP_SCHEDULER=true`. Under it, source DISCOVERY runs only at four fixed times a day — 08:30, 11:00, 14:00 and 17:30 IST (`scraper/src/scheduler/due-step-cycle.ts`), not on every wake.
+- What still happens on every wake is document PROCESSING. Each wake walks the document queue; an individual document is protected by an exponential backoff (15 minutes doubling per attempt, capped at 6 hours) and by per-cycle budgets. So a given PDF is not re-downloaded every 30 minutes, but the queue is walked every 30 minutes.
+- **Honest gap:** the wake interval itself was never changed, and nothing records what the agreed target interval was. Your read is fair — the visible behaviour is exactly what you asked to change.
+
+**Options.** (1) Raise the wake interval itself, for example hourly or market-hours only. (2) Keep the 30-minute wake but make it a no-op outside the four discovery slots and outside market hours, so it costs nothing. (3) Leave as is.
+
+**My recommendation:** option 2, because live subscription and grey-market figures genuinely do change during the day and a long flat interval would make those stale. I want your target number before proposing anything concrete.
+
+**Status:** AWAITING DISCUSSION. **Prev:** — **Now:** 0%
+
+### O-2. Store money in crore, not in rupees — and find every field this applies to
+
+**Abhay:** "Change the fields to not store the exact amount, but store the values in terms of crores... instead of writing 999.99 crore in each digit, just write 999.99. That will save the fields. Identify all such fields where this needs to be applied."
+
+**I got this wrong today and it needs saying plainly.** When you raised this mid-morning I read it two ways, flagged both, and chose the one that kept rupees and widened the columns instead. That shipped as PR #423. You meant the other one. The merged change is not harmful — it removes the crash either way — but it is not the design you asked for, and converting later costs more than doing it once now.
+
+**What the audit found, and it strengthens your point.** The schema is ALREADY inconsistent:
+
+- `financial_data` stores crore today and says so in its own comments: `market_cap`, `ebitda_fy2022/23/24`, `total_income_fy2022/23/24`, `total_borrowings` are all documented "in Rs crores".
+- `ipos.issue_size` stores RUPEES, and says so: "in INR RUPEES".
+- Two tables in the same database hold money in two different units. Any code reading one and comparing with the other is one mistake away from being wrong by a factor of ten million. That is a live risk today, independent of column width.
+
+**Candidate fields to convert (amounts only).** `ipos.issue_size`; `ipo_details.fresh_issue`, `ofs_issue`, `min_investment`, `max_retail_subscription`, `max_employee_subscription`; `anchor_investors.total_amount_raised`; the `ipo_financials` revenue / total income / EBITDA / profit / net worth / operating cash flow / total assets / total borrowings columns; and the `financial_data` equivalents, which are already crore and become the reference rather than the change.
+
+**Explicitly NOT candidates:** per-share prices (price band, listing price, current price, cut-off, face value, grey-market premium, tick size), percentages, subscription multiples, and share counts. Those are small by nature and are read as rupees per share; converting them would make them harder to read, not easier.
+
+**Options.** (1) Convert every amount column to crore with a migration, a one-time data conversion, and a single formatting helper at the read side. Honest cost: it touches the public API shape, every page that formats money, the audit checks, and the provenance rows already written. (2) Leave storage in rupees and fix only the display. Cheapest, but it addresses neither the wasted width nor the mixed units. (3) Convert only the tables that are inconsistent, so at least one unit rule holds across the database.
+
+**My recommendation:** option 1, done once, proven on staging before production — but as its own planned change, not a same-day patch, because it changes what our public API returns.
+
+**Status:** AWAITING DISCUSSION. **Prev:** — **Now:** 0%
+
+### O-3. A failed field must not fail the whole document, and must not retry in a loop
+
+**Abhay:** "If something is crashing, are we not taking care of the errors and not crashing the application? An error should not break the website or that IPO's data. Maybe some of the data could not be extracted from the PDF, but that does not mean the extraction has failed. Keep that field blank, and get that field from other sources. There is no need to keep trying for the same field again and again and going into a loop of errors."
+
+**You are describing exactly what happened today, and the diagnosis is correct.** Rentomojo's price band advertisement was read perfectly. One field, the fresh issue amount, did not fit its column. Because the save is a single all-or-nothing insert covering more than forty fields, NOTHING was saved: not the lead managers, not the dates, not the registrar, not the ISIN. The same document was then retried seven times, each time re-downloading and re-extracting a 1 MB PDF and failing on the same field. That is precisely the loop you describe.
+
+**What is true today.** The failure is contained. It does not crash the site or the scraper, and the IPO page still renders. But a whole document's worth of data is discarded because of one field, and the retry loop wastes real work.
+
+**Options.** (1) Partial persistence: write every field that is valid, record the rejected fields with their reason, and never let one bad field discard the rest; the missing field is then filled from another source on its normal schedule. (2) Pre-validate each field against its column before the write and drop only the offenders. Similar effect, much simpler than restructuring the write. (3) Keep all-or-nothing but stop retrying after the first non-transient failure, so at least the loop ends.
+
+**My recommendation:** option 2 first because it is small and immediate, then option 1 as the real design. Both should carry your rule that a field which cannot be extracted stays blank and is sourced elsewhere rather than blocking the row.
+
+**Status:** AWAITING DISCUSSION. **Prev:** — **Now:** 0%
 
 ---
 
