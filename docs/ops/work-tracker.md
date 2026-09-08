@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 14:10 IST (snapshot 7 - O-8 push-vs-pull recorded).
+Last updated: 2026-09-08 14:15 IST (snapshot 8).
 
 ---
 
@@ -110,7 +110,7 @@ The same code path is already proven: the SME walk passed in production on Quali
 
 **Honest risk.** With the flag on, a scrape can rewrite an SME IPO's static fields with no human in the loop. If an extraction is wrong, it writes wrong data to the live site. Mitigation: enable, watch the next two cycles by name, and revert with one line if anything writes a value the checks should have caught.
 
-**Status:** APPROVED by the owner. **Prev:** — **Now:** 0%
+**Status:** DONE and already producing data. Enabled on production 13:3x with a dated backup. First result read at 14:15: SME IPOs holding a document-sourced field went 0 -> 2, and the overall document share moved 8.4% -> 8.9%. Qualiance International now carries lead managers, registrar, ISIN, CIN, face value, allotment date, issue type and three financial figures from its own offer document. **Prev:** 0% **Now:** 100% (watching)
 
 ### O-7. A language model only for the last stretch, under strict conditions
 
