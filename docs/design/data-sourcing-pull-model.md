@@ -1202,32 +1202,57 @@ appendix trustworthy rather than merely long, and it must be re-run whenever a f
 
 ### A.0 The verification this appendix passed
 
-Reviewed and re-verified 2026-09-08 after the owner asked for confirmation that mainboard and SME
-each have all three sources properly identified. Four checks, all now passing:
+Reviewed three times on 2026-09-08 at the owner's insistence. Each pass found real defects that
+reading the document would not have shown. The current state:
 
 | Check | Result |
 |---|---|
-| Every field in the spec exists on production, and every populated production field is in the spec | **194 = 194, zero difference either way** |
+| Every spec field exists on production, and every populated production field is in the spec | **194 = 194, zero difference either way** |
 | Sourced fields with fewer than three sources that give **no reason** | **0** |
-| Fields where SME silently loses a source that mainboard has | **0** (was 28 — see below) |
-| Fields where an exchange-specific value could be fetched for an exchange the stock is not listed on | **0** (was 2) |
+| Fields where SME silently loses a source mainboard has | **0** |
+| Exchange-specific values fetchable for a venue the stock is not listed on | **0** |
 
-**Two real defects this review caught and fixed.** They were in the first version of this appendix,
-committed an hour earlier, and neither would have been visible by reading it.
+**Mainboard source depth, stated plainly rather than claimed complete:**
+
+| | Fields |
+|---|---:|
+| Three sources | **112** |
+| Two sources, reason stated | 5 |
+| One source, reason stated | 36 |
+| No source — computed (class C) or written by our own pipeline (class I) | 41 |
+| **Total** | **194** |
+
+**Not all 153 sourced fields have three sources, and they never will.** 41 of them genuinely have one
+source because no second publisher of that fact exists anywhere: the anchor investor list, the
+promoters' weighted average cost of acquisition, risk-factor headings, the BRLM track record, share
+counts at a given price point. Claiming three sources for those would mean inventing one.
+
+**Three rounds of defects this review caught.** All were in versions already committed, and none was
+visible by reading the document:
 
 1. **28 SME fields silently had only two sources.** The resolver deleted the absent exchange and left
-   a hole rather than promoting the next real source. So `ipos.symbol` on a BSE-listed SME read
-   `DOC · BSE · —` when the correct answer is `DOC · BSE · CG`. This mattered more than it looked:
-   measured on production, **Chittorgarh covers 167 of 172 SME IPOs (97%, 3,272 rows) while BSE has
-   written data for only 8 SME IPOs**. Dropping Chittorgarh to a dash removed the most reliable
-   non-document source SME has. Fixed by resolving ranks from an ordered **pool** of every source
-   that can supply the field, then taking the first three the IPO type actually has — a hole can no
-   longer appear while a real source remains. Mainboard fields with all three sources went from 68
-   to 103 as a side effect.
+   a hole instead of promoting the next real source, so `ipos.symbol` on a BSE-listed SME read
+   `DOC · BSE · —` when the answer is `DOC · BSE · CG`. Measured on production, **Chittorgarh covers
+   167 of 172 SME IPOs (97%, 3,272 rows) while BSE has written data for only 8** — so the dash was
+   discarding SME's most reliable non-document source. Fixed by resolving from an ordered **pool**:
+   ranks are the first three sources the IPO type actually has, so a hole cannot appear while a real
+   source remains.
 
 2. **An NSE price could be fetched for a stock that does not trade on NSE.** `current_price_nse` on a
-   BSE-only SME fell through to Chittorgarh instead of being N/A. That would have published a price
-   for a venue the share is not listed on. Now `N/A`, both directions.
+   BSE-only SME fell through to Chittorgarh instead of being N/A. Now N/A in both directions.
+
+3. **I asserted "no website publishes a restated financial statement". That was false, and our own
+   scraper disproves it.** `scraper/src/scrapers/chittorgarh-detail-fields.ts` reads Chittorgarh's
+   restated "Company Financials" table (`getTableById(html, 'financialTable')`) and extracts revenue,
+   total income, EBITDA and PAT **per fiscal year**, plus the fiscal years themselves. Six
+   `financial_statements` fields had been marked document-only on the strength of my assumption; they
+   now carry Chittorgarh at rank 2 and Moneycontrol at rank 3. The five that remain document-only —
+   `basis`, `unit`, `eps_basic`, `eps_diluted`, `op_cash_flow` — are the ones Chittorgarh genuinely
+   does not print. Three `ipo_valuation` fields were corrected the same way: the price floor and cap
+   are the same numbers as `ipos.price_range_min/max` and are published by both exchanges, and the
+   market cap at the cap price is the single market-cap figure Chittorgarh prints.
+
+   Mainboard fields with three sources went **68 → 103 → 112** across the three passes.
 
 **Class counts (authoritative, superseding the estimate in §1.1): D 117 · T 12 · X 13 · M 4 · W 1 ·
 C 11 · I 36 = 194.** Of these, **55 fields have no rank 2 at all** — the reason is stated on each row
@@ -1331,32 +1356,32 @@ advertisement existed everywhere; it does not.
 | 79 | `financial_data.total_income_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
 | 80 | `financial_data.total_income_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
 | 81 | `financial_data.total_income_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
-| 82 | `financial_statements.fiscal_year` | D | DOC | — | — | DOC · — · — | DOC · — · — | C1 | no rank 2: no website publishes a restated statement |
-| 83 | `financial_statements.basis` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: no website publishes a restated statement |
-| 84 | `financial_statements.unit` | D | DOC | — | — | DOC · — · — | DOC · — · — | C7 | no rank 2: no website publishes a restated statement |
-| 85 | `financial_statements.revenue` | D | DOC | — | — | DOC · — · — | DOC · — · — | C1 | no rank 2: no website publishes a restated statement |
-| 86 | `financial_statements.total_income` | D | DOC | — | — | DOC · — · — | DOC · — · — | C1 | no rank 2: no website publishes a restated statement |
-| 87 | `financial_statements.ebitda` | D | DOC | — | — | DOC · — · — | DOC · — · — | C1 | no rank 2: no website publishes a restated statement |
-| 88 | `financial_statements.pat` | D | DOC | — | — | DOC · — · — | DOC · — · — | C1 | no rank 2: no website publishes a restated statement |
-| 89 | `financial_statements.net_worth` | D | DOC | — | — | DOC · — · — | DOC · — · — | C2 | no rank 2: no website publishes a restated statement |
-| 90 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: no website publishes a restated statement |
-| 91 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: no website publishes a restated statement |
-| 92 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: no website publishes a restated statement |
-| 93 | `ipo_valuation.pricing_event` | D | DOC | — | — | DOC · — · — | DOC · — · — | — | no rank 2: no website prints shares at a price point |
-| 94 | `ipo_valuation.price_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A1 | no rank 2: no website prints shares at a price point |
-| 95 | `ipo_valuation.price_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A1 | no rank 2: no website prints shares at a price point |
-| 96 | `ipo_valuation.shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: no website prints shares at a price point |
-| 97 | `ipo_valuation.shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: no website prints shares at a price point |
-| 98 | `ipo_valuation.mcap_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A8 | no rank 2: no website prints shares at a price point |
-| 99 | `ipo_valuation.mcap_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A8 | no rank 2: no website prints shares at a price point |
-| 100 | `ipo_valuation.pe_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: no website prints shares at a price point |
-| 101 | `ipo_valuation.pe_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: no website prints shares at a price point |
-| 102 | `ipo_valuation.ronw_weighted_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | A10 | no rank 2: no website prints shares at a price point |
-| 103 | `ipo_valuation.fresh_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: no website prints shares at a price point |
-| 104 | `ipo_valuation.fresh_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: no website prints shares at a price point |
-| 105 | `ipo_valuation.ofs_shares` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: no website prints shares at a price point |
-| 106 | `ipo_valuation.total_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: no website prints shares at a price point |
-| 107 | `ipo_valuation.total_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: no website prints shares at a price point |
+| 82 | `financial_statements.fiscal_year` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 83 | `financial_statements.revenue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 84 | `financial_statements.total_income` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 85 | `financial_statements.ebitda` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 86 | `financial_statements.pat` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
+| 87 | `financial_statements.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 | CG gives the most-recent year only, not the full series |
+| 88 | `financial_statements.basis` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
+| 89 | `financial_statements.unit` | D | DOC | — | — | DOC · — · — | DOC · — · — | C7 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
+| 90 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
+| 91 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
+| 92 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
+| 93 | `ipo_valuation.price_floor` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_min |
+| 94 | `ipo_valuation.price_cap` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_max |
+| 95 | `ipo_valuation.mcap_at_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 | CG prints a single market cap, which is the at-cap figure |
+| 96 | `ipo_valuation.pricing_event` | D | DOC | — | — | DOC · — · — | DOC · — · — | — | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 97 | `ipo_valuation.shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 98 | `ipo_valuation.shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 99 | `ipo_valuation.mcap_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A8 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 100 | `ipo_valuation.pe_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 101 | `ipo_valuation.pe_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 102 | `ipo_valuation.ronw_weighted_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | A10 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 103 | `ipo_valuation.fresh_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 104 | `ipo_valuation.fresh_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 105 | `ipo_valuation.ofs_shares` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 106 | `ipo_valuation.total_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 107 | `ipo_valuation.total_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
 | 108 | `ipo_valuation.face_value_multiple_floor` | C | — | — | — | — · — · — | — · — · — | — | computed: price_floor ÷ face_value |
 | 109 | `ipo_valuation.face_value_multiple_cap` | C | — | — | — | — · — · — | — · — · — | — | computed: price_cap ÷ face_value |
 | 110 | `promoters.name` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |

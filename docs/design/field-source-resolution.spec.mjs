@@ -78,17 +78,31 @@ for (const y of ['2022','2023','2024']) add('financial_data',`ebitda_fy${y}`,'D'
 for (const y of ['2022','2023','2024']) add('financial_data',`total_income_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
 
 // ---------- financial_statements (11) ----------
-for (const [c,d] of [['fiscal_year','C1'],['basis','C8'],['unit','C7'],['revenue','C1'],['total_income','C1'],
-  ['ebitda','C1'],['pat','C1'],['net_worth','C2'],['eps_basic','C6'],['eps_diluted','C6'],['op_cash_flow','C3']])
-  add('financial_statements',c,'D',['DOC','—','—'],{doc:d,only:'no website publishes a restated statement',na:['INVITS','REITS','TENDER','BUYBACK']});
+// Chittorgarh's detail page DOES carry a restated per-fiscal-year "Company Financials" table
+// (scraper/src/scrapers/chittorgarh-detail-fields.ts, getTableById 'financialTable'): it yields
+// revenue, total income, EBITDA, PAT per year plus the fiscal years themselves, and net worth as a
+// single most-recent value. An earlier draft of this appendix claimed "no website publishes a
+// restated statement" - that was wrong, and our own scraper disproves it.
+const FS_NA = ['INVITS','REITS','TENDER','BUYBACK'];
+for (const [c,d] of [['fiscal_year','C1'],['revenue','C1'],['total_income','C1'],['ebitda','C1'],['pat','C1']])
+  add('financial_statements',c,'D',['DOC','CG','MC'],{doc:d,na:FS_NA,note:'CG restated table carries this per fiscal year'});
+add('financial_statements','net_worth','D',['DOC','CG','MC'],{doc:'C2',na:FS_NA,note:'CG gives the most-recent year only, not the full series'});
+for (const [c,d] of [['basis','C8'],['unit','C7'],['eps_basic','C6'],['eps_diluted','C6'],['op_cash_flow','C3']])
+  add('financial_statements',c,'D',['DOC','—','—'],{doc:d,only:'CG prints the figures but not the basis, unit, EPS split or cash-flow line',na:FS_NA});
 
 // ---------- ipo_valuation (17) ----------
 const VAL_NA = ['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'];
-for (const [c,d] of [['pricing_event','—'],['price_floor','A1'],['price_cap','A1'],['shares_at_floor','A7'],
-  ['shares_at_cap','A7'],['mcap_at_floor','A8'],['mcap_at_cap','A8'],['pe_at_floor','A9'],['pe_at_cap','A9'],
-  ['ronw_weighted_3y','A10'],['fresh_shares_at_floor','A7'],['fresh_shares_at_cap','A7'],['ofs_shares','A7'],
-  ['total_shares_at_floor','A7'],['total_shares_at_cap','A7']])
-  add('ipo_valuation',c,'D',['DOC','—','—'],{doc:d,only:'no website prints shares at a price point',na:VAL_NA});
+// The price band itself is published by both exchanges and by CG - it is the same number as
+// ipos.price_range_min/max, so it gets the same ranks. Market cap at the cap price is the single
+// "market cap" CG prints. Everything else in this table (shares at a price point, PE at floor vs
+// cap, the weighted 3-year RoNW) appears nowhere but the advertisement.
+add('ipo_valuation','price_floor','D',['DOC','NSE','BSE'],{doc:'A1',na:VAL_NA,note:'same number as ipos.price_range_min'});
+add('ipo_valuation','price_cap','D',['DOC','NSE','BSE'],{doc:'A1',na:VAL_NA,note:'same number as ipos.price_range_max'});
+add('ipo_valuation','mcap_at_cap','D',['DOC','CG','MC'],{doc:'A8',na:VAL_NA,note:'CG prints a single market cap, which is the at-cap figure'});
+for (const [c,d] of [['pricing_event','—'],['shares_at_floor','A7'],['shares_at_cap','A7'],['mcap_at_floor','A8'],
+  ['pe_at_floor','A9'],['pe_at_cap','A9'],['ronw_weighted_3y','A10'],['fresh_shares_at_floor','A7'],
+  ['fresh_shares_at_cap','A7'],['ofs_shares','A7'],['total_shares_at_floor','A7'],['total_shares_at_cap','A7']])
+  add('ipo_valuation',c,'D',['DOC','—','—'],{doc:d,only:'printed only on the advertisement - no website gives a value at a specific price point',na:VAL_NA});
 add('ipo_valuation','face_value_multiple_floor','C',['—','—','—'],{formula:'price_floor ÷ face_value'});
 add('ipo_valuation','face_value_multiple_cap','C',['—','—','—'],{formula:'price_cap ÷ face_value'});
 
