@@ -903,6 +903,73 @@ scraper already applies this discipline in one place — the issue-size prose fa
 page's own company name (`chittorgarh-detail-fields.ts:551`). The rule generalises what that comment
 already knows.
 
+### 2.3.5 The priority order is configuration, not code (owner requirement, 2026-09-08)
+
+**The requirement.** *"For each field, make these priorities configurable. If we decide to change
+them later, it should be easy configuration. We should not be required to change the code."*
+
+Today the order lives in `scraper/src/config/field-priority-matrix.ts` — TypeScript. Changing which
+source leads a field means editing code, opening a PR, passing CI and deploying. That is the wrong
+cost for a decision that is not a code decision.
+
+#### Two separate things, and only one of them is configurable
+
+The day's verification work makes the distinction sharp, and it is what keeps this safe:
+
+| | What it is | Who decides | Changes how |
+|---|---|---|---|
+| **Capability** | Can this source serve this field **at all**? | reality — proven by fetching | the verification job updates it |
+| **Priority** | Of the sources that *can*, which do we **prefer**? | the owner | **configuration** |
+
+Chittorgarh **cannot** serve `financial_data.pe_ratio` — the only P/E on its page belongs to other
+companies (§2.3.4). NSE **cannot** serve any of the 33 financial fields — its API returns bidding
+and demand data only. **No configuration may make an incapable source rank 1**, because the result
+is not a different value, it is a permanent `NOT_PRINTED` and a silent slide to whatever is below.
+
+So priority is configurable **within** capability, never over it.
+
+#### Where the configuration lives
+
+Three layers, each overriding the one above, reusing patterns this repo already has:
+
+1. **The registry — `config/field-sources.json`, in the repo.** One row per field: its ranks, its
+   unit, its check, its exceptions. This is what `field-source-resolution.spec.mjs` already
+   generates for Appendix A; it stops being a document artefact and becomes the file the scraper
+   reads. Changing it is a data edit reviewed like any other change, then deployed.
+2. **The override table — `field_source_overrides`**, shaped on the existing
+   `field_protection_metadata` (which is already per-field, per-IPO, with `edited_by`, `edit_note`
+   and `is_permanent`). Columns: `table_name`, `field_name`, `ipo_id` (nullable — null means every
+   IPO), `rank1/2/3`, `reason`, `set_by`, `set_at`, `expires_at`. **Takes effect at the next cycle
+   with no deploy.**
+3. **A per-IPO admin override**, which already exists as field protection and is untouched.
+
+Effective order = the first valid layer, resolved once per walk and recorded on the plan row.
+
+#### Four rules that keep this from becoming a foot-gun
+
+A free-form config over the write path is a way to break production quietly at 2am. So:
+
+- **An override is validated before it takes effect.** Every named source must be capable of that
+  field, and the order must satisfy S-05 (`per-ipo-due-step-pipeline.md`). An invalid override is
+  refused and logged — never partially applied.
+- **An override expires.** `expires_at` defaults to 30 days. A change meant to be permanent goes
+  into the registry, where it is reviewed. This stops the override table quietly becoming the real
+  configuration that nobody reads.
+- **Provenance records which configuration produced the value** — registry version or override id.
+  Without it, "why does this field say that?" is unanswerable after any config change.
+- **A nightly check reports every active override by field and reason**, and fails on one that is
+  expired, invalid, or older than its stated intent. An override nobody remembers is the same class
+  as a stale ranking in code, only harder to find.
+
+#### What configuration cannot do, stated plainly
+
+- **Reordering sources that already work: pure configuration.** No deploy.
+- **Adding a new source** (another website, another exchange feed): needs a scraper for it, and a
+  capability entry proven by fetching. **That is code.**
+- **Adding a new field:** needs a column, an extractor and a check. **That is code.**
+
+So the honest promise is: *changing the order is configuration; changing what we can reach is not.*
+
 ### 2.4 What the loop does, per field
 
 ```
