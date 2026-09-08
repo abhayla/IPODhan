@@ -1187,24 +1187,43 @@ a detector that never fires rather than a fact that never occurs.
    fresh issue against a final total fails a correct extraction — and under the deleted blanking
    rule that failure would have destroyed the data.
 
-**This check already fails on production, which is why it belongs in the design.** Running it as
-specified over the rows that carry both components:
+**This check already fails on production, and diagnosing it (2026-09-09) found two extractor bugs
+and cleared the websites of blame.**
 
-| Company | Fresh | OFS | Total | Gap | |
-|---|---:|---:|---:|---:|---|
-| Kanohar Electricals | ₹60 cr | — | ₹1,055.74 cr | **−₹995.74 cr** | FAIL |
-| Prasol Chemicals | ₹80 cr | — | ₹500 cr | −₹420 cr | FAIL |
-| Karamtara Engineering | ₹675 cr | — | ₹875 cr | −₹200 cr | FAIL |
-| Glass Wall Systems | ₹260 cr | — | ₹427.89 cr | −₹167.89 cr | FAIL |
-| Pranav Constructions | ₹315.60 cr | — | ₹351.03 cr | −₹35.43 cr | FAIL |
-| **Asset Reconstruction Co (India)** | — | **₹732.97 cr** | **₹696.06 cr** | **+₹36.91 cr** | **FAIL** |
-| LCC Projects · Manipal Payment · Deepa Jewellers | | | | 0.00 | PASS |
+Running the check as specified over the rows carrying both components: **six of nine fail.** The
+provenance column explains it in one look — **every passing row took its total from the document;
+every failing row took its total from a website while its components came from the document.** Two
+sources describing the same offer, under no obligation to agree.
 
-**Six of nine fail.** Five share one shape — a fresh issue with **no OFS recorded**, where the gap is
-almost certainly an offer-for-sale we never extracted (Kanohar: ₹60 cr fresh against a ₹1,055 cr
-total is a 17× gap). **Asset Reconstruction is different and cannot be explained away: its OFS
-exceeds its total issue size** — a component larger than the whole, on an UPCOMING mainboard IPO, on
-the live site.
+**But the websites are right, and our extraction is wrong.** NSE states each offer in words, which
+settles it independently:
+
+| IPO | NSE's own wording | Our stored fresh | Reconciliation |
+|---|---|---:|---|
+| **Kanohar** | fresh Rs 3,000 mn + OFS 11,957,915 shares | **₹60 cr** — wrong, NSE says ₹300 cr | 300 + (11,957,915 × ₹632) = **₹1,055.74 cr = the stored total, exactly** |
+| **Glass Wall** | fresh Rs 600 mn + OFS 20,213,722 shares | **₹260 cr** — wrong, NSE says ₹60 cr | 60 + (20,213,722 × ₹182) = **₹427.89 cr = exact** |
+| **Pranav** | fresh Rs 3,156 mn + OFS 2,856,869 shares | ₹315.60 cr — correct | implied OFS ₹35.43 cr ÷ 2,856,869 = **₹124/share = its stored cap, exactly** |
+| **Prasol** | fresh Rs 800 mn + OFS Rs 4,200 mn | ₹80 cr — correct | 80 + 420 = **₹500 cr = exact** |
+| **Karamtara** | fresh Rs 6,750 mn + OFS Rs 2,000 mn | ₹675 cr — correct | 675 + 200 = **₹875 cr = exact** |
+
+**Two distinct defects, and the second is the common one:**
+
+1. **`ofs_issue` is never extracted — all six.** The offer for sale is stated two ways: in rupees
+   (*"OFS aggregating up to Rs. 4,200 million"*) and in shares (*"OFS of up to 20,213,722 equity
+   shares"*). Neither form is being captured. The share form additionally needs multiplying by the
+   cap price, which is where §1's unit discipline applies.
+2. **`fresh_issue` is mis-extracted on two of six** — Kanohar reads ₹60 cr against NSE's ₹300 cr,
+   Glass Wall ₹260 cr against ₹60 cr. Both are wrong in the *digits*, not the units, so a
+   magnitude bound would not catch them. **Only the reconciliation check does.**
+
+**What this says about the design.** The check specified here would have caught all six on day one;
+it is not built. And §2.6's rule earns itself again: under the deleted blanking rule, six live IPOs
+would have had their issue size destroyed by a check that was correctly failing on a *component*
+that was never extracted.
+
+**Asset Reconstruction is still unexplained** — `ofs_issue` ₹732.97 cr against a total of ₹696.06 cr,
+a component larger than the whole, with no fresh issue recorded and no NSE symbol to check against.
+It needs its own look.
 
 Under §2.6 the pull loop handles these correctly: the check fails, the existing value stays, and an
 `EXHAUSTED` row makes the gap visible instead of blanking the field. The data above shows the check
