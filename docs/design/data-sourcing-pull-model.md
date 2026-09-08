@@ -601,53 +601,52 @@ Written once here rather than duplicated into every row.
 | **BUYBACK / TENDER** | 17 | Corporate actions, not offerings. They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 `offering_type` is the guard; §4.6 gives it a check. |
 | **FPO** | **0 today** | The brief asked for follow-on offers. **There are none on production.** The rule is written and not exercised: no draft prospectus stage, so rank 1 is the RHP or prospectus directly; everything else follows mainboard. Because no row exercises it, it carries a higher risk of being wrong than any other line in this table. |
 
-### 1.12 Retired fields — never write these
+### 1.12 Retired fields — never write these (owner decision, 2026-09-08)
 
-Closing F-33. The public API ships 19 fields that are `null` on all 327 production IPOs, plus the
-`ipos` table carries 6 columns that are not even in `schema.ts` — orphaned, unreachable from Drizzle,
-readable only by raw SQL. None of these 25 belongs in the pull loop. Each is a stale mirror of a
-column that now lives, correctly, in a child table (`subscriptions`, `gmp_records` or
-`listing_performance`); writing to the old name would resurrect a duplicate the rest of the codebase
-has already moved past.
+The public API returns **19 fields that are `null` on all 327 production IPOs**, and the `ipos` table
+carries **6 more columns not even declared in `schema.ts`** — orphaned, unreachable from Drizzle,
+readable only by raw SQL. Twenty-five in total.
 
-**19 API-response fields, always null — mirrors of a child table:**
+**They are not gaps. They are duplicates of data that is already flowing**, and the live homes are
+full while the mirrors are empty:
 
-| Field (API response) | Mirrors | Never write it because |
-|---|---|---|
-| `rating`, `ratingRationale` | *(nothing — no equivalent field exists anywhere)* | dead: no scraper, no table, no plan to build one |
-| `subscriptionRetail`, `subscriptionHni`, `subscriptionQib`, `subscriptionTotal` | `subscriptions.retail_subscription` / `nii_subscription` / `qib_subscription` / `total_subscription` | the real, live values are in `subscriptions`; these are a pre-migration flattening that was never removed from the response shape |
-| `gmpPrice`, `gmpPercentageHistorical`, `gmpUpdatedAtHistorical` | `gmp_records.gmp` / `.gmp_percentage` / `.timestamp` | same class — flattened historical snapshot, superseded by the per-timestamp table |
-| `listingPriceHistorical`, `listingGainPercentage`, `listingGainAmount`, `listingDateHistorical` | `listing_performance.listing_price` / `.listing_gain_percent` / (amount is derivable) / `.listing_date` | same class |
-| `currentPrice`, `currentGainPercentage`, `currentGainAmount`, `currentPriceUpdatedAt` | `listing_performance.current_price` / `.current_gain_percent` / (derivable) / `.last_updated` | same class |
-| `historicalDataSource`, `historicalDataScrapedAt` | `listing_performance.data_source` / `.last_updated` | same class |
+| The empty API fields | Where the data actually lives | Volume there | Source |
+|---|---|---:|---|
+| `subscriptionRetail` · `subscriptionHni` · `subscriptionQib` · `subscriptionTotal` | `subscriptions` | **27,514 rows · 111 IPOs** | NSE → BSE |
+| `gmpPrice` · `gmpPercentageHistorical` · `gmpUpdatedAtHistorical` — and the orphans `gmp`, `gmp_percentage`, `gmp_updated_at` | `gmp_records` | **8,400 rows · 90 IPOs** | InvestorGain → Chittorgarh |
+| `listingPriceHistorical` · `listingDateHistorical` · `listingGainPercentage` · `listingGainAmount` · `currentPrice` · `currentGainPercentage` · `currentGainAmount` · `currentPriceUpdatedAt` | `listing_performance` | **242 rows · 242 IPOs** | NSE/BSE for prices; the gains are computed |
+| `historicalDataSource` · `historicalDataScrapedAt` | `listing_performance.data_source` / `last_updated` | — | our own pipeline |
+| orphans `price_band_low` · `price_band_high` | `ipos.price_range_min/max` | 300 IPOs | DOC → NSE → BSE |
+| orphan `exchange` | `ipos.listing_exchanges` | 327 IPOs | NSE → BSE (E-1) |
 
-**6 orphan `ipos` columns — not in `schema.ts`, unreachable by the app, readable only by raw SQL:**
+So `ipos.subscription_total` is null on all 327 IPOs while `subscriptions` holds 27,514 rows. Same
+data — one column empty, one table full.
 
-`price_band_low`, `price_band_high` (mirror `ipos.price_range_min` / `_max`), `exchange` (mirror
-`ipos.listing_exchanges`), `gmp`, `gmp_percentage`, `gmp_updated_at` (mirror the three `gmp_records`
-fields above). Nothing in the application can write or read these through the ORM; they are pure
-database drift, left behind by an earlier schema shape.
+**Why this matters to the pull model specifically.** These are a trap. The design introduces a
+configuration file listing every field and its sources (§2.3.5). While a column exists *and* appears
+in the API, someone eventually adds it to that config and starts writing to it **in parallel with the
+child table the rest of the codebase reads** — the exact duplicate-write problem this design exists
+to remove, reintroduced by a leftover.
 
-**The fix is not part of this design's write path — it is a two-step cleanup, sequenced so nothing
-breaks before its replacement is confirmed live:** (1) drop the 19 fields from the API response shape
-once the corresponding child-table field is confirmed populated and read by every consumer; (2) drop
-the 6 orphan columns from the database in a **gated migration**
-(`web/drizzle/migrations/_gated/`, per the CLAUDE.md troubleshooting table — destructive DDL, owner
-sign-off required, never added to `meta/_journal.json`). Until both steps land, the pull loop simply
-never targets any of these 25 — they are not in Appendix A, and they should stay out of it.
+**The owner's decision, 2026-09-08, in three steps:**
 
----
+1. **Now, in this design: all 25 are marked `never write`.** No plan row, no rank, no config entry.
+2. **Next release, as its own small change: the 19 stop appearing in the API response.** This is
+   near-zero risk and not really a breaking change — **a field that is `null` on every IPO is already
+   functionally absent to every consumer.** A reader gets `null` today and `undefined` afterwards;
+   both are falsy and every consumer already handles the empty case, because that is all it has ever
+   received. Only code testing for the *key's existence* rather than its value would notice, and the
+   owner confirmed **nothing outside this repo reads this API**.
+3. **Later, after phase 1: drop the columns**, behind a per-table consumer audit. That is the part
+   that carries real risk — `listing_performance.current_price` is populated and shares a name with
+   the dead `ipos.current_price`, so a name-based grep cannot tell them apart.
 
-## 2. How we go and get it — the pull loop
-
-**Scope: phase 1 only.** 19 IPOs, status OPEN or UPCOMING, all `offering_type = 'IPO'`, mainboard or
-SME (measured 2026-09-08). No closed IPO is read or written. Closed IPOs follow afterwards, one at a
-time, newest close date first — that is section 6, and none of it is specified here.
-
-Every claim below about how the system behaves today carries the file and line it was read from.
-Anything not cited is a proposal, not a fact. That rule exists because the first draft of this
-section asserted seven things about our own code that were false, and an implementer who trusted
-them would have built the wrong thing.
+**Two exceptions held back deliberately: `rating` and `ratingRationale`.** These are not mirrors of
+anything. They would be **IPODhan's own view of an IPO**, for which no external source exists or
+should. `ipo_scores` holds 10 rows and `ipo_reviews` holds zero — **an unbuilt feature, not dead
+weight.** They leave the API response with the other 17 (they are null either way, so nothing is
+lost), but **the columns stay**, so the product decision remains open rather than being closed as a
+side effect of tidying.
 
 ### 2.1 What runs, and when — D-13 is the decision; this section only adds to it
 

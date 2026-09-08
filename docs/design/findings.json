@@ -360,7 +360,7 @@
       "status": "FIXED",
       "title": "The public API ships 19 fields that are null on all 327 IPOs, with no retirement plan",
       "fix_in": "§1 + a retirement list",
-      "closed_in": "section 1.12, 2026-09-08"
+      "closed_in": "OWNER DECISION 2026-09-08: (1) all 25 marked never-write in the design now; (2) the 19 leave the API response next release as its own small change - near-zero risk because a field null on every IPO is already functionally absent, and the owner confirmed nothing outside the repo reads this API; (3) the columns are dropped after phase 1 behind a per-table consumer audit, because listing_performance.current_price is populated and shares a name with the dead ipos.current_price. rating and ratingRationale keep their columns - an unbuilt feature (ipo_scores 10 rows, ipo_reviews 0), not a mirror, so the product decision stays open."
     },
     {
       "id": "F-34",
