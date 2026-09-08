@@ -7,16 +7,13 @@ name: Main Post-Merge Gate
 # re-runs the same detection-registry / lint / unit-test gate against main
 # itself, on demand for now.
 #
-# Trigger is workflow_dispatch ONLY. Enabling it on every push to main is an
-# owner decision (2026-09-04 rule: batch GitHub Actions minutes, one prod
-# deploy window per day) - the push trigger below is commented out until the
-# owner approves the added Actions spend.
+# Trigger: workflow_dispatch (manual) AND push to main. The owner approved
+# the added GitHub Actions spend on 2026-09-08 (T-505, decision 3) so every
+# merge to main is now independently gated, not just on-demand.
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
-  # Uncomment the block above only after the owner approves the added
-  # GitHub Actions minutes this adds on every merge to main (T-491).
+  push:
+    branches: [main]
 
 concurrency:
   # Per-sha group (not a fixed 'main-gate' group): two close merges must both
