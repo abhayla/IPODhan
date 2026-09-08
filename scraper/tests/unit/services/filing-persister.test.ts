@@ -28,6 +28,7 @@ import {
   convertUnit,
   scraperSourceForDocType,
   fitsNumericColumn,
+  classifyNumericFit,
   type FilingExtraction,
   type FilingPersisterDeps,
 } from '../../../src/services/filing-persister';
@@ -996,6 +997,45 @@ describe('filing-persister — T-504/#402 ipo_details numeric overflow (Rentomoj
         (x) => x.startsWith('ipo_details.freshIssue:') && x.includes('persist-numeric-overflow')
       )
     ).toBe(true);
+  });
+
+  // Round 2 (PR #423 review, MINOR-1): Number(...).toString() switches to
+  // exponential notation ("1e+21") at 1e21, whose string LENGTH (5) is far
+  // shorter than its actual digit count (22) — the old digit-length check
+  // would have let this pass the guard and then thrown 22003 anyway.
+  it('MINOR-1: classifies 1e21 as overflow, not a false "fits" via exponential notation', () => {
+    expect(Number(1e21).toString()).toBe('1e+21'); // documents the trap being fixed
+    expect(fitsNumericColumn(1e21, 18, 2)).toBe(false);
+    expect(classifyNumericFit(1e21, 18, 2)).toBe('overflow');
+    expect(classifyNumericFit('1e21', 18, 2)).toBe('overflow');
+  });
+
+  it('MINOR-2: refuses a NUMBER-typed oversized value, not just a string one', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD', {
+      fresh_issue_amount: { value: 10_555_670_000_000, passed: true },
+      ofs_amount_at_cap: { value: 0, passed: true },
+      ofs_amount: { value: 0, passed: true },
+    });
+    // Prove the guard covers a raw number, not only the string form the
+    // real mapping happens to produce today (mark() is generic over both).
+    expect(classifyNumericFit(10_555_670_000_000 * 1_000_000, 18, 2)).toBe('overflow');
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    expect(summary.skipped_failed_check.some((x) => x.includes('persist-numeric-overflow'))).toBe(true);
+  });
+
+  it('MINOR-3: a comma/locale-formatted number is refused as unparseable, not a misleading "overflow"', () => {
+    // "1,05,55,67,000" (Indian lakh/crore grouping) — Number() rejects the
+    // commas outright (NaN), which is a DIFFERENT failure than "too many
+    // digits" and must not be logged as persist-numeric-overflow.
+    expect(classifyNumericFit('1,05,55,67,000', 18, 2)).toBe('unparseable');
+    expect(fitsNumericColumn('1,05,55,67,000', 18, 2)).toBe(false);
   });
 });
 

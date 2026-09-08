@@ -297,16 +297,43 @@ function round2(v: number): number {
  * misparsed extraction, or a future narrower column) is refused here instead
  * of throwing the raw driver error from inside the insert.
  */
+export type NumericFitResult = 'fits' | 'overflow' | 'unparseable';
+
+/**
+ * Classifies a value against a `numeric(precision, scale)` column width.
+ * Round 2 fixes (PR #423 review):
+ *  - `Number(...).toString()` switches to exponential notation at 1e21
+ *    ("1e+21", length 5) — a value that large would have PASSED the old
+ *    digit-length check and then thrown 22003 anyway. `toFixed(0)` never
+ *    produces exponential notation, so the digit count is always literal.
+ *  - A comma/locale-formatted string ("1,05,55,67,000") parses to NaN, which
+ *    is a DIFFERENT failure than "the number is too big" — classified as
+ *    'unparseable' so the caller doesn't log a misleading overflow reason.
+ */
+export function classifyNumericFit(
+  value: string | number,
+  precision: number,
+  scale: number
+): NumericFitResult {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 'unparseable';
+  const maxIntegerDigits = precision - scale;
+  // Round 2 (PR #423 review, MINOR-1 retry): `toFixed(0)` ALSO falls back to
+  // exponential notation for |x| >= 1e21 (the ECMA-262 spec's own carve-out
+  // for Number.prototype.toFixed) — a digit-length check via ANY string
+  // formatting is unreliable at that boundary. Comparing the magnitude
+  // directly against `10 ** maxIntegerDigits` never touches string
+  // formatting, so it is correct at every magnitude, including 1e21+.
+  return Math.abs(n) < 10 ** maxIntegerDigits ? 'fits' : 'overflow';
+}
+
+/** Boolean convenience wrapper over `classifyNumericFit` (kept for callers that only need fits/doesn't-fit). */
 export function fitsNumericColumn(
-  value: string,
+  value: string | number,
   precision: number,
   scale: number
 ): boolean {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return false;
-  const maxIntegerDigits = precision - scale;
-  const integerDigits = Math.trunc(Math.abs(n)).toString().length;
-  return integerDigits <= maxIntegerDigits;
+  return classifyNumericFit(value, precision, scale) === 'fits';
 }
 
 /**
@@ -807,20 +834,31 @@ export async function persistFilingExtraction(
   const details: Record<string, unknown> = {};
   const mark = (col: string, v: unknown): void => {
     if (v === null || v === undefined) return;
-    if (typeof v === 'string') {
+    // Round 2 (PR #423 review, MINOR-2): a numeric() column's mapped value
+    // can arrive as either a string (round2(...).toString()) or a raw
+    // number — the guard must cover both, not just strings.
+    if (typeof v === 'string' || typeof v === 'number') {
       const limit = numericColumnLimit(schema.ipoDetails, col);
-      if (limit && !fitsNumericColumn(v, limit.precision, limit.scale)) {
-        // Persist-numeric-overflow (T-504/#402): refuse the ONE oversized
-        // field, classified, instead of letting the whole document throw on
-        // the driver's raw 22003 — the rest of the extraction still persists.
-        logger.warn(
-          { ipoId, col, value: v, precision: limit.precision, scale: limit.scale },
-          'persist-numeric-overflow: value refused, exceeds ipo_details column width'
-        );
-        skippedFailedCheck.push(
-          `ipo_details.${col}: persist-numeric-overflow — '${v}' exceeds numeric(${limit.precision},${limit.scale})`
-        );
-        return;
+      if (limit) {
+        const fit = classifyNumericFit(v, limit.precision, limit.scale);
+        if (fit !== 'fits') {
+          // Persist-numeric-overflow / persist-numeric-unparseable
+          // (T-504/#402): refuse the ONE bad field, classified, instead of
+          // letting the whole document throw on the driver's raw 22003 (or
+          // silently coercing a locale-formatted string to NaN) — the rest
+          // of the extraction still persists.
+          const reason = fit === 'unparseable' ? 'persist-numeric-unparseable' : 'persist-numeric-overflow';
+          logger.warn(
+            { ipoId, col, value: v, precision: limit.precision, scale: limit.scale, reason },
+            `${reason}: value refused for ipo_details column`
+          );
+          skippedFailedCheck.push(
+            fit === 'unparseable'
+              ? `ipo_details.${col}: ${reason} — '${v}' is not a parseable number`
+              : `ipo_details.${col}: ${reason} — '${v}' exceeds numeric(${limit.precision},${limit.scale})`
+          );
+          return;
+        }
       }
     }
     details[col] = v;
