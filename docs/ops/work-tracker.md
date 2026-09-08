@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 12:35 IST (snapshot 3 - owner comments added).
+Last updated: 2026-09-08 12:45 IST (snapshot 4).
 
 ---
 
@@ -248,7 +248,7 @@ integration tier. Otherwise this group can wait.**
 | Automatic issue filing for new audit findings (#420) | New nightly problems become tracked issues without a human. | 100% | 100% | MERGED |
 | Main branch re-tested on every code push (#421) | A bad merge is caught immediately, not at the next deploy. | 100% | 100% | MERGED |
 | Lead-manager cache invalidation (#419, PR #427) | Lead-manager changes appear on the site immediately instead of up to 15 minutes later. | 80% | 100% | MERGED 97f90329, review PASS WITH NOTES |
-| Steamhouse price-band unit (#403, PR #428) | A scanned advertisement whose rupee symbol was misread by OCR now parses, so the document stops failing every cycle. | 90% | 92% | MERGED 3f5e52d9; staging deploy of that commit in progress at 12:11; cycle proof owed |
+| Steamhouse price-band unit (#403, PR #428) | A scanned advertisement whose rupee symbol was misread by OCR now parses, so the document stops failing every cycle. | 92% | 92% | MERGED 3f5e52d9, live on staging since 12:2x; its document is due for its next attempt at 16:52 IST, which is the proof |
 | Sector from Chittorgarh (#394, PR #425) | Would populate the sector filter. | 40% | 60% | PAUSED BY OWNER — 3 major findings open |
 | Prod repair skipped: stale correction table (#422) | Prevented a tool from erasing correct dates on a listed IPO. | 100% | 100% | DONE (issue filed, contract written, not started) |
 | NEW — failure tracker over-reports (#429) | The tool every tick relies on reported Rentomojo as still failing when its last real failure was 9 hours earlier. It scans a log window, not current state, so a working fix looks unfixed. | — | 0% | AWAITING APPROVAL |
