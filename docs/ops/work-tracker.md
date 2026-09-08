@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 15:15 IST (snapshot 11 - session 10 closed; the pull-model DESIGN session is now the active one).
+Last updated: 2026-09-08 15:04 IST (snapshot 12 - pull-model design delivered on branch docs/pull-model-design; O-8 at 60%, new O-9 awaiting the owner's decision on the target metric).
 
 ---
 
@@ -156,7 +156,51 @@ No loop over fields exists. Each scraper wakes on its own schedule, scrapes what
 
 **Honest cost note.** Option 1 is a redesign of the write path, not a configuration change. It touches how every value on the site is written, so it needs a design agreed before any code, a staging proof, and a Tier A review. The three tasks already in flight (T-520 priority, T-521 backlog, T-522 SME) remove real blockages and are worth having either way, but none of them turns push into pull.
 
-**Status:** AWAITING DECISION — design first, no code until the design is agreed. **Prev:** — **Now:** 0%
+**The design is written and is waiting for you to read it.** `docs/design/data-sourcing-pull-model.md`,
+branch `docs/pull-model-design` (2d59f3d2). Design only — no implementation code, nothing under
+`scraper/src`, `web/` or `packages/shared/src` was touched. It covers the field mapping for all 194
+populated published fields with priorities 1–3 and per-type exceptions, the pull loop, the re-read
+loop, a verification check for every step, O-1 to O-5 and O-7 folded in, the migration path, and the
+parts I am not sure about.
+
+**What the measurement changed about the diagnosis.** Documents supply 9.0% of provenance rows
+overall — but 2.8% of the `ipos` table and **100% of every other table** (`financial_data`,
+`ipo_details`, `ipo_valuation`, `financial_statements`, `ipo_risk_factors`, `documents`,
+`ipo_intermediaries`, `promoters`, `peer_companies`). Where the document path runs it already wins
+everything it touches; it runs on 27 of 327 IPOs. This is a reach problem, not a ranking problem,
+which is why O-5's priority flip alone was never going to move the number.
+
+**Four more measured findings:** 130 of the 194 populated published fields have no entry in the
+priority matrix at all; 228 of 327 IPOs sit outside the 10-day document window with their PDFs
+already purged; money is stored in four different units across six tables, not two; and the live
+site publishes Annu Projects' FY2024 income when its own document reports FY2026, a figure we
+already hold.
+
+**Status:** DESIGN DELIVERED, awaiting your read. One owner call is open and is the only thing
+blocking a scoped implementation — see below. **Prev:** 0% **Now:** 60% (design done; approval and
+the target-metric decision outstanding)
+
+### O-9. What is "ninety percent from the offer documents" a percentage OF?
+
+**Raised by me, 2026-09-08 ~15:0x IST**, out of the measurement, because reporting progress against
+the wrong denominator would mean reporting failure forever.
+
+| Metric | Today | Arithmetic ceiling |
+|---|---:|---:|
+| Document share of ALL provenance rows | 9.0% | **66.1%** |
+| Document share of doc-eligible `ipos` rows | **2.7%** (107 of 3,964) | ~100% |
+
+The 66.1% ceiling is real: 2,252 of 6,638 provenance rows (33.9%) are for fields no document can
+own — the open/close/listing/allotment dates where we deliberately keep the exchanges above the
+printed ad (a printed advertisement is never reissued when a bidding window is extended), plus slugs
+and pipeline timestamps. The raw share can never reach 90% no matter how well the pull model works.
+
+**My recommendation: measure the second row** — the share of doc-eligible `ipos` fields that came
+from the IPO's own offer document, 2.7% today, target 90%. Reason: it measures exactly what you
+asked for (the document being the source instead of the websites) without counting rows a document
+could never supply.
+
+**Status:** AWAITING YOUR DECISION. **Prev:** — **Now:** 0%
 
 ---
 
