@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 13:15 IST (snapshot 5).
+Last updated: 2026-09-08 13:30 IST (snapshot 6 - owner comments O-4..O-7 added and approved).
 
 ---
 
@@ -69,6 +69,62 @@ Raised by Abhay 2026-09-08 ~12:30 IST. Nothing here is started. Each is discusse
 **My recommendation:** option 2 first because it is small and immediate, then option 1 as the real design. Both should carry your rule that a field which cannot be extracted stays blank and is sourced elsewhere rather than blocking the row.
 
 **Status:** AWAITING DISCUSSION. **Prev:** — **Now:** 0%
+
+### O-4. Why are most downloaded documents never extracted, and fix it
+
+**Abhay:** "Why most documents are never extracted at all."
+
+**Answer, measured on production today.** 172 stored documents are still unextracted. There are three separate reasons, and only one of them is a bug.
+
+**Reason 1 — five document types have no extractor at all (78 documents).** The extractor understands exactly four types: the red herring prospectus, the draft prospectus, the prospectus, and the price band advertisement, plus a separate extractor for the anchor allocation report. Everything else is downloaded, stored, and never opened. Pending today: 32 "basis for offer price" ratio documents, 23 security parameter files, 14 sample application forms, 8 bidding centre lists, 1 basis of allotment advertisement. Of these, the ratio documents genuinely matter: they carry the key performance indicators, the weighted average cost of acquisition and the peer comparison. The basis of allotment advertisement carries the final allotment. Sample forms and bidding centres are low value and can stay unread.
+
+**Reason 2 — the per-cycle budget is three (94 documents).** Each cycle extracts at most three filing documents plus one anchor report. With the queue walked in order and retries consuming slots, a backlog of 74 prospectuses, 19 red herring prospectuses and 1 draft prospectus never drains. These are all types the extractor DOES understand. This is the real bug and the biggest single win.
+
+**Reason 3 — large scanned documents time out.** A single extraction is capped at 10 minutes. A 600-page scanned prospectus that needs character recognition can exceed it. This is why the Skyways document hard-failed.
+
+**Options.** (1) Raise the per-cycle budget and give the backlog its own drain path, separate from the live-IPO queue, so a live IPO is never starved by history. (2) Add extractors for the ratio document and the basis of allotment advertisement; leave forms and bidding centres unread deliberately and say so. (3) Split large-document extraction onto its own longer budget instead of the shared 10-minute cap.
+
+**My recommendation:** all three, in that order. Option 1 alone converts 94 already-downloaded documents into real data with no new parsing code.
+
+**Status:** APPROVED by the owner. **Prev:** — **Now:** 0%
+
+### O-5. The offer document must outrank every website in the source priority
+
+**Abhay:** "Change the source priority so the offer document outranks every website for the fields it contains, instead of merely being one source among five."
+
+**Today's order** puts a manual admin edit first, then the draft prospectus, then NSE, BSE, Moneycontrol, Chittorgarh, the grey-market source and an API fallback. In practice the websites win because they arrive first and the document path is throttled, so the field already holds a website value by the time the document is read.
+
+**What changes.** For every field the offer document contains, the document becomes the highest non-admin source, and a website value can never overwrite a document value. Websites keep two jobs: filling fields no document contains, such as live subscription and grey market premium, and acting as the second opinion that triggers a re-read of the document when they disagree.
+
+**Risk to manage honestly.** Some current values came from websites and are correct. Flipping the priority does not retroactively rewrite them; it changes which source wins on the next write. A separate, deliberate pass is needed to re-source existing rows from their documents, and that pass must be proven on staging first.
+
+**Status:** APPROVED by the owner. **Prev:** — **Now:** 0%
+
+### O-6. Switch SME document extraction on for production
+
+**Abhay:** "Yes switch SME document extraction on for production."
+
+Today the flag that lets SME candidates through the document path is on for staging and off for production. Every SME IPO on the live site therefore gets zero fields from its own offer document; each one is skipped with a ledger row and nothing is extracted. SME issues are a large share of the calendar.
+
+The same code path is already proven: the SME walk passed in production on Qualiance International on 2026-09-04, and staging has run with the flag on since. There is no second write path and no relaxed check; SME goes through the identical door as mainboard, with the same admin protection and the same paired-document agreement gate.
+
+**Honest risk.** With the flag on, a scrape can rewrite an SME IPO's static fields with no human in the loop. If an extraction is wrong, it writes wrong data to the live site. Mitigation: enable, watch the next two cycles by name, and revert with one line if anything writes a value the checks should have caught.
+
+**Status:** APPROVED by the owner. **Prev:** — **Now:** 0%
+
+### O-7. A language model only for the last stretch, under strict conditions
+
+**Abhay:** "Language model, only for the last stretch, and under strict conditions."
+
+Recorded as a standing constraint on all document-extraction work, not as a task. The conditions, as agreed:
+
+- The model never writes a value directly. It proposes one, together with the page number and the exact sentence it read.
+- Every existing arithmetic check must still pass. A proposed issue size must reconcile with shares multiplied by price, within tolerance, or it is rejected.
+- A disagreement with a website sends the value back to the document for a re-read, never straight to the website's value.
+- Every model-sourced value is marked as such in the provenance record, so its accuracy can be measured separately and it can be switched off without touching anything else.
+- Deterministic extraction is always tried first. The model is only for fields where the value sits in prose or in a scanned table that pattern matching cannot read.
+
+**Status:** STANDING CONSTRAINT, not started. **Prev:** — **Now:** 0%
 
 ---
 
