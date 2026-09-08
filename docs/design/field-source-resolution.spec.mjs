@@ -88,7 +88,7 @@ for (const [c,d] of [['fiscal_year','C1'],['revenue','C1'],['total_income','C1']
   add('financial_statements',c,'D',['DOC','CG','MC'],{doc:d,na:FS_NA,note:'CG restated table carries this per fiscal year'});
 add('financial_statements','net_worth','D',['DOC','CG','MC'],{doc:'C2',na:FS_NA,note:'CG gives the most-recent year only, not the full series'});
 for (const [c,d] of [['basis','C8'],['unit','C7'],['eps_basic','C6'],['eps_diluted','C6'],['op_cash_flow','C3']])
-  add('financial_statements',c,'D',['DOC','—','—'],{doc:d,only:'CG prints the figures but not the basis, unit, EPS split or cash-flow line',na:FS_NA});
+  add('financial_statements',c,'D',['DOC','—','—'],{doc:d,only:'CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement',na:FS_NA});
 
 // ---------- ipo_valuation (17) ----------
 const VAL_NA = ['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'];
@@ -99,10 +99,14 @@ const VAL_NA = ['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'];
 add('ipo_valuation','price_floor','D',['DOC','NSE','BSE'],{doc:'A1',na:VAL_NA,note:'same number as ipos.price_range_min'});
 add('ipo_valuation','price_cap','D',['DOC','NSE','BSE'],{doc:'A1',na:VAL_NA,note:'same number as ipos.price_range_max'});
 add('ipo_valuation','mcap_at_cap','D',['DOC','CG','MC'],{doc:'A8',na:VAL_NA,note:'CG prints a single market cap, which is the at-cap figure'});
-for (const [c,d] of [['pricing_event','—'],['shares_at_floor','A7'],['shares_at_cap','A7'],['mcap_at_floor','A8'],
-  ['pe_at_floor','A9'],['pe_at_cap','A9'],['ronw_weighted_3y','A10'],['fresh_shares_at_floor','A7'],
+add('ipo_valuation','pe_at_cap','D',['DOC','CG','MC'],{doc:'A9',na:VAL_NA,note:'CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap)'});
+add('ipo_valuation','mcap_at_floor','D',['DOC','—','—'],{doc:'A8',only:'CG prints only ONE market cap (the at-cap one); no website prints the value at the floor price',na:VAL_NA});
+add('ipo_valuation','pe_at_floor','D',['DOC','—','—'],{doc:'A9',only:'CG prints only ONE P/E (post-issue, at cap); no website prints the value at the floor price',na:VAL_NA});
+add('ipo_valuation','ronw_weighted_3y','D',['DOC','—','—'],{doc:'A10',only:'CG prints a single-year RoNW; the 3-year WEIGHTED average is a different metric and appears only in the advertisement',na:VAL_NA});
+add('ipo_valuation','pricing_event','I',['DOC','—','—'],{doc:'—',only:'not a sourced value - it records WHICH document produced the row (PRICE_BAND_AD vs PROSPECTUS)',na:VAL_NA});
+for (const [c,d] of [['shares_at_floor','A7'],['shares_at_cap','A7'],['fresh_shares_at_floor','A7'],
   ['fresh_shares_at_cap','A7'],['ofs_shares','A7'],['total_shares_at_floor','A7'],['total_shares_at_cap','A7']])
-  add('ipo_valuation',c,'D',['DOC','—','—'],{doc:d,only:'printed only on the advertisement - no website gives a value at a specific price point',na:VAL_NA});
+  add('ipo_valuation',c,'D',['DOC','—','—'],{doc:d,only:'a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap',na:VAL_NA});
 add('ipo_valuation','face_value_multiple_floor','C',['—','—','—'],{formula:'price_floor ÷ face_value'});
 add('ipo_valuation','face_value_multiple_cap','C',['—','—','—'],{formula:'price_cap ÷ face_value'});
 
@@ -116,10 +120,10 @@ add('ipo_intermediaries','name','D',['DOC','BSE','CG'],{doc:'E1–E6'});
 add('ipo_risk_factors','seq','D',['DOC','—','—'],{doc:'F2',only:'risk factors exist only in the filing',na:['TENDER','BUYBACK']});
 add('ipo_risk_factors','heading','D',['DOC','—','—'],{doc:'F2',only:'risk factors exist only in the filing',na:['TENDER','BUYBACK']});
 const BRLM_NA = ['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'];
-add('brlm_track_record','brlm_name','D',['DOC','—','—'],{doc:'E2',only:'track-record table only',na:BRLM_NA});
+add('brlm_track_record','brlm_name','D',['DOC','—','—'],{doc:'E2',only:'only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank',na:BRLM_NA});
 add('brlm_track_record','as_of_date','D',['DOC','—','—'],{doc:'E2',only:'historical, never moves',na:BRLM_NA});
-add('brlm_track_record','issues_3y','D',['DOC','—','—'],{doc:'E2',only:'track-record table only',na:BRLM_NA});
-add('brlm_track_record','closed_below_issue_price','D',['DOC','—','—'],{doc:'E2',only:'track-record table only',na:BRLM_NA});
+add('brlm_track_record','issues_3y','D',['DOC','—','—'],{doc:'E2',only:'only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank',na:BRLM_NA});
+add('brlm_track_record','closed_below_issue_price','D',['DOC','—','—'],{doc:'E2',only:'only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank',na:BRLM_NA});
 
 // ---------- peer_companies (10) ----------
 for (const c of ['company_name','is_listed','pe_ratio','eps','diluted_eps','ronw','nav','pbv_ratio'])
@@ -131,7 +135,7 @@ add('peer_companies','last_updated','I',['—','—','—'],{});
 const ANCH_NA = ['RIGHTS','OFS','NCD','TENDER','BUYBACK'];
 add('anchor_investors','bid_date','T',['NSE','BSE','CG'],{e1:1,na:ANCH_NA});
 for (const c of ['total_shares_offered','total_amount_raised','anchor_investors_count','investor_list'])
-  add('anchor_investors',c,'D',['DOC','—','—'],{doc:'anchor report',only:'anchor report only',na:ANCH_NA});
+  add('anchor_investors',c,'D',['DOC','—','—'],{doc:'anchor report',only:'the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book',na:ANCH_NA});
 add('anchor_investors','lock_in_50_percent_date','T',['NSE','BSE','CG'],{e1:1,na:ANCH_NA});
 add('anchor_investors','lock_in_remaining_date','T',['NSE','BSE','CG'],{e1:1,na:ANCH_NA});
 

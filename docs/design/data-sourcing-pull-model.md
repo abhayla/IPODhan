@@ -1216,16 +1216,16 @@ reading the document would not have shown. The current state:
 
 | | Fields |
 |---|---:|
-| Three sources | **112** |
-| Two sources, reason stated | 5 |
-| One source, reason stated | 36 |
+| Three sources | **113** |
+| Two sources, reason stated (§A.3 group 6) | 5 |
+| One source, reason stated (§A.3 groups 1–5) | 35 |
 | No source — computed (class C) or written by our own pipeline (class I) | 41 |
 | **Total** | **194** |
 
-**Not all 153 sourced fields have three sources, and they never will.** 41 of them genuinely have one
-source because no second publisher of that fact exists anywhere: the anchor investor list, the
-promoters' weighted average cost of acquisition, risk-factor headings, the BRLM track record, share
-counts at a given price point. Claiming three sources for those would mean inventing one.
+**Not all 153 sourced fields have three, and they never will.** 40 of them have fewer because a
+second publisher does not exist, or publishes a *different* number that would be wrong to substitute
+— every one is listed with its reason in **§A.3**. Claiming three sources for the anchor investor
+list or for share counts at the floor price would mean inventing one.
 
 **Three rounds of defects this review caught.** All were in versions already committed, and none was
 visible by reading the document:
@@ -1362,26 +1362,26 @@ advertisement existed everywhere; it does not.
 | 85 | `financial_statements.ebitda` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
 | 86 | `financial_statements.pat` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
 | 87 | `financial_statements.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 | CG gives the most-recent year only, not the full series |
-| 88 | `financial_statements.basis` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
-| 89 | `financial_statements.unit` | D | DOC | — | — | DOC · — · — | DOC · — · — | C7 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
-| 90 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
-| 91 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
-| 92 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: CG prints the figures but not the basis, unit, EPS split or cash-flow line |
+| 88 | `financial_statements.basis` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 89 | `financial_statements.unit` | D | DOC | — | — | DOC · — · — | DOC · — · — | C7 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 90 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 91 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 92 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
 | 93 | `ipo_valuation.price_floor` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_min |
 | 94 | `ipo_valuation.price_cap` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_max |
 | 95 | `ipo_valuation.mcap_at_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 | CG prints a single market cap, which is the at-cap figure |
-| 96 | `ipo_valuation.pricing_event` | D | DOC | — | — | DOC · — · — | DOC · — · — | — | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 97 | `ipo_valuation.shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 98 | `ipo_valuation.shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 99 | `ipo_valuation.mcap_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A8 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 100 | `ipo_valuation.pe_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 101 | `ipo_valuation.pe_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 102 | `ipo_valuation.ronw_weighted_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | A10 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 103 | `ipo_valuation.fresh_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 104 | `ipo_valuation.fresh_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 105 | `ipo_valuation.ofs_shares` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 106 | `ipo_valuation.total_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
-| 107 | `ipo_valuation.total_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: printed only on the advertisement - no website gives a value at a specific price point |
+| 96 | `ipo_valuation.pe_at_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A9 | CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap) |
+| 97 | `ipo_valuation.mcap_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A8 | no rank 2: CG prints only ONE market cap (the at-cap one); no website prints the value at the floor price |
+| 98 | `ipo_valuation.pe_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: CG prints only ONE P/E (post-issue, at cap); no website prints the value at the floor price |
+| 99 | `ipo_valuation.ronw_weighted_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | A10 | no rank 2: CG prints a single-year RoNW; the 3-year WEIGHTED average is a different metric and appears only in the advertisement |
+| 100 | `ipo_valuation.pricing_event` | I | DOC | — | — | DOC · — · — | DOC · — · — | — | no rank 2: not a sourced value - it records WHICH document produced the row (PRICE_BAND_AD vs PROSPECTUS) |
+| 101 | `ipo_valuation.shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 102 | `ipo_valuation.shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 103 | `ipo_valuation.fresh_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 104 | `ipo_valuation.fresh_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 105 | `ipo_valuation.ofs_shares` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 106 | `ipo_valuation.total_shares_at_floor` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
+| 107 | `ipo_valuation.total_shares_at_cap` | D | DOC | — | — | DOC · — · — | DOC · — · — | A7 | no rank 2: a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap |
 | 108 | `ipo_valuation.face_value_multiple_floor` | C | — | — | — | — · — · — | — · — · — | — | computed: price_floor ÷ face_value |
 | 109 | `ipo_valuation.face_value_multiple_cap` | C | — | — | — | — · — · — | — · — · — | — | computed: price_cap ÷ face_value |
 | 110 | `promoters.name` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |
@@ -1391,10 +1391,10 @@ advertisement existed everywhere; it does not.
 | 114 | `ipo_intermediaries.name` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | E1–E6 |  |
 | 115 | `ipo_risk_factors.seq` | D | DOC | — | — | DOC · — · — | DOC · — · — | F2 | no rank 2: risk factors exist only in the filing |
 | 116 | `ipo_risk_factors.heading` | D | DOC | — | — | DOC · — · — | DOC · — · — | F2 | no rank 2: risk factors exist only in the filing |
-| 117 | `brlm_track_record.brlm_name` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: track-record table only |
+| 117 | `brlm_track_record.brlm_name` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
 | 118 | `brlm_track_record.as_of_date` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: historical, never moves |
-| 119 | `brlm_track_record.issues_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: track-record table only |
-| 120 | `brlm_track_record.closed_below_issue_price` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: track-record table only |
+| 119 | `brlm_track_record.issues_3y` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
+| 120 | `brlm_track_record.closed_below_issue_price` | D | DOC | — | — | DOC · — · — | DOC · — · — | E2 | no rank 2: only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank |
 | 121 | `peer_companies.company_name` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
 | 122 | `peer_companies.is_listed` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
 | 123 | `peer_companies.pe_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
@@ -1406,10 +1406,10 @@ advertisement existed everywhere; it does not.
 | 129 | `peer_companies.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 130 | `peer_companies.last_updated` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 131 | `anchor_investors.bid_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 132 | `anchor_investors.total_shares_offered` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: anchor report only |
-| 133 | `anchor_investors.total_amount_raised` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: anchor report only |
-| 134 | `anchor_investors.anchor_investors_count` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: anchor report only |
-| 135 | `anchor_investors.investor_list` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: anchor report only |
+| 132 | `anchor_investors.total_shares_offered` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
+| 133 | `anchor_investors.total_amount_raised` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
+| 134 | `anchor_investors.anchor_investors_count` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
+| 135 | `anchor_investors.investor_list` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
 | 136 | `anchor_investors.lock_in_50_percent_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 137 | `anchor_investors.lock_in_remaining_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 138 | `documents.type` | I | — | — | — | — · — · — | — · — · — | — |  |
@@ -1469,6 +1469,83 @@ advertisement existed everywhere; it does not.
 | 192 | `registrars.active` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
 | 193 | `registrars.allotment_url_healthy` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 194 | `registrars.allotment_url_checked_at` | I | — | — | — | — · — · — | — · — · — | — |  |
+
+### A.3 Every field with fewer than three sources, and exactly why
+
+40 of the 153 sourced fields have fewer than three. **None of them is an omission.** Each is here
+because a second or third publisher of that fact does not exist, or exists but publishes a
+*different* number that would be wrong to substitute. Grouped by reason.
+
+#### Group 1 — the value exists only at a specific price point (11 fields, 1 source)
+
+`ipo_valuation`: `shares_at_floor`, `shares_at_cap`, `fresh_shares_at_floor`, `fresh_shares_at_cap`,
+`ofs_shares`, `total_shares_at_floor`, `total_shares_at_cap`, `mcap_at_floor`, `pe_at_floor`,
+`ronw_weighted_3y`, and `pricing_event`.
+
+Websites publish the issue size in rupees and a single market cap and P/E. **They never publish the
+share split at the floor price versus the cap price** — that table exists only in the price band
+advertisement. Substituting a website's single figure would silently answer a different question:
+Chittorgarh's one market cap is the at-cap figure, so it can serve `mcap_at_cap` (and does, at rank
+2) but there is nothing at all for `mcap_at_floor`. Same for P/E. `ronw_weighted_3y` is a
+three-year *weighted* average; Chittorgarh prints a single-year RoNW, which is a different metric
+that happens to share a name. `pricing_event` is not sourced at all — it records which document
+produced the row.
+
+#### Group 2 — disclosures that exist only in a filing (13 fields, 1 source)
+
+- `promoters.name`, `promoters.waca`, `promoters.is_promoter_group` — the capital-structure and
+  weighted-average-cost-of-acquisition tables. Verified: our Chittorgarh scraper extracts promoter
+  *holding percentages* but no promoter names or acquisition costs.
+- `ipo_risk_factors.seq`, `ipo_risk_factors.heading` — risk factors are a regulatory disclosure. No
+  aggregator republishes them.
+- `financial_statements.basis`, `unit`, `eps_basic`, `eps_diluted`, `op_cash_flow` — Chittorgarh
+  *does* publish the restated figures (that correction is recorded in A.0), but it prints a single
+  pre/post-issue EPS pair rather than the per-fiscal-year basic-versus-diluted split, and gives no
+  reporting basis, no unit line and no cash-flow row.
+- `ipo_details.compliance_officer`, `compliance_officer_phone`, `compliance_officer_email` — named
+  only in the filing's General Information section.
+
+#### Group 3 — the exchange filing IS the only publisher (4 fields, 1 source)
+
+`anchor_investors.total_shares_offered`, `total_amount_raised`, `anchor_investors_count`,
+`investor_list`.
+
+The anchor allocation report is itself an exchange filing. There is no second publisher of the
+anchor book — a website that carried it would be copying the same circular, which makes it a mirror,
+not an independent source.
+
+#### Group 4 — a candidate second source exists but is unverified (4 fields, 1 source)
+
+`brlm_track_record.brlm_name`, `as_of_date`, `issues_3y`, `closed_below_issue_price`.
+
+Printed in the advertisement. **Chittorgarh has lead-manager performance pages** (the scraper already
+follows `/lead-manager/<slug>/` links) that might serve as rank 2. We have never fetched or parsed
+them, so promoting them to a rank would be asserting something unverified. Listed here as a
+candidate to test in migration stage M1, not claimed as a source.
+
+#### Group 5 — the field IS one party's own record (5 fields, 1 source)
+
+- `ipos.rating_override`, `ipos.scraper_locked`, `registrars.active` — admin flags. No external
+  source exists by design.
+- `ipos.bse_ipo_no`, `ipos.bse_payload_lead_manager_count` — BSE's own internal identifiers, used
+  only as cross-checks. NSE has no equivalent.
+- `registrars.allotment_check_url` — the registrar owns this URL. A third party's copy would be a
+  stale mirror, and this field already has its own health probe.
+
+#### Group 6 — genuinely two sources, and there is no third (5 fields, 2 sources)
+
+- `ipo_demand_graph.price_point`, `is_cut_off`, `cumulative_quantity`, `exchange` — NSE then BSE. A
+  live bid book exists nowhere else: no document can carry it and no website republishes it.
+- `documents.filing_date` — the document cover, then the BSE payload. NSE does not expose a filing
+  date in a form we can read.
+
+#### What this means for the 100% rule
+
+None of these 40 weakens it. The 100% rule (§2.1.1) is about **round 1 supplying every field the
+offer document prints**. 24 of these 40 are document-owned with no fallback, which makes round 1 the
+*only* round — the rule applies to them most strictly of all. The remaining 16 are exchange-owned,
+admin-owned or registrar-owned facts that were never in the document's scope.
+
 
 ### A.2 Offering-type coverage
 
