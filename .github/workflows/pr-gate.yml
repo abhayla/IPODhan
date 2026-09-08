@@ -129,8 +129,58 @@ jobs:
         # docs/architecture/write-path-hardening.md ("R0").
         run: node scripts/check-write-ratchet.mjs
 
+      - name: Fixture provenance predicate self-test (T-518)
+        # Mutation-proof: scripts/ci/tests/require-fixture-provenance.test.mjs
+        # imports the real predicates from scripts/lib/fixture-provenance-checks.mjs,
+        # so a weakened predicate turns this red before the gate below can
+        # silently stop catching that class. No Node-version constraint.
+        run: node --test scripts/ci/tests/require-fixture-provenance.test.mjs
+
+      - name: Fixture provenance baseline shrink-only self-test (T-518)
+        run: node --test scripts/tests/fixture-provenance-baseline-shrink.test.mjs
+
+      - name: Fixture provenance gate (T-518)
+        # RCA: PR #425 shipped a fixture whose OWN <title> named a different
+        # company than its filename claimed, and a test asserting the
+        # filename's company against it PASSED — nothing in CI caught it, a
+        # human opening the file did. Every fixture under scraper/tests/fixtures/**
+        # must carry a sibling <file>.meta.json (sourceUrl + capturedAt +
+        # company|pageType) and, for HTML, its embedded company name must
+        # match the filename. Backfill is shrink-only —
+        # config/fixture-provenance-baseline.json. See
+        # scraper/tests/fixtures/PROVENANCE.md.
+        run: node scripts/ci/require-fixture-provenance.mjs
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Setup Node.js 22 (SSOT-parity import needs erasable-TS stripping, 22.10+, and node_modules from the step above)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Company-name normalizer parity self-test (T-518)
+        # scripts/tests/normalize-company-name-parity.test.mjs imports BOTH
+        # the plain-JS copy of the normalizer AND the real SSOT
+        # (packages/shared/src/utils/company-name-normalizer.ts) directly, via
+        # Node's erasable-TypeScript type stripping — stable only on Node
+        # 22.10+ (see scripts/tests/generate-ipo-slug-parity.test.mjs for the
+        # same requirement, not previously wired into any CI job). Runs AFTER
+        # `npm ci` (round 2-of-2 fix — the first placement, before install,
+        # failed in CI with "Cannot find package 'drizzle-orm'" because the
+        # SSOT file imports it and node_modules did not exist yet; passed
+        # locally only because this worktree already had node_modules
+        # junctioned in — exactly the local-green/CI-red gap this task was
+        # told to stop causing). Node switched back to the pinned 20
+        # immediately after so every later step runs under the version the
+        # rest of this job is verified against.
+        run: node --test scripts/tests/normalize-company-name-parity.test.mjs
+
+      - name: Setup Node.js 20 (restore pinned version for the rest of the job)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
       - name: Build shared package
         run: |
