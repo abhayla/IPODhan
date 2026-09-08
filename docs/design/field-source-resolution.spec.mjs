@@ -212,8 +212,8 @@ for (const c of ['total_shares_offered','total_amount_raised','anchor_investors_
 // against the circular text), not sourced. Reclassed from T/E-1 to C. The live scraper computes
 // them from bid_date instead (scraper/src/scrapers/anchor-investors-scraper.ts:302), roughly a
 // week early — an existing production bug, tracked separately, not fixed by this design.
-add('anchor_investors','lock_in_50_percent_date','C',['—','—','—'],{formula:'allotment_date + 30 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately',na:ANCH_NA});
-add('anchor_investors','lock_in_remaining_date','C',['—','—','—'],{formula:'allotment_date + 90 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately',na:ANCH_NA});
+add('anchor_investors','lock_in_50_percent_date','C',['—','—','—'],{formula:'allotment_date + 30 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08 (50% locked 30 days from allotment, split rule for issues opening on or after 1 Apr 2022). Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug, 6 days early on the one row with an allotment date',na:ANCH_NA});
+add('anchor_investors','lock_in_remaining_date','C',['—','—','—'],{formula:'allotment_date + 90 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08. Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug',na:ANCH_NA});
 
 // ---------- documents (15) ----------
 for (const c of ['type','title','url','file_size','uploaded_at','exchange','media_type','sequence_number',

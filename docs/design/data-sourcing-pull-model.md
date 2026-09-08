@@ -1091,6 +1091,49 @@ the no-op suppression unverifiable**, so W-106 becomes a prerequisite rather tha
 check `PULL-NOOP` below is what proves it: writes per cycle divided by fields re-asked per cycle,
 which on a quiet day must be near zero.
 
+#### 2.5.3 Computed fields need their formulas audited — no source ranking can catch a wrong one
+
+**Found by the owner, 2026-09-08.** `anchor_investors.lock_in_50_percent_date` and
+`lock_in_remaining_date` are computed, not sourced. The live code computes both from the **anchor bid
+date** (`scraper/src/scrapers/anchor-investors-scraper.ts:302`):
+
+```
+lockIn50PercentDate = bidDate + 30 days
+lockInRemainingDate = bidDate + 90 days
+```
+
+**The regulation says the clock starts at allotment.** SEBI ICDR 2018, Schedule XIII Part A: 50% of
+an anchor's allotment is locked for 30 days **from the date of allotment**, the remaining 50% for 90
+days from allotment — the split rule for issues opening on or after 1 April 2022. Verified against
+the regulation on 2026-09-08 rather than taken from memory.
+
+**Measured impact.** ESDS Software: bid 27 Aug, allotment 2 Sep. We publish a 50% lock-in expiry of
+**26 Sep**; the correct date is **2 Oct** — **six days early**, on a date traders watch because it is
+when anchor shares become sellable and supply reaches the stock. Three more rows carry the same wrong
+base and cannot yet be checked because their allotment date is not in yet.
+
+**The general lesson, and it is a gap in this design.** **No source ranking could ever have caught
+this.** A wrong formula takes correct inputs and produces a plausible output; every priority rule,
+every conflict check and every arithmetic bound in §1 is blind to it, because nothing disagrees.
+Sourcing discipline protects every sourced field and does nothing for the **13 computed ones**.
+
+**So computed fields get their own audit, on the same standard as sources:**
+
+| # | Field | Formula | Audited against |
+|---|---|---|---|
+| 1–2 | `lock_in_50_percent_date`, `lock_in_remaining_date` | `allotment_date` + 30 / + 90 | **SEBI ICDR Sch. XIII Part A — verified** |
+| 3–4 | `face_value_multiple_floor/cap` | price ÷ face value | the multiple printed on the advertisement (§A4) |
+| 5 | `gmp_percentage` | gmp ÷ price cap × 100 | recomputed, never taken from the source |
+| 6 | `issue_price` | `ipos.price_range_max` at listing | the prospectus |
+| 7–8 | `listing_gain_percent`, `current_gain_percent` | (price − issue) ÷ issue × 100 | arithmetic on stored inputs |
+| 9 | `slug` | `generateIPOSlug(company_name)` | uniqueness + the redirect table |
+| 10 | `registrar_id` | FK from `registrar` | the registrars table |
+| 11–13 | `listing_performance.symbol` / `company_name` / `listing_date` | copies of `ipos.*` | must equal the source row — a divergence is a defect, not a disagreement |
+
+**Every formula carries the authority it derives from** — a regulation, a printed value, or a stored
+input — and a test asserts it. A formula with no cited authority is the same defect as a source rank
+with no evidence, which is what this design spent 2026-09-08 removing.
+
 ### 2.6 When all three sources fail
 
 The first draft said: write null with a reason, never leave a stale value. **That is deleted, for
@@ -1944,8 +1987,8 @@ advertisement existed everywhere; it does not.
 | 179 | `anchor_investors.total_amount_raised` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
 | 180 | `anchor_investors.anchor_investors_count` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
 | 181 | `anchor_investors.investor_list` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
-| 182 | `anchor_investors.lock_in_50_percent_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 30 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately |
-| 183 | `anchor_investors.lock_in_remaining_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 90 days (SEBI circular, UNVERIFIED); live code computes from bid_date instead — production bug, fixed separately |
+| 182 | `anchor_investors.lock_in_50_percent_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 30 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08 (50% locked 30 days from allotment, split rule for issues opening on or after 1 Apr 2022). Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug, 6 days early on the one row with an allotment date |
+| 183 | `anchor_investors.lock_in_remaining_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 90 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08. Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug |
 | 184 | `documents.type` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 185 | `documents.title` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 186 | `documents.url` | I | — | — | — | — · — · — | — · — · — | — |  |

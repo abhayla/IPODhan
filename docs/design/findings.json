@@ -252,7 +252,7 @@
       "title": "Anchor lock-in dates are computed from the bid date; the rule is 30/90 days from allotment",
       "detail": "anchor-investors-scraper.ts:302. An existing production bug of roughly a week. UNVERIFIED against the circular.",
       "fix_in": "Appendix A + a separate bug fix",
-      "closed_in": "spec + sections 1.2.1/1.7/7.3, 2026-09-08"
+      "closed_in": "REGULATION VERIFIED 2026-09-08 (SEBI ICDR 2018 Sch. XIII Part A: 50% locked 30 days from ALLOTMENT, 50% for 90 days, split rule for issues opening on/after 1 Apr 2022) - our code uses bid_date. Measured: ESDS bid 27 Aug, allotment 2 Sep, we publish 26 Sep as the 50% expiry against a correct 2 Oct = SIX DAYS EARLY; three more rows carry the same wrong base, allotment dates not in yet. Design records the verified formula; the code fix and the 4-row recompute are a separate change."
     },
     {
       "id": "F-23",
@@ -531,6 +531,17 @@
       "title": "W-106: valueActuallyChanged is dead, so no-op suppression cannot be verified under the pull model",
       "detail": "OWNER APPROVED the rule 2026-09-08: verification is a read; same value writes nothing but a timestamp on the plan row. Owner question 2026-09-08: how do we ensure a re-ask does not rewrite the same value? Two layers already exist (areEquivalent+normalizeChosen at data-consolidation-service.ts:919-932, and the empty-diff row gate at data-persister.ts:2258). But walk item W-106 (2026-09-03) records that valueActuallyChanged is dead on every tested path - a higher-priority source with an equivalent value is treated as convergence before the check is consulted. Filed then as a misleading counter, not a defect. Under the pull model it is the only thing separating verification confirmed 2,850 fields from verification rewrote 2,850 fields identically, so it becomes a PREREQUISITE. Scale: 19 IPOs x ~150 fields weekly = ~2,850 checks/week, ~148k writes/year if unsuppressed, each with a provenance row and a cache drop. Also protects updated_at meaning the value changed rather than we looked at it.",
       "fix_in": "§2.5.2 + check PULL-NOOP"
+    },
+    {
+      "id": "F-50",
+      "sev": "MAJOR",
+      "area": "computed fields",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Computed fields have no audit - no source ranking can catch a wrong formula",
+      "detail": "Raised by the owner 2026-09-08 off the anchor lock-in bug. A wrong formula takes correct inputs and produces a plausible output, so every priority rule, conflict check and arithmetic bound is blind to it - nothing disagrees. 13 computed fields had no equivalent of the source verification this design spent the day doing. Now section 2.5.3: every formula carries the authority it derives from (a regulation, a printed value, or a stored input) and a test asserts it. A formula with no cited authority is the same defect as a source rank with no evidence.",
+      "fix_in": "§2.5.3",
+      "closed_in": "formula audit table written, all 13 given an authority"
     }
   ],
   "false_assertions": [
