@@ -84,14 +84,35 @@ test('main-gate.yml unit test step passes --retry=2 to page over slow-machine fl
   assert.match(text, /test:unit.*--\s*--retry=2/);
 });
 
-test('main-gate.yml only triggers on workflow_dispatch for now', () => {
+test('main-gate.yml triggers on workflow_dispatch and push to main (T-505 decision 3)', () => {
+  // Owner approved the added Actions spend on 2026-09-08 (T-505, decision 3):
+  // the push trigger is live, uncommented, scoped to main.
   const text = readWorkflow();
   assert.match(text, /^on:\s*$/m);
   assert.match(text, /workflow_dispatch:/);
-  // the push trigger must be present but commented out, with a note that
-  // enabling it on push to main is an owner decision (Actions spend).
-  assert.match(text, /#.*push:/i);
-  assert.match(text, /owner/i);
+  const onBlockMatch = text.match(/^on:\n([\s\S]*?)\n\n/m);
+  assert.ok(onBlockMatch, 'expected a parseable `on:` block');
+  const onBlock = onBlockMatch[1];
+  const activeLines = onBlock.split('\n').filter((l) => !l.trim().startsWith('#'));
+  const activeText = activeLines.join('\n');
+  assert.match(activeText, /^\s*push:\s*$/m, 'expected an active (uncommented) push: trigger');
+  assert.match(activeText, /^\s*branches:\s*\[main\]\s*$/m, 'expected push trigger scoped to branches: [main]');
+  assert.match(text, /owner/i, 'expected the comment to record the owner approval');
+});
+
+test('main-gate.yml push trigger has a paths-ignore for docs-only commits (round 2 MAJOR)', () => {
+  // Round 2 review: without this, a docs-only commit to main (e.g. a
+  // docs(walk) ledger update) burns a full hosted runner pass for zero gate
+  // value. Same paths-ignore list pr-gate.yml and deploy-linux.yml use.
+  const text = readWorkflow();
+  const onBlockMatch = text.match(/^on:\n([\s\S]*?)\n\n/m);
+  assert.ok(onBlockMatch, 'expected a parseable `on:` block');
+  const onBlock = onBlockMatch[1];
+  const activeLines = onBlock.split('\n').filter((l) => !l.trim().startsWith('#'));
+  const activeText = activeLines.join('\n');
+  assert.match(activeText, /^\s*paths-ignore:\s*$/m, 'expected an active paths-ignore key under push:');
+  assert.match(activeText, /^\s*-\s*'\*\*\/\*\.md'\s*$/m, "expected '**/*.md' in paths-ignore");
+  assert.match(activeText, /^\s*-\s*'docs\/\*\*'\s*$/m, "expected 'docs/**' in paths-ignore");
 });
 
 function getNotifierStepLines(text) {
