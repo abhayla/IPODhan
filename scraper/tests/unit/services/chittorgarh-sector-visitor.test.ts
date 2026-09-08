@@ -15,18 +15,26 @@ import path from 'node:path';
  * green once `chittorgarh-orchestrator-v2.ts` calls `runSectorVisit()` after
  * the bulk scrape.
  *
- * RCA correction recorded here too: an earlier version of this visitor built
- * the detail URL from a slugified company name alone
- * (`https://www.chittorgarh.com/ipo/<slug>/`) — verified LIVE to 404 for
- * every company tried, Ather Energy included. The fix resolves slug+id from
- * Chittorgarh's own report-82 discovery feed first (`chittorgarh-detail-
- * url-resolver.ts`); this test mocks that resolver rather than a bare
- * slugifier so a future regression back to the guessed-slug shape fails it.
+ * RCA corrections recorded here too (round-2 review):
+ * - CRITICAL 1: an earlier fixture (now `neochem-bio-cg-detail.html`) was
+ *   mis-titled "vikran-engineering" — a different real company. Tests below
+ *   use the correctly-named fixture and assert against ITS real content.
+ * - CRITICAL 2: the live site resolves a detail URL by numeric id ONLY — an
+ *   unmatched slug still 200s and serves whatever company that id belongs
+ *   to. `runSectorVisit` now compares the fetched page's own company name
+ *   (`extractCompanyNameFromDetailHtml`) against the candidate before
+ *   trusting the page; a mismatch is refused, never written. The test below
+ *   ("never writes when the fetched page belongs to a different company")
+ *   is the regression guard for that class.
  */
 
 const FIXTURE_PATH = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../fixtures/historical/ather-cg-detail.html'
+);
+const MISMATCHED_FIXTURE_PATH = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../fixtures/historical/neochem-bio-cg-detail.html'
 );
 
 const { mockUpsert } = vi.hoisted(() => ({ mockUpsert: vi.fn() }));
@@ -67,6 +75,7 @@ import { runSectorVisit } from '../../../src/services/chittorgarh-sector-visitor
 
 describe('runSectorVisit (live-cycle orchestrator path, real fixture)', () => {
   const fixtureHtml = readFileSync(FIXTURE_PATH, 'utf-8');
+  const mismatchedHtml = readFileSync(MISMATCHED_FIXTURE_PATH, 'utf-8');
   const originalFetch = global.fetch;
 
   beforeEach(() => {
@@ -84,7 +93,7 @@ describe('runSectorVisit (live-cycle orchestrator path, real fixture)', () => {
     global.fetch = originalFetch;
   });
 
-  it('resolves the candidate via the discovery map, fetches the slug+id detail URL ONCE, and upserts ipos.sector', async () => {
+  it('resolves the candidate via the discovery map, fetches the slug+id detail URL ONCE, confirms identity, and upserts ipos.sector', async () => {
     const summary = await runSectorVisit(1);
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -94,7 +103,23 @@ describe('runSectorVisit (live-cycle orchestrator path, real fixture)', () => {
     );
     expect(mockUpsert).toHaveBeenCalledTimes(1);
     expect(mockUpsert).toHaveBeenCalledWith('ipo-ather-1', 'Automobiles');
-    expect(summary).toEqual({ candidates: 1, matched: 1, fetched: 1, extracted: 1, written: 1, fetchErrors: 0 });
+    expect(summary).toEqual({ candidates: 1, matched: 1, fetched: 1, identityMismatches: 0, extracted: 1, written: 1, fetchErrors: 0 });
+  });
+
+  it('never writes when the fetched page belongs to a DIFFERENT company (round-2 review CRITICAL 2 regression guard)', async () => {
+    // The discovery map resolved "Ather Energy" to a ref, but the id it points
+    // to actually serves Neochem Bio's page (a normalized-name collision /
+    // stale discovery entry). The visitor must detect this and refuse to write.
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, text: async () => mismatchedHtml }) as unknown as typeof fetch;
+    const summary = await runSectorVisit(1);
+
+    expect(mockUpsert).not.toHaveBeenCalled();
+    expect(summary).toEqual({ candidates: 1, matched: 1, fetched: 1, identityMismatches: 1, extracted: 0, written: 0, fetchErrors: 0 });
+  });
+
+  it('never calls the extractor/write path more than once per candidate (1-fetch budget)', async () => {
+    await runSectorVisit(1);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('never calls fetch/write for a candidate the discovery map has no entry for', async () => {
@@ -102,11 +127,11 @@ describe('runSectorVisit (live-cycle orchestrator path, real fixture)', () => {
     const summary = await runSectorVisit(1);
     expect(global.fetch).not.toHaveBeenCalled();
     expect(mockUpsert).not.toHaveBeenCalled();
-    expect(summary).toEqual({ candidates: 1, matched: 0, fetched: 0, extracted: 0, written: 0, fetchErrors: 0 });
+    expect(summary).toEqual({ candidates: 1, matched: 0, fetched: 0, identityMismatches: 0, extracted: 0, written: 0, fetchErrors: 0 });
   });
 
   it('skips the write (no-op) when the page yields no recognizable sector', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '<p>no sector heading</p>' }) as unknown as typeof fetch;
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '<h1 class="title-header">Ather Energy  IPO Details</h1><p>no sector heading</p>' }) as unknown as typeof fetch;
     const summary = await runSectorVisit(1);
     expect(mockUpsert).not.toHaveBeenCalled();
     expect(summary.extracted).toBe(0);

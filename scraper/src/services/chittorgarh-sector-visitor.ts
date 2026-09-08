@@ -29,7 +29,10 @@ import { or, isNull, eq, sql } from 'drizzle-orm';
 import { db } from '@ipodhan/shared';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
-import { extractSectorFromDetailHtml } from '../scrapers/chittorgarh-detail-fields.js';
+import {
+  extractSectorFromDetailHtml,
+  extractCompanyNameFromDetailHtml,
+} from '../scrapers/chittorgarh-detail-fields.js';
 import { upsertIpoSector } from './data-persister.js';
 import {
   buildChittorgarhDiscoveryMap,
@@ -51,6 +54,7 @@ export interface SectorVisitSummary {
   candidates: number;
   matched: number;
   fetched: number;
+  identityMismatches: number;
   extracted: number;
   written: number;
   fetchErrors: number;
@@ -111,6 +115,7 @@ export async function runSectorVisit(
     candidates: 0,
     matched: 0,
     fetched: 0,
+    identityMismatches: 0,
     extracted: 0,
     written: 0,
     fetchErrors: 0,
@@ -153,7 +158,26 @@ export async function runSectorVisit(
     }
     summary.fetched++;
 
-    const sector = extractSectorFromDetailHtml(html);
+    // CRITICAL 2 guard (round-2 review): the live site ignores an unmatched
+    // slug and resolves purely by numeric id — a normalized-name collision in
+    // the discovery map would otherwise write the WRONG company's sector.
+    // Never trust an extracted field without confirming page identity first.
+    const pageName = extractCompanyNameFromDetailHtml(html);
+    const identityMatches = !!pageName && (() => {
+      const n1 = normalizeCompanyNameForMatching(candidate.companyName);
+      const n2 = normalizeCompanyNameForMatching(pageName);
+      return n1 === n2 || n1.includes(n2) || n2.includes(n1);
+    })();
+    if (!identityMatches) {
+      summary.identityMismatches++;
+      logger.warn(
+        { ipoId: candidate.ipoId, candidate: candidate.companyName, pageName, url },
+        '[sector-visitor] identity mismatch — refusing to write'
+      );
+      continue;
+    }
+
+    const sector = extractSectorFromDetailHtml(html, candidate.companyName);
     if (!sector) continue;
     summary.extracted++;
 

@@ -11,24 +11,35 @@
  * manually against staging first (owner decision: prod backfill later, by
  * Fable).
  *
- * Uses the SAME extractor (`extractSectorFromDetailHtml`) and the SAME
- * discovery/URL resolver (`chittorgarh-detail-url-resolver.ts` — resolves
- * slug+id from Chittorgarh's own report-82 feed; a slug-only URL guess was
- * verified LIVE to 404 for every company, see that module's header comment)
- * as the live visitor, so there is exactly one place that knows how to reach
- * a Chittorgarh detail page. Built on `scripts/lib/repair-tool.ts` (T-490)
- * per the project's own repair-tool mandate: `openRepairDb` (refuses a prod
- * `--apply` without `--allow-prod`, verified from the WRITING pool, not an
- * env var), `upsertFieldSource` (provenance row, source=CHITTORGARH,
- * previous_source read from whatever is already stored), per-field
- * idempotency (never re-upsert a field a prior run already repaired — that
- * would overwrite the audit trail), and `writeLedgerFile` (applied-ledger
- * artifact for the staging/prod proof).
+ * Uses the SAME extractor (`extractSectorFromDetailHtml`), the SAME identity
+ * guard (`extractCompanyNameFromDetailHtml`), and the SAME discovery/URL
+ * resolver (`chittorgarh-detail-url-resolver.ts`) as the live visitor, so
+ * there is exactly one place that knows how to reach a Chittorgarh detail
+ * page and one place that decides whether a fetched page actually belongs to
+ * the candidate. ALL writes route through `upsertIpoSector`
+ * (data-persister.ts) — the same sanctioned write door the live visitor
+ * uses — never a direct `db.update(ipos)` (round-2 review MAJOR 3: a direct
+ * update here tripped `check-write-ratchet.mjs`, and duplicating the write
+ * path is exactly the class that guard exists to catch).
  *
- * Write-time guards (mirrors the live visitor's `upsertIpoSector`):
- *   - never overwrites a `field_sources` row already carrying `source: 'ADMIN'`
- *   - never overwrites any existing non-empty `ipos.sector` value (including a
- *     prior CHITTORGARH-sourced one) — `WHERE sector IS NULL OR sector = ''`
+ * Identity guard (round-2 review CRITICAL 2): the live site resolves a
+ * detail URL by NUMERIC ID ONLY — an unmatched/wrong slug still 200s and
+ * silently serves whatever company that id belongs to. A normalized-name
+ * collision in the discovery map (two companies sharing a normalized name;
+ * `chittorgarh-detail-url-resolver.ts` keeps "first wins") would otherwise
+ * write the WRONG company's sector onto the candidate, permanently (`ipos`
+ * has no admin-edit UI for this field yet, and the write is write-once).
+ * Before extracting anything, the fetched page's own company name
+ * (`extractCompanyNameFromDetailHtml`) is compared to the candidate via
+ * `normalizeCompanyNameForMatching`; a mismatch is logged and counted,
+ * never written.
+ *
+ * Built on `scripts/lib/repair-tool.ts` (T-490): `openRepairDb` (refuses a
+ * prod `--apply` without `--allow-prod`, verified from the WRITING pool, not
+ * an env var) and `writeLedgerFile` (applied-ledger artifact for the
+ * staging/prod proof). Per-field idempotency is `upsertIpoSector`'s own
+ * ADMIN/non-empty guard (checked here first too, to skip an unnecessary
+ * fetch for a row already resolved).
  *
  * dry-run by default; --apply writes. --limit N caps detail fetches.
  * --slug a,b,c scopes to specific companies (matched against the resolved
@@ -42,11 +53,15 @@
  */
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { eq, isNull, or, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
-import { extractSectorFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
+import {
+  extractSectorFromDetailHtml,
+  extractCompanyNameFromDetailHtml,
+} from '../src/scrapers/chittorgarh-detail-fields.js';
+import { upsertIpoSector } from '../src/services/data-persister.js';
 import {
   buildChittorgarhDiscoveryMap,
   buildChittorgarhDetailUrlFromRef,
@@ -56,9 +71,6 @@ import logger from '../src/utils/logger.js';
 import {
   openRepairDb,
   readFieldSource,
-  upsertFieldSource,
-  alreadyRepairedKey,
-  buildAlreadyRepairedSet,
   writeLedgerFile,
 } from './lib/repair-tool.js';
 
@@ -99,7 +111,8 @@ async function fetchDetailHtml(url: string): Promise<string | null> {
   }
 }
 
-interface Plan { id: string; name: string; sector: string; url: string; previousSource: string | null; }
+interface Written { id: string; name: string; sector: string; url: string; wrote: boolean; }
+interface IdentityMismatch { id: string; candidateName: string; pageName: string | null; url: string; }
 
 async function main() {
   console.log('='.repeat(80));
@@ -135,24 +148,12 @@ async function main() {
     console.log(`scoped by --slug to: ${matched.length}`);
   }
 
-  // 3. Per-field idempotency: skip a row this tool already repaired (never
-  // re-upsert and overwrite the recorded previous_source audit trail).
-  const priorSourceRows = await db
-    .select({ ipoId: schema.fieldSources.ipoId, fieldName: schema.fieldSources.fieldName, source: schema.fieldSources.source })
-    .from(schema.fieldSources)
-    .where(eq(schema.fieldSources.fieldName, 'sector'));
-  const alreadyRepaired = buildAlreadyRepairedSet(
-    priorSourceRows.map((r) => ({ ipoId: r.ipoId, fieldName: r.fieldName })),
-    (r) => priorSourceRows.some((row) => row.ipoId === r.ipoId && row.fieldName === r.fieldName && row.source === 'CHITTORGARH')
-  );
-
-  // 4. Fetch + extract (plausibility-gated), skipping ADMIN-owned or already-repaired fields.
-  const plans: Plan[] = [];
-  let fetched = 0, noSector = 0, skippedAdmin = 0, skippedIdempotent = 0;
+  // 3. Fetch + IDENTITY CHECK + extract (plausibility-gated), skipping ADMIN-owned rows.
+  const written: Written[] = [];
+  const identityMismatches: IdentityMismatch[] = [];
+  let fetched = 0, noSector = 0, skippedAdmin = 0;
   for (const c of matched) {
     if (fetched >= LIMIT) break;
-
-    if (alreadyRepaired.has(alreadyRepairedKey(c.id, 'sector'))) { skippedIdempotent++; continue; }
 
     const previousSource = await readFieldSource(db as any, { ipoId: c.id, fieldName: 'sector' });
     if (previousSource === 'ADMIN') { skippedAdmin++; continue; }
@@ -163,63 +164,63 @@ async function main() {
     await new Promise((r) => setTimeout(r, 700 + Math.random() * 600)); // polite rate limit
     if (!html) { noSector++; continue; }
 
-    const sector = extractSectorFromDetailHtml(html);
-    if (!sector) { noSector++; logger.debug({ company: c.companyName }, 'sector not found on detail page'); continue; }
+    // CRITICAL 2 guard: the site ignores an unmatched slug and serves
+    // whatever company the numeric id belongs to. Never trust an extracted
+    // field without first confirming the page IS the candidate.
+    const pageName = extractCompanyNameFromDetailHtml(html);
+    const identityMatches = !!pageName && (() => {
+      const n1 = normalizeCompanyNameForMatching(c.companyName);
+      const n2 = normalizeCompanyNameForMatching(pageName);
+      return n1 === n2 || n1.includes(n2) || n2.includes(n1);
+    })();
+    if (!identityMatches) {
+      identityMismatches.push({ id: c.id, candidateName: c.companyName, pageName, url });
+      logger.warn({ candidate: c.companyName, pageName, url }, '[backfill-sector] identity mismatch — refusing to write');
+      continue;
+    }
 
-    plans.push({ id: c.id, name: c.companyName, sector, url, previousSource });
-  }
-  console.log(`\nsector extracted for: ${plans.length} | detail had no sector: ${noSector} | skipped (ADMIN-owned): ${skippedAdmin} | skipped (already repaired): ${skippedIdempotent} | detail-fetched: ${fetched}`);
-  for (const p of plans.slice(0, 12)) console.log(`  - ${p.name} -> ${p.sector}  (${p.url})`);
+    const sector = extractSectorFromDetailHtml(html, c.companyName);
+    if (!sector) { noSector++; logger.debug({ company: c.companyName }, 'sector not found / rejected on detail page'); continue; }
 
-  const ledgerPath = path.join(process.cwd(), 'scripts', '.ledger', `sector-backfill-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    if (!APPLY) {
+      written.push({ id: c.id, name: c.companyName, sector, url, wrote: false });
+      continue;
+    }
 
-  if (!APPLY) {
-    console.log(`\nDRY-RUN: ${plans.length} sector values WOULD be filled. Re-run with --apply.`);
-    console.log('='.repeat(80));
-    process.exit(0);
-  }
-
-  // 5. Fill only where still empty (admin-edit / concurrent-write safe) + provenance row.
-  let written = 0, failed = 0, raced = 0;
-  for (const p of plans) {
     try {
-      const result = await db
-        .update(schema.ipos)
-        .set({ sector: p.sector, updatedAt: new Date() })
-        .where(and(eq(schema.ipos.id, p.id), or(isNull(schema.ipos.sector), eq(schema.ipos.sector, ''))))
-        .returning({ id: schema.ipos.id });
-      if (result.length === 0) { raced++; continue; } // someone else filled it between read and write
-      await upsertFieldSource(db as any, {
-        ipoId: p.id,
-        fieldName: 'sector',
-        source: 'CHITTORGARH',
-        confidence: 80,
-        previousValue: null,
-        dataLineage: { tool: 'backfill-sector-chittorgarh', url: p.url },
-        updatedBy: 'backfill-sector-chittorgarh',
-      });
-      written++;
-      logger.info({ company: p.name, sector: p.sector }, 'sector filled');
+      const wrote = await upsertIpoSector(c.id, sector);
+      written.push({ id: c.id, name: c.companyName, sector, url, wrote });
     } catch (err) {
-      failed++;
-      logger.error({ company: p.name, error: err instanceof Error ? err.message : String(err) }, 'sector update failed');
+      logger.error({ company: c.companyName, error: err instanceof Error ? err.message : String(err) }, 'sector update failed');
     }
   }
-  console.log(`\nAPPLY complete: written=${written} raced=${raced} failed=${failed}`);
 
+  console.log(`\nsector extracted/written for: ${written.length} | detail had no sector: ${noSector} | skipped (ADMIN-owned): ${skippedAdmin} | identity mismatches (refused): ${identityMismatches.length} | detail-fetched: ${fetched}`);
+  for (const p of written.slice(0, 12)) console.log(`  - ${p.name} -> ${p.sector}  (${p.url})`);
+  for (const m of identityMismatches) console.log(`  MISMATCH REFUSED: ${m.candidateName} != page "${m.pageName}"  (${m.url})`);
+
+  const ledgerPath = path.join(process.cwd(), 'scripts', '.ledger', `sector-backfill-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
   writeLedgerFile(ledgerPath, {
     tool: 'backfill-sector-chittorgarh',
     ranAt: new Date().toISOString(),
     apply: APPLY,
     allowProd: ALLOW_PROD,
-    plans,
     written,
-    raced,
-    failed,
+    identityMismatches,
   });
   console.log(`ledger: ${ledgerPath}`);
+
+  if (!APPLY) {
+    console.log(`\nDRY-RUN: ${written.length} sector values WOULD be filled (${identityMismatches.length} candidates refused on identity mismatch). Re-run with --apply.`);
+    console.log('='.repeat(80));
+    process.exit(0);
+  }
+
+  const actuallyWritten = written.filter((w) => w.wrote).length;
+  const racedOrSkipped = written.length - actuallyWritten;
+  console.log(`\nAPPLY complete: written=${actuallyWritten} raced-or-guarded=${racedOrSkipped} identity-mismatches-refused=${identityMismatches.length}`);
   console.log('='.repeat(80));
-  process.exit(failed > written ? 1 : 0);
+  process.exit(0);
 }
 
 // MUST use pathToFileURL, not a hand-rolled `file://${argv[1]}` template — see
