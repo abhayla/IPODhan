@@ -862,9 +862,33 @@ Chittorgarh's `IPO`, logged the same disagreement 24 times, and was corrected by
 So `offering_type`, `segment` and `listing_exchanges` are **plan-invalidating fields**: a write to
 any of them drops and rebuilds that IPO's plan rows, keeping values whose rank-1 source is unchanged.
 
-**Phase-1 precondition:** 3 of the 19 IPOs have `segment = NULL` (BSE-only, UPCOMING). No rank set
-can be resolved for them, because SME and mainboard carry different lot-value checks. They must be
-resolved before the walk runs on them.
+**Phase-1 precondition: three IPOs have no segment, and our own data already answers it.**
+
+`CENTURY BUSINESS MEDIA`, `OM GALAXY` and `RAKSAN TRANSFORMERS` are UPCOMING with
+`segment = NULL`. No rank set resolves for them, because SME and mainboard carry different
+lot-value checks — so the walk cannot run on them as they stand.
+
+They do not need a source. **The minimum application value separates the two segments cleanly**,
+because SEBI sets it: a mainboard lot is about ₹15,000, an SME lot is about ₹1,00,000–1,50,000.
+Measured across the 262 IPO rows that carry both a lot size and a price cap:
+
+| Segment | IPOs | Median lot × cap | Range |
+|---|---:|---:|---|
+| MAINBOARD | 94 | **₹14,880** | 100 – 360,000 |
+| SME | 168 | **₹127,600** | 10,000 – 150,000 |
+| **The three unknowns** | 3 | **₹118,400** | 109,200 – 144,000 |
+
+All three sit inside the SME band and roughly **eight times** the mainboard median, and all three
+are BSE-only, which no mainboard IPO of that lot value would be. They are SME.
+
+**The rule:** when `segment` is absent, infer it as SME if `lot_size × price_range_max ≥ ₹50,000`
+and the IPO lists on a single exchange; otherwise MAINBOARD. Record the inference in provenance as
+a derived value, never as a scraped one, and let a later document or exchange value overwrite it
+under S-05. Flag any IPO where the inference and a sourced `segment` disagree — that combination
+means one of the two is wrong and it is exactly the Qualiance false-alarm shape.
+
+**The data repair itself is a production write and is the owner's call** (finding F-40); the design
+only states the rule.
 
 ### 2.9 Statuses outside the three the first draft named
 

@@ -192,6 +192,46 @@ from `allotment_date` (+30 / +90 days) and therefore inherit the rule through th
 than being sourced themselves. The owner's decision named twelve fields; ten are sourced and two
 are derived from one of the ten, so the twelve facts he named are all governed.
 
+**Verified against the live exchanges, 2026-09-08 — and half the set has no exchange source at all.**
+S-05 says the exchange wins where nothing is re-filed. That only helps if the exchange actually
+publishes the value. Fetched both live APIs and checked what our scrapers map:
+
+| E-1 field | NSE | BSE | Verdict |
+|---|---|---|---|
+| `open_date` | `issueStartDate` | `Start_Dt` | exchange-sourced, as designed |
+| `close_date` | `issueEndDate` | `End_Dt` | exchange-sourced, as designed |
+| `status` | `status` | `Status` | exchange-sourced, as designed |
+| `listing_date` | mapped (`nse-api-client.ts`) | — | exchange-sourced, as designed |
+| `listing_exchanges` | derivable from presence in each API | derivable | as designed |
+| `allotment_date` | **absent** | **absent** | **no exchange source** |
+| `basis_of_allotment_date` | **absent** | **absent** | **no exchange source** |
+| `initiation_of_refunds_date` | **absent** | **absent** | **no exchange source** |
+| `credit_of_shares_date` | **absent** | **absent** | **no exchange source** |
+| `anchor_investors.bid_date` | **absent** | **absent** | **no exchange source** |
+
+Evidence: `GET /api/ipo-current-issue` returns exactly
+`companyName, issueEndDate, issuePrice, issueSize, issueStartDate, series, status, symbol,
+category, noOfSharesOffered, noOfTime, noOfsharesBid, srNo`; BSE `IPO_HomePageDetail` returns
+`Scrip_name, Start_Dt, End_Dt, Status, IR_flag, IR_FLAG_FULL, IPO_NO, flag, Scrip_cd,
+Is_retailertype`. And no NSE or BSE scraper in this repo maps an allotment, refund, credit or
+anchor-bid date — `filing-persister.ts:867-869` is their only writer.
+
+**So S-05 splits into two cases, not one.**
+
+- **The exchange publishes it** (the first five). The exchange wins outright, as S-05 says.
+- **Nobody publishes it currently** (the last five). The offer document is the ONLY source that has
+  these at all — it prints the indicative timetable. Moving them to the exchanges would blank 13
+  live values on production for nothing. **They stay document-sourced**, with a staleness rule that
+  follows from S-05 rather than contradicting it:
+
+> When an exchange-sourced E-1 date changes (`open_date`, `close_date` or `listing_date`), every
+> document-sourced timetable date for that IPO is marked stale in the same transaction and is
+> re-read from the newest filing. The whole timetable moves together; a shift in the window we CAN
+> see is the signal that the dates we cannot see have moved too.
+
+This keeps the document as the source of record where it is the only source, and still guarantees
+we never publish a timetable that a visible window change has invalidated.
+
 Adding a field to this set is an owner decision recorded here, never a change made in passing.
 `ipo_details.upi_cutoff_time` and `bid_windows` are deliberately NOT members: they hold a time of
 day, and an extended window moves the date, not the hour.

@@ -46,10 +46,11 @@
       "sev": "CRITICAL",
       "area": "E-1",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "E-1 points six fields at sources that do not carry them; §2.8 then deletes the data",
       "detail": "filing-persister.ts:867-869 is the only writer of the three ipo_details dates; no exchange scraper writes them. Would blank 13 correct values on live pages.",
-      "fix_in": "§1.2.1 + §2.8"
+      "fix_in": "§1.2.1 + §2.8",
+      "closed_in": "PROVEN by live fetch 2026-09-08: NSE /api/ipo-current-issue and BSE IPO_HomePageDetail carry open/close/status (and NSE listing date) but NO allotment, refund, credit or anchor-bid date, and no scraper maps one. S-05 now splits: the 5 the exchange publishes move to it; the 5 nobody publishes stay document-sourced with a staleness trigger keyed to a visible window change. 13 live values preserved."
     },
     {
       "id": "F-04",
@@ -426,10 +427,11 @@
       "sev": "MAJOR",
       "area": "data quality",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "Three of the 19 phase-1 IPOs have segment = NULL, so no rank set can be resolved for them",
       "detail": "Found 2026-09-08. BSE-only UPCOMING rows. SME and mainboard have different lot-value checks.",
-      "fix_in": "phase-1 precondition"
+      "fix_in": "phase-1 precondition",
+      "closed_in": "design rule written 2026-09-08: infer segment from lot x cap >= Rs 50,000 on a single exchange. Measured: mainboard median 14,880 vs SME 127,600; the three unknowns 109,200-144,000, all BSE-only, all SME. The prod data repair remains an owner call."
     },
     {
       "id": "F-41",
