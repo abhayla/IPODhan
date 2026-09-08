@@ -61,7 +61,7 @@
       "title": "§2.8's null-write is impossible through the writer the design keeps, and fails silently",
       "detail": "data-consolidation-service.ts:1063-1080 returns the stored value on a null incoming and logs nothing.",
       "fix_in": "§2.8",
-      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+      "closed_in": "OWNER DECISION 2026-09-08: never blank a value that passed its checks, plus a staleness marker on the page (last confirmed on <date>). Also produced §2.5.1, the seven re-ask triggers in one table - they had been scattered across five sections."
     },
     {
       "id": "F-05",

@@ -1014,6 +1014,29 @@ so itself: *"NOT YET CALLED BY THE RUNNER, and deliberately so"*
 orders by `filing_date`, which is populated on **24 of 256 documents**. So wiring supersession, and
 backfilling `filing_date`, are both prerequisites of the pull loop, not parts of it.
 
+#### 2.5.1 Every trigger that re-asks a field, in one place
+
+The triggers below were scattered across five sections of an earlier draft. An implementer would
+have had to assemble them to know when the loop actually runs, which is how a mechanism gets
+half-built. They are listed here once, and §2.5's evidence rule is trigger 3 rather than the whole
+story.
+
+| # | Trigger | Concrete case | Can it hit a field that already holds a value? |
+|---|---|---|---|
+| 1 | State is `PENDING` — never supplied | an SME prospectus not yet filed: the price band is asked four times a day and comes back empty | No — nothing to protect |
+| 2 | `NOT_AVAILABLE_YET` reclaim | `isin` does not exist before listing; the field stays due and is taken the moment the exchange assigns it | Only a provisional lower-rank value, which is replaced, not blanked |
+| 3 | **A better document arrived** (§2.5) | July's draft said the fresh issue was ₹400 cr; September's prospectus prints ₹320 cr after a pre-IPO placement. Every field from the draft returns to `PENDING` | **Yes** |
+| 4 | **Scheduled verification** (§3.1) | every supplied field on a live IPO is re-checked against rank 2 weekly; `leadManagers` (578 unresolved conflicts) and `faceValue` (495) every slot | **Yes — the common one** |
+| 5 | **A disagreement was found** (§3.2) | Chittorgarh disagrees with the document, so that one value is re-read from that page of that PDF | **Yes** |
+| 6 | **The plan was invalidated** (§2.8) | Mopshop stored as `FPO`, corrected to `IPO`: its ranks were resolved for the wrong type, so the plan is rebuilt | **Yes** |
+| 7 | **A visible bidding date moved** (S-05) | NSE moves the close date from 2 to 4 September; allotment, refund and credit dates move with it, and the advertisement is never reprinted | **Yes** |
+
+**This is why §2.6 matters.** Triggers 3–7 all reach a field that already holds a good value. Under
+the deleted "blank it" rule, a live IPO's price band would disappear because Chittorgarh happened to
+be down during a Tuesday-afternoon verification pass. The field keeps its value; only the plan row
+records that we could not reconfirm it, and the page marks it *last confirmed on <date>* once that
+gap passes the staleness threshold (owner decision, 2026-09-08).
+
 ### 2.6 When all three sources fail
 
 The first draft said: write null with a reason, never leave a stale value. **That is deleted, for
@@ -1034,6 +1057,11 @@ before December 2023.
 
 > A field that currently holds a value which passed its check is never blanked. `EXHAUSTED` marks
 > the plan row, not the data. A field that has never held a value stays absent.
+
+**Owner decision, 2026-09-08:** confirmed, **with a staleness marker on the page**. A value we could
+not reconfirm keeps serving, but once the gap passes the threshold the page shows *last confirmed on
+<date>* rather than presenting it as current. That gives the honesty of blanking without the
+destruction — nothing vanishes, and nothing pretends to be fresher than it is.
 
 An `EXHAUSTED` row on a live IPO is a visible gap with an owner (§4), not an edit.
 
