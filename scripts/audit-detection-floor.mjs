@@ -60,6 +60,7 @@ import {
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS, normalizeCompanyKey,
+  findLotDisagreements, findMinApplicationDisagreements,
   buildRunPayloads, evaluateCronExecutable,
   computeExitCode, EXIT_UNVERIFIABLE, computeSummaryCounts,
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
@@ -308,14 +309,14 @@ async function checkA_B() {
   const name = `live IPO open/close/band/lot/issue-size agree with the independent non-ingested oracle (ipowatch.in; fields: ${ORACLE_COMPARABLE_FIELDS.join(', ')})`;
 
   const ipoRows = (await q(
-    `SELECT id, company_name AS "companyName", status,
+    `SELECT id, company_name AS "companyName", status, segment,
             open_date AS "openDate", close_date AS "closeDate",
             price_range_min AS "priceRangeMin", price_range_max AS "priceRangeMax",
             lot_size AS "lotSize", issue_size AS "issueSize"
        FROM ipos
       WHERE ${REAL_IPO} AND status IN ('${LIVE_STATUSES.join("','")}')`
   )).map((r) => ({
-    id: r.id, companyName: r.companyName, status: r.status,
+    id: r.id, companyName: r.companyName, status: r.status, segment: r.segment,
     values: {
       openDate: r.openDate, closeDate: r.closeDate,
       priceRangeMin: r.priceRangeMin, priceRangeMax: r.priceRangeMax,
@@ -337,6 +338,8 @@ async function checkA_B() {
   } catch (e) {
     record('a_b_live_conflict', name, 'UNVERIFIABLE',
       `could not reach the independent oracle (${e.message}) — this check is BLIND tonight, not passing`);
+    record('a_b_min_application', 'live IPO minimum retail application agrees with the independent non-ingested oracle (ipowatch.in)', 'UNVERIFIABLE',
+      `could not reach the independent oracle (${e.message}) — this check is BLIND tonight, not passing`);
     return;
   }
 
@@ -357,7 +360,13 @@ async function checkA_B() {
     );
   }
 
-  const violations = findLiveCrossSourceDisagreements({ ipoRows, oracleRows, conflictRows, oracleName: 'IPOWATCH' });
+  const fieldViolations = findLiveCrossSourceDisagreements({ ipoRows, oracleRows, conflictRows, oracleName: 'IPOWATCH' });
+  // T-506 (#415): the lot pair is compared separately from the generic field
+  // loop — ipowatch's figure is a minimum-BID-shares figure, not the exchange
+  // lot, so it must be divided by the segment's minimum-application-lot
+  // multiplier before comparison (see ORACLE_COMPARABLE_FIELDS comment).
+  const lotViolations = findLotDisagreements({ ipoRows, oracleRows });
+  const violations = [...fieldViolations, ...lotViolations];
   for (const v of violations) {
     notify('a_b_live_conflict', 'P1', `${v.ipoId}-${v.fieldName}`,
       `Live IPO "${v.companyName}" publishes a disputed ${v.fieldName}`, v.message);
@@ -368,6 +377,19 @@ async function checkA_B() {
     + `data_conflicts-only${conflictSignalAvailable ? '' : '; data_conflicts absent'})${oracleFetchNote}`
     + (violations.length ? `: ${violations.slice(0, MAX_OFFENDERS).map((v) => v.message).join('; ')}` : '');
   record('a_b_live_conflict', name, violations.length === 0 ? 'PASS' : 'FAIL', detail);
+
+  // (b) SEPARATE check, its own PASS/FAIL: our derived minimum RETAIL
+  // application (exchange lot x segment multiplier) vs ipowatch's own
+  // "minimum bid is N Shares" figure. Same oracle fetch, no second HTTP round.
+  const minAppName = 'live IPO minimum retail application (lot_size x segment multiplier) agrees with the independent non-ingested oracle (ipowatch.in)';
+  const minAppViolations = findMinApplicationDisagreements({ ipoRows, oracleRows });
+  for (const v of minAppViolations) {
+    notify('a_b_min_application', 'P1', `${v.ipoId}-${v.fieldName}`,
+      `Live IPO "${v.companyName}" publishes a disputed minimum retail application`, v.message);
+  }
+  record('a_b_min_application', minAppName, minAppViolations.length === 0 ? 'PASS' : 'FAIL',
+    `${minAppViolations.length} violation(s) over ${oracleRows.length} matched oracle rows vs ${ipoRows.length} live IPOs${oracleFetchNote}`
+    + (minAppViolations.length ? `: ${minAppViolations.slice(0, MAX_OFFENDERS).map((v) => v.message).join('; ')}` : ''));
 }
 
 // ---- (c): issue_size plausibility -------------------------------------------

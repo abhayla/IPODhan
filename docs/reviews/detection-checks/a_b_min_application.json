@@ -1,0 +1,10 @@
+{
+  "id": "a_b_min_application",
+  "findingClass": "live IPO's derived minimum retail application (exchange lot x segment multiplier) disagrees with the independent non-ingested oracle's minimum-bid-shares figure",
+  "round7Findings": [],
+  "githubIssue": "https://github.com/abhayla/IPODhan/issues/415 (T-506, 2026-09-08, owner decision 4): the nightly a_b_live_conflict FAILed on Qualiance International (SME, OPEN) because ipowatch.in's 'minimum bid is 2000 Shares' line was compared directly against ipos.lot_size=1000. Both figures were correct -- 1000 is the exchange lot, 2000 is the SME retail minimum RETAIL APPLICATION (2 lots, SEBI ICDR rule since 2025). Split out as its own check so the two concepts each get a distinct, correctly-derived comparison and a distinct PASS/FAIL, instead of one check silently comparing the wrong pair.",
+  "failThreshold": "any OPEN/UPCOMING IPO where our derived minimum retail application (ipos.lot_size x minApplicationLots(segment), where the multiplier is 2 for SME and 1 for MAINBOARD/unknown -- see scripts/lib/detection-floor-checks.mjs minApplicationLots()) disagrees with the minimum-bid-shares figure this audit fetches LIVE from ipowatch.in, via findMinApplicationDisagreements(). Compared exactly (no rupee tolerance -- share counts, not rupee amounts). Shares the same ipowatch fetch as a_b_live_conflict (checkA_B() in scripts/audit-detection-floor.mjs) -- no second HTTP round.",
+  "severity": "P1",
+  "unverifiableWhen": "the ipowatch list-index fetch fails or returns no rows (the check is BLIND, and pages P2, in lockstep with a_b_live_conflict since they share the same fetch); a matched company whose detail page cannot be parsed is excluded from comparison, not silently passed",
+  "section": "checks"
+}
