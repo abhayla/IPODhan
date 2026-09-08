@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 14:45 IST (snapshot 10).
+Last updated: 2026-09-08 15:15 IST (snapshot 11 - session 10 closed; the pull-model DESIGN session is now the active one).
 
 ---
 
