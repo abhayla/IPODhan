@@ -35,7 +35,7 @@
 // the two files travel together on the box. A closed entry is KEPT (never
 // deleted) — deleting it on close was the M1 bug: it made a PASS->FAIL flap
 // open a brand-new issue every cycle instead of recognizing the same check.
-import { readFileSync, writeFileSync, existsSync, unlinkSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, statSync, renameSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
@@ -187,16 +187,48 @@ export function planIssueSync({ findings, issues, openIssues, previousState, tod
 // with nothing new, is not itself an escalation). --new-only narrows
 // planIssueSync()'s already-computed actions to ones with a genuinely NEW
 // row versus the previous night: a brand-new check (`create`, no prior
-// state) always counts as new; a `comment`/`reopen` on an existing check
-// counts as new ONLY when it carries at least one newKey (a rowKey absent
-// from the previous night's lastRowKeys) — a comment/reopen whose ONLY
-// change is rows going away (resolvedKeys with no newKeys) is downgraded to
-// `skip`, because "some violations cleared" is not itself a NEW finding to
-// file. `close` actions (the check went fully PASS) always pass through —
-// closing is never gated by --new-only.
-export function filterNewOnly(actions) {
+// state) always counts as new; a `comment` on an existing OPEN/CLOSED-by-
+// human issue counts as new ONLY when it carries at least one newKey (a
+// rowKey absent from the previous night's lastRowKeys) — a comment whose
+// ONLY change is rows going away (resolvedKeys with no newKeys) is
+// downgraded to `skip`, because "some violations cleared" is not itself a
+// NEW finding to file. `close` and `reopen` actions always pass through —
+// never gated by --new-only. `reopen` specifically (MAJOR fix, round 3,
+// T-505): planIssueSync() never attaches a `newKeys` field to a reopen — it
+// isn't a row-diff decision, it fires because WE auto-closed the issue
+// (closedAt in state) and the check failed again. Gating it on
+// `(action.newKeys || []).length > 0` silently downgraded EVERY reopen to
+// skip, so a violation that returned after auto-close was never resurfaced
+// (signal-ownership.md R4/R5). A reopen IS a recurrence by definition —
+// exempt from this gate, the same as close.
+export function filterNewOnly(actions, previousState = {}) {
   return actions.map((action) => {
-    if (action.type === 'comment' || action.type === 'reopen') {
+    if (action.type === 'create') {
+      // MAJOR fix (round 2, T-505): a `create` only means "no real GitHub
+      // issue exists for this check" — it does NOT mean "never seen before".
+      // The --new-only BASELINE-ONLY pass (buildBaselineState(), below)
+      // records a check's rows in previousState WITHOUT ever creating a real
+      // issue, so planIssueSync() keeps emitting `create` for it on every
+      // later night it is still failing. Treating every `create` as
+      // unconditionally new (as before) re-fired the whole baseline,
+      // unfiltered, on night two. A checkId already present in previousState
+      // is only "new" here if it carries a row absent from what was already
+      // recorded; a checkId with NO previousState entry is a genuine first
+      // sighting and always passes through.
+      const prevEntry = previousState[action.checkId];
+      if (prevEntry) {
+        const prevKeys = new Set(prevEntry.lastRowKeys || []);
+        const hasNew = (action.rowKeys || []).some((k) => !prevKeys.has(k));
+        if (!hasNew) {
+          return { type: 'skip', checkId: action.checkId, reason: '--new-only: no new rows since the previous night (known from baseline, unchanged)' };
+        }
+      }
+      return action;
+    }
+    if (action.type === 'reopen') {
+      return action; // always a recurrence — never gated by --new-only
+    }
+    if (action.type === 'comment') {
       const hasNew = (action.newKeys || []).length > 0;
       if (!hasNew) {
         return { type: 'skip', checkId: action.checkId, reason: '--new-only: no new rows since the previous night (resolved-only or unchanged)', issueNumber: action.issueNumber };
@@ -204,6 +236,64 @@ export function filterNewOnly(actions) {
     }
     return action;
   });
+}
+
+// MAJOR fix (round 2, T-505): night one under --new-only has no
+// issues-sync-state.json to diff against, so EVERY failing check looks like
+// a brand-new `create` and files through filterNewOnly() unfiltered — up to
+// DEFAULT_MAX_ISSUES issues in one tick (signal-ownership.md R4 is meant to
+// stop exactly this kind of flood). main() detects "no previous state file"
+// under --new-only and runs a BASELINE-ONLY pass instead of the normal
+// create/comment/close/reopen flow: this pure function builds the state that
+// pass writes — one entry per FAIL/UNVERIFIABLE check tonight, with
+// issueNumber left null (no real issue was created) — so night two's
+// filterNewOnly() has a real baseline to diff against and files only
+// genuinely new rows/checks.
+export function buildBaselineState(findings, runDate) {
+  const nextState = {};
+  for (const checkId of Object.keys(findings)) {
+    const finding = findings[checkId];
+    const isBad = finding.status === 'FAIL' || finding.status === 'UNVERIFIABLE';
+    if (!isBad) continue;
+    const rowKeys = (finding.rows || []).map((r) => r.rowKey).sort();
+    nextState[checkId] = { issueNumber: null, firstSeen: runDate, lastRowKeys: rowKeys };
+  }
+  return nextState;
+}
+
+// MINOR fix (round 3, T-505): an unguarded JSON.parse on a corrupt, empty, or
+// truncated issues-sync-state.json (a partial write from a killed process, a
+// disk-full night, a manual edit gone wrong) threw straight out of main()'s
+// try block; the `finally` only releases the lock, so the run silently
+// wedged forever — every later tick read the same corrupt file and died the
+// same way, with no non-zero exit anyone would notice. Pure and testable:
+// takes the raw file text (or null when the file does not exist) and never
+// throws. `ok: false` tells main() to log the cause and fall through exactly
+// as if there were no previous state at all — under --new-only that means a
+// fresh BASELINE-ONLY pass, which also self-heals the corrupt file on its
+// next successful write.
+export function parsePreviousState(rawText) {
+  if (rawText == null) return { state: {}, ok: true, hadState: false };
+  try {
+    const parsed = JSON.parse(rawText);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { state: {}, ok: false, hadState: false, error: 'state file did not contain a JSON object' };
+    }
+    return { state: parsed, ok: true, hadState: true };
+  } catch (e) {
+    return { state: {}, ok: false, hadState: false, error: e.message };
+  }
+}
+
+// MINOR fix (round 3, T-505): write-then-rename instead of a direct
+// writeFileSync, so a crash or power loss mid-write can never leave
+// issues-sync-state.json half-written (the exact corruption
+// parsePreviousState() above now has to defend against). rename() is atomic
+// on the same filesystem, which the tmp file always is (same directory).
+function writeStateFileAtomic(path, data) {
+  const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmpPath, data);
+  renameSync(tmpPath, path);
 }
 
 // MEDIUM fix, pure and testable: build the next issues-sync-state.json from
@@ -627,9 +717,39 @@ async function main() {
     }
 
     const registry = loadRegistry(registryPath);
-    const previousState = existsSync(syncStatePath)
-      ? JSON.parse(readFileSync(syncStatePath, 'utf8'))
-      : {};
+    // MINOR fix (round 3, T-505): parsePreviousState() never throws — a
+    // corrupt/truncated state file is logged and treated as "no previous
+    // state" instead of crashing this run (and every run after it) silently.
+    const stateParse = parsePreviousState(existsSync(syncStatePath) ? readFileSync(syncStatePath, 'utf8') : null);
+    if (!stateParse.ok) {
+      log(`WARN: corrupt/unreadable state file at ${syncStatePath} (${stateParse.error}) — treating as no previous state`);
+    }
+    const hadPreviousState = stateParse.hadState;
+    const previousState = stateParse.state;
+
+    // MAJOR fix (round 2, T-505): --new-only with NO previous state file is
+    // night one — there is nothing yet to diff a "new" finding against, so
+    // filterNewOnly() would otherwise wave every failing check through as a
+    // `create` (up to DEFAULT_MAX_ISSUES in one tick). Run a BASELINE-ONLY
+    // pass instead: record tonight's findings, file/create/comment/reopen
+    // NOTHING (closes are moot too — no issue exists yet to close), and let
+    // night two's diff against this baseline decide what is genuinely new.
+    // This never runs `gh` at all, so it costs nothing on a fresh box.
+    if (opts.newOnly && !hadPreviousState) {
+      const baselineState = buildBaselineState(loaded.findings, loaded.runDate);
+      const recordedCount = Object.keys(baselineState).length;
+      log(`NEW-ONLY BASELINE: no previous state; recorded ${recordedCount} finding(s), filed 0`);
+      if (!opts.dryRun) {
+        try {
+          writeStateFileAtomic(syncStatePath, JSON.stringify(baselineState, null, 2));
+        } catch (e) {
+          log(`could not write baseline state: ${e.message}`);
+        }
+      } else {
+        log('DRY-RUN: baseline state not written');
+      }
+      return;
+    }
 
     const repo = await resolveRepoSlug(opts.repo);
 
@@ -669,7 +789,7 @@ async function main() {
       maxIssues: opts.maxIssues,
     });
     if (opts.newOnly) {
-      actions = filterNewOnly(actions);
+      actions = filterNewOnly(actions, previousState);
       log('--new-only: filing only findings absent from the previous night (create + rows with a new key); resolved-only/unchanged comments downgraded to skip');
     }
 
@@ -717,7 +837,7 @@ async function main() {
     }
 
     try {
-      writeFileSync(syncStatePath, JSON.stringify(nextState, null, 2));
+      writeStateFileAtomic(syncStatePath, JSON.stringify(nextState, null, 2));
     } catch (e) {
       log(`could not persist ${syncStatePath}: ${e.message} — next run may re-create/re-comment`);
     }

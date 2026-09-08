@@ -174,14 +174,10 @@ run_audit() {
     # finding again every night — that is what turned the nightly audit into
     # a standing wall of red nobody read (RC1, docs/reviews/rca-2026-09-07-
     # missed-live-defects.md). Going live at all is still gated by the
-    # issues-live marker above; the --new-only flip itself is the OWNER's
-    # separate decision (recorded in T-497's contract, not decided by this
-    # worker) — the line below is intentionally commented until that
-    # decision is made. Until uncommented, the existing (pre-T-497) live
-    # behaviour — file every FAIL/UNVERIFIABLE finding each night — is
-    # unchanged.
-    # node scripts/audit-findings-to-issues.mjs --new-only || true
-    node scripts/audit-findings-to-issues.mjs || true
+    # issues-live marker above; the --new-only flip is the OWNER's decision,
+    # made 2026-09-08 (T-505 owner decision 3): once live, file only NEW
+    # findings, not every SAME finding again every night.
+    node scripts/audit-findings-to-issues.mjs --new-only || true
   fi
 
   # T-330: read-only schema-drift check — compares the live column/matview set

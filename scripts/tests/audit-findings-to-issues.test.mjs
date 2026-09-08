@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
 import {
   planIssueSync,
   renderIssueBody,
@@ -18,6 +19,8 @@ import {
   parseArgs,
   buildNextState,
   filterNewOnly,
+  buildBaselineState,
+  parsePreviousState,
   DEFAULT_MAX_ISSUES,
   LOCK_STALE_MS,
   localDateStamp,
@@ -479,8 +482,8 @@ test('m_extraction_stuck is registered in DATA_REPAIR_CHECK_IDS (round 6, needs-
   assert.ok(DATA_REPAIR_CHECK_IDS.has('m_extraction_stuck'));
 });
 
-// T-497: --new-only downgrades resolved-only/unchanged comment+reopen actions
-// to skip, but never touches create/close (signal-ownership.md R4).
+// T-497: --new-only downgrades resolved-only/unchanged comment actions to
+// skip, but never touches create/close (signal-ownership.md R4).
 test('filterNewOnly: comment with newKeys passes through unchanged', () => {
   const actions = [{ type: 'comment', checkId: 'c1', issueNumber: 1, newKeys: ['row-2'], resolvedKeys: [] }];
   assert.deepEqual(filterNewOnly(actions), actions);
@@ -493,16 +496,176 @@ test('filterNewOnly: comment with ONLY resolvedKeys (no newKeys) is downgraded t
   assert.equal(out[0].checkId, 'c1');
 });
 
-test('filterNewOnly: reopen with no newKeys is downgraded to skip', () => {
-  const actions = [{ type: 'reopen', checkId: 'c1', issueNumber: 1, newKeys: [], rowKeys: ['row-1'] }];
-  const out = filterNewOnly(actions);
-  assert.equal(out[0].type, 'skip');
+// MAJOR fix (round 3, T-505): planIssueSync() never attaches a `newKeys`
+// field to a reopen action (it isn't a row-diff decision — it fires because
+// WE auto-closed the issue and the check failed again), so gating reopen on
+// `(action.newKeys || []).length > 0` downgraded EVERY reopen to skip,
+// unconditionally. A reopen IS a recurrence by definition
+// (signal-ownership.md R4/R5: a violation that returns after auto-close must
+// be surfaced, never silently reabsorbed) — it is now exempt from the
+// --new-only gate, exactly like close.
+test('filterNewOnly: reopen ALWAYS passes through, even with no newKeys (it is itself a recurrence)', () => {
+  const actions = [{ type: 'reopen', checkId: 'c1', issueNumber: 1, rowKeys: ['row-1'], comment: 'Failing again on 2026-09-08.' }];
+  assert.deepEqual(filterNewOnly(actions), actions);
 });
 
-test('filterNewOnly: create and close pass through untouched (never gated)', () => {
-  const actions = [
-    { type: 'create', checkId: 'c1', title: 't' },
-    { type: 'close', checkId: 'c2', issueNumber: 2, comment: 'PASS' },
-  ];
+test('filterNewOnly: reopen passes through even when newKeys is explicitly empty', () => {
+  const actions = [{ type: 'reopen', checkId: 'c1', issueNumber: 1, newKeys: [], rowKeys: ['row-1'] }];
   assert.deepEqual(filterNewOnly(actions), actions);
+});
+
+test('filterNewOnly: close always passes through (never gated)', () => {
+  const actions = [{ type: 'close', checkId: 'c2', issueNumber: 2, comment: 'PASS' }];
+  assert.deepEqual(filterNewOnly(actions), actions);
+});
+
+test('filterNewOnly: create with NO prior previousState entry passes through (genuinely first sighting)', () => {
+  const actions = [{ type: 'create', checkId: 'c1', title: 't', rowKeys: ['row-1'] }];
+  assert.deepEqual(filterNewOnly(actions, {}), actions);
+  assert.deepEqual(filterNewOnly(actions), actions); // previousState defaults to {}
+});
+
+// MAJOR fix (round 2, T-505): a `create` action for a check ALREADY recorded
+// in previousState (e.g. by the --new-only baseline pass — no real GitHub
+// issue exists yet, so planIssueSync() keeps emitting `create`) must NOT be
+// treated as new when its rows are unchanged from what was already recorded
+// — otherwise the baseline night's suppressed findings all re-fire,
+// unfiltered, on night two.
+test('filterNewOnly: create for a check known in previousState with UNCHANGED rows is downgraded to skip', () => {
+  const actions = [{ type: 'create', checkId: 'c1', title: 't', rowKeys: ['row-1', 'row-2'] }];
+  const previousState = { c1: { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['row-1', 'row-2'] } };
+  const out = filterNewOnly(actions, previousState);
+  assert.equal(out[0].type, 'skip');
+  assert.equal(out[0].checkId, 'c1');
+});
+
+test('filterNewOnly: create for a check known in previousState with a genuinely NEW row still fires', () => {
+  const actions = [{ type: 'create', checkId: 'c1', title: 't', rowKeys: ['row-1', 'row-3'] }];
+  const previousState = { c1: { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['row-1', 'row-2'] } };
+  const out = filterNewOnly(actions, previousState);
+  assert.equal(out[0].type, 'create');
+});
+
+// MAJOR fix (round 2, T-505): the first live night under --new-only has no
+// issues-sync-state.json to diff against, so EVERY failing check looks like
+// a brand-new `create` and files through unfiltered — up to
+// DEFAULT_MAX_ISSUES in one tick. buildBaselineState() is the pure function
+// the BASELINE-ONLY pass in main() uses to record tonight's findings without
+// filing anything, so night two has something real to diff against.
+test('buildBaselineState: records one entry per FAIL/UNVERIFIABLE check, none for PASS/SKIP', () => {
+  const findings = {
+    c_fail: { status: 'FAIL', name: 'x', rows: [{ rowKey: 'b' }, { rowKey: 'a' }] },
+    c_unverifiable: { status: 'UNVERIFIABLE', name: 'y', rows: [{ rowKey: 'z' }] },
+    c_pass: { status: 'PASS', name: 'p', rows: [] },
+    c_skip: { status: 'SKIP', name: 's', rows: [] },
+  };
+  const state = buildBaselineState(findings, '2026-09-08');
+  assert.deepEqual(Object.keys(state).sort(), ['c_fail', 'c_unverifiable']);
+  assert.deepEqual(state.c_fail, { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['a', 'b'] });
+  assert.deepEqual(state.c_unverifiable, { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['z'] });
+});
+
+test('buildBaselineState: empty findings produces an empty state (0 filed)', () => {
+  assert.deepEqual(buildBaselineState({}, '2026-09-08'), {});
+});
+
+// ---- MINOR fix (round 3, T-505): corrupt state file no longer wedges the sync
+
+test('parsePreviousState: no file (null raw text) -> empty state, ok, hadState false', () => {
+  const out = parsePreviousState(null);
+  assert.deepEqual(out, { state: {}, ok: true, hadState: false });
+});
+
+test('parsePreviousState: valid JSON object -> parsed state, ok, hadState true', () => {
+  const raw = JSON.stringify({ c1: { issueNumber: 5, firstSeen: '2026-09-01', lastRowKeys: ['a'] } });
+  const out = parsePreviousState(raw);
+  assert.equal(out.ok, true);
+  assert.equal(out.hadState, true);
+  assert.deepEqual(out.state, { c1: { issueNumber: 5, firstSeen: '2026-09-01', lastRowKeys: ['a'] } });
+});
+
+test('parsePreviousState: corrupt/truncated JSON -> falls back to empty state, ok false, carries the cause', () => {
+  const out = parsePreviousState('{ "c1": { "issueNumber": 5, oops');
+  assert.equal(out.ok, false);
+  assert.equal(out.hadState, false);
+  assert.deepEqual(out.state, {});
+  assert.ok(out.error && out.error.length > 0, 'expected a non-empty error/cause message');
+});
+
+test('parsePreviousState: valid JSON that is not an object (array) -> falls back to empty state, ok false', () => {
+  const out = parsePreviousState('[1, 2, 3]');
+  assert.equal(out.ok, false);
+  assert.equal(out.hadState, false);
+  assert.deepEqual(out.state, {});
+});
+
+test('parsePreviousState: valid JSON null -> falls back to empty state, ok false', () => {
+  const out = parsePreviousState('null');
+  assert.equal(out.ok, false);
+  assert.equal(out.hadState, false);
+});
+
+// ---- MINOR fix (round 2/3, T-505): main()'s --new-only BASELINE-ONLY pass,
+// exercised end-to-end as a subprocess (no unit test previously covered
+// main() itself — everything else in this file tests pure functions only).
+// This spawns the real CLI against a throwaway state dir
+// (DETECTION_FLOOR_STATE_DIR override, see resolveStateDirOrRefuse()) so it
+// never touches the canonical /root/data-audit-ipodhan/state path.
+
+const SCRIPT_PATH = join(__dirname, '..', 'audit-findings-to-issues.mjs');
+
+function writeFindingsFixture(dir, runDate) {
+  const findingsPath = join(dir, 'findings-latest.json');
+  writeFileSync(findingsPath, JSON.stringify({
+    runDate,
+    results: [{ id: 'c_baseline_test', status: 'FAIL', name: 'baseline test check', detail: 'synthetic' }],
+    findings: { c_baseline_test: [{ rowKey: 'row-1', title: 'Row 1', body: 'synthetic' }] },
+  }));
+  return findingsPath;
+}
+
+test('main() --new-only baseline: LIVE run writes issues-sync-state.json and files 0 (no create/comment/reopen)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'audit-findings-baseline-live-'));
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const findingsPath = writeFindingsFixture(dir, today);
+    const stateFile = join(dir, 'issues-sync-state.json');
+    assert.equal(existsSync(stateFile), false, 'precondition: no previous state file');
+
+    const stdout = execFileSync('node', [SCRIPT_PATH, '--new-only', findingsPath], {
+      env: { ...process.env, DETECTION_FLOOR_STATE_DIR: dir },
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+
+    assert.match(stdout, /NEW-ONLY BASELINE: no previous state; recorded 1 finding\(s\), filed 0/);
+    assert.doesNotMatch(stdout, /created issue|commented on|closed #|reopen #/i, 'baseline pass must file/create/comment/reopen nothing');
+
+    assert.equal(existsSync(stateFile), true, 'baseline pass must write issues-sync-state.json');
+    const written = JSON.parse(readFileSync(stateFile, 'utf8'));
+    assert.deepEqual(written, { c_baseline_test: { issueNumber: null, firstSeen: today, lastRowKeys: ['row-1'] } });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('main() --new-only baseline: --dry-run honors the flag (records nothing, no state file written)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'audit-findings-baseline-dry-'));
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const findingsPath = writeFindingsFixture(dir, today);
+    const stateFile = join(dir, 'issues-sync-state.json');
+
+    const stdout = execFileSync('node', [SCRIPT_PATH, '--new-only', '--dry-run', findingsPath], {
+      env: { ...process.env, DETECTION_FLOOR_STATE_DIR: dir },
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+
+    assert.match(stdout, /NEW-ONLY BASELINE: no previous state; recorded 1 finding\(s\), filed 0/);
+    assert.match(stdout, /DRY-RUN: baseline state not written/);
+    assert.equal(existsSync(stateFile), false, '--dry-run must never write the baseline state file');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
