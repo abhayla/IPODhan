@@ -340,7 +340,7 @@ disagreements and bury the real ones. Verification for E-1 is the other exchange
 arithmetic (`open ≤ close < allotment < refund ≤ credit < listing`, and `listing ≤ close + 3`
 working days).
 
-**E-1 is counted, not hidden.** Check 4.3b reports the nine E-1 fields as a fixed, named exclusion
+**E-1 is counted, not hidden.** Check 4.3b reports the twelve E-1 fields as a fixed, named exclusion
 alongside the round-1 yield, so "100% of document-owned fields" is always read against a visible
 list of what was excluded and why. If that list ever grows without a decision recorded here, check
 4.6 alarms.
@@ -572,7 +572,7 @@ So the loop is **source-major, in rounds**, not field-major:
 
 ```
 for each IPO in the working set (§2.3):
-    plan = field_plan(IPO)                      # the 150 sourced fields, §2.2
+    plan = field_plan(IPO)                      # the sourced fields for this IPO's type, §2.2
 
     ROUND 1 — the offer document
       read the IPO's best available document ONCE
@@ -858,7 +858,7 @@ previous run*, never a total.
 
 | # | Step (§) | The check | Where recorded | Healthy | Alarms when |
 |---|---|---|---|---|---|
-| 4.1 | Plan built (§2.2) | rows in `ipo_field_plan` for each live IPO = the 131 sourced fields for its type | cycle summary line | 131 for mainboard, fewer for Rights/OFS by their NOT_APPLICABLE set | any live IPO with 0 plan rows, or a count that changes without a type change |
+| 4.1 | Plan built (§2.2) | plan rows for each live IPO **compared against the committed field manifest**, not against a number typed here: `plan_rows == manifest_rows(offering_type)` AND `manifest_sha == committed_sha` | nightly floor, id `PULL-PLAN` | equal, and the manifest sha unchanged | any mismatch, any live IPO with 0 plan rows, or a manifest sha that moved without a commit. **An expected count written into this document would be compared against the generator's own output and would detect nothing** — this is why the constant is not stated here |
 | 4.2 | Walk ran (§2.3) | live-tier IPOs walked this slot ÷ live-tier IPOs | cycle summary | 100% every slot | < 100% twice consecutively |
 | 4.3 | **Round-1 yield** (§2.1.1) | per IPO: of the fields the document owns, how many round 1 actually supplied. Reported as a fraction with the shortfall **named by field**, never as a bare percentage | nightly floor, diffed | **100%**. Measured today on the best-covered IPO (Deepa Jewellers): 47 of 56 document-owned fields = 84%; typical IPO = 0% | **any** document-owned field sourced from round 2 or 3 without a reason in the allowed list (§2.5) |
 | 4.3b | Exception register | every fall-through to round 2 or 3, by field identity and reason, NEW vs GONE vs SAME against yesterday — printed **beside the twelve E-1 fields (§1.2.1)** so the 100% is always read against a visible exclusion list | floor delta + brief | shrinking; every entry has a reason and an owner; the E-1 list is exactly the twelve | a NEW fall-through on a live IPO, an entry with reason `CHECK_FAILED` unchanged for 3 days, or an E-1 list that is not the twelve |
