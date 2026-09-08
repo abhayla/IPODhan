@@ -35,7 +35,11 @@ const STEAMHOUSE_BSE_ROW = {
  * in Postgres. `fieldSourcesRows` accumulates every upserted provenance row
  * so tests can assert on it.
  */
-function fakeTransactionalDb(opts: { simulatedStoredLeadManagers: string[] | null; previousSource?: string | null }) {
+function fakeTransactionalDb(opts: {
+  simulatedStoredLeadManagers: string[] | null;
+  previousSource?: string | null;
+  slug?: string;
+}) {
   const fieldSourcesRows: Array<Record<string, unknown>> = [];
   const insertCalls: Array<Record<string, unknown>> = [];
 
@@ -46,7 +50,7 @@ function fakeTransactionalDb(opts: { simulatedStoredLeadManagers: string[] | nul
           returning: async () => {
             const guardPasses =
               !opts.simulatedStoredLeadManagers || opts.simulatedStoredLeadManagers.length === 0;
-            return guardPasses ? [{ id: 'ipo-1' }] : [];
+            return guardPasses ? [{ id: 'ipo-1', slug: opts.slug ?? 'steamhouse-india' }] : [];
           },
         }),
       }),
@@ -80,6 +84,15 @@ function fakeTransactionalDb(opts: { simulatedStoredLeadManagers: string[] | nul
   return { dbLike, fieldSourcesRows, insertCalls };
 }
 
+/**
+ * T-513 / #419: a fake `ipoRepository` exposing only the narrow surface
+ * `recordDiscoveredLeadManagers` needs (`invalidateIpoCache`), matching the
+ * `Pick<IPORepository, 'invalidateIpoCache'>` parameter type.
+ */
+function fakeIpoRepository() {
+  return { invalidateIpoCache: vi.fn().mockResolvedValue(undefined) };
+}
+
 describe('T-503 — discovered BSE lead managers reach ipos.lead_managers', () => {
   it('parses the real Steamhouse payload to exactly 1 BRLM (the class this check flags)', () => {
     const parsed = parseBseParties(STEAMHOUSE_BSE_ROW as never);
@@ -90,9 +103,19 @@ describe('T-503 — discovered BSE lead managers reach ipos.lead_managers', () =
 
   it('writes the discovered names through the shared write path when the field is empty, and upserts field_sources in the same transaction', async () => {
     const { leadManagers } = parseBseParties(STEAMHOUSE_BSE_ROW as never);
-    const { dbLike, fieldSourcesRows } = fakeTransactionalDb({ simulatedStoredLeadManagers: null });
+    const { dbLike, fieldSourcesRows } = fakeTransactionalDb({
+      simulatedStoredLeadManagers: null,
+      slug: 'steamhouse-india',
+    });
+    const ipoRepository = fakeIpoRepository();
 
-    const result = await recordDiscoveredLeadManagers('ipo-steamhouse', leadManagers, 'BSE', dbLike as never);
+    const result = await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-steamhouse',
+      leadManagers,
+      'BSE',
+      dbLike as never
+    );
 
     expect(result).toEqual({ written: true });
     expect(fieldSourcesRows).toHaveLength(1);
@@ -110,8 +133,15 @@ describe('T-503 — discovered BSE lead managers reach ipos.lead_managers', () =
       simulatedStoredLeadManagers: null,
       previousSource: 'MONEYCONTROL',
     });
+    const ipoRepository = fakeIpoRepository();
 
-    await recordDiscoveredLeadManagers('ipo-1', ['NSE Broker Securities Limited'], 'NSE', dbLike as never);
+    await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-1',
+      ['NSE Broker Securities Limited'],
+      'NSE',
+      dbLike as never
+    );
 
     expect(fieldSourcesRows[0]).toMatchObject({ source: 'NSE', previousSource: 'MONEYCONTROL' });
   });
@@ -120,8 +150,10 @@ describe('T-503 — discovered BSE lead managers reach ipos.lead_managers', () =
     const { dbLike, fieldSourcesRows } = fakeTransactionalDb({
       simulatedStoredLeadManagers: ['ADMIN Set Bank Limited'],
     });
+    const ipoRepository = fakeIpoRepository();
 
     const result = await recordDiscoveredLeadManagers(
+      ipoRepository as never,
       'ipo-1',
       ['Some Other Bank Limited'],
       'BSE',
@@ -135,13 +167,95 @@ describe('T-503 — discovered BSE lead managers reach ipos.lead_managers', () =
   it('writes nothing when the discovered names are absent or sanitize away to nothing (no transaction opened)', async () => {
     const { dbLike } = fakeTransactionalDb({ simulatedStoredLeadManagers: null });
     const txSpy = vi.spyOn(dbLike, 'transaction');
+    const ipoRepository = fakeIpoRepository();
 
-    expect(await recordDiscoveredLeadManagers('ipo-1', [], 'BSE', dbLike as never)).toEqual({ written: false });
-    expect(await recordDiscoveredLeadManagers('ipo-1', null, 'BSE', dbLike as never)).toEqual({ written: false });
+    expect(
+      await recordDiscoveredLeadManagers(ipoRepository as never, 'ipo-1', [], 'BSE', dbLike as never)
+    ).toEqual({ written: false });
+    expect(
+      await recordDiscoveredLeadManagers(ipoRepository as never, 'ipo-1', null, 'BSE', dbLike as never)
+    ).toEqual({ written: false });
     // A bare contact fragment with no legal-entity keyword sanitizes to nothing.
-    expect(await recordDiscoveredLeadManagers('ipo-1', ['Rahul Sharma'], 'BSE', dbLike as never)).toEqual({
+    expect(
+      await recordDiscoveredLeadManagers(ipoRepository as never, 'ipo-1', ['Rahul Sharma'], 'BSE', dbLike as never)
+    ).toEqual({
       written: false,
     });
     expect(txSpy).not.toHaveBeenCalled();
+    expect(ipoRepository.invalidateIpoCache).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * T-513 / #419 (PR #417 review): `recordDiscoveredLeadManagers` writes
+ * `leadManagers` drizzle-direct inside its own transaction and never told the
+ * cache layer, so `IPO_DETAIL`/`IPO_LIST` kept serving the pre-write value
+ * for up to 900s after a successful write. The sibling `recordBseDiscoveryMetadata`
+ * does not have this bug because it writes via `ipoRepository.update()`,
+ * which invalidates as a side effect.
+ */
+describe('T-513 / #419 — recordDiscoveredLeadManagers invalidates the IPO cache', () => {
+  it('invalidates the IPO cache for this ipoId/slug after a successful write', async () => {
+    const { leadManagers } = parseBseParties(STEAMHOUSE_BSE_ROW as never);
+    const { dbLike } = fakeTransactionalDb({
+      simulatedStoredLeadManagers: null,
+      slug: 'steamhouse-india',
+    });
+    const ipoRepository = fakeIpoRepository();
+
+    const result = await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-steamhouse',
+      leadManagers,
+      'BSE',
+      dbLike as never
+    );
+
+    expect(result).toEqual({ written: true });
+    expect(ipoRepository.invalidateIpoCache).toHaveBeenCalledTimes(1);
+    expect(ipoRepository.invalidateIpoCache).toHaveBeenCalledWith('ipo-steamhouse', 'steamhouse-india');
+  });
+
+  it('does NOT invalidate the cache when the write-once guard blocks the write (nothing changed to invalidate)', async () => {
+    const { dbLike } = fakeTransactionalDb({
+      simulatedStoredLeadManagers: ['ADMIN Set Bank Limited'],
+    });
+    const ipoRepository = fakeIpoRepository();
+
+    const result = await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-1',
+      ['Some Other Bank Limited'],
+      'BSE',
+      dbLike as never
+    );
+
+    expect(result).toEqual({ written: false });
+    expect(ipoRepository.invalidateIpoCache).not.toHaveBeenCalled();
+  });
+
+  it('a cache-invalidation failure (Redis down) never fails the write — logged, swallowed, written:true still returned', async () => {
+    const { leadManagers } = parseBseParties(STEAMHOUSE_BSE_ROW as never);
+    const { dbLike } = fakeTransactionalDb({
+      simulatedStoredLeadManagers: null,
+      slug: 'steamhouse-india',
+    });
+    const ipoRepository = {
+      invalidateIpoCache: vi.fn().mockRejectedValue(new Error('Redis connection refused')),
+    };
+
+    const result = await recordDiscoveredLeadManagers(
+      ipoRepository as never,
+      'ipo-steamhouse',
+      leadManagers,
+      'BSE',
+      dbLike as never
+    );
+
+    // The row write (and its field_sources provenance) already committed
+    // inside the transaction before invalidateIpoCache was ever called — a
+    // cache-layer failure here must not be reported as a write failure.
+    expect(result).toEqual({ written: true });
+    expect(ipoRepository.invalidateIpoCache).toHaveBeenCalledTimes(1);
   });
 });

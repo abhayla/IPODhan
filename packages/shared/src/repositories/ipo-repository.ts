@@ -987,6 +987,25 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     return row;
   }
 
+  /**
+   * Public cache-invalidation entry point (T-513 / #419) for write paths that
+   * persist an `ipos` row through their own transaction — e.g. a raw
+   * drizzle write that needs an in-transaction SQL WHERE write-once guard
+   * this repository's own `update()` cannot express — but still owe the same
+   * cache contract every other `ipos` write gets. Callers MUST invoke this
+   * AFTER their transaction commits, never from inside it: a rolled-back
+   * transaction must not drop a still-valid cache entry. `invalidateCache`
+   * already swallows Redis errors internally (`deleteCache`/
+   * `deleteCachePattern` catch-and-log) so a cache-layer failure here can
+   * never fail the caller's write.
+   */
+  async invalidateIpoCache(id: string, slug: string): Promise<void> {
+    await this.invalidateCache(
+      [getIPOByIdKey(id), getIPOBySlugKey(slug)],
+      ['ipo:list:*', 'ipo:search:*']
+    );
+  }
+
   async updateRating(
     ipoId: string,
     rating: number | null,
