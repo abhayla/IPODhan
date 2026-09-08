@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 12:0x IST (snapshot 1 — baseline).
+Last updated: 2026-09-08 12:15 IST (snapshot 2).
 
 ---
 
@@ -182,16 +182,17 @@ integration tier. Otherwise this group can wait.**
 
 | Item | What it does for users | Prev | Now | Status |
 |---|---|---|---|---|
-| Rentomojo price-band persist (#402, PR #423) | A filing that failed every 30 minutes on both slots now saves. Seven money columns widened; a guard refuses oversized values cleanly. | 85% | 90% | MERGED; proven on staging schema, cycle proof owed, not on prod until the next release |
+| Rentomojo price-band persist (#402, PR #423) | A filing that failed every 30 minutes on both slots now saves. Seven money columns widened; a guard refuses oversized values cleanly. | 90% | 90% | MERGED; columns verified widened on staging; the failed document sits at 7 of 10 retries and has not been re-attempted yet, so the row is still empty — proof pending its next retry |
 | Lead managers persisted (#416, PR #417) | Every IPO whose exchange payload lists lead managers now stores them. Steamhouse repaired on prod. | 100% | 100% | DONE, proven across 2 real cycles |
 | Band provenance on 85 prod IPOs (T-457) | Correct source records for price bands; stops false audit flags. | 100% | 100% | DONE, proven across 2 real cycles |
 | Qualiance lot size (#415, PR #424) | Stops a false alarm and adds minimum-application as its own check. Stored lot unchanged. | 100% | 100% | MERGED |
 | Automatic issue filing for new audit findings (#420) | New nightly problems become tracked issues without a human. | 100% | 100% | MERGED |
 | Main branch re-tested on every code push (#421) | A bad merge is caught immediately, not at the next deploy. | 100% | 100% | MERGED |
 | Lead-manager cache invalidation (#419, PR #427) | Lead-manager changes appear on the site immediately instead of up to 15 minutes later. | 80% | 100% | MERGED 97f90329, review PASS WITH NOTES |
-| Steamhouse price-band unit (#403, PR #428) | A scanned advertisement whose rupee symbol was misread by OCR now parses, so the document stops failing every cycle. | 70% | 90% | MERGED 3f5e52d9, review PASS WITH NOTES, all 5 checks green; staging cycle proof owed |
+| Steamhouse price-band unit (#403, PR #428) | A scanned advertisement whose rupee symbol was misread by OCR now parses, so the document stops failing every cycle. | 90% | 92% | MERGED 3f5e52d9; staging deploy of that commit in progress at 12:11; cycle proof owed |
 | Sector from Chittorgarh (#394, PR #425) | Would populate the sector filter. | 40% | 60% | PAUSED BY OWNER — 3 major findings open |
-| Prod repair skipped: stale correction table (#422) | Prevented a tool from erasing correct dates on a listed IPO. | — | 100% | DONE (issue filed, contract written, not started) |
+| Prod repair skipped: stale correction table (#422) | Prevented a tool from erasing correct dates on a listed IPO. | 100% | 100% | DONE (issue filed, contract written, not started) |
+| NEW — failure tracker over-reports (#429) | The tool every tick relies on reported Rentomojo as still failing when its last real failure was 9 hours earlier. It scans a log window, not current state, so a working fix looks unfixed. | — | 0% | AWAITING APPROVAL |
 
 ---
 
