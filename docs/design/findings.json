@@ -149,7 +149,7 @@
       "title": "162 of 194 fields have no consolidated writer at all",
       "detail": "consolidatedUpsertIPO covers the ipos table only; eight child tables have their own writers. The largest single piece of build work, hidden in a bullet saying nothing changes.",
       "fix_in": "§2.7 + §7.1",
-      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+      "closed_in": "OWNER DECISION 2026-09-08: the child-table consolidated writer is BUILD ITEM 1, and nothing from the plan table onward is contracted until it lands. consolidatedUpsertIPO handles tableName ipos only (data-consolidation-orchestrator.ts:187) = 32 of 240 fields; the eight child tables are written by persistFilingExtraction through their own repositories with no priority resolution, no field_sources and no data_conflicts - which is why they measure 100% document-sourced. 208 of 240 fields have no consolidated writer, so the pull loop would have nowhere to put 87% of what it extracts. Deliberately NOT building the walk first: it would work on 32 fields and give a confident reading on the easiest third."
     },
     {
       "id": "F-13",

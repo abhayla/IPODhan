@@ -1631,19 +1631,38 @@ prerequisite of the first closed IPO, not part of the work.
 
 | # | Piece | Depends on | Tier | Rough size |
 |---|---|---|---|---|
-| 1 | Field manifest: which of the 194 each document type prints | — | B | small — it is §1 turned into data |
-| 2 | Matrix cleanup: delete the 13 dead snake_case keys, add the 130 missing fields | 1 | B | medium, mechanical |
-| 3 | Per-field validation before write (the cheap half of O-3) | — | B | small, ships on its own, worth doing first |
-| 4 | `ipo_field_plan` table + generator | 1, 2 | **A** | medium |
-| 5 | The pull walk over the plan | 4 | **A** | large — this is the core |
-| 6 | Tiering and demand-ordered budgets (O-4) | 5 | **A** | medium |
-| 7 | The **one** missing extractor: ratios / basis-for-offer-price (32 pending documents). The basis-of-allotment ad is deliberately unread — §5.4 | — | B | medium, independent |
-| 8 | The re-read loop | 5 | **A** | medium |
-| 9 | The verification checks in §4 | 5, 8 | B | medium — but nothing above is proven without it |
-| 10 | Unit conversion (O-2) + `financial_data` becomes derived | 9 | **A** | large, own release |
-| 11 | Migration M0–M5 | all | **A** | long-running |
+| 1 | **The child-table consolidated writer** — extend the consolidation contract to `ipo_details`, `financial_statements`, `ipo_valuation`, `ipo_risk_factors`, `promoters`, `anchor_investors`, `ipo_intermediaries`, `peer_companies`: per-field priority resolution, `field_sources` rows, `data_conflicts` rows | — | **A** | **large — and it is the gate on everything below** |
+| 2 | Field manifest: which document type prints which field | — | B | small — the spec turned into data |
+| 3 | Matrix cleanup: delete the 13 dead snake_case keys, adopt the manifest | 2 | B | medium, mechanical |
+| 4 | Per-field validation before write (the cheap half of O-3) | — | B | small, ships on its own |
+| 5 | `ipo_field_plan` table + generator | 1, 2, 3 | **A** | medium |
+| 6 | The pull walk over the plan | 5 | **A** | large — the core |
+| 7 | Tiering and demand-ordered budgets (O-4) | 6 | **A** | medium |
+| 8 | The ratios / basis-for-offer-price extractor (32 pending documents) | — | B | medium, independent |
+| 9 | The re-read loop | 6 | **A** | medium |
+| 10 | The verification checks in §4 | 6, 9 | B | medium — nothing above is proven without it |
+| 11 | Unit conversion (O-2) + `financial_data` becomes derived | 10 | **A** | large, own release |
 
-Items 3 and 7 are genuinely independent and could start immediately without prejudging the rest.
+**Item 1 is first, by owner decision (2026-09-08), and nothing from item 5 onward is contracted
+until it lands.**
+
+`consolidatedUpsertIPO` consolidates **`tableName: 'ipos'` only**
+(`data-consolidation-orchestrator.ts:187`) — **32 of the 240 fields.** The eight child tables are
+written by `persistFilingExtraction` through their own repositories, with no priority resolution, no
+provenance and no conflict rows. That is precisely *why* §0.1 measures them as 100%
+document-sourced: nothing else can write them.
+
+So **208 of 240 fields have no consolidated writer at all**, and the pull loop would have nowhere to
+put 87% of what it extracts. An earlier draft buried this under a bullet claiming the write path was
+unchanged. An implementer trusting that would have built the walk, run it, and found that the walk
+works and the writes go nowhere. **It is the largest single piece of work here and it was described
+as no work at all.**
+
+**Deliberately not done first: the walk.** Building it early would "work" — on 32 fields — and give a
+confident reading on the easiest third of the problem while the hard part is untouched.
+
+Items 4 and 8 are genuinely independent and can start immediately, in parallel with item 1, without
+prejudging anything.
 Everything from 4 onward is one design and should not be half-built.
 
 ### 7.2 What is reversible and what is not
