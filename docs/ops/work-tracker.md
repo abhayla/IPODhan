@@ -91,7 +91,14 @@ mock HTML that no longer matches the live sites.
    has drifted. Catches drift too, but adds network flakiness and Actions minutes.
 3. *Do nothing;* rely on reviewers noticing. This is what we do today, and it failed today.
 **Recommendation: option 1 now, option 2 later only for the 3-4 fixtures that back money-carrying extractors.**
-**Effort:** ~half a day. **Status:** AWAITING APPROVAL. **Prev:** — **Now:** 0%
+
+**APPROVED by the owner 2026-09-08 ~13:00 IST**, with the owner's own improvement folded in: fixtures are sourced FROM
+the per-IPO document store that already exists () rather than
+hand-saved, so provenance is automatic and the human step where the mistake happens is removed. Split into **T-518**
+(provenance header, identity check, shrink-only backfill allowlist, sourcing helper, pr-gate step) — BUILDING now — and
+**T-519** (revive the live-parser check as a nightly scheduled job; the answer to "why not just read the live sites") —
+QUEUED. The three October-2025 BSE snippets are sized as a follow-up, not re-captured in T-518.
+**Effort:** ~half a day + ~1 day. **Status:** APPROVED-RUNNING. **Prev:** 0% **Now:** 5%
 
 ### C2. Checks compare our data to itself, never to the outside world
 **What it is.** Audits assert internal consistency. They cannot see that a correct-looking value is wrong.
