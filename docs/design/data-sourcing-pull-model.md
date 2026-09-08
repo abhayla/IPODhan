@@ -844,6 +844,65 @@ come from the Chittorgarh listing page this way — `segment` 242, `offeringType
 same way. This design needs a stated binding rule: what counts as a match, what a near-match does,
 and what an ambiguous match does. It does not have one yet.
 
+#### 2.3.3 Binding a list row to an IPO (F-46)
+
+For a list source the page is never wrong — the binding is. The rule:
+
+**Bind on the strongest key the row carries, and never on a partial or similarity match.**
+
+1. `symbol` (exchange ticker) — exact.
+2. `isin` — exact.
+3. Normalised company name — exact after
+   `packages/shared/src/utils/company-name-normalizer.ts`, which lowercases, expands `&`, and
+   strips punctuation, a trailing parenthetical, a trailing `IPO`/`FPO`, and the legal suffix
+   (`Limited`, `Ltd`, `Private Limited`, `Pvt Ltd`). **This is exact-match on a normalised string,
+   not fuzzy matching** — nothing binds on substring, edit distance or "closest".
+
+**Outcomes, all three of which must be recorded:**
+
+| Result | What happens |
+|---|---|
+| Exactly one IPO matches | bind, and continue |
+| **More than one matches** | `AMBIGUOUS` — bind nothing, write no value, record both candidates by name |
+| **No IPO matches** | `UNBOUND` — not an error. This is how a newly announced IPO is found, and it is the signal discovery consumes. Record it by name so it is visible rather than dropped |
+
+**And one cross-check the binding gets for free.** A list row carries its own dates. **If the row's
+open or close date disagrees with the IPO it just bound to, the binding is suspect** — record it and
+write nothing. A wrong binding almost always shows up here first, because two different IPOs rarely
+share a bidding window.
+
+**Measured 2026-09-08: the collision risk is not realised.** Running the same normalisation across
+all 327 production IPOs produces **zero** pairs that collapse to the same string. The aggressive
+suffix-stripping is safe on today's data because a trailing parenthetical is only stripped when it
+sits at the very end — `Glass Wall Systems (India) Limited` normalises to `glass wall systems
+(india)` and keeps its distinguishing part.
+
+So this is a rule the design states before the pull loop starts relying on list sources, not a
+defect being repaired.
+
+#### 2.3.4 A correct page still contains other companies' numbers
+
+The two rules above get us to the right page and bind it to the right IPO. **Neither stops the third
+mistake: reading a value from the right page that belongs to a different company.**
+
+**Observed 2026-09-08 on Chittorgarh's Prasol Chemicals page.** It shows a `PE Ratio` column — inside
+a table headed *"Recently Listed IPOs in Specialty Chemicals"*, listing Sudeep Pharma and others. A
+scraper matching that label anywhere on the page would have written **Sudeep Pharma's P/E of 47.61
+onto Prasol Chemicals**, and no arithmetic check would object: it is a perfectly plausible P/E.
+
+**The rule:**
+
+> A value is only read from within the page section that is about **this** IPO. Extraction anchors
+> on the section — the company's own financial table, its own valuation block — never on a label
+> matched across the whole document. A label that appears in more than one section is a defect in
+> the extractor, not a value.
+
+This is the same failure as §2.3.1 moved one level in: there, the wrong page; here, the right page's
+wrong table. `financial_data.pe_ratio` lost Chittorgarh as a source because of it, and the existing
+scraper already applies this discipline in one place — the issue-size prose fallback anchors on the
+page's own company name (`chittorgarh-detail-fields.ts:551`). The rule generalises what that comment
+already knows.
+
 ### 2.4 What the loop does, per field
 
 ```
@@ -1630,19 +1689,19 @@ advertisement existed everywhere; it does not.
 | 85 | `financial_data.profit_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
 | 86 | `financial_data.profit_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
 | 87 | `financial_data.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 88 | `financial_data.pe_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A9 |  |
-| 89 | `financial_data.eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
-| 90 | `financial_data.roe` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
-| 91 | `financial_data.debt_to_equity` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
-| 92 | `financial_data.reserves_and_surplus` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 93 | `financial_data.total_assets` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 94 | `financial_data.total_borrowing` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
-| 95 | `financial_data.promoter_holding_pre_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
-| 96 | `financial_data.promoter_holding_post_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
-| 97 | `financial_data.market_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 |  |
-| 98 | `financial_data.pre_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
-| 99 | `financial_data.post_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
-| 100 | `financial_data.ronw` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A10 |  |
+| 88 | `financial_data.eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
+| 89 | `financial_data.roe` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
+| 90 | `financial_data.debt_to_equity` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | — |  |
+| 91 | `financial_data.reserves_and_surplus` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
+| 92 | `financial_data.total_assets` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
+| 93 | `financial_data.total_borrowing` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 |  |
+| 94 | `financial_data.promoter_holding_pre_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
+| 95 | `financial_data.promoter_holding_post_issue` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D8 |  |
+| 96 | `financial_data.market_cap` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A8 |  |
+| 97 | `financial_data.pre_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
+| 98 | `financial_data.post_ipo_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C6 |  |
+| 99 | `financial_data.ronw` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | A10 |  |
+| 100 | `financial_data.pe_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: observed 2026-09-08: CG prints a PE Ratio column only for OTHER recently listed IPOs in a comparison table, never this IPO own |
 | 101 | `financial_data.ebitda_fy2022` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
 | 102 | `financial_data.ebitda_fy2023` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
 | 103 | `financial_data.ebitda_fy2024` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 |  |
@@ -1658,11 +1717,11 @@ advertisement existed everywhere; it does not.
 | 113 | `financial_statements.ebitda` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
 | 114 | `financial_statements.pat` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C1 | CG restated table carries this per fiscal year |
 | 115 | `financial_statements.net_worth` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C2 | CG gives the most-recent year only, not the full series |
-| 116 | `financial_statements.basis` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 117 | `financial_statements.unit` | D | DOC | — | — | DOC · — · — | DOC · — · — | C7 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 118 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 119 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
-| 120 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement |
+| 116 | `financial_statements.basis` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C8 | OBSERVED on a live CG page: heading gives restated/consolidated, footer gives the unit, and a note flags a year on a different basis |
+| 117 | `financial_statements.unit` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C7 | OBSERVED on a live CG page: heading gives restated/consolidated, footer gives the unit, and a note flags a year on a different basis |
+| 118 | `financial_statements.eps_basic` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: observed absent from a live CG detail page 2026-09-08 - it prints a single pre/post-issue EPS pair, never the per-fiscal-year basic-vs-diluted split, and no cash-flow line |
+| 119 | `financial_statements.eps_diluted` | D | DOC | — | — | DOC · — · — | DOC · — · — | C6 | no rank 2: observed absent from a live CG detail page 2026-09-08 - it prints a single pre/post-issue EPS pair, never the per-fiscal-year basic-vs-diluted split, and no cash-flow line |
+| 120 | `financial_statements.op_cash_flow` | D | DOC | — | — | DOC · — · — | DOC · — · — | C3 | no rank 2: observed absent from a live CG detail page 2026-09-08 - it prints a single pre/post-issue EPS pair, never the per-fiscal-year basic-vs-diluted split, and no cash-flow line |
 | 121 | `financial_statements.dscr` | D | DOC | — | — | DOC · — · — | DOC · — · — | C4 | no rank 2: DSCR appears only in the Risk Factors financial tables |
 | 122 | `financial_statements.rent_expense` | D | DOC | — | — | DOC · — · — | DOC · — · — | C5 | no rank 2: rent expense line appears only in Other Financial Information |
 | 123 | `ipo_valuation.price_floor` | D | DOC | NSE | BSE | DOC · BSE · — | DOC · NSE · — | A1 | same number as ipos.price_range_min |

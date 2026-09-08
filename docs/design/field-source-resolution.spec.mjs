@@ -101,11 +101,16 @@ add('ipo_details','sub_categories_upi','D',['DOC','NSE','—'],{doc:'B7',only:'t
 // ---------- financial_data (26) ----------
 for (const y of ['2022','2023','2024']) add('financial_data',`revenue_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
 for (const y of ['2022','2023','2024']) add('financial_data',`profit_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
-for (const [c,d] of [['net_worth','C2'],['pe_ratio','A9'],['eps','C6'],['roe','—'],['debt_to_equity','—'],
+for (const [c,d] of [['net_worth','C2'],['eps','C6'],['roe','—'],['debt_to_equity','—'],
   ['reserves_and_surplus','C2'],['total_assets','C2'],['total_borrowing','C2'],
+  // pe_ratio moved out of this loop - see the observation below.
   ['promoter_holding_pre_issue','D8'],['promoter_holding_post_issue','D8'],['market_cap','A8'],
   ['pre_ipo_eps','C6'],['post_ipo_eps','C6'],['ronw','A10']])
   add('financial_data',c,'D',['DOC','CG','MC'],{doc:d,...D_FIN});
+// OBSERVED 2026-09-08: a live CG detail page shows "PE Ratio" ONLY inside a "Recently Listed IPOs
+// in <sector>" table - other companies' ratios, not this IPO's. Matching that label anywhere on the
+// page would write a peer's P/E onto this IPO. CG is NOT a source for it.
+add('financial_data','pe_ratio','D',['DOC','—','—'],{doc:'A9',only:'observed 2026-09-08: CG prints a PE Ratio column only for OTHER recently listed IPOs in a comparison table, never this IPO own',...D_FIN});
 for (const y of ['2022','2023','2024']) add('financial_data',`ebitda_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
 for (const y of ['2022','2023','2024']) add('financial_data',`total_income_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
 // F-13: KPI-table ratios the document prints but that hold no data on production today.
@@ -122,8 +127,13 @@ const FS_NA = ['INVITS','REITS','TENDER','BUYBACK'];
 for (const [c,d] of [['fiscal_year','C1'],['revenue','C1'],['total_income','C1'],['ebitda','C1'],['pat','C1']])
   add('financial_statements',c,'D',['DOC','CG','MC'],{doc:d,na:FS_NA,note:'CG restated table carries this per fiscal year'});
 add('financial_statements','net_worth','D',['DOC','CG','MC'],{doc:'C2',na:FS_NA,note:'CG gives the most-recent year only, not the full series'});
-for (const [c,d] of [['basis','C8'],['unit','C7'],['eps_basic','C6'],['eps_diluted','C6'],['op_cash_flow','C3']])
-  add('financial_statements',c,'D',['DOC','—','—'],{doc:d,only:'CG prints a single pre/post-issue EPS pair and no basis/unit/cash-flow line; the per-fiscal-year basic-vs-diluted split exists only in the restated statement',na:FS_NA});
+// OBSERVED 2026-09-08 on a live CG detail page: the table is headed "Financials (Restated
+// Consolidated)" and footed "Amount in Rs Crore", with a per-year note ("FY 2026 financials are
+// on standalone basis"). So CG DOES carry basis and unit - an earlier draft said it did not.
+for (const [c,d] of [['basis','C8'],['unit','C7']])
+  add('financial_statements',c,'D',['DOC','CG','—'],{doc:d,na:FS_NA,note:'OBSERVED on a live CG page: heading gives restated/consolidated, footer gives the unit, and a note flags a year on a different basis'});
+for (const [c,d] of [['eps_basic','C6'],['eps_diluted','C6'],['op_cash_flow','C3']])
+  add('financial_statements',c,'D',['DOC','—','—'],{doc:d,only:'observed absent from a live CG detail page 2026-09-08 - it prints a single pre/post-issue EPS pair, never the per-fiscal-year basic-vs-diluted split, and no cash-flow line',na:FS_NA});
 // F-13: printed in the RHP but not extracted today.
 add('financial_statements','dscr','D',['DOC','—','—'],{doc:'C4',only:'DSCR appears only in the Risk Factors financial tables',na:FS_NA,neverPopulated:true});
 add('financial_statements','rent_expense','D',['DOC','—','—'],{doc:'C5',only:'rent expense line appears only in Other Financial Information',na:FS_NA,neverPopulated:true});

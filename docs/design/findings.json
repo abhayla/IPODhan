@@ -417,10 +417,11 @@
       "sev": "MAJOR",
       "area": "field mapping",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "The mapping is designed, not observed; no stage verifies a named source actually serves the field",
       "status_note": "BUILD-GATE: becomes the first step of the build.",
-      "fix_in": "§6 M1"
+      "fix_in": "§6 M1",
+      "closed_in": "Two live Chittorgarh fetches 2026-09-08 verified every CG-ranked field by reading the page text, not by assumption. Four ranks corrected: promoters.name gained CG (it prints Company Promoters: <names>); peer_companies.pbv_ratio lost CG (page has NAV/EPS/PE/market cap, no P/BV); financial_statements.basis and unit gained CG (table headed Financials (Restated Consolidated), footed Amount in Rs Crore, with a per-year standalone note); financial_data.pe_ratio lost CG (the PE Ratio column belongs to a Recently Listed IPOs comparison table of OTHER companies). Produced a new rule, section 2.3.4: a value is only read from the page section about THIS IPO, never by matching a label across the whole page."
     },
     {
       "id": "F-40",
@@ -493,10 +494,22 @@
       "sev": "MAJOR",
       "area": "pull loop",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "List-based sources are matched to our IPOs by NAME, which the page-identity rule does not cover",
       "detail": "Two different identity failures, not one. (a) PER-IPO PAGE fetch - Chittorgarh detail via verifier_url - guarded by the F-44 page-identity rule; affects the 47 rank-2 fields (financial_data, financial_statements, peer_companies, ipo_valuation mcap/pe at cap, promoters.name). (b) LIST fetch - InvestorGain GMP (one report endpoint, data-read/331) and the Chittorgarh listing page - where a row is bound to our IPO by normalizeCompanyNameForMatching (investorgain-gmp-orchestrator-v2.ts:331-336, flag ENABLE_GMP_NAME_MATCH). The page-identity rule cannot help there because the page is correct; the ROW binding is what can be wrong. Exposure: gmp_records.gmp is the only field where a website is rank 1, and it is bound this way. Separately 24 distinct fields holding 4,825 values on prod come from the CG listing page by the same mechanism - segment 242, offeringType 241, listingDate 238, closeDate 237, openDate 236, isin 228, faceValue 226, issueSize 221, registrar 219, leadManagers 219. Needed: a stated binding rule (what counts as a match, what a near-match does, what an ambiguous match does) and a check on cross-bound rows.",
-      "fix_in": "§2.3.1 companion rule — row binding for list sources"
+      "fix_in": "§2.3.1 companion rule — row binding for list sources",
+      "closed_in": "§2.3.3 binding rule: strongest key first (symbol, ISIN, then exact normalised name), ambiguous binds nothing, unbound is recorded as a discovery signal, and the row own dates cross-check the binding. Measured 2026-09-08: zero normalisation collisions across all 327 prod IPOs, so the risk is stated ahead of the pull loop rather than repaired."
+    },
+    {
+      "id": "F-47",
+      "sev": "MAJOR",
+      "area": "pull loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "A correct page still contains other companies numbers",
+      "detail": "OBSERVED: Chittorgarh Prasol Chemicals page carries a PE Ratio column inside a Recently Listed IPOs in Specialty Chemicals table. Matching that label page-wide would write Sudeep Pharma P/E of 47.61 onto Prasol, and no arithmetic check would object because it is a plausible P/E. Third identity failure after wrong page (F-44) and wrong row binding (F-46): right page, wrong table.",
+      "fix_in": "§2.3.4",
+      "closed_in": "section-anchoring rule; financial_data.pe_ratio lost CG as a source"
     }
   ],
   "false_assertions": [
