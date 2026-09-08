@@ -683,8 +683,32 @@ def _find(lines, rx, start=0):
 # requires an EXPLICIT unit line for any C-group money field to be written — so
 # this extractor does its own presence check, over the cover page and every
 # other page, and never falls back to a default.
-UNIT_RX = re.compile(r"(?:₹|rs\.?|rupees?)?\s*in\s+(million|millions|lakh|lakhs|crore|crores)",
-                     re.I)
+#
+# T-511 (#403): "lac"/"lacs" is added alongside "lakh"/"lakhs" — the same
+# amount, spelled the way older BSE-style price-band ads print it (verified
+# against SteamHouse's real ad, which used "million" but confirmed the
+# comparator's unit vocabulary was one spelling short of the class named in
+# the defect: Rs/INR/₹/lakh/lakhs/lac/lacs/crore/cr/mn/million with or
+# without separators).
+#
+# T-511 (#403) root cause: the OCR route (D6/W-57) misreads a scanned ₹ glyph
+# as an unrelated Unicode character — not a fixed handful of ASCII lookalikes
+# like the text-layer misencodings W-92/W-138 repair, but effectively any
+# codepoint RapidOCR's recognizer confuses it for (observed on SteamHouse's
+# real price-band ad: "(in 天 million)", "in 使 million)" — a different CJK
+# ideograph each time). That stray glyph sits BETWEEN "in" and the unit word,
+# so `in\s+(million|...)` never matched even though the phrase was printed
+# and OCR'd correctly apart from the one glyph. `_UNIT_NOISE` absorbs exactly
+# one such token — one or more characters that could not be part of the unit
+# word itself (no ASCII letters, no digits) — so the phrase still resolves to
+# the unit that follows it, without loosening the match enough to swallow a
+# real word ("in the ordinary course of business" does not match: "the" is
+# ASCII letters, not noise, and it is not one of the unit words either).
+_UNIT_NOISE = r"(?:[^\sA-Za-z0-9]+\s+)?"
+UNIT_RX = re.compile(
+    r"(?:₹|rs\.?|rupees?)?\s*in\s+" + _UNIT_NOISE +
+    r"(million|millions|lakh|lakhs|lac|lacs|crore|crores)",
+    re.I)
 
 
 def _find_unit(page_texts):
@@ -695,7 +719,7 @@ def _find_unit(page_texts):
         m = UNIT_RX.search(cleaned)
         if m:
             u = m.group(1).lower()
-            if u.startswith("lakh"):
+            if u.startswith("lakh") or u.startswith("lac"):
                 return "lakhs", idx
             if u.startswith("cror"):
                 return "crores", idx
