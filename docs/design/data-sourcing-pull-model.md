@@ -601,6 +601,39 @@ Written once here rather than duplicated into every row.
 | **BUYBACK / TENDER** | 17 | Corporate actions, not offerings. They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 `offering_type` is the guard; §4.6 gives it a check. |
 | **FPO** | **0 today** | The brief asked for follow-on offers. **There are none on production.** The rule is written and not exercised: no draft prospectus stage, so rank 1 is the RHP or prospectus directly; everything else follows mainboard. Because no row exercises it, it carries a higher risk of being wrong than any other line in this table. |
 
+### 1.11.1 Retired source: Moneycontrol (owner decision, 2026-09-09)
+
+**Moneycontrol is retired as a source.** It holds no rank in this design.
+
+**What it actually served**, corrected — I stated "nine fields" from one grep of one file, which was
+wrong. Across `moneycontrol-scraper.ts` and `moneycontrol-orchestrator-v2.ts` it produces about
+**fifteen core fields plus four subscription figures**: allotment date, close date, company name,
+ISIN, issue size, listing date, listing exchange, lot size, offering type, open date, price band low
+and high, segment, status, symbol, and the QIB/NII/retail/total subscription multiples.
+(`field_sources` also carries `faceValue` and `registrar` rows from Moneycontrol that neither file
+maps today — pre-refactor writes.)
+
+**The conclusion is unchanged, and it is the reason to retire it: for every one of those fields, the
+offer document plus NSE plus BSE — or the document plus Chittorgarh — already fill the top three.**
+Moneycontrol is fourth-best at everything and reaches a rank nowhere. Its ~180 provenance rows exist
+only because the **push** model let it win by arriving first, not because it was preferred.
+
+**Retirement is not deletion, and the order matters:**
+
+1. **Now, in this design:** zero ranks, and no capability entry. The pull loop never asks it.
+2. **Next:** stop scheduling the scraper. This is where the saving is — one fewer source fetched
+   every aggregator run.
+3. **Not done:** the `MONEYCONTROL` value stays in the `scraper_source` enum, and the ~180 existing
+   provenance rows stay exactly as they are. **Those rows are the historical truth of where a value
+   came from** — rewriting them would be falsifying provenance. They will be superseded naturally as
+   the pull loop re-sources those fields from the document.
+4. **Kept, and separate:** `moneycontrol-rss.ts` reads an IPO **news** feed, not IPO data. It is a
+   different thing that happens to share a domain name and is untouched by this decision.
+
+**What we lose:** nothing this design ranks. **What to watch:** if a field ever falls through all
+three ranks on an IPO where Moneycontrol used to supply it, that is an `EXHAUSTED` row (§2.6) and it
+is visible — it is not silence.
+
 ### 1.12 Retired fields — never write these (owner decision, 2026-09-08)
 
 The public API returns **19 fields that are `null` on all 327 production IPOs**, and the `ipos` table
@@ -1899,12 +1932,12 @@ advertisement existed everywhere; it does not.
 |---:|---|---|---|---|---|---|---|---|---|
 | 1 | `ipos.symbol` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E7 cover |  |
 | 2 | `ipos.company_name` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | cover |  |
-| 3 | `ipos.issue_size` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | A5+A6 |  |
+| 3 | `ipos.issue_size` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A5+A6 |  |
 | 4 | `ipos.lot_size` | D | DOC | BSE | NSE | DOC · BSE · CG | DOC · NSE · CG | A3 |  |
-| 5 | `ipos.open_date` | T | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | **E-1** (§1.2.1) |
-| 6 | `ipos.close_date` | T | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | **E-1** (§1.2.1) |
-| 7 | `ipos.listing_date` | T | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | **E-1** (§1.2.1) |
-| 8 | `ipos.status` | T | NSE | BSE | CG | BSE · CG · MC | NSE · CG · MC | — | **E-1** (§1.2.1) |
+| 5 | `ipos.open_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
+| 6 | `ipos.close_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
+| 7 | `ipos.listing_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
+| 8 | `ipos.status` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 9 | `ipos.registrar` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E3 | VERIFIED: NSE issueInfo returns "Name of the Registrar"; BSE detail returns Registrar with address |
 | 10 | `ipos.registrar_id` | C | — | — | — | — · — · — | — · — · — | — | computed: FK resolved from registrar |
 | 11 | `ipos.rating_override` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
@@ -1920,7 +1953,7 @@ advertisement existed everywhere; it does not.
 | 21 | `ipos.lead_managers` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E1 | VERIFIED: NSE returns "Book Running Lead Managers"; BSE returns Book_Running_Lead_Manager |
 | 22 | `ipos.isin` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E7 |  |
 | 23 | `ipos.segment` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A15 |  |
-| 24 | `ipos.offering_type` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | A11 |  |
+| 24 | `ipos.offering_type` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A11 |  |
 | 25 | `ipos.scraper_locked` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
 | 26 | `ipos.last_manual_edit_at` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 27 | `ipos.objectives` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F4 |  |

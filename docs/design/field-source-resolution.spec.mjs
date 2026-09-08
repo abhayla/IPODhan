@@ -287,14 +287,18 @@ const TYPES = ['MAINBOARD','SME_BSE','SME_NSE','FPO','RIGHTS','OFS','NCD','INVIT
 // "web-covered" table without checking whether either source serves it, which produced 46 false
 // Moneycontrol ranks - MC would have been a last resort that could never fire.
 //
-// MONEYCONTROL, verified by reading all three scrapers: it maps NINE fields and subscription.
-// It carries no financials, no peers, no promoters, no valuation, no sector, no description.
-const MC_SERVES = new Set([
-  'ipos.company_name','ipos.open_date','ipos.close_date','ipos.listing_date','ipos.status',
-  'ipos.segment','ipos.offering_type','ipos.issue_size','ipos.price_range_min','ipos.price_range_max',
-  'subscriptions.qib_subscription','subscriptions.nii_subscription','subscriptions.retail_subscription',
-  'subscriptions.total_subscription',
-]);
+// MONEYCONTROL — RETIRED by owner decision, 2026-09-09.
+// Corrected count: an earlier note said "nine fields" from one grep of one file. The full output
+// across moneycontrol-scraper.ts and moneycontrol-orchestrator-v2.ts is ~15 core fields plus four
+// subscription figures: allotmentDate, closeDate, companyName, isin, issueSize, listingDate,
+// listingExchange, lotSize, offeringType, openDate, priceRangeMin/Max, segment, status, symbol,
+// and qib/nii/retail/total subscription. (field_sources also carries faceValue and registrar rows
+// from MC, which neither file maps today — pre-refactor writes.)
+// The conclusion is unchanged and is why it is retired: for EVERY one of those fields the offer
+// document plus NSE plus BSE — or the document plus Chittorgarh — already fill the top three, so
+// Moneycontrol is fourth-best at everything and never reaches a rank. Its ~180 provenance rows
+// exist only because the PUSH model let it win by arriving first.
+const MC_SERVES = new Set([]);   // retired: capability recorded above, priority zero
 // CHITTORGARH, verified against two live detail pages: the restated per-FY table, KPI/valuation
 // block, peer table, promoters, registrar, lead managers, objects, sector, description.
 // It does NOT carry: pbv_ratio, this IPO's own P/E, risk factors, the anchor book.

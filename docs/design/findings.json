@@ -578,10 +578,11 @@
       "sev": "MAJOR",
       "area": "sources",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "Moneycontrol earns zero ranks under the corrected mapping - the scraper may be redundant",
-      "detail": "After capability verification MC never reaches the top three for any field: for all nine fields it serves, the document and both exchanges are better and available. It holds 206 provenance rows today only because the PUSH model let it win by arriving first. Under the pull model it would never be consulted. Keeping or retiring the Moneycontrol scraper is an owner decision, not a design one - but the design should not pretend it contributes.",
-      "fix_in": "owner decision"
+      "detail": "CORRECTED TWICE: I first said MC serves 46 fields, then 9 from a single grep of a single file. The true output across moneycontrol-scraper.ts and moneycontrol-orchestrator-v2.ts is ~15 core fields plus 4 subscription figures. The conclusion held throughout: for every one of them the document plus both exchanges - or the document plus Chittorgarh - already fill the top three, so MC is fourth-best at everything and reaches no rank. Its ~180 provenance rows exist only because PUSH let it win by arriving first.",
+      "fix_in": "owner decision",
+      "closed_in": "OWNER DECISION 2026-09-09: retire the Moneycontrol scraper. Zero ranks and no capability entry now; stop scheduling it next. NOT deleting the scraper_source enum value or the ~180 existing provenance rows - those are the historical truth of where a value came from and rewriting them would falsify provenance; they supersede naturally as the pull loop re-sources from the document. moneycontrol-rss.ts is an IPO NEWS feed, a different feature sharing a domain name, and is untouched."
     },
     {
       "id": "F-54",
