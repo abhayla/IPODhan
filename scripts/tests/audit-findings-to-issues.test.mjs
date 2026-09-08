@@ -18,6 +18,7 @@ import {
   parseArgs,
   buildNextState,
   filterNewOnly,
+  buildBaselineState,
   DEFAULT_MAX_ISSUES,
   LOCK_STALE_MS,
   localDateStamp,
@@ -499,10 +500,57 @@ test('filterNewOnly: reopen with no newKeys is downgraded to skip', () => {
   assert.equal(out[0].type, 'skip');
 });
 
-test('filterNewOnly: create and close pass through untouched (never gated)', () => {
-  const actions = [
-    { type: 'create', checkId: 'c1', title: 't' },
-    { type: 'close', checkId: 'c2', issueNumber: 2, comment: 'PASS' },
-  ];
+test('filterNewOnly: close always passes through (never gated)', () => {
+  const actions = [{ type: 'close', checkId: 'c2', issueNumber: 2, comment: 'PASS' }];
   assert.deepEqual(filterNewOnly(actions), actions);
+});
+
+test('filterNewOnly: create with NO prior previousState entry passes through (genuinely first sighting)', () => {
+  const actions = [{ type: 'create', checkId: 'c1', title: 't', rowKeys: ['row-1'] }];
+  assert.deepEqual(filterNewOnly(actions, {}), actions);
+  assert.deepEqual(filterNewOnly(actions), actions); // previousState defaults to {}
+});
+
+// MAJOR fix (round 2, T-505): a `create` action for a check ALREADY recorded
+// in previousState (e.g. by the --new-only baseline pass — no real GitHub
+// issue exists yet, so planIssueSync() keeps emitting `create`) must NOT be
+// treated as new when its rows are unchanged from what was already recorded
+// — otherwise the baseline night's suppressed findings all re-fire,
+// unfiltered, on night two.
+test('filterNewOnly: create for a check known in previousState with UNCHANGED rows is downgraded to skip', () => {
+  const actions = [{ type: 'create', checkId: 'c1', title: 't', rowKeys: ['row-1', 'row-2'] }];
+  const previousState = { c1: { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['row-1', 'row-2'] } };
+  const out = filterNewOnly(actions, previousState);
+  assert.equal(out[0].type, 'skip');
+  assert.equal(out[0].checkId, 'c1');
+});
+
+test('filterNewOnly: create for a check known in previousState with a genuinely NEW row still fires', () => {
+  const actions = [{ type: 'create', checkId: 'c1', title: 't', rowKeys: ['row-1', 'row-3'] }];
+  const previousState = { c1: { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['row-1', 'row-2'] } };
+  const out = filterNewOnly(actions, previousState);
+  assert.equal(out[0].type, 'create');
+});
+
+// MAJOR fix (round 2, T-505): the first live night under --new-only has no
+// issues-sync-state.json to diff against, so EVERY failing check looks like
+// a brand-new `create` and files through unfiltered — up to
+// DEFAULT_MAX_ISSUES in one tick. buildBaselineState() is the pure function
+// the BASELINE-ONLY pass in main() uses to record tonight's findings without
+// filing anything, so night two has something real to diff against.
+test('buildBaselineState: records one entry per FAIL/UNVERIFIABLE check, none for PASS/SKIP', () => {
+  const findings = {
+    c_fail: { status: 'FAIL', name: 'x', rows: [{ rowKey: 'b' }, { rowKey: 'a' }] },
+    c_unverifiable: { status: 'UNVERIFIABLE', name: 'y', rows: [{ rowKey: 'z' }] },
+    c_pass: { status: 'PASS', name: 'p', rows: [] },
+    c_skip: { status: 'SKIP', name: 's', rows: [] },
+  };
+  const state = buildBaselineState(findings, '2026-09-08');
+  assert.deepEqual(Object.keys(state).sort(), ['c_fail', 'c_unverifiable']);
+  assert.deepEqual(state.c_fail, { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['a', 'b'] });
+  assert.deepEqual(state.c_unverifiable, { issueNumber: null, firstSeen: '2026-09-08', lastRowKeys: ['z'] });
+});
+
+test('buildBaselineState: empty findings produces an empty state (0 filed)', () => {
+  assert.deepEqual(buildBaselineState({}, '2026-09-08'), {});
 });

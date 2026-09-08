@@ -28,10 +28,21 @@ function liveBranchBody() {
   return SOURCE.slice(elseIdx, fiIdx);
 }
 
+// MINOR fix (round 2, T-505): the original assertion matched --new-only
+// against the raw block text, so it would still pass even if the ONLY
+// --new-only line left were a comment (e.g. a revert that re-comments the
+// invocation but leaves the string present in a comment above it). Strip
+// comment lines first, same as the sibling test below, so this test is
+// revert-proof on its own.
+function activeLines(body) {
+  return body.split('\n').filter((line) => !line.trim().startsWith('#'));
+}
+
 test('live branch invokes audit-findings-to-issues.mjs with --new-only', () => {
   const body = liveBranchBody();
+  const uncommentedText = activeLines(body).join('\n');
   assert.match(
-    body,
+    uncommentedText,
     /node scripts\/audit-findings-to-issues\.mjs --new-only \|\| true/,
     'expected an active (uncommented) --new-only invocation in the live branch'
   );
@@ -39,10 +50,7 @@ test('live branch invokes audit-findings-to-issues.mjs with --new-only', () => {
 
 test('live branch does not also run the old unfiltered invocation', () => {
   const body = liveBranchBody();
-  const uncommentedLines = body
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('#'));
-  const unfiltered = uncommentedLines.some((line) =>
+  const unfiltered = activeLines(body).some((line) =>
     /node scripts\/audit-findings-to-issues\.mjs \|\| true/.test(line)
   );
   assert.equal(unfiltered, false, 'the old unfiltered call must be removed, not left active alongside --new-only');

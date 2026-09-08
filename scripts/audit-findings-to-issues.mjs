@@ -194,8 +194,30 @@ export function planIssueSync({ findings, issues, openIssues, previousState, tod
 // `skip`, because "some violations cleared" is not itself a NEW finding to
 // file. `close` actions (the check went fully PASS) always pass through —
 // closing is never gated by --new-only.
-export function filterNewOnly(actions) {
+export function filterNewOnly(actions, previousState = {}) {
   return actions.map((action) => {
+    if (action.type === 'create') {
+      // MAJOR fix (round 2, T-505): a `create` only means "no real GitHub
+      // issue exists for this check" — it does NOT mean "never seen before".
+      // The --new-only BASELINE-ONLY pass (buildBaselineState(), below)
+      // records a check's rows in previousState WITHOUT ever creating a real
+      // issue, so planIssueSync() keeps emitting `create` for it on every
+      // later night it is still failing. Treating every `create` as
+      // unconditionally new (as before) re-fired the whole baseline,
+      // unfiltered, on night two. A checkId already present in previousState
+      // is only "new" here if it carries a row absent from what was already
+      // recorded; a checkId with NO previousState entry is a genuine first
+      // sighting and always passes through.
+      const prevEntry = previousState[action.checkId];
+      if (prevEntry) {
+        const prevKeys = new Set(prevEntry.lastRowKeys || []);
+        const hasNew = (action.rowKeys || []).some((k) => !prevKeys.has(k));
+        if (!hasNew) {
+          return { type: 'skip', checkId: action.checkId, reason: '--new-only: no new rows since the previous night (known from baseline, unchanged)' };
+        }
+      }
+      return action;
+    }
     if (action.type === 'comment' || action.type === 'reopen') {
       const hasNew = (action.newKeys || []).length > 0;
       if (!hasNew) {
@@ -204,6 +226,29 @@ export function filterNewOnly(actions) {
     }
     return action;
   });
+}
+
+// MAJOR fix (round 2, T-505): night one under --new-only has no
+// issues-sync-state.json to diff against, so EVERY failing check looks like
+// a brand-new `create` and files through filterNewOnly() unfiltered — up to
+// DEFAULT_MAX_ISSUES issues in one tick (signal-ownership.md R4 is meant to
+// stop exactly this kind of flood). main() detects "no previous state file"
+// under --new-only and runs a BASELINE-ONLY pass instead of the normal
+// create/comment/close/reopen flow: this pure function builds the state that
+// pass writes — one entry per FAIL/UNVERIFIABLE check tonight, with
+// issueNumber left null (no real issue was created) — so night two's
+// filterNewOnly() has a real baseline to diff against and files only
+// genuinely new rows/checks.
+export function buildBaselineState(findings, runDate) {
+  const nextState = {};
+  for (const checkId of Object.keys(findings)) {
+    const finding = findings[checkId];
+    const isBad = finding.status === 'FAIL' || finding.status === 'UNVERIFIABLE';
+    if (!isBad) continue;
+    const rowKeys = (finding.rows || []).map((r) => r.rowKey).sort();
+    nextState[checkId] = { issueNumber: null, firstSeen: runDate, lastRowKeys: rowKeys };
+  }
+  return nextState;
 }
 
 // MEDIUM fix, pure and testable: build the next issues-sync-state.json from
@@ -627,9 +672,34 @@ async function main() {
     }
 
     const registry = loadRegistry(registryPath);
-    const previousState = existsSync(syncStatePath)
+    const hadPreviousState = existsSync(syncStatePath);
+    const previousState = hadPreviousState
       ? JSON.parse(readFileSync(syncStatePath, 'utf8'))
       : {};
+
+    // MAJOR fix (round 2, T-505): --new-only with NO previous state file is
+    // night one — there is nothing yet to diff a "new" finding against, so
+    // filterNewOnly() would otherwise wave every failing check through as a
+    // `create` (up to DEFAULT_MAX_ISSUES in one tick). Run a BASELINE-ONLY
+    // pass instead: record tonight's findings, file/create/comment/reopen
+    // NOTHING (closes are moot too — no issue exists yet to close), and let
+    // night two's diff against this baseline decide what is genuinely new.
+    // This never runs `gh` at all, so it costs nothing on a fresh box.
+    if (opts.newOnly && !hadPreviousState) {
+      const baselineState = buildBaselineState(loaded.findings, loaded.runDate);
+      const recordedCount = Object.keys(baselineState).length;
+      log(`NEW-ONLY BASELINE: no previous state; recorded ${recordedCount} finding(s), filed 0`);
+      if (!opts.dryRun) {
+        try {
+          writeFileSync(syncStatePath, JSON.stringify(baselineState, null, 2));
+        } catch (e) {
+          log(`could not write baseline state: ${e.message}`);
+        }
+      } else {
+        log('DRY-RUN: baseline state not written');
+      }
+      return;
+    }
 
     const repo = await resolveRepoSlug(opts.repo);
 
@@ -669,7 +739,7 @@ async function main() {
       maxIssues: opts.maxIssues,
     });
     if (opts.newOnly) {
-      actions = filterNewOnly(actions);
+      actions = filterNewOnly(actions, previousState);
       log('--new-only: filing only findings absent from the previous night (create + rows with a new key); resolved-only/unchanged comments downgraded to skip');
     }
 
