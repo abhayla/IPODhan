@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 15:04 IST (snapshot 12 - pull-model design delivered on branch docs/pull-model-design; O-8 at 60%, new O-9 awaiting the owner's decision on the target metric).
+Last updated: 2026-09-08 15:50 IST (snapshot 13 - owner set the target at 100% per field with a three-round fallback; O-9 resolved and folded into the design, new O-10 on the five timeline fields).
 
 ---
 
@@ -180,25 +180,55 @@ already hold.
 blocking a scoped implementation — see below. **Prev:** 0% **Now:** 60% (design done; approval and
 the target-metric decision outstanding)
 
-### O-9. What is "ninety percent from the offer documents" a percentage OF?
+### O-9. The target is 100% of the fields the offer document prints — RESOLVED
 
-**Raised by me, 2026-09-08 ~15:0x IST**, out of the measurement, because reporting progress against
-the wrong denominator would mean reporting failure forever.
+**Abhay, 2026-09-08 ~15:5x IST:** "Target should be 100%. If the field value comes from offer
+document then it should be extracted from offer document. In second round, all first round correct
+data should be retained and for incorrect and incomplete data, second source should be checked. Then
+in 3rd round, all second round correct data should be retained and for incorrect and incomplete
+data, third source should be checked."
 
-| Metric | Today | Arithmetic ceiling |
-|---|---:|---:|
-| Document share of ALL provenance rows | 9.0% | **66.1%** |
-| Document share of doc-eligible `ipos` rows | **2.7%** (107 of 3,964) | ~100% |
+**I had this wrong and the correction is right.** I proposed 90% of a chosen denominator. A blended
+percentage is the wrong instrument: at "90%" nobody has to say WHICH 10% a website is still
+supplying, and the worst fields hide inside a good average indefinitely. The rule is per field, not
+an average — if the document prints it, the document supplies it, and every fall-through is a named
+exception with a reason.
 
-The 66.1% ceiling is real: 2,252 of 6,638 provenance rows (33.9%) are for fields no document can
-own — the open/close/listing/allotment dates where we deliberately keep the exchanges above the
-printed ad (a printed advertisement is never reissued when a bidding window is extended), plus slugs
-and pipeline timestamps. The raw share can never reach 90% no matter how well the pull model works.
+**The three-round model is now the governing shape of the design** (§2.1 of
+`docs/design/data-sourcing-pull-model.md`): round 1 the offer document, round 2 the exchange, round 3
+the website; each round works only on what the previous left INCORRECT or INCOMPLETE, and a correct
+value is frozen — a later round is never even asked. That is stronger than a priority list, because
+a priority list only helps when two values collide, which is exactly why the O-5 flip moved nothing.
 
-**My recommendation: measure the second row** — the share of doc-eligible `ipos` fields that came
-from the IPO's own offer document, 2.7% today, target 90%. Reason: it measures exactly what you
-asked for (the document being the source instead of the websites) without counting rows a document
-could never supply.
+**Measured on a real IPO** (Deepa Jewellers, the best-covered on production): 61 tracked fields, 47
+already from its own document. Of the 14 it does not take from the document, **9 are printed in the
+filing and lost to BSE or Chittorgarh anyway** — company name, lead managers, lot size, registrar,
+symbol, price band low and high, segment, offering type. Those 9 are precisely what the three-round
+model recovers.
+
+**Status:** RESOLVED, folded into the design. **Prev:** 0% **Now:** 100%
+
+### O-10. Do the five timeline fields stay on the exchange, or move to the document?
+
+**Raised by me, 2026-09-08, as the one place O-9's rule and an existing deliberate decision collide.**
+
+The price band advertisement DOES print an indicative timetable — open, close, allotment and listing
+dates. By the letter of O-9 they are document fields. But the advertisement is printed once and is
+**never reissued when the bidding window is extended**; NSE and BSE update the same day, the PDF does
+not. Taking those dates from the document means publishing a stale close date on a live IPO, which is
+the exact defect the W-117 rule exists to prevent.
+
+Affected: `openDate`, `closeDate`, `listingDate`, `status`, `listingExchange` — 5 of the 61 tracked
+fields on a typical IPO.
+
+**My recommendation:** keep these five on the exchange, as a NAMED and documented exception to the
+100% rule rather than a silent carve-out. The document is still read for them and a disagreement is
+still recorded and visible; the exchange's value is what we publish. Reason: a wrong close date on an
+open IPO is the single most damaging error the site can make, and it is the one case where we KNOW
+the document is out of date rather than merely unread.
+
+If you want the document to win here too, it is a one-place change in the design and the staleness
+risk moves onto the live site.
 
 **Status:** AWAITING YOUR DECISION. **Prev:** — **Now:** 0%
 

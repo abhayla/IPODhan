@@ -31,7 +31,10 @@ difference is stated.
 | Admin (manual) | 8 | 0.1% |
 | **Total** | **6,638** | |
 
-Target is roughly 90% from documents. We are at 9.0%. The gap is a factor of ten.
+**The target is 100% of the fields the offer document prints** (owner, 2026-09-08 — see §2.1.1).
+Not a blended share: every field the document carries comes from the document, and each exception is
+named. Measured on the best-covered IPO on production, that set is 56 fields and 47 of them come
+from the document today (84%); on the typical IPO it is zero.
 
 **But that single number hides the real diagnosis.** Split the same table by which table the field
 lives in:
@@ -477,29 +480,80 @@ Written once here rather than duplicated into every row.
 
 ## 2. The pull loop
 
-### 2.1 The shape
+### 2.1 The shape — three rounds, and a later round can never overwrite an earlier one
 
 Today: *sources push whatever they found; the matrix arbitrates the collision.*
-Proposed: *for each IPO, for each field, we go and get it from the source that should have it.*
+
+Owner's specification, 2026-09-08 (this is the governing statement for §2 and supersedes any
+per-field interpretation earlier in this document):
+
+> "If the field value comes from the offer document then it should be extracted from the offer
+> document. In second round, all first round correct data should be retained and for incorrect and
+> incomplete data, second source should be checked. Then in third round, all second round correct
+> data should be retained and for incorrect and incomplete data, third source should be checked."
+
+So the loop is **source-major, in rounds**, not field-major:
 
 ```
 for each IPO in the working set (§2.3):
-    plan = field_plan(IPO)                       # 131 sourced fields, §2.2
-    for each field in plan, in dependency order (§2.4):
-        for rank in 1, 2, 3:
-            answer = ask(source[rank], IPO, field)
-            if answer is SUPPLIED and passes the field's check:
-                write it, record source + rank + document + page
-                break
-            if answer is NOT_PRINTED:      continue to next rank   # this source never has it
-            if answer is NOT_AVAILABLE_YET: stop, retry at the field's next due time
-            if answer is FAILED:           record the reason, continue to next rank
-        else:
-            write null, record reason = 'all_ranks_exhausted', raise a gap row
-    verify(IPO)                                  # §3
+    plan = field_plan(IPO)                      # the 150 sourced fields, §2.2
+
+    ROUND 1 — the offer document
+      read the IPO's best available document ONCE
+      for every field the document owns:
+          extract -> CORRECT | INCORRECT | INCOMPLETE          (§2.5)
+          CORRECT   -> write it, FREEZE it. No later round may touch it.
+          INCORRECT -> do not write. Record the check that failed. Carry to round 2.
+          INCOMPLETE-> do not write. Record why. Carry to round 2.
+
+    ROUND 2 — the exchange (NSE or BSE, per the IPO's type)
+      operate ONLY on the fields round 1 left INCORRECT or INCOMPLETE
+      every round-1 CORRECT value is retained untouched
+      same three outcomes; CORRECT here freezes against round 3
+
+    ROUND 3 — the website (Chittorgarh, Moneycontrol)
+      operate ONLY on what round 2 left INCORRECT or INCOMPLETE
+      every round-2 CORRECT value is retained untouched
+
+    AFTER ROUND 3
+      anything still unresolved is written null with its reason and raised
+      as a gap (§2.8) — never guessed, never left stale
+
+    verify(IPO)                                  # §3, separate from the rounds
 ```
 
-The critical difference is the word **ask**. Today nothing asks; it waits.
+Two properties this has that a priority list does not:
+
+1. **The ratchet.** Freezing a correct value is *positional*, not comparative. Round 2 never gets to
+   argue with round 1; it is not asked. A priority matrix only helps when two values collide, which
+   is why the document ranking alone moved nothing (§0.3).
+2. **One fetch per source per IPO.** The document is opened once and every field it owns is taken in
+   that read. The exchange is called once for the residue. That is what makes this affordable inside
+   the existing extraction budgets (§2.7).
+
+The critical difference from today is still the word **ask**. Today nothing asks; it waits for
+whatever arrives.
+
+### 2.1.1 The target that follows from this: 100%, per field, not an average
+
+**Owner decision, 2026-09-08: the target is 100%, not 90%.** Every field the offer document prints
+is sourced from the offer document. There is no acceptable residue.
+
+This changes what we measure. A blended percentage is the wrong instrument: at "90%" nobody has to
+say *which* 10% a website is still supplying, and the ten worst fields can hide inside a good
+average forever. Instead:
+
+- The measured quantity is **round-1 yield: of the fields the document owns for this IPO, how many
+  did round 1 actually supply.** Target 100%.
+- **Every fall-through to round 2 or 3 is an exception with a named reason**, listed by field
+  identity, not summarised as a count (`signal-ownership.md` R1).
+- A legitimate fall-through exists and must be distinguishable from a failure: an ISIN does not
+  exist before listing, and a DRHP does not carry a final price band. Those are `INCOMPLETE` with
+  reason `NOT_AVAILABLE_YET`, and they resolve when the later document is filed — not by a website
+  filling the gap permanently.
+
+So the honest statement of done is: **100% of document-owned fields come from the document, and
+every exception to that is named, counted by identity, and has an owner.**
 
 ### 2.2 The field plan — the new state this needs
 
@@ -562,18 +616,26 @@ block the four passes.
 This is the part that has to be precise, because "no value" today means five different things and
 they are treated identically. The loop distinguishes:
 
-| Answer | Meaning | What the loop does |
-|---|---|---|
-| `SUPPLIED` | value extracted and the §1 check passed | write, stop |
-| `NOT_PRINTED` | this document type genuinely does not carry this field (a DRHP has no final price band) | fall to the next rank immediately, no retry, no error |
-| `NOT_AVAILABLE_YET` | it will be printed, but not yet (ISIN before listing; price band before the PBA is filed) | **do not fall through** — wait for the document that will carry it |
-| `CHECK_FAILED` | extracted, but failed its arithmetic or plausibility check | do not write; record the failed check by name; fall to the next rank |
-| `EXTRACT_FAILED` | the document could not be read (timeout, no text layer, download failed) | record the cause; fall to the next rank; the document's own retry is bounded separately |
+Every field ends each round in exactly one of three states — **CORRECT**, **INCORRECT**, or
+**INCOMPLETE** — in the owner's terms. Underneath, five reasons distinguish the cases that behave
+differently:
 
-The distinction between `NOT_PRINTED` and `NOT_AVAILABLE_YET` is what stops the loop from filling a
-final price band with a website's guess three days before the advertisement is filed. It comes from
-a per-document-type field manifest — a static table of "which of the 194 fields does a
-`PRICE_BAND_AD` print" — derived from the extraction contract's §1, not guessed at runtime.
+| Outcome | Reason | Meaning | What the round does |
+|---|---|---|---|
+| **CORRECT** | `SUPPLIED` | extracted and the §1 check passed | write it, **freeze it**; no later round may touch it |
+| **INCORRECT** | `CHECK_FAILED` | extracted, but failed its arithmetic or plausibility check | do not write; record the failed check **by name**; carry to the next round |
+| **INCORRECT** | `EXTRACT_FAILED` | the source could not be read (timeout, no text layer, download failed) | record the cause; carry to the next round; the document's own retry is bounded separately (§3.4) |
+| **INCOMPLETE** | `NOT_PRINTED` | this source genuinely never carries this field (a DRHP has no final price band) | carry to the next round immediately — no retry, no error, not a defect |
+| **INCOMPLETE** | `NOT_AVAILABLE_YET` | it will be printed, but not yet (ISIN before listing; price band before the advertisement is filed) | carry to the next round **for now**, but keep the field due — when the later document arrives, round 1 runs again and **reclaims** it |
+
+The last row is what stops a website value becoming permanent by accident. If Chittorgarh fills the
+price band in round 3 on Monday because the advertisement was not yet filed, and the advertisement
+lands on Wednesday, round 1 takes the field back on Wednesday. A round-3 value is only ever
+provisional while an earlier round is still owed the field.
+
+The distinction between `NOT_PRINTED` and `NOT_AVAILABLE_YET` comes from a per-document-type field
+manifest — a static table of "which of the 194 fields does a `PRICE_BAND_AD` print" — derived from
+the extraction contract's §1, not guessed at run time.
 
 ### 2.6 When it runs (this is the O-1 answer, §5.1)
 
@@ -722,7 +784,8 @@ previous run*, never a total.
 |---|---|---|---|---|---|
 | 4.1 | Plan built (§2.2) | rows in `ipo_field_plan` for each live IPO = the 131 sourced fields for its type | cycle summary line | 131 for mainboard, fewer for Rights/OFS by their NOT_APPLICABLE set | any live IPO with 0 plan rows, or a count that changes without a type change |
 | 4.2 | Walk ran (§2.3) | live-tier IPOs walked this slot ÷ live-tier IPOs | cycle summary | 100% every slot | < 100% twice consecutively |
-| 4.3 | Rank-1 reach (§2.5) | share of **doc-eligible `ipos` fields** on live IPOs whose `chosen_rank = 1` and `chosen_source = DOC` — see §7.3 item 4 for why this denominator and not the raw share | nightly floor, diffed | rising; **target 90%**, measured today at **2.7%** (107 of 3,964) | falls week on week, or falls > 5pp in a day |
+| 4.3 | **Round-1 yield** (§2.1.1) | per IPO: of the fields the document owns, how many round 1 actually supplied. Reported as a fraction with the shortfall **named by field**, never as a bare percentage | nightly floor, diffed | **100%**. Measured today on the best-covered IPO (Deepa Jewellers): 47 of 56 document-owned fields = 84%; typical IPO = 0% | **any** document-owned field sourced from round 2 or 3 without a reason in the allowed list (§2.5) |
+| 4.3b | Exception register | every fall-through to round 2 or 3, by field identity and reason, NEW vs GONE vs SAME against yesterday | floor delta + brief | shrinking; every entry has a reason and an owner | a NEW fall-through on a live IPO, or an entry with reason `CHECK_FAILED` unchanged for 3 days |
 | 4.4 | Fallback is honest | count of `EXHAUSTED` rows, **by field identity**, NEW vs GONE vs SAME | floor delta + Notifier | small and stable | any NEW field identity exhausted on a live IPO |
 | 4.5 | Checks bite (§1) | count of `CHECK_FAILED` by check name per cycle | cycle summary | non-zero is fine and expected | a check that has never failed in 30 days is probably not wired — a silent check is a failed check |
 | 4.6 | Type routing (§1.11) | SME rows using an NSE rank on a BSE-only IPO; `offering_type` outside {IPO, FPO} on the IPO pages; SME claiming both exchanges (5 today) | nightly audit | 0 / 0 / reviewed | any non-zero |
@@ -982,31 +1045,50 @@ Everything from 4 onward is one design and should not be half-built.
    with the code in front of me.
 3. **The FPO rules are unexercised.** Zero rows on production. They are written from the general
    pattern and have a higher chance of being wrong than anything else in §1.11.
-4. **The raw 90% is not arithmetically reachable, and I would rather say so now than report against
-   it later.** Measured this session:
+4. ~~The target metric~~ **RESOLVED by the owner, 2026-09-08: the target is 100%, per field, not a
+   blended average** (§2.1.1). I had proposed 90% of a chosen denominator; that was the wrong shape,
+   because a blended percentage lets the worst fields hide inside a good average and nobody has to
+   name which ones. The rule is: if the offer document prints the field, the offer document supplies
+   it, and **every fall-through to round 2 or 3 is a named exception with a reason** (§2.5) rather
+   than an accepted residue.
 
-   | Metric | Today | Ceiling if every eligible row came from a document |
-   |---|---:|---:|
-   | Document share of all `field_sources` rows | 9.0% | **66.1%** |
-   | Document share of `ipos` rows | 2.8% | — |
-   | **Document share of doc-eligible `ipos` rows** | **2.7%** (107 of 3,964) | **~100%** |
+   The measured context that remains useful:
 
-   The 66.1% ceiling exists because 2,252 of 6,638 provenance rows (33.9%) are for fields no
-   document can own — the timeline dates the exchanges deliberately outrank (§1.2 fields 5–8, 19),
-   plus `slug`, `listingExchange` and pipeline timestamps.
+   | | Value | Source |
+   |---|---:|---|
+   | Document-owned fields on a real mainboard IPO (Deepa Jewellers) | 56 of 61 tracked | `field_sources`, this session |
+   | Of those, supplied by the document today | 47 (**84%**) | same |
+   | Fields it currently loses to a website **that the document prints** | 9 — company name, lead managers, lot size, registrar, symbol, price band low/high, segment, offering type | same |
+   | Fields that can never be document-owned | 5 — open date, close date, listing date, status, listing exchange | the W-117 rule (§1.2) |
 
-   **The metric that should carry the 90% is the third row: the share of doc-eligible `ipos` fields
-   that came from the IPO's own document. It is 2.7% today.** That is the number §4.3 tracks, and it
-   is the one that can honestly go to 90%. Reporting the raw share against a 90% target would mean
-   reporting failure forever at a ceiling of 66%.
-
-   This is the one item I want Abhay's answer on before implementation is scoped.
+   So 100% is reachable on the document-owned set; the 5 excluded fields are excluded by our own
+   deliberate decision, not by a shortfall. **What still needs the owner's word is whether those 5
+   stay excluded** — see item 7.
 5. **Whether `financial_data` should become derived or be dropped.** Deriving it keeps the API stable
    and fixes Annu Projects. Dropping it is cleaner and breaks the public shape. I have proposed
    deriving; I hold that loosely.
 6. **The cost in wall-clock of M5.** 228 IPOs × re-download + extract, at one nightly window and the
    current extraction speed, is weeks. I have not modelled it properly and I would not want the
    estimate quoted.
+
+7. **The five timeline fields are the one genuine conflict with "100% from the document", and I
+   want the owner's word on them.** The instruction is "if the field value comes from the offer
+   document then it should be extracted from the offer document." The price band advertisement
+   *does* print an indicative timetable — open date, close date, allotment date, listing date. So by
+   the letter of the rule they are document fields.
+
+   But the advertisement is printed once and **never reissued when the bidding window is extended**.
+   NSE and BSE update the same day; the PDF does not. Taking those dates from the document means
+   publishing a stale close date on a live IPO — the exact defect the W-117 rule was created to stop.
+
+   **My recommendation: keep the five on the exchange, and treat them as a named, documented
+   exception to the 100% rule rather than a silent carve-out** — the document is still read for them
+   and a disagreement is still recorded, but the exchange's value is what we publish. Reason: a
+   wrong close date on an open IPO is the most damaging single error the site can make, and it is
+   the one case where the document is knowably out of date rather than merely unread.
+
+   If the owner would rather the document win here too, the design changes in one place (the class
+   of those five fields in §1.2) and the risk moves onto the site.
 
 ---
 
