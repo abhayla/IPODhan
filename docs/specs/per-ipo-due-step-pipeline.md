@@ -144,8 +144,8 @@ cycle-overrun RCA (observed 1,210-1,278s cycles, 105-115 network calls on a Sund
 
 | Tier | Sources | Truth for | Never used for |
 |---|---|---|---|
-| 1a Filings | DRHP, RHP, PBA, Corrigendum, Anchor report, Prospectus | every static field (terms, timeline, financials, promoters, intermediaries, objects, risks) | live numbers |
-| 1b Exchange APIs | BSE JSON, NSE JSON | subscription, anchor allocation, listing price/ISIN, status flips, document links | overriding a filing value |
+| 1a Filings | DRHP, RHP, PBA, Corrigendum, Anchor report, Prospectus | every static field (terms, financials, promoters, intermediaries, objects, risks) — and the timeline, subject to S-05 below | live numbers |
+| 1b Exchange APIs | BSE JSON, NSE JSON | subscription, anchor allocation, listing price/ISIN, status flips, document links — and the bidding timetable per S-05 | overriding a filing value on anything S-05 does not name |
 | 2 Aggregators | Chittorgarh, Moneycontrol, InvestorGain | verification of tier-1 values; GMP (only source); peers by sector as fallback | writing a static field when a tier-1 value exists |
 
 Conflict rule: tier-1a vs tier-1b mismatch on a static field writes a `data_conflicts` CRITICAL
@@ -153,6 +153,48 @@ row, the filing value is kept, admin sees it. Tier-2 mismatch writes WARNING, th
 kept, confidence is lowered. The priority matrix's per-field order stays, but "newest wins" is
 limited to live fields; a static field is only overwritten by a higher tier or a newer filing
 (E2 supersession). Listing exchange (W-01) is a merged set, not a single value.
+
+### S-05 — the re-filing test (owner decision, 2026-09-08)
+
+S-03 originally read "tier 1a is truth for every static field (terms, **timeline**, …)". That was
+too strong for one group of fields, and the reason is not that dates are special:
+
+> **The filing wins wherever a change to the fact forces a new filing.
+> The exchange wins where it does not.**
+
+The offer document is authoritative about what was true when it was filed. For almost everything,
+a change to the fact obliges the issuer to file again — so the document stays current by
+construction and tier 1a is correct. The exception is the bidding timetable: **a price band
+advertisement is printed once and is never reprinted when a company extends its bidding window.**
+NSE and BSE publish the new dates the same day; the document cannot. Applying S-03 unmodified
+would publish a closed-looking IPO that is still open, and a reader would miss the window.
+
+Worked examples of the test:
+
+| Fact changes | Does a new filing follow? | Who wins |
+|---|---|---|
+| Price band revised | Yes — a corrigendum is filed | **Filing** |
+| Issue size, lot size, registrar, lead managers, objects | Yes — any change means a new filing | **Filing** |
+| Bidding window extended | **No** — nothing is re-filed | **Exchange** |
+| Allotment / refund / credit dates move with the window | **No** | **Exchange** |
+| Status flips (OPEN → CLOSED → LISTED) | No | **Exchange** |
+
+**Current members of the exchange-wins set** — and the owner's confirmation covers these and no
+others (`docs/design/data-sourcing-pull-model.md` §1.2.1 holds the per-field detail and is generated
+from `docs/design/field-source-resolution.spec.mjs`):
+
+`ipos.open_date` · `ipos.close_date` · `ipos.listing_date` · `ipos.allotment_date` ·
+`ipos.status` · `ipos.listing_exchanges` · `ipo_details.basis_of_allotment_date` ·
+`ipo_details.initiation_of_refunds_date` · `ipo_details.credit_of_shares_date` ·
+`anchor_investors.bid_date` — **ten sourced fields**, plus
+`anchor_investors.lock_in_50_percent_date` and `lock_in_remaining_date`, which are **computed**
+from `allotment_date` (+30 / +90 days) and therefore inherit the rule through their input rather
+than being sourced themselves. The owner's decision named twelve fields; ten are sourced and two
+are derived from one of the ten, so the twelve facts he named are all governed.
+
+Adding a field to this set is an owner decision recorded here, never a change made in passing.
+`ipo_details.upi_cutoff_time` and `bid_windows` are deliberately NOT members: they hold a time of
+day, and an extended window moves the date, not the hour.
 
 ## 7. Owner-facing view
 

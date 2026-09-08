@@ -293,13 +293,25 @@ where that contract already names the section; new rows extend it in the same sh
 | 31 | `verifier_url` | 213 | **I** | — | — | — | keep | — | our own audit pointer | — | — |
 | 32 | `cin` | 27 | D | DOC | — | — | keep | E7 | `^[UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}$` | MCA lookup (not built). No second source exists — a document-only field. | — |
 
-### 1.2.1 Named exception E-1 — the bidding timetable stays on the exchanges
+### 1.2.1 E-1 — the fields where the exchange wins, under the re-filing test (S-05)
 
-**Owner decision, 2026-09-08: "keep those five on the exchange, as a written, named exception to the
-100% rule. For these fields, make NSE and BSE as first and second source."**
+**This is no longer an exception. It is an application of a rule.**
 
-This is the ONLY standing exception to the 100% rule in §2.1.1. It is written here, named, and
-counted — never applied silently.
+The owner confirmed the governing principle on 2026-09-08, and it lives in
+`docs/specs/per-ipo-due-step-pipeline.md` **S-05** — the SSOT for source tiers. It is not restated
+here; the one line that matters is:
+
+> **The filing wins wherever a change to the fact forces a new filing. The exchange wins where it
+> does not.**
+
+Almost every fact obliges the issuer to re-file when it changes, so the document stays current by
+construction and tier 1a is right. The bidding timetable is the one group where nothing is re-filed:
+a price band advertisement is printed once and is **never reprinted when a window is extended**.
+
+That reading removes the contradiction between this design and the approved source-tier spec (finding
+F-43): S-03 stands untouched, and E-1 is what S-05 produces when applied to the timetable — not a
+carve-out from it. The practical consequence is unchanged from the owner's original instruction:
+**NSE first, BSE second, Chittorgarh third, and the document is not a source for these fields.**
 
 **Source order for every field in E-1:** round 1 **NSE**, round 2 **BSE**, round 3 Chittorgarh.
 The offer document is not a source for these fields at any round.
@@ -677,12 +689,12 @@ that way until 10:00 the next morning. `timestamp` is our own fetch clock, not t
 (`investorgain-gmp-orchestrator-v2.ts:536` sets `timestamp: new Date()`), so this is our gap, not
 InvestorGain's. Over a Friday-to-Monday weekend the published figure reaches **about 65 hours old**.
 
-**Proposed change, for the owner's word:** split the live step. Subscription and demand graph stay
+**APPROVED by the owner, 2026-09-08.** Split the live step. Subscription and demand graph stay
 inside the market-hours gate. **GMP runs on every wake while an IPO is UPCOMING or OPEN, including
 evenings, weekends and holidays.** It is one HTTP request against one page and it is the single
 most-read number on an IPO page outside market hours.
 
-This is a change to D-13's *implementation*, not to D-13. Recorded as finding **F-41**.
+This is a change to D-13's *implementation*, not to D-13. Finding **F-41**, approved.
 
 #### 2.1.2 An open question: nothing runs between 17:30 and 08:30
 
@@ -693,8 +705,7 @@ research it.
 
 **This is a hypothesis, not a measured fact, and it cannot be measured from our own data**: discovery
 only runs at those four slots, so our record of when a document "appeared" is a record of when we
-looked. A fifth slot around 21:00 IST would close it cheaply. **Owner's call, because the filing-time
-pattern is domain knowledge our data cannot supply.**
+looked. A fifth slot around 21:00 IST would close it cheaply. **APPROVED by the owner, 2026-09-08: add the evening slot.** Finding **F-42**.
 
 #### 2.1.3 A contradiction with an existing approved spec, surfaced rather than buried
 
