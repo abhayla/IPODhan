@@ -468,13 +468,14 @@
     },
     {
       "id": "F-44",
-      "sev": "CRITICAL",
+      "sev": "MAJOR",
       "area": "pull loop",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "A rank-2/3 fetch by constructed slug can silently return a DIFFERENT company page",
-      "detail": "OBSERVED 2026-09-08: requesting chittorgarh.com/ipo/prasol-chemicals-ipo/1234/ returned HTTP 200 with the Empyrean Cashews IPO page - a real page for a different company. The CG scraper carries a companyName identity anchor only inside the issue-size PROSE fallback (chittorgarh-detail-fields.ts:551), not as a gate on the fetch itself. A pull loop fetching rank 2/3 by constructed URL would write one company figures onto another. Fix: every rank-2/3 fetch must assert the returned page names THIS IPO before any value is read, and record the assertion in the plan row.",
-      "fix_in": "§2.4 — a precondition on every non-document fetch"
+      "detail": "DOWNGRADED from CRITICAL after measuring. The mechanism is real - a CG URL is /ipo/<slug>-ipo/<number>/ and only the number identifies the page, so a wrong number returns another company page with HTTP 200 and no redirect. But production does not construct URLs; it reads the href from the listing page (chittorgarh-scraper.ts:72-77) and stores it as verifier_url. Six stored URLs fetched and checked 2026-09-08: all six served the correct company. Not a live defect. Kept as a design rule because a wrong verifier_url is inherited forever with nothing re-checking it, and because the pull loop is new code that may construct a URL when none is stored (114 of 327 IPOs have none).",
+      "fix_in": "§2.4 — a precondition on every non-document fetch",
+      "closed_in": "§2.3.1 identity rule + a nightly assertion that every stored verifier_url names its own IPO"
     },
     {
       "id": "F-45",

@@ -774,6 +774,40 @@ plan row marked `SUPPLIED` against a write that was dropped is a false-clean sta
 downstream would read as success. So: a skipped return leaves the row `PENDING` with `attempts`
 untouched.
 
+### 2.3.1 Every non-document fetch must prove the page is this IPO
+
+**The mechanism, observed 2026-09-08.** A Chittorgarh IPO URL is
+`/ipo/<slug>-ipo/<number>/`. **Only the number identifies the page; the slug is ignored.** Asking
+for `/ipo/prasol-chemicals-ipo/1234/` returns HTTP 200 and the *Empyrean Cashews* page — a real,
+well-formed page for a different company, with no redirect and no error.
+
+**This is not a live defect today, and the design should not pretend otherwise.** The scraper does
+not construct these URLs; it reads the href from a link on the listing page
+(`scraper/src/scrapers/chittorgarh-scraper.ts:72-77`) and stores it as `ipos.verifier_url`. Six
+stored URLs were fetched and checked on 2026-09-08 — Prasol, Glass Wall Systems, Pranav
+Constructions, Kanohar Electricals, Veegaland, Manipal Payment — and every one served the right
+company.
+
+**It matters for the pull model for two reasons that are specific to this design.**
+
+1. **A wrong URL is inherited forever.** `verifier_url` is stored per IPO (213 of 327 populated).
+   If one was ever captured against the wrong listing row, every later fetch repeats the error
+   silently, and nothing in the system re-checks it.
+2. **The pull loop is new code that fetches rank-2 and rank-3 values on demand.** When a stored URL
+   is missing — 114 of 327 IPOs have none — the tempting shortcut is to build one from the slug.
+   That is exactly the path that returns another company's page with a 200.
+
+**The rule, and it costs one string comparison:**
+
+> Before any value is read from a fetched page, the page must name the IPO we asked about, compared
+> through the existing company-name normaliser. If it does not match: read nothing, record
+> `IDENTITY_MISMATCH` on the plan row, and clear the stored URL so it is rediscovered from the
+> listing page rather than reused.
+
+No extra request, no new dependency. And the standing check that turns a silent inheritance into a
+detected one: **for every IPO holding a `verifier_url`, the nightly audit asserts the page names
+that IPO** — reported by IPO name, never as a count.
+
 ### 2.4 What the loop does, per field
 
 ```
