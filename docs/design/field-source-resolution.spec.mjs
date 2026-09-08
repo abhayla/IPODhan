@@ -18,7 +18,7 @@ add('ipos','listing_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','status','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','registrar','D',['DOC','BSE','CG'],{doc:'E3'});
 add('ipos','registrar_id','C',['—','—','—'],{formula:'FK resolved from registrar'});
-add('ipos','rating_override','I',['ADMIN','—','—'],{});
+add('ipos','rating_override','I',['ADMIN','—','—'],{only:'admin-only by design; no external source exists'});
 add('ipos','slug','C',['—','—','—'],{formula:'generateIPOSlug(company_name)'});
 add('ipos','sector','D',['DOC','CG','MC'],{doc:'F1'});
 add('ipos','price_range_min','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK']});
@@ -32,7 +32,7 @@ add('ipos','lead_managers','D',['DOC','BSE','CG'],{doc:'E1'});
 add('ipos','isin','D',['DOC','NSE','BSE'],{doc:'E7'});
 add('ipos','segment','D',['DOC','NSE','BSE'],{doc:'A15',na:['INVITS','REITS']});
 add('ipos','offering_type','D',['DOC','BSE','CG'],{doc:'A11'});
-add('ipos','scraper_locked','I',['ADMIN','—','—'],{});
+add('ipos','scraper_locked','I',['ADMIN','—','—'],{only:'admin-only by design; no external source exists'});
 add('ipos','last_manual_edit_at','I',['—','—','—'],{});
 add('ipos','objectives','D',['DOC','CG','MC'],{doc:'F4',na:['OFS','RIGHTS','TENDER','BUYBACK']});
 add('ipos','bse_ipo_no','I',['BSE','—','—'],{only:'BSE payload identifier'});
@@ -148,8 +148,8 @@ add('listing_performance','listing_gain_percent','C',['—','—','—'],{formul
 add('listing_performance','current_price','M',['NSE','BSE','CG'],{only:'post-listing market data'});
 add('listing_performance','current_gain_percent','C',['—','—','—'],{formula:'(current − issue) ÷ issue × 100'});
 add('listing_performance','last_updated','I',['—','—','—'],{});
-add('listing_performance','current_price_bse','M',['BSE','—','—'],{only:'BSE quote by definition'});
-add('listing_performance','current_price_nse','M',['NSE','—','—'],{only:'NSE quote by definition'});
+add('listing_performance','current_price_bse','M',['BSE','—','—'],{only:'BSE quote by definition',exchOnly:'BSE'});
+add('listing_performance','current_price_nse','M',['NSE','—','—'],{only:'NSE quote by definition',exchOnly:'NSE'});
 add('listing_performance','symbol','C',['—','—','—'],{formula:'copy of ipos.symbol'});
 add('listing_performance','company_name','C',['—','—','—'],{formula:'copy of ipos.company_name'});
 add('listing_performance','listing_date','C',['—','—','—'],{formula:'copy of ipos.listing_date (E-1 sourced)'});
@@ -168,29 +168,45 @@ add('registrars','phone','D',['DOC','REG','—'],{doc:'E3'});
 add('registrars','website','D',['REG','DOC','—'],{doc:'E3',note:'the registrar itself is authoritative for its own URL'});
 add('registrars','allotment_check_url','I',['REG','—','—'],{only:'the registrar owns this URL'});
 add('registrars','address','D',['DOC','REG','—'],{doc:'E3'});
-add('registrars','active','I',['ADMIN','—','—'],{});
+add('registrars','active','I',['ADMIN','—','—'],{only:'admin-only by design; no external source exists'});
 add('registrars','allotment_url_healthy','I',['—','—','—'],{});
 add('registrars','allotment_url_checked_at','I',['—','—','—'],{});
 
-// ---------------- per-type resolution ----------------
+// ---------------- per-type resolution (POOL-based) ----------------
+// Each field's ranks come from an ordered POOL of every source that can supply it.
+// For a given IPO type we drop the sources that type does not have, then take the
+// first three that remain. A rank is therefore never left empty while a real source
+// is still available - the bug this replaced left 28 SME fields with only two sources
+// because it deleted the absent exchange instead of promoting the next source.
 const TYPES = ['MAINBOARD','SME_BSE','SME_NSE','FPO','RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'];
+
+// Build the pool from the authored ranks plus the field's legitimate fallbacks.
+// FALLBACKS lists, per table, the websites that genuinely publish that table's fields.
+const WEB_OK = new Set(['ipos','ipo_details','financial_data','peer_companies','subscriptions',
+                        'listing_performance','registrars','ipo_intermediaries','gmp_records']);
+function pool(f) {
+  const p = f.r.filter(x => x !== '—');
+  if (!WEB_OK.has(f.t)) return p;                       // document-only tables: no website fallback
+  for (const w of ['CG','MC']) if (!p.includes(w)) p.push(w);
+  return p;
+}
 function resolve(f, type) {
   const naSet = f.o.na || [];
-  const base = type === 'SME_BSE' || type === 'SME_NSE' ? 'IPO' : type;
-  if (naSet.includes(base) || (type.startsWith('SME') && naSet.includes('IPO'))) return ['N/A','N/A','N/A'];
-  let r = [...f.r];
-  if (type === 'SME_BSE') r = r.map(s => (s === 'NSE' ? 'BSE' : s));
-  if (type === 'SME_NSE') r = r.map(s => (s === 'BSE' ? 'NSE' : s));
-  if (type === 'SME_BSE' || type === 'SME_NSE') {
-    const seen = new Set(); // an absent exchange cannot appear twice
-    r = r.map(s => { if (['NSE','BSE'].includes(s)) { if (seen.has(s)) return '—'; seen.add(s); } return s; });
-  }
+  const base = type.startsWith('SME') ? 'IPO' : type;
+  if (naSet.includes(base)) return ['N/A','N/A','N/A'];
+  if (f.cls === 'C' || f.cls === 'I') return [...f.r];   // computed / pipeline: ranks are meaningless
+  // A field that IS one exchange's quote does not exist when the stock does not trade there.
+  // Without this, an NSE price on a BSE-only SME fell through to a website and would have
+  // published a number for a venue the stock is not listed on.
+  if (f.o.exchOnly === 'NSE' && type === 'SME_BSE') return ['N/A','N/A','N/A'];
+  if (f.o.exchOnly === 'BSE' && type === 'SME_NSE') return ['N/A','N/A','N/A'];
+  let p = pool(f);
+  if (type === 'SME_BSE') p = p.filter(s => s !== 'NSE');
+  if (type === 'SME_NSE') p = p.filter(s => s !== 'BSE');
+  const r = p.slice(0, 3);
+  while (r.length < 3) r.push('—');
   return r;
 }
-
-const docOrder = t => (t === 'SME_BSE' || t === 'SME_NSE')
-  ? 'PROSPECTUS > RHP > CORRIGENDUM > DRHP  (no PRICE_BAND_AD exists for SME on prod: 0 rows)'
-  : 'PRICE_BAND_AD > CORRIGENDUM > RHP > PROSPECTUS > DRHP';
 
 let out = [];
 out.push('| # | Field | Cls | R1 | R2 | R3 | SME-BSE | SME-NSE | Doc § | Note / why no lower rank |');
