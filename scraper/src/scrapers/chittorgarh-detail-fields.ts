@@ -652,3 +652,37 @@ export function extractIssueSizeFromDetailHtml(
 
   return Math.round(rupees);
 }
+
+/** Plausible sector/industry-name bounds (mirrors the matrix's own regex). */
+const MIN_SECTOR_LEN = 2;
+const MAX_SECTOR_LEN = 100;
+
+/**
+ * Extract the industry/sector name from a Chittorgarh per-IPO detail page
+ * (T-507, issue #394 — `ipos.sector` is '' on every row; T-455 found neither
+ * NSE, BSE, Moneycontrol nor Chittorgarh assigned a `sector` key anywhere).
+ *
+ * The Chittorgarh detail page DOES carry the sector, but not as a labelled
+ * "Sector"/"Industry" row like the other fields in this file — it appears as
+ * the heading of the page's "recently listed peers" comparison table:
+ *   <h2 itemprop="about">Recently Listed IPOs in Specialty Chemicals</h2>
+ * verified against two REAL captured pages (Ather Energy -> "Automobiles",
+ * Vikran Engineering -> "Specialty Chemicals"; both link to the same
+ * `/report/sector-wise-ipo-list-in-india/<report>/all/<industry_id>/` report,
+ * confirming the heading names the same taxonomy Chittorgarh itself tracks
+ * server-side via the numeric `ipo_industry` id embedded elsewhere on the
+ * page). Returns null when the heading is absent or the captured text falls
+ * outside a plausible sector-name length (2-100 chars, matches the
+ * field-priority-matrix `sector` validation regex) — never guessed.
+ */
+export function extractSectorFromDetailHtml(html: string): string | null {
+  if (!html) return null;
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+
+  const m = clean.match(/itemprop="about"[^>]*>\s*Recently Listed IPOs in\s+([^<]+?)\s*<\/h2>/i);
+  if (!m) return null;
+
+  const sector = stripTags(m[1]).trim();
+  if (sector.length < MIN_SECTOR_LEN || sector.length > MAX_SECTOR_LEN) return null;
+  return sector;
+}

@@ -22,6 +22,7 @@ import { validateChittorgarhIPOData } from '../utils/validators.js';
 import { DataValidationPipeline, PipelineFactory } from '../pipelines/data-validation-pipeline.js';
 import { db } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
+import { runSectorVisit } from '../services/chittorgarh-sector-visitor.js';
 
 /**
  * Chittorgarh Scraper Orchestrator V2
@@ -231,6 +232,21 @@ export async function runChittorgarhScraper(
   const orchestrator = new ChittorgarhScraperOrchestratorV2();
   if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
   const baseResult = await orchestrator.run();
+
+  // T-507/#394: per-IPO sector visit rides the same 30-min Chittorgarh cycle,
+  // AFTER the bulk scrape/write completes — a capped, separate step so a
+  // detail-page fetch failure never affects the bulk result above. Never
+  // throws (see runSectorVisit's own guard); a failure here is logged and
+  // swallowed, not surfaced as a Chittorgarh cycle failure.
+  try {
+    await runSectorVisit();
+  } catch (err) {
+    logger.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      '[CHITTORGARH] sector visit step failed — cycle result unaffected'
+    );
+  }
+
   return {
     ...baseResult,
     smeCount: orchestrator.getSmeCount(),

@@ -2454,3 +2454,85 @@ export async function recordDocumentSourceHints(
   await ipoRepository.updateDocumentSourceHints(ipoId, patch as never);
   logger.debug({ ipoId, website: Boolean(patch.companyWebsite), verifier: Boolean(verifier) }, 'Recorded document source hints');
 }
+
+/**
+ * Write `ipos.sector` for the live Chittorgarh sector-visitor step (T-507,
+ * issue #394). This is a single-field, provenance-tracked write — NOT a
+ * bypass of consolidation: it records the same `field_sources` row
+ * `DataConsolidationService` reads to arbitrate future conflicts, and it
+ * enforces the field-priority-matrix ordering (`sector: [ADMIN, CHITTORGARH]`)
+ * directly rather than routing through the full multi-field `upsertIPO`
+ * pipeline (which expects a complete `ScrapedIPO` record; a single-field
+ * detail-page visit never has one).
+ *
+ * Guards, in order:
+ *   1. Never write when an existing `field_sources` row for (ipos, sector)
+ *      already carries `source: 'ADMIN'` — ADMIN always outranks CHITTORGARH
+ *      per the matrix, and this table has no per-cell "protect" flag the way
+ *      `admin-field-protection.md`'s guard covers other fields.
+ *   2. `WHERE sector IS NULL OR sector = ''` — never overwrite ANY existing
+ *      value (including a prior CHITTORGARH-sourced one), matching the
+ *      write-once contract `upsertIpoDetailsIssueType` (#222/PR #367) uses
+ *      for the same "no admin-edit UI yet" situation.
+ *
+ * Returns true when a row was actually updated; false when guarded off
+ * (already has ADMIN provenance, or already has a non-empty value).
+ */
+export async function upsertIpoSector(
+  ipoId: string,
+  sector: string,
+  source: Extract<ScraperSource, 'CHITTORGARH'> = 'CHITTORGARH'
+): Promise<boolean> {
+  const fieldSourcesRepo = getFieldSourcesRepository();
+
+  let existingSource: string | null = null;
+  try {
+    const existing = await fieldSourcesRepo.findByField(ipoId, 'ipos', 'sector');
+    existingSource = existing?.source ?? null;
+  } catch (err) {
+    logger.warn(
+      { ipoId, error: err instanceof Error ? err.message : String(err) },
+      '[DataPersister] sector field_sources lookup failed — proceeding without provenance guard'
+    );
+  }
+  if (existingSource === 'ADMIN') {
+    logger.info({ ipoId }, 'ipos.sector already ADMIN-sourced — write skipped (T-507)');
+    return false;
+  }
+
+  const result = await db
+    .update(iposTable)
+    .set({ sector, updatedAt: new Date() })
+    .where(
+      andOp(
+        eqOp(iposTable.id, ipoId),
+        orOp(isNullOp(iposTable.sector), eqOp(iposTable.sector, ''))
+      )
+    )
+    .returning({ id: iposTable.id });
+
+  const wrote = result.length > 0;
+  if (wrote) {
+    try {
+      await fieldSourcesRepo.trackFieldUpdate({
+        ipoId,
+        tableName: 'ipos',
+        fieldName: 'sector',
+        source,
+        confidence: 80,
+        previousValue: null,
+        previousSource: existingSource as 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH' | null,
+        updatedBy: 'CHITTORGARH_SECTOR_VISITOR',
+      });
+    } catch (err) {
+      logger.warn(
+        { ipoId, error: err instanceof Error ? err.message : String(err) },
+        '[DataPersister] sector field_sources write failed — ipos.sector column write already committed'
+      );
+    }
+  }
+  logger.info({ ipoId, sector, wrote }, wrote
+    ? 'ipos.sector written (T-507)'
+    : 'ipos.sector already set — write skipped (no overwrite)');
+  return wrote;
+}
