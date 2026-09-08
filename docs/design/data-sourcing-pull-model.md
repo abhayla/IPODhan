@@ -1037,6 +1037,50 @@ be down during a Tuesday-afternoon verification pass. The field keeps its value;
 records that we could not reconfirm it, and the page marks it *last confirmed on <date>* once that
 gap passes the staleness threshold (owner decision, 2026-09-08).
 
+#### 2.5.2 A re-ask must not rewrite an unchanged value
+
+Triggers 3-7 re-ask fields that already hold good values, and trigger 4 does it on a schedule. At
+phase-1 size that is **19 IPOs x ~150 sourced fields = roughly 2,850 checks a week**. If each one
+wrote, we would produce about **148,000 writes a year of pure churn**, each dragging a provenance
+row and a cache invalidation with it.
+
+**The rule: verification is a read. It writes only when something changed.**
+
+| Outcome of a re-ask | What is written |
+|---|---|
+| Same value, check passes | **nothing** — only `verify_state` and the timestamp on the plan row |
+| Different value from a better document (trigger 3) | the new value, a provenance row, a cache drop |
+| Different value from a verification source | no data write — this opens the re-read loop (§3.2) |
+| Re-read produces a correction | the corrected value, provenance, cache drop |
+
+**This also protects a signal we would otherwise destroy.** `ipos.updated_at` and
+`field_sources.updated_at` must keep meaning *the value changed*, not *we looked at it*. The moment
+verification writes on every pass, every freshness check downstream reads noise.
+
+**What already exists, and does not need rebuilding.** Two layers landed in September and the pull
+loop uses them rather than inventing a third:
+
+- **A normalised comparison** — `areEquivalent` + `normalizeChosen`
+  (`scraper/src/services/data-consolidation-service.ts:919-932`). It exists because Postgres returns
+  a numeric as the string `"6800000000.00"` while the scraper holds the number `6800000000`, so
+  every re-scrape of an unchanged number used to count as a write. The same comparison now decides
+  both the row update and the provenance row, so the two cannot disagree.
+- **A row-level gate** — the update is built as a diff and skipped when the diff is empty
+  (`scraper/src/services/data-persister.ts:2258`). An earlier version keyed on a counter that never
+  counted `listingExchanges`, `registrarId` or `offeringType`, so a resolved registrar could be
+  dropped forever.
+
+**One open gap this design inherits, and it stops being cosmetic here.** Walk item **W-106**
+(2026-09-03) records that `valueActuallyChanged` is dead on every tested path — a higher-priority
+source arriving with an equivalent value is treated as convergence before the check is consulted. It
+was filed as *"not a behaviour defect; a misleading counter"* and left open.
+
+Under the pull model that counter is the only thing separating *"verification confirmed 2,850 fields
+and nothing changed"* from *"verification rewrote 2,850 fields identically."* **A dead counter makes
+the no-op suppression unverifiable**, so W-106 becomes a prerequisite rather than a follow-up, and
+check `PULL-NOOP` below is what proves it: writes per cycle divided by fields re-asked per cycle,
+which on a quiet day must be near zero.
+
 ### 2.6 When all three sources fail
 
 The first draft said: write null with a reason, never leave a stale value. **That is deleted, for
@@ -1226,6 +1270,7 @@ So every check below obeys four rules:
 | `PULL-YIELD` | of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied | rising toward 100% | falls, **or the denominator moves more than 5% overnight** |
 | `PULL-EXCUSED` | `NOT_PRINTED` count per (IPO, document type), NEW vs yesterday by name | stable | a document's excused set grows at all — this is what catches a mis-resolved type |
 | `PULL-EXHAUST` | `EXHAUSTED` rows by (IPO, field, reason), NEW vs GONE vs SAME | shrinking | any NEW one on a phase-1 IPO |
+| `PULL-NOOP` | writes per cycle ÷ fields re-asked per cycle | near zero on a day with no filings | rises without a matching document arrival — verification is rewriting unchanged values |
 | `PULL-NOBLANK` | fields that went from a value to absent this slot | **0** | any non-zero — this is the guard on §2.6 |
 | `PULL-WRITE` | plan rows marked `SUPPLIED` whose write returned `skipped` | **0** | any non-zero |
 | `PULL-FROZEN` | `SUPPLIED` rows whose `chosen_document_id` has been superseded | **0** | any non-zero — the guard on §2.5 |
