@@ -603,6 +603,17 @@
       "title": "Duplicate IPO row on production for Asset Reconstruction, opening today - the W-108 class recurring",
       "detail": "Two rows for one company, both UPCOMING, both opening 9 Sep, same band 132-139: asset-reconstruction-company-india-ltd (ARCIL, bse_ipo_no 7950, issue_size 696.06 Cr, ofs 732.97 Cr) and asset-reconstruction-co-india-ltd (no symbol, issue_size 733.00 Cr). The site shows the IPO twice with different numbers. This is the W-108 class from 2026-09-03 (a second Rays of Belief row, identity tiers 1-5 all missed) recurring on a mainboard IPO. Root cause: the shipped normaliser strips Limited/Ltd/Pvt Ltd but not Company vs Co., so the two names never collide. A sweep with a stricter key finds exactly one duplicate group on prod - this one. Needs: a merge of the two rows (owner call, it is a prod data change), and the normaliser extended to corporate-form words with a duplicate check that runs on discovery.",
       "fix_in": "data merge + normaliser fix + a duplicate detection check"
+    },
+    {
+      "id": "F-56",
+      "sev": "CRITICAL",
+      "area": "identity",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No rule exists for what happens when two rows converge on one identifier",
+      "detail": "Owner question 2026-09-09. Measured: NO open or upcoming IPO has an ISIN (0 of 19) - the depository assigns it near listing, so the only permanently unique id arrives AFTER the row is created and published. The duplicate second Asset Reconstruction row carries no identifier at all: no symbol, no ISIN, no CIN, no BSE number. So one-row-per-unique-id is right but unenforceable at insert. Design now carries late-binding identity: create on the normalised name, re-check every time a stronger identifier arrives, MERGE automatically on a converging symbol/CIN/ISIN keeping the union of fields and both provenances, and use CIN earlier (8 of 13 upcoming have it; it exists from incorporation, unlike a symbol or ISIN). The gap was never the identifiers - we hold four - it was having no rule for convergence.",
+      "fix_in": "§2.3.3.1",
+      "closed_in": "identity model written 2026-09-09"
     }
   ],
   "false_assertions": [

@@ -945,6 +945,46 @@ detects a duplicate either. Two things follow, and both belong to the loop rathe
    the binding key. A sweep with such a key over production finds exactly one duplicate group today:
    this one. Binding and de-duplication want opposite error biases, so they must not share a key.
 
+#### 2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert
+
+**Owner, 2026-09-09: "Is there a unique ID for each IPO? If yes then there should be only one row
+for each IPO for that unique ID."** Agreed on the principle. The data shows why it is not happening,
+and the reason is not a missing rule — it is timing.
+
+**Measured on production, 2026-09-09:**
+
+| Status | IPOs | ISIN | Symbol | CIN | BSE no. |
+|---|---:|---:|---:|---:|---:|
+| UPCOMING | 13 | **0** | 12 | 8 | 9 |
+| OPEN | 6 | **0** | 5 | 5 | 4 |
+| CLOSED | 60 | 1 | 12 | 0 | 0 |
+| LISTED | 251 | 149 | 234 | 18 | 0 |
+
+**No open or upcoming IPO has an ISIN.** The depository assigns it near listing, so the one
+permanently unique identifier **arrives after the row has been created and published**. And the
+duplicate proves the point: the second Asset Reconstruction row carries **no identifier of any kind**
+— no symbol, no ISIN, no CIN, no BSE number. There was nothing to key on.
+
+**So the rule takes the shape of late-binding identity, in four parts:**
+
+1. **Create on the best identity available.** At discovery that is the normalised name — which is
+   why §2.3.3's normaliser must fold corporate-form words, not only the legal suffix.
+2. **Every time a stronger identifier arrives, check it against every other row.** When the second
+   row is assigned its symbol it becomes `ARCIL`, **and `ARCIL` already exists**. That collision is
+   the detection, and it is guaranteed to arrive before listing even though it is absent today.
+3. **Converging identifiers mean a merge, not an alert.** Two rows sharing one symbol, one CIN or
+   one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated
+   fields, and preserves the provenance of both — a warning nobody reads is what produced the
+   current state.
+4. **Use CIN earlier than we do.** It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN,
+   it exists from incorporation — long before any exchange assigns anything, and we already extract
+   it from the filing (§E7). It is not sufficient alone, because one company can return with a
+   rights issue or an FPO, but **CIN plus open date is a strong pair available early**.
+
+**The gap this closes.** We hold four candidate identifiers and have **no rule for what happens when
+two rows converge on one**. That absence, not the identifiers, is what let a mainboard IPO exist
+twice on the day it opened.
+
 #### 2.3.4 A correct page still contains other companies' numbers
 
 The two rules above get us to the right page and bind it to the right IPO. **Neither stops the third
