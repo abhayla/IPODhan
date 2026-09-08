@@ -1496,19 +1496,35 @@ in phase 1.
 
 | Cause | Documents | The design's answer |
 |---|---:|---|
-| No extractor exists for the type | 78 | Build two: the **ratios / basis-for-offer-price** document (32 pending — it carries the KPIs, the WACA and the peer set, all rank-1 document fields in §1) and the **basis-of-allotment advertisement** (1, carries the final allotment). **Deliberately leave unread:** sample application forms (14), bidding centres (8), security parameters (23) — and say so in the manifest, so they report as `NOT_APPLICABLE` rather than as a backlog forever. |
+| No extractor exists for the type | 78 | Build **one**: the **ratios / basis-for-offer-price** document (32 pending — it carries the KPIs, the WACA and the peer set, all rank-1 document fields in §1). **Deliberately left unread, and recorded as such:** the basis-of-allotment advertisement (1 — see below), sample application forms (14), bidding centres (8), security parameters (23). All report `NOT_APPLICABLE` in the manifest rather than sitting in a backlog forever. |
 | Budget of 3 filings per cycle | 91 | Demand-ordered allocation (§2.7) plus the **backlog tier's own nightly window** (§2.3, **the closed-IPO work**). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here. |
 | 10-minute extraction cap | the Skyways class | A separate, longer budget for large or scanned documents, run in the backlog window only (**the closed-IPO work**), where a 40-minute extraction costs nothing. The live path keeps its 10-minute cap so it cannot blow the wake budget. |
 
 O-4 is already marked APPROVED by the owner, so this section is the *how*, not a request.
 
-**F-27 — the basis-of-allotment extractor has nowhere to write.** The extractor named in the table
-above (1 pending document) is scheduled to build, but no table or field group in this design holds
-its output. The missing field group, named so it is not silently dropped when M2/M3 lands: **allotment
-ratio, applications received, valid applications, shares allotted per category, oversubscription per
-category.** This needs a schema decision (a new table, most likely `allotment_results`, mirroring the
-shape of `ipo_valuation`) before the extractor is worth building — building the extractor first would
-produce data with nowhere to land.
+**F-27 — the basis-of-allotment advertisement is stored and deliberately not read (owner decision,
+2026-09-08).** An earlier draft scheduled an extractor for it. **Nothing exists to hold what that
+extractor would produce** — there is no field anywhere for the allotment ratio, applications
+received, valid applications, shares allotted per category, or oversubscription per category. Every
+column we have with "allot" in its name is about something else: the allotment *date*, the
+registrar's allotment-check *URL*, and `retail_max_allottees`.
+
+Building a parser whose output is discarded is waste, and the ordering was my error — the extractor
+was scheduled without checking there was a target.
+
+**Why not build the fields either.** We hold **exactly one such document**, and it is published only
+*after* an issue closes, so most of the 19 open and upcoming IPOs have not filed one. More
+importantly, the question users actually ask — *"did I get shares?"* — **is already answered**: we
+link to the registrar's allotment-check page, and 14 of 19 registrars have one with 18 healthy.
+
+The gap is the *other* question — *"what were the odds?"*, the ratio people quote after an
+oversubscribed issue. **That is a product decision about what IPODhan publishes, not a sourcing
+decision**, and it does not belong in this design.
+
+**So: the document keeps being discovered and stored, and is marked `NOT_APPLICABLE` for
+extraction with this reason attached.** If the allotment ratio later becomes a feature, the
+documents will have been accumulating rather than being thrown away — and the correct order then is
+fields first, extractor second.
 
 ### 5.5 O-5 — the document outranks websites: what is inherited and what remains
 
@@ -1621,7 +1637,7 @@ prerequisite of the first closed IPO, not part of the work.
 | 4 | `ipo_field_plan` table + generator | 1, 2 | **A** | medium |
 | 5 | The pull walk over the plan | 4 | **A** | large — this is the core |
 | 6 | Tiering and demand-ordered budgets (O-4) | 5 | **A** | medium |
-| 7 | The two missing extractors (ratios, basis-of-allotment ad) | — | B | medium each, independent |
+| 7 | The **one** missing extractor: ratios / basis-for-offer-price (32 pending documents). The basis-of-allotment ad is deliberately unread — §5.4 | — | B | medium, independent |
 | 8 | The re-read loop | 5 | **A** | medium |
 | 9 | The verification checks in §4 | 5, 8 | B | medium — but nothing above is proven without it |
 | 10 | Unit conversion (O-2) + `financial_data` becomes derived | 9 | **A** | large, own release |

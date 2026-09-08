@@ -304,10 +304,10 @@
       "sev": "MAJOR",
       "area": "domain",
       "phase1": true,
-      "status": "FIXED",
+      "status": "NOT-DOING",
       "title": "The basis-of-allotment extractor is scheduled with nowhere to write",
       "fix_in": "Appendix A + §5.4",
-      "closed_in": "section 5.4, 2026-09-08"
+      "closed_in": "OWNER DECISION 2026-09-08: drop the extractor from the plan, keep storing the document, mark it NOT_APPLICABLE for extraction with the reason recorded. Building a parser whose output is discarded is waste, and the ordering was my error - it was scheduled without checking there was a target. Not building the fields either: we hold exactly ONE such document, it is published only after close so most of the 19 open/upcoming IPOs have not filed one, and the question users actually ask (did I get shares) is already answered by linking to the registrar - 14 of 19 have an allotment-check URL, 18 healthy. The remaining gap (the allotment ratio, what were the odds) is a PRODUCT decision about what IPODhan publishes, not a sourcing decision. If it becomes a feature the documents will have accumulated, and the order then is fields first, extractor second."
     },
     {
       "id": "F-28",
