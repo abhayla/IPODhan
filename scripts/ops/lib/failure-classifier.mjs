@@ -9,6 +9,20 @@
 
 const RULES = [
   {
+    // T-504/#402: a numeric(precision,scale) column too narrow for the value
+    // (Postgres code 22003) is a distinct, actionable class from a generic
+    // insert failure — it names its own root cause (a column-width defect,
+    // fixable by widening) rather than "something in the insert broke".
+    // Ordered ahead of `persist-insert-failed` since both match the same
+    // "insert into" log line; this rule wins when the code is present.
+    errorClass: 'persist-numeric-overflow',
+    match: (l) =>
+      l.msg === 'Filing persist failed (non-fatal)' &&
+      typeof l.error === 'string' &&
+      /insert into/i.test(l.error) &&
+      (l.code === '22003' || /numeric field overflow/i.test(String(l.cause ?? ''))),
+  },
+  {
     errorClass: 'persist-insert-failed',
     match: (l) => l.msg === 'Filing persist failed (non-fatal)' && typeof l.error === 'string' && /insert into/i.test(l.error),
   },

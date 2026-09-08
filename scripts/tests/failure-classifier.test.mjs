@@ -59,6 +59,35 @@ test('classifyLine: Rentomojo persist-insert-failed', () => {
   assert.equal(c.docType, 'PRICE_BAND_AD');
 });
 
+// T-504/#402: staging, 2026-09-07T20:22:10.769Z — same Rentomojo ipo_details
+// insert, but PR #411's cause-bearing log now carries the driver's real
+// error (numeric field overflow, code 22003). RED before this fix (no rule
+// distinguished it from any other insert failure — it fell into the generic
+// `persist-insert-failed` bucket, indistinguishable from a syntax error or a
+// missing column); GREEN after — it resolves to its own class.
+const RENTOMOJO_NUMERIC_OVERFLOW = {
+  level: 50, time: '2026-09-07T20:22:10.769Z', pid: 979909, hostname: 'srv1707492',
+  ipoId: 'b28d9d2a-cb24-4d84-8e1a-297ba828884a', docType: 'PRICE_BAND_AD',
+  error: 'Failed query: insert into "ipo_details" ("id", "ipo_id", "issue_type", ...) values (...) on conflict ("ipo_id") do update set ...',
+  cause: 'numeric field overflow', code: '22003',
+  msg: 'Filing persist failed (non-fatal)',
+};
+
+test('classifyLine: Rentomojo persist-numeric-overflow (code 22003)', () => {
+  const c = classifyLine(RENTOMOJO_NUMERIC_OVERFLOW);
+  assert.equal(c.errorClass, 'persist-numeric-overflow');
+  assert.equal(c.ipoId, 'b28d9d2a-cb24-4d84-8e1a-297ba828884a');
+  assert.equal(c.docType, 'PRICE_BAND_AD');
+});
+
+test('classifyLine: a plain insert failure with no code still falls into persist-insert-failed', () => {
+  // Guards against the new rule accidentally widening to match every insert
+  // failure — only a genuine 22003 (or a cause naming numeric overflow) gets
+  // the more specific class.
+  const c = classifyLine(RENTOMOJO_PERSIST);
+  assert.equal(c.errorClass, 'persist-insert-failed');
+});
+
 test('classifyLine: Steamhouse unit-unparseable', () => {
   const c = classifyLine(STEAMHOUSE_UNIT_REFUSAL);
   assert.equal(c.errorClass, 'unit-unparseable');

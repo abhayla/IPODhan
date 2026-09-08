@@ -45,6 +45,7 @@ import {
   CROSS_DOC_TOLERANCE,
 } from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
+import * as schema from '@ipodhan/shared/db/schema';
 
 // ---------------------------------------------------------------- extraction
 
@@ -283,6 +284,53 @@ export function convertUnit(value: number, from: FilingUnit, to: FilingUnit): nu
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+/**
+ * T-504/#402: `numeric(precision, scale)` in Postgres refuses (code 22003) an
+ * integer part wider than `precision - scale` digits. Every ipo_details
+ * numeric column that a filing extraction can populate (`fresh_issue`,
+ * `ofs_issue`, `min_investment`, `max_retail_subscription`,
+ * `max_employee_subscription`) was widened to 18,2 by the T-504 migration,
+ * but this checks the column's ACTUAL declared width at runtime rather than
+ * hard-coding "18,2 is enough" — a value that still doesn't fit (e.g. a
+ * misparsed extraction, or a future narrower column) is refused here instead
+ * of throwing the raw driver error from inside the insert.
+ */
+export function fitsNumericColumn(
+  value: string,
+  precision: number,
+  scale: number
+): boolean {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return false;
+  const maxIntegerDigits = precision - scale;
+  const integerDigits = Math.trunc(Math.abs(n)).toString().length;
+  return integerDigits <= maxIntegerDigits;
+}
+
+/**
+ * The declared (precision, scale) of a numeric column on ANY drizzle table
+ * this persister writes, or null when the column isn't numeric (or doesn't
+ * exist). Generic on purpose (owner 2026-09-08, T-504 scope note): the
+ * overflow class isn't specific to `ipo_details` — any table this module
+ * writes a rupee amount into can hit the same `numeric(p,s)` ceiling, so the
+ * check takes the table as a parameter rather than being hard-coded to one.
+ * Currently wired at the one write path with a proven live defect
+ * (`ipo_details` via `mark()`, below) — the other tables this persister
+ * writes (`financial_statements`, `ipo_valuation`, `financial_data`) already
+ * sit at numeric(18,2), so wiring this same call at those sites is a
+ * follow-up, not blocking this fix.
+ */
+function numericColumnLimit(
+  table: object,
+  col: string
+): { precision: number; scale: number } | null {
+  const column = (table as Record<string, { precision?: unknown; scale?: unknown }>)[col];
+  if (column && typeof column.precision === 'number' && typeof column.scale === 'number') {
+    return { precision: column.precision, scale: column.scale };
+  }
+  return null;
 }
 
 function bump(written: Record<string, number>, table: string, n = 1): void {
@@ -759,6 +807,22 @@ export async function persistFilingExtraction(
   const details: Record<string, unknown> = {};
   const mark = (col: string, v: unknown): void => {
     if (v === null || v === undefined) return;
+    if (typeof v === 'string') {
+      const limit = numericColumnLimit(schema.ipoDetails, col);
+      if (limit && !fitsNumericColumn(v, limit.precision, limit.scale)) {
+        // Persist-numeric-overflow (T-504/#402): refuse the ONE oversized
+        // field, classified, instead of letting the whole document throw on
+        // the driver's raw 22003 — the rest of the extraction still persists.
+        logger.warn(
+          { ipoId, col, value: v, precision: limit.precision, scale: limit.scale },
+          'persist-numeric-overflow: value refused, exceeds ipo_details column width'
+        );
+        skippedFailedCheck.push(
+          `ipo_details.${col}: persist-numeric-overflow — '${v}' exceeds numeric(${limit.precision},${limit.scale})`
+        );
+        return;
+      }
+    }
     details[col] = v;
   };
 
