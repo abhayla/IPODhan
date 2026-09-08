@@ -129,6 +129,30 @@ jobs:
         # docs/architecture/write-path-hardening.md ("R0").
         run: node scripts/check-write-ratchet.mjs
 
+      - name: Fixture provenance self-tests (T-518)
+        # Mutation-proof: scripts/ci/tests/require-fixture-provenance.test.mjs
+        # imports the real predicates from scripts/lib/fixture-provenance-checks.mjs,
+        # and scripts/tests/normalize-company-name-parity.test.mjs imports
+        # BOTH the plain-JS copy of the company-name normalizer AND the real
+        # SSOT (packages/shared/src/utils/company-name-normalizer.ts) and
+        # asserts identical output, so a drift or a weakened predicate turns
+        # this red before the gate below can silently stop catching it.
+        run: |
+          node --test scripts/ci/tests/require-fixture-provenance.test.mjs
+          node --test scripts/tests/normalize-company-name-parity.test.mjs
+
+      - name: Fixture provenance gate (T-518)
+        # RCA: PR #425 shipped a fixture whose OWN <title> named a different
+        # company than its filename claimed, and a test asserting the
+        # filename's company against it PASSED — nothing in CI caught it, a
+        # human opening the file did. Every fixture under scraper/tests/fixtures/**
+        # must carry a sibling <file>.meta.json (sourceUrl + capturedAt +
+        # company|pageType) and, for HTML, its embedded company name must
+        # match the filename. Backfill is shrink-only —
+        # config/fixture-provenance-baseline.json. See
+        # scraper/tests/fixtures/PROVENANCE.md.
+        run: node scripts/ci/require-fixture-provenance.mjs
+
       - name: Install dependencies
         run: npm ci
 

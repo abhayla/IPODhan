@@ -103,6 +103,16 @@
       "unverifiableWhen": "data_conflicts table not present"
     },
     {
+      "id": "fixture_provenance",
+      "findingClass": "a committed test fixture (HTML/JSON/TXT/PNG under scraper/tests/fixtures/** or scraper/tests/unit/pipeline-stages/fixtures/**) has no recorded source URL/capture date, or an HTML fixture's own embedded company name (its <title>/<h1>) disagrees with the company its filename claims — so the fixture silently backs a test with the WRONG page and the test still passes",
+      "githubIssue": "T-518, 2026-09-08: PR #425 shipped scraper/tests/fixtures/historical/vikran-engineering-cg-detail.html whose own <title> read \"Neochem Bio IPO...\"; a test asserting \"Vikran Engineering -> Specialty Chemicals\" against it PASSED. Nothing in CI could catch it — a human caught it by opening the file.",
+      "failThreshold": "any fixture data file under the two fixture roots with no sibling <file>.meta.json (sourceUrl + capturedAt + company|pageType:true), OR an HTML fixture whose filename claims a company (per the whitelist-strip rule in scripts/lib/fixture-provenance-checks.mjs) and whose extractable <title>/<h1> names a DIFFERENT company, that is not grandfathered in the shrink-only config/fixture-provenance-baseline.json",
+      "severity": "P2",
+      "unverifiableWhen": "never — this is a static, deterministic file-content check with no external dependency (no network call, no DB)",
+      "wiredInto": "pr-gate.yml step \"Fixture provenance gate (T-518)\" — node scripts/ci/require-fixture-provenance.mjs — runs on every PR",
+      "selfTest": "scripts/ci/tests/require-fixture-provenance.test.mjs (predicates), scripts/tests/normalize-company-name-parity.test.mjs (normalizer parity)"
+    },
+    {
       "id": "g_freshness_per_type",
       "findingClass": "an offering_type's calendar has gone stale with no per-type freshness check to catch it",
       "round7Findings": [
