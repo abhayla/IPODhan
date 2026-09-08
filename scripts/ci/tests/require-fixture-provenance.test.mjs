@@ -181,3 +181,67 @@ test('companiesMatch: initialism direction works both ways, and unrelated names 
   assert.equal(companiesMatch(normalizeCompanyNameForMatching, 'Bajaj Housing Finance Limited', 'bajaj hfl'), true);
   assert.equal(companiesMatch(normalizeCompanyNameForMatching, 'vikran engineering', 'Neochem Bio Ventures'), false);
 });
+
+test('MAJOR 3(a): an exchange/ticker-prefixed title ("NSE: VIKRAN - Vikran Engineering Ltd") still extracts and matches', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'vikran-engineering-detail.html';
+    writeFileSync(join(dir, file), '<title>NSE: VIKRAN - Vikran Engineering Ltd</title>');
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-08-01', company: 'Vikran Engineering' })
+    );
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'pass');
+  });
+});
+
+test('MAJOR 3(a): h1 is preferred over title when both exist', () => {
+  const html = '<title>NSE: JIOFIN - Some SEO Noise</title><h1>Reliance Strategic Investments Ltd</h1>';
+  assert.equal(extractHtmlCompanyName(html), 'Reliance Strategic Investments Ltd');
+});
+
+test('MAJOR 3(b): meta.identitySkipReason skips ONLY the filename check, meta.company is still enforced', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'jio-financial-detail.html';
+    writeFileSync(join(dir, file), '<h1>Reliance Strategic Investments Ltd</h1>');
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({
+        sourceUrl: 'https://x',
+        capturedAt: '2026-08-01',
+        company: 'Reliance Strategic Investments',
+        identitySkipReason: 'brand name "Jio Financial" differs from the legal entity on the captured page',
+      })
+    );
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'pass');
+    assert.ok(result.filenameCheckSkipReason);
+
+    // Now prove meta.company is STILL enforced even with identitySkipReason set.
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({
+        sourceUrl: 'https://x',
+        capturedAt: '2026-08-01',
+        company: 'Totally Wrong Company',
+        identitySkipReason: 'brand name "Jio Financial" differs from the legal entity on the captured page',
+      })
+    );
+    const result2 = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result2.status, 'fail');
+  });
+});
+
+test('MAJOR 3(b): identitySkipReason under 20 chars is refused as a real provenance error', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'x-detail.html';
+    writeFileSync(join(dir, file), '<title>X Co IPO</title>');
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-08-01', company: 'X Co', identitySkipReason: 'too short' })
+    );
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'fail');
+    assert.match(result.reasons.join(' '), /20\+ characters/);
+  });
+});

@@ -112,6 +112,14 @@ export function readProvenance(root, fixtureRelPath) {
   if (!meta.capturedAt || !/^\d{4}-\d{2}-\d{2}$/.test(meta.capturedAt)) {
     return { ok: false, reason: `${metaRel} missing "capturedAt" in YYYY-MM-DD form` };
   }
+  if (meta.identitySkipReason !== undefined) {
+    if (typeof meta.identitySkipReason !== 'string' || meta.identitySkipReason.trim().length < 20) {
+      return {
+        ok: false,
+        reason: `${metaRel} "identitySkipReason" must be a real explanation, 20+ characters (round 3 review, MAJOR 3 — a one-word excuse is not an audit trail)`,
+      };
+    }
+  }
   if (meta.pageType !== true) {
     if (!meta.company || typeof meta.company !== 'string' || meta.company.trim() === '') {
       return {
@@ -169,25 +177,34 @@ const STOPWORDS = [' ipo', ' - ', ' | ', ' details', ' date', ' rhp', ' drhp', '
 // first so the normal earliest-stopword cut (below) is applied to the
 // COMPANY segment, not the generic one (round 2 review, MAJOR 4).
 const GENERIC_TITLE_PREFIXES = [/^issue\s+details\s*-\s*/i, /^ipo\s+details\s*-\s*/i, /^public\s+issues\s*-\s*/i];
+// Round 3 review, MAJOR 3(a): an exchange-style title/h1 leads with the
+// exchange and ticker symbol before the company name ("NSE: VIKRAN - Vikran
+// Engineering Ltd") — strip that prefix BEFORE the generic-prefix and
+// stopword cuts below, or the earliest " - " cut takes "NSE: VIKRAN" instead
+// of the company.
+const EXCHANGE_SYMBOL_PREFIX = /^(?:nse|bse)\s*:\s*[a-z0-9&.-]+\s*-\s*/i;
 
 function stripTags(s) {
   return s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /**
- * Extract the company name embedded in an HTML fixture's <title> or <h1>, or
+ * Extract the company name embedded in an HTML fixture's <h1> or <title>
+ * (h1 preferred — round 3 review, MAJOR 3(a): a title more often carries
+ * exchange/ticker/SEO noise around the company name than an h1 does), or
  * null if neither tag has extractable text (a partial-page snippet fixture —
  * identity cannot be checked, provenance metadata is still required).
  */
 export function extractHtmlCompanyName(html) {
   const titleMatch = html.match(TITLE_RE);
   const h1Match = html.match(H1_RE);
-  const raw = titleMatch?.[1] || h1Match?.[1];
+  const raw = h1Match?.[1] || titleMatch?.[1];
   if (!raw) return null;
   let text = stripTags(raw);
   if (!text) return null;
   // Common "SEBI | <company> - ..." prefix.
   text = text.replace(/^sebi\s*\|\s*/i, '');
+  text = text.replace(EXCHANGE_SYMBOL_PREFIX, '');
   for (const prefixRe of GENERIC_TITLE_PREFIXES) {
     text = text.replace(prefixRe, '');
   }
@@ -254,6 +271,7 @@ export function checkFixture(root, fixtureRelPath, normalizeFn) {
 
   let identityChecked = false;
   let identitySkipReason = null;
+  let filenameCheckSkipReason = null;
 
   if (extname(fixtureRelPath) === '.html') {
     if (prov.meta.pageType === true) {
@@ -270,16 +288,25 @@ export function checkFixture(root, fixtureRelPath, normalizeFn) {
         // filename against the page content — a meta.json claiming the WRONG
         // company (e.g. "Vikran Engineering" over a captured Neochem page)
         // passed unnoticed. The meta's declared company is the primary
-        // identity claim now; the filename is a secondary, softer check
-        // (heuristic-derived, so more false-accept-tolerant) that catches a
-        // filename/meta.json disagreeing with each other.
+        // identity claim, ALWAYS enforced — round 3 review, MAJOR 3(b):
+        // meta.identitySkipReason narrows the escape to the filename
+        // comparison ONLY, it never reaches this check.
         if (!companiesMatch(normalizeFn, prov.meta.company, contentName)) {
           reasons.push(
             `meta.json declares company "${prov.meta.company}" but the page's own <title>/<h1> says "${contentName}" — ` +
               `either the fixture is mislabeled or it captured the wrong page`
           );
         }
-        if (filenameClaim && !companiesMatch(normalizeFn, filenameClaim, contentName)) {
+        if (prov.meta.identitySkipReason) {
+          // Narrow, declared, counted skip — e.g. a brand name that isn't
+          // the legal entity ("jio-financial" vs "Reliance Strategic
+          // Investments") or a scenario-named fixture
+          // ("missing-price-band-detail.html"). meta.company was still
+          // checked above; only the filename<->content comparison is
+          // skipped, and it is tallied SEPARATELY from pageType so a
+          // reviewer sees it move.
+          filenameCheckSkipReason = prov.meta.identitySkipReason;
+        } else if (filenameClaim && !companiesMatch(normalizeFn, filenameClaim, contentName)) {
           reasons.push(
             `filename claims company "${filenameClaim}" but the page's own <title>/<h1> says "${contentName}" — ` +
               `either the fixture is mislabeled or it captured the wrong page`
@@ -302,5 +329,6 @@ export function checkFixture(root, fixtureRelPath, normalizeFn) {
     reasons,
     identityChecked,
     identitySkipReason,
+    filenameCheckSkipReason,
   };
 }

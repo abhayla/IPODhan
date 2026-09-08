@@ -90,6 +90,18 @@ Three of the backfilled fixtures (`bse-debt-issue-detail.html`,
 BSE site is **out of scope for T-518** — sized as a follow-up (see the PR
 body).
 
+**Honest gap (round 3 review, MAJOR 2, tracked separately by the owner, not
+by this task):** this gate protects fixtures going forward — a NEW fixture,
+or a change that makes a grandfathered one newly identity-checkable, is
+enforced. The 53 grandfathered fixtures themselves are **not** re-checked by
+anything today. If one of them is *edited* in place (its HTML content
+changed, its filename left alone) without also adding a correct
+`.meta.json`, this gate stays silent — editing a file already in the
+baseline does not remove it from the baseline, and a file still in the
+baseline is never run through the identity check at all. Closing that gap
+means re-checking baseline members on every run (not just failing ones) and
+is a real, separate backfill task, not a one-line fix folded into this one.
+
 ## Scope of the identity check (round 2 review, MAJOR 5)
 
 The identity check (filename/meta.company vs page content) runs for **HTML

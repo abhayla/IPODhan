@@ -10,7 +10,7 @@
 // enforcing the shrink-only rule.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { diffAgainstBaseline } from '../ci/require-fixture-provenance.mjs';
+import { diffAgainstBaseline, checkSkipRatchet } from '../ci/require-fixture-provenance.mjs';
 
 test('dropping a baseline entry (the fixture was fixed) is a clean diff', () => {
   const result = diffAgainstBaseline(['a.html'], ['a.html', 'b.html']);
@@ -43,4 +43,19 @@ test('a hand-added baseline entry for a file that currently is NOT failing is ca
   const handEditedBaseline = ['a.html', 'already-fixed.html'];
   const result = diffAgainstBaseline(currentlyFailing, handEditedBaseline);
   assert.deepEqual(result.staleFiles, ['already-fixed.html']);
+});
+
+// Round 3 review, MAJOR 1: pageType:true (or the narrow filename-check skip)
+// growing silently is exactly the same class of hole the file-list ratchet
+// above closes -- these lock the SKIP COUNT itself.
+test('checkSkipRatchet: same or shrunk count passes', () => {
+  assert.equal(checkSkipRatchet(5, 5).ok, true);
+  assert.equal(checkSkipRatchet(5, 3).ok, true);
+});
+
+test('checkSkipRatchet: a grown count FAILs, naming both numbers', () => {
+  const result = checkSkipRatchet(5, 6);
+  assert.equal(result.ok, false);
+  assert.equal(result.recorded, 5);
+  assert.equal(result.current, 6);
 });

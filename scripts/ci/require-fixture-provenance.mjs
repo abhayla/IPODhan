@@ -92,7 +92,20 @@ export function diffAgainstBaseline(failingFiles, baselineFiles) {
   return { newFiles, staleFiles };
 }
 
-export function writeBaseline(baselinePath, failingFiles) {
+/**
+ * Round 3 review, MAJOR 1: a skip count that only prints (never compared to
+ * anything committed) is invisible in a job reviewers read only red/green —
+ * the exact hole the file-list ratchet above exists to close for the
+ * `pageType: true` escape hatch. `recorded` is the count last committed via
+ * `--update`; `current` is this run's count. Grown = FAIL, same-or-shrunk =
+ * PASS (a plain number decrease is fine without --update, unlike the file
+ * list, because there is no per-item identity to go stale).
+ */
+export function checkSkipRatchet(recorded, current) {
+  return { ok: current <= recorded, recorded, current };
+}
+
+export function writeBaseline(baselinePath, failingFiles, identitySkipCount, filenameCheckSkipCount) {
   const files = [...failingFiles].sort();
   writeFileSync(
     baselinePath,
@@ -105,10 +118,18 @@ export function writeBaseline(baselinePath, failingFiles) {
           'must be removed via `node scripts/ci/require-fixture-provenance.mjs --update` ' +
           '(the gate FAILS on a stale entry, forcing the shrink to be committed rather than ' +
           'silently going stale). NEVER hand-add a new entry — route a new fixture through ' +
-          'scripts/create-fixture-from-capture.mjs instead.',
+          'scripts/create-fixture-from-capture.mjs instead. ' +
+          '`identitySkipCount` (round 3 review, MAJOR 1) is a second ratchet: the total ' +
+          'number of fixtures skipping the identity check entirely (pageType:true, no ' +
+          'extractable title/h1, or an unsupported fixture type) may only shrink or hold, ' +
+          'never grow, without a committed --update. `filenameCheckSkipCount` is the same ' +
+          'ratchet for the narrower meta.identitySkipReason escape (meta.company is still ' +
+          'checked; only the filename comparison is skipped).',
         generated_by: 'scripts/ci/require-fixture-provenance.mjs --update',
         count: files.length,
         files,
+        identitySkipCount,
+        filenameCheckSkipCount,
       },
       null,
       2
@@ -128,21 +149,30 @@ function main() {
   const failing = [];
   const skipTally = new Map();
   let identityCheckedCount = 0;
+  let identitySkipCount = 0;
+  let filenameCheckSkipCount = 0;
 
   for (const f of fixtures) {
     const result = checkFixture(root, f, normalizeCompanyNameForMatching);
     if (result.status === 'fail') failing.push({ file: f, reasons: result.reasons });
     if (result.identityChecked) identityCheckedCount++;
     if (result.identitySkipReason) {
+      identitySkipCount++;
       skipTally.set(result.identitySkipReason, (skipTally.get(result.identitySkipReason) || 0) + 1);
+    }
+    if (result.filenameCheckSkipReason) {
+      filenameCheckSkipCount++;
+      const key = `filename-check skipped (declared): ${result.filenameCheckSkipReason}`;
+      skipTally.set(key, (skipTally.get(key) || 0) + 1);
     }
   }
 
   const failingFiles = failing.map((f) => f.file);
 
   if (update) {
-    const count = writeBaseline(baselinePath, failingFiles);
+    const count = writeBaseline(baselinePath, failingFiles, identitySkipCount, filenameCheckSkipCount);
     console.log(`Baseline regenerated: ${count} entries (was ${baselineFiles.length}).`);
+    console.log(`Skip ratchet recorded: identitySkipCount=${identitySkipCount}, filenameCheckSkipCount=${filenameCheckSkipCount}.`);
     process.exit(0);
   }
 
@@ -189,6 +219,29 @@ function main() {
     console.error(
       '\nRun `node scripts/ci/require-fixture-provenance.mjs --update` and commit the regenerated ' +
         `${BASELINE_PATH_REL}.`
+    );
+  }
+
+  // Round 3 review, MAJOR 1: the skip counts above are printed but were
+  // never compared to anything committed — pageType:true could silently
+  // grow the escape hatch, exit 0, with only a summary line moving from
+  // "54 skipped" to "55 skipped" for a reviewer who reads only red/green.
+  const identityRatchet = checkSkipRatchet(baseline.identitySkipCount ?? 0, identitySkipCount);
+  const filenameRatchet = checkSkipRatchet(baseline.filenameCheckSkipCount ?? 0, filenameCheckSkipCount);
+  if (!identityRatchet.ok) {
+    hasFailure = true;
+    console.error(
+      `\nFAIL: identity-check skip count grew (${identityRatchet.current} > committed ${identityRatchet.recorded}). ` +
+        `A NEW pageType:true / titleless / unsupported-type fixture was added without --update. ` +
+        `If this growth is legitimate, run --update and commit the regenerated ${BASELINE_PATH_REL} deliberately.`
+    );
+  }
+  if (!filenameRatchet.ok) {
+    hasFailure = true;
+    console.error(
+      `\nFAIL: filename-check skip count grew (${filenameRatchet.current} > committed ${filenameRatchet.recorded}). ` +
+        `A NEW meta.identitySkipReason was added without --update. If this growth is legitimate, ` +
+        `run --update and commit the regenerated ${BASELINE_PATH_REL} deliberately.`
     );
   }
 
