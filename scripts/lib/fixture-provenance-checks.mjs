@@ -44,6 +44,11 @@ import { join, relative, extname, basename } from 'node:path';
 export const FIXTURE_ROOTS = [
   'scraper/tests/fixtures',
   'scraper/tests/unit/pipeline-stages/fixtures',
+  // Round 2 review, INFO 8: the header above already claimed this root was
+  // in scope; it was missing from the actual scan list. web/tests/fixtures/
+  // itself stays OUT of scope — those are hand-written *.fixture.ts TypeScript
+  // MODULES, not raw page captures, so there is no source URL to record.
+  'web/tests/unit/pipeline-stages/fixtures',
 ];
 
 export const FIXTURE_DATA_EXTENSIONS = new Set(['.html', '.json', '.txt', '.png']);
@@ -159,6 +164,11 @@ export function deriveFilenameCompanyClaim(fixtureRelPath) {
 const TITLE_RE = /<title[^>]*>([\s\S]*?)<\/title>/i;
 const H1_RE = /<h1[^>]*>([\s\S]*?)<\/h1>/i;
 const STOPWORDS = [' ipo', ' - ', ' | ', ' details', ' date', ' rhp', ' drhp', ' prospectus', ' public issues'];
+// A page whose title/h1 leads with a generic phrase before the company name
+// ("Issue Details - Vikran Engineering Ltd") — strip the generic prefix
+// first so the normal earliest-stopword cut (below) is applied to the
+// COMPANY segment, not the generic one (round 2 review, MAJOR 4).
+const GENERIC_TITLE_PREFIXES = [/^issue\s+details\s*-\s*/i, /^ipo\s+details\s*-\s*/i, /^public\s+issues\s*-\s*/i];
 
 function stripTags(s) {
   return s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -178,6 +188,9 @@ export function extractHtmlCompanyName(html) {
   if (!text) return null;
   // Common "SEBI | <company> - ..." prefix.
   text = text.replace(/^sebi\s*\|\s*/i, '');
+  for (const prefixRe of GENERIC_TITLE_PREFIXES) {
+    text = text.replace(prefixRe, '');
+  }
   const lower = text.toLowerCase();
   let cut = text.length;
   for (const stop of STOPWORDS) {
@@ -188,44 +201,106 @@ export function extractHtmlCompanyName(html) {
   return name || null;
 }
 
-/** True if two normalized names refer to the same company (exact match, or one contains the other — filenames are often abbreviated). */
-export function companiesMatch(normalizeFn, filenameClaim, contentName) {
-  const a = normalizeFn(filenameClaim);
-  const b = normalizeFn(contentName);
-  if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+const GENERIC_WORDS = new Set(['ipo', 'rhp', 'drhp', 'fpo']);
+
+function wordsOf(text) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
 }
 
 /**
- * Full per-file check. Returns { status: 'pass' | 'fail', reasons: string[] }.
+ * True if `shortText`'s LAST word is an initialism of `longText`'s
+ * remaining words, once every word before it matches `longText` positionally
+ * — e.g. "bajaj hfl" vs "Bajaj Housing Finance Limited" ("bajaj" matches,
+ * then "hfl" == initials of "housing finance limited"). Deliberately strict
+ * (exact positional prefix match required) to keep the false-accept rate low.
+ */
+function initialismMatch(shortText, longText) {
+  const shortWords = wordsOf(shortText);
+  const longWords = wordsOf(longText).filter((w) => !GENERIC_WORDS.has(w));
+  if (shortWords.length < 2 || shortWords.length >= longWords.length) return false;
+  let i = 0;
+  while (i < shortWords.length - 1 && shortWords[i] === longWords[i]) i++;
+  if (i !== shortWords.length - 1) return false;
+  const acronym = longWords.slice(i).map((w) => w[0]).join('');
+  return shortWords[shortWords.length - 1] === acronym;
+}
+
+/**
+ * True if two names refer to the same company: exact normalized match, one
+ * containing the other (filenames/meta are often abbreviated), or an
+ * initialism match in either direction (round 2 review, MAJOR 4 — e.g.
+ * "bajaj-hfl" against "Bajaj Housing Finance Limited").
+ */
+export function companiesMatch(normalizeFn, nameA, nameB) {
+  const a = normalizeFn(nameA);
+  const b = normalizeFn(nameB);
+  if (a && b && (a === b || a.includes(b) || b.includes(a))) return true;
+  return initialismMatch(nameA, nameB) || initialismMatch(nameB, nameA);
+}
+
+/**
+ * Full per-file check. Returns
+ * { status: 'pass' | 'fail', reasons: string[], identityChecked: boolean, identitySkipReason: string | null }.
+ * `identityChecked` / `identitySkipReason` let the CLI count and print how
+ * many fixtures skipped the identity check and why (round 2 review, MAJOR 4 —
+ * `pageType: true` must never be a silent, uncounted escape hatch).
  */
 export function checkFixture(root, fixtureRelPath, normalizeFn) {
   const reasons = [];
   const prov = readProvenance(root, fixtureRelPath);
   if (!prov.ok) {
-    return { status: 'fail', reasons: [prov.reason] };
+    return { status: 'fail', reasons: [prov.reason], identityChecked: false, identitySkipReason: 'no provenance' };
   }
 
-  if (extname(fixtureRelPath) === '.html' && prov.meta.pageType !== true) {
-    const filenameClaim = deriveFilenameCompanyClaim(fixtureRelPath);
-    if (filenameClaim) {
+  let identityChecked = false;
+  let identitySkipReason = null;
+
+  if (extname(fixtureRelPath) === '.html') {
+    if (prov.meta.pageType === true) {
+      identitySkipReason = 'pageType: true (declared no single company)';
+    } else {
+      const filenameClaim = deriveFilenameCompanyClaim(fixtureRelPath);
       const html = readFileSync(join(root, fixtureRelPath), 'utf8');
       const contentName = extractHtmlCompanyName(html);
-      if (contentName && !companiesMatch(normalizeFn, filenameClaim, contentName)) {
-        reasons.push(
-          `filename claims company "${filenameClaim}" but the page's own <title>/<h1> says "${contentName}" — ` +
-            `either the fixture is mislabeled or it captured the wrong page`
-        );
+      if (!contentName) {
+        identitySkipReason = 'no extractable <title>/<h1> (partial-page snippet)';
+      } else {
+        identityChecked = true;
+        // Round 2 review, MAJOR 5: checkFixture previously compared ONLY the
+        // filename against the page content — a meta.json claiming the WRONG
+        // company (e.g. "Vikran Engineering" over a captured Neochem page)
+        // passed unnoticed. The meta's declared company is the primary
+        // identity claim now; the filename is a secondary, softer check
+        // (heuristic-derived, so more false-accept-tolerant) that catches a
+        // filename/meta.json disagreeing with each other.
+        if (!companiesMatch(normalizeFn, prov.meta.company, contentName)) {
+          reasons.push(
+            `meta.json declares company "${prov.meta.company}" but the page's own <title>/<h1> says "${contentName}" — ` +
+              `either the fixture is mislabeled or it captured the wrong page`
+          );
+        }
+        if (filenameClaim && !companiesMatch(normalizeFn, filenameClaim, contentName)) {
+          reasons.push(
+            `filename claims company "${filenameClaim}" but the page's own <title>/<h1> says "${contentName}" — ` +
+              `either the fixture is mislabeled or it captured the wrong page`
+          );
+        }
       }
     }
+  } else {
+    // Round 2 review, MAJOR 5: JSON/TXT fixtures get no identity check — the
+    // shapes vary too much (raw API payloads, extracted-text snippets, PDF
+    // page dumps) for a generic "does this contain the claimed company name"
+    // rule to be reliable without a real per-shape parser, which is out of
+    // scope for T-518. Documented explicitly (not silent) in PROVENANCE.md
+    // and counted here so it is visible in the gate's summary, same as PNG.
+    identitySkipReason = `identity check not implemented for ${extname(fixtureRelPath) || '(no extension)'} fixtures`;
   }
 
-  return reasons.length > 0 ? { status: 'fail', reasons } : { status: 'pass', reasons: [] };
-}
-
-/** Pure predicate for the shrink-only baseline rule: a new baseline may only DROP entries, never add. */
-export function baselineIsShrinkOnly(oldPaths, newPaths) {
-  const oldSet = new Set(oldPaths);
-  const added = newPaths.filter((p) => !oldSet.has(p));
-  return { ok: added.length === 0, added };
+  return {
+    status: reasons.length > 0 ? 'fail' : 'pass',
+    reasons,
+    identityChecked,
+    identitySkipReason,
+  };
 }

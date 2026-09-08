@@ -90,6 +90,21 @@ Three of the backfilled fixtures (`bse-debt-issue-detail.html`,
 BSE site is **out of scope for T-518** — sized as a follow-up (see the PR
 body).
 
+## Scope of the identity check (round 2 review, MAJOR 5)
+
+The identity check (filename/meta.company vs page content) runs for **HTML
+fixtures only**. JSON/TXT fixtures get NO identity check — explicitly, not
+silently: the shapes vary too much (raw scraper API payloads, extracted-text
+snippets, PDF page dumps) for a generic "does this contain the claimed
+company name" rule to be reliable without a real per-shape parser for each
+one, which is out of scope for T-518. `checkFixture()` still requires
+`sourceUrl`/`capturedAt`/`company` for these and reports the skip (with
+reason) in the gate's summary, same as it does for PNG (genuinely out of
+reach — no text to read at all). A future task that wants identity checking
+for a specific JSON shape (e.g. the NSE `ipo-detail-*.json` fixtures, which
+do carry a `companyName` field) should add a shape-specific check, not widen
+this generic one.
+
 ## Creating a new fixture
 
 Never hand-save a page again. Use

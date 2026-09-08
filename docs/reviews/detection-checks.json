@@ -109,7 +109,8 @@
       "failThreshold": "any fixture data file under the two fixture roots with no sibling <file>.meta.json (sourceUrl + capturedAt + company|pageType:true), OR an HTML fixture whose filename claims a company (per the whitelist-strip rule in scripts/lib/fixture-provenance-checks.mjs) and whose extractable <title>/<h1> names a DIFFERENT company, that is not grandfathered in the shrink-only config/fixture-provenance-baseline.json",
       "severity": "P2",
       "unverifiableWhen": "never — this is a static, deterministic file-content check with no external dependency (no network call, no DB)",
-      "wiredInto": "pr-gate.yml step \"Fixture provenance gate (T-518)\" — node scripts/ci/require-fixture-provenance.mjs — runs on every PR",
+      "auditScript": "scripts/ci/require-fixture-provenance.mjs",
+      "wiredInto": "pr-gate.yml step \"Fixture provenance gate (T-518)\" — node scripts/ci/require-fixture-provenance.mjs — runs on every PR (NOT the nightly scripts/audit-detection-floor.mjs — this is a static repo-content gate, not a live-data audit)",
       "selfTest": "scripts/ci/tests/require-fixture-provenance.test.mjs (predicates), scripts/tests/normalize-company-name-parity.test.mjs (normalizer parity)"
     },
     {

@@ -1,10 +1,11 @@
 // T-518: red-first tests for the fixture-provenance gate (RCA in
-// scripts/lib/fixture-provenance-checks.mjs header). Written BEFORE
-// scripts/ci/require-fixture-provenance.mjs existed, per the defect-fix
-// contract's "failing test first" step — these exercise the real predicates
-// from scripts/lib/fixture-provenance-checks.mjs against throwaway temp
-// fixtures, so weakening a predicate turns this red before the CI gate can
-// silently stop catching that class again.
+// scripts/lib/fixture-provenance-checks.mjs header). These exercise the real
+// predicates from scripts/lib/fixture-provenance-checks.mjs against
+// throwaway temp fixtures, so weakening a predicate turns this red before
+// the CI gate can silently stop catching that class again.
+//
+// Round 2 review additions: MAJOR 5 (meta.company is checked, not just the
+// filename), MAJOR 4 (initialism matching + counted identity-check skips).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -12,9 +13,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   checkFixture,
-  baselineIsShrinkOnly,
   deriveFilenameCompanyClaim,
   extractHtmlCompanyName,
+  companiesMatch,
 } from '../../lib/fixture-provenance-checks.mjs';
 import { normalizeCompanyNameForMatching } from '../../lib/normalize-company-name.mjs';
 
@@ -72,24 +73,80 @@ test('case 3: a fixture WITH correct provenance and a matching identity passes',
       })
     );
     const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
-    assert.deepEqual(result, { status: 'pass', reasons: [] });
+    assert.equal(result.status, 'pass');
+    assert.deepEqual(result.reasons, []);
+    assert.equal(result.identityChecked, true);
   });
 });
 
-test('a page-type fixture (pageType: true) with provenance but no single company skips the identity check', () => {
+test('MAJOR 5: meta.company disagreeing with the page content fails even when the filename claim happens to look fine', () => {
   withTempFixtureRoot((root, dir) => {
-    const file = 'sebi-drhp-listing.html';
-    writeFileSync(join(dir, file), '<html><head><title>SEBI | Public Issues</title></head></html>');
+    const file = 'vikran-engineering-cg-detail.html';
+    // filename ALSO claims vikran, so the old filename-only check would pass this.
+    writeFileSync(join(dir, file), '<html><head><title>Neochem Bio IPO Date, Price</title></head></html>');
     writeFileSync(
       join(dir, `${file}.meta.json`),
-      JSON.stringify({
-        sourceUrl: 'https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRecognisedFpi=yes',
-        capturedAt: '2025-10-18',
-        pageType: true,
-      })
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-08-01', company: 'Vikran Engineering' })
     );
     const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
-    assert.deepEqual(result, { status: 'pass', reasons: [] });
+    assert.equal(result.status, 'fail');
+    assert.match(result.reasons.join(' '), /meta\.json declares company "Vikran Engineering"/);
+  });
+});
+
+test('MAJOR 4: an initialism filename claim ("bajaj-hfl") matches its full expansion in the content', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'bajaj-hfl-detail.html';
+    writeFileSync(join(dir, file), '<title>Bajaj Housing Finance Limited IPO Details</title>');
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-08-01', company: 'Bajaj Housing Finance Limited' })
+    );
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'pass');
+  });
+});
+
+test('MAJOR 4: a generic-prefixed title ("Issue Details - X") still extracts and matches the company after it', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'vikran-engineering-detail.html';
+    writeFileSync(join(dir, file), '<title>Issue Details - Vikran Engineering Ltd</title>');
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-08-01', company: 'Vikran Engineering' })
+    );
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'pass');
+  });
+});
+
+test('MAJOR 4: pageType:true is counted as an identity-check skip, not silently invisible', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'malformed-price-band.html';
+    writeFileSync(join(dir, file), '<title>Test Fixture Co IPO</title>');
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-08-01', pageType: true })
+    );
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'pass');
+    assert.equal(result.identityChecked, false);
+    assert.match(result.identitySkipReason, /pageType/);
+  });
+});
+
+test('MAJOR 5: a non-HTML fixture (JSON) is counted as an identity-check skip with an explicit reason, never silent', () => {
+  withTempFixtureRoot((root, dir) => {
+    const file = 'some-data.json';
+    writeFileSync(join(dir, file), '{}');
+    writeFileSync(
+      join(dir, `${file}.meta.json`),
+      JSON.stringify({ sourceUrl: 'https://x', capturedAt: '2026-08-01', company: 'Some Co' })
+    );
+    const result = checkFixture(root, `scraper/tests/fixtures/${file}`, normalizeCompanyNameForMatching);
+    assert.equal(result.status, 'pass');
+    assert.equal(result.identityChecked, false);
+    assert.match(result.identitySkipReason, /not implemented for \.json/);
   });
 });
 
@@ -119,13 +176,8 @@ test('extractHtmlCompanyName returns null for a titleless snippet (no false iden
   assert.equal(extractHtmlCompanyName('<div id="ipofinancial"><h2>Company Financials</h2></div>'), null);
 });
 
-test('baselineIsShrinkOnly: dropping an entry is allowed', () => {
-  const result = baselineIsShrinkOnly(['a.html', 'b.html'], ['a.html']);
-  assert.equal(result.ok, true);
-});
-
-test('baselineIsShrinkOnly: adding a NEW entry is rejected', () => {
-  const result = baselineIsShrinkOnly(['a.html'], ['a.html', 'c.html']);
-  assert.equal(result.ok, false);
-  assert.deepEqual(result.added, ['c.html']);
+test('companiesMatch: initialism direction works both ways, and unrelated names never match', () => {
+  assert.equal(companiesMatch(normalizeCompanyNameForMatching, 'bajaj hfl', 'Bajaj Housing Finance Limited'), true);
+  assert.equal(companiesMatch(normalizeCompanyNameForMatching, 'Bajaj Housing Finance Limited', 'bajaj hfl'), true);
+  assert.equal(companiesMatch(normalizeCompanyNameForMatching, 'vikran engineering', 'Neochem Bio Ventures'), false);
 });

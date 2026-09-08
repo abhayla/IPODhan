@@ -129,17 +129,36 @@ jobs:
         # docs/architecture/write-path-hardening.md ("R0").
         run: node scripts/check-write-ratchet.mjs
 
-      - name: Fixture provenance self-tests (T-518)
+      - name: Fixture provenance predicate self-test (T-518)
         # Mutation-proof: scripts/ci/tests/require-fixture-provenance.test.mjs
         # imports the real predicates from scripts/lib/fixture-provenance-checks.mjs,
-        # and scripts/tests/normalize-company-name-parity.test.mjs imports
-        # BOTH the plain-JS copy of the company-name normalizer AND the real
-        # SSOT (packages/shared/src/utils/company-name-normalizer.ts) and
-        # asserts identical output, so a drift or a weakened predicate turns
-        # this red before the gate below can silently stop catching it.
-        run: |
-          node --test scripts/ci/tests/require-fixture-provenance.test.mjs
-          node --test scripts/tests/normalize-company-name-parity.test.mjs
+        # so a weakened predicate turns this red before the gate below can
+        # silently stop catching that class. No Node-version constraint.
+        run: node --test scripts/ci/tests/require-fixture-provenance.test.mjs
+
+      - name: Setup Node.js 22 (SSOT-parity import needs erasable-TS stripping, 22.10+)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Company-name normalizer parity self-test (T-518)
+        # scripts/tests/normalize-company-name-parity.test.mjs imports BOTH
+        # the plain-JS copy of the normalizer AND the real SSOT
+        # (packages/shared/src/utils/company-name-normalizer.ts) directly, via
+        # Node's erasable-TypeScript type stripping — stable only on Node
+        # 22.10+ (see scripts/tests/generate-ipo-slug-parity.test.mjs for the
+        # same requirement, not previously wired into any CI job — round 2
+        # review, T-518: wiring it into pr-gate.yml on the job's pinned Node 20
+        # would have made this step ALWAYS red). Node switched back to the
+        # pinned 20 immediately after so every later step keeps running under
+        # the version the rest of this job is verified against.
+        run: node --test scripts/tests/normalize-company-name-parity.test.mjs
+
+      - name: Setup Node.js 20 (restore pinned version for the rest of the job)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
       - name: Fixture provenance gate (T-518)
         # RCA: PR #425 shipped a fixture whose OWN <title> named a different

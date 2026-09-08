@@ -29,7 +29,9 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, extname } from 'node:path';
+import { extractHtmlCompanyName, companiesMatch } from './lib/fixture-provenance-checks.mjs';
+import { normalizeCompanyNameForMatching } from './lib/normalize-company-name.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -99,6 +101,20 @@ async function main() {
     meta.pageType = true;
   } else {
     meta.company = args.company;
+  }
+
+  // Round 2 review, MINOR 6: validate the identity claim against the bytes
+  // just captured BEFORE writing anything — the cheapest place to catch a
+  // wrong --company / wrong page, before it is ever committed.
+  if (extname(args.out) === '.html' && !args.pageType) {
+    const contentName = extractHtmlCompanyName(content.toString('utf8'));
+    if (contentName && !companiesMatch(normalizeCompanyNameForMatching, args.company, contentName)) {
+      console.error(
+        `REFUSED: --company "${args.company}" does not match the captured page's own <title>/<h1> ` +
+          `("${contentName}"). Either fix --company, or this captured the wrong page.`
+      );
+      process.exit(1);
+    }
   }
 
   mkdirSync(dirname(args.out), { recursive: true });

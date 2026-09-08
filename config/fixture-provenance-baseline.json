@@ -1,7 +1,7 @@
 {
-  "_comment": "Fixture-provenance backfill allowlist (T-518). Shrink-only: an entry may be REMOVED once the fixture gains a valid <file>.meta.json (and, for HTML, a matching identity), but a NEW entry can NEVER be added — route a new fixture through scripts/create-fixture-from-capture.mjs instead of grandfathering it here. Regenerate with `node scripts/ci/require-fixture-provenance.mjs --update` only when REMOVING entries.",
+  "_comment": "Fixture-provenance backfill allowlist (T-518). Shrink-only, same model as config/write-ratchet-baseline.json (T-316): a fixture that gains a valid <file>.meta.json (and, for HTML, a matching identity) becomes STALE here and must be removed via `node scripts/ci/require-fixture-provenance.mjs --update` (the gate FAILS on a stale entry, forcing the shrink to be committed rather than silently going stale). NEVER hand-add a new entry — route a new fixture through scripts/create-fixture-from-capture.mjs instead.",
   "generated_by": "scripts/ci/require-fixture-provenance.mjs --update",
-  "count": 52,
+  "count": 53,
   "files": [
     "scraper/tests/fixtures/anchor/deepa-anchor-report.json",
     "scraper/tests/fixtures/anubhav-rhp-financial-pages.json",
@@ -54,6 +54,7 @@
     "scraper/tests/unit/pipeline-stages/fixtures/stage-6/expected-persist.json",
     "scraper/tests/unit/pipeline-stages/fixtures/stage-6/stage-5-output-deepa.json",
     "scraper/tests/unit/pipeline-stages/fixtures/stage-7/expected-supersession.json",
-    "scraper/tests/unit/pipeline-stages/fixtures/stage-9/expected-verdicts.json"
+    "scraper/tests/unit/pipeline-stages/fixtures/stage-9/expected-verdicts.json",
+    "web/tests/unit/pipeline-stages/fixtures/stage-8/expected-render.json"
   ]
 }
