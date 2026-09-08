@@ -152,7 +152,7 @@ add('ipo_valuation','pe_not_ascertainable_reason','D',['DOC','—','—'],{doc:'
 
 // ---------- promoters (3), intermediaries (2), risk factors (2), brlm (4) ----------
 const PROM_NA = ['INVITS','REITS','NCD','TENDER','BUYBACK'];
-add('promoters','name','D',['DOC','—','—'],{doc:'D1',only:'capital-structure table only',na:PROM_NA});
+add('promoters','name','D',['DOC','CG','MC'],{doc:'D1',na:PROM_NA,note:'OBSERVED 2026-09-08 on a live CG IPO page: "Company Promoters: <names>". An earlier draft called this document-only; a real fetch disproved it'});
 add('promoters','waca','D',['DOC','—','—'],{doc:'D3',only:'basis-for-offer-price table only',na:PROM_NA});
 add('promoters','is_promoter_group','D',['DOC','—','—'],{doc:'D1',only:'capital-structure table only',na:PROM_NA});
 add('ipo_intermediaries','role','D',['DOC','BSE','—'],{doc:'E1–E6'});
@@ -183,8 +183,11 @@ for (const [c,d] of [['period','D5'],['waca','D5'],['cap_multiple','D5'],['price
   add('promoter_acquisition_ranges',c,'D',['DOC','—','—'],{doc:d,only:'the WACA 1y/18m/3y table exists only in the filing',na:PROM_NA,neverPopulated:true});
 
 // ---------- peer_companies (10) ----------
-for (const c of ['company_name','is_listed','pe_ratio','eps','diluted_eps','ronw','nav','pbv_ratio'])
+for (const c of ['company_name','is_listed','pe_ratio','eps','diluted_eps','ronw','nav'])
   add('peer_companies',c,'D',['DOC','CG','—'],{doc:'C9',na:['NCD','INVITS','REITS','TENDER','BUYBACK']});
+// OBSERVED 2026-09-08: a live CG IPO page carries NAV, EPS, P/E and market cap but NO P/BV.
+// An earlier draft gave it CG at rank 2 on assumption; the fetch disproved it.
+add('peer_companies','pbv_ratio','D',['DOC','—','—'],{doc:'C9',only:'observed absent from a live Chittorgarh IPO page 2026-09-08 - it prints NAV, EPS, P/E and market cap, never P/BV',na:['NCD','INVITS','REITS','TENDER','BUYBACK']});
 add('peer_companies','data_source','I',['—','—','—'],{});
 add('peer_companies','last_updated','I',['—','—','—'],{});
 // F-13: printed in the RHP peer table but not extracted today.

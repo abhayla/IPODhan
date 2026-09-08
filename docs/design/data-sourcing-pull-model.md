@@ -1143,7 +1143,7 @@ Stated per field group, which is what the brief asked for:
 | F5 Litigation | **No — model case, if we ever publish it** | Prose summary. Not published today; out of scope. |
 | Scanned documents with no text layer | **No — OCR, then deterministic** | Not a language-model problem. Recorded as `NEEDS_OCR` and left. |
 
-So: of the **121** document-sourced (class D) fields, **two** are genuine model candidates — the
+So: of the document-sourced (class D) fields, **two** are genuine model candidates — the
 business description, and the unit line as a proposal-with-check. Everything else is deterministic.
 That is the honest answer to "last stretch only": the last stretch is small, and we should not reach
 for it until the deterministic 119 are actually being read.
@@ -1578,7 +1578,7 @@ advertisement existed everywhere; it does not.
 | 138 | `ipo_valuation.face_value_multiple_floor` | C | — | — | — | — · — · — | — · — · — | — | computed: price_floor ÷ face_value |
 | 139 | `ipo_valuation.face_value_multiple_cap` | C | — | — | — | — · — · — | — · — · — | — | computed: price_cap ÷ face_value |
 | 140 | `ipo_valuation.pe_not_ascertainable_reason` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: reason text printed only alongside a null PE in the document |
-| 141 | `promoters.name` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |
+| 141 | `promoters.name` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | D1 | OBSERVED 2026-09-08 on a live CG IPO page: "Company Promoters: <names>". An earlier draft called this document-only; a real fetch disproved it |
 | 142 | `promoters.waca` | D | DOC | — | — | DOC · — · — | DOC · — · — | D3 | no rank 2: basis-for-offer-price table only |
 | 143 | `promoters.is_promoter_group` | D | DOC | — | — | DOC · — · — | DOC · — · — | D1 | no rank 2: capital-structure table only |
 | 144 | `ipo_intermediaries.role` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · MC | E1–E6 |  |
@@ -1610,7 +1610,7 @@ advertisement existed everywhere; it does not.
 | 170 | `peer_companies.diluted_eps` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
 | 171 | `peer_companies.ronw` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
 | 172 | `peer_companies.nav` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
-| 173 | `peer_companies.pbv_ratio` | D | DOC | CG | MC | DOC · CG · MC | DOC · CG · MC | C9 |  |
+| 173 | `peer_companies.pbv_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: observed absent from a live Chittorgarh IPO page 2026-09-08 - it prints NAV, EPS, P/E and market cap, never P/BV |
 | 174 | `peer_companies.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 175 | `peer_companies.last_updated` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 176 | `peer_companies.financial_statement_type` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG does not print which basis (restated/standalone) the peer figures use |
@@ -1678,88 +1678,6 @@ advertisement existed everywhere; it does not.
 | 238 | `registrars.active` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
 | 239 | `registrars.allotment_url_healthy` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 240 | `registrars.allotment_url_checked_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-
-### A.3 Every field with fewer than three sources, and exactly why
-
-Of the fields that are sourced at all, 93 now have fewer than three (up from 40 — 46 are the F-13
-additions, closing 2026-09-08; the rest is the `pool()` bugfix in A.0's 4th defect, which corrected
-10 fields that had been silently claiming a website fallback they don't have). **None of them is an
-omission.** Each is here because a second or third publisher of that fact does not exist, or exists
-but publishes a *different* number that would be wrong to substitute. **This section still narrates,
-by name, only the original 40** — the 53 added or corrected this session carry their reason inline in
-Appendix A.1's Note column instead of being re-narrated here, to keep this section from ballooning
-every time a field is added. Grouped by reason.
-
-#### Group 1 — the value exists only at a specific price point (11 fields, 1 source)
-
-`ipo_valuation`: `shares_at_floor`, `shares_at_cap`, `fresh_shares_at_floor`, `fresh_shares_at_cap`,
-`ofs_shares`, `total_shares_at_floor`, `total_shares_at_cap`, `mcap_at_floor`, `pe_at_floor`,
-`ronw_weighted_3y`, and `pricing_event`.
-
-Websites publish the issue size in rupees and a single market cap and P/E. **They never publish the
-share split at the floor price versus the cap price** — that table exists only in the price band
-advertisement. Substituting a website's single figure would silently answer a different question:
-Chittorgarh's one market cap is the at-cap figure, so it can serve `mcap_at_cap` (and does, at rank
-2) but there is nothing at all for `mcap_at_floor`. Same for P/E. `ronw_weighted_3y` is a
-three-year *weighted* average; Chittorgarh prints a single-year RoNW, which is a different metric
-that happens to share a name. `pricing_event` is not sourced at all — it records which document
-produced the row.
-
-#### Group 2 — disclosures that exist only in a filing (13 fields, 1 source)
-
-- `promoters.name`, `promoters.waca`, `promoters.is_promoter_group` — the capital-structure and
-  weighted-average-cost-of-acquisition tables. Verified: our Chittorgarh scraper extracts promoter
-  *holding percentages* but no promoter names or acquisition costs.
-- `ipo_risk_factors.seq`, `ipo_risk_factors.heading` — risk factors are a regulatory disclosure. No
-  aggregator republishes them.
-- `financial_statements.basis`, `unit`, `eps_basic`, `eps_diluted`, `op_cash_flow` — Chittorgarh
-  *does* publish the restated figures (that correction is recorded in A.0), but it prints a single
-  pre/post-issue EPS pair rather than the per-fiscal-year basic-versus-diluted split, and gives no
-  reporting basis, no unit line and no cash-flow row.
-- `ipo_details.compliance_officer`, `compliance_officer_phone`, `compliance_officer_email` — named
-  only in the filing's General Information section.
-
-#### Group 3 — the exchange filing IS the only publisher (4 fields, 1 source)
-
-`anchor_investors.total_shares_offered`, `total_amount_raised`, `anchor_investors_count`,
-`investor_list`.
-
-The anchor allocation report is itself an exchange filing. There is no second publisher of the
-anchor book — a website that carried it would be copying the same circular, which makes it a mirror,
-not an independent source.
-
-#### Group 4 — a candidate second source exists but is unverified (4 fields, 1 source)
-
-`brlm_track_record.brlm_name`, `as_of_date`, `issues_3y`, `closed_below_issue_price`.
-
-Printed in the advertisement. **Chittorgarh has lead-manager performance pages** (the scraper already
-follows `/lead-manager/<slug>/` links) that might serve as rank 2. We have never fetched or parsed
-them, so promoting them to a rank would be asserting something unverified. Listed here as a
-candidate to test in migration stage M1, not claimed as a source.
-
-#### Group 5 — the field IS one party's own record (5 fields, 1 source)
-
-- `ipos.rating_override`, `ipos.scraper_locked`, `registrars.active` — admin flags. No external
-  source exists by design.
-- `ipos.bse_ipo_no`, `ipos.bse_payload_lead_manager_count` — BSE's own internal identifiers, used
-  only as cross-checks. NSE has no equivalent.
-- `registrars.allotment_check_url` — the registrar owns this URL. A third party's copy would be a
-  stale mirror, and this field already has its own health probe.
-
-#### Group 6 — genuinely two sources, and there is no third (5 fields, 2 sources)
-
-- `ipo_demand_graph.price_point`, `is_cut_off`, `cumulative_quantity`, `exchange` — NSE then BSE. A
-  live bid book exists nowhere else: no document can carry it and no website republishes it.
-- `documents.filing_date` — the document cover, then the BSE payload. NSE does not expose a filing
-  date in a form we can read.
-
-#### What this means for the 100% rule
-
-None of these 40 weakens it. The 100% rule (§2.1.1) is about **round 1 supplying every field the
-offer document prints**. 24 of these 40 are document-owned with no fallback, which makes round 1 the
-*only* round — the rule applies to them most strictly of all. The remaining 16 are exchange-owned,
-admin-owned or registrar-owned facts that were never in the document's scope.
-
 
 ### A.2 Offering-type coverage
 
