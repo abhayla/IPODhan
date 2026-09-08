@@ -1,7 +1,7 @@
 {
   "_spec": "Stage 0 expected output. Written from the migration journal SPEC (web/drizzle/migrations/meta/_journal.json + its .sql files) BEFORE the rebuild was ever run, per the T-403-round-2 lesson against after-the-fact acceptance tests. Regenerating this file from a live database is a defect, not a fix: if the DB disagrees, the DB (or the journal) is wrong.",
   "_note": "Issue #251: the journal does NOT fully rebuild schema.ts state (ipos 32/55 cols, documents 8/19). A journal-rebuilt DB is valid for migration-path tests, not for full-schema fixtures. Therefore this expectation covers TABLE PRESENCE and EMPTINESS only, never column sets.",
-  "journalEntries": 34,
+  "journalEntries": 35,
   "publicTables": [
     "admin_settings",
     "affiliate_clicks",
