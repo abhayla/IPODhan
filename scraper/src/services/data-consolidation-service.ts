@@ -28,6 +28,7 @@ import type {
 } from '../config/field-priority-matrix';
 import {
   allowsSameSourceRefresh,
+  incomingDocumentOutranksStored,
   getFieldRules,
   getSourcePriority,
   isTimeBased,
@@ -101,6 +102,13 @@ export interface ConsolidateIPODataInput {
   confidence?: number; // 0-100 confidence score for incoming data
   shadowMode?: boolean; // If true, returns consolidated data without DB writes
   scrapedAt?: Date; // Timestamp when data was scraped (for time-based priority)
+  /**
+   * T-520 round 2: which offer document this write came from (DRHP / RHP /
+   * PROSPECTUS / PRICE_BAND_AD / CORRIGENDUM). All of them arrive as source
+   * `DRHP`, so without this a re-extraction of an old RHP could overwrite a
+   * price-band advertisement's band purely by being written later.
+   */
+  docType?: string;
 }
 
 /**
@@ -641,7 +649,10 @@ export class DataConsolidationService {
       }
 
       // Convert to map for quick lookup
-      const existingSourceMap = new Map<string, { value: any; source: ScraperSource; updatedAt?: Date }>();
+      const existingSourceMap = new Map<
+        string,
+        { value: any; source: ScraperSource; updatedAt?: Date; docType?: string }
+      >();
       for (const fieldSource of existingFieldSources) {
         if (fieldSource.tableName === input.tableName) {
           const key = fieldSource.fieldName;
@@ -650,6 +661,9 @@ export class DataConsolidationService {
             value: input.existingData?.[key] ?? fieldSource.value,
             source: fieldSource.source,
             updatedAt: fieldSource.updatedAt,
+            // T-520 round 2: the document this value came from, so a
+            // DRHP-vs-DRHP refresh is ordered by document authority.
+            docType: (fieldSource.dataLineage as { docType?: string } | null | undefined)?.docType,
           });
         }
       }
@@ -867,6 +881,8 @@ export class DataConsolidationService {
             existingRowValue: input.existingData?.[fieldName],
             scrapedAt: input.scrapedAt,
             existingUpdatedAt: existingSourceMap.get(fieldName)?.updatedAt,
+            existingDocType: existingSourceMap.get(fieldName)?.docType,
+            incomingDocType: input.docType,
             // T-328: threaded so resolveConflict can HOLD a disputed
             // HIGH_VALUE field rather than assert one side while the IPO is
             // live. `ipos.status` is already on the row passed as
@@ -975,6 +991,8 @@ export class DataConsolidationService {
     existingRowValue?: any;
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
+    existingDocType?: string;
+    incomingDocType?: string;
     ipoStatus?: string;
     heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
     incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
@@ -1472,6 +1490,8 @@ export class DataConsolidationService {
       rules,
       scrapedAt: params.scrapedAt,
       existingUpdatedAt: params.existingUpdatedAt,
+      existingDocType: params.existingDocType,
+      incomingDocType: params.incomingDocType,
       ipoStatus: params.ipoStatus,
       heldDates: params.heldDates,
       incomingDates: params.incomingDates,
@@ -1641,6 +1661,8 @@ export class DataConsolidationService {
     rules: FieldRules;
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
+    existingDocType?: string;
+    incomingDocType?: string;
     ipoStatus?: string;
     // W-160 round 2: the held (stored) and incoming (this cycle's full
     // payload) date triples, computed once per `consolidateIPOData` call.
@@ -1658,6 +1680,8 @@ export class DataConsolidationService {
       rules,
       scrapedAt,
       existingUpdatedAt,
+      existingDocType,
+      incomingDocType,
       ipoStatus,
     } = params;
 
@@ -1947,7 +1971,26 @@ export class DataConsolidationService {
       // (`NSE 360 vs NSE 342 -> DEFAULT_KEEP_EXISTING`, logged every cycle for
       // two days). Narrower than `timeBased`: it needs the same source AND the
       // field to opt in via `sameSourceRefresh`.
-      if (scrapedAt && existingUpdatedAt && scrapedAt <= existingUpdatedAt) {
+      // T-520 round 2 (MAJOR 2): between two OFFER DOCUMENTS, authority is the
+      // document TYPE, not the write time — every document arrives as source
+      // `DRHP`, so a re-extraction of an old RHP must not overwrite the band a
+      // price-band advertisement set, and no website can undo it now that the
+      // document outranks them all. Only when the two documents rank EQUAL (or
+      // either type is unknown) does the newest write win.
+      const byDocument =
+        incomingSource === 'DRHP' && existingSource === 'DRHP'
+          ? incomingDocumentOutranksStored(existingDocType, incomingDocType)
+          : null;
+
+      if (byDocument === false) {
+        chosenSource = existingSource;
+        chosenValue = existingValue;
+        resolutionReason = 'SAME_SOURCE_REFRESH_STORED_DOCUMENT_OUTRANKS';
+      } else if (byDocument === true) {
+        chosenSource = incomingSource;
+        chosenValue = incomingValue;
+        resolutionReason = 'SAME_SOURCE_REFRESH_INCOMING_DOCUMENT_OUTRANKS';
+      } else if (scrapedAt && existingUpdatedAt && scrapedAt <= existingUpdatedAt) {
         chosenSource = existingSource;
         chosenValue = existingValue;
         resolutionReason = 'SAME_SOURCE_REFRESH_EXISTING_NEWER';

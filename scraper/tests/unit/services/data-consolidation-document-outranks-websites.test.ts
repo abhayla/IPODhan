@@ -14,7 +14,11 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DataConsolidationService } from '../../../src/services/data-consolidation-service.js';
-import { getSourcePriority } from '../../../src/config/field-priority-matrix.js';
+import {
+  getSourcePriority,
+  allowsSameSourceRefresh,
+  incomingDocumentOutranksStored,
+} from '../../../src/config/field-priority-matrix.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
 
 vi.mock('../../../src/config/feature-flags.js', () => ({
@@ -214,5 +218,124 @@ describe('T-520: a website value arriving after a document value is REJECTED, no
       expect(getSourcePriority(field, 'NSE')).toBeLessThan(drhp);
       expect(getSourcePriority(field, 'BSE')).toBeLessThan(drhp);
     }
+  });
+});
+
+/**
+ * T-520 round 2 (MAJOR 1 + MAJOR 2): now that the document outranks every
+ * website, a WRONG document value would be permanently uncorrectable unless a
+ * newer document can replace it — and the replacement must be ordered by
+ * document TYPE, because all four document types arrive as source `DRHP`.
+ */
+describe('T-520 round 2: a document can correct a document, a website still cannot', () => {
+  let service: DataConsolidationService;
+
+  beforeEach(() => {
+    service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo);
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A tracked row that also records which document wrote it. */
+  function trackedDoc(fieldName: string, value: string, docType: string, updatedAt: Date) {
+    return { ...tracked(fieldName, value), dataLineage: { docType }, updatedAt, createdAt: updatedAt };
+  }
+
+  const REFRESHABLE = [
+    { field: 'lotSize', wrong: 1200, right: 1600 },
+    { field: 'min_investment', wrong: 126000, right: 168000 },
+    { field: 'issue_price', wrong: 105, right: 112 },
+    { field: 'fresh_issue_size', wrong: 5000000000, right: 6000000000 },
+    { field: 'offer_for_sale_size', wrong: 2000000000, right: 2500000000 },
+    { field: 'priceRangeMin', wrong: 100, right: 106 },
+    { field: 'priceRangeMax', wrong: 105, right: 112 },
+  ];
+
+  it.each(REFRESHABLE)(
+    'a NEWER document write corrects an older mis-read document $field',
+    async ({ field, wrong, right }) => {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+        trackedDoc(field, String(wrong), 'RHP', new Date('2026-09-01T00:00:00Z')),
+      ] as never);
+
+      const result = await service.consolidateIPOData({
+        ipoId: 'test-ipo',
+        tableName: 'ipos',
+        incomingData: { [field]: right },
+        source: 'DRHP',
+        docType: 'PRICE_BAND_AD',
+        confidence: 100,
+        scrapedAt: new Date('2026-09-05T00:00:00Z'),
+      });
+
+      expect(Number(result.consolidatedData[field])).toBe(right);
+    }
+  );
+
+  it.each(REFRESHABLE)(
+    'a website value still loses to the stored document $field (self-refresh is DRHP-only)',
+    async ({ field, wrong, right }) => {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+        trackedDoc(field, String(wrong), 'RHP', new Date('2026-09-01T00:00:00Z')),
+      ] as never);
+
+      const result = await service.consolidateIPOData({
+        ipoId: 'test-ipo',
+        tableName: 'ipos',
+        incomingData: { [field]: right },
+        source: 'NSE',
+        confidence: 90,
+        scrapedAt: new Date('2026-09-05T00:00:00Z'),
+      });
+
+      expect(Number(result.consolidatedData[field])).toBe(wrong);
+      expect(allowsSameSourceRefresh(field, 'NSE')).toBe(field === 'priceRangeMin' || field === 'priceRangeMax');
+      expect(allowsSameSourceRefresh(field, 'MONEYCONTROL')).toBe(false);
+      expect(allowsSameSourceRefresh(field, 'DRHP')).toBe(true);
+    }
+  );
+
+  it('the registrar and companyName documents self-refresh too, but no website may', () => {
+    for (const field of ['registrar', 'companyName']) {
+      expect(allowsSameSourceRefresh(field, 'DRHP')).toBe(true);
+      for (const website of ['NSE', 'BSE', 'MONEYCONTROL'] as const) {
+        expect(allowsSameSourceRefresh(field, website)).toBe(false);
+      }
+    }
+  });
+
+  it('a re-extraction of an OLD RHP does NOT overwrite a price-band advertisement band, even though it is written later', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      trackedDoc('priceRangeMax', '112', 'PRICE_BAND_AD', new Date('2026-09-02T00:00:00Z')),
+    ] as never);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'test-ipo',
+      tableName: 'ipos',
+      incomingData: { priceRangeMax: 105 }, // the stale band printed in the RHP
+      source: 'DRHP',
+      docType: 'RHP',
+      confidence: 100,
+      scrapedAt: new Date('2026-09-06T00:00:00Z'), // written LATER
+    });
+
+    expect(Number(result.consolidatedData.priceRangeMax)).toBe(112);
+  });
+
+  it('document-type ranking: the ad and a corrigendum outrank the RHP, which outranks the prospectus, which outranks the DRHP', () => {
+    expect(incomingDocumentOutranksStored('RHP', 'PRICE_BAND_AD')).toBe(true);
+    expect(incomingDocumentOutranksStored('RHP', 'CORRIGENDUM')).toBe(true);
+    expect(incomingDocumentOutranksStored('PRICE_BAND_AD', 'RHP')).toBe(false);
+    expect(incomingDocumentOutranksStored('PROSPECTUS', 'RHP')).toBe(true);
+    expect(incomingDocumentOutranksStored('DRHP', 'PROSPECTUS')).toBe(true);
+    expect(incomingDocumentOutranksStored('PROSPECTUS', 'DRHP')).toBe(false);
+    // Equal authority, or an unknown/absent type: the caller falls back to
+    // newest-write-wins rather than inventing an order.
+    expect(incomingDocumentOutranksStored('RHP', 'RHP')).toBe(null);
+    expect(incomingDocumentOutranksStored(null, 'RHP')).toBe(null);
+    expect(incomingDocumentOutranksStored('RHP', 'SOMETHING_NEW')).toBe(null);
   });
 });

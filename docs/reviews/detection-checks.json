@@ -394,11 +394,11 @@
     },
     {
       "id": "p_document_provenance_share",
-      "findingClass": "the site republishes a website's transcription of the offer document instead of the document itself — the document's share of provenance rows on printed offer-term fields collapses",
+      "findingClass": "the offer-document path stalls and the site falls back to republishing websites' transcriptions of the filing — the document's share of RECENT provenance writes on printed offer-term fields collapses",
       "round7Findings": [],
-      "failThreshold": "document-sourced (source='DRHP') provenance rows are under 5% of all non-ADMIN provenance rows across issueSize, faceValue, priceRangeMin/Max, lotSize, min_investment, issue_price, fresh_issue_size, offer_for_sale_size, registrar, leadManagers, companyName",
+      "failThreshold": "document-sourced (source='DRHP') rows are under 5% of all non-ADMIN field_sources rows WRITTEN IN THE LAST 14 DAYS across issueSize, faceValue, priceRangeMin/Max, lotSize, min_investment, issue_price, fresh_issue_size, offer_for_sale_size, registrar, leadManagers, companyName (healthy today, measured on staging 2026-09-08 over the 14-day window: 10.2% — 39 document-sourced vs 342 website-sourced)",
       "severity": "P1",
-      "unverifiableWhen": "field_sources is unreadable, or no provenance rows exist on any printed offer-term field"
+      "unverifiableWhen": "field_sources is unreadable, or fewer than 20 provenance rows were written on the printed offer-term fields in the 14-day window"
     }
   ],
   "notCoveredByThisManifest": [

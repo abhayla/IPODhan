@@ -278,6 +278,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Fresh issue size',
   },
 
@@ -285,6 +287,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Offer for sale size',
   },
 
@@ -472,6 +476,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 95,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Final issue price - critical field',
     validation: { min: 1, max: 100000 },
   },
@@ -579,6 +585,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Lot size - BSE data is more accurate historically',
     validation: { min: 10, max: 100000 },
   },
@@ -588,6 +596,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Lot size (camelCase) - BSE data is more accurate historically',
     validation: { min: 10, max: 100000 },
   },
@@ -596,6 +606,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Minimum investment amount',
   },
 
@@ -713,6 +725,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'company_name',
     confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Company name - normalized',
   },
 
@@ -727,6 +741,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'none',
     confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
     description: 'Registrar name',
   },
 
@@ -787,6 +803,47 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
  * Get field rules for a specific field
  * Returns default rules if field not in matrix
  */
+/**
+ * T-520 round 2 (MAJOR 2): every offer document folds into the single
+ * `scraper_source` member `DRHP` (`filing-persister.ts` `scraperSourceForDocType`),
+ * so a same-source refresh decided purely on WRITE TIME would let a
+ * re-extraction of an old RHP overwrite a price-band advertisement's band —
+ * and no website can undo it now that DRHP outranks them all. Refreshes
+ * between two documents are therefore ordered by DOCUMENT TYPE first.
+ *
+ * Lower number = more authoritative. This matches the guard already shipped in
+ * `filing-persister.ts` (`coverOutrankedByAd`: a PROSPECTUS cover must not
+ * overwrite a value a PRICE_BAND_AD set), which is the pricing reality — the
+ * ad and any corrigendum carry the FINAL band. It deliberately differs from the
+ * "PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP" line in
+ * docs/reviews/wp-c-extraction-contract.md §0, which describes recency of
+ * filing, not pricing authority.
+ */
+export const DOCUMENT_TYPE_RANK: Record<string, number> = {
+  CORRIGENDUM: 0,
+  PRICE_BAND_AD: 0,
+  RHP: 1,
+  PROSPECTUS: 2,
+  DRHP: 3,
+};
+
+/**
+ * Should an incoming document write replace a stored document write on the same
+ * field? `null` means "cannot tell from document type alone" (one or both types
+ * unknown) and the caller falls back to its newest-write rule.
+ */
+export function incomingDocumentOutranksStored(
+  storedDocType: string | null | undefined,
+  incomingDocType: string | null | undefined
+): boolean | null {
+  if (!storedDocType || !incomingDocType) return null;
+  const stored = DOCUMENT_TYPE_RANK[storedDocType];
+  const incoming = DOCUMENT_TYPE_RANK[incomingDocType];
+  if (stored === undefined || incoming === undefined) return null;
+  if (incoming === stored) return null; // same authority — newest write wins
+  return incoming < stored;
+}
+
 /**
  * W-55: normalise a snake_case field key to its camelCase spelling
  * (`company_name` -> `companyName`). Several matrix entries were registered
