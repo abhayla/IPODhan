@@ -306,7 +306,11 @@ try {
     var amt = JSON.parse(fs.readFileSync(AMOUNTS, 'utf8'));
     var wantCrore = amt.columns.filter(function (c) { return c.cls === 'CRORE'; })
       .map(function (c) { return c.table + '.' + c.col; }).sort();
-    var s52 = md.slice(md.indexOf('#### The columns that convert'), md.indexOf('#### O-12'));
+    // Anchored on the SECTION, not on a prose heading. The heading was renamed once ("the columns
+    // that convert" became "the columns, and which of them actually move", because most of them do
+    // not convert) and D13 went red on a rename rather than on a real disagreement — a check that
+    // breaks when the prose is improved teaches people to stop improving the prose.
+    var s52 = md.slice(md.indexOf('### 5.2 O-2'), md.indexOf('#### O-12'));
     var haveCrore = [...s52.matchAll(/^\| `([a-z_0-9]+)` \| `([a-z_0-9]+)` \|/gm)]
       .map(function (m) { return m[1] + '.' + m[2]; }).sort();
     var missCrore = wantCrore.filter(function (x) { return haveCrore.indexOf(x) < 0; });

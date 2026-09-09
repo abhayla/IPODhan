@@ -193,7 +193,7 @@ say** whether every such row should have MONEYCONTROL mechanically dropped, or w
 should keep it as a documented no-op rank (a source configured but never able to answer, since
 nothing schedules it) for the day Moneycontrol might be revived. I marked `capability.MONEYCONTROL.
 capable: true` in the worked example above only because `financial_statements.revenue` is one of
-the fields Appendix A explicitly lists it for — **this is a fork the owner should resolve as O-13**,
+the fields Appendix A explicitly lists it for — **this is a fork the owner should resolve as C-1**,
 recommendation: drop MONEYCONTROL from every rank list system-wide in the same pass as item 16
 (a source nothing schedules ranked third is dead weight, not a safety net), which item 3 (matrix
 cleanup) is the natural place to apply once decided.
@@ -251,3 +251,13 @@ gate, no auth/payments/migration. `Budget: 30 min wall-clock, 60 tool calls`. On
 expected (diff-only, per Tier B); the interesting risk is entirely in the YAML content being right,
 not in the loader code, so the review should spend its budget re-deriving the three worked rows
 from Appendix A rather than re-reading the ajv wiring.
+
+---
+
+### A note on the `C-n` numbering in this card
+
+`C-1`, `C-2` and any other `C-n` in this card are **card-local decisions**: reversible, internal
+choices the card author made and recorded so an implementer can see them and disagree. They are NOT
+owner forks. Owner forks live in §0.0.2 of `docs/design/data-sourcing-pull-model.md` as `O-nn`, and
+this card opened none — an earlier draft numbered these as `O-13` and `O-14`, which collided with the
+real owner fork O-13 (the grey-market premium and the market-hours gate).

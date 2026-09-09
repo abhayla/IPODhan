@@ -101,7 +101,12 @@ say when**, and this card does not invent that date.
 
 ```typescript
 // packages/shared/src/db/financial-data-derivation.ts — NEW
-import type { FinancialStatements } from '../db/types';
+// Corrected this session: there is no exported `FinancialStatements` type in
+// packages/shared/src/db/types.ts (checked — absent). The real row type is
+// `FinancialStatementRow`, exported from the REPOSITORY file, with string-typed
+// numeric columns (drizzle numeric() -> string, not number) —
+// packages/shared/src/repositories/financial-statements-repository.ts:24-41.
+import type { FinancialStatementRow } from '../repositories/financial-statements-repository';
 import { toCrore } from '../../../scraper/src/services/filing-persister'; // OR: hoist toCrore/RUPEES_PER_UNIT
                                                                             // into packages/shared so both
                                                                             // scraper and web can import it
@@ -122,7 +127,7 @@ export interface DerivedFinancialData {
 
 /** Reads financial_statements, sorts by fiscalYear desc, takes 3, converts unit -> crore per row. */
 export function deriveFinancialData(
-  statements: FinancialStatements[]
+  statements: FinancialStatementRow[]
 ): DerivedFinancialData | null;
 ```
 

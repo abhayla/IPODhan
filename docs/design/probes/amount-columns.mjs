@@ -99,6 +99,28 @@ const BY_SHAPE = [
   [/^(revenue|profit|pat|ebitda|total_income|net_worth)(_fy\d+|_fy\d|$)/, 'CRORE', 'a financial-statement aggregate by name'],
 ];
 
+
+// ---------------------------------------------------------------------------
+// What each CRORE column holds TODAY. Classifying a column as an amount says what it MEANS; it says
+// nothing about the unit it is stored in, and OD-20's repair only applies to the ones actually
+// holding rupees. Read out of the writers during the build-card round on 2026-09-09 and re-checked
+// here: a first version of section 5.2 presented all 37 as "numeric -> crore", which would have sent
+// a repair tool at 26 columns that are already in crore and divided them by ten million again.
+const CURRENT_UNIT = {
+  'ipos.issue_size':                      ['RUPEES', 'normalizeCurrency stores rupees; the column comment in schema.ts says so'],
+  'ipo_details.fresh_issue':              ['RUPEES', 'written in rupees by the filing persister'],
+  'ipo_details.ofs_issue':                ['RUPEES', 'written in rupees by the filing persister'],
+  'ipo_valuation.mcap_at_floor':          ['RUPEES', 'written in rupees by the filing persister'],
+  'ipo_valuation.mcap_at_cap':            ['RUPEES', 'written in rupees by the filing persister'],
+  'anchor_investors.total_amount_raised': ['CRORE',  'already crore - this is the reference the rest converge on'],
+  'financial_statements.revenue':         ['PER_ROW_UNIT', 'financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted'],
+};
+const unitFor = (key, table) => CURRENT_UNIT[key]
+  || (table === 'financial_statements' ? CURRENT_UNIT['financial_statements.revenue'] : null)
+  || (table === 'financial_data' || table === 'ipo_financials'
+      ? ['CRORE', 'already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)']
+      : ['UNVERIFIED', 'the writer for this column was not read this round - verify before repairing it']);
+
 try {
   const src = fs.readFileSync(SCHEMA, 'utf8');
 
@@ -129,9 +151,16 @@ try {
     a.table === b.table ? a.col.localeCompare(b.col) : a.table.localeCompare(b.table));
 
   if (process.argv.includes('--markdown')) {
-    console.log('| Table | Column | Stored as today | Becomes |');
+    console.log('| Table | Column | Unit stored TODAY | What OD-20 does to it |');
     console.log('|---|---|---|---|');
-    for (const c of crore) console.log(`| \`${c.table}\` | \`${c.col}\` | ${c.type} | \`numeric(12,2)\` crore |`);
+    for (const c of crore) {
+      const [u, why] = unitFor(`${c.table}.${c.col}`, c.table);
+      const action = u === 'RUPEES' ? '**converted, and existing rows repaired from source**'
+        : u === 'CRORE' ? 'nothing — already crore'
+        : u === 'PER_ROW_UNIT' ? 'nothing — read via its own `unit` column at derive time'
+        : '**verify the writer first**';
+      console.log(`| \`${c.table}\` | \`${c.col}\` | ${u} — ${why} | ${action} |`);
+    }
     process.exit(unclassified.length ? 1 : 0);
   }
 
@@ -142,7 +171,11 @@ try {
     total_numeric_bigint_columns: cols.length,
     by_class: byClass,
     unclassified,
-    columns: cols.map(({ table, col, type, cls, why, rule }) => ({ table, col, type, cls, why, rule })),
+    columns: cols.map(({ table, col, type, cls, why, rule }) => {
+      const o = { table, col, type, cls, why, rule };
+      if (cls === 'CRORE') { const [u, w] = unitFor(`${table}.${col}`, table); o.current_unit = u; o.current_unit_why = w; }
+      return o;
+    }),
   };
   fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + '\n');
 

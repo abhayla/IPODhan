@@ -679,6 +679,56 @@
       "title": "The ratios document is a ROUTING gap, not a zip gap - and this round's own brief got that wrong",
       "detail": "The old-document-availability probe showed NSE serving offer documents as ZIP, and the build-card brief for item 8 concluded that unzipping was missing work. It is not: zip unwrapping already happens at download time (document-download-verifier.ts:307-325; document-store.ts always writes .pdf) and there is an NSE-ratios-specific override (isNseRatiosArchiveUrl, document-classifier.ts:181) that stops the bytes-win rule mislabelling the archive. The extract-real-pdf output shows the stored sha256 present and the document SKIPPED because the python filing extractor does not handle the type - a routing gap. Also found: financial_data.current_ratio, quick_ratio and inventory_turnover have no extraction or write-path code anywhere today, so they are genuinely new work rather than a wiring change.",
       "fix_in": "Build card item-08 states the routing gap. Recorded here because the error was mine: a probe result read one step too literally became a brief that would have sent an implementer to build something that already exists."
+    },
+    {
+      "id": "F-93",
+      "sev": "MAJOR",
+      "area": "design accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Section 5.2 presented all 37 amount columns as needing conversion; only 5 hold rupees today",
+      "detail": "The amount-columns probe classifies by MEANING (is this an aggregate rupee amount) and section 5.2 printed the result under the heading 'the columns that convert'. Read out of the writers on 2026-09-09: only ipos.issue_size, ipo_details.fresh_issue, ipo_details.ofs_issue, ipo_valuation.mcap_at_floor and ipo_valuation.mcap_at_cap hold rupees. financial_data.* and ipo_financials.* are already crore at the writer level (toCrore in financial-data-scraper.ts and the filing persister); anchor_investors.total_amount_raised is already crore; financial_statements.* never normalises by design and carries its own per-row unit. A repair tool built from the old table would have divided twenty-five already-crore columns by ten million.",
+      "fix_in": "The probe now records current_unit per CRORE column with the reason, and section 5.2 is regenerated from it with a 'unit stored TODAY' column and an explicit action per column."
+    },
+    {
+      "id": "F-94",
+      "sev": "MAJOR",
+      "area": "build sequence",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Build item 14 (BSE share count to rupees) is largely already built",
+      "detail": "computeBSEIssueSize (scraper/src/scrapers/bse-api-scraper.ts:147-151) already multiplies BSE's Issue_Size_No_of_shares by the floor price, and scraper/tests/unit/scrapers/bse-api-scraper.test.ts:113-130 carries three passing regression tests for it, referencing the earlier W-109/T-403 fixes. Section 7.1 lists item 14 as open work with a conversion test to write. Verified this session by reading both files.",
+      "fix_in": "Item 14's scope shrinks to: confirm the existing tests still assert the class, and confirm the two independent detection checks (c_issue_size_consistency, c_issue_size_floor, already recorded in docs/reviews/failure-classes/share-count-as-issue-size.json) run inside the pull model's nightly audit. Section 7.1's row must be corrected before an implementer rebuilds something that exists."
+    },
+    {
+      "id": "F-95",
+      "sev": "MAJOR",
+      "area": "public behaviour",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The crore conversion silently activates a dormant scoring bug: every IPO currently scores as the largest possible",
+      "detail": "web/lib/services/ipo-scoring-realtime.ts:394-396 and web/lib/utils/rating-calculator.ts:164-168 compare issueSize against 1000/500/100 - crore-scale thresholds - while the column holds rupees. Asset Reconstruction's stored issue_size is 7,329,740,494, so it takes the top bucket, and so does every other IPO. Converting to crore makes the score discriminate for the first time, which is correct and is also a visible change to every IPO's rating on the day it ships.",
+      "fix_in": "Named in section 5.2 and owned by build item 11's release note. It is NOT fixed ahead of the conversion: changing the thresholds while the unit is still rupees would move every rating twice."
+    },
+    {
+      "id": "F-96",
+      "sev": "MINOR",
+      "area": "finding accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Item 13's 'ofs_issue is never extracted' is stale for the share form",
+      "detail": "ipo_valuation.ofs_shares is already captured (filing-persister.ts:1297). What genuinely does not exist is USING it - cross-checking the share form against the rupee form - and the fresh + OFS = total within 0.5% write gate.",
+      "fix_in": "Build card item-13 states the narrower scope."
+    },
+    {
+      "id": "F-97",
+      "sev": "MAJOR",
+      "area": "design accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The design undercounted the dead matrix keys by half, and mis-described what they are",
+      "detail": "Section 0.6 said '13 of the 77 matrix keys are dead duplicates in the wrong case'. Measured by probes/matrix-dead-keys.mjs on 2026-09-09: 27 of 77 are snake_case and therefore unreachable, because consolidation writes camelCase. Only 5 are duplicates (close_date, company_description, gmp_price, lot_size, open_date). The other 22 are ORPHANS - the live camelCase field has no matrix entry at all and silently takes DEFAULT_RULES every cycle, so its source order has never been chosen by anyone. They include total_subscription, retail_subscription, qib_subscription, nii_subscription, listing_price, issue_price, min_investment, roe_percentage, pb_ratio and peer_companies. The draft's own worked example was also wrong: revenue_fy1 is not a mis-cased revenueFy2022, it is the real camelCase name of a third table, ipo_financials (schema.ts:582-587), which nothing in scraper/src writes.",
+      "fix_in": "Section 0.6 is regenerated from the probe. Build item 3's scope grows: deleting 5 duplicates is cleanup; giving 22 orphaned live fields a chosen source order is the actual work."
     }
   ],
   "false_assertions": [

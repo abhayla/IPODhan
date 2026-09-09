@@ -1,6 +1,6 @@
 # Item 3 — matrix cleanup
 
-**PROVISIONAL on O-13 (new fork this card opens — see "What I found beyond the brief" under
+**PROVISIONAL on C-1 (new fork this card opens — see "What I found beyond the brief" under
 Interfaces).** Everything else in this card is unconditional.
 
 ## Purpose
@@ -151,7 +151,7 @@ not — every one of the 27 fails the same reachability test. **This is the cont
 not silently resolve**: either the design's "13" underclaims what needs deleting (my
 recommendation, on the measured evidence above), or there is a narrower definition of "dead
 duplicate" the design intended that this session's reading did not reconstruct — **recorded as
-O-13**: *"Is 'dead snake_case key' scoped to only the keys with an existing camelCase sibling (11,
+C-1**: *"Is 'dead snake_case key' scoped to only the keys with an existing camelCase sibling (11,
 by this session's count — Groups A+B), or every snake_case key nothing can ever reach (27, Groups
 A+B+C)?"* Recommendation: 27 — Group C's entries are strictly worse than Groups A/B (they are the
 ONLY entry for a live field, silently disabling that field's tuned validation, not merely a harmless
@@ -186,7 +186,7 @@ for whoever lands this item, not fixed here.
 
 ## Tests
 
-- **Unit** — `scraper/tests/unit/config/field-priority-matrix.test.ts` (existing file — confirm with
+- **Unit** — `scraper/tests/unit/config/field-priority-matrix.test.ts` (existing file — confirm with (NEW)
   `ls`, extend if present, create if not): (1) each of the 27 deleted keys is absent from
   `Object.keys(FIELD_PRIORITY_MATRIX)`; (2) the 5 Group-A camelCase siblings still resolve to the
   exact same `FieldRules` object shape they had before (regression guard — the sibling's own rules
@@ -245,3 +245,13 @@ wall-clock, 30 tool calls` for the repair script (small, single DELETE, dry-run 
 first). One review round expected for each; the repair script additionally needs the Tier A
 mutation-test pass per `engineering-roles.md`'s Code-Quality Reviewer mandate (does the dry-run
 truly change nothing; does `--apply` require an explicit flag with no default-on path).
+
+---
+
+### A note on the `C-n` numbering in this card
+
+`C-1`, `C-2` and any other `C-n` in this card are **card-local decisions**: reversible, internal
+choices the card author made and recorded so an implementer can see them and disagree. They are NOT
+owner forks. Owner forks live in §0.0.2 of `docs/design/data-sourcing-pull-model.md` as `O-nn`, and
+this card opened none — an earlier draft numbered these as `O-13` and `O-14`, which collided with the
+real owner fork O-13 (the grey-market premium and the market-hours gate).

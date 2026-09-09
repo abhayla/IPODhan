@@ -1,6 +1,6 @@
 {
   "probe": "evidence-map",
-  "generated_at": "2026-09-09T05:00:20.387Z",
+  "generated_at": "2026-09-09T05:04:07.109Z",
   "method": "For every (field, source) pair Appendix A resolves, look for the field in the SAVED payload for that source. CARRIES records the label and the fixture. UNPROVEN means the payload was searched and nothing matched — it is a rank to re-examine, not a pass. UNPROBED means no probe was run for that source in this round.",
   "caveat": "Matching is by token overlap with a synonym table, so a CARRIES verdict names the label it matched and that label is auditable. A reviewer disagreeing with one match should say so against the recorded label, not against the number.",
   "index_sizes": {
