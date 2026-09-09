@@ -190,20 +190,14 @@ describe('rowKeyForName — the ONE row-key function shared by the backfill and 
     expect(rowKeyForName('----')).not.toBe(rowKeyForName('(())'));
   });
 
-  it('a backfilled row and a re-scrape of the SAME name produce the IDENTICAL key (the round-2 proof)', () => {
-    // Simulates: backfill computes the key once from a stored row's name;
-    // a later scraper cycle deletes+reinserts and recomputes the key from
-    // the SAME raw name. Both call rowKeyForName directly (there is no
-    // second implementation) so equality here is the actual guarantee, not
-    // two independently hard-coded strings.
-    const rawName = '----';
-    const backfillKey = rowKeyForName(rawName);
-    const rescrapeKey = rowKeyForName(rawName);
-    expect(backfillKey).toBe(rescrapeKey);
-
-    const realName = 'ABC (India) Ltd';
-    expect(rowKeyForName(realName)).toBe(rowKeyForName(realName));
-  });
+  // The backfill-vs-rescrape cross-path guarantee (a write-path row's
+  // `normalizedName` equals `rowKeyForName`/`normalizeCompanyNameForMatching`
+  // computed from the same name) is covered on the actual write path in
+  // `scraper/tests/unit/services/filing-persister-normalized-name.test.ts`
+  // (promoters/intermediaries/peer_companies assertions, plus the junk-key
+  // assertion at the end of that file) — removed here because calling this
+  // same pure function twice with the same input is trivially true and
+  // proves nothing beyond referential transparency.
 
   it('the junk-key prefix can never collide with a real normalized key (real output is only lowercase/digits/spaces)', () => {
     const realKey = rowKeyForName('ABC (India) Ltd') as string;

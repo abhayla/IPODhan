@@ -159,11 +159,17 @@ function toResult(plan: TablePlan): TableResult {
  * table's rows are repaired or none are.
  *
  * Tier A round-2 MINOR finding: the reads that PLAN the repair now run
- * INSIDE that same transaction (via `tx`, not the top-level `db`), so a row
- * a live scraper cycle inserts between the plan and the write can no longer
- * be silently missed while the ledger still reports full coverage. This
- * holds for a dry run too — the plan is read-only either way, and reading
- * inside a transaction costs nothing extra.
+ * INSIDE that same transaction (via `tx`, not the top-level `db`), which
+ * narrows — but does NOT close — the window between planning and writing.
+ * This transaction runs at the default READ COMMITTED isolation level, so a
+ * row a live scraper cycle inserts (and commits) after this transaction's
+ * SELECT snapshot but before it commits is still invisible to the plan and
+ * is not repaired in this pass; the ledger's "full coverage" claim covers
+ * only rows visible at plan time. Closing that window would require
+ * REPEATABLE READ or SERIALIZABLE, which trades this gap for a new failure
+ * mode (serialization aborts under concurrent writers) that this backfill
+ * does not currently handle — not adopted here. The next scheduled backfill
+ * run picks up any row missed this way.
  */
 async function backfillAllTables(specs: TableSpec[], apply: boolean): Promise<TableResult[]> {
   return db.transaction(async (tx) => {

@@ -274,10 +274,15 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
 /**
  * Prefix for the derived key `rowKeyForName` mints when a name is non-empty
  * junk (pure punctuation/symbols, e.g. "----", "(())") that normalizes to
- * ''. Never emitted by `normalizeCompanyNameForMatching` itself — that
- * function's real output is always lowercase letters/digits/spaces — so
- * this prefix can never collide with a genuine normalized key. Greppable:
- * `grep -r "junk:" ` finds every call site that reads or writes this shape.
+ * ''. `normalizeCompanyNameForMatching` only strips `.` `&` `(` `)` `-` (plus
+ * whitespace collapse and lowercasing) — it does NOT strip other punctuation,
+ * so a genuine normalized key can contain colons, commas, slashes, quotes,
+ * etc. alongside lowercase letters/digits/spaces. This prefix therefore
+ * collides with a genuine normalized key only in the practically-impossible
+ * case where a real company name normalizes to EXACTLY `junk:` followed by
+ * 40 lowercase hex characters (the sha1 hex alphabet) — no real company name
+ * takes that shape. Greppable: `grep -r "junk:" ` finds every call site that
+ * reads or writes this shape.
  */
 export const JUNK_NAME_KEY_PREFIX = 'junk:';
 
