@@ -217,3 +217,24 @@ Nothing was skipped: this was a first run of this contract, and §0.2 found no p
 - **BLOCKED** — nothing.
 - **NEXT** — yours: answer O-12 and O-13 (one line each). Mine, on your word: the second review round,
   then the item-1 contract is ready to dispatch.
+
+---
+
+## 13. Postscript: the pull request's red check
+
+`pr-gate` fails on one step, and it is not this branch's:
+
+```
+[write-ratchet] FAIL — new file(s) write to `ipos` outside the baseline:
+  NEW: scripts/merge-duplicate-ipo.mjs  [raw_sql]
+```
+
+That file arrived in commit `9709f987` on the BASE branch `docs/pull-model-design`. This branch
+changed zero files under `scripts/` (`git diff --name-only origin/docs/pull-model-design...HEAD |
+grep -c '^scripts/'` returns 0), and the run's guardrails forbid editing anything there.
+
+It is left alone deliberately. A one-off repair script writing to `ipos` with raw SQL is precisely
+what the write ratchet exists to notice, and silencing it from a documentation branch would hide the
+signal rather than answer it. Whoever merges `docs/pull-model-design` meets the same failure. The two
+honest options — route the write through the shared path, or add it to the baseline with a stated
+reason — are both somebody's decision, not a docs edit.
