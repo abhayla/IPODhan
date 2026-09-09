@@ -2,8 +2,15 @@
 
 Contract: `docs/contracts/2026-09-09-pull-model-design-delta.md`. Branch `docs/pull-model-delta`,
 worktree `IPODhan-IPODhan-pullmodel-delta`, based on `origin/docs/pull-model-implementation-ready`.
-**Documentation only — no behaviour ships from this run.** Zero files outside `docs/` changed,
-committed or uncommitted.
+**Documentation only — no behaviour ships from this run.** This run changed **zero files outside
+`docs/`**: `git diff --name-only origin/docs/pull-model-implementation-ready...HEAD | grep -vc '^docs/'`
+returns 0.
+
+The PULL REQUEST, whose base is `main`, does show six non-docs files — the merge script and its
+repair library, the over-ask hook and its test, the lessons file and `.gitignore`. Every one arrives
+with the base branch, not with this run. The first version of the PR description said "zero files
+outside `docs/`" against `main` and quoted a command that returns 6; that was wrong and is corrected
+in the PR rather than quietly removed.
 
 ---
 
