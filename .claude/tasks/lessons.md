@@ -345,3 +345,19 @@ dependency should name the file to read.
 **Also:** a finished worker can leave live background processes behind. A worker's completion report
 is not evidence that its work has stopped. Check outstanding background tasks at every supervision
 tick, not only the agents still marked running.
+
+## 2026-09-09 — a machine-parsed declaration must not be formatted as code
+
+**What happened.** PR #445 carried the required `No detection change: <reason>` declaration, but wrapped
+in backticks for readability. The gate matches `/^No detection change: (.+)$/m` — anchored at the start
+of a line — so the leading backtick meant it never matched, and `detection-change-gate` failed on a PR
+whose declaration was present and correct. Cost: one CI run to re-run the job, plus the delay.
+
+**Why it matters.** The failure looks like a missing declaration, so the obvious next move is to write
+another one — which would also fail. Nothing in the gate's error message says "your line is there but
+the anchor did not match".
+
+**Rule.** Any line a machine parses out of prose — a PR-body declaration, a commit-message trailer, a
+`Co-Authored-By`, a `Class:`/`Proof:` line in an agent brief — goes in as a BARE line at the start of
+its own line. Never inside backticks, a blockquote, a list item, or a table cell. Before pushing, check
+it the way the gate does: `gh pr view <n> --json body --jq .body | grep -cE '^<the exact regex>$'`.

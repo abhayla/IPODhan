@@ -575,3 +575,25 @@ What went wrong, named not counted. Open items are the same three as the last ti
 One thing found and being fixed that is worth your attention because it is the same disease: the fix's own test suite contained **a test that could never fail** — it compared a value with itself and never called the function it claimed to check. It would have reported success forever. Shipping that inside a change whose whole argument is "a check that catches nothing is decoration" would have been self-refuting, so it is being rewritten and proved to fail before it is allowed to pass.
 
 What is needed from you: nothing. GitHub CI runs spent by this run tonight: **0 of the 6** you allowed. The first is spent when this slice pushes.
+
+**2026-09-09 22:42 IST — tick.** Item 1: previous **0%** merged, now **8%** — the first of twelve slices is on main (PR #444).
+
+What a reader of ipodhan.com would notice: nothing yet. What changed is that a database change made today now actually applies, instead of being skipped while the tool reports success.
+
+What went wrong, named not counted. **The safeguard that just landed immediately caught a real fault in the very next slice** — that slice was branched before the fix merged, so it carried the bad dates and would have both undone the fix and shipped a database change staging silently ignores. Rebasing it onto the current code fixed both, before any pull request existed. That is the ordering decision paying for itself inside an hour, and it now applies to three later slices that also change the database.
+
+Two open items, both with numbers: **#442** (fixed on main; staging's own records still need the repair run, which happens at the next staging cycle) and **#443** (peer-comparison rows deleted before rewrite with nothing to restore them — filed, pre-existing, untouched).
+
+One correction to my own reporting: I have been reporting the day's CI usage as "20" for hours. That was not a measurement — the command the contract specifies caps at 20 results by default. The real figure today is **23**, of which exactly **one** is this run's. The cap sits above the limit of 12, so a genuine overrun would have been invisible. Fixed in the half-hourly check, and the contract text needs the same correction.
+
+What is needed from you: nothing. **1 of the 6 CI runs you allowed is spent.**
+
+**2026-09-09 22:59 IST — tick.** Item 1: **8%** merged (1 of 12 slices), unchanged since the last tick.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What went wrong, named not counted. The second slice failed its strict review a second time, on one serious finding, and **the flaw was in the design I specified rather than in the building of it.** I told the builder to give junk-named rows "a stable fallback key" and it used the row's own id. That is not stable: the code deletes every row for an IPO and re-inserts them on each scrape, so ids are regenerated and the key can never be reproduced. Left in, the next slice's uniqueness rule would make an IPO with a promoter list containing blanks fail its **entire document extraction** — not one bad row, the whole filing. It is being rebuilt around one shared function keyed on the name itself, used by both the repair pass and all four write paths, so both sides compute the same value.
+
+Open items, all with numbers: **#442** (fixed on main; staging's own records still need the repair run, which is owed) and **#443** (peer rows deleted before rewrite, filed, untouched). No new failures.
+
+What is needed from you: nothing. Budget after your raise: **1 of 20 spent tonight**, cap 60/day.
