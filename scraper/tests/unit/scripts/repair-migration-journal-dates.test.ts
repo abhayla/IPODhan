@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openRepairDb } from '../../../scripts/lib/repair-tool.js';
-import { hashMigrationFile, findJournalMismatches } from '../../../scripts/repair-migration-journal-dates.js';
+import { hashMigrationFile, findJournalMismatches, hashContentVariants, matchTargetsToRows } from '../../../scripts/repair-migration-journal-dates.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // scraper/tests/unit/scripts -> repo root is four levels up.
@@ -141,5 +141,75 @@ describe('repair-migration-journal-dates.ts — refuses when the on-disk journal
     expect(mismatches).toHaveLength(1);
     expect(mismatches[0]).toContain('b');
     expect(mismatches[0]).toContain('not present');
+  });
+});
+
+/**
+ * GitHub #449: the tool must match a `drizzle.__drizzle_migrations` row
+ * whose stored hash was computed on a platform whose line endings differ
+ * from the reader's (Linux LF writer, Windows CRLF checkout, or vice
+ * versa). It matches on EITHER encoding of the same logical file content,
+ * never normalizes only one direction, and never double-counts a file
+ * that is already LF (raw === normalized).
+ */
+describe('repair-migration-journal-dates.ts — matches a row regardless of which platform wrote its hash', () => {
+  it('a row written by a Linux/LF runner matches a target read from a CRLF (Windows) checkout, via the normalized hash', () => {
+    const lfContent = 'CREATE TABLE foo (id int);\nALTER TABLE foo ADD COLUMN bar int;\n';
+    const crlfContent = lfContent.replace(/\n/g, '\r\n');
+    const { raw: lfHash } = hashContentVariants(lfContent);
+    // Target as this checkout actually reads it: CRLF (the Windows case #449 is about).
+    const targets = [{ tag: 'x', correctedWhen: 111, ...hashContentVariants(crlfContent) }];
+    const rows = [{ id: 1, hash: lfHash, created_at: '999' }];
+    const { matched, unmatched } = matchTargetsToRows(targets, rows);
+    expect(unmatched).toHaveLength(0);
+    expect(matched).toHaveLength(1);
+    expect(matched[0].row.id).toBe(1);
+    expect(matched[0].matchedVia).toBe('normalized');
+  });
+
+  it('a row written by a CRLF-applying runner matches a target read from the same CRLF checkout, via the raw hash', () => {
+    const lfContent = 'CREATE TABLE foo (id int);\nALTER TABLE foo ADD COLUMN bar int;\n';
+    const crlfContent = lfContent.replace(/\n/g, '\r\n');
+    const { raw: crlfHash } = hashContentVariants(crlfContent);
+    const targets = [{ tag: 'x', correctedWhen: 111, ...hashContentVariants(crlfContent) }];
+    const rows = [{ id: 1, hash: crlfHash, created_at: '999' }];
+    const { matched, unmatched } = matchTargetsToRows(targets, rows);
+    expect(unmatched).toHaveLength(0);
+    expect(matched).toHaveLength(1);
+    expect(matched[0].row.id).toBe(1);
+    expect(matched[0].matchedVia).toBe('raw');
+  });
+
+  it('a file already in LF is matched once via raw, never counted twice', () => {
+    const lfContent = 'CREATE TABLE only_lf (id int);\n';
+    const variants = hashContentVariants(lfContent);
+    expect(variants.raw).toBe(variants.normalized);
+    const targets = [{ tag: 'x', correctedWhen: 111, ...variants }];
+    const rows = [{ id: 1, hash: variants.raw, created_at: '999' }];
+    const { matched, unmatched } = matchTargetsToRows(targets, rows);
+    expect(matched).toHaveLength(1);
+    expect(unmatched).toHaveLength(0);
+    expect(matched[0].matchedVia).toBe('raw');
+  });
+
+  it('asking for three tags while only two rows match reports the third as unmatched, naming both hashes tried', () => {
+    const a = hashContentVariants('AAA\n');
+    const b = hashContentVariants('BBB\n');
+    const c = hashContentVariants('CCC\n');
+    const targets = [
+      { tag: 'tag-a', correctedWhen: 1, ...a },
+      { tag: 'tag-b', correctedWhen: 2, ...b },
+      { tag: 'tag-c', correctedWhen: 3, ...c },
+    ];
+    const rows = [
+      { id: 1, hash: a.raw, created_at: '10' },
+      { id: 2, hash: b.raw, created_at: '20' },
+    ];
+    const { matched, unmatched } = matchTargetsToRows(targets, rows);
+    expect(matched).toHaveLength(2);
+    expect(unmatched).toHaveLength(1);
+    expect(unmatched[0].tag).toBe('tag-c');
+    expect(unmatched[0].raw).toBe(c.raw);
+    expect(unmatched[0].normalized).toBe(c.normalized);
   });
 });
