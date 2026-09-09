@@ -1,0 +1,35 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["scripts/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests",
+    "scripts/backfill-anchor-investors.ts",
+    "scripts/backfill-band-provenance-t276.ts",
+    "scripts/backfill-financial-data.ts",
+    "scripts/backfill-ipo-reviews.ts",
+    "scripts/backfill-issue-size-chittorgarh-detail.ts",
+    "scripts/backfill-objectives.ts",
+    "scripts/backfill-peer-companies.ts",
+    "scripts/persist-filing.ts",
+    "scripts/quick-consolidation-analysis.ts",
+    "scripts/readback-document-state.ts",
+    "scripts/repair-dates-and-leadmanagers-t299.ts",
+    "scripts/repair-lead-managers-from-payload.ts",
+    "scripts/repair-subscription-regressions-t299.ts",
+    "scripts/run-document-discovery.ts",
+    "scripts/backfill-anchor-investor-list-json.ts",
+    "scripts/backfill-bse-historical.ts",
+    "scripts/backfill-financials-chittorgarh-detail.ts",
+    "scripts/backfill-financials-pdf.ts",
+    "scripts/dedup-bse-mainboard.ts",
+    "scripts/merge-citius-t287.ts",
+    "scripts/merge-duplicate-ipos.ts",
+    "scripts/repair-segment-hygiene-t287.ts",
+    "scripts/retype-ratios-documents.ts"
+  ]
+}

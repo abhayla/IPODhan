@@ -93,3 +93,27 @@ export class InvalidDataError extends RepositoryError {
     Object.setPrototypeOf(this, InvalidDataError.prototype);
   }
 }
+
+/**
+ * Thrown when a repository method is asked to `apply` a write against the
+ * production database without explicit acknowledgement (`opts.allowProd`).
+ *
+ * MAJOR-3 (PR #433 review): the prod refusal used to live ONLY in the CLI
+ * wrapper (`scraper/scripts/repair-merge-duplicate-ipo.ts` via
+ * `openRepairDb`) — `IPORepository.mergeDuplicateInto({apply: true})` itself
+ * would write production for any future caller (an admin route, another
+ * script) that forgot to reimplement the same guard. This error is thrown
+ * FROM INSIDE the repository method, before any write, so the guard cannot
+ * be bypassed by a new caller.
+ */
+export class ProdWriteRefusedError extends RepositoryError {
+  constructor(
+    message: string,
+    public readonly dbName?: string,
+    cause?: unknown
+  ) {
+    super(message, cause);
+    this.name = 'ProdWriteRefusedError';
+    Object.setPrototypeOf(this, ProdWriteRefusedError.prototype);
+  }
+}
