@@ -1,6 +1,57 @@
 {
   "probe": "duplicate-scan",
-  "generated_at": "2026-09-09T10:01:47.589Z",
+  "generated_at": "2026-09-09T10:03:54.690Z",
+  "source": "production, promoters / peer_companies / ipo_intermediaries (read-only tunnel); schema check against packages/shared/src/db/schema.ts",
   "finding": "F-74",
-  "unreachable": "unreachable on 2026-09-09 — "
+  "normalized_name_column_check": {
+    "note": "checked packages/shared/src/db/schema.ts for a normalized_name column on each table",
+    "results": {
+      "promoters": {
+        "tableFound": true,
+        "columnFound": false
+      },
+      "peer_companies": {
+        "tableFound": true,
+        "columnFound": false
+      },
+      "ipo_intermediaries": {
+        "tableFound": true,
+        "columnFound": false
+      }
+    },
+    "missing_on": [
+      "promoters",
+      "peer_companies",
+      "ipo_intermediaries"
+    ]
+  },
+  "normalization_used": {
+    "is_the_real_normalizer": false,
+    "formula": "lower(regexp_replace(trim(<name_col>), '\\s+', ' ', 'g')) — name_col = name for promoters/ipo_intermediaries, company_name for peer_companies",
+    "caveat": "Stand-in only (lower + collapsed whitespace + trim). The production normalizer referenced by item 1 does not exist yet either — this is what a duplicate scan finds on today's raw `name` values, not a prediction of what the eventual real normalizer will collapse."
+  },
+  "tables": {
+    "promoters": {
+      "table": "promoters",
+      "total_rows": 27,
+      "offending_group_count": 0,
+      "offending_row_count": 0,
+      "examples": []
+    },
+    "peer_companies": {
+      "table": "peer_companies",
+      "total_rows": 326,
+      "offending_group_count": 0,
+      "offending_row_count": 0,
+      "examples": []
+    },
+    "ipo_intermediaries": {
+      "table": "ipo_intermediaries",
+      "total_rows": 178,
+      "offending_group_count": 0,
+      "offending_row_count": 0,
+      "examples": []
+    }
+  },
+  "verdict": "The `normalized_name` column does not exist on ANY of the three tables (promoters, peer_companies, ipo_intermediaries) today — item 1's Schema section names a constraint on a column that has never been written. The migration cannot add `ADD CONSTRAINT UNIQUE (ipo_id, normalized_name)` until that column is added and backfilled first; this IS the pre-flight the card is missing, and it is a bigger gap than a duplicate check. Using the same stand-in normalization, NO duplicate groups were found on any of the three tables today — a repair step may not be needed once the column exists, but the pre-flight scan still needs to run against the REAL normalizer once it is written, since a real normalizer (stripping legal suffixes/punctuation) can find collisions a bare lower+trim does not."
 }

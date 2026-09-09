@@ -5,6 +5,7 @@
     "R-119": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
     "R-120": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
     "R-121": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
+    "R-168": "7.1 — The build sequence describes the items themselves; a rule about the order of the work is not implemented BY one of the items in it.",
     "R-132": "7.1 — The build sequence describes the items themselves; a rule about the order of the work is not implemented BY one of the items in it.",
     "R-133": "7.3 — The honest list of what the author is unsure about. These become rules only once they are answered, and then they land in the section that answers them.",
     "R-134": "7.3 — The honest list of what the author is unsure about. These become rules only once they are answered, and then they land in the section that answers them.",

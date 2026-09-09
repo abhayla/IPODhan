@@ -1,6 +1,6 @@
 {
   "probe": "ofs-rows",
-  "generated_at": "2026-09-09T09:59:01.443Z",
+  "generated_at": "2026-09-09T10:04:17.168Z",
   "source": "production, ipos LEFT JOIN ipo_details WHERE offering_type = 'OFS', plus documents per ipo_id (read-only tunnel)",
   "finding": "F-70",
   "rows": [

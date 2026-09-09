@@ -1,6 +1,6 @@
 {
   "probe": "document-types-by-segment",
-  "generated_at": "2026-09-09T09:57:47.697Z",
+  "generated_at": "2026-09-09T10:04:11.188Z",
   "source": "production, documents JOIN ipos ON documents.ipo_id = ipos.id (read-only tunnel)",
   "finding": "F-91",
   "ipo_count_by_segment": [

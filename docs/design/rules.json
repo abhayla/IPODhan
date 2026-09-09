@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-09T10:01:41.159Z",
+  "generated_at": "2026-09-09T10:04:22.620Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 156,
+    "live": 157,
     "retired": 11
   },
-  "next_id": 168,
+  "next_id": 169,
   "rules": [
     {
       "id": "R-151",
@@ -1265,6 +1265,15 @@
       "section": "6.6 Switch-over: how the site moves onto the pull model without a bad hour (OD-44)",
       "kind": "blockquote",
       "text": "Two consecutive staging cycles in which the audit's reconciliation failures for the flipped IPOs go to zero, read from the cycle logs by identity (which IPO, which group), never as a count.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-168",
+      "hash": "4c6fda3c1ed8",
+      "section": "7.1 Sequence",
+      "kind": "table-normative",
+      "text": "1 — The child-table consolidated writer — PREREQUISITE FOUND 2026-09-09 (F-74): normalized_name does not exist on promoters, peer_companies or ipo_intermediaries (probes/duplicate-scan.mjs, read against production; verified against packages/shared/src/db/schema.ts). The card's UNIQUE constraints name a column that has never been written, so the migration cannot run as specified: the column is added and backfilled first, THEN the duplicate scan is re-run with the real normaliser, THEN the constraint is added. Under a stand-in lower-and-trim normalisation there are zero duplicate groups today, which is encouraging and is not the same test — — extend the consolidation contract to ipo_details, financial_statements, ipo_valuation, ipo_risk_factors, promoters, anchor_investors, ipo_intermediaries, peer_companies: per-field priority resolution, field_sources rows, data_conflicts rows — — — A — large — and it is the gate on everything below — consolidation",
       "first_seen": "2026-09-09",
       "retired": false
     },

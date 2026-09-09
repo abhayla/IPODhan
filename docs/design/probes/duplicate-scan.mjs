@@ -101,7 +101,7 @@ try {
 
   async function withSlugs(scan) {
     const groups = scan.groups;
-    if (!groups.length) return { ...scan, offending_group_count: 0, offending_row_count: 0, examples: [] };
+    if (!groups.length) return { table: scan.table, total_rows: scan.total, offending_group_count: 0, offending_row_count: 0, examples: [] };
     const ipoIds = [...new Set(groups.map((g) => g.ipo_id))];
     const slugRows = (await pool.query(`select id, slug from ipos where id = any($1::uuid[])`, [ipoIds])).rows;
     const slugMap = new Map(slugRows.map((r) => [r.id, r.slug]));
