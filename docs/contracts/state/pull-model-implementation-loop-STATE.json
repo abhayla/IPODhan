@@ -1,0 +1,414 @@
+{
+  "contract": "docs/contracts/2026-09-09-pull-model-implementation-loop.md",
+  "slug": "pull-model-implementation-loop",
+  "startedAt": "2026-09-09T15:11:42.501Z",
+  "order": [
+    1,
+    20,
+    15,
+    13,
+    14,
+    12,
+    4,
+    2,
+    3,
+    5,
+    6,
+    7,
+    9,
+    10,
+    8,
+    16,
+    17,
+    18,
+    22,
+    21,
+    11
+  ],
+  "currentItem": 1,
+  "lastAuditAt": null,
+  "auditFindingsOpen": 0,
+  "itemsSinceAudit": 0,
+  "notes": [
+    "preflight 2026-09-09: pr-gate runs already at 20 for the IST day, cap is 12 - no PR may be opened by this run before 00:00 IST 2026-09-10",
+    "owner 2026-09-09: item-1 forks a/b/c all as recommended, cite OD-7 and the card, no new O-nn rows",
+    "owner 2026-09-09: PR-gate budget of 6 runs for this run tonight; contract cap of 12/day returns 2026-09-10",
+    "DEF-01: wt-new.ps1 makes a bare worktree; ~/.claude/tools/wt-link-modules.ps1 junctions node_modules from the main checkout - run it after every wt-new",
+    "INC-01: a verifier briefly wrote the app-role password to a scratch file; briefs now name the mistake explicitly"
+  ],
+  "items": {
+    "item-01": {
+      "item": 1,
+      "card": "docs/design/build-cards/item-01-child-table-consolidated-writer.md",
+      "status": "IN-PROGRESS",
+      "slices": [
+        {
+          "k": "s1",
+          "title": "normalized_name column + backfill on promoters, peer_companies, ipo_intermediaries",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s2",
+          "title": "real-normaliser duplicate scan + repair, then the three child-table unique constraints",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s3",
+          "title": "row_key on field_sources and data_conflicts, widened unique constraint, repository threading",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s4",
+          "title": "rowKey through consolidateField, trackFieldSource, ConflictInfo, open-conflict lookups",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s5a",
+          "title": "slot-aware feature-flag helper + DEPLOY_SLOT plumbing",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s5b",
+          "title": "consolidatedUpsertChildRows on the orchestrator behind ENABLE_CHILD_TABLE_CONSOLIDATION",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s6",
+          "title": "ipo_risk_factors re-key from seq to heading_hash",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s7a",
+          "title": "call sites: the five whole-row-replace replaceAllowed sites",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s7b",
+          "title": "call sites: the three direct-upsert sites + anchor-persister; delete trackField(table,rows)",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s8",
+          "title": "detection check field-sources-row-key-coverage + registry regeneration",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        }
+      ],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-20": {
+      "item": 20,
+      "card": "docs/design/build-cards/item-20-design-traceability-check.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-15": {
+      "item": 15,
+      "card": "docs/design/build-cards/item-15-value-actually-changed.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-13": {
+      "item": 13,
+      "card": "docs/design/build-cards/item-13-ofs-and-fresh-issue-extraction.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-14": {
+      "item": 14,
+      "card": "docs/design/build-cards/item-14-bse-share-count-conversion.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-12": {
+      "item": 12,
+      "card": "docs/design/build-cards/item-12-name-normaliser-and-duplicate-detection.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-04": {
+      "item": 4,
+      "card": "docs/design/build-cards/item-04-per-field-validation.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-02": {
+      "item": 2,
+      "card": "docs/design/build-cards/item-02-field-manifest-and-priority-config.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-03": {
+      "item": 3,
+      "card": "docs/design/build-cards/item-03-matrix-cleanup.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-05": {
+      "item": 5,
+      "card": "docs/design/build-cards/item-05-ipo-field-plan-table.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-06": {
+      "item": 6,
+      "card": "docs/design/build-cards/item-06-pull-walk.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-07": {
+      "item": 7,
+      "card": "docs/design/build-cards/item-07-job-scheduler-and-budgets.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-09": {
+      "item": 9,
+      "card": "docs/design/build-cards/item-09-re-read-loop.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-10": {
+      "item": 10,
+      "card": "docs/design/build-cards/item-10-verification-checks.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-08": {
+      "item": 8,
+      "card": "docs/design/build-cards/item-08-ratios-basis-for-offer-price-extractor.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-16": {
+      "item": 16,
+      "card": "docs/design/build-cards/item-16-retire-moneycontrol.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-17": {
+      "item": 17,
+      "card": "docs/design/build-cards/item-17-closed-ipo-job.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-18": {
+      "item": 18,
+      "card": "docs/design/build-cards/item-18-document-retention.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-22": {
+      "item": 22,
+      "card": "docs/design/build-cards/item-22-document-handling-and-download-limits.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-21": {
+      "item": 21,
+      "card": "docs/design/build-cards/item-21-read-side.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-11": {
+      "item": 11,
+      "card": "docs/design/build-cards/item-11-crore-conversion.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-19": {
+      "item": 19,
+      "card": "docs/design/build-cards/item-19-merge-tool-shared-write-path.md",
+      "status": "DONE",
+      "slices": [],
+      "prs": [
+        433
+      ],
+      "mergeShas": [
+        "5cd6810d"
+      ],
+      "proof": {
+        "status": "HELD",
+        "cycle": "n/a - landed 2026-09-09 as PR #433 before this run",
+        "line": "verify-only at preflight: scraper/scripts/repair-merge-duplicate-ipo.ts present on main, PR #433 MERGED 2026-09-09T10:40:07Z"
+      }
+    }
+  },
+  "prGateBudgetTonight": 6,
+  "prGateRunsSpentByThisRun": 0
+}

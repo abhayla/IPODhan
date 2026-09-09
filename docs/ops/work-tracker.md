@@ -535,3 +535,17 @@ short. Design only — no behaviour ships from it.
 | 16:06 | **The design work is finished and the pull request is going up.** Every problem is closed — 114 recorded, none open. Four independent reviews, four real IPOs walked end to end, and a second review aimed at the fixes themselves, which found one place where my fix had made things worse. | 0 open | done | Report: docs/design/delta-report-2026-09-09.md |
 | 16:06 | **The most useful thing found today was not a mistake in the writing.** Walking four awkward IPOs showed that several rules cannot run at all, because the data they read is not there: the field that orders documents by date is filled on 27 of 266 documents, the field that says whether an IPO is fixed-price on 19 of 330, and two fields the rules name do not exist as columns at all. The design now states, for every such rule, what happens when the field is empty. | — | new section | This was invisible from reading the rules |
 | 16:06 | **Two decisions still need one line each from you.** (1) The nineteen "OFS" rows are Coal India, BHEL, NHPC and similar — already-listed companies whose promoters sold in a two-day auction. Give them their own page shape? (2) We fetch delayed prices from the exchanges' free pages; republishing them may need a licence. That is a compliance call and you are a Zerodha AP. | — | awaiting you | Nothing is blocked either way |
+
+---
+
+## Implementation loop — updates
+
+The pull-model design is being built item by item by an autonomous run (contract `docs/contracts/2026-09-09-pull-model-implementation-loop.md`). Twenty-two items, one at a time, each cut into small slices. Production is never written or deployed by this run — you deploy once, at the end, when everything is built and proven on staging.
+
+**2026-09-09 20:55 IST — start.** Previous: nothing running. Now: item 1 of 22 planned (0% of its slices merged), item 19 already done (0 → 1 item complete, 4.5%).
+
+What a reader of ipodhan.com would notice once this is deployed: nothing yet. Item 1 is plumbing — it makes the eight detail tables behind every IPO page (financials, promoters, peers, intermediaries, risk factors, valuation, anchor book, details) record **which document each number came from**, the way the main IPO row already does. Today none of them do, so when two documents disagree about a promoter's shareholding there is no record of which one won or why. Nothing on the page changes the day it ships; it is what makes every later item's numbers traceable and correctable.
+
+What went wrong: two things, both fixed inside the hour. First, the day's GitHub CI budget was already spent before this run started — 20 test runs against a limit of 12, none of them this run's. You allowed 6 runs for tonight, so work continues. Second, a fresh working copy of the repository starts with no installed packages, so the first attempt to prove the test database was usable failed with "psql not found" and "no node_modules". That is now a permanent fix: a small tool links the installed packages into every new working copy instead of re-downloading gigabytes per copy.
+
+What is needed from you: nothing right now. The next thing that will need you is turning a feature flag on for staging once item 1's first slices land — I will name it in the landing note.
