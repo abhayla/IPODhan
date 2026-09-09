@@ -61,10 +61,14 @@ export const fieldExtractionFailures = pgTable(
       .references(() => ipos.id, { onDelete: 'cascade' }),
     tableName: varchar('table_name', { length: 100 }).notNull(),
     fieldName: varchar('field_name', { length: 100 }).notNull(),
-    // Item 1's row_key (null for ipos and every singleton child table;
+    // Item 1's row_key. NOT NULL with an empty-string sentinel, exactly as items 1 and 5 define it.
+    // CORRECTED 2026-09-09 (F-78): an earlier draft made this nullable with the comment "null for
+    // singleton tables", which silently breaks the very join the comment promises — `NULL = ''` is
+    // false in SQL, so a failure row for a singleton table would never match its field_sources row.
+    // ('' for ipos and every singleton child table;
     // populated for financial_statements/promoters/anchor_investors/etc.
     // rows, matching field_sources.row_key exactly so the two tables join).
-    rowKey: varchar('row_key', { length: 100 }),
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
 
     documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
     // nullable: a class-T/X/M field (e.g. `status`, real-time subscription
@@ -183,7 +187,7 @@ const validation = validateFieldValue({
 
 if (validation.status === 'FAIL') {
   await this.failuresRepository.recordFailure({
-    ipoId, tableName, fieldName, rowKey: params.rowKey ?? null,
+    ipoId, tableName, fieldName, rowKey: params.rowKey ?? '',
     documentId: params.incomingDocumentId ?? null,
     documentSha256: params.incomingDocumentSha256 ?? null,
     ruleId: validation.ruleId,

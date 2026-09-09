@@ -1978,6 +1978,31 @@ It does not make a doubtful value acceptable. A field that no rank can supply an
 stays empty with its reason attached, and §4's checks count it. The purpose is that one bad field
 costs one field.
 
+#### 5.3.1 One rule this design owes immediately: `lot_multiple` is a count of LOTS
+
+**F-63, found by the domain review on 2026-09-09 and confirmed against the extraction fixture.**
+`docs/design/probes/fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json`
+emits `lot_size = 107` **and `lot_multiple = 107`**, and production stores 107 in `lot_multiple` for
+an IPO that is open right now.
+
+`lot_multiple` is the number of **lots** in a minimum application: **1** for a mainboard issue, and
+**2** for an SME issue since 2025. It is never a share count. With 107 in it, a minimum application
+computed as `lot_multiple × lot_size × floor` reads **Rs 15,12,468** instead of **Rs 14,873** — a
+hundredfold error on the number a retail reader uses to decide whether they can afford to apply.
+
+The only check the design stated for it was "a positive integer", which 107 passes happily. Under
+OD-21 the rule becomes explicit, scoped and effective-dated:
+
+| Rule id | Applies to | Assertion | From |
+|---|---|---|---|
+| `lot-multiple-range` | `ipo_details.lot_multiple`, all segments | `1 <= value <= 10` | a minimum application is one or two lots; ten is a generous ceiling, and 107 is not a near miss |
+| `lot-multiple-sme` | `ipo_details.lot_multiple`, segment SME, effective 2025-01-01 onward | `value = 2` | the SME minimum application became two lots in 2025 |
+| `lot-multiple-not-lot-size` | `ipo_details.lot_multiple` | `value != ipos.lot_size` unless `lot_size <= 10` | the specific failure observed: the extractor copying the lot size into the multiple |
+
+The extractor emitting one into the other is a live defect, not a design question. It belongs to
+build item 4, which is where per-field validation lands, and the third rule above is what stops it
+reaching a reader while the extractor is corrected.
+
 ### 5.4 O-4 — the unextracted backlog, drained without starving a live IPO
 
 **Updated 2026-09-09 (OD-19, OD-22).** The backlog tier now has a real window: **22:00 IST, at most
@@ -2324,47 +2349,60 @@ Everything from 5 onward is one design and should not be half-built.
 
 ### 8.1 Where this document stands
 
-Every finding from the four review passes now has a disposition — **none is OPEN**. Run
-`node docs/design/check-design-consistency.mjs` for the live split; it also fails if this paragraph
-stops being true. Of the 57, the ones that need code are not left floating in the register: each
-names a build item in §7.1, because a finding whose fix has no build item is a finding nobody owns.
+Run `node docs/design/check-design-consistency.mjs --gate` for the live position — it is the only
+statement of status that cannot go stale, and it fails if any sentence below stops being true. As of
+the implementation-ready round of 2026-09-09 it reports **19 checks**, D1 to D16.
 
-**What this document is:** the mapping for all 240 fields and all IPO types (§1, Appendix A), the
-pull loop (§2), the re-read loop (§3), how we would know it worked (§4), the owner comments answered
-(§5), the closed-IPO preconditions (§6), and the build sequence (§7).
+**What this document is now:** the mapping for all 240 fields and all IPO types (§1, Appendix A) with
+105 of 387 (field, source) pairs backed by a payload this repository holds; the pull loop (§2); the
+re-read loop (§3); how we would know it worked (§4); the owner's decisions folded in and enforced by
+a check each (§0.0.1, D12–D15); the closed-IPO job specified rather than deferred (§6); the build
+sequence (§7.1) with **a build card per item** under `docs/design/build-cards/`, gated by D16; and
+two real IPOs walked field by field under `docs/design/walkthroughs/`.
 
-**What it is not:** proof that the code will behave. §4 is the set of checks that would prove it;
-none has been run against a built system, because nothing is built.
+**What it is still not:** proof that the code will behave. §4 is the set of checks that would prove
+it. None has been run against a built system, because nothing is built. The walkthroughs are the
+closest thing to a rehearsal, and a rehearsal is not a performance.
 
-### 8.2 What is measured and what is judgement — read this before approving
+### 8.2 What is measured, what is cited, what is judgement, and what is provisional
 
-Not everything here carries the same weight, and the difference matters more than the page count.
+The difference matters more than the page count, and this round moved several rows of this table.
 
 | Rests on | Examples | How far to trust it |
 |---|---|---|
-| **Measured this session** | the field counts, the document share, which source serves which field, the E-1 exchange capability table, the de-duplication key across 329 IPOs, the issue-size reconciliations | Re-runnable. Where a number contradicted an earlier one, the measured one won |
-| **Read from the code, cited** | the cadence, the budgets, the write path, the 32-of-240 consolidation gap | 25 citations, each checked by D11 to point at a line that exists |
-| **Judgement** | the build ORDER, the tier sizes, where a re-read stops, what counts as a conflict | Argued in place, not measured. This is the part worth disagreeing with |
+| **Backed by a saved payload** | 105 of 387 (field, source) pairs in Appendix A; the unit each amount column holds today; the store size; whether an old document is still downloadable; what the real extractor produces on four real offer documents | Re-runnable: every probe is one command, its output is committed beside it, and D15 ratchets the count |
+| **Measured this round** | 27 unreachable matrix keys of 77, 22 of them orphans (§0.6); 149 of 240 fields empty on a live mainboard IPO (walkthrough); the ten-a-night arithmetic behind §7.3 item 6 | Generated, not typed. Where a measured number contradicted an earlier written one, the measurement won — four times |
+| **Read from the code, cited** | the cadence, the budget derivation, the write path, the 32-of-240 consolidation gap | 30 citations, each re-resolved by D11 to a file and a line that exists |
+| **Judgement** | the build ORDER, the tier sizes, where a re-read stops, what counts as a conflict, which of two owner statements governs when they collide | Argued in place, never measured. This is the part worth disagreeing with |
+| **Provisional on an owner fork** | §5.2's five retail rupee columns (O-12); §2.1's grey-market premium (O-13) | Written on a stated recommendation, marked in place, and D14 fails if a marker loses its row |
 
-**And the part with the worst track record: claims about our own code.** The first draft asserted
-seven things about existing behaviour that the code disproves (Appendix A.0). D7 is a regression
-guard against those seven specifically. It cannot catch an eighth. When a claim about existing
-behaviour matters to a decision, open the citation.
+**The part with the worst track record is still claims about our own code**, and this round added to
+the evidence for that. Four separate statements in this document were wrong about our own code and
+were caught only because somebody read the code or ran a probe: the amount-column conversion scope,
+build item 14 already existing, the count of dead matrix keys, and the root cause of F-46. D7 guards
+seven specific disproved claims; it cannot catch an eighth. When a claim about existing behaviour
+matters to a decision, open the citation.
+
+**And the checks themselves are not exempt.** D10c has now been wrong in both directions — once
+passing while examining nothing, once failing a row that merely quoted history. Every check added
+this round was deliberately broken before it was trusted, and both runs are in the progress log.
 
 ### 8.3 What is still yours
 
-Four owner comments are undecided (§0.0.2), and **nothing in this design assumes an answer** — D10c
-fails if any section pretends otherwise:
+Findings: **53 fixed, 7 open, 6 deferred with a named trigger, 1 not doing.** The open ones are
+each owned by a build item and named in §7.1; none of them blocks scoping.
 
-| | Blocks | Does not block |
+Owner forks, all in §0.0.2, none of which stops work — each is written on a recommendation and marked
+where it applies:
+
+| | Recommendation the design is written on | Blocks |
 |---|---|---|
-| **O-1** wake interval | nothing in §7.1 | the cadence decision D-13 already governs what runs when |
-| **O-2** money in crore | build item 11 only | items 1–10 and 12–15 |
-| **O-3** partial persistence | the full version of item 4 | the cheap half of item 4 ships without it |
-| **O-7** language model | nothing in phase 1 | recorded as a standing constraint in §5.6 |
+| **O-7** language model | standing constraint; nothing in phase 1 uses one | nothing |
+| **O-12** five retail rupee columns | keep them in rupees as named exceptions to "crore by default" | nothing — item 11 ships either way, with five columns' treatment decided by your answer |
+| **O-13** grey-market premium and the market-hours gate | subscription and demand graph during bidding only; the premium additionally on each data job and the 22:00 job | nothing — but the literal reading of OD-19 would undo a change you approved on 2026-09-08 |
 
-So the design does not wait on any of them. **Build items 1–10 and 12–15 can be scoped on your word
-alone**; item 11 waits on O-2.
+Three of the four comments that were open a day ago — the cadence, the money unit and partial failure
+— are now decisions in §0.0.1 as OD-19, OD-20 and OD-21, each with a check enforcing it.
 
 ### 8.4 Done means
 
@@ -2521,20 +2559,21 @@ Every (field, source) pair the appendix resolves — across the mainboard, SME-B
 Chittorgarh pages, the real InvestorGain report, and the real output of `extract_filing.py` run on
 four real offer documents.
 
+<!-- generated:evidence-summary — regenerate with `node docs/design/generate-appendix-a.mjs --write`. Hand-editing these numbers is what D2 exists to catch: this table said 114 of 386 with NSE 19/38 for hours after the mapper was tightened and the real answer became 105 of 387 with NSE 15/42. -->
 | Source | Rank backed by a saved payload | Searched, nothing matched | Not probed this round |
 |---|---:|---:|---:|
-| `DOC` | 48 | 115 | 0 |
-| `NSE` | 19 | 38 | 0 |
-| `BSE` | 15 | 40 | 0 |
-| `CG` | 31 | 69 | 0 |
+| `DOC` | 14 | 149 | 0 |
+| `NSE` | 21 | 36 | 0 |
+| `BSE` | 14 | 41 | 0 |
+| `CG` | 22 | 79 | 0 |
 | `IG` | 1 | 0 | 0 |
 | `REG` | 0 | 0 | 7 |
 | `ADMIN` | 0 | 0 | 3 |
 
-**114 of 386 pairs are backed by a payload we hold.** Check **D15** enforces that number as a
-ratchet: it may rise, and the gate fails if it falls.
+**72 of 387 pairs are backed by a payload we hold.** Check **D15** enforces that number as a ratchet: it may rise, and the gate fails if it falls — and since 2026-09-09 it also refuses a reference whose cited label is not actually in the file it points at.
 
-**What the other 272 mean, precisely, because this is where an honest report is easy to fake.**
+**What the other 315 mean, precisely, because this is where an honest report is easy to fake.**
+<!-- /generated:evidence-summary -->
 "Searched, nothing matched" is **not** proof that the source lacks the field. It means: in the
 payload saved for the two IPOs walked in this round, no label matched that column. Three separate
 things produce it, and they need different answers:
@@ -2564,7 +2603,7 @@ number means, cut the total to 114 — and made every one of them auditable.
 |---:|---|---|---|---|---|---|---|---|---|
 | 1 | `ipos.symbol` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E7 cover |  |
 | 2 | `ipos.company_name` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | cover |  |
-| 3 | `ipos.issue_size` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A5+A6 |  |
+| 3 | `ipos.issue_size` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A5+A6 | BSE RANK CARRIES A TRAP, measured 2026-09-09 on ARCIL: Issue_Size_No_of_shares is the NON-ANCHOR share count. NSE says the offer is 52,731,946 shares including a 15,819,583 anchor portion; BSE reports exactly 36,912,363, the remainder. Multiplying BSE shares by the floor price understates the issue by 33.5 percent, and by the cap price still understates it by 30 percent. The correct total is total shares x cap price = 7,329,740,494, which is what production stores. Any BSE-sourced issue size must add the anchor portion back and use the CAP price - see F-98 |
 | 4 | `ipos.lot_size` | D | DOC | BSE | NSE | DOC · BSE · CG | DOC · NSE · CG | A3 |  |
 | 5 | `ipos.open_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 6 | `ipos.close_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
@@ -2743,8 +2782,8 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 179 | `anchor_investors.total_amount_raised` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
 | 180 | `anchor_investors.anchor_investors_count` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
 | 181 | `anchor_investors.investor_list` | D | DOC | — | — | DOC · — · — | DOC · — · — | anchor report | no rank 2: the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book |
-| 182 | `anchor_investors.lock_in_50_percent_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 30 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08 (50% locked 30 days from allotment, split rule for issues opening on or after 1 Apr 2022). Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug, 6 days early on the one row with an allotment date |
-| 183 | `anchor_investors.lock_in_remaining_date` | C | — | — | — | — · — · — | — · — · — | — | computed: allotment_date + 90 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08. Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug |
+| 182 | `anchor_investors.lock_in_50_percent_date` | C | — | — | — | — · — · — | — · — · — | — | computed: EFFECTIVE 2022-04-01 ONWARD: allotment_date + 30 days (SEBI ICDR 2018 Schedule XIII Part A, the 50/30 and 50/90 split introduced for issues opening on or after 1 April 2022). BEFORE that date the split did not exist and this field must be left empty rather than computed - F-65: an unconditional formula walked backwards by the 22:00 closed-IPO job would publish a lock-in expiry that never legally existed. Live code uses bid_date (anchor-investors-scraper.ts:302) rather than allotment_date: a production bug, about a week early |
+| 183 | `anchor_investors.lock_in_remaining_date` | C | — | — | — | — · — · — | — · — · — | — | computed: EFFECTIVE 2022-04-01 ONWARD: allotment_date + 90 days (SEBI ICDR 2018 Schedule XIII Part A, the 50/30 and 50/90 split introduced for issues opening on or after 1 April 2022). BEFORE that date the split did not exist and this field must be left empty rather than computed - F-65: an unconditional formula walked backwards by the 22:00 closed-IPO job would publish a lock-in expiry that never legally existed. Live code uses bid_date (anchor-investors-scraper.ts:302) rather than allotment_date: a production bug, about a week early |
 | 184 | `documents.type` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 185 | `documents.title` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 186 | `documents.url` | I | — | — | — | — · — · — | — · — · — | — |  |

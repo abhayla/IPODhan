@@ -71,11 +71,54 @@ try {
   const s = STATS();
   console.log(`spec: ${s.fields} fields · E-1 ${s.e1} · single-source ${s.singleSource}`);
 
+  // ---------------------------------------------------------------------------
+  // A.0's evidence summary is generated too. It was not, and within an hour of the mapper being
+  // tightened the prose said "114 of 386 pairs, NSE 19 of 38" while the probe returned 105 of 387 and
+  // NSE 15 of 42 — in a section whose own first sentence claims the numbers are generated rather than
+  // counted by a person. A number that describes a generator has to come FROM the generator.
+  // ---------------------------------------------------------------------------
+  const MAPOUT = path.join(HERE, 'probes', 'evidence-map.out.json');
+  let summary = null;
+  if (fs.existsSync(MAPOUT)) {
+    const m = JSON.parse(fs.readFileSync(MAPOUT, 'utf8'));
+    const t = m.totals || {};
+    const total = (m.pairs || []).length;
+    const rows = ['| Source | Rank backed by a saved payload | Searched, nothing matched | Not probed this round |',
+                  '|---|---:|---:|---:|'];
+    for (const src of ['DOC', 'NSE', 'BSE', 'CG', 'IG', 'REG', 'ADMIN']) {
+      const v = (m.by_source || {})[src];
+      if (!v) continue;
+      rows.push(`| \`${src}\` | ${v.CARRIES || 0} | ${v.UNPROVEN || 0} | ${v.UNPROBED || 0} |`);
+    }
+    summary = rows.join('\n') + '\n\n' +
+      `**${t.CARRIES || 0} of ${total} pairs are backed by a payload we hold.** Check **D15** enforces that ` +
+      `number as a ratchet: it may rise, and the gate fails if it falls — and since 2026-09-09 it also ` +
+      `refuses a reference whose cited label is not actually in the file it points at.\n\n` +
+      `**What the other ${(t.UNPROVEN || 0) + (t.UNPROBED || 0)} mean, precisely, because this is where an honest report is easy to fake.**`;
+  }
+  const SUMMARY_OPEN = '<!-- generated:evidence-summary';
+  const SUMMARY_CLOSE = '<!-- /generated:evidence-summary -->';
+
+  // Is the generated evidence summary the one the probe would produce right now?
+  const so = lines.findIndex((l) => l.startsWith(SUMMARY_OPEN));
+  const sc = lines.findIndex((l) => l.trim() === SUMMARY_CLOSE);
+  if (summary !== null && so >= 0 && sc > so &&
+      lines.slice(so + 1, sc).join('\n').trim() !== summary.trim()) {
+    drift.push('the A.0 evidence summary differs from the probe output');
+  }
+
   if (write) {
-    // Splice A.2 first: it sits later in the file, so rewriting it cannot move A.1's offsets.
-    const next = lines.slice(0, a2.start).concat(want.A2, lines.slice(a2.end));
-    const out = next.slice(0, a1.start).concat(want.A1, next.slice(a1.end));
-    fs.writeFileSync(DESIGN, out.join('\n'));
+    // Splice from the BOTTOM up, so rewriting one block cannot move the offsets of the ones above it.
+    // And join with the file's OWN line ending: this joined with '\n' for two runs and silently
+    // rewrote a CRLF document as LF, which turns a one-row regeneration into a whole-file diff and
+    // hides the real change from any reviewer reading the pull request.
+    let out = lines;
+    out = out.slice(0, a2.start).concat(want.A2, out.slice(a2.end));
+    out = out.slice(0, a1.start).concat(want.A1, out.slice(a1.end));
+    if (summary !== null && so >= 0 && sc > so) {
+      out = out.slice(0, so + 1).concat(summary.split('\n'), out.slice(sc));
+    }
+    fs.writeFileSync(DESIGN, out.join(eol));
     console.log(drift.length ? `written: ${drift.join(' · ')}` : 'written: no change (already in sync)');
     process.exit(0);
   }

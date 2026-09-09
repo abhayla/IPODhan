@@ -1387,3 +1387,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   cited vs judgement. Four owner comments remain Abhay's (O-1 wake interval, O-2 crore, O-3 partial
   persistence, O-7 language model); none blocks anything except build item 11. 14/14 consistent,
   pushed to docs/pull-model-design.
+
+- **2026-09-09 10:40 IST — pull-model design taken from "complete" to implementation-ready** (branch
+  `docs/pull-model-implementation-ready`, worktree `IPODhan-pullmodel-ready`, contract
+  `docs/contracts/2026-09-09-pull-model-design-implementation-ready.md`). The owner's three
+  outstanding comments became decisions OD-19 (three jobs: data at 00:00/08:00/14:00, live figures
+  every 30 minutes 10:00-18:30, closed IPOs at 22:00; no job kills a running cycle), OD-20 (crore is
+  the default amount unit) and OD-21 (per-field validation before the write), plus OD-22 to OD-26.
+  Four new checks D12-D15 enforce them and D16 gates the build cards; every one was deliberately
+  broken before it was trusted, and both runs are logged. Appendix A's ranks stopped being
+  assertions: 105 of 387 (field, source) pairs are now backed by a payload committed in the repo,
+  ratcheted by D15. Eighteen build cards, two real IPOs walked field by field, and a draft contract
+  for build item 1 that is NOT dispatched. Four statements in the design turned out to be wrong about
+  our own code and were corrected against it: the crore conversion touches five columns and not
+  thirty-seven, build item 14 already exists, the matrix has twenty-seven unreachable keys and not
+  thirteen, and F-46's root cause is pipeline order rather than a missing word list. Two owner forks
+  recorded and marked in place: O-12 (five retail rupee columns) and O-13 (the grey-market premium
+  versus the market-hours gate, where OD-19 read literally would undo the F-41 change approved on
+  2026-09-08). Gate 19/19. Docs-only, no behaviour shipped.

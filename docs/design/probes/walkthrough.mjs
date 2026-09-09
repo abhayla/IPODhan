@@ -72,6 +72,10 @@ const RULES = {
     return cr >= 1 && cr <= 30000 ? `pass — Rs ${cr.toFixed(2)} crore` :
       `FAIL: Rs ${cr.toFixed(2)} crore is outside 1..30,000 crore`;
   },
+  // F-98. The most-read number on the page, reconciled against the exchange payloads rather than
+  // merely range-checked. BSE's share count excludes the anchor portion, so "shares x price" from BSE
+  // alone understates the issue by about a third; the identity that holds is total shares x CAP price.
+  'ipos.issue_size_reconciliation': null,
   'ipos.open_date': (v, r) => { const a = v && new Date(v), b = r.ipos?.close_date && new Date(r.ipos.close_date); return !a ? null : (b && a > b ? 'FAIL: opens after it closes' : 'pass'); },
   'ipos.close_date': (v, r) => { const a = r.ipos?.open_date && new Date(r.ipos.open_date), b = v && new Date(v); return !b ? null : (a && a > b ? 'FAIL: closes before it opens' : 'pass'); },
   'ipos.listing_date': (v, r) => { const c = r.ipos?.close_date && new Date(r.ipos.close_date), l = v && new Date(v); return !l ? null : (c && l < c ? 'FAIL: lists before it closes' : 'pass'); },
@@ -94,7 +98,16 @@ const fmt = (v) => {
 
 // ---------------------------------------------------------------------------
 const rows = [];
-let counts = { applicable: 0, na: 0, rank1Evidenced: 0, storedEmpty: 0, ruleFail: 0, unknown: 0 };
+let counts = { applicable: 0, na: 0, rank1Evidenced: 0, storedEmpty: 0, ruleFail: 0, unknown: 0, otherIpo: 0 };
+
+// A fixture belongs to this IPO when its path names this IPO. Extraction and Chittorgarh fixtures are
+// named by slug; NSE payloads by symbol; the BSE detail payload by its IPO number. The shared list
+// payloads - the current-issue board, the upcoming list, the BSE board, the grey-market report -
+// legitimately cover every IPO at once and are allowed.
+const SHARED = /ipo-current-issue|all-upcoming-issues|IPO_HomePageDetail|gmp-live/;
+const ownFixture = (fx) => SHARED.test(fx)
+  || fx.includes(ipo.slug)
+  || (!!ipo.symbol && fx.toUpperCase().includes(String(ipo.symbol).toUpperCase()));
 
 for (const f of F) {
   const col = `${f.t}.${f.c}`;
@@ -104,7 +117,7 @@ for (const f of F) {
   const r1 = res[0];
   const ev = (EV[col] || {})[r1];
   const pair = pairIndex[`${col}|${r1}`];
-  if (ev) counts.rank1Evidenced++;
+  if (ev && pair && pair.fixture && ownFixture(pair.fixture)) counts.rank1Evidenced++;
 
   const cur = val(f.t, f.c);
   if (!cur.present) counts.storedEmpty++;
@@ -112,12 +125,23 @@ for (const f of F) {
   let ruleResult = RULES[col] ? RULES[col](cur.value, stored) : null;
   if (ruleResult && ruleResult.startsWith('FAIL')) counts.ruleFail++;
 
+  // The evidence map is keyed by (field, source) across EVERY IPO probed. A walkthrough must never
+  // quote another company's payload. The first version of this file reported Vinod Texworld's rank-1
+  // lot size as 107 and its band as 132 to 139 — those are Asset Reconstruction's numbers, out of
+  // Asset Reconstruction's price band advertisement, and Vinod's own fixture returns null for all
+  // three. That is §2.3.4's own warning, "a correct page still contains other companies' numbers",
+  // reproduced inside the design's own evidence, and it graded an elevenfold disagreement as a pass.
+  const mine = pair && pair.fixture ? ownFixture(pair.fixture) : false;
   const sourceSays = pair && pair.verdict === 'CARRIES'
-    ? `${pair.label}${pair.sample ? ' = ' + String(pair.sample).replace(/\|/g, '\\|').slice(0, 44) : ''}`
+    ? (mine
+        ? `${pair.label}${pair.sample ? ' = ' + String(pair.sample).replace(/\|/g, '\\|').slice(0, 44) : ''}`
+        : `_(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_`)
     : (pair && pair.verdict === 'UNPROBED' ? `_(not probed: ${pair.why})_` : '_(searched, no matching label)_');
-  if (!pair || pair.verdict !== 'CARRIES') counts.unknown++;
+  if (!pair || pair.verdict !== 'CARRIES' || !mine) counts.unknown++;
+  if (pair && pair.verdict === 'CARRIES' && !mine) counts.otherIpo++;
 
-  rows.push(`| \`${col}\` | ${f.cls} | ${r1} | ${res[1]} · ${res[2]} | ${sourceSays} | ${fmt(cur.value)} | ${ruleResult || '_(no rule stated)_'} | ${ev ? '`' + ev.replace('fixtures/', '') + '`' : '—'} |`);
+  const evShown = ev && mine ? '`' + String(ev.ref || ev).replace('fixtures/', '') + '`' : '—';
+  rows.push(`| \`${col}\` | ${f.cls} | ${r1} | ${res[1]} · ${res[2]} | ${sourceSays} | ${fmt(cur.value)} | ${ruleResult || '_(no rule stated)_'} | ${evShown} |`);
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -140,7 +164,7 @@ out.push('');
 out.push('## What this walk found, before the table');
 out.push('');
 out.push(`- **${counts.applicable} of ${F.length} fields apply** to a ${type} issue; ${counts.na} are N/A for this offering type.`);
-out.push(`- **${counts.rank1Evidenced} of those have a rank-1 source backed by a saved payload.** The rest are the honest gap: see §A.0's fifth verification round for what "no matching label" does and does not mean.`);
+out.push(`- **${counts.rank1Evidenced} of those have a rank-1 source backed by a payload saved for THIS IPO.** A further ${counts.otherIpo} rank-1 sources are known to carry the field, but only from another IPO's payload; those rows say so instead of borrowing the number. The rest are the honest gap: see §A.0's fifth verification round for what "no matching label" does and does not mean.`);
 out.push(`- **${counts.storedEmpty} applicable fields are empty on production right now.** That is the number the pull model exists to move.`);
 out.push(`- **${counts.ruleFail} stored values fail a stated plausibility rule.**`);
 out.push('');

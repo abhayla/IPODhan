@@ -48,12 +48,17 @@ const index = {};   // source -> [{ label, fixture, sample }]
     for (const it of (d.issueInfo?.dataList || [])) {
       if (it && it.title) rows.push({ label: String(it.title), fixture: f, sample: String(it.value ?? '').slice(0, 90) });
     }
+    const shared = /ipo-current-issue|all-upcoming-issues/.test(f);
     for (const k of Object.keys(d)) {
-      if (typeof d[k] !== 'object') rows.push({ label: k, fixture: f, sample: String(d[k]).slice(0, 90) });
+      if (typeof d[k] !== 'object') rows.push({ label: k, fixture: f, sample: shared ? '' : String(d[k]).slice(0, 90), multiRow: shared });
     }
-    for (const k of Object.keys(d.demandGraph || {})) rows.push({ label: 'demandGraph.' + k, fixture: f, sample: '' });
-    for (const b of (d.bidDetails || []).slice(0, 1)) for (const k of Object.keys(b)) rows.push({ label: 'bidDetails.' + k, fixture: f, sample: '' });
-    for (const b of (d.activeCat?.dataList || []).slice(0, 1)) for (const k of Object.keys(b)) rows.push({ label: 'activeCat.' + k, fixture: f, sample: '' });
+    // The label must be a string that is literally IN the payload, because D15 re-checks it there.
+    // Prefixing these with their container ("bidDetails.noOfTime") produced a label that appears
+    // nowhere in the file, and D15 rejected all three the moment it started checking labels rather
+    // than filenames. The container is recorded in `where`, which is context, not the claim.
+    for (const k of Object.keys(d.demandGraph || {})) rows.push({ label: k, where: 'demandGraph', fixture: f, sample: '' });
+    for (const b of (d.bidDetails || []).slice(0, 1)) for (const k of Object.keys(b)) rows.push({ label: k, where: 'bidDetails', fixture: f, sample: '' });
+    for (const b of (d.activeCat?.dataList || []).slice(0, 1)) for (const k of Object.keys(b)) rows.push({ label: k, where: 'activeCat', fixture: f, sample: '' });
   }
   index.NSE = rows;
 }
@@ -64,7 +69,9 @@ const index = {};   // source -> [{ label, fixture, sample }]
   for (const f of fs.existsSync(path.join(FIX, 'bse')) ? fs.readdirSync(path.join(FIX, 'bse')) : []) {
     const d = readJson('bse/' + f);
     const rec = d?.IPONO_0?.[0] || (Array.isArray(d) ? d[0] : null);
-    for (const k of Object.keys(rec || {})) rows.push({ label: k, fixture: 'bse/' + f, sample: String(rec[k] ?? '').slice(0, 90) });
+    // The BSE board listing covers every IPO at once; only the per-IPO detail payload has one subject.
+    const shared = /IPO_HomePageDetail/.test(f);
+    for (const k of Object.keys(rec || {})) rows.push({ label: k, fixture: 'bse/' + f, sample: shared ? '' : String(rec[k] ?? '').slice(0, 90), multiRow: shared });
   }
   index.BSE = rows;
 }
@@ -103,7 +110,12 @@ const index = {};   // source -> [{ label, fixture, sample }]
   if (exists('investorgain/gmp-live.json')) {
     const d = readJson('investorgain/gmp-live.json');
     const r = (d.reportTableData || d.data || [])[0] || {};
-    for (const k of Object.keys(r)) rows.push({ label: k, fixture: 'investorgain/gmp-live.json', sample: String(r[k] ?? '').slice(0, 60) });
+    // multiRow: this payload is ONE list covering every live IPO, so the value beside a label belongs
+    // to whichever row happens to be first. A blind check caught the consequence: the grey-market
+    // premium was reported as 248, which belongs to an unrelated issue sitting at index 0, while the
+    // IPO being walked had a premium of 30. The LABEL is evidence that the source carries the field;
+    // the VALUE from a shared list is not evidence about any particular IPO, and is not shown.
+    for (const k of Object.keys(r)) rows.push({ label: k, fixture: 'investorgain/gmp-live.json', sample: '', multiRow: true });
   }
   index.IG = rows;
 }
@@ -185,38 +197,91 @@ const flat = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '');
 const hasToken = (labelTokens, alt) => {
   const a = flat(alt);
   if (!a) return false;
-  return labelTokens.some((t) => t === a || (t.startsWith(a) && t.length - a.length <= 2)
-    || (a.startsWith(t) && a.length - t.length <= 2) || (a.length >= 8 && t.includes(a)));
+  // The near-prefix rules exist for plurals and short inflections (lot/lots, manager/managers). They
+  // must never let a SHORT token stand in for a longer word: the first version allowed
+  // `a.startsWith(t)` with no floor on `t`, so the synonym "pat" matched Chittorgarh's one-letter
+  // token "p" in "P/E (x)" and the design ended up citing a price-to-earnings ratio as evidence that
+  // the source carries profit after tax. Four more wrong-quantity pairs rode the same rule. Both
+  // directions now require at least four characters on the shorter side.
+  const MIN_STEM = 4;
+  return labelTokens.some((t) =>
+    t === a
+    || (t.startsWith(a) && a.length >= MIN_STEM && t.length - a.length <= 2)
+    || (a.startsWith(t) && t.length >= MIN_STEM && a.length - t.length <= 2)
+    || (a.length >= 8 && t.includes(a)));
 };
 
-function match(col, source) {
+// ---------------------------------------------------------------------------
+// CURATED: the (column, source) pairs whose label was read and confirmed BY A PERSON against the
+// saved payload. Everything not here, and not an exact name match, is UNPROVEN.
+//
+// WHY THE TOKEN MATCHER IS NO LONGER ALLOWED TO PRODUCE EVIDENCE. Three tightenings were not enough.
+// A review on 2026-09-09 found it citing BSE's share COUNT as evidence for a rupee amount, the
+// financial table's "Period Ended" header as evidence for a bidding close date, one Chittorgarh cell
+// labelled "Name" as evidence for three different entities, and the offer document's PROMOTER as
+// evidence for the registrar. Every one of those is a label that legitimately contains the right
+// words and means something else. No amount of token cleverness fixes that, because the ambiguity is
+// in the source, not in the matching: "Name" is genuinely ambiguous until a human says name OF WHAT.
+// So the matcher now only SUGGESTS, and a suggestion is not evidence.
+const CURATED = {
+  'ipos.registrar':            { NSE: 'Name of the Registrar', BSE: 'Registrar' },
+  'ipos.lead_managers':        { NSE: 'Book Running Lead Managers', BSE: 'Book_Running_Lead_Manager' },
+  'ipos.face_value':           { NSE: 'Face Value', BSE: 'Face_Value', DOC: 'face_value' },
+  'ipos.lot_size':             { DOC: 'lot_size' },
+  'ipos.symbol':               { NSE: 'Symbol', BSE: 'Symbol' },
+  'ipos.company_name':         { NSE: 'companyName', BSE: 'ScripName' },
+  'ipos.open_date':            { NSE: 'Issue Period', BSE: 'Issue_Period' },
+  'ipos.close_date':           { NSE: 'Issue Period', BSE: 'Issue_Period' },
+  'ipos.price_range_min':      { NSE: 'Price Range', BSE: 'Price_Band' },
+  'ipos.price_range_max':      { NSE: 'Price Range', BSE: 'Price_Band' },
+  'ipo_details.issue_type':    { NSE: 'Issue Type' },
+  'ipo_details.tick_size':     { NSE: 'Tick Size', BSE: 'Tick_Size' },
+  'ipo_details.lot_multiple':  { BSE: 'Market_Lot' },
+  'ipo_details.sponsor_banks': { NSE: 'Sponsor Bank', BSE: 'Sponsor_Bank' },
+  'ipo_details.ipo_market_timings': { NSE: 'IPO Market Timings', BSE: 'IPO_Market_Timings' },
+  'ipo_details.upi_cutoff_time':    { NSE: 'Cut-off time for UPI Mandate Confirmation' },
+  'ipo_details.max_retail_subscription': { NSE: 'Maximum Subscription Amount for Retail Investor' },
+  'ipo_details.sub_categories_upi': { NSE: 'Sub-Categories applicable for UPI' },
+  'ipo_details.category_details':   { NSE: 'Categories' },
+  'gmp_records.gmp':           { IG: 'GMP' },
+  'subscriptions.shares_offered': { NSE: 'noOfSharesOffered' },
+  'subscriptions.total_shares_bid': { NSE: 'noOfsharesBid' },
+  'subscriptions.total_subscription': { NSE: 'noOfTime' },
+};
+
+function match(col, source, table) {
+  const rows = index[source];
+  if (!rows) return null;
+  const key = table + '.' + col;
+
+  // 1. A curated pair: the label was confirmed by a person against this payload.
+  const want = (CURATED[key] || {})[source];
+  if (want) {
+    const hit = rows.find((r) => !r.empty && r.label === want);
+    if (hit) return { ...hit, how: 'curated: label confirmed against the payload' };
+    return null;    // curated but absent from THIS payload — not evidence, and not a fallback either
+  }
+
+  // 2. An exact name match. `lot_size` in the extractor's own output is the extractor's own name for
+  //    the field, and that is as unambiguous as this gets.
+  const flatCol = flat(col);
+  const exact = rows.find((r) => !r.empty && flat(r.label) === flatCol);
+  if (exact) return { ...exact, how: 'exact name match' };
+
+  return null;
+}
+
+// Kept only to SUGGEST candidates for future curation. Never returned as evidence.
+function suggest(col, source) {
   const rows = index[source];
   if (!rows) return null;
   const parts = tok(col).filter((t) => !['id', 'at', 'of', 'the', 'is'].includes(t));
   if (!parts.length) return null;
   const need = parts.map(expand);
-
-  // 1. An exact label match, ignoring punctuation and case. `GMP` beats `~max_gmp1`.
-  const exact = rows.find((r) => !r.empty && flat(r.label) === flat(col.replace(/_/g, '')));
-  if (exact) return { ...exact, how: 'exact label' };
-
-  // 2. EVERY token of the column name (after synonym expansion) must appear in the label. Matching
-  //    against the VALUE as well was too loose — a sample containing the IPO slug matched anything —
-  //    so only the label counts, and there is no near-miss tier. A rank with no full match is
-  //    UNPROVEN, which is a rank to look at again, not a rank to quietly bless.
-  // A label may not carry a token that CHANGES what the number is. "PAT Margin" contains every
-  // token of `pat` and is a different quantity; so is "Revenue Growth" and "EPS (Diluted) YoY".
-  // Evidence for the wrong quantity is the most expensive kind of wrong, because it looks right.
-  const MEANING_CHANGERS = ['margin', 'growth', 'yoy', 'cagr', 'wise', 'managed', 'review', 'maker',
-                            'trend', 'change', 'variance', 'forecast', 'estimate', 'peer', 'industry'];
-  const colTokens = new Set(parts.flatMap(expand).map(flat));
   for (const r of rows) {
     if (r.empty) continue;
     const labelTokens = tok(r.label).map(flat);
-    if (!need.every((alts) => alts.some((a) => hasToken(labelTokens, a)))) continue;
-    const extras = labelTokens.filter((t) => t && !colTokens.has(t) && ![...colTokens].some((c) => t.includes(c) || c.includes(t)));
-    if (extras.some((e) => MEANING_CHANGERS.includes(e))) continue;
-    return { ...r, how: 'all tokens in label', label_extras: extras };
+    if (need.every((alts) => alts.some((a) => hasToken(labelTokens, a)))) return r.label;
   }
   return null;
 }
@@ -233,9 +298,11 @@ for (const f of F) {
   for (const src of srcs) {
     const col = `${f.t}.${f.c}`;
     if (UNPROBED[src]) { pairs.push({ field: col, source: src, verdict: 'UNPROBED', why: UNPROBED[src] }); continue; }
-    const m = match(f.c, src);
-    if (m) pairs.push({ field: col, source: src, verdict: 'CARRIES', label: m.label, fixture: m.fixture, sample: m.sample, how: m.how });
-    else pairs.push({ field: col, source: src, verdict: 'UNPROVEN', why: `probed ${src}: no label in the saved payload matches "${f.c}"` });
+    const m = match(f.c, src, f.t);
+    if (m) { pairs.push({ field: col, source: src, verdict: 'CARRIES', label: m.label, fixture: m.fixture, sample: m.multiRow ? '' : m.sample, multiRow: !!m.multiRow, how: m.how }); continue; }
+    const sug = suggest(f.c, src);
+    pairs.push({ field: col, source: src, verdict: 'UNPROVEN',
+      why: `probed ${src}: no curated or exact label for "${f.c}"` + (sug ? `; nearest candidate seen was "${sug}" — a CANDIDATE, not evidence, and it needs a person to confirm what it names` : '') });
   }
 }
 
@@ -276,7 +343,11 @@ if (apply) {
   const evByField = {};
   for (const p of pairs) {
     if (p.verdict !== 'CARRIES') continue;
-    (evByField[p.field] = evByField[p.field] || {})[p.source] = 'fixtures/' + p.fixture;
+    // The LABEL travels with the path. Storing only the path let D15 pass while every reference
+    // pointed at one unrelated fixture: its whole assertion was "the file exists", so a GMP report
+    // could stand as evidence that a source carries a registrar name. The label is what makes the
+    // reference checkable.
+    (evByField[p.field] = evByField[p.field] || {})[p.source] = { ref: 'fixtures/' + p.fixture, label: p.label };
   }
   const EV_FILE = path.resolve(HERE, '../evidence.json');
   fs.writeFileSync(EV_FILE, JSON.stringify({

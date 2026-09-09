@@ -12,7 +12,7 @@ const add = (t, c, cls, r, o = {}) => F.push({ t, c, cls, r, o });
 // ---------- ipos (32) ----------
 add('ipos','symbol','D',['DOC','NSE','BSE'],{doc:'E7 cover'});
 add('ipos','company_name','D',['DOC','NSE','BSE'],{doc:'cover'});
-add('ipos','issue_size','D',['DOC','BSE','CG'],{doc:'A5+A6'});
+add('ipos','issue_size','D',['DOC','BSE','CG'],{doc:'A5+A6',note:'BSE RANK CARRIES A TRAP, measured 2026-09-09 on ARCIL: Issue_Size_No_of_shares is the NON-ANCHOR share count. NSE says the offer is 52,731,946 shares including a 15,819,583 anchor portion; BSE reports exactly 36,912,363, the remainder. Multiplying BSE shares by the floor price understates the issue by 33.5 percent, and by the cap price still understates it by 30 percent. The correct total is total shares x cap price = 7,329,740,494, which is what production stores. Any BSE-sourced issue size must add the anchor portion back and use the CAP price - see F-98'});
 add('ipos','lot_size','D',['DOC','BSE','NSE'],{doc:'A3',na:['NCD','INVITS','REITS','TENDER','BUYBACK']});
 add('ipos','open_date','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','close_date','T',['NSE','BSE','CG'],{e1:1});
@@ -218,8 +218,8 @@ for (const c of ['total_shares_offered','total_amount_raised','anchor_investors_
 // against the circular text), not sourced. Reclassed from T/E-1 to C. The live scraper computes
 // them from bid_date instead (scraper/src/scrapers/anchor-investors-scraper.ts:302), roughly a
 // week early — an existing production bug, tracked separately, not fixed by this design.
-add('anchor_investors','lock_in_50_percent_date','C',['—','—','—'],{formula:'allotment_date + 30 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08 (50% locked 30 days from allotment, split rule for issues opening on or after 1 Apr 2022). Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug, 6 days early on the one row with an allotment date',na:ANCH_NA});
-add('anchor_investors','lock_in_remaining_date','C',['—','—','—'],{formula:'allotment_date + 90 days — SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08. Live code uses bid_date (anchor-investors-scraper.ts:302): a production bug',na:ANCH_NA});
+add('anchor_investors','lock_in_50_percent_date','C',['—','—','—'],{formula:'EFFECTIVE 2022-04-01 ONWARD: allotment_date + 30 days (SEBI ICDR 2018 Schedule XIII Part A, the 50/30 and 50/90 split introduced for issues opening on or after 1 April 2022). BEFORE that date the split did not exist and this field must be left empty rather than computed - F-65: an unconditional formula walked backwards by the 22:00 closed-IPO job would publish a lock-in expiry that never legally existed. Live code uses bid_date (anchor-investors-scraper.ts:302) rather than allotment_date: a production bug, about a week early',na:ANCH_NA});
+add('anchor_investors','lock_in_remaining_date','C',['—','—','—'],{formula:'EFFECTIVE 2022-04-01 ONWARD: allotment_date + 90 days (SEBI ICDR 2018 Schedule XIII Part A, the 50/30 and 50/90 split introduced for issues opening on or after 1 April 2022). BEFORE that date the split did not exist and this field must be left empty rather than computed - F-65: an unconditional formula walked backwards by the 22:00 closed-IPO job would publish a lock-in expiry that never legally existed. Live code uses bid_date (anchor-investors-scraper.ts:302) rather than allotment_date: a production bug, about a week early',na:ANCH_NA});
 
 // ---------- documents (15) ----------
 for (const c of ['type','title','url','file_size','uploaded_at','exchange','media_type','sequence_number',
@@ -343,7 +343,7 @@ function pool(f) {
 // textual insertion reached only the ones declared one per line.
 const EV_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'evidence.json');
 const EV = fs.existsSync(EV_PATH) ? JSON.parse(fs.readFileSync(EV_PATH, 'utf8')).fields : {};
-for (const f of F) { const e = EV[f.t + '.' + f.c]; if (e) f.o.ev = e; }
+for (const f of F) { const e = EV[f.t + '.' + f.c]; if (e) f.o.ev = e; }   // { SOURCE: {ref, label} }
 
 // EVIDENCE_FLOOR is D15's ratchet: the number of (field, source) pairs that MUST carry a resolving
 // evidence reference. It is raised as probes land and is never lowered - dropping it is how a row
@@ -354,7 +354,7 @@ for (const f of F) { const e = EV[f.t + '.' + f.c]; if (e) f.o.ev = e; }
 // business_description as its evidence. Tightening the matcher to whole tokens removed them. A floor
 // that forbids ever correcting a bad match would make the check protect the errors it was built to
 // prevent. Any FUTURE reduction needs the same thing this one has: a stated reason for each pair.
-export const EVIDENCE_FLOOR = 105;
+export const EVIDENCE_FLOOR = 71;
 
 export function RESOLVE(f, type) { return resolve(f, type); }
 
