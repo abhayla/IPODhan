@@ -10,5 +10,6 @@
   "consumerReason": "explicitly a 7-day rolling share — needs a nightly cadence to accumulate and diff, not a single cycle’s data",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "REREAD-VERDICT (pull-model verification check REREAD-VERDICT: share of re-reads ending verified_against_document over 7 days) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_verdict' call lands in the audit script."
 }

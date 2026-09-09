@@ -10,5 +10,6 @@
   "consumerReason": "same 0/alarms-on-any-nonzero shape as PULL-WRITE, PULL-FROZEN and PULL-NOBLANK — an admin-override guard evaluated against the current cycle’s field state, not an overnight trend",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "PULL-ADMIN (pull-model verification check PULL-ADMIN: fields skipped for admin reasons with no live protection row) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_admin' call lands in the audit script."
 }

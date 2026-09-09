@@ -10,5 +10,6 @@
   "consumerReason": "brief-assigned: the ratio is defined per cycle (“writes per cycle ÷ fields re-asked per cycle”) and needs the cycle’s own write identities to explain a rise",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "PULL-NOOP (pull-model verification check PULL-NOOP: writes per cycle ÷ fields re-asked per cycle) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noop' call lands in the audit script."
 }

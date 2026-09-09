@@ -10,5 +10,6 @@
   "consumerReason": "explicitly scoped “this cycle” in the design text — a per-cycle receipt/record reconciliation, resolved to the re-read that is missing its receipt",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "REREAD-RECEIPT (pull-model verification check REREAD-RECEIPT: re-reads with a receipt hashed this cycle ÷ re-reads recorded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_receipt' call lands in the audit script."
 }

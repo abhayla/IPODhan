@@ -10,5 +10,6 @@
   "consumerReason": "brief-assigned: this is a live guard on the current cycle’s chosen-document state, same shape as PULL-WRITE/PULL-NOBLANK",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "PULL-FROZEN (pull-model verification check PULL-FROZEN: SUPPLIED rows whose chosen_document_id has been superseded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_frozen' call lands in the audit script."
 }

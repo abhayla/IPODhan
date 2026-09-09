@@ -20,6 +20,13 @@ on:
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
+      # T-detection-registry-unbuilt-checks: docs-only PRs still skipped pr-gate,
+      # but a change under these registry paths changes detection-checks.json
+      # and can break scripts/tests/audit-detection-floor.test.mjs (case 79) —
+      # so they must NOT be silently skipped by the docs-only ignore above.
+      - '!docs/reviews/detection-checks/**'
+      - '!docs/reviews/detection-checks.json'
+      - '!docs/reviews/failure-classes/**'
 
 # No main-branch guard needed here (T-190 review): this workflow only triggers
 # on `pull_request`, never on `push` to main, and the group is scoped per PR
