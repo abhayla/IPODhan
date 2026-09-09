@@ -1,0 +1,164 @@
+{
+  "probe": "registrar-payload",
+  "generated_at": "2026-09-09T11:12:31.211Z",
+  "targets": [
+    {
+      "slug": "asset-reconstruction-company-india-ltd",
+      "company_name": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
+      "status": "OPEN"
+    },
+    {
+      "slug": "vinod-texworld-ltd",
+      "company_name": "Vinod Texworld Limited",
+      "status": "OPEN"
+    },
+    {
+      "slug": "abh-healthcare-ltd",
+      "company_name": "ABH Healthcare Ltd.",
+      "status": "LISTED"
+    }
+  ],
+  "registrars_probed": [
+    "Cameo",
+    "Skyline",
+    "Link Intime",
+    "Bigshare",
+    "Purva Sharegistry",
+    "KFin"
+  ],
+  "note": "A registrar allotment page is almost always a client-side search form. A plain fetch sees the form shell, never the per-applicant result, which is why \"carries nothing readable\" is the honest reading for most rows here, not a probe failure.",
+  "results": [
+    {
+      "registrar": "Cameo",
+      "url": "https://ipo.cameoindia.com/",
+      "status": 200,
+      "ok": true,
+      "bytes": 55556,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Cameo-allotment.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Cameo",
+      "url": "https://www.cameoindia.com",
+      "status": 200,
+      "ok": true,
+      "bytes": 241182,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Cameo-website.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Skyline",
+      "url": "https://www.skylinerta.com/display_ipo_rightissue_allotment.php",
+      "status": 200,
+      "ok": true,
+      "bytes": 43357,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Skyline-allotment.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Skyline",
+      "url": "https://www.skylinerta.com",
+      "status": 200,
+      "ok": true,
+      "bytes": 68361,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Skyline-website.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Link Intime",
+      "url": "https://in.mpms.mufg.com/Initial_Offer/public-issues.html",
+      "status": 200,
+      "ok": true,
+      "bytes": 37481,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Link-Intime-allotment.html",
+      "reads": "carries: basis of allotment",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Link Intime",
+      "url": "https://in.mpms.mufg.com",
+      "status": 200,
+      "ok": true,
+      "bytes": 32290,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Link-Intime-website.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Bigshare",
+      "url": "https://ipo.bigshareonline.com/ipo_status.html",
+      "status": 200,
+      "ok": true,
+      "bytes": 49516,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Bigshare-allotment.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Bigshare",
+      "url": "https://www.bigshareonline.com",
+      "status": 200,
+      "ok": true,
+      "bytes": 119969,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Bigshare-website.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Purva Sharegistry",
+      "url": "https://www.purvashare.com/investor-service/ipo-query",
+      "status": 200,
+      "ok": true,
+      "bytes": 152215,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Purva-Sharegistry-allotment.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "Purva Sharegistry",
+      "url": "https://www.purvashare.com",
+      "status": 200,
+      "ok": true,
+      "bytes": 83134,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/Purva-Sharegistry-website.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "KFin",
+      "url": "https://kosmic.kfintech.com/ipostatus/",
+      "status": 200,
+      "ok": true,
+      "bytes": 12993,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/KFin-allotment.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    },
+    {
+      "registrar": "KFin",
+      "url": "https://www.kfintech.com",
+      "status": 200,
+      "ok": true,
+      "bytes": 113239,
+      "attempts": 1,
+      "fixture": "fixtures/registrars/KFin-website.html",
+      "reads": "client-side search form — the static fetch got the shell, not a result; carries nothing readable without a POST/JS interaction",
+      "company_mentions": []
+    }
+  ]
+}

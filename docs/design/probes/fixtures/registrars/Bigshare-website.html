@@ -1,0 +1,2615 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>
+	
+    HOME
+
+</title><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" /><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" /><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&amp;family=Montserrat:ital,wght@0,100..900;1,100..900&amp;family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&amp;display=swap" rel="stylesheet" /><link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" /><link href="Css/animate.min.css" rel="stylesheet" /><link href="Css/bootstrap.min.css" rel="stylesheet" /><link href="css/aos.css" rel="stylesheet" /><link href="Css/slick.css" rel="stylesheet" /><link href="Css/slick-theme.css" rel="stylesheet" /><link href="Css/style.css" rel="stylesheet" /><link href="Css/easy-responsive-tabs.css" rel="stylesheet" /><link href="Css/responsive.css" rel="stylesheet" /><link href="Css/sweetalert.css" rel="stylesheet" />
+    
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+    <style>
+        .lead_section {
+            right: 131px;
+        }
+
+        .accessibility-bar {
+            position: fixed;
+            top: 10px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 9999;
+        }
+
+        .skip-link {
+            color: #fff;
+            padding: 5px 10px;
+            text-decoration: none;
+            font-size: 13px;
+            border-radius: 3px;
+        }
+
+        .font-controls {
+            display: flex;
+            gap: 5px;
+            flex-direction: row-reverse;
+        }
+
+            .font-controls button {
+                padding: 4px 8px;
+                border: 1px solid #ccc;
+                background: #fff;
+                cursor: pointer;
+            }
+
+        button:hover {
+            background-color: #008CBA;
+            color: white;
+        }
+
+        .dropdown-content {
+            position: relative;
+        }
+
+        .col-xs-12 {
+            max-width: 100%;
+            width: 100%;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+        /*Start added on 18062026 for WCAG point*/
+        /* Skip link - hidden off-screen until it receives keyboard focus (WCAG 2.4.1) */
+        .skip-link1 {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            white-space: nowrap;
+            background: #0a4e8d;
+            color: #ffffff;
+            padding: 2px 5px;
+            text-decoration: none;
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 1px;
+            z-index: 10000;
+        }
+
+            .skip-link1:focus,
+            .skip-link1:active {
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                width: auto;
+                height: auto;
+                overflow: visible;
+                white-space: normal;
+                outline: 3px solid #ffbf47;
+                outline-offset: 2px;
+            }
+
+        /*anas Color Contrast: Home: Text like '+ 91-22-6263 8200' fails the color contrast ratio start*/
+        .social_link2 li a {
+            color: #fff !important;
+        }
+        /*anas Color Contrast: Home: Text like '+ 91-22-6263 8200' fails the color contrast ratio end*/
+
+        /* anas Color Contrast: Home: Text like 'About Us' fails the color contrast ratio due to irregular background start*/
+        .footer_sec_bottom_left ul li a {
+            color: #fff !important;
+            font-size: 22px;
+        }
+        /* anas Color Contrast: Home: Text like 'About Us' fails the color contrast ratio due to irregular background end*/
+
+        /*End added on 18062026 for WCAG point*/
+    </style>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@100..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" />
+    <link href="Css/animate.min.css" rel="stylesheet" />
+    <link href="Css/bootstrap.min.css" rel="stylesheet" />
+    <link href="Css/aos.css" rel="stylesheet" />
+    <link href="Css/slick.css" rel="stylesheet" />
+    <link href="Css/slick-theme.css" rel="stylesheet" />
+    <link href="Css/style.css" rel="stylesheet" />
+    <link href="Css/responsive.css" rel="stylesheet" />
+    <style>
+        .lead_section {
+            right: 131px;
+        }
+
+        .no-justify {
+            text-align: left !important;
+        }
+
+        h2 {
+            /*font-size: 1.5rem;*/
+            font-size: 0.8em; /*gaurav 02042026*/
+            color: #0a4e8d;
+        }
+
+        .btn_link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: normal; /* allow wrapping */
+            word-break: break-word;
+            padding: 0.75em 1.5em; /* scalable padding */
+            line-height: 1.4;
+            height: auto !important; /* CRITICAL */
+            min-height: 2.75em;
+            max-width: 100%;
+            text-align: center;
+        }
+
+        .client_slider .slick-prev,
+        .client_slider .slick-next {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            width: 40px;
+            height: 40px;
+            background: #0a4e8d;
+            border-radius: 50%;
+        }
+
+        .client_slider .slick-prev {
+            left: 10px;
+        }
+
+        .client_slider .slick-next {
+            right: 10px;
+        }
+
+            .client_slider .slick-prev:before,
+            .client_slider .slick-next:before {
+                color: #fff;
+                font-size: 20px;
+            }
+
+        .most_slider .slick-dots button:focus,
+        .most_slider .slick-dots button:focus-visible {
+            outline: 3px solid #0a4e8d;
+            outline-offset: 3px;
+        }
+
+        /*.most_slider .slick-dots li button {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }*/
+
+        /* Improve carousel dot accessibility */
+        /*.most_slider .slick-dots li button {
+            width: 12px;
+            height: 12px;
+        }*/
+
+        .most_slider .slick-dots li button {
+            width: 24px !important;
+            height: 24px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 0 !important;
+            text-indent: -9999px !important;
+            border-radius: 50% !important;
+            background: #ccc !important;
+            border: 2px solid transparent !important;
+            transition: all 0.3s ease !important;
+            position: relative !important;
+            padding: 0 !important;
+            /*margin: 0 !important;*/
+            margin-right: 20px !important;
+            /*margin: 0 15px !important;*/
+        }
+
+            /* Focus state - Poora button visible */
+            .most_slider .slick-dots li button:focus,
+            .most_slider .slick-dots li button:focus-visible {
+                outline: 3px solid #0a4e8d !important;
+                outline-offset: 4px !important;
+                background: #0a4e8d !important;
+                transform: scale(1.5) !important;
+                border-color: #000 !important;
+                box-shadow: 0 0 0 6px rgba(10, 78, 141, 0.25) !important;
+            }
+
+        /* Active dot + Focus state */
+        .most_slider .slick-dots li.slick-active button:focus,
+        .most_slider .slick-dots li.slick-active button:focus-visible {
+            outline: 4px solid #000 !important;
+            outline-offset: 5px !important;
+            background: #0a4e8d !important;
+            transform: scale(1.6) !important;
+            border-color: #fff !important;
+            box-shadow: 0 0 0 8px rgba(10, 78, 141, 0.3) !important;
+        }
+
+        /* Slick ke default style ko override */
+        .most_slider .slick-dots li button:focus-visible {
+            outline: 3px solid #0a4e8d !important;
+            outline-offset: 4px !important;
+        }
+
+        .most_slider .slick-dots li.slick-active button {
+            background: #0a4e8d;
+            transform: scale(1.4);
+            border: 2px solid #000;
+        }
+
+        .slick-dots li {
+            margin: 0 6px;
+        }
+
+            .slick-dots li button {
+                width: 10px;
+                height: 10px;
+                background: gray;
+                border-radius: 50%;
+                border: none;
+                margin: 0 6px;
+            }
+
+            .slick-dots li.slick-active button {
+                background: blue;
+                transform: scale(1.4);
+                border: 2px solid black;
+            }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            border: 0;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+
+
+
+        @media (max-width: 768px) {
+            .btn_link {
+                width: 100%;
+                margin-top: 1rem;
+            }
+        }
+        /*Start added on 09062026*/
+        .video-container {
+            position: relative;
+        }
+
+        /* Bottom-right control group inside video */
+        .video-bottom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 20;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .video-transcript-link {
+            background: rgba(10, 78, 141, 0.85);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: clamp(9px, 1.2vw, 14px); /* scales with viewport */
+            text-decoration: none;
+            line-height: 1.4;
+            white-space: nowrap;
+            display: inline-block;
+        }
+
+            .video-transcript-link:hover,
+            .video-transcript-link:focus {
+                background: #0a4e8d;
+                /*color: white;
+    outline: 3px solid #fff;*/
+                outline-offset: 2px;
+            }
+
+        .video-control-btn {
+            background: rgba(10, 78, 141, 0.85);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: clamp(28px, 3.5vw, 50px); /* scales with viewport */
+            height: clamp(28px, 3.5vw, 50px);
+            font-size: clamp(13px, 1.8vw, 24px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            flex-shrink: 0;
+        }
+
+            .video-control-btn:hover {
+                background: #0a4e8d;
+            }
+
+            .video-control-btn:focus {
+                outline: 3px solid #fff;
+                outline-offset: 3px;
+            }
+
+        /* Transcript popup panel — also scales */
+        #videoTranscript {
+            font-size: clamp(10px, 1.2vw, 13px) !important;
+            max-width: clamp(180px, 28vw, 320px) !important;
+            padding: clamp(8px, 1.2vw, 14px) clamp(10px, 1.5vw, 18px) !important;
+            bottom: clamp(50px, 7vw, 90px) !important;
+            right: clamp(8px, 1.5vw, 20px) !important;
+        }
+
+        /* 100% zoom — desktop normal */
+        @media (min-width: 1200px) {
+            .video-bottom-controls {
+                bottom: 20px;
+                right: 20px;
+                gap: 10px;
+            }
+        }
+
+        /* ~150% zoom / tablet landscape */
+        @media (max-width: 1199px) and (min-width: 992px) {
+            .video-bottom-controls {
+                bottom: 16px;
+                right: 16px;
+                gap: 8px;
+            }
+        }
+
+        /* ~200% zoom / tablet portrait */
+        @media (max-width: 991px) and (min-width: 768px) {
+            .video-bottom-controls {
+                bottom: 12px;
+                right: 12px;
+                gap: 7px;
+            }
+        }
+
+        /* ~300% zoom / large mobile */
+        @media (max-width: 767px) and (min-width: 480px) {
+            .video-bottom-controls {
+                bottom: 10px;
+                right: 10px;
+                gap: 6px;
+            }
+        }
+
+        /* ~400% zoom / small mobile */
+        @media (max-width: 479px) {
+            .video-bottom-controls {
+                bottom: 6px;
+                right: 6px;
+                gap: 4px;
+            }
+        }
+
+
+
+        /* Client Section Wrapper */
+        .client-section-wrapper {
+            position: relative;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        .client_slider {
+            margin-bottom: 15px; /* Space for button below */
+        }
+
+        /* Play/Pause Button - Centered Below */
+        .client-control-wrapper {
+            text-align: right;
+            margin-top: 10px;
+        }
+
+        .client-control-btn {
+            background: rgba(10, 78, 141, 0.85);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+            .client-control-btn:hover {
+                background: #0a4e8d;
+                transform: scale(1.05);
+            }
+
+            .client-control-btn:focus {
+                outline: 3px solid #fff;
+                outline-offset: 4px;
+            }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .client-control-btn {
+                width: 46px;
+                height: 46px;
+                font-size: 22px;
+            }
+        }
+
+        /* Most Slider Container */
+        .most-slider-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        /* Play/Pause Button - Bottom Right */
+        .most-control-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 20;
+            background: rgba(10, 78, 141, 0.85);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+            .most-control-btn:hover {
+                background: #0a4e8d;
+                transform: scale(1.05);
+            }
+
+            .most-control-btn:focus {
+                outline: 3px solid #fff;
+                outline-offset: 3px;
+            }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .most-control-btn {
+                width: 44px;
+                height: 44px;
+                font-size: 20px;
+                bottom: 15px;
+                right: 15px;
+            }
+        }
+        /*End added on 09062026*/
+        .round_sec {
+            position: relative; /* ensure round_sec2 positions relative to this, not an ancestor */
+        }
+        /*anas Other A11y: Home: The text like 'Access the ODR Portal' misaligns when applying text spacing start*/
+        .round_sec2 {
+            width: 100%;
+            position: absolute;
+            top: 30px;
+            left: 0;
+            right: 0;
+            margin: 0 auto;
+            text-align: center;
+            transition: transform 0.5s ease;
+            padding: 1rem;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 160px;
+        }
+
+            .round_sec2 h2,
+            .round_sec2 p,
+            .round_sec2 a {
+                width: 100%;
+                max-width: calc(100% - 8px);
+                box-sizing: border-box;
+                word-break: break-word;
+                overflow-wrap: break-word;
+                hyphens: auto;
+                line-height: 1.4 !important;
+                margin: 0.4em 0;
+            }
+
+            .round_sec2 h2 {
+                font-size: 1.1rem;
+                color: #0a4e8d;
+                font-weight: 600;
+            }
+
+        /* .round_sec2 p {
+                vfont-size: 1rem;
+                padding-top: 5px;
+            }*/
+
+        /* Fix: "alerts prevent trading" / home_sec10_left2 misalignment on text spacing */
+        .home_sec10_left,
+        .home_sec10_left2 {
+            position: relative !important;
+            bottom: auto !important;
+            height: auto !important;
+            min-height: auto;
+            padding: 15px 10px 25px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* General resilience — prevents overflow across cards/buttons under spacing */
+        h1, h2, h3, h4, h5, h6, p, a, span, div, .btn_link {
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            hyphens: auto;
+        }
+
+        .round_sec,
+        .home_sec10_left,
+        .home_sec1_right,
+        .home_sec3_left {
+            min-height: auto !important;
+            height: auto !important;
+        }
+
+        .round_sec2 p {
+            width: 100%;
+            max-width: 100%;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+            word-break: normal;
+            white-space: normal;
+            margin: 0;
+        }
+
+        .itrack-text {
+            font-size: 13px !important;
+        }
+        /*anas Other A11y: Home: The text like 'Access the ODR Portal' misaligns when applying text spacing start*/
+        /* Decorative background heading — visually background rahe, kabhi content ko obstruct na kare */
+        /*.home_sec3_bottom2 {
+            position: absolute;
+            bottom: 20px;
+            z-index: 0;*/ /* normal flow ke peeche automatically aayega (paragraph z-index:auto se upar rahega) */
+        /*opacity: 0.10;*/ /* watermark jaisa faint — overlap ho bhi to legibility affect nahi karega */
+        /*pointer-events: none;*/ /* clicks isse block na ho */
+        /*}*/
+
+        /* Decorative heading ko text-spacing test se exempt rakho — ye site content nahi hai */
+        /*.home_sec3_bottom2,
+            .home_sec3_bottom2 * {
+                letter-spacing: normal !important;
+                word-spacing: normal !important;
+                line-height: normal !important;
+                margin-bottom: 0 !important;
+            }*/
+
+        /* Real readable text ko solid rakhne ke liye */
+        /*.home_sec3_left {
+            position: relative;
+            z-index: 1;
+            padding-bottom: 60px;
+        }*/
+
+        .client-control-btn:focus-visible {
+            outline: 2px solid black;
+        }
+
+        .most_slider .slick-dots li {
+            margin: 0 18px !important;
+        }
+
+        .h3_heading1 {
+            font-size: 24px;
+        }
+
+        .home_sec3_left p {
+            padding-top: 5px;
+            color: #000;
+        }
+
+        .img-fluid-90 {
+            max-width: 60% !important;
+        }
+
+        .btn_link {
+            background: #fff;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    
+    <a href="#mainContent" class="skip-link1" title="Skip to main content">Skip to main content</a>
+    <div class="top-accessibility-bar" style="font-size: 13px; border: solid 1px #d8d8d8;">
+        <div class="font-controls">
+
+            <button onclick="changeFontSize('decrease')" title="Font Size Decrease">A-</button>
+            <button onclick="changeFontSize('reset')" title="Font Size Normal">A&nbsp;</button>
+            <button onclick="changeFontSize('increase')" title="Font Size Increase">A+</button>
+            
+        </div>
+    </div>
+    
+
+    
+
+
+
+    <header id="siteHeader">
+        <div class="header_sec">
+            <div class="logo">
+                <div class="logo">
+                    
+                    <a href="index.aspx">
+                        <img
+                            src="images/home/logo.png"
+                            class="img-fluid"
+                            alt="Bigshare Services Private Limited, Trademark logo." />
+                    </a>
+                </div>
+
+            </div>
+            <button class="icon_sec" id="menuButton" aria-label="Hamburger menu" aria-controls="mobileMenu" aria-expanded="false" type="button">
+                <i class="ri-menu-3-line" aria-hidden="true"></i>
+            </button>
+
+            
+
+            
+            
+            <div class="mobile_sec" id="mobileMenu" aria-label="Main menu" aria-hidden="true">
+                
+                <nav>
+                    <ul>
+                        
+                        <li><a href="index.aspx">Home</a></li>
+                        <li><a href="About.aspx">About Us</a></li>
+                        <li><a href="Services.aspx">Services</a></li>
+                        <li class="dropdown">
+                            <a href="javascript:void(0)"
+                                role="button"
+                                tabindex="0"
+                                aria-expanded="false"
+                                aria-controls="solutions-menu"
+                                class="dropdown-toggle"
+                                onclick="toggleDropdown(this)">Solutions</a>
+
+                            <ul id="solutions-menu" class="dropdown-content">
+                                <li><a href="https://iboss.bigshareonline.com/">For Issuers</a></li>
+                                <li><a href="for_investers.aspx">For Investors</a></li>
+                                <li><a href="Bankers.aspx">For Bankers</a></li>
+                                <li><a href="https://ivote.bigshareonline.com/landing" target="_blank">iVote</a></li>
+                                <li><a href="https://itrack.bigshareonline.com/Account/loginform.aspx" target="_blank">iTrack</a></li>
+                                <li><a href="https://iconnect.bigshareonline.com/Account/Login" target="_blank">iConnect</a></li>
+                                <li><a href="ipo_allotment_status.aspx">IPO Allotment Status</a></li>
+                                <li><a href="RightIssue.aspx">Rights Issue / Call Money</a></li>
+                                <li><a href="BuyBack.aspx">Buyback</a></li>
+                                <li><a href="delisting_exit_offer.aspx">Delisting / Exit Offer</a></li>
+                                <li><a href="open_offer.aspx">Open Offer</a></li>
+                                <li><a href="NHAIApplicationStatusNew.aspx">NHAI Capital Gains Bonds</a></li>
+                                <li><a href="corporate_announcement.aspx?tab=tabb1">Corporate Announcement</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="Careers.aspx">Careers</a></li>
+                        <li><a href="News-Events.aspx">News and Events </a></li>
+                        <li><a href="Contact.aspx">Contact Us</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+    
+    <main id="mainContent" role="main" aria-label="Main content" tabindex="-1">
+        <form method="post" action="./" id="form1">
+<div class="aspNetHidden">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="FxmzWrMK7w1kvR5SIgRyCJNZrqpIxzKKFeBIEfrfHH6/mkAp5Gb+LMiNAEJ0rBkRxhZ+qdjNkBFYrY5qfseKUF0sBpSBHI1VdbvmwTH7e00=" />
+</div>
+
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="90059987" />
+</div>
+            
+    
+
+    <div class="banner">
+        <div class="banner_slider">
+            <div class="banner_bottom_sec">
+
+                <!-- First Video -->
+                
+
+                
+                <!--Start Added On 09062026-->
+                <div class="video-container">
+                    <video id="heroVideo"
+                        muted
+                        autoplay
+                        loop
+                        playsinline
+                        aria-describedby="videoTranscript"
+                        tabindex="-1">
+                        <source src="../images/home/Bigshare_video.mp4" type="video/mp4" />
+                        Your browser does not support the video tag.
+                    </video>
+
+                    <!-- Bottom-right: transcript link stacked above play/pause button -->
+                    <div class="video-bottom-controls">
+
+                        <a href="#videoTranscript"
+                            class="video-transcript-link">Video Transcript
+                        </a>
+
+                        <button id="videoToggleBtn"
+                            type="button"
+                            class="video-control-btn"
+                            aria-label="Pause background video"
+                            aria-pressed="true"
+                            title="Pause Video">
+                            <i class="ri-pause-circle-line" aria-hidden="true"></i>
+                            <span class="sr-only">Pause Video</span>
+                        </button>
+
+                    </div>
+
+                    <!-- Hidden Transcript target -->
+                    
+
+
+                    
+                    <div id="videoTranscript" tabindex="0"
+                        style="display: none; position: absolute; bottom: 90px; right: 20px; z-index: 25; background: rgba(10,78,141,0.95); color: #fff; padding: 14px 18px; border-radius: 10px; max-width: 320px; line-height: 1.4; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                        <p style="color: #fff; font-size: clamp(11px, 1.5vw, 16px); font-weight: 600; margin-bottom: 10px;">
+                            Video Transcript
+                        </p>
+                        <p style="margin: 0 0 8px; font-size: clamp(9px, 1.25vw, 13.5px);">
+                            Silent background video using stock/generic imagery in three sequential scenes:
+                        </p>
+                        <ol style="margin: 0 0 10px 15px; padding: 0; font-size: clamp(9px, 1.25vw, 13.5px); line-height: 1.6;">
+                            <li>A laptop keyboard with a globe bearing the Bigshare "B" logo resting on it, with the text "Symbol of Trust" appearing gradually.</li>
+                            <li>A person typing on a laptop, with stacked coins, a bar graph and a globe overlay in the background, alongside the text "Built on Transparency".</li>
+                            <li>Stock market candlestick charts in the background, alongside the text "Technology Driven Transformation".</li>
+                        </ol>
+                        <p style="margin: 0; font-size: clamp(9px, 1.25vw, 13.5px);">
+                            The video ends with the Bigshare Services logo.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="sr-only">
+                    Background video representing company services and corporate activities.
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!--Start added on 10062026 -->
+    <div class="home_section1">
+        <div class="container">
+            <div class="row">
+
+                <div class="most-slider-wrapper">
+
+                    <div class="most_slider">
+                        <div class="col-xs-12">
+                            <div class="home_sec1_bottom">
+                                <div class="home_sec1_left">
+                                    
+                                    <img src="../images/home/img1.png" class="img-fluid" alt="" />
+                                </div>
+                                <div class="home_sec1_right">
+                                    <p class="no-justify">
+                                        Bigshare Services Pvt. Ltd. operational Since 1994, more than THREE DECADES of Servicing & remains at the forefront of Registrar to the Issue and share transfer work in India from early nineties. We have the distinction of growing with the Indian capital markets through its various phases and today we have evolved into a strong Fintech company with sound technology platforms and robust infrastructure.
+                                    </p>
+                                    <a href="About.aspx" class="btn_link" title="Learn more about our company">Learn more about our company</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-xs-12">
+                            <div class="home_sec1_bottom">
+                                <div class="home_sec1_left">
+                                    <img src="../images/home/img1.png" class="img-fluid" alt="" />
+                                </div>
+                                <div class="home_sec1_right">
+                                    <p class="no-justify">
+                                        Our Company is committed to integrating business growth with societal development by actively engaging in social welfare initiatives. This Corporate Social Responsibility (CSR) Policy reflects the Company’s dedication to contributing to the socio-economic growth and well-being of the communities it operates in.
+                                    </p>
+                                    <a href="About.aspx" class="btn_link" tabindex="-1" title="Learn more about our company">Learn more about our company</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-xs-12">
+                            <div class="home_sec1_bottom">
+                                <div class="home_sec1_left">
+                                    <img src="../images/home/img1.png" class="img-fluid" alt="" />
+                                </div>
+                                <div class="home_sec1_right">
+                                    <p class="no-justify">
+                                        The number of new issues we handle keeps growing. Prime Database, the industry bible, in their latest announcement of industry rankings, named Bigshare as No.1 Registrar by number of IPO assignments in 2023-24. This follows similar ranking by Prime Database in 2022-23 and 2021- 22 as well.
+                                    </p>
+                                    <a href="About.aspx" class="btn_link" tabindex="-1" title="Learn more about our company">Learn more about our company</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Play/Pause Button - Bottom Right -->
+                    <button id="mostToggleBtn"
+                        type="button"
+                        class="most-control-btn"
+                        aria-label="Pause most slider"
+                        aria-pressed="false"
+                        title="Pause Slider">
+                        <i class="ri-pause-circle-line" aria-hidden="true"></i>
+                        <span class="sr-only">Pause Slider</span>
+                    </button>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <!--End added on 10062026 -->
+
+    <div class="home_section2">
+        <div class="container2">
+            <div class="row">
+                <div class="col-xs-12">
+                    <div class="home_sec2_bottom">
+                        <div class="home_sec2_bottom2">
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" aria-hidden="true" />
+                                <div class="round_sec2">
+                                    <a href="About.aspx">
+                                        <img src="../images/home/icon1.png" class="img-fluid" alt="" />
+
+                                        <h2 title="Read Our Story">Read Our Story</h2>
+                                        <p>
+                                            Who we are-discover
+                                            <br aria-hidden="true">
+                                            our journey
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="client_list.aspx">
+                                        <img src="../images/home/icon12.png" class="img-fluid" alt="" />
+                                        <h2 title="Client List">Client List</h2>
+                                        <p>
+                                            Close to 100 %
+                                            <br aria-hidden="true">
+                                            client retention
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+
+                                    <a href="https://smartodr.in/intermediary/login" target="_blank">
+                                        <img src="../images/home/icon9.png" class="img-fluid" alt="" aria-hidden="true" />
+                                        <h2 title="Access the ODR Portal">Access the ODR Portal</h2>
+                                        <p>
+                                            Average time to
+                                            <br aria-hidden="true">
+                                            address the dispute
+                                        </p>
+                                    </a>
+
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="home_sec2_bottom2 home_sec2_bottom22">
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a
+                                        href="https://iconnect.bigshareonline.com/Account/Login"
+                                        target="_blank">
+                                        <img src="../images/home/icon5.png" class="img-fluid" alt="iConnect platform icon" />
+                                        <h2 title="iConnect">iConnect</h2>
+                                        <p>
+                                            Makes handling your
+                                            <br aria-hidden="true">
+                                            security super easy
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a
+                                        href="https://ivote.bigshareonline.com/landing"
+                                        target="_blank">
+                                        <img src="../images/home/icon4.png" class="img-fluid" alt="iVote e-Voting platform icon" />
+                                        <h2 title="iVote">iVote (e-Voting)</h2>
+                                        <p>
+                                            MCA & MEITY(STQC) Approved
+                                            <br aria-hidden="true">
+                                            E-voting platform to enable
+                                            <br aria-hidden="true">
+                                            shareholders to vote
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a
+                                        href="https://itrack.bigshareonline.com/Account/loginform.aspx"
+                                        target="_blank">
+                                        <img src="../images/home/icon8.png" class="img-fluid" alt="" />
+                                        <h2 title="iTrack">iTrack</h2>
+                                        
+                                        
+                                        <p class="itrack-text">
+                                            Helps in Monitoring &amp; Tracking Insider Trading activity &amp; Generate alerts Preventing Insider Trading.
+                                        </p>
+                                        
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="home_sec2_bottom2 home_sec2_bottom33">
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="for_investers.aspx">
+                                        <img src="../images/home/icon3.png" class="img-fluid" alt="" />
+                                        <h2 title="For Investors">For Investors</h2>
+                                        <p>
+                                            Investors Solutions
+                                            <br aria-hidden="true">
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="https://iboss.bigshareonline.com/" target="_blank">
+                                        <img src="../images/home/icon2.png" class="img-fluid" alt="" />
+                                        <h2 title="For Issuers (IBOSS)">For Issuers (IBOSS)</h2>
+                                        <p>
+                                            Our IBOSS portal to
+                                            <br aria-hidden="true">
+                                            cater to corporate’s
+                                            <br aria-hidden="true">
+                                            reporting requirements
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="Bankers.aspx ">
+                                        <img src="../images/home/icon15.png" class="img-fluid" alt="" />
+                                        <h2 title="For Bankers">For Bankers</h2>
+                                        <p>
+                                            Bankers Brokerage  Summary
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="home_sec2_bottom2 home_sec2_bottom44">
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="ipo_allotment_status.aspx">
+                                        <img src="../images/home/icon7.png" class="img-fluid" alt="" />
+                                        <h2 title="IPO Allotment Status">IPO Allotment Status</h2>
+                                        <p>
+                                            Check your  allotments
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="RightIssue.aspx">
+                                        <img src="../images/home/icon14.png" class="img-fluid" alt="" />
+                                        <h2 title="Rights Issue/Call Money">Rights Issue/
+                                            <br aria-hidden="true" />
+                                            Call Money
+                                        </h2>
+                                        <p>
+                                            On Going  Issues
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="BuyBack.aspx">
+                                        <img src="../images/home/icon11.png" class="img-fluid" alt="" />
+                                        <h2 title="Buyback">Buyback</h2>
+                                        <p>
+                                            On Going  Buyback
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="home_sec2_bottom2 home_sec2_bottom55">
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="open_offer.aspx">
+                                        <img src="../images/home/icon10.png" class="img-fluid" alt="" />
+                                        <h2 title="Open Offer">Open Offer</h2>
+                                        <p>
+                                            On Going  Offers
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="delisting_exit_offer.aspx">
+                                        <img src="../images/home/icon6.png" class="img-fluid" alt="" />
+                                        <h2 title="Delisting / Exit Offer">Delisting / Exit Offer</h2>
+                                        <p>
+                                            On Going 
+                                            <br aria-hidden="true" />
+                                            Delisting/ Exit Offers
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="round_sec">
+                                <img src="../images/home/round.png" class="img-fluid" alt="" />
+                                <div class="round_sec2">
+                                    <a href="NHAIApplicationStatusNew.aspx">
+                                        <img src="../images/home/icon13.png" class="img-fluid" alt="" />
+                                        <h2 title="NHAI Capital">NHAI Capital
+                                            <br aria-hidden="true" />
+                                            Gains Bonds
+                                        </h2>
+                                        <p>
+                                            Check your bonds
+                                            <br aria-hidden="true" />
+                                            allotment status
+                                        </p>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-container">
+        <div class="home_section3 slide" id="slide-1">
+            <div class="home_sec3_bottom2_new">
+                <h2>Primary market activities</h2>
+            </div>
+            <div class="home_sec3_bottom">
+                <div class="home_sec3_left">
+                    <h3 class="h3_heading h3_heading1">Bigshare Services Pvt Ltd offers
+                        <br aria-hidden="true" />
+                        a wide range of services tailored 
+                        <br aria-hidden="true" />
+                        to support clients and investors.
+                    </h3>
+                    <p class="no-justify">
+                        Our expertise includes Primary Market activities, Corporate Actions, Registrar and Transfer Agent (RTA) services and ISIN creation services for both listed and unlisted companies. We also provide Payment Processing and various Outsourced services. 
+                    </p>
+                    <p class="no-justify">
+                        Our services ensure efficient IPO management, accurate shareholder record maintenance, smooth execution of corporate actions and seamless investor communications. For more details on each of these offerings, Please click on the following Read More button. 
+                    </p>
+                    <a href="Services.aspx" class="btn_link" title="Read More About Our Services">Read More About Our Services</a>
+                </div>
+                <div class="home_sec3_right">
+                    <img src="../images/home/img2.png" class="img-fluid" alt="" />
+                </div>
+            </div>
+            
+        </div>
+
+        <div class="home_section3 slide home_section4" id="slide-2">
+            <div class="home_sec3_bottom2_new">
+                <h2>Corporate action services</h2>
+            </div>
+            <div class="home_sec3_bottom">
+                <div class="home_sec3_left">
+                    <h3 class="h3_heading h3_heading1">About Bigshare Services Pvt. Ltd.
+                    </h3>
+                    <p class="no-justify">
+                        Over the years, Bigshare has established itself as a leader 
+                        in the Corporate Registry space, driven by a steadfast commitment to providing consistent,
+                         high-quality services. With a strong focus on the Registry business, 
+                        Bigshare has become synonymous with Attentive, adaptive, able delivering value to its prestigious 
+                        clientele. Its ability to meet stringent service standards, consistently on time, has earned it the 
+                        trust and confidence of companies across various industries. 
+                    </p>
+                    <p class="no-justify">
+                        In recognition of its excellence in the registry business, Bigshare Services Pvt Ltd was granted the status of 
+                        a Qualified Registrar and Transfer Agent (QRTA) in March 2024. This milestone further 
+                        reinforces its position as a trusted partner for corporate entities, ensuring 
+                        compliance and efficiency in an ever-evolving regulatory landscape.
+                    </p>
+
+                    <a href="About.aspx" class="btn_link" title="Read About Our Company">Read About Our Company</a>
+                </div>
+                <div class="home_sec3_right">
+                    <img src="../images/home/img3.png" class="img-fluid img-fluid-90" alt="" />
+                </div>
+            </div>
+
+            
+        </div>
+
+        <div class="home_section3 slide home_section5" id="slide-3">
+            <div class="home_sec3_bottom2_new">
+                <h2>RTA Services</h2>
+            </div>
+            <div class="home_sec3_bottom">
+                <div class="home_sec3_left">
+                    <h3 class="h3_heading h3_heading1">A Journey of Excellence – Bigshare Services Pvt. Ltd.
+                    </h3>
+                    <p class="no-justify">
+                        What began as a modest initiative in the 1994 has grown into Bigshare Services Pvt. Ltd., a name synonymous 
+                        with trust and quality in the Corporate Registry space. The company’s remarkable evolution 
+                        has been driven by its unwavering commitment to excellence and its ability to adapt to 
+                        the changing needs of the industry.
+                    </p>
+                    <p class="no-justify">
+                        By maintaining a laser focus on the Registry business, Bigshare has earned its 
+                        reputation as a preferred partner for SME and corporate 
+                        clients. Its hallmark is the consistent delivery of exceptional service standards, every time, on time.
+                    </p>
+                </div>
+                <div class="home_sec3_right">
+                    <img src="../images/home/img4.png" class="img-fluid img-fluid-90" alt="" />
+                </div>
+            </div>
+            
+        </div>
+
+        <div class="home_section3 slide home_section4 home_section6" id="slide-4">
+            <div class="home_sec3_bottom2_new">
+                <h2>ISIN creation services</h2>
+            </div>
+            <div class="home_sec3_bottom">
+                <div class="home_sec3_left">
+                    <h3 class="h3_heading h3_heading1">Infrastructure
+                    </h3>
+                    <p class="no-justify">
+                        Strategically headquartered in Mumbai, Bigshare operates from a state-of-the-art processing center
+                         equipped with cutting-edge technology, scalable infrastructure and a highly skilled workforce. 
+                        The pillars of Knowledge, Technology, People, and Infrastructure form the foundation of Bigshare’s 
+                        service model, ensuring excellence in every aspect of its operations.
+                    </p>
+                    <p class="no-justify">
+                        Bigshare has extended its presence to major cities such as Noida, Ahmedabad and hyderabad. 
+                        Its network of associates across India ensures that service delivery meets the highest standards while catering to local requirements.
+                    </p>
+                </div>
+                <div class="home_sec3_right">
+                    <img src="../images/home/img5.png" class="img-fluid" alt="" />
+                </div>
+            </div>
+            
+        </div>
+
+        <div class="home_section3 slide home_section7" id="slide-5">
+            <div class="home_sec3_bottom2_new">
+                <h2>Processing payments</h2>
+            </div>
+            <div class="home_sec3_bottom">
+                <div class="home_sec3_left">
+                    <h3 class="h3_heading h3_heading1">Strong Foundation
+                    </h3>
+                    <p class="no-justify">
+                        A dedicated team of skilled professionals, backed by expertise in Technology, Logistics, and Operations, provides personalized service to client companies and their investors.
+                    </p>
+                    <p class="no-justify">
+                        Today, Bigshare Services Pvt. Ltd. is celebrated as a reliable, ethical, and forward-thinking service provider in the securities market. It continues to set industry benchmarks through its expertise, commitment to quality, and focus on long-term client relationships.
+                    </p>
+                </div>
+                <div class="home_sec3_right">
+                    <img src="../images/home/img6.png" class="img-fluid" alt="" />
+                </div>
+            </div>
+            
+        </div>
+
+        <div class="home_section3 slide home_section4 home_section8" id="slide-6">
+            <div class="home_sec3_bottom">
+                <div class="home_sec3_left">
+                    <h3 class="h3_heading h3_heading1" role="heading" aria-level="2">Expertise in Regulatory Compliance
+                    </h3>
+                    <p class="no-justify">
+                        Profound understanding of the legal, policy, regulatory and procedural issues in Public Offerings, i.e. SEBI, Companies Act, FDI caps etc.
+                    </p>
+                    <p class="no-justify">
+                        By handling extensive Public Issues under various prevailing regulatory rules & procedures, BSPL has sufficiently demonstrated capability and understandings of Regulatory framework
+                    </p>
+                    <p class="no-justify">
+                        Experience in handling investors grievances redressal and coordinating with the stock exchanges/BRLMs/SEBI and all concerned authorities
+                    </p>
+                </div>
+                <div class="home_sec3_right">
+                    <img src="../images/home/img5.png" class="img-fluid" alt="" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="home_section9">
+        <div class="container">
+            <div class="row">
+                <div class="col-xs-12">
+                    <h3 class="h3_heading h3_heading1" role="heading" aria-level="2">Bigshare Services Pvt. Ltd. is ISO Certified!
+                    </h3>
+                </div>
+                <div class="col-xs-12">
+                    <div class="home_sec9_bottom">
+                        <div class="home_sec9_left">
+                            <p class="no-justify">
+                                Bigshare Services Private Limited conforms to the highest
+              standards of Quality and Information Security in its process. It
+              is one of the few RTAs assessed to ISO standards. Bigshare has
+              been accredited for ISO 9001:2015 (Quality Management Systems) and
+              ISO 27001:2013 (Information Security Management System) by
+              Accreditation Services for Certifying Bodies (Europe) Limited.
+                            </p>
+                            <p class="no-justify">
+                                ISO certification adds a feather in the cap of our team. It
+                  also provides to our customers and stake holders, the
+                  assurance of the highest standards of Quality and Information
+                  Security. We continue to strive for excellence and improvement
+                  in our Service standards.
+                            </p>
+                        </div>
+                        <div class="home_sec9_right">
+                            <img src="../images/home/img9.png" class="img-fluid" alt="Certificate of Registration ISO 9001:2015 Quality Management Systems and ISO 27001:2013 Information Security Management System" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="home_section10">
+        <div class="container">
+            <h3 class="h3_heading " role="heading" aria-level="2">Corporate Announcements</h3>
+            <div class="row">
+                <div class="col-xs-12">
+                    <div class="home_sec10_bottom">
+                        <div class="home_sec10_left home_sec10_left22" id="up1">
+                            <div class="home_sec10_left2">
+                                <a href="corporate_announcement.aspx#tab1">
+                                    <h4>AGM in Current Month</h4>
+                                    <img src="images/home/corporate_img2.png" class="img-fluid" alt="AGM in Current Month" />
+                                </a>
+                            </div>
+                        </div>
+                        <div class="home_sec10_left" id="up2">
+                            <div class="home_sec10_left2">
+                                <a href="corporate_announcement.aspx#tab2">
+                                    <img
+                                        src="images/home/corporate_img1.png"
+                                        class="img-fluid" alt="" />
+                                    <h4>Upcoming Issues</h4>
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="home_sec10_left" id="up3">
+                            <div class="home_sec10_left2">
+                                <a href="corporate_announcement.aspx#tab3">
+                                    <img
+                                        src="images/home/corporate_img3.png"
+                                        class="img-fluid" alt="" />
+                                    <h4>Announcement of Dividend</h4>
+                                </a>
+                            </div>
+                        </div>
+
+                        <div class="home_sec10_left home_sec10_left22" id="up4">
+                            <div class="home_sec10_left2">
+                                <a href="corporate_announcement.aspx#tab4">
+                                    <h4>Postal Ballot</h4>
+                                    <img
+                                        src="images/home/corporate_img4.png"
+                                        class="img-fluid" alt="" />
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="home_section11">
+        <div class="container-fluid padd">
+            <div class="row mar">
+                <div class="col-xs-12 padd">
+                    <div class="home_sec11_bottom">
+                        <div class="home_sec11_left">
+                            <p class="no-justify">
+                                Names that speak for us. Names who unlocked the CAPITAL Market with us. The strength of a company lies in the trust of its customers. More than THREE DECADES of Servicing & remains at the forefront of Registrar to the Issue and share transfer work in India from early nineties. Close to 100% Client retention since more than previous three decades.
+                            </p>
+                        </div>
+
+                        
+                        <!-- start added as on 09062026-->
+
+                        <div class="home_sec11_right">
+                            <h3 class="h3_heading" role="heading" aria-level="2">Our Clients</h3>
+
+                            <div class="client-section-wrapper">
+
+                                <!-- Client Logos Container role="region" aria-live="polite"-->
+                                <div class="client_slider" aria-label="Our Clients Slider">
+                                    <div>
+                                        <ul>
+                                            <li>
+                                                <img src="../images/home/nalco-logo.png" class="img-fluid" alt="NALCO logo" /></li>
+                                            <li>
+                                                <img src="../images/home/MOIL-logo.png" class="img-fluid" alt="MOIL Limited logo" /></li>
+                                            <li>
+                                                <img src="../images/home/boi.png" class="img-fluid" alt="Bank of India logo" /></li>
+                                            <li>
+                                                <img src="../images/home/The-Supreme-logo.png" class="img-fluid" alt="Supreme Industries Limited logo" /></li>
+                                            <li>
+                                                <img src="../images/home/DrR_Logo.png" class="img-fluid" alt="Dr. Reddy's Laboratories logo" /></li>
+                                            <li>
+                                                <img src="../images/home/kfintech.png" class="img-fluid" alt="KFin Technologies Limited logo" /></li>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <ul>
+                                            <li>
+                                                <img src="../images/home/Astral-logo.png" class="img-fluid" alt="Astral Limited logo" /></li>
+                                            <li>
+                                                <img src="../images/home/Venkys.gif" class="img-fluid" alt="Venkys Limited logo" /></li>
+                                            <li>
+                                                <img src="../images/home/petronet-logo.png" class="img-fluid" alt="petronet Limited logo" /></li>
+                                            <li>
+                                                <img src="../images/home/Vi-logo.png" class="img-fluid" alt="Vi Limited logo" /></li>
+                                            <li>
+                                                <img src="../images/home/kiloskar-logo.png" class="img-fluid" alt="kiloskar Limited logo" /></li>
+                                            <li>
+                                                <img src="../images/home/Symphony-logo.png" class="img-fluid" alt="Symphony Limited logo" /></li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <!-- Play/Pause Button - Placed BELOW the slider -->
+                                <div class="client-control-wrapper">
+                                    <button id="clientToggleBtn"
+                                        type="button"
+                                        class="client-control-btn"
+                                        aria-label="Pause client slider"
+                                        aria-pressed="false"
+                                        title="Pause Slider">
+                                        <i class="ri-pause-circle-line" aria-hidden="true"></i>
+                                        <span class="sr-only">Pause Slider</span>
+                                    </button>
+                                </div>
+
+                            </div>
+                        </div>
+                        <!-- end added as on 09062026-->
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="Js/jquery.min.js"></script>
+    <script src="Js/bootstrap.bundle.min.js"></script>
+    <script src="Js/aos.js"></script>
+
+    <script src="Js/custom.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha512-7eHRwcbYkK4d9g/6tD/mhkf++eoTHwpNM9woBxtPUBWm67zeAfFC+HrdoE2GanKeocly/VxeLvIqwvCdk7qScg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" integrity="sha512-onMTRKJBKz8M1TnqqDuGBlowlH0ohFzMXYRNebz+yOcc5TQr/zAKsthzhuv0hiyUKEiQEQXEynnXCvNTOk50dg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollToPlugin.min.js" integrity="sha512-1PKqXBz2ju2JcAerHKL0ldg0PT/1vr3LghYAtc59+9xy8e19QEtaNUyt1gprouyWnpOPqNJjL4gXMRMEpHYyLQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src='https://unpkg.com/lenis@1.1.13/dist/lenis.min.js'></script>
+    <script src="Js/slick.js"></script>
+    <script>
+        function fixMostSliderDots() {
+            var $dots = $('.most_slider .slick-dots');
+            $dots.removeAttr('role');                         // point 2: no role="tablist" on <ul>
+
+            $dots.find('li').removeAttr('role');               // <li> pe bhi koi tab-model role na ho
+
+            $dots.find('button').each(function (index) {
+                var $btn = $(this);
+                var slideNum = index + 1;
+
+                $btn.removeAttr('aria-selected');               // point 1: har button se hata do
+                $btn.attr('aria-label', 'Go to slide ' + slideNum); // point 4: consistent label
+
+                if ($(this).closest('li').hasClass('slick-active')) {
+                    $btn.attr('aria-current', 'true');           // point 3: sirf active pe
+                } else {
+                    $btn.removeAttr('aria-current');
+                }
+            });
+        }
+
+        function fixSlideFocus() {
+            $('.most_slider .slick-slide a, .most_slider .slick-slide button')
+                .attr('tabindex', '-1')
+                .attr('aria-hidden', 'true');
+            $('.most_slider .slick-slide.slick-active a, .most_slider .slick-slide.slick-active button')
+                .attr('tabindex', '0')
+                .attr('aria-hidden', 'false');
+        }
+
+        function updateChatAccessibility() {
+            var chatBtn = document.querySelector('#button-body');
+            var unreadBadge = document.querySelector('.tidio-unread');
+
+            if (chatBtn) {
+                var unreadCount = 0;
+                if (unreadBadge && unreadBadge.innerText.trim() !== "") {
+                    unreadCount = unreadBadge.innerText.trim();
+                }
+                if (unreadCount > 0) {
+                    chatBtn.setAttribute('aria-label', 'Chat widget, ' + unreadCount + ' unread message');
+                } else {
+                    chatBtn.setAttribute('aria-label', 'Open chat widget');
+                }
+            }
+        }
+
+        // ============================================================
+        // CLIENT SLIDER - Accessibility Fix (NVDA ke liye)
+        // ============================================================
+        function fixClientSliderAccessibility() {
+            $('.client_slider .slick-slide').attr('aria-hidden', 'true');
+            $('.client_slider .slick-slide.slick-active').attr('aria-hidden', 'false');
+
+            $('.client_slider .slick-slide:not(.slick-active)').each(function () {
+                $(this).find('*').attr('aria-hidden', 'true');
+                $(this).find('a, button, img').attr('tabindex', '-1');
+            });
+
+            $('.client_slider .slick-slide.slick-active').each(function () {
+                $(this).find('*').attr('aria-hidden', 'false');
+                $(this).find('a, button, img').attr('tabindex', '0');
+            });
+
+            // $('.client_slider .slick-list').attr('aria-live', 'polite');
+        }
+
+        setInterval(updateChatAccessibility, 2000);
+
+        setInterval(function () {
+            $('.slick-dots').removeAttr('role');
+        }, 100);
+
+        var interval = setInterval(function () {
+            var dots = $('.slick-dots');
+            if (dots.length) {
+                dots.removeAttr('role');
+                clearInterval(interval);
+            }
+        }, 100);
+
+        // ============================================================
+        // MOST SLIDER - Dots ARIA fix (tester point: 4.1.2 unsupported aria-selected)
+        // Single source of truth: fixMostSliderDots(). Old duplicate blocks removed.
+        // ============================================================
+        $(window).on('load', function () {
+            fixMostSliderDots();
+            $('.most_slider').on('afterChange', function () {
+                setTimeout(fixMostSliderDots, 0);
+            });
+        });
+
+        // ============================================================
+        // $(document).ready - Sab kuch yahan initialize karo
+        // ============================================================
+        $(document).ready(function () {
+
+            $('.most_slider').on('afterChange', function () {
+                setTimeout(function () {
+                    fixMostSliderDots();
+                    fixSlideFocus();
+                }, 0);
+            });
+
+            setTimeout(function () {
+                fixMostSliderDots();
+                fixSlideFocus();
+            }, 1000);
+
+            // ---------- CLIENT SLIDER ----------
+            $('.client_slider').slick({
+                slidesToShow: 1,
+                slidesToScroll: 1,
+                autoplay: false,
+                arrows: true,
+                dots: false,
+                adaptiveHeight: true,
+                accessibility: true
+            });
+
+            $('.client_slider').on('init afterChange', function () {
+                fixClientSliderAccessibility();
+            });
+
+            $('.client_slider').on('afterChange', function () {
+                setTimeout(function () {
+                    fixClientSliderAccessibility();
+                }, 200);
+            });
+
+            setTimeout(function () {
+                fixClientSliderAccessibility();
+                $('.client_slider .slick-slide').each(function () {
+                    if (!$(this).hasClass('slick-active')) {
+                        $(this).attr('aria-hidden', 'true');
+                        $(this).find('img').attr('aria-hidden', 'true');
+                    }
+                });
+            }, 1500);
+
+        }); // ← Yeh $(document).ready ka closing bracket hai
+
+        // ============================================================
+        // Chat welcome text - aria heading
+        // ============================================================
+        setInterval(function () {
+            var welcomeText = document.querySelector('.message-container');
+            if (welcomeText && !welcomeText.querySelector('[role="heading"]')) {
+                var heading = document.createElement("div");
+                heading.setAttribute("role", "heading");
+                heading.setAttribute("aria-level", "2");
+                heading.innerText = "Welcome to Bigshare customer service";
+                welcomeText.prepend(heading);
+            }
+        }, 2000);
+
+        // ============================================================
+        // Video Play/Pause Control
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', function () {
+            const video = document.getElementById('heroVideo');
+            const toggleBtn = document.getElementById('videoToggleBtn');
+            let isPlaying = true;
+
+            if (video && toggleBtn) {
+                toggleBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    if (isPlaying) {
+                        video.pause();
+                        toggleBtn.setAttribute('aria-label', 'Play background video');
+                        toggleBtn.setAttribute('aria-pressed', 'false');
+                        toggleBtn.innerHTML = `<i class="ri-play-circle-line" aria-hidden="true"></i><span class="sr-only">Play Video</span>`;
+                    } else {
+                        video.play();
+                        toggleBtn.setAttribute('aria-label', 'Pause background video');
+                        toggleBtn.setAttribute('aria-pressed', 'true');
+                        toggleBtn.innerHTML = `<i class="ri-pause-circle-line" aria-hidden="true"></i><span class="sr-only">Pause Video</span>`;
+                    }
+                    isPlaying = !isPlaying;
+                });
+            }
+        });
+
+        // ============================================================
+        // Client Slider Play/Pause Control
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', function () {
+            const clientSlider = $('.client_slider');
+            const clientBtn = document.getElementById('clientToggleBtn');
+
+            if (clientSlider.length && clientBtn) {
+                let isClientPlaying = false;
+                clientBtn.setAttribute('aria-label', 'Play client slider');
+                clientBtn.setAttribute('aria-pressed', 'false');
+                clientBtn.innerHTML = `<i class="ri-play-circle-line" aria-hidden="true"></i><span class="sr-only">Play Slider</span>`;
+
+                clientBtn.addEventListener('click', function () {
+                    if (isClientPlaying) {
+                        clientSlider.slick('slickPause');
+                        clientBtn.setAttribute('aria-label', 'Play client slider');
+                        clientBtn.setAttribute('aria-pressed', 'false');
+                        clientBtn.innerHTML = `<i class="ri-play-circle-line" aria-hidden="true"></i><span class="sr-only">Play Slider</span>`;
+                    } else {
+                        clientSlider.slick('slickPlay');
+                        clientBtn.setAttribute('aria-label', 'Pause client slider');
+                        clientBtn.setAttribute('aria-pressed', 'true');
+                        clientBtn.innerHTML = `<i class="ri-pause-circle-line" aria-hidden="true"></i><span class="sr-only">Pause Slider</span>`;
+                    }
+                    isClientPlaying = !isClientPlaying;
+                });
+            }
+        });
+
+        // ============================================================
+        // Most Slider Play/Pause Control
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', function () {
+            const mostSlider = $('.most_slider');
+            const mostBtn = document.getElementById('mostToggleBtn');
+            let isMostPlaying = false;
+
+            if (mostSlider.length && mostBtn) {
+                mostBtn.addEventListener('click', function () {
+                    if (isMostPlaying) {
+                        mostSlider.slick('slickPause');
+                        mostBtn.setAttribute('aria-label', 'Play most slider');
+                        mostBtn.setAttribute('aria-pressed', 'false');
+                        mostBtn.innerHTML = `<i class="ri-play-circle-line" aria-hidden="true"></i><span class="sr-only">Play Slider</span>`;
+                    } else {
+                        mostSlider.slick('slickPlay');
+                        mostBtn.setAttribute('aria-label', 'Pause most slider');
+                        mostBtn.setAttribute('aria-pressed', 'true');
+                        mostBtn.innerHTML = `<i class="ri-pause-circle-line" aria-hidden="true"></i><span class="sr-only">Pause Slider</span>`;
+                    }
+                    isMostPlaying = !isMostPlaying;
+                });
+            }
+        });
+
+        // ============================================================
+        // Video Transcript Toggle
+        // ============================================================
+        document.addEventListener('DOMContentLoaded', function () {
+            const transcriptLink = document.querySelector('a[href="#videoTranscript"]');
+            const transcriptDiv = document.getElementById('videoTranscript');
+
+            if (transcriptLink && transcriptDiv) {
+                transcriptLink.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const isVisible = transcriptDiv.style.display === 'block';
+                    if (isVisible) {
+                        transcriptDiv.style.display = 'none';
+                        transcriptLink.setAttribute('aria-expanded', 'false');
+                        transcriptLink.setAttribute('aria-label', 'Show video transcript');
+                    } else {
+                        transcriptDiv.style.display = 'block';
+                        transcriptLink.setAttribute('aria-expanded', 'true');
+                        transcriptLink.setAttribute('aria-label', 'Hide video transcript');
+                        transcriptDiv.focus();
+                    }
+                });
+            }
+        });
+    </script>
+
+
+        </form>
+    </main>
+    <footer id="siteFooter">
+        <div class="container">
+            <div class="row">
+                <div class="col-xs-12">
+                    <div class="footer_sec_bottom">
+                        <div class="footer_sec_bottom_left2">
+                            <img src="../images/home/logo2.png" class="img-fluid" alt="Bigshare Services Private Limited, Trademark logo" />
+                            <ul class="social_link2">
+                                <li>
+                                    <a href="tel:+912262638200" aria-label="Phone: +91-22-6263 8200">
+                                        <i class="fa fa-phone" aria-hidden="true"></i>
+                                        +91-22-6263 8200
+
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="mailto:info@bigshareonline.com" aria-label="Email: info@bigshareonline.com">
+                                        <i class="fa fa-envelope" aria-hidden="true"></i>
+                                        info@bigshareonline.com
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="footer_sec_bottom_left">
+                            <ul>
+                                <li><a href="About.aspx" title="About Us">About Us</a></li>
+                                <li><a href="Services.aspx" title="Services">Services</a></li>
+                                <li><a href="News-Events.aspx" title="News & events">News & events</a></li>
+                                <li><a href="Careers.aspx" title="Careers">Careers</a></li>
+                                <li><a href="Contact.aspx" title="Contact us">Contact us</a></li>
+                                <li><a href="Security.aspx" title="Security">Security</a></li>
+                            </ul>
+                        </div>
+
+                        <div class="footer_sec_bottom_left">
+                            <ul>
+                                <li><a href="privacy_policy.aspx" title="Privacy policy">Privacy policy</a></li>
+                                <li><a href="disclaimer.aspx" title="Disclaimer">Disclaimer</a></li>
+                                <li>
+                                    <a href="terms_conditions.aspx" title="Terms and Condition">Terms and Condition<br />
+                                        &                                        
+                                        Refund Policy</a>
+                                </li>
+                                <li>
+                                    <a href="resources-sebi_circular.aspx" title="Investor Resources">Investor Resources</a>
+                                </li>
+
+                                <li>
+                                    <a href="Esclation_Matrix.aspx" title="Grievance Escalation Matrix">Grievance Escalation Matrix</a>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="footer_sec_bottom_left">
+                            <ul>
+                                <li>
+                                    <a href="https://www.sebi.gov.in/" target="_blank" title="SEBI Portal">SEBI Portal</a>
+                                </li>
+                                <li>
+                                    <a href="https://www.nseindia.com/" target="_blank" title="NSE Exchange">NSE Exchange</a>
+                                </li>
+                                <li>
+                                    <a href="https://www.bseindia.com/" target="_blank" title="BSE Exchange">BSE Exchange</a>
+                                </li>
+                                <li>
+                                    <a
+                                        href="https://www.cdslindia.com/index.aspx"
+                                        target="_blank" title="CDSL Depository">CDSL Depository</a>
+                                </li>
+                                <li>
+                                    <a href="https://nsdl.co.in/" target="_blank" title="NSDL Depository">NSDL Depository</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+    <div class="footer_bottom">
+        <div class="container">
+            <div class="row">
+                <div class="col-xs-12">
+                    <div class="footer_bottom_sec2">
+                        <div class="footer_bottom_sec2_center">
+                            <p>Copyright © (2025) Bigshare Online  System Ver. 1.0. All Rights Reserved- “Official BigShare Services Private Limited, India”. This website is owned and operated by BigShare Services Private Limited, India. This site is best viewed in Chrome +61 at a minimum screen resolution of 1024 x 768. Site last updated : 26-06-2026. </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="Js/jquery.min.js"></script>
+    <script src="Js/bootstrap.bundle.min.js"></script>
+    <script src="Js/aos.js"></script>
+    <script src="Js/slick.js"></script>
+    <script src="Js/custom2.js"></script>
+    <script src="Js/custom.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha512-7eHRwcbYkK4d9g/6tD/mhkf++eoTHwpNM9woBxtPUBWm67zeAfFC+HrdoE2GanKeocly/VxeLvIqwvCdk7qScg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" integrity="sha512-onMTRKJBKz8M1TnqqDuGBlowlH0ohFzMXYRNebz+yOcc5TQr/zAKsthzhuv0hiyUKEiQEQXEynnXCvNTOk50dg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollToPlugin.min.js" integrity="sha512-1PKqXBz2ju2JcAerHKL0ldg0PT/1vr3LghYAtc59+9xy8e19QEtaNUyt1gprouyWnpOPqNJjL4gXMRMEpHYyLQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src='https://unpkg.com/lenis@1.1.13/dist/lenis.min.js'></script>
+    <script src="Js/easyResponsiveTabs.js"></script>
+    <link href="css/jquery.dataTables.min.css" rel="stylesheet" />
+    <script src="js/jquery.dataTables.min.js"></script>
+
+    <script>
+
+        //Added 02042026 gaurav start
+        const menuButton = document.getElementById("menuButton");
+        const mobileMenu = document.getElementById("mobileMenu");
+        const header = document.getElementById("siteHeader");
+        const main = document.getElementById("mainContent");
+        const footer = document.getElementById("siteFooter");
+
+        //menuButton.addEventListener("click", function () {
+
+        //    const isOpen = mobileMenu.style.display === "block";
+
+        //    if (isOpen) {
+        //        //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu start        
+        //        mobileMenu.style.display = "none";
+        //        menuButton.setAttribute("aria-expanded", "false");
+        //        mobileMenu.setAttribute("aria-hidden", "true");
+        //        //main.removeAttribute("aria-hidden");
+        //        //footer.removeAttribute("aria-hidden");                        
+        //        main.removeAttribute("aria-hidden");
+        //        footer.removeAttribute("aria-hidden");
+        //        main.inert = false;
+        //        footer.inert = false;
+        //        //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu end
+        //        menuButton.focus();
+        //    } else {
+        //        mobileMenu.style.display = "block";
+        //        mobileMenu.setAttribute("aria-hidden", "false");
+        //        //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu start
+        //        //menuButton.setAttribute("aria-expanded", "true");
+        //        //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu end
+        //        //main.setAttribute("aria-hidden", "true");
+        //        //footer.setAttribute("aria-hidden", "true");
+        //        //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu start                               
+        //        main.setAttribute("aria-hidden", "true");
+        //        footer.setAttribute("aria-hidden", "true");
+        //        menuButton.setAttribute("aria-expanded", "true");
+        //        main.inert = true;
+        //        footer.inert = true;
+        //        //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu end
+        //        const firstLink = mobileMenu.querySelector("a");
+        //        if (firstLink) firstLink.focus();
+        //    }
+        //});
+
+
+
+
+
+        //latest update as on 18/08/2026 by anas
+        menuButton.addEventListener("click", function () {
+            const isOpen = mobileMenu.style.display === "block";
+
+            if (isOpen) {
+                mobileMenu.style.display = "none";
+                menuButton.setAttribute("aria-expanded", "false");
+                mobileMenu.setAttribute("aria-hidden", "true");
+                mobileMenu.removeAttribute("role");        // NEW
+                mobileMenu.removeAttribute("aria-modal");   // NEW
+                main.removeAttribute("aria-hidden");
+                footer.removeAttribute("aria-hidden");
+                main.inert = false;
+                footer.inert = false;
+                menuButton.focus();
+            } else {
+                mobileMenu.style.display = "block";
+                mobileMenu.setAttribute("aria-hidden", "false");
+                mobileMenu.setAttribute("role", "dialog");       // NEW
+                mobileMenu.setAttribute("aria-modal", "true");    // NEW
+                main.setAttribute("aria-hidden", "true");
+                footer.setAttribute("aria-hidden", "true");
+                menuButton.setAttribute("aria-expanded", "true");
+                main.inert = true;
+                footer.inert = true;
+                const firstLink = mobileMenu.querySelector("a");
+                if (firstLink) firstLink.focus();
+            }
+        });
+
+        //function closeMenu() {
+        //    //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu start
+        //    mobileMenu.style.display = "none";
+        //    mobileMenu.setAttribute("aria-hidden", "true");
+        //    //header.removeAttribute("aria-hidden");
+        //    main.removeAttribute("aria-hidden");
+        //    footer.removeAttribute("aria-hidden");
+        //    menuButton.setAttribute("aria-expanded", "false");
+        //    main.inert = false;
+        //    footer.inert = false;
+        //    menuButton.focus();
+        //    //anas 11/06/2026 iPhone(Safari)+VoiceOver: Home: Focus not trapping within the hamburger menu end
+        //}
+
+
+
+
+        //latest code as on 18/08/2026 by anas
+        function closeMenu() {
+            mobileMenu.style.display = "none";
+            mobileMenu.setAttribute("aria-hidden", "true");
+            mobileMenu.removeAttribute("role");       // NEW
+            mobileMenu.removeAttribute("aria-modal");  // NEW
+            main.removeAttribute("aria-hidden");
+            footer.removeAttribute("aria-hidden");
+            menuButton.setAttribute("aria-expanded", "false");
+            main.inert = false;
+            footer.inert = false;
+            menuButton.focus();
+        }
+
+
+
+
+        //Added 02042026 gaurav end
+        let currentSize = parseInt(localStorage.getItem("fontSize")) || 100;
+        window.onload = function () {
+            applyFont();
+        };
+
+        function changeFontSize(action) {
+            if (action === 'increase' && currentSize < 120) {
+                currentSize = currentSize + 10;
+            }
+            else if (action === 'decrease' && currentSize > 80) {
+                currentSize = currentSize - 10;
+            }
+            else if (action === 'reset') {
+                currentSize = 100;
+            }
+            localStorage.setItem("fontSize", currentSize);
+            applyFont();
+        }
+
+        function applyFont() {
+            let content = document.getElementById("mainContent");
+            if (!content) return;
+            content.style.fontSize = currentSize + "%";
+        }
+
+        //mobileMenu.addEventListener("keydown", function (e) {
+        //    const focusable = mobileMenu.querySelectorAll("a, button");
+        //    const first = focusable[0];
+        //    const last = focusable[focusable.length - 1];
+        //    if (e.key === "Tab") {
+        //        if (e.shiftKey && document.activeElement === first) {
+        //            e.preventDefault();
+        //            last.focus();
+        //        }
+        //        else if (!e.shiftKey && document.activeElement === last) {
+        //            e.preventDefault();
+        //            first.focus();
+        //        }
+        //    }
+        //});
+
+
+
+        //lastet code as on 18/08/2026 by anas
+        mobileMenu.addEventListener("keydown", function (e) {
+            if (mobileMenu.getAttribute('aria-modal') !== 'true') return;   // NEW — sirf jab menu open/modal ho tabhi trap chale
+
+            const focusable = mobileMenu.querySelectorAll("a, button");
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.key === "Tab") {
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                }
+                else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+        });
+
+        //added as on 18062026
+        document.querySelector('.skip-link1').addEventListener('click', function () {
+            const target = document.getElementById('mainContent');
+            if (target) {
+                setTimeout(function () {
+                    target.focus();
+                }, 0);
+            }
+        });
+    </script>
+
+    <!-- Chat Widget-->
+    <script>
+        window.chatbotConfig = {
+            apiUrl: "https://apigateway.bigshareonline.com",
+            publicKey: "pk_23b79e735cfb4074d0xdw0",
+            title: "Chat with us",
+            welcomeMessage: "Hi! How can I help you today?",
+            placeholder: "Hi! How can I help you today?",
+            primaryColor: "#b52323",
+            primarytextColor: "#ffffff",
+            headerBackgroundColor: "#b52323",
+            headerTextColor: "#ffffff",
+            bubbleColor: "#f3f4f6",
+            userBubbleColor: "#2563eb",
+            position: "bottom-right",
+            theme: "light",
+            aiName: "Bigshare AI Assistant",
+            buttonTooltip: "We typically reply within minutes",
+            aiLogoUrl: "https://controlapi.bigshareonline.com/v1/files/db195e2c-6779-4d88-83cc-f0e2be5d5408/view",
+            widgetButtonLogoUrl: "https://controlapi.bigshareonline.com/v1/files/2e0fa05a-4840-45b7-874c-47f67d7904b3/view",
+            enableLoadingMessages: true,
+            autoOpen: false,
+            autoOpenDelay: 3000,
+            soundEnabled: true,
+            buttonSize: 50,
+            panelWidth: 380,
+            panelHeight: 450,
+            showBranding: true,
+            enableFileUpload: true,
+            enableNotifications: true
+        };
+    </script> 
+
+    <script src="https://app.bigshareonline.com/chatbot-widget.js"></script>
+    
+
+    <!-- Chat Widget Accessibility Fixes (merged) -->
+    <script>
+        (function () {
+            'use strict';
+
+            const CHAT_ROOT = '#omni-chat-widget';
+            const WINDOW_SEL = '.omni-chat-window';
+            const LABEL = 'Bigshare AI Assistant chat window';
+            const FOCUSABLE_SEL = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+            let isDialogFixed = false;
+            let focusTrapAttached = false;
+
+            function getWin() {
+                return document.querySelector(`${CHAT_ROOT} ${WINDOW_SEL}`);
+            }
+
+            function isWinVisible(win) {
+                return win && win.offsetParent !== null &&
+                    win.style.display !== 'none' &&
+                    win.style.visibility !== 'hidden' &&
+                    win.style.opacity !== '0';
+            }
+
+            // =========================================================
+            // RESTORED: Zoom / responsive CSS override (from old script)
+            // =========================================================
+            function injectChatA11yOverride() {
+                if (document.getElementById('chat-a11y-override')) return;
+                var style = document.createElement('style');
+                style.id = 'chat-a11y-override';
+                style.textContent =
+                    '#omni-chat-widget .omni-chat-window {' +
+                    'max-height: calc(100dvh - 75px) !important;' +
+                    '}' +
+                    '@media (max-width: 420px) {' +
+                    '#omni-chat-widget .omni-chat-window {' +
+                    'height: var(--chat-a11y-vh, 100dvh) !important;' +
+                    'max-height: var(--chat-a11y-vh, 100dvh) !important;' +
+                    '}' +
+                    '}' +
+
+                    '#omni-chat-widget .omni-chat-header {' +
+                    'padding: clamp(3px, 1.6dvh, 10px) clamp(6px, 2vw, 12px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-avatar-header {' +
+                    'width: clamp(16px, 3.6dvh, 28px) !important;' +
+                    'height: clamp(16px, 3.6dvh, 28px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-header-text h3 {' +
+                    'font-size: clamp(9px, 2.2dvh, 12px) !important;' +
+                    'line-height: 1.2 !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-header-text p {' +
+                    'font-size: clamp(7px, 1.6dvh, 10px) !important;' +
+                    'line-height: 1.2 !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-header-toggle-btn {' +
+                    'padding: clamp(2px, 0.9dvh, 8px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-header-toggle-btn svg {' +
+                    'width: clamp(10px, 2.6dvh, 16px) !important;' +
+                    'height: clamp(10px, 2.6dvh, 16px) !important;' +
+                    '}' +
+
+                    '#omni-chat-widget .omni-chat-input-container {' +
+                    'padding: clamp(3px, 1.6dvh, 10px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-input {' +
+                    'padding: clamp(2px, 0.9dvh, 6px) clamp(8px, 2vw, 12px) !important;' +
+                    'font-size: clamp(9px, 2.2dvh, 12px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-send-btn,' +
+                    '#omni-chat-widget .omni-chat-voice-btn {' +
+                    'width: clamp(20px, 4.6dvh, 32px) !important;' +
+                    'height: clamp(20px, 4.6dvh, 32px) !important;' +
+                    '}' +
+
+                    '#omni-chat-widget .omni-footer {' +
+                    'padding: clamp(2px, 0.7dvh, 6px) clamp(6px, 2vw, 12px) !important;' +
+                    'font-size: clamp(6px, 1.4dvh, 9px) !important;' +
+                    '}' +
+
+                    '#omni-chat-widget .omni-chat-button {' +
+                    'width: clamp(28px, 8dvh, 50px) !important;' +
+                    'height: clamp(28px, 8dvh, 50px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-button svg,' +
+                    '#omni-chat-widget .omni-close-icon {' +
+                    'width: clamp(12px, 3.2dvh, 20px) !important;' +
+                    'height: clamp(12px, 3.2dvh, 20px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-button::before {' +
+                    'inset: clamp(-10px, -2dvh, -6px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-button::after {' +
+                    'inset: clamp(-18px, -3.5dvh, -10px) !important;' +
+                    '}' +
+                    '#omni-chat-widget .omni-chat-button-logo-wrapper,' +
+                    '#omni-chat-widget .omni-chat-button-logo-glow,' +
+                    '#omni-chat-widget .omni-chat-button-logo-ring {' +
+                    'width: 100% !important;' +
+                    'height: 100% !important;' +
+                    '}';
+
+                document.body.appendChild(style);
+            }
+
+            function updateRealViewportHeight() {
+                var vh = Math.min(
+                    window.innerHeight,
+                    window.visualViewport
+                        ? window.visualViewport.height
+                        : window.innerHeight
+                );
+                document.documentElement.style.setProperty('--chat-a11y-vh', vh + 'px');
+            }
+
+            //added by anas as on 19/08/2026
+            // --- NEW: Background inertness state ---
+            let backgroundInertApplied = false;
+
+            function setBackgroundInert(makeInert) {
+                const header = document.getElementById('siteHeader');
+                const main = document.getElementById('mainContent');
+                const footer = document.getElementById('siteFooter');
+                [header, main, footer].forEach(el => {
+                    if (!el) return;
+                    el.inert = makeInert;
+                    if (makeInert) {
+                        el.setAttribute('aria-hidden', 'true');
+                    } else {
+                        el.removeAttribute('aria-hidden');
+                    }
+                });
+                backgroundInertApplied = makeInert;
+            }
+
+
+
+
+
+
+
+
+            // =========================================================
+
+            function applyDialogA11yFixes() {
+                const win = getWin();
+                if (!win || !isWinVisible(win)) return;
+
+                // --- Fix Dialog ---
+                if (!win.getAttribute('role')) {
+                    win.setAttribute('role', 'dialog');
+                }
+                if (!win.getAttribute('aria-modal')) {
+                    win.setAttribute('aria-modal', 'true');
+                }
+                if (!win.getAttribute('aria-label') && !win.getAttribute('aria-labelledby')) {
+                    win.setAttribute('aria-label', LABEL);
+                }
+
+                // --- Fix Heading (header title) ---
+                const headingContainer = win.querySelector('.omni-chat-header-text');
+                const heading = headingContainer ? headingContainer.querySelector('h3') : null;
+
+                if (heading) {
+                    heading.setAttribute('role', 'heading');
+                    heading.setAttribute('aria-level', '2');
+
+                    const headingText = heading.textContent.trim();
+                    if (headingText && !heading.getAttribute('aria-label')) {
+                        heading.setAttribute('aria-label', headingText);
+                    }
+
+                    heading.removeAttribute('aria-hidden');
+
+                    if (headingContainer) {
+                        headingContainer.removeAttribute('aria-hidden');
+                        headingContainer.removeAttribute('hidden');
+                    }
+                }
+
+                if (!heading) {
+                    const headerContent = win.querySelector('.omni-chat-header-content');
+                    if (headerContent) {
+                        const textDiv = headerContent.querySelector('.omni-chat-header-text');
+
+                        if (textDiv) {
+                            const firstChild = textDiv.children[0];
+                            if (firstChild && firstChild.tagName !== 'H2' && firstChild.tagName !== 'H3') {
+                                const headingText = firstChild.textContent.trim() || 'Bigshare AI Assistant';
+                                const newHeading = document.createElement('h2');
+                                newHeading.textContent = headingText;
+                                newHeading.setAttribute('role', 'heading');
+                                newHeading.setAttribute('aria-level', '2');
+                                newHeading.setAttribute('aria-label', headingText);
+
+                                if (firstChild) {
+                                    firstChild.replaceWith(newHeading);
+                                } else {
+                                    textDiv.insertBefore(newHeading, textDiv.firstChild);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // --- Fix Home screen heading (if visible) ---
+                const homeHeading = win.querySelector('.omni-home-text h2, .omni-empty-state h2');
+                if (homeHeading) {
+                    homeHeading.setAttribute('role', 'heading');
+                    homeHeading.setAttribute('aria-level', '2');
+                    const text = homeHeading.textContent.trim();
+                    if (text && !homeHeading.getAttribute('aria-label')) {
+                        homeHeading.setAttribute('aria-label', text);
+                    }
+                    homeHeading.removeAttribute('aria-hidden');
+                }
+
+                // --- Fix empty state subtitle ---
+                const subtitle = win.querySelector('.omni-empty-subtitle');
+                if (subtitle) {
+                    subtitle.setAttribute('role', 'heading');
+                    subtitle.setAttribute('aria-level', '3');
+                    const text = subtitle.textContent.trim();
+                    if (text && !subtitle.getAttribute('aria-label')) {
+                        subtitle.setAttribute('aria-label', text);
+                    }
+                    subtitle.removeAttribute('aria-hidden');
+                }
+                // --- NEW: make background inert whenever dialog is visible ---
+                if (!backgroundInertApplied) {
+                    setBackgroundInert(true);
+                }
+
+
+                isDialogFixed = true;
+            }
+
+            function forceHeadingAccessibility() {
+                const win = getWin();
+                if (!win) return;
+
+                const potentialHeadings = win.querySelectorAll('.omni-chat-header-text h3, .omni-empty-state h2, .omni-home-text h2');
+                potentialHeadings.forEach(el => {
+                    if (!el.hasAttribute('role') || el.getAttribute('role') !== 'heading') {
+                        el.setAttribute('role', 'heading');
+                    }
+                    if (!el.hasAttribute('aria-level')) {
+                        el.setAttribute('aria-level', '2');
+                    }
+                    el.removeAttribute('aria-hidden');
+                });
+            }
+
+            //function moveFocusIntoDialog() {
+            //    const win = getWin();
+            //    if (!win || !isWinVisible(win)) return;
+
+            //    //added new if condition as on 19/08/2026 by anas
+            //    //if (win.contains(document.activeElement)) return;   // NEW — agar focus already andar hai, kuch mat karo
+
+            //    const focusable = win.querySelectorAll(FOCUSABLE_SEL);
+            //    if (focusable.length) {
+            //        focusable[0].focus();
+            //    }
+            //}
+
+            //updated by anas as on 19/08/2026
+            function moveFocusIntoDialog() {
+                const win = getWin();
+                if (!win || !isWinVisible(win)) return;
+
+                const focusable = getVisibleFocusable(win);   // CHANGED
+                if (focusable.length) {
+                    focusable[0].focus();
+                }
+            }
+
+            //function setupFocusTrap() {
+            //    if (focusTrapAttached) return;
+            //    focusTrapAttached = true;
+
+            //    document.addEventListener('keydown', function (e) {
+            //        if (e.key !== 'Tab') return;
+
+            //        const win = getWin();
+            //        if (!win || !isWinVisible(win)) return;
+            //        if (!win.contains(document.activeElement)) return;
+
+            //        const focusable = win.querySelectorAll(FOCUSABLE_SEL);
+            //        if (!focusable.length) return;
+
+            //        const first = focusable[0];
+            //        const last = focusable[focusable.length - 1];
+
+            //        if (e.shiftKey && document.activeElement === first) {
+            //            e.preventDefault();
+            //            last.focus();
+            //        } else if (!e.shiftKey && document.activeElement === last) {
+            //            e.preventDefault();
+            //            first.focus();
+            //        }
+            //    });
+            //}
+
+
+            //updated by anas as on 19/08/2026
+            function setupFocusTrap() {
+                if (focusTrapAttached) return;
+                focusTrapAttached = true;
+
+                document.addEventListener('keydown', function (e) {
+                    if (e.key !== 'Tab') return;
+
+                    const win = getWin();
+                    if (!win || !isWinVisible(win)) return;
+                    if (!win.contains(document.activeElement)) return;
+
+                    const focusable = getVisibleFocusable(win);   // CHANGED
+                    if (!focusable.length) return;
+
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+
+                    if (e.shiftKey && document.activeElement === first) {
+                        e.preventDefault();
+                        last.focus();
+                    } else if (!e.shiftKey && document.activeElement === last) {
+                        e.preventDefault();
+                        first.focus();
+                    }
+                });
+            }
+
+            //added by anas as on 19/08/2026
+            // NEW — sirf actually visible/focusable elements filter karo
+            function getVisibleFocusable(win) {
+                return Array.from(win.querySelectorAll(FOCUSABLE_SEL)).filter(el => {
+                    return el.offsetParent !== null &&
+                        getComputedStyle(el).visibility !== 'hidden' &&
+                        getComputedStyle(el).display !== 'none';
+                });
+            }
+
+            //function setupMutationObserver() {
+            //    const root = document.querySelector(CHAT_ROOT) || document.body;
+            //    let timeoutId = null;
+
+            //    const observer = new MutationObserver(() => {
+            //        const win = getWin();
+
+            //        // keep watching for widget injection (for the CSS override too)
+            //        if (document.getElementById('omni-chat-widget') && !document.getElementById('chat-a11y-override')) {
+            //            injectChatA11yOverride();
+            //        }
+
+            //        if (!win) return;
+
+            //        if (isWinVisible(win)) {
+            //            isDialogFixed = false;
+            //            if (timeoutId) clearTimeout(timeoutId);
+            //            timeoutId = setTimeout(() => {
+            //                applyDialogA11yFixes();
+            //                forceHeadingAccessibility();
+            //                timeoutId = null;
+            //            }, 100); //added new else if by anas as on 19/08/2026
+            //        } else if (backgroundInertApplied) {
+            //            setBackgroundInert(false);   // NEW — dialog band hote hi background wapas normal
+            //        }
+            //    });
+
+            //    observer.observe(root, {
+            //        childList: true,
+            //        subtree: true,
+            //        attributes: true,
+            //        attributeFilter: ['class', 'style', 'display']
+            //    });
+            //}
+
+
+
+
+
+            //update function by anas as on 19/08/2026
+            function setupMutationObserver() {
+                const root = document.querySelector(CHAT_ROOT) || document.body;
+                let timeoutId = null;
+
+                const observer = new MutationObserver(() => {
+                    if (document.getElementById('omni-chat-widget') && !document.getElementById('chat-a11y-override')) {
+                        injectChatA11yOverride();
+                    }
+
+                    const win = getWin();
+                    if (!win) return;
+
+                    if (isWinVisible(win)) {
+                        if (timeoutId) clearTimeout(timeoutId);
+                        timeoutId = setTimeout(() => {
+                            if (!isDialogFixed) {              // NEW — dobara check yahan, jab actually chal raha ho
+                                applyDialogA11yFixes();
+                                forceHeadingAccessibility();
+                            }
+                            timeoutId = null;
+                        }, 100);
+                    } else if (backgroundInertApplied) {
+                        setBackgroundInert(false);
+                        isDialogFixed = false;
+                    }
+                });
+
+                observer.observe(root, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['class', 'style', 'display']
+                });
+            }
+
+
+
+
+
+
+            //function setupToggleListener() {
+            //    document.addEventListener('click', function (e) {
+            //        const toggle = e.target.closest(`${CHAT_ROOT} .omni-chat-button`);
+            //        const headerToggle = e.target.closest('.omni-header-toggle-btn');
+
+            //        if (toggle || headerToggle) {
+            //            setTimeout(() => {
+            //                isDialogFixed = false;
+            //                applyDialogA11yFixes();
+            //                forceHeadingAccessibility();
+            //                moveFocusIntoDialog();
+            //            }, 300);
+            //        }
+            //    }, true);
+            //}
+
+
+
+            //added by anas as on 19/08/2026
+            function setupToggleListener() {
+                document.addEventListener('click', function (e) {
+                    const toggle = e.target.closest(`${CHAT_ROOT} .omni-chat-button`);
+                    const headerToggle = e.target.closest('.omni-header-toggle-btn');
+
+                    if (toggle || headerToggle) {
+                        requestAnimationFrame(() => {
+                            isDialogFixed = false;   // NEW — genuine toggle action pe hi reapply force karo
+                            applyDialogA11yFixes();
+                            forceHeadingAccessibility();
+                            if (toggle) {
+                                //moveFocusIntoDialog();
+                            }
+                        });
+                    }
+                }, true);
+            }
+
+            function init() {
+                // Zoom/responsive override setup
+                updateRealViewportHeight();
+                window.addEventListener('resize', updateRealViewportHeight);
+                if (window.visualViewport) {
+                    window.visualViewport.addEventListener('resize', updateRealViewportHeight);
+                }
+
+                if (document.getElementById('omni-chat-widget')) {
+                    injectChatA11yOverride();
+                } else {
+                    const injectObserver = new MutationObserver(function () {
+                        if (document.getElementById('omni-chat-widget')) {
+                            injectChatA11yOverride();
+                            injectObserver.disconnect();
+                        }
+                    });
+                    injectObserver.observe(document.body, { childList: true });
+                }
+
+                // Existing heading/focus setup
+                const win = getWin();
+                if (win) {
+                    setTimeout(() => {
+                        applyDialogA11yFixes();
+                        forceHeadingAccessibility();
+                    }, 200);
+                }
+
+                setupMutationObserver();
+                setupToggleListener();
+                setupFocusTrap();
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+    
+
+    <style>
+        /* Base styling */
+        #chatbot-widget {
+            font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
+        }
+
+        /*05082026*/
+        #omni-chat-widget .omni-chat-button.has-logo .omni-close-icon {
+            padding: clamp(2px, 0.8dvh, 6px) !important;
+        }
+
+        #omni-chat-widget .omni-chat-button svg,
+        #omni-chat-widget .omni-close-icon {
+            width: clamp(14px, 3.4dvh, 20px) !important;
+            height: clamp(14px, 3.4dvh, 20px) !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        .omni-chat-bubble * {
+            color: #000 !important;
+        }
+
+        #omni-chat-widget .omni-chat-message.user .omni-chat-timestamp {
+            color: #fff !important;
+            opacity: 1 !important;
+        }
+    </style>
+</body>
+</html>
