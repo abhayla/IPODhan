@@ -8,9 +8,13 @@ reported a COMPLETED production data repair was blocked because it carried the
 heading "## One thing to flag". The same bug sat in `next up`, which matches
 "next update".
 
-A false block is not harmless. It burns an auto-continue off the 12-per-turn cap
-and pushes the model to manufacture more work after it has legitimately
-finished — the opposite of what the guard exists to do.
+A false block was not harmless when this hook blocked: it burned an auto-continue
+off the 12-per-turn cap and pushed the model to manufacture more work after it had
+legitimately finished. T-143 (synced 2026-09-09) made this hook telemetry-only, so a
+false POSITIVE is now only a noisy log line, never a block — but the boundary bug is
+still a real detection defect (it would flag a clean turn as a violation), so these
+tests keep asserting "clean" (no log line) for the false-positive cases and "logged"
+(never blocked, but recorded) for the genuine deferrals.
 
 Run: python3 .claude/hooks/tests/test_word_boundary_regression.py
 """
@@ -22,7 +26,9 @@ import unittest
 from pathlib import Path
 
 HOOK_PATH = Path(__file__).resolve().parent.parent / "no-overask-guard.sh"
-KEEPGOING_COUNT_FILE = HOOK_PATH.resolve().parent.parent / ".keepgoing-count"
+REPO_ROOT = HOOK_PATH.resolve().parent.parent.parent
+KEEPGOING_COUNT_FILE = REPO_ROOT / ".claude" / ".keepgoing-count"
+VIOLATIONS_LOG = REPO_ROOT / ".claude" / ".overask-violations.log"
 
 
 def make_transcript(final_text):
@@ -51,6 +57,7 @@ def run_hook(final_text):
         capture_output=True,
         text=True,
         timeout=10,
+        cwd=str(REPO_ROOT),
     )
 
 
@@ -65,20 +72,38 @@ def is_blocked(stdout):
     return obj.get("decision") == "block"
 
 
+def read_log():
+    try:
+        return VIOLATIONS_LOG.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ""
+
+
 class WordBoundaryRegressionTest(unittest.TestCase):
     def setUp(self):
-        try:
-            KEEPGOING_COUNT_FILE.unlink()
-        except FileNotFoundError:
-            pass
+        for p in (KEEPGOING_COUNT_FILE, VIOLATIONS_LOG):
+            try:
+                p.unlink()
+            except FileNotFoundError:
+                pass
 
     def assert_allowed(self, text):
+        # T-143: never blocked AND no log line — a true clean case.
         out = run_hook(text).stdout
         self.assertFalse(is_blocked(out), "should NOT be blocked, but was: " + text)
+        self.assertNotIn(
+            "stop-violation", read_log(), "should have no log line, but got one: " + text
+        )
 
     def assert_blocked(self, text):
+        # T-143: never blocked, but the genuine violation is still logged.
         out = run_hook(text).stdout
-        self.assertTrue(is_blocked(out), "SHOULD be blocked, but was allowed: " + text)
+        self.assertFalse(
+            is_blocked(out), "hook must never block under T-143, but did: " + text
+        )
+        self.assertIn(
+            "stop-violation", read_log(), "SHOULD be logged, but log stayed empty: " + text
+        )
 
     # --- "one thing" must not read as "one thin" (the live false positive) ---
 
