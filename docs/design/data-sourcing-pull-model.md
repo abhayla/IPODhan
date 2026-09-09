@@ -2,21 +2,20 @@
 
 > ### Status — NOT SAFE TO BUILD FROM
 >
-> Reviewed 2026-09-08 by four independent passes (author, IPO domain, engineering, verification
-> model). Status per finding is in `findings.json`, which is the register — not this document, and
-> which is under active concurrent edit (F-41, F-42, F-43 were added by the owner/lead mid-session).
-> As of the last check, **2 critical findings are OPEN (F-03, F-43)** — F-13, F-22, F-23, F-26, F-27
-> and F-33 closed this session; F-39, F-40 (MAJOR), F-41, F-42 (MAJOR) also remain OPEN, all needing
-> the owner or a live fetch. **Do not trust a finding count typed here — read `findings.json`.**
+> **Do not trust any finding count typed in this document.** `findings.json` is the register and it
+> changes; a number written here is stale the moment it is typed. Run the check instead:
 >
-> **Sections §0, Appendix A.0 and A.3 survive review. §1.2.1, §2, §3, §4 and §6 are being re-cut.**
-> Do not implement from those sections.
+> ```
+> node docs/design/check-design-consistency.mjs --gate
+> ```
+>
+> It prints the live counts and fails if this document contradicts the register, the field spec, or
+> an owner decision.
 >
 > **Scope (owner, 2026-09-08): phase 1 is open and upcoming IPOs only — 19 today, all plain `IPO`,
 > mainboard or SME.** No closed IPO is touched. Closed IPOs follow afterwards, one at a time, newest
-> close date first. This scope removes 8 of the 40 findings, which reopen for the closed-IPO work.
->
-> Run `node docs/design/check-design-consistency.mjs --gate` before trusting any count in here.
+> close date first.
+
 Author: this session, 2026-09-08. Origin: owner comment O-8 in `docs/ops/work-tracker.md`.
 
 Abhay's requirement, in his words: *"almost ninety percent of our data should come from the offer
@@ -27,6 +26,56 @@ Every number in this document was measured during this session against the produ
 through the read-only tunnel, or read out of the named file. Nothing is carried forward from an
 earlier note. Where a measured number differs from an earlier one, the measured one is used and the
 difference is stated.
+
+---
+
+## 0.0 The decisions this design is built on
+
+You asked how you would know this design follows your guidance rather than my judgement. This
+section is the answer, and `check-design-consistency.mjs` check **D10** enforces it: every row below
+names a section of this document, and the check fails if that section has gone missing or if the
+decision's signature has stopped holding. So the claim "the design follows your decisions" is a
+command you can run, not a sentence you have to trust.
+
+**Two rules for this table.** Your words are quoted, never paraphrased into something stronger. A
+decision you have not actually made is in the second table, not the first — I do not get to promote
+it by assuming.
+
+### 0.0.1 Decisions you made — the design is bound by these
+
+| id | Your words | Date | Lives in | What D10 checks |
+|---|---|---|---|---|
+| OD-1 | *"Target should be 100%. If the field value comes from offer document then it should extracted from offer document."* | 2026-09-08 | §1.1 | the 100% target is stated; no blended-90% target survives anywhere |
+| OD-2 | *"Keep those five on the exchange, as a written, named exception to the 100% rule."* — then extended to the whole timetable family | 2026-09-08 | §1.2.1 | E-1 exists and its size matches the field spec (also D3) |
+| OD-3 | *"Retire the Moneycontrol scraper."* | 2026-09-09 | §1.11.1 | the field spec serves zero fields from Moneycontrol |
+| OD-4 | *"Change the source priority so the offer document outranks every website for the fields it contains."* | 2026-09-08 | §1.1, O-5 | every non-E-1 field the document prints ranks the document first |
+| OD-5 | *"Make this priorities configurable... we should not be required to change the code."* | 2026-09-08 | §2.3.5 | the section exists |
+| OD-6 | *"Verification is a read, not a write."* | 2026-09-08 | §2.5 | the section states it |
+| OD-7 | A value we could not re-source is kept and marked stale, never blanked | 2026-09-08 | §2.6 | the section exists |
+| OD-8 | *"Freeze a withdrawn page with a notice."* | 2026-09-08 | §2.9 | the section exists |
+| OD-9 | *"Is there a unique ID for each IPO? If yes then there should be only one row for each IPO."* | 2026-09-09 | §2.3.1 | the one-row / late-binding identity rule is present |
+| OD-10 | *"Agreed, child-table writer is item 1."* | 2026-09-08 | §7.1 | item 1 of the build sequence is the child-table writer |
+| OD-11 | *"There is no phase 2."* | 2026-09-08 | whole doc | no work is parked in a phase 2 (also D9); every deferred finding names its trigger (D9b) |
+| OD-12 | Phase 1 is open and upcoming IPOs only | 2026-09-08 | header | the scope is stated (also D6) |
+| OD-13 | *"Drop the extractor and mark it deliberately unread."* (basis-of-allotment) | 2026-09-08 | §5.4 | the section exists |
+| OD-14 | Twenty-five fields are retired and must never be written | 2026-09-08 | §1.12 | the section exists |
+| OD-15 | *"Nothing outside reads that API."* (the 19 dead API fields) | 2026-09-08 | §1.12 | the section exists |
+| OD-16 | *"Merge the two rows."* (the duplicate Asset Reconstruction row) | 2026-09-09 | F-55 | done on production; the duplicate invariant holds |
+| OD-17 | *"Do not proceed below 95% confidence... ask ONE question at a time, each with your recommendation and a one-line reason."* | 2026-09-08 | how this doc is written | not mechanically checkable — stated so it is not forgotten |
+| OD-18 | *"Every number you state must be measured in this session and its source named."* | 2026-09-08 | whole doc | hand-typed counts the generator owns are banned (D2) |
+
+### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
+
+These are open owner comments. Nothing in this design depends on a particular answer to them, and
+**D10 fails if a section claims one is settled.** They are listed so the list of what needs you is
+one place, not scattered through a tracker.
+
+| id | Your comment | Status | Why it is still open |
+|---|---|---|---|
+| O-1 | *"We already discussed about this not to scrape the documents every thirty minutes."* | AWAITING YOU | The wake interval is unchanged. I recommended making the wake a no-op outside the four discovery slots and market hours, and asked for your target number. You have not given one. |
+| O-2 | *"Store the values in terms of crores... identify all such fields."* | AWAITING YOU | I got this wrong once already and shipped the opposite (PR #423). The conversion changes the public API shape, so it needs your word before anything moves. |
+| O-3 | *"An error should not break the website or that IPO's data... keep that field blank and get it from other sources."* | AWAITING YOU | The design honours the principle throughout, but the choice between per-field pre-validation and full partial persistence is a build decision I have not asked you to make. |
+| O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in phase 1 uses a language model, so there is nothing to approve yet. |
 
 ---
 

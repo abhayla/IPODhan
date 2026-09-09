@@ -126,6 +126,76 @@ try {
   var noTrigger = findings.findings.filter(function(f){ return f.status === 'TRIGGERED' && !f.trigger; });
   if (noTrigger.length) fail('D9b', 'TRIGGERED findings with no named trigger: ' + noTrigger.map(function(f){return f.id;}).join(', '));
   else ok('D9b', findings.findings.filter(function(f){return f.status==='TRIGGERED';}).length + ' deferred findings each name the event that brings them into scope.');
+
+  // --- D10: the design still honours every owner decision it claims to ---
+  // WHY. Owner, 2026-09-09: "How would I know that whatever you are doing is as per my guidance?"
+  // Before this check, "the design follows your decisions" was my word. Now it is a command.
+  // The table in section 0.0.1 is the SSOT: each row names a section, and this fails when that
+  // section has gone (a splice already deleted one heading silently this session) or when a
+  // decision's mechanical signature stops holding.
+  var odTable = md.slice(md.indexOf('### 0.0.1'), md.indexOf('### 0.0.2'));
+  var odRows = [...odTable.matchAll(/^\| (OD-\d+) \|(.+)$/gm)].map(function (m) {
+    var cells = m[2].split('|').map(function (c) { return c.trim(); });
+    return { id: m[1], where: cells[2] || '', checks: cells[3] || '' };
+  });
+  if (odRows.length < 10) {
+    fail('D10', 'The owner-decision register in 0.0.1 has ' + odRows.length + ' rows. It has been gutted or its table shape changed.');
+  } else {
+    var odMissing = [];
+    odRows.forEach(function (r) {
+      // A row may name several sections ("§1.1, O-5"); only real section refs are checkable.
+      (r.where.match(/§[0-9]+(?:\.[0-9]+)*/g) || []).forEach(function (ref) {
+        var num = ref.slice(1);
+        var re = new RegExp('^#{2,4} ' + num.replace(/\./g, '\.') + '[ .]', 'm');
+        if (!re.test(md)) odMissing.push(r.id + ' -> ' + ref);
+      });
+    });
+    if (odMissing.length) {
+      fail('D10', 'Owner decisions pointing at sections that no longer exist: ' + odMissing.join(', '));
+    } else {
+      ok('D10', odRows.length + ' owner decisions each point at a section that still exists.');
+    }
+  }
+
+  // --- D10b: the decision SIGNATURES, not just the section headings ---
+  var sig = [];
+  // The register in 0.0 DESCRIBES these signatures, so scanning the whole file finds its own text.
+  // Every signature below is therefore checked against the design MINUS the register. Caught on
+  // this check's first run: the OD-1 rule matched its own row, which reads "no blended-90% target
+  // survives anywhere". A new check must be validated against known-good state before it is trusted.
+  var body = md.slice(0, md.indexOf('## 0.0')) + md.slice(md.indexOf('## 0. What is true today'));
+
+  // OD-3 Moneycontrol retired. The GENERATED appendix is the truth, not the spec's raw rank list:
+  // pool() filters MC out via MC_SERVES, so a field can still LIST MC and never be SERVED by it.
+  // Checking f.r reported 38 served fields while Appendix A served zero.
+  var appendixA = md.slice(md.indexOf('### A.1'), md.indexOf('### A.2'));
+  var mcRows = (appendixA.match(/\| (MC|MONEYCONTROL) \|/g) || []).length;
+  if (mcRows > 0) sig.push('OD-3: Appendix A still serves Moneycontrol on ' + mcRows + ' field(s)');
+  // OD-1 the target is 100%, not a blended 90%.
+  if (/target[^.]{0,40}\b90\s*%/i.test(body)) sig.push('OD-1: a 90% target has reappeared; the owner set 100% per field');
+  // OD-6 verification is a read.
+  if (!/verification is a read/i.test(body)) sig.push('OD-6: the design no longer states that verification is a read');
+  // OD-9 one row per IPO.
+  if (!/one row (for|per) each IPO|one row per IPO|late-binding identity/i.test(body)) sig.push('OD-9: the one-row-per-IPO rule is gone');
+  // OD-10 build item 1 is the child-table writer. Shipped wording is "child-table CONSOLIDATED
+  // writer", so match the row, not two adjacent words.
+  var seq = md.slice(md.indexOf('### 7.1 '), md.indexOf('### 7.2 '));
+  if (!/^\| 1 \|[^|]*child[- ]table/im.test(seq)) sig.push('OD-10: build item 1 is no longer the child-table writer');
+  if (sig.length) fail('D10b', 'Owner decisions whose signature stopped holding: ' + sig.join(' | '));
+  else ok('D10b', 'Every mechanically checkable owner decision still holds.');
+
+  // --- D10c: an OPEN owner comment must not be written up as settled ---
+  // The owner has NOT decided O-1, O-2 or O-3. A section claiming otherwise would build on an
+  // assumption they never made - the exact failure this register exists to prevent.
+  var openOwner = md.slice(md.indexOf('### 0.0.2'));
+  var wrongly = [];
+  ['O-1', 'O-2', 'O-3'].forEach(function (id) {
+    var re = new RegExp(id + '[^|\n]{0,80}(APPROVED|RESOLVED|DECIDED|owner (approved|decided))', 'i');
+    if (re.test(openOwner)) wrongly.push(id);
+  });
+  if (wrongly.length) fail('D10c', 'Owner comments marked settled that the owner has not settled: ' + wrongly.join(', '));
+  else ok('D10c', 'No undecided owner comment is written up as settled.');
+
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);
   process.exit(2);
