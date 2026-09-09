@@ -126,25 +126,29 @@ the four stopped for the same reason. That reason is §4.6.
 - The compliance line beside the grey-market premium (domain finding 10) — one sentence, and it is
   your wording to approve rather than mine to invent.
 
-## 9. The merge order, which is yours to choose
+## 9. The merge order — answered by events, after this report was first written
 
-Both this PR and **#432** meet the same red check, and neither is caused by either branch:
-`scripts/merge-duplicate-ipo.mjs` writes to `ipos` with raw SQL and trips the write ratchet.
+This section originally asked the owner to choose between merging #432 first or letting this PR
+supersede it, and named build item 19 as the unblocker for both. **Both questions were settled while
+this run was closing out, and the section is corrected rather than deleted:**
 
-> **The unblocker is build item 19**, and its contract is written and ready:
-> `docs/contracts/2026-09-DRAFT-merge-tool-shared-write-path.md`. The ratchet baseline is shrink-only
-> and is **never** edited — the fix is routing.
-
-| Option | What it means |
+| What | State, verified 2026-09-09 16:2x IST |
 |---|---|
-| **Merge #432 first, then this PR on top** | two smaller reviews; the item-19 fix lands after both |
-| **Let this PR supersede #432** | one review of the finished design; #432 closes unmerged |
+| **#432** — the design to implementation-ready | **MERGED** (`4bc646d0`) |
+| **#433** — route the duplicate-IPO merge tool through the shared repository | **MERGED** (`5cd6810d`) — this is build item 19's fix, and it landed as routing, not as a baseline edit |
+| The write ratchet, which was the red check on both PRs | **PASS** — `node scripts/check-write-ratchet.mjs` exits 0: "57 files match baseline" |
+| **#435** — this PR | **OPEN and MERGEABLE**; `main` has since been merged into this branch (`f8691409`, corrected by `5763388f`) |
 
-Neither changes behaviour, so nothing on the site waits on this.
+So the choice is no longer between two orders. #432 is in, item 19 is in, and this PR sits on top of
+both with the ratchet green. Every gate was re-run after that merge rather than assumed:
+Definition of Done 14/14, design gate exit 0 (23/23), card gate exit 0, mutation suite 4 caught / 0
+missed.
 
-**And a second merge tool exists.** `scraper/scripts/merge-duplicate-ipos.ts` (plural) also writes
-raw SQL to `ipos` and is **already in the baseline**, grandfathered before that rule existed. Out of
-item 19's scope, named in §8.3, and the honest reading is that the project owes a second routing job.
+**The second merge tool is still outstanding, and is now the only piece of this story left.**
+`scraper/scripts/merge-duplicate-ipos.ts` (plural) also writes raw SQL to `ipos` and is **already in
+the ratchet baseline**, grandfathered before that rule existed. #433 fixed the singular tool. The
+baseline is shrink-only, so the honest reading is unchanged: the project owes a second routing job,
+and §8.3 names it.
 
 ## 10. The Definition of Done, walked
 
