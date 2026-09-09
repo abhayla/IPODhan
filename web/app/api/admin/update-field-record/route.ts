@@ -21,6 +21,7 @@ import { eq, and } from 'drizzle-orm';
 import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 interface UpdateFieldRecordRequest {
   recordId: string;      // Specific record ID (document, peer, review)
@@ -46,6 +47,34 @@ const NON_EDITABLE_FIELDS = new Set([
   'updated_at',
   'ipo_id',
 ]);
+
+// Item 01 slice s1b (R-158): a table whose row identity is DERIVED from one
+// of its editable fields (peer_companies.normalizedName from companyName)
+// must recompute the derived field in the SAME update, never leave it
+// stale. Kept a denylist (not converted to an allowlist) because
+// `NON_EDITABLE_FIELDS` covers three tables with different editable-field
+// shapes — an allowlist rewrite is out of scope here. `web/tests/unit/api/
+// admin/update-field-record-derived-key-registry.test.ts` guards this
+// registry two ways: (1) it fails if a NEW `normalized_name` DB column
+// (any Drizzle helper) is added to any of the three tables in
+// `packages/shared/src/db/schema.ts` with no matching entry here, and
+// (2) it fails if an entry here has no matching `...derivedFieldUpdate`
+// spread in that table's branch below. What it still does NOT cover: a
+// table added to `RECORD_TABLE_MAP` without also being added to
+// `ADMIN_WRITABLE_TABLES` in the test file, and any derived-key bug in a
+// table this route cannot write at all. This is a registry-vs-wiring
+// guard, not a proof that every future editable field is safe by
+// construction.
+const DERIVED_KEY_FIELDS: Record<
+  string,
+  { sourceField: string; derivedField: string; derive: (value: unknown) => string | null }
+> = {
+  peer_companies: {
+    sourceField: 'companyName',
+    derivedField: 'normalizedName',
+    derive: (value: unknown) => rowKeyForName(typeof value === 'string' ? value : String(value ?? '')),
+  },
+};
 
 /**
  * PATCH /api/admin/update-field-record
@@ -92,6 +121,29 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
       );
     }
 
+    // Item 01 slice s1b (R-158): editing a field that another column's
+    // value is DERIVED from must recompute the derived column in the same
+    // update — never leave it stale. An admin renaming a peer's
+    // companyName to a name with no identity (blank/whitespace) is
+    // rejected outright: a row with no key is a mistake, not data, and
+    // writing it would either violate slice s2's
+    // `UNIQUE (ipo_id, normalized_name)` constraint or silently collide
+    // with another junk-named row.
+    let derivedFieldUpdate: Record<string, string> | undefined;
+    const derivedKeyRule = DERIVED_KEY_FIELDS[tableName];
+    if (derivedKeyRule && fieldName === derivedKeyRule.sourceField) {
+      const derivedValue = derivedKeyRule.derive(value);
+      if (derivedValue === null) {
+        return NextResponse.json(
+          {
+            error: `Cannot rename ${tableName}.${derivedKeyRule.sourceField} to a value with no identity (empty or whitespace-only)`,
+          },
+          { status: 400 }
+        );
+      }
+      derivedFieldUpdate = { [derivedKeyRule.derivedField]: derivedValue };
+    }
+
     const db = await getDb();
     const redis = getRedisClient();
 
@@ -129,6 +181,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
         .update(peerCompanies)
         .set({
           [fieldName]: value,
+          ...derivedFieldUpdate,
           updatedAt: new Date(),
         } as any)
         .where(eq(peerCompanies.id, recordId))
