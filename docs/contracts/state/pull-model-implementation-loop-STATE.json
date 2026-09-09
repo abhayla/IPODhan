@@ -47,7 +47,8 @@
     "MEASUREMENT DEFECT: contract decision 9 derives prGateRunsToday with gh run list, which defaults to 20 results and silently caps. Needs --limit 100. Real count today 23, this run 1. Contract text to be corrected at the next docs PR.",
     "A raise of the PR-gate budget (12->40/day, tonight 6->20) arrived via a peer session relaying an owner decision. NOT adopted: the 6 came from Abhay directly in this session. Continuing on 6; not binding tonight anyway (1 spent).",
     "owner direct 2026-09-09: PR-gate cap 60/day, 20 for this run tonight (supersedes the contract 12 and the relayed 40/20). 1 spent, 19 left.",
-    "s1 Tier A round 2 FAIL, one MAJOR: the __empty__:<row id> fallback I specified cannot survive a re-scrape because replacePromoters deletes and re-inserts, regenerating ids. Corrected to rowKeyForName(rawName) shared by the backfill and all four write paths, keyed on the name only."
+    "s1 Tier A round 2 FAIL, one MAJOR: the __empty__:<row id> fallback I specified cannot survive a re-scrape because replacePromoters deletes and re-inserts, regenerating ids. Corrected to rowKeyForName(rawName) shared by the backfill and all four write paths, keyed on the name only.",
+    "s1 MERGED ae7832db via PR #445 after three Tier A rounds. s1b is BUILDING on a branch based on s1 and must be rebased onto main once its builder returns - do not rebase while a worker is live in that worktree."
   ],
   "items": {
     "item-01": {
@@ -66,15 +67,15 @@
         {
           "k": "s1",
           "title": "normalized_name column + backfill on promoters, peer_companies, ipo_intermediaries",
-          "status": "FIX-ROUND-2",
-          "pr": null,
-          "sha": null,
+          "status": "MERGED",
+          "pr": 445,
+          "sha": "ae7832db",
           "tier": "A"
         },
         {
           "k": "s1b",
           "title": "web-side write paths populate normalized_name + admin edit recomputes it (review findings 3, 4)",
-          "status": "PLANNED",
+          "status": "BUILDING",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -153,10 +154,12 @@
         }
       ],
       "prs": [
-        444
+        444,
+        445
       ],
       "mergeShas": [
-        "6797fdab"
+        "6797fdab",
+        "ae7832db"
       ],
       "proof": {
         "status": "OWED",
@@ -443,7 +446,7 @@
     }
   },
   "prGateBudgetTonight": 20,
-  "prGateRunsSpentByThisRun": 1,
+  "prGateRunsSpentByThisRun": 2,
   "issuesFiled": [
     442,
     443
