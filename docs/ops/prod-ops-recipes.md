@@ -334,6 +334,21 @@ owner-applied per slot, in this exact order, never skipped:
 2. **Run the backfill.** `scraper/scripts/backfill-normalized-name.ts` against the slot — dry run
    first, then `--apply` — until it reports 0 rows still at `''`.
 3. **Apply this gated file** (`E1_row_key_unique_constraints.sql`) by hand, through the tunnel.
+4. **Verify.** `npx tsx scripts/assert-row-key-constraints.ts "$DATABASE_URL"` (read-only; queries
+   `information_schema.table_constraints` for the three constraint names and exits 1 naming any that
+   are missing). Run this against the SAME slot step 3 was just applied to — an operator's memory of
+   having run step 3 is not proof, and nothing else checks whether it actually landed (F-2 / item 1
+   slice s2 fix round: `assert-schema-drift.ts` cannot see this — it reads only column shape, never
+   constraints).
+
+**Not wired into the nightly audit.** Unlike `assert-schema-drift.ts` (which runs every night against
+prod), `assert-row-key-constraints.ts` is NOT called from the nightly audit cron. The gated file is
+applied per-slot, on the owner's own schedule, and there is no `KNOWN_GATED_TYPE_DRIFT`-style allow-list
+here yet — an unconditional nightly call would report FAIL every night on any slot the owner has not
+yet hand-applied it to, which is not a defect, just an unfinished rollout. Running it manually as step 4
+above, right after step 3, is the intended cadence. Revisit once every slot has the constraint applied:
+at that point a nightly check earns its keep (catching a FUTURE regression, e.g. a restore from an older
+backup) and should be added then, not before.
 
 **Precheck before step 3 — all three MUST read 0:**
 ```bash

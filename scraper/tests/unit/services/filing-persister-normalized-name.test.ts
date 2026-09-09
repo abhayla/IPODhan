@@ -13,7 +13,7 @@
  *
  * RED on origin/main (before this slice): none of the three write paths
  * (`replacePromoters`, `intermediaries.replaceForIpo`,
- * `peerCompanies.batchCreate`) puts a `normalizedName` key on the row it
+ * `peerCompanies.replaceForIpo`) puts a `normalizedName` key on the row it
  * writes — asserted against the repository call's insert payload, not a
  * live DB (that column does not exist yet on origin/main), per the builder
  * brief for this slice.
@@ -93,8 +93,7 @@ function extractionWithJunkNames(): FilingExtraction {
 function makeDeps() {
   const replacePromoters = vi.fn(async () => []);
   const replaceIntermediaries = vi.fn(async () => []);
-  const peerDelete = vi.fn(async () => 0);
-  const peerCreate = vi.fn(async () => []);
+  const peerReplace = vi.fn(async () => []);
   const trackField = vi.fn(async () => ({}));
 
   const deps = {
@@ -124,7 +123,7 @@ function makeDeps() {
     },
     intermediaries: { replaceForIpo: replaceIntermediaries },
     brlmTrackRecord: { upsert: vi.fn(async (r: unknown) => r) },
-    peerCompanies: { deleteByIPOId: peerDelete, batchCreate: peerCreate },
+    peerCompanies: { replaceForIpo: peerReplace },
     financialData: { upsert: vi.fn(async (r: unknown) => r) },
     fieldSources: {
       findByField: vi.fn(async () => null),
@@ -133,7 +132,7 @@ function makeDeps() {
     ipoDetailsWriter: { upsert: vi.fn(async () => undefined) },
   } as unknown as FilingPersisterDeps;
 
-  return { deps, replacePromoters, replaceIntermediaries, peerCreate };
+  return { deps, replacePromoters, replaceIntermediaries, peerReplace };
 }
 
 describe('filing-persister — normalized_name on every child-table insert (item 1 slice s1, R-158)', () => {
@@ -162,7 +161,7 @@ describe('filing-persister — normalized_name on every child-table insert (item
   it('peer_companies: every row batchCreate writes carries a non-empty normalizedName matching the normaliser', async () => {
     const s = makeDeps();
     await persistFilingExtraction(IPO_ID, extractionFromOracle(), { docType: 'PRICE_BAND_AD', apply: true }, s.deps);
-    const rows = s.peerCreate.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const rows = s.peerReplace.mock.calls[0][1] as Array<Record<string, unknown>>;
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect(row.normalizedName).toBe(normalizeCompanyNameForMatching(row.companyName as string));
@@ -219,7 +218,7 @@ describe('filing-persister — a null-key row is SKIPPED, the rest of the batch 
       { docType: 'PRICE_BAND_AD', apply: true },
       s.deps
     );
-    const rows = s.peerCreate.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const rows = s.peerReplace.mock.calls[0][1] as Array<Record<string, unknown>>;
     // 5 real peers from the fixture + the 1 junk-but-non-empty peer name.
     expect(rows.length).toBe(6);
     const junkRow = rows.find((r) => r.companyName === '----');

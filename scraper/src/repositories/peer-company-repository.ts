@@ -76,4 +76,37 @@ export class PeerCompanyRepository {
 
     return results;
   }
+
+  /**
+   * Replace the full peer-company list for one IPO inside a transaction
+   * (Item 1 slice s2 fix round, F-1 / GitHub #443).
+   *
+   * Two peers in the same document that normalise to the same row key are
+   * the same company written twice — the LAST one wins (a document lists
+   * peers in filing order, and a duplicate mention later in the table is
+   * more often a corrected/updated printing of the same row than the first
+   * is; deterministic on the same input either way). De-duping HERE, before
+   * the insert, means the `(ipo_id, normalized_name)` unique constraint
+   * never fires from a same-document collision.
+   *
+   * The delete and the insert run in ONE transaction, the way
+   * `PromotersRepository.replacePromoters` / `IpoIntermediariesRepository
+   * .replaceForIpo` already do: if the insert throws (a genuine`23505` from
+   * some other cause, a connection drop, anything), the transaction rolls
+   * back and the previously stored rows survive — the delete never commits
+   * on its own.
+   */
+  async replaceForIpo(ipoId: string, rows: PeerCompanyInsert[]): Promise<PeerCompany[]> {
+    const byRowKey = new Map<string, PeerCompanyInsert>();
+    for (const row of rows) {
+      byRowKey.set(row.normalizedName, row);
+    }
+    const deduped = [...byRowKey.values()];
+
+    return this.db.transaction(async (tx) => {
+      await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
+      if (deduped.length === 0) return [];
+      return tx.insert(schema.peerCompanies).values(deduped).returning();
+    });
+  }
 }

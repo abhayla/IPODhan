@@ -126,7 +126,7 @@ export interface FilingPersisterDeps {
   promoters: PromotersRepository;
   intermediaries: IpoIntermediariesRepository;
   brlmTrackRecord: BrlmTrackRecordRepository;
-  peerCompanies: PeerCompanyRepository;
+  peerCompanies: Pick<PeerCompanyRepository, 'replaceForIpo'>;
   financialData: FinancialDataRepository;
   fieldSources: FieldSourcesRepository;
   ipoDetailsWriter: IpoDetailsWriter;
@@ -1761,8 +1761,7 @@ export async function persistFilingExtraction(
         })
       ) {
         if (apply) {
-          await deps.peerCompanies.deleteByIPOId(ipoId);
-          await deps.peerCompanies.batchCreate(peerRows as never);
+          await deps.peerCompanies.replaceForIpo(ipoId, peerRows as never);
           await trackField('peer_companies', 'rows');
         }
         bump(written, 'peer_companies', peerRows.length);

@@ -47,23 +47,22 @@ function makeScrapedPeers(): ScrapedPeerCompany[] {
 }
 
 function makeRepo() {
-  const deleteByIPOId = vi.fn(async () => 0);
-  const batchCreate = vi.fn(async (rows: Array<Record<string, unknown>>) =>
+  const replaceForIpo = vi.fn(async (_ipoId: string, rows: Array<Record<string, unknown>>) =>
     rows.map((r, i) => ({ id: `peer-${i}`, ...r }))
   );
-  const repo = { deleteByIPOId, batchCreate } as unknown as PeerCompanyRepository;
-  return { repo, deleteByIPOId, batchCreate };
+  const repo = { replaceForIpo } as unknown as PeerCompanyRepository;
+  return { repo, replaceForIpo };
 }
 
 describe('createPeerCompanies (Moneycontrol path, data-persister.ts) — normalized_name on every row (R-158)', () => {
-  it('every row handed to batchCreate carries a non-empty normalizedName derived from companyName', async () => {
-    const { repo, batchCreate } = makeRepo();
+  it('every row handed to replaceForIpo carries a non-empty normalizedName derived from companyName', async () => {
+    const { repo, replaceForIpo } = makeRepo();
     const scrapedPeers = makeScrapedPeers();
 
     await createPeerCompanies(repo, 'ipo-1', scrapedPeers);
 
-    expect(batchCreate).toHaveBeenCalledTimes(1);
-    const rows = batchCreate.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(replaceForIpo).toHaveBeenCalledTimes(1);
+    const rows = replaceForIpo.mock.calls[0][1] as Array<Record<string, unknown>>;
     expect(rows.length).toBe(2);
     for (const row of rows) {
       expect(row.normalizedName).toBe(
@@ -74,13 +73,13 @@ describe('createPeerCompanies (Moneycontrol path, data-persister.ts) — normali
   });
 
   it('a whitespace-only peer name has no identity: it is skipped, the other peer in the batch still writes (Tier A round-2)', async () => {
-    const { repo, batchCreate } = makeRepo();
+    const { repo, replaceForIpo } = makeRepo();
     const scrapedPeers = [...makeScrapedPeers(), { ...makeScrapedPeers()[0], companyName: '   ' }];
 
     const created = await createPeerCompanies(repo, 'ipo-1', scrapedPeers);
 
-    expect(batchCreate).toHaveBeenCalledTimes(1);
-    const rows = batchCreate.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(replaceForIpo).toHaveBeenCalledTimes(1);
+    const rows = replaceForIpo.mock.calls[0][1] as Array<Record<string, unknown>>;
     expect(rows.length).toBe(2);
     expect(created).toBe(2);
     expect(rows.every((r) => typeof r.companyName === 'string' && (r.companyName as string).trim() !== '')).toBe(
