@@ -37,10 +37,12 @@
  * ipodhan_staging to rehearse.
  *
  * EXIT CODES: 0 planned/applied cleanly · 1 refused (the reason is printed,
- * including the prod guard and every eligibility check) · 2 the script broke.
+ * including the prod guard and every eligibility check) · 2 the script broke,
+ * OR the write committed but a post-apply `VERIFY:` readback check failed.
  */
 import { db, getRedisClient, IPORepository, type MergeDuplicateResult } from '@ipodhan/shared';
-import { DatabaseError } from '@ipodhan/shared/errors/repository-errors';
+import { DatabaseError, ProdWriteRefusedError } from '@ipodhan/shared/errors/repository-errors';
+import { verifyMergeReadback, type MergeReadbackCheck } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
@@ -92,7 +94,7 @@ async function main(): Promise<number> {
   }
 
   let refused = false;
-  await openRepairDb(db, {
+  const { dbName } = await openRepairDb(db, {
     apply: APPLY,
     allowProd: ALLOW_PROD,
     toolName: 'repair-merge-duplicate-ipo',
@@ -116,7 +118,7 @@ async function main(): Promise<number> {
       issueSizeNote: ISSUE_SIZE_NOTE ?? undefined,
     });
   } catch (err) {
-    if (err instanceof DatabaseError) {
+    if (err instanceof DatabaseError || err instanceof ProdWriteRefusedError) {
       console.error(`refused: ${err.message}`);
       return 1;
     }
@@ -124,8 +126,9 @@ async function main(): Promise<number> {
   }
 
   // Full-row backup of every child table the plan touches, taken BEFORE any write.
-  const backup: { takenAt: string; keep: unknown; drop: unknown; children: Record<string, unknown[]> } = {
+  const backup: { takenAt: string; database: string; keep: unknown; drop: unknown; children: Record<string, unknown[]> } = {
     takenAt: new Date().toISOString(),
+    database: dbName,
     keep: plan.keep,
     drop: plan.drop,
     children: {},
@@ -154,17 +157,53 @@ async function main(): Promise<number> {
   try {
     applied = await repo.mergeDuplicateInto(KEEP, DROP, {
       apply: true,
+      allowProd: ALLOW_PROD,
       forceDifferentName: FORCE_NAME,
       setIssueSize: SET_ISSUE_SIZE ?? undefined,
       issueSizeNote: ISSUE_SIZE_NOTE ?? undefined,
     });
   } catch (err) {
-    if (err instanceof DatabaseError) {
+    if (err instanceof DatabaseError || err instanceof ProdWriteRefusedError) {
       console.error(`refused: ${err.message}`);
       return 1;
     }
     throw err;
   }
+
+  // --- post-apply readback (MAJOR-2, PR #433 review) ------------------------------------------
+  // Re-query after commit — the predecessor script did this (git show
+  // 9709f987:scripts/merge-duplicate-ipo.mjs ~L319) and this CLI had silently dropped it: an
+  // "APPLIED." report with nothing that actually re-checked the write.
+  const dropCountResult = await db.execute(sql`select count(*)::int as n from ipos where id = ${DROP}`);
+  const dropRowCount = Number(
+    (dropCountResult as unknown as { rows: { n: number }[] }).rows?.[0]?.n ?? -1
+  );
+
+  const survivorResult = await db.execute(sql`select * from ipos where id = ${KEEP}`);
+  const survivor = (survivorResult as unknown as { rows: Record<string, unknown>[] }).rows?.[0];
+
+  const redirectResult = await db.execute(
+    sql`select 1 from ipo_slug_redirects where old_slug = ${drop.slug} and ipo_id = ${KEEP} limit 1`
+  );
+  const redirectExists = ((redirectResult as unknown as { rows: unknown[] }).rows?.length ?? 0) > 0;
+
+  const sameDayResult = await db.execute(
+    sql`select slug from ipos where open_date = ${keep.openDate} and id <> ${KEEP}`
+  );
+  const sameDaySiblingSlugs = (
+    (sameDayResult as unknown as { rows: { slug: string }[] }).rows ?? []
+  ).map((r) => r.slug);
+
+  const readback: MergeReadbackCheck[] = verifyMergeReadback({
+    dropRowCount,
+    survivor,
+    patch: applied.patch,
+    redirectExists,
+    sameDaySiblingSlugs,
+    keepId: KEEP,
+  });
+  readback.forEach((c) => console.log(`VERIFY: ${c.pass ? 'PASS' : 'FAIL'} — ${c.name}: ${c.detail}`));
+  const readbackOk = readback.every((c) => c.pass);
 
   writeLedgerFile(`scripts/state/merge-applied-${DROP}-${Date.now()}.json`, {
     appliedAt: new Date().toISOString(),
@@ -173,6 +212,7 @@ async function main(): Promise<number> {
     keepSlug: applied.keepSlug,
     droppedSlug: applied.droppedSlug,
     provenanceWritten: applied.provenanceWritten,
+    readback,
   });
 
   console.log('\nAPPLIED.');
@@ -185,6 +225,11 @@ async function main(): Promise<number> {
   console.log(
     '\n   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).'
   );
+
+  if (!readbackOk) {
+    console.error('\nVERIFY FAILED — the write committed but a post-apply check did not confirm it. See VERIFY lines above.');
+    return 2;
+  }
   return 0;
 }
 

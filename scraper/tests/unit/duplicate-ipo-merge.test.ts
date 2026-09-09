@@ -19,9 +19,12 @@ import {
   planDescendantTables,
   planCarryFields,
   checkMergeEligibility,
+  buildProvenanceMap,
+  verifyMergeReadback,
   REPOINT_TABLES,
   CARRY_IF_ABSENT_COLUMNS,
   type FkEdge,
+  type CarryFieldPatch,
 } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 
 describe('foldCompanyName', () => {
@@ -210,5 +213,123 @@ describe('checkMergeEligibility', () => {
       identifiers: [{ column: 'cin', keepValue: 'U11111', dropValue: 'U11111' }],
     });
     expect(result.eligible).toBe(true);
+  });
+});
+
+describe('buildProvenanceMap (MAJOR-1, PR #433 review)', () => {
+  const keepId = 'keep-uuid';
+  const dropId = 'drop-uuid';
+
+  it('a keep-side row never becomes the drop provenance for a field', () => {
+    // The exact shape of the regression: a query that (by mistake) fetched field_sources rows
+    // for BOTH ids, with the keep-side row for `listingDate` appearing AFTER the drop-side row —
+    // a naive `new Map(rows.map(...))` would let the later (keep) entry win.
+    const rows = [
+      { ipoId: dropId, fieldName: 'listingDate', source: 'CHITTORGARH', confidence: 70 },
+      { ipoId: keepId, fieldName: 'listingDate', source: 'ADMIN', confidence: 100 },
+    ];
+    const dropProv = buildProvenanceMap(rows, dropId);
+    expect(dropProv.get('listingDate')).toEqual({ ipoId: dropId, fieldName: 'listingDate', source: 'CHITTORGARH', confidence: 70 });
+  });
+
+  it('excludes every row not matching the requested ipoId', () => {
+    const rows = [
+      { ipoId: keepId, fieldName: 'cin', source: 'NSE', confidence: 90 },
+      { ipoId: 'some-other-ipo', fieldName: 'cin', source: 'BSE', confidence: 80 },
+    ];
+    const keepProv = buildProvenanceMap(rows, keepId);
+    expect(keepProv.size).toBe(1);
+    expect(keepProv.get('cin')?.source).toBe('NSE');
+  });
+
+  it('returns an empty map when no row matches the requested ipoId', () => {
+    const rows = [{ ipoId: keepId, fieldName: 'cin', source: 'NSE', confidence: 90 }];
+    expect(buildProvenanceMap(rows, dropId).size).toBe(0);
+  });
+});
+
+describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
+  const keepId = 'keep-uuid';
+  const patch: CarryFieldPatch[] = [
+    { column: 'listing_date', value: '2026-09-20', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    { column: 'cin', value: 'U11111MH2020PLC123456', source: 'ADMIN', confidence: 100, note: 'carried' },
+  ];
+
+  it('passes every check on a clean post-apply state', () => {
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      patch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    expect(checks.every((c) => c.pass)).toBe(true);
+    expect(checks.find((c) => c.name === 'dropped row deleted')?.pass).toBe(true);
+  });
+
+  it('fails "dropped row deleted" when the dropped row is still present', () => {
+    const checks = verifyMergeReadback({
+      dropRowCount: 1,
+      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      patch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'dropped row deleted');
+    expect(check?.pass).toBe(false);
+    expect(check?.detail).toMatch(/expected 0/);
+  });
+
+  it('fails "survivor present" when the survivor row is missing', () => {
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: undefined,
+      patch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    expect(checks.find((c) => c.name === 'survivor present')?.pass).toBe(false);
+  });
+
+  it('fails a carried-field check when the survivor does not actually carry the patched value', () => {
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { listingDate: null, cin: 'U11111MH2020PLC123456' },
+      patch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field listing_date');
+    expect(check?.pass).toBe(false);
+  });
+
+  it('fails "slug redirect present" when the redirect row is missing', () => {
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      patch,
+      redirectExists: false,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    expect(checks.find((c) => c.name === 'slug redirect present')?.pass).toBe(false);
+  });
+
+  it('same-day siblings is informational only — never fails the readback', () => {
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      patch,
+      redirectExists: true,
+      sameDaySiblingSlugs: ['some-other-ipo-slug'],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'same-day siblings (informational)');
+    expect(check?.pass).toBe(true);
+    expect(check?.detail).toMatch(/some-other-ipo-slug/);
   });
 });

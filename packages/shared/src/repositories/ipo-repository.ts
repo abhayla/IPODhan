@@ -33,7 +33,7 @@ import {
   getIPOSearchKey,
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
-import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
+import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError } from '../errors/repository-errors';
 import { logger } from '../logger';
 import {
   normalizedCompanyNameSql,
@@ -47,6 +47,7 @@ import {
   columnToCamelCase,
   planCarryFields,
   planDescendantTables,
+  buildProvenanceMap,
   REPOINT_TABLES,
   CARRY_IF_ABSENT_COLUMNS,
   DISAGREEING_IDENTIFIER_COLUMNS,
@@ -938,11 +939,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * `opts.apply` is true; `opts.apply: false` (the default posture callers
    * should use first) returns the same plan without writing anything.
    *
-   * Callers own their own production-write guard (see
-   * `scraper/scripts/repair-merge-duplicate-ipo.ts` for the CLI wrapper,
-   * which uses `openRepairDb`/`decideProdWriteRefusal` from
-   * `scraper/scripts/lib/repair-tool.ts`) — this method performs whatever it
-   * is asked to perform.
+   * The production-write guard lives IN THIS METHOD (MAJOR-3, PR #433
+   * review): when `opts.apply` is true, it reads `current_database()` from
+   * the SAME connection (`this.db`) and throws `ProdWriteRefusedError`
+   * before any write if that name is `ipodhan` and `opts.allowProd` is not
+   * `true`. Every caller — the CLI wrapper
+   * (`scraper/scripts/repair-merge-duplicate-ipo.ts`, which passes
+   * `allowProd` through from `--allow-prod`), a future admin route, or
+   * anything else — is protected the same way; the guard cannot be bypassed
+   * by forgetting to reimplement it at the call site.
    */
   async mergeDuplicateInto(
     keepId: string,
@@ -952,10 +957,31 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       forceDifferentName?: boolean;
       setIssueSize?: string;
       issueSizeNote?: string;
+      /** Required truthy to APPLY against the production database ("ipodhan"); ignored for dry runs. */
+      allowProd?: boolean;
     }
   ): Promise<MergeDuplicateResult> {
     if (keepId === dropId) {
       throw new DatabaseError('mergeDuplicateInto: keepId and dropId name the same row', undefined);
+    }
+
+    // --- prod write guard (MAJOR-3, PR #433 review) ---------------------------------------------
+    // First thing when apply is true, before any read or write: read from THIS SAME connection
+    // (this.db), never an env var — the tunnel env can say "staging" while the socket is on prod
+    // (see repair-tool.ts's queryCurrentDatabase doc). Refuses for every current and future caller
+    // of this method, not just the CLI wrapper — a bypass is no longer possible by forgetting to
+    // reimplement the guard at a new call site.
+    if (opts.apply) {
+      const currentDbResult = await this.db.execute(sql`select current_database()`);
+      const currentDbRows = (currentDbResult as unknown as { rows: { current_database: string }[] }).rows;
+      const currentDbName = String(currentDbRows?.[0]?.current_database ?? '');
+      if (currentDbName.toLowerCase() === 'ipodhan' && opts.allowProd !== true) {
+        throw new ProdWriteRefusedError(
+          `mergeDuplicateInto: refusing to APPLY writes against the production database "ipodhan" ` +
+            `(current_database() = "${currentDbName}") — pass opts.allowProd: true to override.`,
+          currentDbName
+        );
+      }
     }
 
     const rows = await this.db.select().from(ipos).where(inArray(ipos.id, [keepId, dropId]));
@@ -1010,12 +1036,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       counts.push({ table, col, keep: row?.keep ?? 0, drop: row?.drop ?? 0 });
     }
 
-    // --- provenance already on each row, so a carried field keeps its real source ------------------
+    // --- provenance already on the DROP row, so a carried field keeps its real source -------------
+    // MAJOR-1 (PR #433 review): scoped to dropId at the query AND again in buildProvenanceMap — a
+    // keep-side row must never become the "drop provenance" a carried value gets stamped with.
     const provRows = await this.db
-      .select({ fieldName: fieldSources.fieldName, source: fieldSources.source, confidence: fieldSources.confidence })
+      .select({
+        ipoId: fieldSources.ipoId,
+        fieldName: fieldSources.fieldName,
+        source: fieldSources.source,
+        confidence: fieldSources.confidence,
+      })
       .from(fieldSources)
-      .where(and(inArray(fieldSources.ipoId, [keepId, dropId]), eq(fieldSources.tableName, 'ipos')));
-    const dropProv = new Map(provRows.map((p) => [p.fieldName, p]));
+      .where(and(eq(fieldSources.ipoId, dropId), eq(fieldSources.tableName, 'ipos')));
+    const dropProv = buildProvenanceMap(provRows, dropId);
 
     const patch = planCarryFields(
       CARRY_IF_ABSENT_COLUMNS.map((column) => {

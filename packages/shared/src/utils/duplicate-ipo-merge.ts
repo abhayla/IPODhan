@@ -158,6 +158,24 @@ export interface ProvenanceRow {
   confidence: number;
 }
 
+/**
+ * Builds the dropped-row provenance lookup FROM rows already scoped to a
+ * single `ipoId` at the query level, defending in depth against a caller
+ * that (by mistake) fetched `field_sources` rows for BOTH the keep and drop
+ * ids in one query (MAJOR-1, PR #433 review): a keep-side row would silently
+ * become the "drop provenance" for a field, so a carried value gets stamped
+ * with the SURVIVOR's source instead of the dropped row's real one. Filtering
+ * again here — even though the caller is also expected to filter at the
+ * query — means a future caller cannot reintroduce the bug by loosening the
+ * query's `where`.
+ */
+export function buildProvenanceMap(
+  rows: (ProvenanceRow & { ipoId: string })[],
+  ipoId: string
+): Map<string, ProvenanceRow> {
+  return new Map(rows.filter((r) => r.ipoId === ipoId).map((r) => [r.fieldName, r]));
+}
+
 export interface CarryFieldInput {
   column: string;
   keepValue: unknown;
@@ -193,6 +211,83 @@ export function planCarryFields(inputs: CarryFieldInput[], droppedId: string): C
     });
   }
   return patch;
+}
+
+/**
+ * MAJOR-2 (PR #433 review): the predecessor script
+ * (`git show 9709f987:scripts/merge-duplicate-ipo.mjs`, lines ~319 onward)
+ * re-queried after commit — dropped row gone, survivor carries the patched
+ * fields, redirect row present, same-day sibling count — and printed the
+ * result. `repair-merge-duplicate-ipo.ts` had no equivalent: a bug that
+ * committed the wrong thing would report "APPLIED" with nothing to catch it.
+ * This is that check, as a pure function over already-fetched query results
+ * so it is unit-testable without a database — the CLI runs the queries and
+ * hands the rows here.
+ */
+export interface MergeReadbackInput {
+  /** `select count(*)::int from ipos where id = <dropId>` — MUST be 0. */
+  dropRowCount: number;
+  /** `select * from ipos where id = <keepId>` (one row, or undefined if missing). */
+  survivor: Record<string, unknown> | undefined;
+  /** The patch this merge was supposed to write onto the survivor. */
+  patch: CarryFieldPatch[];
+  /** Whether a `ipo_slug_redirects` row (old_slug -> keepId) exists. */
+  redirectExists: boolean;
+  /** Slugs of other `ipos` rows sharing the survivor's open_date (informational, not a failure). */
+  sameDaySiblingSlugs: string[];
+  keepId: string;
+}
+
+export interface MergeReadbackCheck {
+  name: string;
+  /** Informational checks (same-day siblings) are always `pass: true` — printed, never gating. */
+  pass: boolean;
+  detail: string;
+}
+
+/** Runs every readback check and returns them in report order. Exit-2 gating is `checks.every(c => c.pass)`. */
+export function verifyMergeReadback(input: MergeReadbackInput): MergeReadbackCheck[] {
+  const checks: MergeReadbackCheck[] = [];
+
+  checks.push({
+    name: 'dropped row deleted',
+    pass: input.dropRowCount === 0,
+    detail: `ipos rows remaining with the dropped id: ${input.dropRowCount} (expected 0)`,
+  });
+
+  checks.push({
+    name: 'survivor present',
+    pass: input.survivor != null,
+    detail: input.survivor != null ? `survivor row found (${input.keepId})` : `survivor row NOT FOUND (${input.keepId})`,
+  });
+
+  for (const p of input.patch) {
+    const jsKey = columnToCamelCase(p.column);
+    const actual = input.survivor ? input.survivor[jsKey] : undefined;
+    const pass = input.survivor != null && actual !== null && actual !== undefined && String(actual) === String(p.value);
+    checks.push({
+      name: `carried field ${p.column}`,
+      pass,
+      detail: `expected "${String(p.value)}", found "${String(actual)}"`,
+    });
+  }
+
+  checks.push({
+    name: 'slug redirect present',
+    pass: input.redirectExists,
+    detail: input.redirectExists ? 'ipo_slug_redirects row present' : 'ipo_slug_redirects row MISSING',
+  });
+
+  checks.push({
+    name: 'same-day siblings (informational)',
+    pass: true,
+    detail:
+      input.sameDaySiblingSlugs.length === 0
+        ? 'no other rows share the survivor open_date'
+        : `${input.sameDaySiblingSlugs.length} other row(s) share the survivor open_date: ${input.sameDaySiblingSlugs.join(', ')}`,
+  });
+
+  return checks;
 }
 
 export interface EligibilityInput {
