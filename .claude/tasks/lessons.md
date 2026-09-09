@@ -291,3 +291,35 @@ against the class, not just the original row.
 ## 2026-09-09 — no-overask-guard.sh blocked four genuine waits; synced to hub telemetry-only (T-143)
 - **Mistake:** IPODhan's Stop hook (`no-overask-guard.sh`) still emitted `{"decision":"block"}` on over-ask/narrate-and-stop, months after the hub flipped the same hook to telemetry-only (T-143, owner-approved 2026-08-16 — "the logs stay, the whip goes"). It blocked four turns today that were genuinely waiting on background workers. The reachable hub copy (`D:\Abhay\Ventures\claude-best-practices`) had drifted further than a drop-in swap: its genuine-wait exemption regex was the same size as the local one; what the hub copy actually lacks is the local genuine-wait/background exemption (`[waiting: background]`, absent from the hub file) and the `next up` word-boundary fix (reviewer, PR #439).
 - **Rule:** when a hook has both a reachable "canonical" hub copy AND a heavily project-hardened local copy, do NOT prefer the hub file just because it is newer/longer — diff the exemption/detection LOGIC, not just the block-vs-log framing, and carry forward any local fix the hub copy lacks. Prefer the minimal patch (flip the terminal action only, leave detection untouched) when the two copies have diverged in substance, and note the carried-forward fix in a comment so the next sync doesn't silently drop it again.
+
+## 2026-09-09 — a shared node_modules makes a worktree test the wrong source
+
+**What happened.** To avoid an `npm install` per worktree (gigabytes each), a tool junctioned the main
+checkout's whole `node_modules` into every worktree. npm workspaces keep an ABSOLUTE symlink at
+`node_modules/@scope/pkg -> <main>/packages/pkg`, so every worktree resolved the workspace package to
+the MAIN checkout's source. A slice editing `packages/shared/src/db/schema.ts` in its own worktree ran
+vitest and exercised the unedited file. Type-checking was fine — `tsconfig.json` uses relative `paths`
+— so only the runtime tests were wrong, which is the half nobody looks at.
+
+**Why it matters.** The tests go green for the wrong reason. This is the same class as
+"local green is not proof" (2026-09-08), one layer lower: not a gate that never ran, but a gate that
+ran against the wrong files.
+
+**Rule.** A worktree that borrows another checkout's `node_modules` MUST re-point every workspace
+package at its own copy. Before trusting any gate in a worktree, run
+`node -e "console.log(require.resolve('<the workspace package>'))"` and confirm the path is inside
+that worktree. `~/.claude/tools/wt-link-modules.ps1` now does the re-pointing by construction.
+
+## 2026-09-09 — a migration journal entry dated in the future silently disables migrations
+
+**What happened.** Three entries in `web/drizzle/migrations/meta/_journal.json` carried a `when` of
+2026-09-10T09:20 while the date was 2026-09-09. Drizzle applies a pending migration only when its
+`folderMillis` exceeds the last applied row's `created_at`, so every migration generated that day
+sorted earlier and was skipped — with `db:migrate` still exiting 0. Issue #442.
+
+**Why it matters.** On staging or production the deploy reports success and the column is simply not
+there, under code that reads it. A loud failure would have been far cheaper.
+
+**Rule.** Gate on the observable state, not the exit code, after a migration: assert the column or
+constraint exists. And keep a test that fails when any journal entry is dated in the future or out of
+ascending order — a date field nobody validates is a date field that will eventually be wrong.

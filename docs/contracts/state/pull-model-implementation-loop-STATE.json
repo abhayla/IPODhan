@@ -34,7 +34,9 @@
     "owner 2026-09-09: item-1 forks a/b/c all as recommended, cite OD-7 and the card, no new O-nn rows",
     "owner 2026-09-09: PR-gate budget of 6 runs for this run tonight; contract cap of 12/day returns 2026-09-10",
     "DEF-01: wt-new.ps1 makes a bare worktree; ~/.claude/tools/wt-link-modules.ps1 junctions node_modules from the main checkout - run it after every wt-new",
-    "INC-01: a verifier briefly wrote the app-role password to a scratch file; briefs now name the mistake explicitly"
+    "INC-01: a verifier briefly wrote the app-role password to a scratch file; briefs now name the mistake explicitly",
+    "DEF-02 CRITICAL 2026-09-09: wt-link-modules.ps1 junctioned node_modules wholesale, so a worktree resolved @ipodhan/shared to the MAIN checkout and vitest tested unedited source; tool rewritten to re-point workspace packages, all worktrees relinked, s1 gates being re-run",
+    "DEF-03 / issue #442: three _journal.json entries dated 2026-09-10 make any migration generated before then silently no-op on every slot; inserted as slice s0 ahead of s1"
   ],
   "items": {
     "item-01": {
@@ -43,9 +45,17 @@
       "status": "IN-PROGRESS",
       "slices": [
         {
+          "k": "s0",
+          "title": "fix #442 future-dated migration journal entries (blocks every schema slice)",
+          "status": "BUILDING",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
           "k": "s1",
           "title": "normalized_name column + backfill on promoters, peer_companies, ipo_intermediaries",
-          "status": "PLANNED",
+          "status": "IN-REVIEW",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -410,5 +420,8 @@
     }
   },
   "prGateBudgetTonight": 6,
-  "prGateRunsSpentByThisRun": 0
+  "prGateRunsSpentByThisRun": 0,
+  "issuesFiled": [
+    442
+  ]
 }
