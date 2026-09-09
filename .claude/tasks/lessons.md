@@ -323,3 +323,25 @@ there, under code that reads it. A loud failure would have been far cheaper.
 **Rule.** Gate on the observable state, not the exit code, after a migration: assert the column or
 constraint exists. And keep a test that fails when any journal entry is dated in the future or out of
 ascending order — a date field nobody validates is a date field that will eventually be wrong.
+
+## 2026-09-09 — a worker left a whole-filesystem scan running for an hour
+
+**What happened.** A builder looking for drizzle's migrator ran
+`find / -path "*/drizzle-orm/node-postgres/migrator*"` from Git Bash on Windows. `/` there is the
+whole C: drive. The task was still running 61 minutes later, competing for disk with every test suite
+dispatched after it, long after the question had been answered by reading the journal file directly.
+It only stopped because a goal check-in listed it as outstanding background work.
+
+**Why it matters.** This laptop has already had hook timeouts and crawling commits traced to resource
+starvation. An hour of background disk churn is not free, and nothing surfaced it — the builder that
+started it had finished and reported success.
+
+**Rule.** Never search from `/` or `C:\` on this machine. Scope every search to the repo, the
+worktree, or a named `node_modules` subtree, and cap it (`-maxdepth`). When a builder needs a fact
+about a dependency's internals, read the specific file — `node_modules/<pkg>/<path>` is knowable from
+the package's `exports` map — rather than searching for it. Worker briefs that involve inspecting a
+dependency should name the file to read.
+
+**Also:** a finished worker can leave live background processes behind. A worker's completion report
+is not evidence that its work has stopped. Check outstanding background tasks at every supervision
+tick, not only the agents still marked running.

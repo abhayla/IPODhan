@@ -36,7 +36,12 @@
     "DEF-01: wt-new.ps1 makes a bare worktree; ~/.claude/tools/wt-link-modules.ps1 junctions node_modules from the main checkout - run it after every wt-new",
     "INC-01: a verifier briefly wrote the app-role password to a scratch file; briefs now name the mistake explicitly",
     "DEF-02 CRITICAL 2026-09-09: wt-link-modules.ps1 junctioned node_modules wholesale, so a worktree resolved @ipodhan/shared to the MAIN checkout and vitest tested unedited source; tool rewritten to re-point workspace packages, all worktrees relinked, s1 gates being re-run",
-    "DEF-03 / issue #442: three _journal.json entries dated 2026-09-10 make any migration generated before then silently no-op on every slot; inserted as slice s0 ahead of s1"
+    "DEF-03 / issue #442: three _journal.json entries dated 2026-09-10 make any migration generated before then silently no-op on every slot; inserted as slice s0 ahead of s1",
+    "s1 Tier A FAIL: mutation at data-persister.ts:1928 left the suite green; five web write paths and the admin route uncovered; class not covered. Fix round + new slice s1b.",
+    "#443: peer companies delete-then-insert with no transaction inside retryWithBackoff - a failed insert loses the rows. Pre-existing, filed, not fixed by item 1.",
+    "s0 supersedes T-403: the wired journal linter constants MONOTONIC_CHECK_FROM_IDX/FUTURE_CHECK_AFTER_IDX = 33 were set to tolerate the future-dated entries; s0 makes the dates honest and must lower them or a recurrence still passes CI.",
+    "s0 round 2: the real hole was ONE_DAY_MS, not the index exemption - a 24h tolerance permits the whole defect class; now 5 minutes, and the pre-fix journal fails at the real clock.",
+    "s0 MERGED 6797fdab via PR #444. OWED: run repair-migration-journal-dates.ts --apply against ipodhan_staging at the next staging cycle; production is the owner call."
   ],
   "items": {
     "item-01": {
@@ -47,15 +52,23 @@
         {
           "k": "s0",
           "title": "fix #442 future-dated migration journal entries (blocks every schema slice)",
-          "status": "BUILDING",
-          "pr": null,
-          "sha": null,
+          "status": "MERGED",
+          "pr": 444,
+          "sha": "6797fdab",
           "tier": "A"
         },
         {
           "k": "s1",
           "title": "normalized_name column + backfill on promoters, peer_companies, ipo_intermediaries",
-          "status": "IN-REVIEW",
+          "status": "FIX-ROUND",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s1b",
+          "title": "web-side write paths populate normalized_name + admin edit recomputes it (review findings 3, 4)",
+          "status": "PLANNED",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -133,8 +146,12 @@
           "tier": "A"
         }
       ],
-      "prs": [],
-      "mergeShas": [],
+      "prs": [
+        444
+      ],
+      "mergeShas": [
+        "6797fdab"
+      ],
       "proof": {
         "status": "OWED",
         "cycle": null,
@@ -420,8 +437,9 @@
     }
   },
   "prGateBudgetTonight": 6,
-  "prGateRunsSpentByThisRun": 0,
+  "prGateRunsSpentByThisRun": 1,
   "issuesFiled": [
-    442
+    442,
+    443
   ]
 }

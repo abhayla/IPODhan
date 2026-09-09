@@ -549,3 +549,29 @@ What a reader of ipodhan.com would notice once this is deployed: nothing yet. It
 What went wrong: two things, both fixed inside the hour. First, the day's GitHub CI budget was already spent before this run started — 20 test runs against a limit of 12, none of them this run's. You allowed 6 runs for tonight, so work continues. Second, a fresh working copy of the repository starts with no installed packages, so the first attempt to prove the test database was usable failed with "psql not found" and "no node_modules". That is now a permanent fix: a small tool links the installed packages into every new working copy instead of re-downloading gigabytes per copy.
 
 What is needed from you: nothing right now. The next thing that will need you is turning a feature flag on for staging once item 1's first slices land — I will name it in the landing note.
+
+**2026-09-09 21:41 IST — tick.** Item 1: previous 0% of slices merged and proven, now still **0%** — nothing has merged yet, and that is the honest number. What moved is underneath it: the first slice is built and has passed an independent re-run of all ten of its checks, and a second slice was inserted ahead of it and is now written (three test files and a repair tool on disk, journal file edited). Eleven slices in item 1 now, not ten.
+
+What a reader of ipodhan.com would notice: still nothing. Both slices are plumbing.
+
+What went wrong, named rather than counted: exactly two problems, both found by building rather than by reading. (1) My own worktree tooling made every separate working copy resolve the shared code package back to the main checkout, so a test could pass against code the slice had not changed — fixed, and the fix is proved by the resolved path now pointing inside the working copy. (2) Issue **#442**: three migration records carry tomorrow's date, so any database change generated today is skipped while the command still reports success. That is not "known" folklore, it has a number, and it is being fixed first because on staging it would look like a successful deploy with the column simply absent. No other failures are open.
+
+What is needed from you: nothing. GitHub CI runs spent by this run tonight: **0 of the 6** you allowed.
+
+**2026-09-09 21:59 IST — tick.** Item 1: previous **0%** of slices merged and proven, now still **0%**. Twelve slices now, up from ten — the strict review added one and a blocking bug added another.
+
+What a reader of ipodhan.com would notice: still nothing. Both slices in flight are plumbing.
+
+What went wrong, named not counted. Three things are open, each with a number or a name. (1) **Issue #442** — three migration records dated tomorrow, so a database change made today is skipped while the command reports success. Being fixed; the fix is now on its third pass because the first two removed the *visible* half of the hole and left the half that mattered: the check tolerated any date up to 24 hours ahead, which is by itself enough to hide the entire bug. (2) **Issue #443** — an IPO's peer-comparison rows are deleted before being rewritten, with no transaction and nothing to put them back if the rewrite fails. Pre-existing, filed, not being fixed by this item. (3) **The first slice failed its strict review** and is being corrected: the review broke one of the new safeguards on purpose and every one of the 3,284 scraper tests still passed, which means nothing was actually guarding that write. It also found five more places in the website code that write the same rows without the new field — my instructions to the builder never mentioned those files, and that omission is mine.
+
+What is needed from you: nothing. GitHub CI runs spent by this run tonight: **0 of the 6** you allowed. Nothing has merged, and that is the honest headline — what has happened instead is that two defects which a green pipeline would never have shown you are now written down with reproductions.
+
+**2026-09-09 22:12 IST — tick.** Item 1: previous **0%** of slices merged and proven, now still **0%**. But the first slice is now one short cleanup away from being pushed: it passed its strict review with no serious findings.
+
+What a reader of ipodhan.com would notice: still nothing. This slice is repair work on how database changes get applied.
+
+What went wrong, named not counted. Open items are the same three as the last tick, no new ones. (1) **Issue #442** — migration records dated in the future, so a database change made today is skipped while the command reports success. The fix now passes strict review: a reviewer deliberately restored the old tolerance, broke the date comparison, and injected a fresh ordering fault, and each one made a named test fail. Before the fix, the check would not have caught the bug at all — the reason was a 24-hour grace period that was itself wide enough to hide the entire problem. (2) **Issue #443** — an IPO's peer-comparison rows are deleted before being rewritten with nothing to restore them if the rewrite fails. Filed, pre-existing, untouched by this work. (3) The first data slice still failed its review earlier and waits behind this one.
+
+One thing found and being fixed that is worth your attention because it is the same disease: the fix's own test suite contained **a test that could never fail** — it compared a value with itself and never called the function it claimed to check. It would have reported success forever. Shipping that inside a change whose whole argument is "a check that catches nothing is decoration" would have been self-refuting, so it is being rewritten and proved to fail before it is allowed to pass.
+
+What is needed from you: nothing. GitHub CI runs spent by this run tonight: **0 of the 6** you allowed. The first is spent when this slice pushes.
