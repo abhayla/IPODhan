@@ -19,13 +19,6 @@
 // walkthrough says the rule is untested — an empty result is an honest answer, not a failure.
 //
 // Read-only against production. Saves the row and the document inventory for every chosen IPO.
-// WHY. The design is walked end-to-end against two REAL IPOs, one mainboard and one SME. The
-// mainboard one is named by the contract (Asset Reconstruction Company (India) Ltd, which opened on
-// 2026-09-09). The SME one is defined by a measurement — "the OPEN or UPCOMING SME IPO with the most
-// documents on disk on production" — precisely so that nobody, including me, gets to pick the one
-// that makes the walkthrough look good.
-//
-// Read-only against production. Saves the row and the document inventory for both.
 
 import { openReadOnlyPool, saveOutput, nowStamp } from './_lib.mjs';
 

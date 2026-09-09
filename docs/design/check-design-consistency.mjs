@@ -328,7 +328,6 @@ try {
     var s52End = md.indexOf('#### The five rupee columns');
     if (s52End < 0) throw new Error('D13: section 5.2 lost its end anchor "#### The five rupee columns" — re-anchor the check, do not let it slice to the end of the file');
     var s52 = md.slice(md.indexOf('### 5.2 O-2'), s52End);
-    var s52 = md.slice(md.indexOf('### 5.2 O-2'), md.indexOf('#### O-12'));
     var haveCrore = [...s52.matchAll(/^\| `([a-z_0-9]+)` \| `([a-z_0-9]+)` \|/gm)]
       .map(function (m) { return m[1] + '.' + m[2]; }).sort();
     var missCrore = wantCrore.filter(function (x) { return haveCrore.indexOf(x) < 0; });
@@ -436,12 +435,6 @@ try {
     ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor +
       (prevFloor !== null ? ', unchanged from HEAD' : '') + '). ' + (evPairs - evHave) +
       ' pairs carry NO evidence and are outside this check.');
-  if (evBad.length) {
-    fail('D15', evBad.length + ' of ' + evPairs + ' evidence reference(s) do not hold up: ' + evBad.slice(0, 4).join(' | '));
-  } else if (evHave < floor) {
-    fail('D15', 'Evidence coverage fell below the ratchet: ' + evHave + ' of ' + evPairs + ' (field, source) pairs evidenced, floor is ' + floor + '. Evidence is never removed, only added.');
-  } else {
-    ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor + ').');
   }
 
   // --- D16: the build cards keep their promise ---

@@ -278,7 +278,6 @@ constraint violation.
 ## Detection
 
 `docs/reviews/detection-checks/field-sources-row-key-coverage.json` (NEW) (**NEW**) — asserts, for every
-`docs/reviews/detection-checks/field-sources-row-key-coverage.json` (**NEW**) — asserts, for every
 IPO with more than one `financial_statements`/`promoters`/`ipo_intermediaries`/`peer_companies` row,
 that `field_sources` has at least one row per `(tableName, rowKey)` pair that exists in the child
 table — i.e., no child row is silently un-provenanced. Runs in the nightly audit

@@ -185,14 +185,12 @@ Red before the change:
   currently tested — confirm path) — every existing red/green case for those functions is deleted,
   not left to fail against removed exports.
 - `scraper/tests/unit/services/document-compaction.test.ts` (NEW) (**NEW**) — asserts: (a) compaction is
-- `scraper/tests/unit/services/document-compaction.test.ts` (**NEW**) — asserts: (a) compaction is
   a no-op when store size is below the headroom threshold; (b) when above threshold, the
   **oldest** `extractedAt` candidate is compressed first, not an arbitrary one; (c) a document
   still `NOT_APPLICABLE`/unextracted is never selected (mirrors the old `decidePurge`'s
   `allDocumentsRead` guard, now applied to compression instead of deletion); (d) `readStoredDocument`
   returns byte-identical content whether the file is currently `.pdf` or `.pdf.gz`.
 - `scraper/tests/unit/scripts/backfill-document-file-size.test.ts` (NEW) (**NEW**) — asserts: rows with a
-- `scraper/tests/unit/scripts/backfill-document-file-size.test.ts` (**NEW**) — asserts: rows with a
   non-null `fileSize` are never touched; rows with a locally-stored file get the real stat size;
   rows with no local file are counted under `unresolvableNoLocalFile`, not silently skipped.
 - Tier: unit, per `.claude/rules/scraper-test-layout.md`.
@@ -200,7 +198,6 @@ Red before the change:
 ## Detection
 
 **NEW check**, `docs/reviews/detection-checks/document_compaction_progress.json` (NEW) (id
-**NEW check**, `docs/reviews/detection-checks/document_compaction_progress.json` (id
 `document_compaction_progress`): asserts the nightly `documents` count with `compressed_at IS NOT
 NULL` is non-decreasing and that store size (from the same probe methodology as
 `document-store-size.mjs`) stays under `PROSPECTUS_STORE_MAX_GB` — a FAIL here means compaction has

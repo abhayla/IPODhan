@@ -126,7 +126,6 @@ Rollback.
 ## Detection
 
 **New check**, `docs/reviews/detection-checks/c_fresh_ofs_reconciliation.json` (NEW) — nightly audit reads
-**New check**, `docs/reviews/detection-checks/c_fresh_ofs_reconciliation.json` — nightly audit reads
 every row where BOTH `ipo_details.freshIssue` and `ipo_details.ofsIssue` are non-null and asserts
 `|fresh + ofs - issueSize| / issueSize <= 0.005`. This is independent of the write path (reads only
 `ipos`/`ipo_details`, not the scraper internals), so it also catches a future write path that

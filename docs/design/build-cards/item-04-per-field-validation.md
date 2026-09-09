@@ -37,11 +37,6 @@ current rule set was never written to judge is recorded and kept, not silently b
 | `scraper/src/config/validation-rules-loader.ts` | **NEW** | `loadValidationRules()` — same parse-validate-throw contract as item 2's `loadFieldManifest()`, called from the same `scraper/src/index.ts` call site, right after it |
 | `scraper/src/services/field-extraction-validation.ts` | **NEW** | `validateFieldValue(params): FieldValidationOutcome` — the actual rule evaluator; pure function, no DB access, so it is unit-testable without a database |
 | `scraper/src/services/field-extraction-failures-repository.ts` (NEW) (+ the `web/lib/repositories/` mirror, per the existing field-sources/data-conflicts pairing) | **NEW** | Repository over the new `field_extraction_failures` table: `recordFailure(...)`, `markResolved(ipoId, tableName, fieldName, rowKey)` |
-| `scraper/config/validation-rules.yaml` | **NEW** (`scraper/config/` created by item 2; this is the second file in that "family") | One entry per validation rule: id, `appliesTo` (table/column), `offeringTypes`, `segments`, `validFrom`/`validTo`, `assertion` |
-| `scraper/config/validation-rules.schema.json` | **NEW** | JSON Schema (draft-07) for the file above |
-| `scraper/src/config/validation-rules-loader.ts` | **NEW** | `loadValidationRules()` — same parse-validate-throw contract as item 2's `loadFieldManifest()`, called from the same `scraper/src/index.ts` call site, right after it |
-| `scraper/src/services/field-extraction-validation.ts` | **NEW** | `validateFieldValue(params): FieldValidationOutcome` — the actual rule evaluator; pure function, no DB access, so it is unit-testable without a database |
-| `scraper/src/services/field-extraction-failures-repository.ts` (+ the `web/lib/repositories/` mirror, per the existing field-sources/data-conflicts pairing) | **NEW** | Repository over the new `field_extraction_failures` table: `recordFailure(...)`, `markResolved(ipoId, tableName, fieldName, rowKey)` |
 | `scraper/src/services/data-consolidation-service.ts` | exists, 2340 lines | `consolidateField` (line 983) calls `validateFieldValue` immediately after `const rules = getFieldRules(fieldName);` (currently line 1017) and before `normalize(fieldName, incomingValue, rules)` (line 1019) — see Interfaces for the exact gate |
 | `packages/shared/src/db/schema.ts` | exists, 1970 lines | New table `fieldExtractionFailures` — see Schema. Inserted after `dataConflicts` (ends line 1475) and before `financialStatements` (line 1682), matching the file's existing "one write-path table, then its relations" grouping |
 
@@ -324,7 +319,6 @@ row is ever written). On: the gate in Interfaces runs on every field.
 
 `docs/reviews/detection-checks/field-extraction-failure-rate.json` (NEW): a nightly audit script
 (`scripts/audit-field-extraction-failures.mjs` (NEW), NEW) that reads `field_extraction_failures` for the
-(`scripts/audit-field-extraction-failures.mjs`, NEW) that reads `field_extraction_failures` for the
 last 24h, groups by `ruleId`, and fails (non-zero exit) if any single rule's failure count on a
 FRESHLY-discovered document (not a re-read) crosses a threshold this card does not fix a number for
 — **the design does not say what rate is "too many"**, and I am not inventing one; the check ships

@@ -42,15 +42,11 @@ function isIgnored(p) {
   ignoreCache.set(p, answer);
   return answer;
 }
-const HEADINGS = ['## Purpose', '## Serves', '## Files', '## Schema', '## Interfaces',
-  '## Feature flag', '## Tests', '## Detection', '## Staging proof', '## Rollback',
-  '## Tier, budget and cost'];
 
 try {
   const files = fs.readdirSync(CARDS).filter((f) => /^item-\d+-.*\.md$/.test(f)).sort();
   const problems = [];
   let pathsChecked = 0, pathsMissing = 0, excused = 0;
-  let pathsChecked = 0, pathsMissing = 0;
 
   for (const f of files) {
     const md = fs.readFileSync(path.join(CARDS, f), 'utf8');
@@ -104,9 +100,6 @@ try {
         problems.push(isIgnored(p)
           ? `${f}: cites \`${p}\`, which .gitignore excludes — write \`${p}\` (LOCAL) so a reader knows it exists only on a machine that ran the probe`
           : `${f}: cites \`${p}\` which does not exist — write \`${p}\` (NEW) immediately after the path if this item creates it`);
-        if (/\bNEW\b/i.test(line)) continue;                // declared as new on the same line
-        pathsMissing++;
-        problems.push(`${f}: cites \`${p}\` which does not exist and is not marked NEW`);
       }
     }
 
@@ -120,9 +113,6 @@ try {
   console.log(`paths cited: ${pathsChecked}, excused by an adjacent (NEW)/(LOCAL): ${excused}, missing and unexcused: ${pathsMissing}`);
   if (!problems.length) {
     console.log('every card carries all thirteen headings in order, a budget, a tier, and only paths that resolve.');
-  console.log(`paths cited: ${pathsChecked}, missing and not marked NEW: ${pathsMissing}`);
-  if (!problems.length) {
-    console.log('every card carries all eleven headings in order, a budget, a tier, and only paths that resolve.');
     process.exit(0);
   }
   for (const p of problems) console.log('  FAIL ' + p);

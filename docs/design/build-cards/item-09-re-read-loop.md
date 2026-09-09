@@ -27,7 +27,6 @@ before item 6 exists.
 | `scraper/src/services/filing-auto-persist.ts` | exists | The single-field re-extraction path this item calls is the SAME extractor invocation `processPendingFilings` already uses for a fresh document (line 1373 onward) — this item does not fork a second extraction code path; it calls the existing one with a page hint from `chosen_page` on the plan row (§2.3's `ipo_field_plan` schema, item 5/6's table). |
 | `scraper/src/services/document-store.ts` | exists | The re-fetch in step 1 of §3.2 ("re-fetch the winning document's bytes and re-hash them") reuses whatever this file's existing download path is for a document already on record — **not read this session in enough depth to name a line range; the implementer must confirm the re-download entrypoint exists and is idempotent (same URL, same sha256 expected) before wiring this item to it.** |
 | `scraper/tests/unit/services/re-read-loop.test.ts` (NEW) | **NEW** | Unit tests per Tests below. |
-| `scraper/tests/unit/services/re-read-loop.test.ts` | **NEW** | Unit tests per Tests below. |
 
 ## Schema
 
@@ -105,7 +104,6 @@ instead of its own, that is a call for whoever builds item 6, not assumed here.
 ## Tests
 
 - **Unit, red before the change** (`scraper/tests/unit/services/re-read-loop.test.ts` (NEW), **NEW**):
-- **Unit, red before the change** (`scraper/tests/unit/services/re-read-loop.test.ts`, **NEW**):
   - `reReadField` returns `null`, not a `'confirmed'` outcome, when the re-download step throws or
     returns stale bytes — the direct test of the "no receipt, no verification" rule in §3.2's own
     warning paragraph.

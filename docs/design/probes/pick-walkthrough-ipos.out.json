@@ -1,7 +1,6 @@
 {
   "probe": "pick-walkthrough-ipos",
   "generated_at": "2026-09-09T10:16:48.751Z",
-  "generated_at": "2026-09-09T04:29:15.587Z",
   "slot": "production (read-only tunnel, localhost:15432 -> 103.118.16.189)",
   "mainboard": {
     "requested_slug": "asset-reconstruction-company-india-ltd",

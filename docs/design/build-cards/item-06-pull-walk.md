@@ -159,7 +159,6 @@ how PASS 3 was wired into `document-cycle.ts`, not a reason to skip the flag.
 ## Tests
 
 Tier: unit, `scraper/tests/unit/services/field-plan-walk.test.ts` (NEW) (**NEW**) — **red before the
-Tier: unit, `scraper/tests/unit/services/field-plan-walk.test.ts` (**NEW**) — **red before the
 change** (the module doesn't exist yet):
 
 1. A `PENDING` field with all three ranks fetchable: rank 1 returns `SUPPLIED` — asserts
@@ -181,7 +180,6 @@ change** (the module doesn't exist yet):
    (nothing left half-written).
 
 Integration, `scraper/tests/integration/field-plan-walk-resume.integration.test.ts` (NEW) (**NEW**, real
-Integration, `scraper/tests/integration/field-plan-walk-resume.integration.test.ts` (**NEW**, real
 DB — the resume behaviour is exactly what a mock cannot prove): start a walk, kill it (simulate
 process exit) after field 2 of 5 is claimed but before `recordOutcome` runs, start a second walk
 instance, assert field 2 is reclaimed (via the stale-claim path, item 5) and fields 3-5 are picked up
@@ -190,7 +188,6 @@ in the same run — the concrete proof of "resumable from any point" (§2.2).
 ## Detection
 
 `docs/reviews/detection-checks/pull-noop-suppression.json` (NEW) (**NEW** — this is check **PULL-NOOP**,
-`docs/reviews/detection-checks/pull-noop-suppression.json` (**NEW** — this is check **PULL-NOOP**,
 named in §2.5.2: *"writes per cycle divided by fields re-asked per cycle, which on a quiet day must
 be near zero"*). Asserts: for a data-job cycle with no newly-filed documents and no genuine source
 disagreements, `(field_sources rows written this cycle) / (ipo_field_plan rows with verify_state =

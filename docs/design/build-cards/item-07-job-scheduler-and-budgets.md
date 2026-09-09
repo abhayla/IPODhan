@@ -43,7 +43,6 @@ hours stale" over a weekend under the old gate) if it was not intended.
 | `scraper/src/scheduler/due-step-cycle.ts` | exists | `DISCOVERY_SLOTS_IST_MINUTES` (line 15, `[08:30, 11:00, 14:00, 17:30]`) is D-13's cadence, explicitly superseded by OD-19 (§2.1: "This supersedes D-13's timing for everything below"). Becomes the **data job's** three slots `[00:00, 08:00, 14:00]` (minutes `[0, 480, 840]`). The live-figures window (currently `isMarketHoursIST`, weekday 10:00-17:00) extends to 10:00-18:30 and drops the OPEN-IPO gate from "zero network calls if zero OPEN" (already present, lines 353-359) — that check is *kept*, not removed; only the window widens. |
 | `scripts/deploy-linux.sh` | exists | Lines 231-239 (`SCRAPER_CRON` computed per `$SLOT`) and line 681-683 / 1376 (`pm2 start ... --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}"`) — the whole `--cron-restart` mechanism is removed (see PM2 change below). |
 | `scripts/scraper-wake.sh` (NEW) | **NEW** | The lock-skip wrapper the owner's "never kill" rule requires — see PM2 ecosystem change below. |
-| `scripts/scraper-wake.sh` | **NEW** | The lock-skip wrapper the owner's "never kill" rule requires — see PM2 ecosystem change below. |
 | `scraper/tests/unit/services/filing-auto-persist.test.ts` | exists | Line 1412's existing static test (`'DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS + anchor sidecar + 60s < FILING_EXTRACTION_LOCK_TTL_MS'`) currently asserts the OLD, now-broken derivation (`3 × 30 min = 90 min`, which is **not** `< 60 min`) and must be rewritten against the new expression — see Tests. |
 | `scraper/tests/unit/services/document-cycle-wake-budget.test.ts` | exists | New assertions for `DEFAULT_WAKE_BUDGET_MS = 50 * 60 * 1000` and the env-override ceiling. |
 | `docs/ops/prod-ops-recipes.md` | exists | New "reading the three jobs" recipe entry (per `defect-fix-contract.md`'s "record ops recipes the same turn"). |
@@ -148,7 +147,6 @@ the scheduled minute (that is the literal mechanism §2.2 describes as today's f
 no PM2 flag that turns that into "skip if busy" instead of "restart regardless". OS-level cron (or a
 systemd timer — **the design does not say which, and this card does not choose between them**, since
 neither is visible in the code read this session) invokes a new wrapper, `scripts/scraper-wake.sh` (NEW)
-neither is visible in the code read this session) invokes a new wrapper, `scripts/scraper-wake.sh`
 (**NEW**), once per scheduled slot per job:
 
 ```

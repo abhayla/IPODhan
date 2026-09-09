@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`scripts/merge-duplicate-ipo.mjs` writes the survivor's `ipos` row through `IPORepository`
+`scraper/scripts/repair-merge-duplicate-ipo.ts` writes the survivor's `ipos` row through `IPORepository`
 (the same class every other write path uses) instead of raw SQL, gains a merge log keyed by a
 merge id and an `unmerge <merge-id>` command, and posts to the Notifier when a merge touches a
 live IPO — so `node scripts/check-write-ratchet.mjs` exits 0 with the baseline unchanged, and a
@@ -30,7 +30,7 @@ confusion for whoever picks this card up, named here so nobody "fixes" the wrong
 
 | Path | State | Change |
 |---|---|---|
-| `scripts/merge-duplicate-ipo.mjs` (347 lines) | exists | **Deleted.** Its raw SQL against `ipos` — `update ipos set ... where id = $1` (line 268) and `delete from ipos where id = $1` (line 316) — is exactly what `scripts/check-write-ratchet.mjs` flags: confirmed this session by running `node scripts/check-write-ratchet.mjs`, which prints `FAIL — new file(s) write to \`ipos\` outside the baseline: NEW: scripts/merge-duplicate-ipo.mjs [raw_sql]`. Its other raw SQL — the child-table repoint/delete (lines 303–312) and `insert into ipo_slug_redirects` (line 292) — is not against `ipos` and is not what the ratchet objects to; it is preserved in the replacement below, not rewritten for its own sake. |
+| `scraper/scripts/repair-merge-duplicate-ipo.ts` (347 lines) | exists | **Deleted.** Its raw SQL against `ipos` — `update ipos set ... where id = $1` (line 268) and `delete from ipos where id = $1` (line 316) — is exactly what `scripts/check-write-ratchet.mjs` flags: confirmed this session by running `node scripts/check-write-ratchet.mjs`, which prints `FAIL — new file(s) write to \`ipos\` outside the baseline: NEW: scripts/merge-duplicate-ipo.mjs [raw_sql]`. Its other raw SQL — the child-table repoint/delete (lines 303–312) and `insert into ipo_slug_redirects` (line 292) — is not against `ipos` and is not what the ratchet objects to; it is preserved in the replacement below, not rewritten for its own sake. |
 | `scraper/src/scripts/merge-duplicate-ipo.ts` | **NEW** | The tool, moved into the scraper workspace so it can import `IPORepository`, `FieldSourcesRepository`, `db`, `getRedisClient` and `notifyOwner` the way its siblings already do (see next two rows) — the plain-`pg`-against-a-bare-tunnel design of the `.mjs` version is what made "does not import scraper... this is a plain-node script" (its own header comment) true in the first place, and that constraint is exactly what has to give. `--keep`, `--drop`, `--apply`, `--allow-prod`, `--set-issue-size`, `--issue-size-note`, `--force-different-name` behave identically; the FK-graph child-table discovery (reverse-dependency order, `REPOINT` set, `CARRY_IF_ABSENT` list) is carried over unchanged; only the `ipos`-table writes and the log/unmerge/Notifier pieces are new. |
 | `scraper/src/scripts/backfill-stuck-listing.ts` | exists (cited, not changed) | Reference implementation for the pattern this item follows: `const ipoRepo = new IPORepository(db, redis);` (line 92), imports `db` from `@ipodhan/shared/db`, `getRedisClient` from `@ipodhan/shared/cache/redis-client`, `IPORepository` from `@ipodhan/shared/repositories/ipo-repository` — the exact three imports the new script needs. Its own header comment calls `upsertIPO` "write-path SSOT". |
 | `scraper/src/scripts/backfill-description-sector.ts` | exists (cited, not changed) | Same pattern, `const ipoRepo = new IPORepository(db, redis)` at line 112 — second confirmation this is the workspace's standing convention for a standalone repair/backfill script, not a one-off. |
@@ -149,7 +149,7 @@ Red before the change, green after — `scraper/tests/unit/scripts/merge-duplica
   `node scripts/check-write-ratchet.mjs` (or its exported `scanRepo`/`diffAgainstBaseline`
   functions, imported per `scripts/check-write-ratchet.mjs`'s own `export function`/`export const`
   declarations) against the repo tree after the change and assert `newFiles` is empty for
-  `scraper/src/scripts/merge-duplicate-ipo.ts` (NEW, this item) and `scripts/merge-duplicate-ipo.mjs`
+  `scraper/src/scripts/merge-duplicate-ipo.ts` (NEW, this item) and `scraper/scripts/repair-merge-duplicate-ipo.ts`
   no longer exists. This is red today (confirmed this session:
   `FAIL — new file(s) write to \`ipos\`... NEW: scripts/merge-duplicate-ipo.mjs [raw_sql]`).
 - `foldName` unit cases: unchanged from the old script, re-asserted so the move does not silently
@@ -201,7 +201,7 @@ scripts/tests/check-write-ratchet.test.mjs` (line 51).
 ## Rollback
 
 Revert the commit: `scraper/src/scripts/merge-duplicate-ipo.ts` (NEW, this item) and its
-package.json entry disappear, `scripts/merge-duplicate-ipo.mjs` comes back. No data is migrated by this item itself —
+package.json entry disappear, `scraper/scripts/repair-merge-duplicate-ipo.ts` comes back. No data is migrated by this item itself —
 it changes how a FUTURE merge is executed, not any row already merged (the ARCIL merge, run
 before this item existed, has no `mergeId` and cannot be `unmerge`d by this tool; see Known gaps).
 If a merge was already run and undone with the NEW tool before a revert, reverting the commit does

@@ -71,8 +71,6 @@
    together, so it can only find MORE collisions, never fewer. Finding **F-74**, carded to this item.
 5. **Dropping a unique constraint is destructive DDL.** The generated migration is split: the additive half (add column, add index) goes in the normal journal; the constraint swap goes in `web/drizzle/migrations/_gated/` and is applied by hand after the owner signs off. Adding a `_gated/` file to `meta/_journal.json` is what drops production columns; it is never done.
 6. **The flag is `ENABLE_CHILD_TABLE_CONSOLIDATION`,** default OFF in every slot including local. It is turned on for staging only, by the owner, after the migration has been applied there.
-4. **Dropping a unique constraint is destructive DDL.** The generated migration is split: the additive half (add column, add index) goes in the normal journal; the constraint swap goes in `web/drizzle/migrations/_gated/` and is applied by hand after the owner signs off. Adding a `_gated/` file to `meta/_journal.json` is what drops production columns; it is never done.
-5. **The flag is `ENABLE_CHILD_TABLE_CONSOLIDATION`,** default OFF in every slot including local. It is turned on for staging only, by the owner, after the migration has been applied there.
 6. **The old provenance write is deleted, not left running in parallel.** `trackField(tableName, 'rows')` writes one synthetic row per table and is superseded by per-field rows; leaving both would double-count every provenance report.
 7. **If a decision genuinely is the owner's** — irreversible, outward-facing, or two valid builds with no best-practice winner — record it in the progress log with a recommendation, continue on the recommendation, and list it first in the final report. Do not halt an hour in.
 
