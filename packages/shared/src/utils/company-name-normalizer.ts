@@ -14,6 +14,7 @@
  */
 
 import { sql, type SQL } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 
 /**
  * Canonical DISPLAY-name sanitizer (#42). Unlike `normalizeCompanyNameForMatching`
@@ -268,4 +269,48 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
     )
   )
 )`;
+}
+
+/**
+ * Prefix for the derived key `rowKeyForName` mints when a name is non-empty
+ * junk (pure punctuation/symbols, e.g. "----", "(())") that normalizes to
+ * ''. Never emitted by `normalizeCompanyNameForMatching` itself — that
+ * function's real output is always lowercase letters/digits/spaces — so
+ * this prefix can never collide with a genuine normalized key. Greppable:
+ * `grep -r "junk:" ` finds every call site that reads or writes this shape.
+ */
+export const JUNK_NAME_KEY_PREFIX = 'junk:';
+
+/**
+ * The ONE row-key function used by BOTH the backfill
+ * (`scraper/scripts/backfill-normalized-name.ts`) and every write path for
+ * `promoters`, `peer_companies` and `ipo_intermediaries` (Tier A round-2
+ * finding, 2026-09-09): the backfill previously minted `__empty__:<row id>`
+ * for a junk name, but the write paths are delete-then-insert — row ids are
+ * regenerated on every scrape, so an id-derived key can never be reproduced
+ * by a re-scrape of the same name. This function depends ONLY on the name.
+ *
+ * - Normal path (byte-identical to `normalizeCompanyNameForMatching` today
+ *   — no existing key changes): a name that normalizes to a non-empty
+ *   string returns that string.
+ * - Junk path: a name that normalizes to '' but still has non-whitespace
+ *   raw content returns a STABLE key derived only from the TRIMMED RAW
+ *   NAME — `${JUNK_NAME_KEY_PREFIX}<sha1 hex of the trimmed raw name>` —
+ *   never a row id, a timestamp, or anything a delete-then-insert write
+ *   path regenerates. Two rows with the SAME junk name intentionally
+ *   collide on this key (they are the same name — that is what the
+ *   slice-s2 `UNIQUE (ipo_id, normalized_name)` constraint is for).
+ * - No-identity path: null, undefined, empty, or whitespace-only input
+ *   returns `null` — the row carries no identity and the caller MUST skip
+ *   writing it rather than invent one.
+ */
+export function rowKeyForName(rawName: string | null | undefined): string | null {
+  const normalized = normalizeCompanyNameForMatching(rawName ?? '');
+  if (normalized !== '') return normalized;
+
+  const trimmedRaw = (rawName ?? '').trim();
+  if (trimmedRaw === '') return null;
+
+  const digest = createHash('sha1').update(trimmedRaw).digest('hex');
+  return `${JUNK_NAME_KEY_PREFIX}${digest}`;
 }

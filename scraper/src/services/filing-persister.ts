@@ -39,7 +39,7 @@ import type {
 } from '@ipodhan/shared';
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { upsertIPO } from './data-persister.js';
-import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 import {
   checkCrossDocumentAgreement,
   expandWithheldMetrics,
@@ -1374,13 +1374,26 @@ export async function persistFilingExtraction(
       ? promoterNames
       : ([str(extraction, 'promoter_name')].filter(Boolean) as string[]);
 
-  if (names.length > 0) {
-    const rows: PromoterInsert[] = names.map((name) => ({
+  const namesWithKeys = names
+    .map((name) => ({ name, key: rowKeyForName(name) }))
+    .filter(({ name, key }) => {
+      if (key === null) {
+        logger.warn(
+          { ipoId, table: 'promoters', name },
+          'skipping promoter row: name has no identity (empty/whitespace-only)'
+        );
+        return false;
+      }
+      return true;
+    });
+
+  if (namesWithKeys.length > 0) {
+    const rows: PromoterInsert[] = namesWithKeys.map(({ name, key }) => ({
       ipoId,
       name,
       // Item 1 slice s1 (row-key prep, F-74): the future row key
       // (docs/design/build-cards/item-01-child-table-consolidated-writer.md).
-      normalizedName: normalizeCompanyNameForMatching(name),
+      normalizedName: key as string,
       // promoter_shares_held is the AGGREGATE promoter holding; assigning it to
       // one named promoter would invent a per-person figure the ad never
       // printed. Left null; the aggregate goes to ipo_details.promoter_shares_held
@@ -1648,19 +1661,34 @@ export async function persistFilingExtraction(
     });
   }
 
-  if (intermediaries.length > 0) {
+  const intermediariesWithKeys = intermediaries
+    .map((row) => ({ row, key: rowKeyForName(row.name) }))
+    .filter(({ row, key }) => {
+      if (key === null) {
+        logger.warn(
+          { ipoId, table: 'ipo_intermediaries', role: row.role, name: row.name },
+          'skipping ipo_intermediaries row: name has no identity (empty/whitespace-only)'
+        );
+        return false;
+      }
+      return true;
+    });
+
+  if (intermediariesWithKeys.length > 0) {
     if (
       await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })
     ) {
       if (apply) {
-        const intermediariesWithKey: IpoIntermediaryInsert[] = intermediaries.map((row) => ({
-          ...row,
-          normalizedName: normalizeCompanyNameForMatching(row.name),
-        }));
+        const intermediariesWithKey: IpoIntermediaryInsert[] = intermediariesWithKeys.map(
+          ({ row, key }) => ({
+            ...row,
+            normalizedName: key as string,
+          })
+        );
         await deps.intermediaries.replaceForIpo(ipoId, intermediariesWithKey);
         await trackField('ipo_intermediaries', 'rows');
       }
-      bump(written, 'ipo_intermediaries', intermediaries.length);
+      bump(written, 'ipo_intermediaries', intermediariesWithKeys.length);
     }
   }
 
@@ -1696,11 +1724,22 @@ export async function persistFilingExtraction(
   if (peers.length > 0) {
     const peerRows = peers
       .filter((p) => typeof p.name === 'string' && (p.name as string).trim() !== '')
+      .map((p) => ({ ...p, companyName: (p.name as string).trim(), key: rowKeyForName((p.name as string).trim()) }))
+      .filter((p) => {
+        if (p.key === null) {
+          logger.warn(
+            { ipoId, table: 'peer_companies', name: p.companyName },
+            'skipping peer_companies row: name has no identity (empty/whitespace-only)'
+          );
+          return false;
+        }
+        return true;
+      })
       .map((p) => ({
         ipoId,
-        companyName: (p.name as string).trim(),
+        companyName: p.companyName,
         // Item 1 slice s1 (row-key prep, F-74): the future row key.
-        normalizedName: normalizeCompanyNameForMatching((p.name as string).trim()),
+        normalizedName: p.key as string,
         isListed: true, // the ad's peer table lists only listed comparables
         peRatio: numOrNull(p.pe),
         eps: numOrNull(p.eps_basic),

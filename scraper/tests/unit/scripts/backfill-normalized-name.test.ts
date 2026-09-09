@@ -1,24 +1,26 @@
 // implements: R-158
 /**
  * Item 1 slice s1 (row-key prep, F-74). The backfill's key computation must
- * fold company-name variants the same way the write paths' normaliser does
- * (packages/shared/src/utils/company-name-normalizer.ts,
- * normalizeCompanyNameForMatching) — this is the pure decision function,
- * `needsRepair`, unit-tested without a DB.
+ * fold company-name variants the same way the write paths' shared row-key
+ * function does (`rowKeyForName`,
+ * packages/shared/src/utils/company-name-normalizer.ts) — this is the pure
+ * decision function, `needsRepair`, unit-tested without a DB.
  *
- * Finding 6 (Tier A fix round): a row whose name normalises to '' used to
- * come back `write: false` forever (the stored '' default already equalled
- * the recomputed ''), so the empty-string sentinel survived the backfill —
- * a collision waiting to happen once slice s2 adds
- * `UNIQUE (ipo_id, normalized_name)` and two such rows share one IPO.
- * `needsRepair` now takes the row's own `id` and mints a stable, unique,
- * non-empty fallback key (`__empty__:<id>`) for that case, flagged via
- * `emptyNormalization: true`.
+ * Tier A round-2 finding (2026-09-09): the previous design minted
+ * `__empty__:<row id>` for a junk name, but the write paths are
+ * delete-then-insert — row ids are regenerated on every scrape, so an
+ * id-derived key can never be reproduced by a re-scrape of the same name.
+ * `needsRepair` now uses `rowKeyForName`, the SAME function every write path
+ * uses: a junk-but-non-empty name (e.g. "----") gets a stable key derived
+ * ONLY from the name; a name with no identity at all (null/empty/whitespace)
+ * gets `nullKey: true` and `write: false` — the row is left untouched for a
+ * human to resolve, never assigned an invented key.
  */
 import { describe, it, expect } from 'vitest';
-import { needsRepair, EMPTY_NORMALIZATION_PREFIX } from '../../../scripts/backfill-normalized-name';
+import { needsRepair } from '../../../scripts/backfill-normalized-name';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
-describe('backfill-normalized-name — needsRepair key computation (R-158)', () => {
+describe('backfill-normalized-name — needsRepair key computation (R-158, Tier A round-2)', () => {
   it('folds legal-suffix and parenthetical variants of a company name to one value', () => {
     const a = needsRepair({ currentNormalizedName: '', nameValue: 'ABC (India) Ltd', id: 'row-a' });
     const b = needsRepair({ currentNormalizedName: '', nameValue: 'ABC India Limited', id: 'row-b' });
@@ -49,36 +51,57 @@ describe('backfill-normalized-name — needsRepair key computation (R-158)', () 
     expect(result.write).toBe(false);
   });
 
-  describe('empty-normalization rows (Finding 6)', () => {
-    it('a whitespace-only name (real-shaped scrape junk) gets a stable non-empty fallback key, not the "" sentinel', () => {
+  describe('the backfill and the write path agree on the SAME key (Tier A round-2 proof)', () => {
+    it('a backfilled row and a re-scrape of the SAME junk name produce the IDENTICAL key', () => {
+      // The backfill calls needsRepair -> rowKeyForName internally. A write
+      // path (filing-persister.ts, data-persister.ts) calls rowKeyForName
+      // directly on a re-scrape of the same raw name. Assert the two code
+      // paths' outputs are equal — not two separately hard-coded strings.
+      const rawName = '----';
+      const backfillResult = needsRepair({ currentNormalizedName: '', nameValue: rawName, id: 'row-a' });
+      const writePathKey = rowKeyForName(rawName);
+      expect(backfillResult.recomputed).toBe(writePathKey);
+      expect(backfillResult.recomputed).not.toBeNull();
+    });
+
+    it('a backfilled row and a re-scrape of a real company name produce the IDENTICAL key', () => {
+      const rawName = 'ABC (India) Ltd';
+      const backfillResult = needsRepair({ currentNormalizedName: '', nameValue: rawName, id: 'row-a' });
+      const writePathKey = rowKeyForName(rawName);
+      expect(backfillResult.recomputed).toBe(writePathKey);
+      expect(backfillResult.recomputed).toBe('abc india');
+    });
+  });
+
+  describe('null-key rows (no identity at all) — Tier A round-2', () => {
+    it('a whitespace-only name has no identity: nullKey true, write false, recomputed null', () => {
       const result = needsRepair({ currentNormalizedName: '', nameValue: '   ', id: 'promoter-42' });
-      expect(result.emptyNormalization).toBe(true);
-      expect(result.recomputed).toBe(`${EMPTY_NORMALIZATION_PREFIX}promoter-42`);
-      expect(result.recomputed).not.toBe('');
-      // was previously stuck at write:false forever because '' === ''
-      expect(result.write).toBe(true);
+      expect(result.nullKey).toBe(true);
+      expect(result.write).toBe(false);
+      expect(result.recomputed).toBeNull();
     });
 
-    it('a pure-punctuation name (e.g. all hyphens) also folds to "" and gets the same fallback treatment', () => {
+    it('an empty name has no identity: nullKey true, write false', () => {
+      const result = needsRepair({ currentNormalizedName: '', nameValue: '', id: 'promoter-43' });
+      expect(result.nullKey).toBe(true);
+      expect(result.write).toBe(false);
+    });
+
+    it('a pure-punctuation name (e.g. all hyphens) is JUNK, not null — it gets a real stable key', () => {
       const result = needsRepair({ currentNormalizedName: '', nameValue: '----', id: 'peer-7' });
-      expect(result.emptyNormalization).toBe(true);
-      expect(result.recomputed).toBe(`${EMPTY_NORMALIZATION_PREFIX}peer-7`);
+      expect(result.nullKey).toBe(false);
+      expect(result.recomputed).not.toBeNull();
+      expect(result.recomputed).toBe(rowKeyForName('----'));
     });
 
-    it('two different empty-normalizing rows under the same IPO get DIFFERENT fallback keys (no future UNIQUE collision)', () => {
-      const rowA = needsRepair({ currentNormalizedName: '', nameValue: '   ', id: 'row-a' });
-      const rowB = needsRepair({ currentNormalizedName: '', nameValue: '-', id: 'row-b' });
-      expect(rowA.recomputed).not.toBe(rowB.recomputed);
-    });
-
-    it('is idempotent once the fallback key has already been written', () => {
+    it('is never re-flagged for write once nullKey — there is nothing to write', () => {
       const result = needsRepair({
-        currentNormalizedName: `${EMPTY_NORMALIZATION_PREFIX}promoter-42`,
+        currentNormalizedName: '',
         nameValue: '   ',
         id: 'promoter-42',
       });
       expect(result.write).toBe(false);
-      expect(result.emptyNormalization).toBe(true);
+      expect(result.nullKey).toBe(true);
     });
   });
 });

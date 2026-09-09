@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeCompanyNameForMatching, compactCompanyNameKey } from './company-name-normalizer';
+import {
+  normalizeCompanyNameForMatching,
+  compactCompanyNameKey,
+  rowKeyForName,
+  JUNK_NAME_KEY_PREFIX,
+} from './company-name-normalizer';
 
 /**
  * P2-1 (round-2 review, T-277): 11 duplicate IPO pairs existed in prod because
@@ -146,5 +151,63 @@ describe('compactCompanyNameKey — word-break fold (P2-1, T-277F)', () => {
     expect(compactCompanyNameKey('Sun Pharmaceutical Industries Ltd')).not.toBe(
       compactCompanyNameKey('Sunrise Pharmaceutical Industries Ltd')
     );
+  });
+});
+
+describe('rowKeyForName — the ONE row-key function shared by the backfill and every write path (Tier A round-2, F-74)', () => {
+  it('normal path: byte-identical to normalizeCompanyNameForMatching for a name that normalizes non-empty', () => {
+    const names = ['ABC (India) Ltd', 'Sunil Sharma', 'Caliber Mining & Logistics Ltd.', 'INDO MIM Limited'];
+    for (const name of names) {
+      expect(rowKeyForName(name)).toBe(normalizeCompanyNameForMatching(name));
+    }
+  });
+
+  it('no-identity path: null, undefined, empty, and whitespace-only (including a tab) all return null', () => {
+    expect(rowKeyForName(null)).toBeNull();
+    expect(rowKeyForName(undefined)).toBeNull();
+    expect(rowKeyForName('')).toBeNull();
+    expect(rowKeyForName('   ')).toBeNull();
+    expect(rowKeyForName('\t')).toBeNull();
+  });
+
+  it('junk path: pure-punctuation names that normalize to "" get a stable, non-empty, prefixed key', () => {
+    const dashes = rowKeyForName('----');
+    const parens = rowKeyForName('(())');
+    expect(dashes).not.toBeNull();
+    expect(parens).not.toBeNull();
+    expect(dashes).not.toBe('');
+    expect(parens).not.toBe('');
+    expect(dashes?.startsWith(JUNK_NAME_KEY_PREFIX)).toBe(true);
+    expect(parens?.startsWith(JUNK_NAME_KEY_PREFIX)).toBe(true);
+  });
+
+  it('junk path is STABLE and depends ONLY on the name: two calls with the same junk name agree', () => {
+    expect(rowKeyForName('----')).toBe(rowKeyForName('----'));
+    expect(rowKeyForName('(())')).toBe(rowKeyForName('(())'));
+  });
+
+  it('junk path: different junk names get different keys (no accidental collision)', () => {
+    expect(rowKeyForName('----')).not.toBe(rowKeyForName('(())'));
+  });
+
+  it('a backfilled row and a re-scrape of the SAME name produce the IDENTICAL key (the round-2 proof)', () => {
+    // Simulates: backfill computes the key once from a stored row's name;
+    // a later scraper cycle deletes+reinserts and recomputes the key from
+    // the SAME raw name. Both call rowKeyForName directly (there is no
+    // second implementation) so equality here is the actual guarantee, not
+    // two independently hard-coded strings.
+    const rawName = '----';
+    const backfillKey = rowKeyForName(rawName);
+    const rescrapeKey = rowKeyForName(rawName);
+    expect(backfillKey).toBe(rescrapeKey);
+
+    const realName = 'ABC (India) Ltd';
+    expect(rowKeyForName(realName)).toBe(rowKeyForName(realName));
+  });
+
+  it('the junk-key prefix can never collide with a real normalized key (real output is only lowercase/digits/spaces)', () => {
+    const realKey = rowKeyForName('ABC (India) Ltd') as string;
+    expect(realKey.startsWith(JUNK_NAME_KEY_PREFIX)).toBe(false);
+    expect(/^[a-z0-9 ]*$/.test(realKey)).toBe(true);
   });
 });

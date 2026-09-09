@@ -21,13 +21,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import path from 'path';
-import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
+import { normalizeCompanyNameForMatching, rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 vi.mock('../../../src/services/data-persister.js', () => ({
   upsertIPO: vi.fn(async () => 'ipo-id'),
 }));
+const { loggerWarn } = vi.hoisted(() => ({ loggerWarn: vi.fn() }));
 vi.mock('../../../src/utils/logger.js', () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  default: { info: vi.fn(), warn: loggerWarn, error: vi.fn(), debug: vi.fn() },
 }));
 
 import {
@@ -60,6 +61,33 @@ function extractionFromOracle(): FilingExtraction {
     fiscal_years: [2026, 2025, 2024],
     fields,
   };
+}
+
+/**
+ * Same fixture, with a junk/whitespace-only name spliced into each of the
+ * three child tables' source lists (promoter_names, syndicate_members,
+ * peer_companies) alongside the real, valid entries — Tier A round-2 skip
+ * proof: a row with no identity must be skipped, and the OTHER rows in the
+ * same batch must still be written.
+ */
+function extractionWithJunkNames(): FilingExtraction {
+  const extraction = extractionFromOracle();
+  const promoterNames = extraction.fields.promoter_names!.value as string[];
+  extraction.fields.promoter_names!.value = [...promoterNames, '   '];
+
+  const syndicateMembers = extraction.fields.syndicate_members!.value as Array<{
+    name: string;
+    role: string;
+  }>;
+  extraction.fields.syndicate_members!.value = [
+    ...syndicateMembers,
+    { name: '   ', role: 'SUB_SYNDICATE' },
+  ];
+
+  const peerCompanies = extraction.fields.peer_companies!.value as Array<Record<string, unknown>>;
+  extraction.fields.peer_companies!.value = [...peerCompanies, { name: '----' }];
+
+  return extraction;
 }
 
 function makeDeps() {
@@ -140,5 +168,63 @@ describe('filing-persister — normalized_name on every child-table insert (item
       expect(row.normalizedName).toBe(normalizeCompanyNameForMatching(row.companyName as string));
       expect(row.normalizedName).not.toBe('');
     }
+  });
+});
+
+describe('filing-persister — a null-key row is SKIPPED, the rest of the batch still writes (Tier A round-2)', () => {
+  it('promoters: a whitespace-only promoter name is skipped; the real promoters are still written and logged', async () => {
+    const s = makeDeps();
+    loggerWarn.mockClear();
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionWithJunkNames(),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const rows = s.replacePromoters.mock.calls[0][1] as Array<Record<string, unknown>>;
+    // 3 real promoters from the fixture; the whitespace-only 4th is skipped.
+    expect(rows.length).toBe(3);
+    expect(rows.every((r) => typeof r.name === 'string' && (r.name as string).trim() !== '')).toBe(true);
+    expect(
+      loggerWarn.mock.calls.some(
+        (call) => call[0]?.table === 'promoters' && call[1]?.includes('no identity')
+      )
+    ).toBe(true);
+  });
+
+  it('ipo_intermediaries: a whitespace-only syndicate-member name is skipped; every other intermediary row still writes', async () => {
+    const s = makeDeps();
+    loggerWarn.mockClear();
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionWithJunkNames(),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const rows = s.replaceIntermediaries.mock.calls[0][1] as Array<Record<string, unknown>>;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => typeof r.name === 'string' && (r.name as string).trim() !== '')).toBe(true);
+    expect(
+      loggerWarn.mock.calls.some(
+        (call) => call[0]?.table === 'ipo_intermediaries' && call[1]?.includes('no identity')
+      )
+    ).toBe(true);
+  });
+
+  it('peer_companies: a JUNK (non-empty, all-punctuation) peer name is NOT skipped — it gets the shared junk key', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionWithJunkNames(),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const rows = s.peerCreate.mock.calls[0][0] as Array<Record<string, unknown>>;
+    // 5 real peers from the fixture + the 1 junk-but-non-empty peer name.
+    expect(rows.length).toBe(6);
+    const junkRow = rows.find((r) => r.companyName === '----');
+    expect(junkRow).toBeDefined();
+    expect(junkRow?.normalizedName).toBe(rowKeyForName('----'));
+    expect(junkRow?.normalizedName).not.toBe('');
   });
 });
