@@ -985,9 +985,15 @@ four hours of its own bidding window. The fix is a **discovery-only** check: fet
 lists, register anything new or changed, and stop. It downloads nothing and extracts nothing, which
 is why it is safe to run on a clock without violating *"offer document never on a clock"*.
 
-The time is not a guess. Probe `probes/exchange-list-change-time.mjs` records, on days an IPO is due
-to open, the wall-clock time at which each exchange's list first shows the new row; the check is
-placed **15 minutes after the later of the two**. Its output is
+The time is not a guess, and its provenance is stated rather than assumed. Probe
+`probes/exchange-list-change-time.mjs` records, on days an IPO is due to open, the wall-clock time
+at which each exchange's list first shows the new row; the check is placed **15 minutes after the
+later of the two**. **Run today (2026-09-09) via its `--from-fixtures` method** — no IPO was due to
+open today, so the probe could not poll live — it read the saved NSE/BSE payloads already on disk
+and reported, correctly, `insufficient`: a single dated snapshot carries the date it was fetched,
+not the minute the exchange first published the row, and appearance time cannot be recovered from
+it. **09:45 therefore remains PROVISIONAL**, exactly as it was before this round, until three real
+opening-day observations exist (`--watch`, run on a day an IPO opens). Its output is
 `probes/exchange-list-change-time.out.json`, and the number in the table above is read from it.
 
 #### Post-listing prices: 15 minutes, 90 days, and no broker feed (OD-29)
@@ -3544,12 +3550,12 @@ four real offer documents.
 | `BSE` | 14 | 41 | 0 |
 | `CG` | 22 | 79 | 0 |
 | `IG` | 1 | 0 | 0 |
-| `REG` | 0 | 0 | 7 |
+| `REG` | 3 | 4 | 0 |
 | `ADMIN` | 0 | 0 | 3 |
 
-**72 of 387 pairs are backed by a payload we hold.** Check **D15** enforces that number as a ratchet: it may rise, and the gate fails if it falls — and since 2026-09-09 it also refuses a reference whose cited label is not actually in the file it points at.
+**75 of 387 pairs are backed by a payload we hold.** Check **D15** enforces that number as a ratchet: it may rise, and the gate fails if it falls — and since 2026-09-09 it also refuses a reference whose cited label is not actually in the file it points at.
 
-**What the other 315 mean, precisely, because this is where an honest report is easy to fake.**
+**What the other 312 mean, precisely, because this is where an honest report is easy to fake.**
 <!-- /generated:evidence-summary -->
 "Searched, nothing matched" is **not** proof that the source lacks the field. It means: in the
 payload saved for the two IPOs walked in this round, no label matched that column. Three separate

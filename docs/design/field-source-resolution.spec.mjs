@@ -354,7 +354,11 @@ for (const f of F) { const e = EV[f.t + '.' + f.c]; if (e) f.o.ev = e; }   // { 
 // business_description as its evidence. Tightening the matcher to whole tokens removed them. A floor
 // that forbids ever correcting a bad match would make the check protect the errors it was built to
 // prevent. Any FUTURE reduction needs the same thing this one has: a stated reason for each pair.
-export const EVIDENCE_FLOOR = 71;
+// Raised 71 -> 75 on 2026-09-09 (registrar-payload.mjs): three `registrars.*` pairs (name, website,
+// allotment_check_url) confirmed against a real registrar homepage. Four more (short_name, email,
+// phone, address) were probed and are DECLARED unreachable rather than left silent — see
+// evidence.json and D15's `evUnreachable` count.
+export const EVIDENCE_FLOOR = 75;
 
 export function RESOLVE(f, type) { return resolve(f, type); }
 

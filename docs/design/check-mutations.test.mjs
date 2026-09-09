@@ -51,6 +51,24 @@ const CASES = [
     expect: /^\[FAIL\] D15\b/m,
   },
   {
+    id: 'D15 declared-unreachable laundering — turn every CARRIES pair into a fake "unreachable" string',
+    files: ['docs/design/evidence.json'],
+    mutate() {
+      // 2026-09-09: the "unreachable on <date>: <reason>" form was added so a probed-but-unreachable
+      // pair could be DECLARED rather than left silent. That string must never count toward the
+      // floor — if it did, this mutation (relabelling every real CARRIES pair as "unreachable")
+      // would make the floor pass with ZERO real evidence, exactly the D15-laundering hole a
+      // reviewer found in the ratchet itself on this same date.
+      const ev = JSON.parse(fs.readFileSync('docs/design/evidence.json', 'utf8'));
+      for (const bySrc of Object.values(ev.fields)) {
+        for (const src of Object.keys(bySrc)) bySrc[src] = 'unreachable on 2026-09-09: mutation test';
+      }
+      fs.writeFileSync('docs/design/evidence.json', JSON.stringify(ev, null, 2) + '\n');
+    },
+    gate: designGate,
+    expect: /^\[FAIL\] D15\b/m,
+  },
+  {
     id: 'D18 check roster — remove the backticks around one check id (a pure formatting edit)',
     files: ['docs/design/data-sourcing-pull-model.md'],
     mutate() {
