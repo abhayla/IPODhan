@@ -1364,6 +1364,7 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   696.06 Cr -> 732.97 Cr: NSE states an OFS of up to 5,27,31,946 shares with no fresh issue, and
   52,731,946 x Rs.139 cap = Rs.7,329,740,494; the stored figure was the same share count at the
   Rs.132 floor. Tool `scripts/merge-duplicate-ipo.mjs` (dry-run default, --allow-prod gate, backup
+  Rs.132 floor. Tool `scraper/scripts/repair-merge-duplicate-ipo.ts` (dry-run default, --allow-prod gate, backup
   first, one transaction, child tables discovered from information_schema because a hand-typed list
   missed 11 of 30). Rehearsed on staging - which carried the identical pair - before prod. Verified:
   prod duplicate count 0 table-wide, live API one row at 7329740494.00, old slug resolves to the

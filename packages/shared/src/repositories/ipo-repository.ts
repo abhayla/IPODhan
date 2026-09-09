@@ -18,6 +18,8 @@ import {
   listingPerformance,
   peerCompanies,
   registrars,
+  fieldSources,
+  ipoSlugRedirects,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -31,7 +33,7 @@ import {
   getIPOSearchKey,
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
-import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
+import { EntityNotFoundError, DatabaseError, ProdWriteRefusedError } from '../errors/repository-errors';
 import { logger } from '../logger';
 import {
   normalizedCompanyNameSql,
@@ -40,6 +42,18 @@ import {
   normalizeCompanyNameForMatching,
 } from '../utils/company-name-normalizer';
 import { findMostSimilarName } from '../utils/company-name-similarity';
+import {
+  checkMergeEligibility,
+  columnToCamelCase,
+  planCarryFields,
+  planDescendantTables,
+  buildProvenanceMap,
+  REPOINT_TABLES,
+  CARRY_IF_ABSENT_COLUMNS,
+  DISAGREEING_IDENTIFIER_COLUMNS,
+  type FkEdge,
+  type CarryFieldPatch,
+} from '../utils/duplicate-ipo-merge';
 import type {
   IPO,
   IPOInsert,
@@ -112,6 +126,24 @@ export function classifyPrefixBoundary(normalizedA: string, normalizedB: string)
 export function isWordBoundaryPrefixMatch(normalizedA: string, normalizedB: string): boolean {
   const kind = classifyPrefixBoundary(normalizedA, normalizedB);
   return kind === 'exact' || kind === 'punctuation';
+}
+
+/** The merge plan `mergeDuplicateInto` computes and, when `apply` is true, executes. */
+export interface MergeDuplicatePlan {
+  keep: IPO;
+  drop: IPO;
+  patch: CarryFieldPatch[];
+  toDelete: { table: string; col: string; count: number }[];
+  toRepoint: { table: string; col: string; count: number }[];
+  descendantTableCount: number;
+  directTableCount: number;
+}
+
+export interface MergeDuplicateResult extends MergeDuplicatePlan {
+  applied: boolean;
+  keepSlug: string;
+  droppedSlug: string;
+  provenanceWritten: { fieldName: string; source: string; previousSource: string | null }[];
 }
 
 export class IPORepository extends BaseRepository implements IIPORepository {
@@ -891,6 +923,257 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         error
       );
     }
+  }
+
+  /**
+   * Merge two `ipos` rows that are one IPO twice (F-55 class: a company
+   * name-fold gap let a duplicate row through create-time dedup). Discovers
+   * every descendant table from the LIVE `information_schema` FK graph
+   * (never a hand-typed list — the class this exists to prevent, see
+   * `docs/architecture/write-path-hardening.md`), repoints person-created
+   * rows (`REPOINT_TABLES`) onto the survivor, deletes scraper-derived rows
+   * with the dropped row, carries a short allow-list of absent scalar
+   * columns onto the survivor with a `field_sources` provenance row each,
+   * writes a slug redirect so the dropped row's URL keeps resolving, and
+   * deletes the dropped `ipos` row. All-or-nothing in one transaction when
+   * `opts.apply` is true; `opts.apply: false` (the default posture callers
+   * should use first) returns the same plan without writing anything.
+   *
+   * The production-write guard lives IN THIS METHOD (MAJOR-3, PR #433
+   * review): when `opts.apply` is true, it reads `current_database()` from
+   * the SAME connection (`this.db`) and throws `ProdWriteRefusedError`
+   * before any write if that name is `ipodhan` and `opts.allowProd` is not
+   * `true`. Every caller — the CLI wrapper
+   * (`scraper/scripts/repair-merge-duplicate-ipo.ts`, which passes
+   * `allowProd` through from `--allow-prod`), a future admin route, or
+   * anything else — is protected the same way; the guard cannot be bypassed
+   * by forgetting to reimplement it at the call site.
+   */
+  async mergeDuplicateInto(
+    keepId: string,
+    dropId: string,
+    opts: {
+      apply: boolean;
+      forceDifferentName?: boolean;
+      setIssueSize?: string;
+      issueSizeNote?: string;
+      /** Required truthy to APPLY against the production database ("ipodhan"); ignored for dry runs. */
+      allowProd?: boolean;
+    }
+  ): Promise<MergeDuplicateResult> {
+    if (keepId === dropId) {
+      throw new DatabaseError('mergeDuplicateInto: keepId and dropId name the same row', undefined);
+    }
+
+    // --- prod write guard (MAJOR-3, PR #433 review) ---------------------------------------------
+    // First thing when apply is true, before any read or write: read from THIS SAME connection
+    // (this.db), never an env var — the tunnel env can say "staging" while the socket is on prod
+    // (see repair-tool.ts's queryCurrentDatabase doc). Refuses for every current and future caller
+    // of this method, not just the CLI wrapper — a bypass is no longer possible by forgetting to
+    // reimplement the guard at a new call site.
+    if (opts.apply) {
+      const currentDbResult = await this.db.execute(sql`select current_database()`);
+      const currentDbRows = (currentDbResult as unknown as { rows: { current_database: string }[] }).rows;
+      const currentDbName = String(currentDbRows?.[0]?.current_database ?? '');
+      if (currentDbName.toLowerCase() === 'ipodhan' && opts.allowProd !== true) {
+        throw new ProdWriteRefusedError(
+          `mergeDuplicateInto: refusing to APPLY writes against the production database "ipodhan" ` +
+            `(current_database() = "${currentDbName}") — pass opts.allowProd: true to override.`,
+          currentDbName
+        );
+      }
+    }
+
+    const rows = await this.db.select().from(ipos).where(inArray(ipos.id, [keepId, dropId]));
+    if (rows.length !== 2) {
+      throw new DatabaseError(
+        `mergeDuplicateInto: expected 2 rows in ipos for [${keepId}, ${dropId}], found ${rows.length}`,
+        undefined
+      );
+    }
+    const keep = rows.find((r) => r.id === keepId)!;
+    const drop = rows.find((r) => r.id === dropId)!;
+
+    const eligibility = checkMergeEligibility({
+      keepOpenDate: keep.openDate,
+      dropOpenDate: drop.openDate,
+      keepCompanyName: keep.companyName,
+      dropCompanyName: drop.companyName,
+      forceDifferentName: opts.forceDifferentName ?? false,
+      identifiers: DISAGREEING_IDENTIFIER_COLUMNS.map((col) => {
+        const jsKey = columnToCamelCase(col) as keyof typeof keep;
+        return { column: col, keepValue: keep[jsKey], dropValue: drop[jsKey] };
+      }),
+    });
+    if (eligibility.eligible === false) {
+      throw new DatabaseError(`mergeDuplicateInto: refused — ${eligibility.reason}`, undefined);
+    }
+
+    // --- discover children from the live schema (never hand-listed) --------------------------
+    const fkResult = await this.db.execute(sql`
+      select distinct tc.table_name as child, kcu.column_name as col, ccu.table_name as parent
+      from information_schema.table_constraints tc
+      join information_schema.key_column_usage kcu
+        on tc.constraint_name = kcu.constraint_name and tc.table_schema = kcu.table_schema
+      join information_schema.constraint_column_usage ccu
+        on tc.constraint_name = ccu.constraint_name and tc.table_schema = ccu.table_schema
+      where tc.constraint_type = 'FOREIGN KEY' and tc.table_schema = 'public'
+    `);
+    const fks = (fkResult as unknown as { rows: FkEdge[] }).rows;
+    const { reach, direct } = planDescendantTables(fks);
+
+    // --- count keep/drop rows in every direct child, for the plan report -------------------------
+    const counts: { table: string; col: string; keep: number; drop: number }[] = [];
+    for (const table of direct) {
+      const { col } = reach.get(table)!;
+      const r = await this.db.execute(sql`
+        select count(*) filter (where ${sql.identifier(col)} = ${keepId})::int as keep,
+               count(*) filter (where ${sql.identifier(col)} = ${dropId})::int as drop
+        from ${sql.identifier(table)}
+        where ${sql.identifier(col)} in (${keepId}, ${dropId})
+      `);
+      const row = (r as unknown as { rows: { keep: number; drop: number }[] }).rows[0];
+      counts.push({ table, col, keep: row?.keep ?? 0, drop: row?.drop ?? 0 });
+    }
+
+    // --- provenance already on the DROP row, so a carried field keeps its real source -------------
+    // MAJOR-1 (PR #433 review): scoped to dropId at the query AND again in buildProvenanceMap — a
+    // keep-side row must never become the "drop provenance" a carried value gets stamped with.
+    const provRows = await this.db
+      .select({
+        ipoId: fieldSources.ipoId,
+        fieldName: fieldSources.fieldName,
+        source: fieldSources.source,
+        confidence: fieldSources.confidence,
+      })
+      .from(fieldSources)
+      .where(and(eq(fieldSources.ipoId, dropId), eq(fieldSources.tableName, 'ipos')));
+    const dropProv = buildProvenanceMap(provRows, dropId);
+
+    const patch = planCarryFields(
+      CARRY_IF_ABSENT_COLUMNS.map((column) => {
+        const jsKey = columnToCamelCase(column) as keyof typeof keep;
+        return {
+          column,
+          keepValue: keep[jsKey],
+          dropValue: drop[jsKey],
+          dropProvenance: dropProv.get(columnToCamelCase(column)),
+        };
+      }),
+      dropId
+    );
+    if (opts.setIssueSize) {
+      patch.push({
+        column: 'issue_size',
+        value: opts.setIssueSize,
+        source: 'ADMIN',
+        confidence: 100,
+        note: opts.issueSizeNote || 'corrected during duplicate merge',
+      });
+    }
+
+    const toDelete = counts.filter((x) => x.drop > 0 && !REPOINT_TABLES.has(x.table));
+    const toRepoint = counts.filter((x) => x.drop > 0 && REPOINT_TABLES.has(x.table));
+
+    const plan: MergeDuplicatePlan = {
+      keep,
+      drop,
+      patch,
+      toDelete: toDelete.map((x) => ({ table: x.table, col: x.col, count: x.drop })),
+      toRepoint: toRepoint.map((x) => ({ table: x.table, col: x.col, count: x.drop })),
+      descendantTableCount: reach.size,
+      directTableCount: direct.length,
+    };
+
+    if (!opts.apply) {
+      return { ...plan, applied: false, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten: [] };
+    }
+
+    // --- apply, all or nothing -----------------------------------------------------------------
+    const keepProvRows = await this.db
+      .select({ fieldName: fieldSources.fieldName, source: fieldSources.source })
+      .from(fieldSources)
+      .where(and(eq(fieldSources.ipoId, keepId), eq(fieldSources.tableName, 'ipos')));
+    const keepProv = new Map(keepProvRows.map((p) => [p.fieldName, p.source]));
+
+    const provenanceWritten: { fieldName: string; source: string; previousSource: string | null }[] = [];
+
+    await this.db.transaction(async (tx) => {
+      for (const p of patch) {
+        const jsKey = columnToCamelCase(p.column);
+        await tx
+          .update(ipos)
+          .set({ [jsKey]: p.value, updatedAt: new Date() } as Partial<typeof ipos.$inferInsert>)
+          .where(eq(ipos.id, keepId));
+
+        const previousSource = keepProv.get(jsKey) ?? null;
+        const keepValueBefore = (keep as unknown as Record<string, unknown>)[jsKey];
+        await tx
+          .insert(fieldSources)
+          .values({
+            ipoId: keepId,
+            tableName: 'ipos',
+            fieldName: jsKey,
+            source: p.source as (typeof fieldSources.$inferInsert)['source'],
+            confidence: p.confidence,
+            previousValue: keepValueBefore === null || keepValueBefore === undefined ? null : String(keepValueBefore),
+            previousSource: previousSource as (typeof fieldSources.$inferInsert)['previousSource'],
+            dataLineage: { tool: 'merge-duplicate-ipo', mergedFrom: dropId, note: p.note, at: new Date().toISOString() },
+            updatedBy: 'merge-duplicate-ipo',
+          })
+          .onConflictDoUpdate({
+            target: [fieldSources.ipoId, fieldSources.tableName, fieldSources.fieldName],
+            set: {
+              source: p.source as (typeof fieldSources.$inferInsert)['source'],
+              confidence: p.confidence,
+              previousValue: keepValueBefore === null || keepValueBefore === undefined ? null : String(keepValueBefore),
+              previousSource: previousSource as (typeof fieldSources.$inferInsert)['previousSource'],
+              dataLineage: { tool: 'merge-duplicate-ipo', mergedFrom: dropId, note: p.note, at: new Date().toISOString() },
+              updatedBy: 'merge-duplicate-ipo',
+              updatedAt: new Date(),
+            },
+          });
+        provenanceWritten.push({ fieldName: jsKey, source: p.source, previousSource });
+      }
+
+      // The old URL must keep resolving; a merge that 404s a live IPO page is a regression.
+      await tx
+        .insert(ipoSlugRedirects)
+        .values({ oldSlug: drop.slug, ipoId: keepId, reason: 'DUPLICATE_MERGE' })
+        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
+
+      for (const table of direct) {
+        const { col } = reach.get(table)!;
+        if (REPOINT_TABLES.has(table)) {
+          // A unique violation means the survivor already holds the equivalent row, so the
+          // dropped row's copy is redundant rather than lost.
+          await tx.execute(sql`savepoint repoint`);
+          try {
+            await tx.execute(sql`
+              update ${sql.identifier(table)} set ${sql.identifier(col)} = ${keepId}
+              where ${sql.identifier(col)} = ${dropId}
+            `);
+            await tx.execute(sql`release savepoint repoint`);
+          } catch (e) {
+            const pgError = e as { code?: string };
+            if (pgError.code !== '23505') throw e;
+            await tx.execute(sql`rollback to savepoint repoint`);
+            await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+          }
+        } else {
+          await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+        }
+      }
+
+      await tx.delete(ipos).where(eq(ipos.id, dropId));
+    });
+
+    await this.invalidateCache(
+      [getIPOByIdKey(keepId), getIPOBySlugKey(keep.slug), getIPOByIdKey(dropId), getIPOBySlugKey(drop.slug)],
+      ['ipo:list:*', 'ipo:search:*']
+    );
+
+    return { ...plan, applied: true, keepSlug: keep.slug, droppedSlug: drop.slug, provenanceWritten };
   }
 
   /**

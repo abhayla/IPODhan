@@ -182,6 +182,7 @@ export {};
   where `basis` disagrees (RESTATED vs STANDALONE) for the same year, prefers RESTATED (matches
   `filing-persister.ts:1023-1027`'s own precedence comment).
 - `scraper/tests/unit/scrapers/objectives-scraper.test.ts` (NEW) (extend existing, or NEW if none exists —
+- `scraper/tests/unit/scrapers/objectives-scraper.test.ts` (extend existing, or NEW if none exists —
   **check before writing**: this session did not find one under `scraper/tests/unit/scrapers/`)
   asserting a Lakh-suffixed objective converts to crore and a no-unit-suffix objective is REFUSED
   (not silently stored as crore) — this is the regression guard for the defect at
@@ -196,6 +197,7 @@ export {};
 ## Detection
 
 **New check**, `docs/reviews/detection-checks/c_amount_column_unit_drift.json` (NEW) — asserts, per CRORE
+**New check**, `docs/reviews/detection-checks/c_amount_column_unit_drift.json` — asserts, per CRORE
 column, that the live distribution's median falls inside a plausible crore-scale band for its
 segment (reusing the `c_issue_size_floor` pattern already proven for `ipos.issue_size`:
 `docs/reviews/detection-checks/c_issue_size_floor.json`, MAINBOARD floor Rs10,00,00,000 /

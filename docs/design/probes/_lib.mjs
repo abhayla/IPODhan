@@ -67,6 +67,8 @@ export async function openReadOnlyPool(database = 'ipodhan') {
   // 1082 is the `date` OID. Returning the raw 'YYYY-MM-DD' the server sent removes the timezone
   // from the question entirely, which is the only fix that cannot drift back.
   pg.types.setTypeParser(1082, (v) => v);
+  const { Pool } = req('pg');
+  const password = globalEnv('IPODHAN_APP_DB_PASSWORD');
   const pool = new Pool({
     host: 'localhost',
     port: 15432,

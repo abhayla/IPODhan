@@ -135,6 +135,7 @@ the flag exists only to decouple deploy from enable.
   `main()`'s validation (line 2681-2682) before `run()` is ever reached, so the red state is trivial
   and mechanical, not a subtle miss.
 - **Fixtures needed, not yet in the repo.** `docs/design/probes/fixtures/pdf/` (LOCAL — the directory exists only on a machine that has run the probe; .gitignore excludes it on purpose) already gitignores
+- **Fixtures needed, not yet in the repo.** `docs/design/probes/fixtures/pdf/` already gitignores
   raw PDFs; the two documents the probes already fetched —
   `nsearchives.nseindia.com/content/ipo/RATIOS_ARCIL.zip` (asset-reconstruction-company-india-ltd)
   and `RATIOS_VINOD.zip` (vinod-texworld-ltd) — are the two real fixtures to extract from and

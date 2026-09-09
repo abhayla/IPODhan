@@ -334,6 +334,7 @@ inert, harmless to leave).
 ## Tests
 
 Tier: unit, `scraper/tests/unit/services/field-plan-repository.test.ts` (NEW) (new file, naming matches
+Tier: unit, `scraper/tests/unit/services/field-plan-repository.test.ts` (new file, naming matches
 existing `data-consolidation-*.test.ts` convention) — **red before the change** (the table and
 repository do not exist yet, so these are written against the interfaces above and fail to compile
 until item 5 lands, which is the correct "red" for a new-table item):
@@ -350,6 +351,7 @@ until item 5 lands, which is the correct "red" for a new-table item):
    `(ipoId, tableName, rowKey, fieldName)` — a plain constraint test, not requiring the repository.
 
 Integration, `scraper/tests/integration/field-plan-claim-race.integration.test.ts` (NEW) (**NEW**, real DB
+Integration, `scraper/tests/integration/field-plan-claim-race.integration.test.ts` (**NEW**, real DB
 — `FOR UPDATE SKIP LOCKED` behaviour cannot be proven against a mock): two simulated walk processes
 call `claimNextDueField` concurrently against ten PENDING rows; assert each row is claimed exactly
 once and all ten are eventually claimed.

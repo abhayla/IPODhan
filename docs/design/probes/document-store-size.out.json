@@ -15,6 +15,21 @@
     "documents_per_ipo_with_documents": 2.29,
     "mb_per_ipo_floor": 6.5,
     "mb_per_ipo_estimated": 16.8
+  "generated_at": "2026-09-09T04:45:18.029Z",
+  "source": "production, documents.file_size (read-only tunnel). Rows with a null file_size are counted separately and excluded from the byte total, so the figure is a floor, not an estimate.",
+  "ceiling_gb": 5,
+  "measured": {
+    "active_documents": 265,
+    "file_size_unknown": 163,
+    "total_bytes": 791219016,
+    "total_gb": 0.74,
+    "ipos_with_documents": 116,
+    "ipos_total": 330,
+    "documents_with_known_size": 102,
+    "mean_mb_per_known_document": 7.4,
+    "documents_per_ipo_with_documents": 2.28,
+    "mb_per_ipo_floor": 6.5,
+    "mb_per_ipo_estimated": 16.9
   },
   "by_type": [
     {
@@ -51,6 +66,8 @@
       "type": "ANCHOR_ALLOCATION_REPORT",
       "documents": 29,
       "gb": 0.021,
+      "documents": 28,
+      "gb": 0.02,
       "avg_mb": 1.1
     },
     {
@@ -96,6 +113,7 @@
       "ipos": 330,
       "gb_floor": 2.1,
       "gb_estimated": 5.42
+      "gb_estimated": 5.45
     },
     "at_500_ipos": {
       "ipos": 500,
@@ -105,5 +123,10 @@
     "fits_under_ceiling_at_500_floor": true,
     "fits_under_ceiling_at_500_estimated": false,
     "caveat": "163 of 266 active documents carry no file_size, so the floor figure counts them as zero bytes. The estimate assumes they are the same size as the 103 rows whose size is known. Backfilling file_size is the way to replace both numbers with one measured number."
+      "gb_estimated": 8.25
+    },
+    "fits_under_ceiling_at_500_floor": true,
+    "fits_under_ceiling_at_500_estimated": false,
+    "caveat": "163 of 265 active documents carry no file_size, so the floor figure counts them as zero bytes. The estimate assumes they are the same size as the 102 rows whose size is known. Backfilling file_size is the way to replace both numbers with one measured number."
   }
 }

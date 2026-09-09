@@ -252,6 +252,7 @@ check, not a shared one).
 Red before the change:
 
 - `scraper/tests/unit/scheduler/closed-ipo-job.test.ts` (NEW) (**NEW**) — asserts `CLOSED_IPO_CANDIDATES_SQL`
+- `scraper/tests/unit/scheduler/closed-ipo-job.test.ts` (**NEW**) — asserts `CLOSED_IPO_CANDIDATES_SQL`
   selects: (a) a `LISTED` IPO with `close_date` yesterday and no `closed_ipo_resourcing` row → included;
   (b) a `CLOSED` IPO with `close_date` today → excluded (`close_date < CURRENT_DATE`, not `<=`);
   (c) an `UPCOMING`/`OPEN` IPO → excluded regardless of close_date; (d) a `DONE`-outcome IPO →
@@ -266,6 +267,7 @@ Red before the change:
   `cause_class: 'DOCUMENT_UNOBTAINABLE'`, a second run at the same `resourced_at_version` does not
   re-select that IPO; bumping `resourced_at_version` does.
 - `scraper/tests/unit/scripts/backfill-filing-date.test.ts` (NEW) (**NEW**) — asserts the backfill sets
+- `scraper/tests/unit/scripts/backfill-filing-date.test.ts` (**NEW**) — asserts the backfill sets
   `filing_date` only where currently `NULL`, never overwrites an existing value, and the dry-run
   mode makes no writes.
 - Tier: unit (`scraper/tests/unit/`, mocked DB), per `.claude/rules/scraper-test-layout.md`. An
@@ -276,6 +278,7 @@ Red before the change:
 ## Detection
 
 **NEW check**, `docs/reviews/detection-checks/closed_ipo_job_progress.json` (NEW) (id
+**NEW check**, `docs/reviews/detection-checks/closed_ipo_job_progress.json` (id
 `closed_ipo_job_progress`, following the shape of the existing
 `docs/reviews/detection-checks/c_issue_size_consistency.json`): asserts the nightly count of
 `closed_ipo_resourcing` rows with `outcome != 'DONE'` and `last_attempt_at` within the last 24h is

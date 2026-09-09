@@ -187,6 +187,7 @@ for whoever lands this item, not fixed here.
 ## Tests
 
 - **Unit** — `scraper/tests/unit/config/field-priority-matrix.test.ts` (NEW) (existing file — confirm with (NEW)
+- **Unit** — `scraper/tests/unit/config/field-priority-matrix.test.ts` (existing file — confirm with (NEW)
   `ls`, extend if present, create if not): (1) each of the 27 deleted keys is absent from
   `Object.keys(FIELD_PRIORITY_MATRIX)`; (2) the 5 Group-A camelCase siblings still resolve to the
   exact same `FieldRules` object shape they had before (regression guard — the sibling's own rules

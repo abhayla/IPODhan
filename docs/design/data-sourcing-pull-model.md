@@ -105,6 +105,10 @@ it by assuming.
 | OD-50 | *"Avoid lot of deployments. If there is any urgent code change, it should happen the same day in the evening. If it is a normal code change, then it can be delayed for a week, or maybe it can happen on weekends."* | 2026-09-09 | §7.5 | the branching model and the two deploy cadences are stated, and the release grouping lists every build item (D17) |
 | OD-51 | *"For settings, we should use customization not code changes. When I said change the source of the field from currently one to three, you should just make a small customization change, not a code change. Everything is properly modularized and can easily be updated without affecting the whole code."* | 2026-09-09 | §7.6 | every tunable named in the design appears in the configuration schema, and the module map with its dependency rule is stated (D17) |
 | OD-52 | *"How will the implementation prove it has followed this design, rule by rule?"* — every normative rule gets an id, every build card lists the ids it implements, every test declares them, and CI refuses a PR that breaks the chain | 2026-09-09 | §8.5 | every R-id in `docs/design/rules.json` is claimed by at least one build card, with zero orphans (D19) |
+| OD-23 | Offer documents and the data taken from them survive close and listing | 2026-09-09 | §0.5 | the ten-day document window and the seven-day purge are gone from the design |
+| OD-24 | A new owner fork is recorded, marked provisional and continued on the recommendation — never guessed silently, never a halt | 2026-09-09 | §0.0.2 | every `PROVISIONAL on O-nn` marker names a row in §0.0.2, and every row this run added carries a marker or says it blocks nothing (D14) |
+| OD-25 | Probes are the standard of proof: a claim about a source, a document, the code or the data cites a probe output, a saved payload or a `file:line` | 2026-09-09 | §0.0.3 | every rank in Appendix A carries an evidence reference that resolves (D15) |
+| OD-26 | The finish line is the five-part definition of done in the implementation-ready contract, and provisional items are allowed to remain | 2026-09-09 | §8.4 | not mechanically checkable — recorded so it is not quietly widened |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -116,6 +120,8 @@ one place so the list of what needs him is not scattered through a tracker.
 answered by the owner on the morning of 2026-09-09 and moved to §0.0.1 as OD-19, OD-20 and OD-21.
 **O-12** (the five retail rupee columns) and **O-13** (the grey-market premium and the market-hours
 gate) were answered that afternoon and moved as **OD-48** and **OD-28**. A row leaves
+**Three of them are no longer here.** O-1 (cadence), O-2 (money unit) and O-3 (partial failure) were
+answered by the owner on 2026-09-09 and have moved to §0.0.1 as OD-19, OD-20 and OD-21. A row leaves
 this table only by being decided, never by being assumed.
 
 **How a new fork gets added (OD-24).** When work on this design meets a decision that is genuinely
@@ -131,6 +137,8 @@ nothing", fails the gate.
 | O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in the phase-1 build uses a language model, so there is nothing to approve yet. |
 | O-14 | The 19 rows whose `offering_type` is `OFS` may be either of two different things: the offer-for-sale COMPONENT of a public issue (a property of an IPO, already measured by `ipo_details.ofs_issue`), or SEBI's OFS-through-stock-exchange mechanism for an already-listed company — a one- or two-day auction with a floor price, no offer document, no lot size and no anchor round. Probe `probes/ofs-rows.mjs` settles WHICH they are. What it cannot settle is what the site should then do: model the exchange mechanism as its own offering type with a much smaller field set and its own page shape, or keep it inside the IPO shape with most fields marked NOT_APPLICABLE. | **RECOMMENDED: let the probe decide the fact, then model the exchange mechanism as its own type with roughly 35 applicable fields rather than 205.** A page that shows a price band, a lot size and an anchor book for an offering that has none of them is wrong in a way a reader notices immediately. §1.11 is written PROVISIONAL on this. · 2026-09-09 | It changes what a whole class of page looks like, and how many rows the coverage numbers are measured against — a product call, not an implementation detail |
 | O-15 | The design now shows a post-listing price on every IPO page, taken every 15 minutes from NSE's and BSE's free public quote endpoints and labelled "delayed". Fetching them is free; **republishing them may not be permitted**. NSE's Data Sharing and Usage Policy forbids a subscriber from redistributing market data except under an agreement, and nseindia.com's terms of use prohibit automated extraction and redistribution. The question is whether a 15-minute-delayed, dated, labelled last price on a public page counts as redistribution, and if so what licence covers it. | **RECOMMENDED: proceed with the 15-minute delayed, dated, clearly-labelled price while you check the licence position**, because a delayed and attributed quote is the lowest-risk form and the alternative — no price at all after listing — removes the most-asked number on a listed IPO's page. §2.1 is written PROVISIONAL on this. · 2026-09-09 | You are a Zerodha Authorised Person bound by the NSE Code of Advertisement; a redistribution question is a compliance call, not an engineering one, and the cost of being wrong is not a bug report |
+| O-12 | Five rupee columns are amounts, but converting them to crore would make the site worse: `ipo_details.min_investment` (about 15,000 rupees, `0.0015` crore), `max_retail_subscription` and `max_employee_subscription` (the 2-lakh and 5-lakh ceilings people read in lakh), and `gmp_records.kostak_rate` / `subject_rate` (per-application rates in hundreds of rupees). Does "crore is the default for every amount column" admit these five as named exceptions? | **RECOMMENDED: yes, keep these five in rupees** — a default with five reasoned exceptions, not a rule with silent ones. §5.2 and build item 11 are written on the recommendation. · 2026-09-09 | It changes what a reader sees on the page, which is the owner's call, not an implementation detail |
+| O-13 | On 2026-09-08 you approved taking the grey-market premium OUT of the market-hours gate (finding F-41): it was going stale for up to 65 hours over a weekend because the grey market is most active in the evening and trades at weekends. OD-19 the next day says *"live figures only during bidding"* and groups GMP with subscription. Read literally that re-freezes GMP overnight and at weekends. Which did you mean? | **RECOMMENDED: subscription and the demand graph only during bidding hours (they do not exist outside them), but GMP additionally fetched once by each data job at 00:00, 08:00 and 14:00 and by the 22:00 job.** That honours "live figures only during bidding" for the two figures it is really about, and keeps GMP from going stale overnight, which is what F-41 fixed. §2.1 is written on this recommendation. · 2026-09-09 | It changes the most-read number on an IPO page outside market hours, which is a product call, not an implementation detail |
 
 ### 0.0.3 The standard of proof this document is held to (OD-25)
 
@@ -270,6 +278,7 @@ Read out of the code this session:
   `DEFAULT_WAKE_BUDGET_MS = 20 * 60 * 1000` wake shared with everything else.
 - `LIVE_WINDOW_DAYS_AFTER_LISTING = 10` (`document-state-machine.ts:749`) — an IPO listed more than
   ten days ago gets **no document state rows at all**. **Removed by OD-23, as amended by OD-32; see §0.5.1.**
+  ten days ago gets **no document state rows at all**. **Removed by OD-23; see §0.5.1.**
 
 That last one was the migration blocker, and it was bigger than it looked:
 
@@ -339,6 +348,22 @@ count, or has sat unread past the hard cap, is purged **with its failure recorde
 URL survive, the bytes do not, and the failure is what the next re-read attempt reads. The 5 GB
 ceiling (`DEFAULT_MAX_STORE_GB`, `document-store.ts:46`) is the backstop, and it is a backstop rather
 than a policy: reaching it means the third arm is not working.
+#### 0.5.1 Both of those limits are removed (OD-23, owner 2026-09-09)
+
+> **Offer documents, and the data taken from them, survive close and listing.**
+
+- `LIVE_WINDOW_DAYS_AFTER_LISTING` (`document-state-machine.ts:749`) stops gating document work. An
+  IPO's documents are workable for the life of the IPO row.
+- The seven-day purge stops deleting. **An offer document is kept for the life of the IPO row.**
+- The 5 GB store ceiling stays, and is honoured by **compressing, not deleting**. When the store
+  approaches the ceiling, the oldest already-extracted PDFs are compressed in place; the file is
+  still there and still re-readable. Deletion is never the pressure valve, because a deleted
+  document is a field that can never be re-sourced without a download that may fail.
+
+**Why this matters more than it looks.** Every IPO that closes today joins the closed-IPO backlog
+tomorrow. Under the old rule it also *lost its documents* seven days later, so the backlog grew and
+each new member of it got harder to fix at the same time. Keeping the documents is what stops the
+backlog compounding; the 22:00 job (§6) is what drains it.
 
 **The number behind the ceiling** — the current on-disk size of the document store, and the size
 projected at 500 IPOs — comes from `docs/design/probes/document-store-size.mjs`, whose saved output
@@ -471,6 +496,10 @@ where that contract already names the section; new rows extend it in the same sh
 | 5 | `open_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `open ≤ close`; within 90 days of the RHP filing date | the other exchange, then CG. **The document is NOT a verification source** — see §1.2.1 | **Named exception E-1 (§1.2.1).** Owner decision 2026-09-08. |
 | 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | **scoped by offering type** (F-71): `close ≥ open` always; for IPO and FPO the issue must be **kept open** for 3 to 10 working days — an INCLUSIVE count, so the test is `3 ≤ working_days_inclusive(open, close) ≤ 10`, which for a Monday open and a Wednesday close is 3. **`working_days_inclusive` is defined once, in §4.6, and it needs a holiday calendar we already hold** — `market_holidays` is reference data in the schema, and a rule that counts working days without naming its holiday source is not implementable. Written as a difference it is 2, and false-fails nearly every mainboard IPO. SEBI ICDR **Reg 46** for a public issue, **Reg 140** for a further public offer, including any price-band extension; for RIGHTS a calendar bound of roughly 7–30 days; for NCD its own window from the prospectus. Applied unconditionally, the public-issue bound rejects all 8 legitimate rights issues on production | as 5 | **Named exception E-1** |
 | 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; **effective-dated**, and counted the same inclusive way as row 6 (`working_days_inclusive`, §4.6): `listing ≤ close + 3` working days for issues OPENING on or after **2023-12-01** (voluntary from 2023-09-01), `≤ close + 6` before that. Unconditional, it rejects roughly 200 legitimate LISTED rows the 22:00 job walks backwards into — the F-65 class exactly | as 5 | **Named exception E-1** |
+| 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | `lot × floor ≥ ₹10,000` mainboard; `≥ ₹1,00,000` SME (2 lots × ₹50k floor, SEBI 2025) | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
+| 5 | `open_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `open ≤ close`; within 90 days of the RHP filing date | the other exchange, then CG. **The document is NOT a verification source** — see §1.2.1 | **Named exception E-1 (§1.2.1).** Owner decision 2026-09-08. |
+| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `close ≥ open`; `close ≤ open + 10` working days | as 5 | **Named exception E-1** |
+| 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; `listing ≤ close + 3` working days (T+3) | as 5 | **Named exception E-1** |
 | 8 | `status` | 327 | **T** | **NSE** | **BSE** | CG | keep | — | must be a legal transition (UPCOMING→OPEN→CLOSED→LISTED); never regresses without an ADMIN row | our own date arithmetic. A status contradicting the dates is a conflict. | **Named exception E-1.** WITHDRAWN / POSTPONED only from the exchange or ADMIN |
 | 9 | `registrar` | 267 | D | DOC | BSE | CG | keep | E3 | resolves to a row in `registrars` by name or SEBI reg no. | CG, MC. Disagreement = re-read E3. | — |
 | 10 | `registrar_id` | 267 | **C** | — | — | — | keep | — | FK resolved from field 9 | derived; never sourced | — |
@@ -478,6 +507,7 @@ where that contract already names the section; new rows extend it in the same sh
 | 12 | `slug` | 327 | **C** | — | — | — | keep | — | `generateIPOSlug(company_name)`; unique; old slug written to `ipo_slug_redirects` | — | — |
 | 13 | `sector` | 196 | D | DOC | CG | MC | keep | F1 | non-empty, from the fixed sector list | CG. | — |
 | 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | **book-built only**: `floor < cap` AND `1.05 × floor ≤ cap ≤ 1.20 × floor`, both segments. ICDR Reg 30(2) caps the band at 120% of the floor; a December 2021 amendment set a 5% minimum spread; Chapter IX applies both to SME, so the `≤ 1.4 ×` SME carve-out an earlier draft carried **does not exist** and would have passed an illegal 40% band. **`issue_type = FIXED_PRICE` skips all three** — floor = cap, so the strict inequality AND the new lower bound both fail on a legal fixed-price issue; the first version of this fix exempted only the upper bound and would have failed every one of the 50 single-price SME rows. `floor ≥ face_value` always | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
+| 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | `floor < cap`; `cap ≤ 1.2 × floor` mainboard, `≤ 1.4 ×` SME; `floor ≥ face_value` | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
 | 15 | `price_range_max` | 300 | D | DOC | NSE | BSE | keep | A1 | as 14 | as 14 | as 14 |
 | 16 | `last_scraped_at` | 327 | **I** | — | — | — | keep | — | pipeline clock, UTC | — | — |
 | 17 | `listing_exchanges` | 327 | **T** | **NSE** | **BSE** | CG | keep | A15 | non-empty subset of {NSE, BSE}; an SME row may not claim both unless both confirm | the other exchange | **Named exception E-1.** Also **the only field that distinguishes SME-on-NSE from SME-on-BSE** — `ipos.exchange` is NULL on all 327 rows and `bse_scrip_code` on 0 of 327 |
@@ -619,6 +649,7 @@ Rank 2 is the exchange circular where one exists, rank 3 Chittorgarh's detail pa
 | 48 | `designated_exchange` | 8 | DOC | NSE | BSE | keep | A14 | one of {NSE, BSE}; must be in `listing_exchanges` | internal | SME-on-BSE: always BSE |
 | 49 | `lot_multiple` | 8 | DOC | BSE | — | keep | A3 | positive integer; `lot_multiple × lot × floor` is the true minimum | BSE | **SME: 2 since the 2025 rule** — this is the field that records it, rather than doubling `lot_size` |
 | 50 | `allocation_pct` | 6 | DOC | NSE | — | keep | A13 | **split by route, keyed on field 54 `sebi_regulation_cited`** (F-68): Reg 6(1) book-built → QIB **≤** 50, NII ≥ 15, retail ≥ 35; Reg 6(2) → QIB ≥ 75, NII ≤ 15, retail ≤ 10; fixed-price → its own split. The three net-offer categories must **sum to 100 ± 0.5**, not merely stay under it, and the anchor portion is part of the QIB share — never added on top | NSE circular | Fixed-price SME: different split, check relaxed to ≤ 100 only |
+| 50 | `allocation_pct` | 6 | DOC | NSE | — | keep | A13 | QIB + NII + retail ≤ 100; book-built QIB ≥ 50 (≥ 75 where the regulation is cited) | NSE circular | Fixed-price SME: different split, check relaxed to ≤ 100 only |
 | 51 | `pre_ipo_placement` | 5 | DOC | — | — | keep | D6 | boolean | none | absent for Rights/OFS |
 | 52 | `bid_windows` | 10 | DOC | NSE | — | keep | B8 | each window inside open..close | NSE | — |
 | 53 | `promoter_shares_held` | 1 | DOC | — | — | keep | D2 | `≤ total pre-issue shares` | none | — |
@@ -807,6 +838,11 @@ An earlier draft wrote it as `lot_multiple × lot × floor ≥ ₹1,00,000`, whi
 | **SME on both** | 5 | Unusual for SME. Treat as mainboard for ranking, but flag for review — this is more likely a data error than a genuine dual listing, and §4 gives it a check. |
 | **Rights issue** | 8 | No DRHP, no price band advertisement, no anchor round, no lot size in the IPO sense. Rank 1 is the letter of offer; where no document type exists for it, rank 1 falls to BSE. Fields 93–109, 131–137 are `NOT_APPLICABLE`, not gaps. **Three facts a rights-issue reader needs most are not among the 240 fields at all (F-72): the RECORD DATE, the ENTITLEMENT RATIO (for example 3 for every 5 held) and the rights-entitlement trading window.** Named here as a gap this design surfaces rather than closes — the same treatment the NCD row gets — with the letter of offer as rank 1 and the exchange's rights-issue circular as rank 2 when they are added. **The bidding-window check does not apply**: §1.2 row 6's `close ≤ open + 10 working days` is SEBI ICDR Reg 46, a PUBLIC-issue rule; a rights issue is legitimately open 7–30 calendar days (F-71). |
 | **OFS** | 19 | **MEASURED 2026-09-09 by `probes/ofs-rows.mjs`, and the answer is the exchange mechanism** (F-70). Of the 19 rows: **0 have a lot size, 0 have any document at all, 0 have a fresh issue, 0 have `ofs_issue` set, and exactly 1 of the 19 has a price band.** **The counts alone would NOT settle it**, and a review was right to say so: zero documents is partly our own coverage gap (`filing_date` is populated on 24 of 256 documents), and "no fresh issue" is equally true of a 100%-OFS public issue, which is common. What settles it is the **company names** — Coal India, BHEL, NHPC, NLC India, Hindustan Zinc, IRFC, IndiGrid and three public-sector banks, **every one already listed** when the row was created, which a public issue by definition is not. Two further tests belong in the build and are named here so they are not forgotten: the company has a **prior listing date or ISIN**, and an exchange OFS runs **T-day non-retail, T+1 retail**, so `close = open + 1`. That is SEBI's OFS-through-stock-exchange — a promoter of an already-LISTED company selling in a one- or two-day auction with a floor price — not the offer-for-sale COMPONENT of a public issue, which is what field 36 `ipo_details.ofs_issue` measures. **Two sentences this row used to carry are therefore false and are gone**: "`issue_size = ofs_issue`" (no row has `ofs_issue` at all) and the implication that a document ladder applies (no row has a document). The price band, lot size, anchor and allotment fields are `NOT_APPLICABLE` for this type, not gaps. **One row is an outlier and is not swept up with the rest**: HMA Agro Industries carries a price band but no lot size and no document, so it is reviewed individually rather than typed by the majority — 18 of 19 is a finding, not a rule. **PROVISIONAL on O-14** for the remaining question, which is a product one: whether these get their own page shape with roughly 35 applicable fields instead of 205. |
+| **SME on BSE** | 106 | `listing_exchanges = ["BSE"]`. **NSE cannot be rank 2 or 3 for any field** — there is no NSE payload. Minimum application is **2 lots** (SEBI 2025), recorded in `ipo_details.lot_multiple`, so the lot-value check is `2 × lot × floor ≥ ₹1,00,000`; applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the `cap ≤ 1.2 × floor` check is skipped and floor = cap is expected. Designated exchange is always BSE. |
+| **SME on NSE** | 61 | Mirror image: `listing_exchanges = ["NSE"]`, **BSE cannot be rank 2 or 3**. Same 2-lot rule. |
+| **SME on both** | 5 | Unusual for SME. Treat as mainboard for ranking, but flag for review — this is more likely a data error than a genuine dual listing, and §4 gives it a check. |
+| **Rights issue** | 8 | No DRHP, no price band advertisement, no anchor round, no lot size in the IPO sense. Rank 1 is the letter of offer; where no document type exists for it, rank 1 falls to BSE. Fields 93–109, 131–137 are `NOT_APPLICABLE`, not gaps. |
+| **OFS** | 19 | No fresh issue: field 35 is legitimately 0 and `issue_size = ofs_issue`. No objects of the offer (field 27 empty is correct). No DRHP stage. |
 | **NCD** | 7 | Debt. Price band, EPS, PE, promoter holding and peer comparison are all `NOT_APPLICABLE`. Its own prospectus is rank 1 for coupon, tenor and rating — **none of which we currently store**, which is a gap this design surfaces rather than closes. |
 | **INVITS / REITS** | 5 | `segment` is NULL for all 5 today. Unit-based, not share-based; lot size and face value do not apply in the same sense. Out of the pull model's first release — say so explicitly rather than letting them fail every check. |
 | **BUYBACK / TENDER** | 17 | Corporate actions, not offerings. They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 `offering_type` is the guard; §4.6 gives it a check. |
@@ -967,6 +1003,17 @@ again. Only a new document for an existing IPO is scraped."* Written as four rul
 
 Every later re-read (a website disagreement, a fixed extractor) works from the **stored text**, never
 from a fresh download — which is what makes OD-32's seven-day PDF window safe.
+| Job | When (IST) | What it touches | What it must never do |
+|---|---|---|---|
+| **Data job** | **00:00, 08:00, 14:00** | discovery; document download and extraction; the per-field pull walk; verification reads | never re-read a document because time passed |
+| **Live-figures job** | **every 30 minutes, 10:00–18:30**, only on a day when at least one IPO is OPEN | subscription, demand graph, and grey-market premium (**PROVISIONAL on O-13** — GMP is additionally fetched by each data job and the 22:00 job, so it does not go stale overnight; see §2.1.1 and F-41) | never touch a document, a field plan row, or any static field |
+| **Closed-IPO job** | **22:00** | at most **10** IPOs a night, status LISTED or CLOSED, close date before today, ordered by close date **descending**, each marked done so it is never picked twice | never start while the data job's cycle lock is held |
+
+Three jobs, and one rule that binds all of them: **no job ever kills a running cycle.**
+
+*(The contract that commissioned this round called these "four jobs". The owner's words define three
+jobs and one rule; the fourth bullet in that list is the no-kill rule, not a job. Recorded here
+rather than inventing a fourth job to match a miscount.)*
 
 **A document is read once, on arrival**, and again only when (a) a newer document *type* arrives for
 that IPO, (b) the extractor version changes, or (c) the re-read loop of §3 asks for it. There is no
@@ -1354,6 +1401,8 @@ detects a duplicate either. Two things follow, and both belong to the loop rathe
    the word is not in suffix position when the regex looks for it. The fix is the whole-word strip
    already shipped in `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs`, not another word in a
    list that already contains it.
+1. **The normaliser must fold corporate-form words** — `Company`/`Co.`, `Corporation`/`Corp.`,
+   `Industries`/`Inds.` — not only the legal suffix.
 2. **Duplicate detection is a check that runs at discovery**, on a deliberately stricter key than
    the binding key. A sweep with such a key over production finds exactly one duplicate group today:
    this one. Binding and de-duplication want opposite error biases, so they must not share a key.
@@ -1423,6 +1472,9 @@ duplicate proves the point: the second Asset Reconstruction row carries **no ide
    halves — the arrival check above, **and a standing sweep** in the nightly audit that groups every
    row by each identifier it holds and reports any group of more than one, by name. The sweep is
    what catches the ones already in the data; the arrival check is what stops new ones forming.
+2. **Every time a stronger identifier arrives, check it against every other row.** When the second
+   row is assigned its symbol it becomes `ARCIL`, **and `ARCIL` already exists**. That collision is
+   the detection, and it is guaranteed to arrive before listing even though it is absent today.
 3. **Converging identifiers mean a merge, not an alert.** Two rows sharing one symbol, one CIN or
    one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated
    fields, and preserves the provenance of both — a warning nobody reads is what produced the
@@ -2463,6 +2515,43 @@ time. The build-card round caught it by reading the writers.
 | `ipo_valuation` | `mcap_at_cap` | RUPEES — written in rupees by the filing persister | **converted, and existing rows repaired from source** |
 | `ipo_valuation` | `mcap_at_floor` | RUPEES — written in rupees by the filing persister | **converted, and existing rows repaired from source** |
 | `ipos` | `issue_size` | RUPEES — normalizeCurrency stores rupees; the column comment in schema.ts says so | **converted, and existing rows repaired from source** |
+| `anchor_investors` | `total_amount_raised` | CRORE â€” already crore - this is the reference the rest converge on | nothing â€” already crore |
+| `financial_data` | `ebitda_fy2022` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `ebitda_fy2023` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `ebitda_fy2024` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `market_cap` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `net_worth` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `profit_fy2022` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `profit_fy2023` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `profit_fy2024` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `reserves_and_surplus` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `revenue_fy2022` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `revenue_fy2023` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `revenue_fy2024` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `total_assets` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `total_borrowing` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `total_borrowings` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `total_income_fy2022` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `total_income_fy2023` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_data` | `total_income_fy2024` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `financial_statements` | `ebitda` | PER_ROW_UNIT â€” financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted | nothing â€” read via its own `unit` column at derive time |
+| `financial_statements` | `net_worth` | PER_ROW_UNIT â€” financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted | nothing â€” read via its own `unit` column at derive time |
+| `financial_statements` | `op_cash_flow` | PER_ROW_UNIT â€” financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted | nothing â€” read via its own `unit` column at derive time |
+| `financial_statements` | `pat` | PER_ROW_UNIT â€” financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted | nothing â€” read via its own `unit` column at derive time |
+| `financial_statements` | `rent_expense` | PER_ROW_UNIT â€” financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted | nothing â€” read via its own `unit` column at derive time |
+| `financial_statements` | `revenue` | PER_ROW_UNIT â€” financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted | nothing â€” read via its own `unit` column at derive time |
+| `financial_statements` | `total_income` | PER_ROW_UNIT â€” financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted | nothing â€” read via its own `unit` column at derive time |
+| `ipo_details` | `fresh_issue` | RUPEES â€” written in rupees by the filing persister | **converted, and existing rows repaired from source** |
+| `ipo_details` | `ofs_issue` | RUPEES â€” written in rupees by the filing persister | **converted, and existing rows repaired from source** |
+| `ipo_financials` | `profit_fy1` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `ipo_financials` | `profit_fy2` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `ipo_financials` | `profit_fy3` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `ipo_financials` | `revenue_fy1` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `ipo_financials` | `revenue_fy2` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `ipo_financials` | `revenue_fy3` | CRORE â€” already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore) | nothing â€” already crore |
+| `ipo_valuation` | `mcap_at_cap` | RUPEES â€” written in rupees by the filing persister | **converted, and existing rows repaired from source** |
+| `ipo_valuation` | `mcap_at_floor` | RUPEES â€” written in rupees by the filing persister | **converted, and existing rows repaired from source** |
+| `ipos` | `issue_size` | RUPEES â€” normalizeCurrency stores rupees; the column comment in schema.ts says so | **converted, and existing rows repaired from source** |
 
 So the honest summary of OD-20's data work is much smaller than the class count suggests: **five
 columns hold rupees and need converting with a source-backed repair.** The rest either already hold
@@ -2524,6 +2613,19 @@ last rupee, and a correct display string at each:
 The test also asserts that the numeric guard added in #423 **does not fire** at Aramco scale — a
 guard that rejects a legitimate world-record issue is the same defect as one that lets a share count
 through as rupees, pointing the other way.
+#### O-12 — the one place "every amount column" needs the owner's word
+
+**PROVISIONAL on O-12.**
+
+Three columns are rupee amounts by any honest reading, and converting them would make the site
+worse: `ipo_details.min_investment` (a retail application of about 15,000 rupees, which in crore
+reads `0.0015`), `ipo_details.max_retail_subscription` and `ipo_details.max_employee_subscription`
+(the 2-lakh and 5-lakh regulatory ceilings, which people read in lakh). `gmp_records.kostak_rate`
+and `subject_rate` are the same shape: per-application rates quoted in hundreds of rupees.
+
+**Recommendation: keep these five in rupees**, and treat "crore is the default" as exactly that — a
+default with five named, reasoned exceptions rather than a rule with silent ones. Recorded as
+**O-12** in §0.0.2; the design proceeds on the recommendation.
 
 #### How existing rows are repaired
 
@@ -2613,6 +2715,7 @@ OD-21 the rule becomes explicit, scoped and effective-dated:
 |---|---|---|---|
 | `lot-multiple-range` | `ipo_details.lot_multiple`, all segments | `1 <= value <= 10` | a minimum application is one or two lots; ten is a generous ceiling, and 107 is not a near miss |
 | `lot-multiple-sme` | `ipo_details.lot_multiple`, segment SME, effective **2025-07-01** onward | `value = 2` | NSE and BSE circulars of 2025-06-18, effective 2025-07-01: a minimum of two lots and an application value of at least ₹2,00,000. This table said 2025-01-01 while §1.11 said 2025-07-01 — six months apart, and the rows in between legitimately carry `lot_multiple = 1` |
+| `lot-multiple-sme` | `ipo_details.lot_multiple`, segment SME, effective 2025-01-01 onward | `value = 2` | the SME minimum application became two lots in 2025 |
 | `lot-multiple-not-lot-size` | `ipo_details.lot_multiple` | `value != ipos.lot_size` unless `lot_size <= 10` | the specific failure observed: the extractor copying the lot size into the multiple |
 
 The extractor emitting one into the other is a live defect, not a design question. It belongs to
@@ -2771,6 +2874,9 @@ This was the largest unknown in the whole design, and OD-23 as amended by OD-32 
 **half** of it: from here on, the extracted TEXT of every document is kept for the life of the IPO
 row (the PDF for seven days after its last successful extraction, §0.5.1), so no IPO closing today
 will ever join this backlog with nothing readable in it. The other half — the IPOs that already lost their files to the seven-day purge
+This was the largest unknown in the whole design, and OD-23 has now removed **half** of it: from here
+on, documents are kept for the life of the IPO row, so no IPO closing today will ever join this
+backlog document-less. The other half — the IPOs that already lost their files to the seven-day purge
 — is a question about the outside world, and it is answered by measurement, not by hope.
 
 `docs/design/probes/old-document-availability.mjs` downloads offer documents for at least twelve
@@ -2793,6 +2899,7 @@ The five preconditions this section used to list have moved:
 | Finding | Was | Now |
 |---|---|---|
 | **F-09** re-downloaded PDFs deleted by the next purge | blocked the first closed IPO | **answered by OD-23 as amended by OD-32** — the purge stops deleting on a close-date clock and deletes seven days after a successful extraction instead, by which time the text is stored for good; §0.5.1. The code half is build item 18 |
+| **F-09** re-downloaded PDFs deleted by the next purge | blocked the first closed IPO | **answered by OD-23** — the purge stops deleting; §0.5.1. The code half is build item 18 |
 | **F-10** checks wrong for a class silently blank that class | blocked the first closed IPO | **answered by OD-21** — validation rules carry effective dates, and a value outside every window is recorded, not rejected; §5.3. The code half is build item 4 |
 | **F-30** four of six gates are prose, not commands | blocked the first closed IPO | **still open**, owned by build item 10: each check becomes a named script with an exit code |
 | **F-31** `field_sources` holds one prior value | blocked the first closed IPO | **still open**, owned by build item 17: the snapshot is taken **before** the first closed IPO is walked, not after |
@@ -2848,6 +2955,7 @@ wrong rule: the switch-over pauses and the rule is fixed in the design before an
 ### 7.1 Sequence
 
 **Twenty-two items.** (Eighteen after the first round; the owner's decisions of 2026-09-09 afternoon added four: the merge tool on the shared write path, the traceability check, the read side, and the document-handling and download limits — the last of these because OD-36 and OD-37 otherwise had no implementer, which this section's own rule forbids.) Three of the owner's decisions of 2026-09-09 created work that no
+**Eighteen items, not fifteen.** Three of the owner's decisions of 2026-09-09 created work that no
 existing item owned: the job scheduler and the budget derivation that comes with removing the
 force-kill (folded into item 7, which already owned budgets), the closed-IPO job (item 17) and the
 document-retention change (item 18). Item 16 is the Moneycontrol retirement (OD-3). Inventing
@@ -2878,6 +2986,26 @@ nowhere to put them would have left three owner decisions with no implementer.
 | 20 | **The traceability CI check (OD-52)** — `scripts/ci/check-design-traceability.mjs`: every design rule id has a build item, every build item's ids have a test, no test claims an unknown id, and a rule whose text changed drags its card and its test with it (§8.5) | 2 | B | small, and it is what makes "we followed the design" a command rather than a claim | `verification` |
 | 21 | **The read side (OD-39, OD-40, OD-41)** — the source-and-confirmed-on line under each key-facts block, the stale marker, the end-of-cycle revalidate call, and the canonical / sitemap / redirect rules after a merge (§2.11) | 1, 6 | B | medium — it is the only item a reader can see | `read-side` |
 | 22 | **Document handling and download limits (OD-36, OD-37)** — multi-part filings, OCR routing, the one blank-password attempt, content sniffed before store, the exchange document id; and the host allow-list extended to the registrars, the private-address refusal, the 100 MB cap and the refusal log line (§2.2.1) | — | **A** | medium — it is the network boundary, and it fails closed | `download` |
+| # | Piece | Depends on | Tier | Rough size |
+|---|---|---|---|---|
+| 1 | **The child-table consolidated writer** — extend the consolidation contract to `ipo_details`, `financial_statements`, `ipo_valuation`, `ipo_risk_factors`, `promoters`, `anchor_investors`, `ipo_intermediaries`, `peer_companies`: per-field priority resolution, `field_sources` rows, `data_conflicts` rows | — | **A** | **large — and it is the gate on everything below** |
+| 2 | Field manifest + priority configuration: which document type prints which field, and the rank order, as one validated configuration file family | — | B | small — the spec turned into data |
+| 3 | Matrix cleanup: delete the 13 dead snake_case keys, adopt the manifest | 2 | B | medium, mechanical |
+| 4 | **Per-field validation before the write (OD-21)** — the failure row, the rule configuration, and the effective dating that closes F-10 | 2 | **A** | medium — it is a write-path change, not a helper |
+| 5 | `ipo_field_plan` table + generator | 1, 2, 3 | **A** | medium |
+| 6 | The pull walk over the plan | 5 | **A** | large — the core |
+| 7 | **The job scheduler and the budgets** — the three jobs of §2.1 with their cron lines and PM2 change, the removal of the `cron_restart` force-kill, the lock-skip rule, the new extraction/wake/lock budgets and the never-spawn-without-budget invariant; then demand-ordered tiering (O-4) | — (scheduler) · 6 (tiering) | **A** | medium |
+| 8 | The ratios / basis-for-offer-price extractor (32 pending documents) | — | B | medium, independent |
+| 9 | The re-read loop | 6 | **A** | medium |
+| 10 | The verification checks in §4, each a named script with an exit code (closes F-30) | 6, 9 | B | medium — nothing above is proven without it |
+| 11 | **Crore conversion (OD-20)** for the amount columns §5.2 lists, the source-backed repair tool, the one-release API overlap, and `financial_data` becomes derived | 10 | **A** | large, own release |
+| 12 | Fold corporate-form words into the name normaliser, and run duplicate detection at discovery on the stricter key in §2.3.3 — F-46, F-55 | — | **A** | small code, high blast radius: it changes what binds to what |
+| 13 | Extract `ofs_issue` in both the rupee form and the share form, fix `fresh_issue`, gate the write on `fresh + OFS = total ±0.5%` — F-51 | 2 | **A** | medium — it is wrong on 6 of 9 live IPOs today |
+| 14 | Convert BSE `Issue_Size_No_of_shares` from a share count to rupees, with a conversion test — F-54 | 13 | B | small, but it is the recurrence class the detection gate exists for |
+| 15 | Revive `valueActuallyChanged` so no-op suppression can be measured — F-49 | — | B | small; **prerequisite of item 6**, which cannot be verified without it |
+| 16 | **Retire Moneycontrol (OD-3)** — stop scheduling it; keep the enum value and the provenance rows already written | — | C | small |
+| 17 | **The closed-IPO job (OD-22)** — the 22:00 schedule, `closed_ipo_resourcing`, the selection query and cap, the `field_sources` snapshot that closes F-31, and the `documents.filing_date` backfill | 6, 7, 10 | **A** | medium |
+| 18 | **Document retention (OD-23)** — remove the live window and the purge, keep documents for the life of the IPO row, compress rather than delete at the store ceiling | — | B | small, and it stops the backlog compounding |
 
 **Item 1 is first, by owner decision (2026-09-08), and nothing from item 5 onward is contracted until
 it lands.**
@@ -2931,6 +3059,8 @@ Everything from 5 onward is one design and should not be half-built.
    document, and it is now half answered and half measured rather than deferred. **Half answered:**
    OD-32 keeps every document's extracted text for the life of its IPO row, so no IPO closing from
    here on will ever reach the backlog with nothing readable — the unknown applies only to the IPOs that already lost
+   OD-23 keeps every document for the life of its IPO row, so no IPO closing from here on will ever
+   reach the backlog without its files — the unknown applies only to the IPOs that already lost
    theirs to the seven-day purge. **Half measured:** `probes/old-document-availability.mjs` (§6.3)
    downloads real documents for LISTED IPOs at three ages from `documents.source_url` and from NSE,
    BSE and SEBI, and reports per source and per age what is still obtainable. Where a class turns out
@@ -3292,6 +3422,11 @@ clustering tool which **also** writes raw SQL to `ipos` and is **already in the 
 of item 19's scope, and naming it here is deliberate: the baseline is shrink-only, so the honest
 reading is that the project owes a second routing job, not that the second tool is fine. It becomes
 item 19's follow-on the first time anything touches it.
+| **O-12** five retail rupee columns | keep them in rupees as named exceptions to "crore by default" | nothing — item 11 ships either way, with five columns' treatment decided by your answer |
+| **O-13** grey-market premium and the market-hours gate | subscription and demand graph during bidding only; the premium additionally on each data job and the 22:00 job | nothing — but the literal reading of OD-19 would undo a change you approved on 2026-09-08 |
+
+Three of the four comments that were open a day ago — the cadence, the money unit and partial failure
+— are now decisions in §0.0.1 as OD-19, OD-20 and OD-21, each with a check enforcing it.
 
 ### 8.4 Done means
 
@@ -3519,6 +3654,7 @@ rank. `N/A` means the field does not exist for that offering type and is not a g
 
 **The SME document-type order is different, and this matters.** Measured on production, SME IPOs have
 **zero PRICE_BAND_AD documents** (mainboard has **13**, not the 12 this sentence carried until `probes/document-types-by-segment.mjs` measured it) and one DRHP (mainboard has 18); their document
+**zero PRICE_BAND_AD documents** (mainboard has 12) and one DRHP (mainboard has 18); their document
 set is dominated by the prospectus (64). So for SME the rank-1 document order is
 **PROSPECTUS > RHP > CORRIGENDUM > DRHP**, not the mainboard's
 **PRICE_BAND_AD > CORRIGENDUM > RHP > PROSPECTUS > DRHP**. For 173 SME IPOs — over half the site —

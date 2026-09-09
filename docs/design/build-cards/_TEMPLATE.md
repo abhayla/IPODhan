@@ -4,6 +4,9 @@ Every card under `docs/design/build-cards/` carries these THIRTEEN headings, spe
 below and in this order. A grep for the thirteen is part of the design gate, so a card that renames
 one is a card that does not count. (Eleven until 2026-09-09; OD-52 added `Rules implemented` and
 `Known gaps`.)
+Every card under `docs/design/build-cards/` carries these eleven headings, spelled exactly as below
+and in this order. A grep for the eleven is part of the design gate, so a card that renames one is a
+card that does not count.
 
 The card exists to answer one question: **can an engineer who was not in any of these conversations
 build this item without asking anybody a question?** If a heading would need "it depends" or "we

@@ -22,7 +22,9 @@
     "./utils/company-name-similarity": "./src/utils/company-name-similarity.ts",
     "./utils/registrar-matcher": "./src/utils/registrar-matcher.ts",
     "./utils/offering-type": "./src/utils/offering-type.ts",
+    "./utils/duplicate-ipo-merge": "./src/utils/duplicate-ipo-merge.ts",
     "./errors/db-cause": "./src/errors/db-cause.ts",
+    "./errors/repository-errors": "./src/errors/repository-errors.ts",
     "./repositories/document-fetch-state-repository": "./src/repositories/document-fetch-state-repository.ts",
     "./db/document-type-refinement": "./src/db/document-type-refinement.ts",
     "./repositories/financial-statements-repository": "./src/repositories/financial-statements-repository.ts",
@@ -36,7 +38,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "vitest run"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.6",
@@ -45,6 +48,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "1.6.1"
   }
 }

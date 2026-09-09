@@ -31,6 +31,7 @@ so changing a rank order is a config edit and a deploy, never a code change and 
 | Path | State | Change |
 |---|---|---|
 | `scraper/config/field-manifest.yaml` | **NEW** (`scraper/config/` (LOCAL) does not exist today — `ls scraper/config` fails; only `scraper/src/config/` exists) | The manifest: one entry per D/T/X/W/M field, keyed `"<table>.<column>"` |
+| `scraper/config/field-manifest.yaml` | **NEW** (`scraper/config/` does not exist today — `ls scraper/config` fails; only `scraper/src/config/` exists) | The manifest: one entry per D/T/X/W/M field, keyed `"<table>.<column>"` |
 | `scraper/config/field-manifest.schema.json` | **NEW** | JSON Schema (draft-07) the loader validates the YAML against before anything reads it |
 | `scraper/src/config/field-manifest-loader.ts` | **NEW** | `loadFieldManifest()` — parse + schema-validate + cross-check (see Interfaces) |
 | `scraper/src/index.ts` | exists, 1390 lines | Add `loadFieldManifest()` at the top of the CLI guard (currently `if (import.meta.url === pathToFileURL(process.argv[1]).href) { main(); }` at lines 1388–1390) — call it **before** `main()` so a malformed file stops the process before any scraper runs, never mid-cycle |

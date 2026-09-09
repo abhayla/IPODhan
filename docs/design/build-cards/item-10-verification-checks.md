@@ -32,6 +32,7 @@ re-read loop — the three `REREAD-*` checks read its output); §7.1 row 10 list
 | `scraper/src/services/owner-notify.ts` | exists | **No change** — this item calls the existing `notifyOwner(severity, title, { body })` (already reads `NOTIFIER_URL`/`NOTIFIER_KEY`/`NOTIFIER_PROJECT` from env, already fire-and-forget with a 2s timeout, already a no-op when unconfigured) from each new script's failure path. This is the "never a new sender" instruction — IPODhan already has the zero-dependency thin client the brief names; item 10 is a caller of it, not a builder of a second one. |
 | `.github/workflows/pr-gate.yml` | exists | The existing `detection-change-gate` job (line 405) picks up the four new registry entries automatically once committed — no workflow change needed beyond what `.claude/rules/recurrence-detection-gate.md` already wires for any scraper-write-path PR. |
 | `scripts/tests/audit-pull-plan.test.mjs` (NEW), `audit-pull-yield.test.mjs`, `audit-pull-writes.test.mjs`, `audit-reread-loop.test.mjs` | **NEW** | Self-tests for the four new scripts, mirroring `scripts/tests/audit-detection-floor.test.mjs`'s existing pattern (named in `docs/reviews/detection-checks/_meta.json`'s `"selfTest"` field). |
+| `scripts/tests/audit-pull-plan.test.mjs`, `audit-pull-yield.test.mjs`, `audit-pull-writes.test.mjs`, `audit-reread-loop.test.mjs` | **NEW** | Self-tests for the four new scripts, mirroring `scripts/tests/audit-detection-floor.test.mjs`'s existing pattern (named in `docs/reviews/detection-checks/_meta.json`'s `"selfTest"` field). |
 
 ## Schema
 
@@ -41,6 +42,7 @@ State needed to compute NEW/GONE/SAME per check-run (the `signal-ownership.md` R
 same pattern `audit-detection-floor.mjs` already uses per its `"audit's own state dir on the box"`
 comment at line 158 of that script) is a JSON state file per script under the audit's existing state
 directory (`scripts/state/` (LOCAL), already present in this worktree per `git status` — not a DB table). (NEW)
+directory (`scripts/state/`, already present in this worktree per `git status` — not a DB table). (NEW)
 
 ## Interfaces
 
@@ -108,6 +110,7 @@ a nightly digest the way a bare `dedupeKey` would.
 ## Tests
 
 - **Self-tests, red before the change:** `scripts/tests/audit-pull-plan.test.mjs` (NEW) etc. — each asserting (NEW)
+- **Self-tests, red before the change:** `scripts/tests/audit-pull-plan.test.mjs` etc. — each asserting (NEW)
   the script's exit-code contract (0/1/2/3) against fixture rows, per the existing
   `scripts/tests/audit-detection-floor.test.mjs` pattern named in `_meta.json`'s `"selfTest"` field.
 - **Unit:** `CheckResult` shape validation — every one of the fourteen ids present in a script's own
