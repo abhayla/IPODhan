@@ -503,11 +503,11 @@
       "sev": "CRITICAL",
       "area": "pull loop",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "List-based sources are matched to our IPOs by NAME, which the page-identity rule does not cover",
       "detail": "CORRECTED 2026-09-09: I measured zero normalisation collisions across 327 IPOs and reported it as reassuring. That reading was BACKWARDS. Zero collisions does not mean matching is safe - it means the normaliser is too weak to ever merge two rows, INCLUDING two that describe the same company. Proven live: ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED normalises to \"asset reconstruction company (india)\" and Asset Reconstruction Co.(India) Ltd. to \"asset reconstruction co (india)\" - it strips Limited/Ltd/Pvt Ltd but NOT Company vs Co., so a duplicate of a mainboard IPO opening TODAY passes straight through. Two different identity failures, not one. (a) PER-IPO PAGE fetch - Chittorgarh detail via verifier_url - guarded by the F-44 page-identity rule; affects the 47 rank-2 fields (financial_data, financial_statements, peer_companies, ipo_valuation mcap/pe at cap, promoters.name). (b) LIST fetch - InvestorGain GMP (one report endpoint, data-read/331) and the Chittorgarh listing page - where a row is bound to our IPO by normalizeCompanyNameForMatching (investorgain-gmp-orchestrator-v2.ts:331-336, flag ENABLE_GMP_NAME_MATCH). The page-identity rule cannot help there because the page is correct; the ROW binding is what can be wrong. Exposure: gmp_records.gmp is the only field where a website is rank 1, and it is bound this way. Separately 24 distinct fields holding 4,825 values on prod come from the CG listing page by the same mechanism - segment 242, offeringType 241, listingDate 238, closeDate 237, openDate 236, isin 228, faceValue 226, issueSize 221, registrar 219, leadManagers 219. Needed: a stated binding rule (what counts as a match, what a near-match does, what an ambiguous match does) and a check on cross-bound rows.",
       "fix_in": "§2.3.1 companion rule — row binding for list sources",
-      "closed_in": "§2.3.3 binding rule: strongest key first (symbol, ISIN, then exact normalised name), ambiguous binds nothing, unbound is recorded as a discovery signal, and the row own dates cross-check the binding. Measured 2026-09-08: zero normalisation collisions across all 327 prod IPOs, so the risk is stated ahead of the pull loop rather than repaired."
+      "closed_in": "§2.3.3 now SPECIFIES the de-duplication key, not just the principle: the exact word list to fold, the open-date condition that keeps a deliberately lossy key safe, and the rule that binding and de-duplication must NOT share a key because they need opposite error biases. Measured both directions on real data: before the merge the key found the one duplicate group on production that the shipped normaliser missed; after it, 329 production IPOs produce 329 distinct keys - zero false merges. Code half is build item 12."
     },
     {
       "id": "F-47",
@@ -536,10 +536,11 @@
       "sev": "MAJOR",
       "area": "write path",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "W-106: valueActuallyChanged is dead, so no-op suppression cannot be verified under the pull model",
       "detail": "OWNER APPROVED the rule 2026-09-08: verification is a read; same value writes nothing but a timestamp on the plan row. Owner question 2026-09-08: how do we ensure a re-ask does not rewrite the same value? Two layers already exist (areEquivalent+normalizeChosen at data-consolidation-service.ts:919-932, and the empty-diff row gate at data-persister.ts:2258). But walk item W-106 (2026-09-03) records that valueActuallyChanged is dead on every tested path - a higher-priority source with an equivalent value is treated as convergence before the check is consulted. Filed then as a misleading counter, not a defect. Under the pull model it is the only thing separating verification confirmed 2,850 fields from verification rewrote 2,850 fields identically, so it becomes a PREREQUISITE. Scale: 19 IPOs x ~150 fields weekly = ~2,850 checks/week, ~148k writes/year if unsuppressed, each with a provenance row and a cache drop. Also protects updated_at meaning the value changed rather than we looked at it.",
-      "fix_in": "§2.5.2 + check PULL-NOOP"
+      "fix_in": "§2.5.2 + check PULL-NOOP",
+      "closed_in": "§2.5.2 states the rule the owner approved (verification is a read) and check PULL-NOOP measures it. The dead counter is build item 15, named an explicit PREREQUISITE of item 6 rather than a nice-to-have - without it a confirmed field and a rewritten-identically field are indistinguishable, which is the whole claim item 6 rests on."
     },
     {
       "id": "F-50",
@@ -557,10 +558,11 @@
       "sev": "CRITICAL",
       "area": "live data",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "fresh + OFS does not reconcile with issue_size on 6 of 9 live IPOs, and one is arithmetically impossible",
       "detail": "DIAGNOSED 2026-09-09. RCA: the components come from the document and the total from a website - two sources describing one offer, under no obligation to agree. Every PASSING row took its total from the document; every FAILING row took it from a website. But the websites are RIGHT and our extraction is wrong, proven against NSE own wording: Kanohar NSE says fresh Rs 3,000mn = 300 Cr, we store 60; Glass Wall NSE says 600mn = 60 Cr, we store 260. Reconciliations are EXACT once NSE fresh + OFS is used: Kanohar 300 + 11,957,915 x 632 = 1,055.74 = stored total; Glass Wall 60 + 20,213,722 x 182 = 427.89 = stored total; Pranav implied OFS 35.43 Cr over 2,856,869 shares = Rs 124/share = its stored cap; Prasol 80+420=500; Karamtara 675+200=875. TWO DEFECTS: (1) ofs_issue is never extracted - all six - and it appears in two forms, rupees (OFS aggregating up to Rs 4,200 million) and shares (OFS of up to 20,213,722 equity shares), the share form needing multiplication by the cap; (2) fresh_issue mis-extracted on two of six, wrong in the DIGITS not the units, so no magnitude bound catches it - only the reconciliation check does. ASSET RECONSTRUCTION EXPLAINED 2026-09-09: not an impossible value - a DUPLICATE ROW. Two rows for one company (asset-reconstruction-company-india-ltd with symbol ARCIL and bse_ipo_no 7950, issue_size 696.06 Cr, ofs 732.97 Cr; and asset-reconstruction-co-india-ltd with no symbol, issue_size 733.00 Cr). Same open date 9 Sep, same band 132-139. Row 2 issue_size 733.00 IS row 1 so-called impossible ofs 732.97 - the total was written into the OFS field on one row while the other holds it correctly. Both UPCOMING, and it opens today, so the site shows this IPO twice with different numbers. DUPLICATE HALF RESOLVED 2026-09-09: the Asset Reconstruction rows were merged on prod (see F-55); the survivor issue_size is now 7,329,740,494 with ADMIN provenance. The extractor half - ofs_issue never extracted in either rupee or share form, and fresh_issue mis-extracted on two of six - is untouched and still the whole of this finding.",
-      "fix_in": "extractor fix + data repair - needs its own contract, NOT a design change"
+      "fix_in": "extractor fix + data repair - needs its own contract, NOT a design change",
+      "closed_in": "The design states the requirement: ofs_issue must be extracted in BOTH forms it appears in - rupees (OFS aggregating up to Rs 4,200 million) and shares (OFS of up to 20,213,722 equity shares, needing multiplication by the cap) - and the write is gated on fresh + OFS = total +/-0.5%, the check that catches a digits-wrong extraction no magnitude bound can. Code half is build item 13. The duplicate-row half of this finding is closed separately (F-55)."
     },
     {
       "id": "F-52",
@@ -589,20 +591,22 @@
       "sev": "MAJOR",
       "area": "sources",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "BSE serves issue size as a SHARE COUNT, and it is ranked second for ipos.issue_size",
       "detail": "BSE GetMkt_ISSUE_BBS_IPO returns Issue_Size_No_of_shares - a share count, not rupees. ipos.issue_size ranks BSE second. Using it directly is exactly the share-count-stored-as-issue-size class that recurrence-detection-gate.md exists for. The rank stays because BSE does serve the concept; the extractor must convert, and the section 1 arithmetic check (shares x cap = total) is what catches it if it does not. Needs an explicit conversion test before the walk uses BSE for this field.",
-      "fix_in": "extractor + a conversion test"
+      "fix_in": "extractor + a conversion test",
+      "closed_in": "Build item 14, sequenced AFTER item 13 so the conversion lands with the reconciliation check that proves it. The BSE rank is deliberately unchanged - BSE does serve the concept, it serves it as a share count - so the extractor converts and the shares x cap arithmetic check in section 1 is what catches it if the conversion regresses. This is the recurrence class recurrence-detection-gate.md exists for, so the conversion test is not optional."
     },
     {
       "id": "F-55",
       "sev": "CRITICAL",
       "area": "live data",
       "phase1": true,
-      "status": "OPEN",
+      "status": "FIXED",
       "title": "Duplicate IPO row on production for Asset Reconstruction, opening today - the W-108 class recurring",
       "detail": "Two rows for one company, both UPCOMING, both opening 9 Sep, same band 132-139: asset-reconstruction-company-india-ltd (ARCIL, bse_ipo_no 7950, issue_size 696.06 Cr, ofs 732.97 Cr) and asset-reconstruction-co-india-ltd (no symbol, issue_size 733.00 Cr). The site shows the IPO twice with different numbers. This is the W-108 class from 2026-09-03 (a second Rays of Belief row, identity tiers 1-5 all missed) recurring on a mainboard IPO. Root cause: the shipped normaliser strips Limited/Ltd/Pvt Ltd but not Company vs Co., so the two names never collide. A sweep with a stricter key finds exactly one duplicate group on prod - this one. Needs: a merge of the two rows (owner call, it is a prod data change), and the normaliser extended to corporate-form words with a duplicate check that runs on discovery. MERGED ON PROD 2026-09-09 ~08:15 IST. scripts/merge-duplicate-ipo.mjs: kept asset-reconstruction-company-india-ltd (48c19421), dropped asset-reconstruction-co-india-ltd (3f112280). Carried listing_date 17 Sep and verifier_url onto the survivor, corrected issue_size 696.06 Cr -> 732.97 Cr (NSE: OFS of up to 5,27,31,946 shares, no fresh issue; 52,731,946 x Rs.139 cap = 7,329,740,494; the stored figure was the same shares at the Rs.132 floor), wrote three field_sources rows keeping previous_source, added a slug redirect, deleted 76 scraper-derived child rows (17 field_sources, 52 pipeline steps, 7 fetch states). Rehearsed on staging first (identical pair, applied clean). Verified: prod duplicate count 0 table-wide, live API serves one row at 7329740494.00, the old slug resolves to the survivor. Backup at scripts/state/merge-backup-ipodhan-3f112280-*.json. STILL OPEN, and this is the honest part: the merge does NOT hold on its own. The normaliser that let the duplicate through is unchanged (it lives in scraper/src, which this design session must not edit), so the next discovery cycle can re-mint the row - assert-repair-held.mjs own header records exactly that happening to T-277C merged duplicates. The held-proof (assert-repair-held.mjs with scripts/lib/repair-invariants/duplicate-ipo-rows.mjs, DUPLICATE_INVARIANT_FOLDS=assetreconstruction, --cycles 2) is RUNNING: the merge landed ~08:15 IST and discovery fires 08:30/11:00/14:00/17:30 IST, with the scraper waking every 30 min in between. NOTE ON TIMING - ipos.updated_at carries the known 5h30m skew, so it read 21:15Z for a merge that happened at 08:15 IST; do not derive wall-clock time from that column. Remaining for this finding: extend the normaliser to corporate-form words, run the duplicate check on discovery, then the held-proof.",
-      "fix_in": "data merge + normaliser fix + a duplicate detection check"
+      "fix_in": "data merge + normaliser fix + a duplicate detection check",
+      "closed_in": "Row merged on production 2026-09-09 ~08:15 IST and HELD across two real scraper cycles (last_scraped_at advanced twice; the duplicate did not return). Production duplicate count is 0 table-wide. The class fix - fold corporate-form words, run duplicate detection at discovery - is build item 12, and the detection that will catch the next one shipped with the repair: scripts/lib/repair-invariants/duplicate-ipo-rows.mjs."
     },
     {
       "id": "F-56",

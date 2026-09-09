@@ -1,6 +1,14 @@
 # Data sourcing: the pull model
 
-> ### Status — NOT SAFE TO BUILD FROM
+> ### Status — complete and ready for your read; no finding is open
+>
+> Every finding from the four review passes is dispositioned — fixed, deferred with a named trigger,
+> or deliberately not done. Each finding that needs code names a build item in §7.1. **§8 is the
+> honest account of what is measured, what is read from the code, and what is judgement** — read it
+> before approving anything here.
+>
+> Four owner decisions remain yours (§0.0.2). None of them blocks this design, and none is assumed:
+> build items 1–10 and 12–15 can be scoped on your word alone; only item 11 waits on O-2.
 >
 > **Do not trust any finding count typed in this document.** `findings.json` is the register and it
 > changes; a number written here is stale the moment it is typed. Run the check instead:
@@ -994,6 +1002,35 @@ detects a duplicate either. Two things follow, and both belong to the loop rathe
    the binding key. A sweep with such a key over production finds exactly one duplicate group today:
    this one. Binding and de-duplication want opposite error biases, so they must not share a key.
 
+**The de-duplication key, specified.** Written and measured 2026-09-09; the shipped implementation
+is `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs`, which the ARCIL repair used as its
+held-proof. Lowercase, replace `.,()&'"-` with a space, delete the words below as whole words, then
+delete all remaining whitespace:
+
+```
+private  pvt  limited  ltd  company  co  corporation  corp  incorporated  inc
+and  the  of  india  indian
+```
+
+Two rows are the same IPO when this key matches **and** they share an open date. The open-date
+condition is what keeps the key safe: it is deliberately lossy — `india` and `industries`-style
+words are dropped — so on its own it would over-merge. Two genuinely different companies almost
+never open the same day, and if they do, the AMBIGUOUS outcome above already covers it.
+
+**Measured, both directions.** Before the merge, this key found exactly one duplicate group on
+production — the Asset Reconstruction pair — which the shipped normaliser missed entirely. After the
+merge, across all **329** production IPOs it produces **329 distinct keys**: zero false merges. So
+the fold is strong enough to catch the duplicate the shipped one missed, and not so strong that it
+collapses two real companies. Run on staging it reports **12** groups, all of a different defect
+(F-57, slug-suffix rows), which is why the check takes a scope argument rather than a bare count.
+
+**Why this is a de-duplication key and not the binding key.** Binding must never bind the wrong row,
+so it errors toward `UNBOUND`. De-duplication must never miss a duplicate, so it errors toward
+flagging. Sharing one key would force one of those to be wrong. The binding key stays the strict one
+in the numbered list above; this looser key only ever raises a duplicate for review — **it never
+merges anything by itself.** The ARCIL merge was run by an owner-authorised tool with a dry run, a
+backup and a refusal on any disagreeing strong identifier; nothing in the loop merges rows.
+
 #### 2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert
 
 **Owner, 2026-09-09: "Is there a unique ID for each IPO? If yes then there should be only one row
@@ -1805,9 +1842,21 @@ prerequisite of the first closed IPO, not part of the work.
 | 9 | The re-read loop | 6 | **A** | medium |
 | 10 | The verification checks in §4 | 6, 9 | B | medium — nothing above is proven without it |
 | 11 | Unit conversion (O-2) + `financial_data` becomes derived | 10 | **A** | large, own release |
+| 12 | **Fold corporate-form words in the name normaliser, and run duplicate detection at discovery** on the stricter key specified in §2.3.3 — F-46, F-55 | — | **A** | small code, high blast radius: it changes what binds to what |
+| 13 | **Extract `ofs_issue`, in both the rupee form and the share form**, and fix `fresh_issue`; gate the write on `fresh + OFS = total ±0.5%` — F-51 | 2 | **A** | medium — it is wrong on 6 of 9 live IPOs today |
+| 14 | **Convert BSE `Issue_Size_No_of_shares` from a share count to rupees**, with a conversion test — F-54 | 13 | B | small, but it is the recurrence class the detection gate exists for |
+| 15 | **Revive `valueActuallyChanged`** so no-op suppression can be measured — F-49 | — | B | small; **prerequisite of item 6**, which cannot be verified without it |
 
 **Item 1 is first, by owner decision (2026-09-08), and nothing from item 5 onward is contracted
 until it lands.**
+
+**Items 12–15 are the code halves of findings this design settled but cannot itself fix.** They are
+listed here rather than left in the register because a finding whose fix has no build item is a
+finding nobody owns. Two of them are live data defects, not future risks: item 13 is wrong on **6 of
+9** live IPOs right now, and item 12 is the gap that let production carry the same mainboard IPO
+twice on the day it opened. Item 15 is small and unglamorous and still blocks item 6 — without it,
+"verification confirmed 2,850 fields" and "verification rewrote 2,850 fields identically" are
+indistinguishable.
 
 `consolidatedUpsertIPO` consolidates **`tableName: 'ipos'` only**
 (`data-consolidation-orchestrator.ts:187`) — **32 of the 240 fields.** The eight child tables are
@@ -1840,7 +1889,7 @@ Everything from 4 onward is one design and should not be half-built.
 ### 7.3 What I am not sure about, plainly
 
 1. **Whether the old PDFs are still downloadable.** M1 exists because I do not know, and the answer
-   decides whether the 90% target applies to the whole site or only to IPOs from here forward. I
+   decides whether the 100% target (item 4 below) applies to the whole site or only to IPOs from here forward. I
    would not promise the number before M1 reports. **This was the single biggest unknown in the whole
    document, and the 2026-09-08 phase-1 scope cut defers it entirely** — M1 is inside §6, which is now
    the closed-IPO work (no closed IPO, no re-download of purged documents, in phase 1). Phase 1 only ever reads a
@@ -1908,15 +1957,55 @@ Everything from 4 onward is one design and should not be half-built.
 
 ## 8. Definition of done for this document
 
-Abhay has read §1 (the mapping), §2 (the pull loop), §3 (the re-read loop), §4 (verification),
-§5 (O-1 to O-5 and O-7), §6 (migration) and §7 (cost and doubts), and said it is right — or named
-what is wrong.
+### 8.1 Where this document stands
 
-Then implementation is a separate decision, taken after this is agreed, with its own contracts,
-tiers and budgets.
+Every finding from the four review passes now has a disposition — **none is OPEN**. Run
+`node docs/design/check-design-consistency.mjs` for the live split; it also fails if this paragraph
+stops being true. Of the 57, the ones that need code are not left floating in the register: each
+names a build item in §7.1, because a finding whose fix has no build item is a finding nobody owns.
 
-**The one thing that needs his answer before implementation can be scoped:** §7.3 item 4 — what "90%
-from the offer documents" is a percentage *of*.
+**What this document is:** the mapping for all 240 fields and all IPO types (§1, Appendix A), the
+pull loop (§2), the re-read loop (§3), how we would know it worked (§4), the owner comments answered
+(§5), the closed-IPO preconditions (§6), and the build sequence (§7).
+
+**What it is not:** proof that the code will behave. §4 is the set of checks that would prove it;
+none has been run against a built system, because nothing is built.
+
+### 8.2 What is measured and what is judgement — read this before approving
+
+Not everything here carries the same weight, and the difference matters more than the page count.
+
+| Rests on | Examples | How far to trust it |
+|---|---|---|
+| **Measured this session** | the field counts, the document share, which source serves which field, the E-1 exchange capability table, the de-duplication key across 329 IPOs, the issue-size reconciliations | Re-runnable. Where a number contradicted an earlier one, the measured one won |
+| **Read from the code, cited** | the cadence, the budgets, the write path, the 32-of-240 consolidation gap | 25 citations, each checked by D11 to point at a line that exists |
+| **Judgement** | the build ORDER, the tier sizes, where a re-read stops, what counts as a conflict | Argued in place, not measured. This is the part worth disagreeing with |
+
+**And the part with the worst track record: claims about our own code.** The first draft asserted
+seven things about existing behaviour that the code disproves (Appendix A.0). D7 is a regression
+guard against those seven specifically. It cannot catch an eighth. When a claim about existing
+behaviour matters to a decision, open the citation.
+
+### 8.3 What is still yours
+
+Four owner comments are undecided (§0.0.2), and **nothing in this design assumes an answer** — D10c
+fails if any section pretends otherwise:
+
+| | Blocks | Does not block |
+|---|---|---|
+| **O-1** wake interval | nothing in §7.1 | the cadence decision D-13 already governs what runs when |
+| **O-2** money in crore | build item 11 only | items 1–10 and 12–15 |
+| **O-3** partial persistence | the full version of item 4 | the cheap half of item 4 ships without it |
+| **O-7** language model | nothing in phase 1 | recorded as a standing constraint in §5.6 |
+
+So the design does not wait on any of them. **Build items 1–10 and 12–15 can be scoped on your word
+alone**; item 11 waits on O-2.
+
+### 8.4 Done means
+
+You have read it and said it is right, or named what is wrong. Implementation is then a separate
+decision with its own contracts, tiers and budgets — item 1 first, by your decision, and nothing
+from item 5 onward contracted until it lands.
 
 ---
 
