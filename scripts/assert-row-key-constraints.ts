@@ -48,43 +48,136 @@ import { Client } from 'pg';
 export interface ExpectedConstraint {
   tableName: string;
   constraintName: string;
+  /** Column names, in the exact order the UNIQUE constraint covers them. */
+  columns: string[];
 }
 
 export const EXPECTED_ROW_KEY_CONSTRAINTS: ExpectedConstraint[] = [
-  { tableName: 'promoters', constraintName: 'unique_promoters_ipo_id_normalized_name' },
-  { tableName: 'peer_companies', constraintName: 'unique_peer_companies_ipo_id_normalized_name' },
+  {
+    tableName: 'promoters',
+    constraintName: 'unique_promoters_ipo_id_normalized_name',
+    columns: ['ipo_id', 'normalized_name'],
+  },
+  {
+    tableName: 'peer_companies',
+    constraintName: 'unique_peer_companies_ipo_id_normalized_name',
+    columns: ['ipo_id', 'normalized_name'],
+  },
   {
     tableName: 'ipo_intermediaries',
     constraintName: 'unique_ipo_intermediaries_ipo_id_role_normalized_name',
+    columns: ['ipo_id', 'role', 'normalized_name'],
   },
 ];
 
 export interface ConstraintStatus extends ExpectedConstraint {
+  /** A UNIQUE constraint with this name exists on this schema at all. */
   present: boolean;
+  /** Correctly named, on the expected table, covering exactly the expected
+   *  columns in the expected order. This — not `present` — is the field a
+   *  caller should gate on. (F-2, Tier A follow-up round: a constraint can
+   *  be `present` under the right name while sitting on the wrong table or
+   *  the wrong columns, and the old name-only check reported that as OK.) */
+  ok: boolean;
+  actualTableName: string | null;
+  actualColumns: string[] | null;
+  /** null when ok; otherwise a human-readable reason naming what's wrong,
+   *  distinguishing "missing" from "wrong table" from "wrong columns" so an
+   *  operator knows which mistake they made. */
+  mismatchReason: string | null;
 }
 
 /**
- * Read-only check: for each expected constraint, is it present on the live
- * database? A single query against `information_schema.table_constraints`
- * (never `pg_constraint` alone, to stay consistent with the read style
- * `assert-schema-drift.ts` already uses for this database).
+ * Read-only check: for each expected constraint, does a UNIQUE constraint
+ * with that name exist on the expected TABLE, covering exactly the expected
+ * COLUMNS in the expected order? A name match alone is not proof — a
+ * constraint recreated under the same name on the wrong columns (or the
+ * wrong table) must fail this check, not pass it (F-2).
+ *
+ * Joins `information_schema.key_column_usage` to `table_constraints` (never
+ * `pg_constraint` alone, to stay consistent with the read style
+ * `assert-schema-drift.ts` already uses for this database) so the actual
+ * table and column list are read, not assumed from the name.
  */
 export async function checkRowKeyConstraints(
   client: Client,
   expected: ExpectedConstraint[] = EXPECTED_ROW_KEY_CONSTRAINTS
 ): Promise<ConstraintStatus[]> {
   const names = expected.map((e) => e.constraintName);
-  const { rows } = await client.query<{ constraint_name: string }>(
-    `SELECT constraint_name
-     FROM information_schema.table_constraints
-     WHERE table_schema = 'public'
-       AND constraint_type = 'UNIQUE'
-       AND constraint_name = ANY($1::text[])`,
+  const { rows } = await client.query<{
+    constraint_name: string;
+    table_name: string;
+    column_name: string;
+    ordinal_position: number;
+  }>(
+    `SELECT tc.constraint_name, tc.table_name, kcu.column_name, kcu.ordinal_position
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON kcu.constraint_name = tc.constraint_name
+      AND kcu.constraint_schema = tc.constraint_schema
+      AND kcu.table_schema = tc.table_schema
+     WHERE tc.table_schema = 'public'
+       AND tc.constraint_type = 'UNIQUE'
+       AND tc.constraint_name = ANY($1::text[])
+     ORDER BY tc.constraint_name, kcu.ordinal_position`,
     [names]
   );
-  const liveNames = new Set(rows.map((r) => r.constraint_name));
 
-  return expected.map((e) => ({ ...e, present: liveNames.has(e.constraintName) }));
+  const byName = new Map<string, { tableName: string; columns: string[] }>();
+  for (const row of rows) {
+    let entry = byName.get(row.constraint_name);
+    if (!entry) {
+      entry = { tableName: row.table_name, columns: [] };
+      byName.set(row.constraint_name, entry);
+    }
+    entry.columns.push(row.column_name);
+  }
+
+  return expected.map((e) => {
+    const actual = byName.get(e.constraintName);
+    if (!actual) {
+      return {
+        ...e,
+        present: false,
+        ok: false,
+        actualTableName: null,
+        actualColumns: null,
+        mismatchReason: 'missing',
+      };
+    }
+
+    const tableMatch = actual.tableName === e.tableName;
+    const columnsMatch =
+      actual.columns.length === e.columns.length && actual.columns.every((c, i) => c === e.columns[i]);
+
+    if (tableMatch && columnsMatch) {
+      return {
+        ...e,
+        present: true,
+        ok: true,
+        actualTableName: actual.tableName,
+        actualColumns: actual.columns,
+        mismatchReason: null,
+      };
+    }
+
+    const reasons: string[] = [];
+    if (!tableMatch) {
+      reasons.push(`on table "${actual.tableName}", expected "${e.tableName}"`);
+    }
+    if (!columnsMatch) {
+      reasons.push(`covers columns (${actual.columns.join(', ')}), expected (${e.columns.join(', ')})`);
+    }
+
+    return {
+      ...e,
+      present: true,
+      ok: false,
+      actualTableName: actual.tableName,
+      actualColumns: actual.columns,
+      mismatchReason: reasons.join('; '),
+    };
+  });
 }
 
 /**
@@ -127,17 +220,25 @@ async function main() {
     const slot = dbNameResult.rows[0]?.current_database ?? '(unknown)';
 
     const statuses = await checkRowKeyConstraints(client);
-    const missing = statuses.filter((s) => !s.present);
+    const bad = statuses.filter((s) => !s.ok);
 
     console.log(`Row-key UNIQUE constraints on slot "${slot}":`);
     for (const s of statuses) {
-      console.log(`  [${s.present ? 'OK' : 'MISSING'}] ${s.tableName}.${s.constraintName}`);
+      if (s.ok) {
+        console.log(`  [OK] ${s.tableName}.${s.constraintName} (${s.columns.join(', ')})`);
+      } else if (!s.present) {
+        console.log(`  [MISSING] ${s.tableName}.${s.constraintName}`);
+      } else {
+        console.log(`  [WRONG] ${s.constraintName}: ${s.mismatchReason}`);
+      }
     }
 
-    if (missing.length > 0) {
+    if (bad.length > 0) {
       console.error(
-        `FATAL: ${missing.length} of ${statuses.length} row-key UNIQUE constraint(s) missing on "${slot}": ` +
-          missing.map((s) => `${s.tableName}.${s.constraintName}`).join(', ')
+        `FATAL: ${bad.length} of ${statuses.length} row-key UNIQUE constraint(s) not correct on "${slot}": ` +
+          bad
+            .map((s) => (s.present ? `${s.constraintName} (${s.mismatchReason})` : `${s.tableName}.${s.constraintName} (missing)`))
+            .join('; ')
       );
       process.exit(1);
     }

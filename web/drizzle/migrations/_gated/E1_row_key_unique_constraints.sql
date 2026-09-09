@@ -46,12 +46,16 @@
 -- contract for FUTURE inserts) — it is gated because, unlike the UNIQUE
 -- constraint (which only fires on a genuine duplicate — rare), dropping
 -- the default fires on the FIRST write from any insert path that still
--- omits normalized_name, unconditionally. Today's three repositories
--- (packages/shared/src/repositories/promoters-repository.ts,
--- ipo-intermediaries-repository.ts, web/lib/repositories/
--- peer-company-repository.ts) already require it as a mandatory field in
--- their narrowed insert types, so the DB dropping its own fallback should
--- be a no-op in practice — but a silent journal entry running unattended
+-- omits normalized_name, unconditionally. Today's write paths already cover
+-- this: packages/shared/src/repositories/promoters-repository.ts and
+-- ipo-intermediaries-repository.ts require it as a mandatory field in their
+-- narrowed insert types; web/lib/repositories/peer-company-repository.ts
+-- takes a different route to the same guarantee — its `PeerCompanyInsert`
+-- does NOT include normalizedName at all, and `create()` computes it from
+-- `companyName` via `rowKeyForName`, throwing `InvalidDataError` when the
+-- name has no identity, so a caller can never reach the insert without one.
+-- So the DB dropping its own fallback should be a no-op in practice — but
+-- a silent journal entry running unattended
 -- on every deploy is the wrong place to find out an uncovered call site
 -- exists. Applied together with the constraint, under the same manual
 -- sign-off, so both classes of failure (duplicate key, missing key) surface

@@ -1761,7 +1761,7 @@ export async function persistFilingExtraction(
         })
       ) {
         if (apply) {
-          await deps.peerCompanies.replaceForIpo(ipoId, peerRows as never);
+          await deps.peerCompanies.replaceForIpo(ipoId, peerRows);
           await trackField('peer_companies', 'rows');
         }
         bump(written, 'peer_companies', peerRows.length);

@@ -95,8 +95,19 @@ export class PeerCompanyRepository {
    * some other cause, a connection drop, anything), the transaction rolls
    * back and the previously stored rows survive — the delete never commits
    * on its own.
+   *
+   * An EMPTY `rows` is a no-op, not "delete everything" (F-3, Tier A
+   * follow-up round): a future backfill/repair caller passing a document
+   * that yielded no peers must not erase a good table just because it had
+   * nothing new to write. Both current live callers already guard on
+   * length before calling, so this only changes behaviour for callers that
+   * don't yet exist — but it is a real behaviour change, called out here
+   * because the unit test that asserted the old wipe-on-empty behaviour
+   * had to be updated to match.
    */
   async replaceForIpo(ipoId: string, rows: PeerCompanyInsert[]): Promise<PeerCompany[]> {
+    if (rows.length === 0) return [];
+
     const byRowKey = new Map<string, PeerCompanyInsert>();
     for (const row of rows) {
       byRowKey.set(row.normalizedName, row);
@@ -105,7 +116,6 @@ export class PeerCompanyRepository {
 
     return this.db.transaction(async (tx) => {
       await tx.delete(schema.peerCompanies).where(eq(schema.peerCompanies.ipoId, ipoId));
-      if (deduped.length === 0) return [];
       return tx.insert(schema.peerCompanies).values(deduped).returning();
     });
   }

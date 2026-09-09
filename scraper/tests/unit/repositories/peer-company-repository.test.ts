@@ -96,14 +96,16 @@ describe('PeerCompanyRepository.replaceForIpo (F-1 / GitHub #443)', () => {
     expect(transactionSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('an empty row set still deletes (inside the transaction) and skips the insert', async () => {
+  it('an empty row set is a no-op — no delete, no transaction, existing rows survive (F-3, Tier A follow-up)', async () => {
     const { calls, tx } = makeMockTx([]);
-    const mockDb = { transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)) } as never;
+    const transactionSpy = vi.fn((cb: (tx: unknown) => unknown) => cb(tx));
+    const mockDb = { transaction: transactionSpy } as never;
     const repo = new PeerCompanyRepository(mockDb);
 
     const result = await repo.replaceForIpo('ipo-1', []);
 
     expect(result).toEqual([]);
-    expect(calls).toEqual(['delete']);
+    expect(calls).toEqual([]);
+    expect(transactionSpy).not.toHaveBeenCalled();
   });
 });
