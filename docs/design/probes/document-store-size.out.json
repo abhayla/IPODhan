@@ -1,0 +1,109 @@
+{
+  "probe": "document-store-size",
+  "generated_at": "2026-09-09T04:45:18.029Z",
+  "source": "production, documents.file_size (read-only tunnel). Rows with a null file_size are counted separately and excluded from the byte total, so the figure is a floor, not an estimate.",
+  "ceiling_gb": 5,
+  "measured": {
+    "active_documents": 265,
+    "file_size_unknown": 163,
+    "total_bytes": 791219016,
+    "total_gb": 0.74,
+    "ipos_with_documents": 116,
+    "ipos_total": 330,
+    "documents_with_known_size": 102,
+    "mean_mb_per_known_document": 7.4,
+    "documents_per_ipo_with_documents": 2.28,
+    "mb_per_ipo_floor": 6.5,
+    "mb_per_ipo_estimated": 16.9
+  },
+  "by_type": [
+    {
+      "type": "RHP",
+      "documents": 43,
+      "gb": 0.237,
+      "avg_mb": 11
+    },
+    {
+      "type": "DRHP",
+      "documents": 19,
+      "gb": 0.196,
+      "avg_mb": 10.6
+    },
+    {
+      "type": "RATIOS_BASIS_ISSUE_PRICE",
+      "documents": 34,
+      "gb": 0.135,
+      "avg_mb": 6.9
+    },
+    {
+      "type": "PROSPECTUS",
+      "documents": 81,
+      "gb": 0.076,
+      "avg_mb": 11.1
+    },
+    {
+      "type": "PRICE_BAND_AD",
+      "documents": 13,
+      "gb": 0.063,
+      "avg_mb": 5
+    },
+    {
+      "type": "ANCHOR_ALLOCATION_REPORT",
+      "documents": 28,
+      "gb": 0.02,
+      "avg_mb": 1.1
+    },
+    {
+      "type": "BASIS_OF_ALLOTMENT_AD",
+      "documents": 1,
+      "gb": 0.008,
+      "avg_mb": 8.4
+    },
+    {
+      "type": "CORRIGENDUM",
+      "documents": 1,
+      "gb": 0.001,
+      "avg_mb": 1.1
+    },
+    {
+      "type": "BIDDING_CENTERS",
+      "documents": 8,
+      "gb": 0,
+      "avg_mb": 0
+    },
+    {
+      "type": "SECURITY_PARAMS_PRE_ANCHOR",
+      "documents": 14,
+      "gb": 0,
+      "avg_mb": 0
+    },
+    {
+      "type": "SECURITY_PARAMS_POST_ANCHOR",
+      "documents": 9,
+      "gb": 0,
+      "avg_mb": 0
+    },
+    {
+      "type": "SAMPLE_APPLICATION_FORMS",
+      "documents": 14,
+      "gb": 0,
+      "avg_mb": 0
+    }
+  ],
+  "projection": {
+    "basis": "average bytes per IPO that has documents today, times the IPO count. It assumes future IPOs carry a similar document set, which is the assumption OD-23 rests on.",
+    "at_today_ipo_count": {
+      "ipos": 330,
+      "gb_floor": 2.1,
+      "gb_estimated": 5.45
+    },
+    "at_500_ipos": {
+      "ipos": 500,
+      "gb_floor": 3.18,
+      "gb_estimated": 8.25
+    },
+    "fits_under_ceiling_at_500_floor": true,
+    "fits_under_ceiling_at_500_estimated": false,
+    "caveat": "163 of 265 active documents carry no file_size, so the floor figure counts them as zero bytes. The estimate assumes they are the same size as the 102 rows whose size is known. Backfilling file_size is the way to replace both numbers with one measured number."
+  }
+}

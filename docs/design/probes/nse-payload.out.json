@@ -1,0 +1,149 @@
+{
+  "probe": "nse-payload",
+  "generated_at": "2026-09-09T04:31:52.362Z",
+  "note": "NSE answers /api/* only after its homepage has set cookies (nsit, nseappid, bm_sv, ak_bmsc). A fetch without that prime returns 401. This is why the scraper keeps a session jar.",
+  "symbols": [
+    "ARCIL",
+    "VINOD"
+  ],
+  "cookies_captured": [
+    "AKA_A2",
+    "_abck",
+    "ak_bmsc",
+    "bm_sz"
+  ],
+  "attempts": [
+    {
+      "what": "cookie prime (homepage)",
+      "url": "https://www.nseindia.com/",
+      "status": 200,
+      "ok": true,
+      "bytes": 169976
+    },
+    {
+      "what": "current issues",
+      "url": "https://www.nseindia.com/api/ipo-current-issue",
+      "status": 200,
+      "ok": true,
+      "bytes": 3469,
+      "attempts": 1,
+      "parsed": true,
+      "fixture": "fixtures/nse/ipo-current-issue.json",
+      "records": 11,
+      "keys": [
+        "companyName",
+        "issueEndDate",
+        "issuePrice",
+        "issueSize",
+        "issueStartDate",
+        "series",
+        "status",
+        "symbol",
+        "category",
+        "noOfSharesOffered",
+        "noOfTime",
+        "noOfsharesBid",
+        "srNo"
+      ]
+    },
+    {
+      "what": "upcoming issues",
+      "url": "https://www.nseindia.com/api/all-upcoming-issues?category=ipo",
+      "status": 200,
+      "ok": true,
+      "bytes": 2376,
+      "attempts": 1,
+      "parsed": true,
+      "fixture": "fixtures/nse/all-upcoming-issues.json",
+      "records": 11,
+      "keys": [
+        "companyName",
+        "issueEndDate",
+        "issuePrice",
+        "issueSize",
+        "issueStartDate",
+        "series",
+        "status",
+        "symbol"
+      ]
+    },
+    {
+      "what": "ipo-detail ARCIL",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=ARCIL",
+      "status": 200,
+      "ok": true,
+      "bytes": 7075,
+      "attempts": 1,
+      "parsed": true,
+      "fixture": "fixtures/nse/ipo-detail-ARCIL.json",
+      "records": 1,
+      "keys": [
+        "companyName",
+        "metaInfo",
+        "bidDetails",
+        "issueInfo",
+        "activeCat",
+        "demandGraph",
+        "demandDataNSE",
+        "demandDataBSE",
+        "demandGraphALL"
+      ]
+    },
+    {
+      "what": "active-category ARCIL",
+      "url": "https://www.nseindia.com/api/ipo-active-category?symbol=ARCIL&issueType=ipo",
+      "status": 200,
+      "ok": true,
+      "bytes": 376,
+      "attempts": 1,
+      "parsed": true,
+      "fixture": "fixtures/nse/ipo-active-category-ARCIL.json",
+      "records": 1,
+      "keys": [
+        "dataList",
+        "heading",
+        "symbol",
+        "updateTime"
+      ]
+    },
+    {
+      "what": "ipo-detail VINOD",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=VINOD",
+      "status": 200,
+      "ok": true,
+      "bytes": 1686,
+      "attempts": 1,
+      "parsed": true,
+      "fixture": "fixtures/nse/ipo-detail-VINOD.json",
+      "records": 1,
+      "keys": [
+        "companyName",
+        "metaInfo",
+        "bidDetails",
+        "issueInfo",
+        "activeCat",
+        "demandGraph",
+        "demandDataNSE",
+        "demandDataBSE",
+        "demandGraphALL"
+      ]
+    },
+    {
+      "what": "active-category VINOD",
+      "url": "https://www.nseindia.com/api/ipo-active-category?symbol=VINOD&issueType=ipo",
+      "status": 200,
+      "ok": true,
+      "bytes": 376,
+      "attempts": 1,
+      "parsed": true,
+      "fixture": "fixtures/nse/ipo-active-category-VINOD.json",
+      "records": 1,
+      "keys": [
+        "dataList",
+        "heading",
+        "symbol",
+        "updateTime"
+      ]
+    }
+  ]
+}

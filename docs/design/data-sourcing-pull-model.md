@@ -2099,8 +2099,11 @@ backlog document-less. The other half — the IPOs that already lost their files
 
 `docs/design/probes/old-document-availability.mjs` downloads offer documents for at least twelve
 LISTED IPOs on production at three ages (about 1 month, 6 months and 12+ months since listing, four
-at each age, mainboard and SME both represented), first from the URL stored in
-`documents.source_url` and, when that fails, from NSE's, BSE's and SEBI's public document pages. It
+at each age, mainboard and SME both represented), first from the URL stored in `documents.url`
+(there is no `source_url` column — an earlier draft of this section named one that does not exist,
+which is exactly the class of error check D11 exists to catch for code citations and which nothing
+was catching for column names) and, when that fails, from NSE's, BSE's and SEBI's public document
+pages. It
 records the HTTP status, the byte size and the first page of text for each attempt. The result — per
 source and per age, what is still obtainable — is a table in this design and in the final report.
 

@@ -1,0 +1,199 @@
+{
+  "probe": "old-document-availability",
+  "generated_at": "2026-09-09T04:45:01.036Z",
+  "question": "For IPOs that already lost their local files to the seven-day purge, is the offer document still downloadable from the URL we stored?",
+  "method": "LISTED IPOs at three ages, both segments, the URL from documents.url, three attempts, then the first page of text so a 200 that is really a login page is not counted as success.",
+  "per_age_target": 4,
+  "attempted": 8,
+  "obtainable": 5,
+  "by_host_and_age": {
+    "nsearchives.nseindia.com | about 1 month": {
+      "attempted": 3,
+      "obtainable": 0,
+      "verdicts": {
+        "NOT A PDF — served \"PK\\u0003\\u0004\\u0014\" (a login or error page returns 200 too)": 3
+      }
+    },
+    "www.chittorgarh.net | about 1 month": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "nsearchives.nseindia.com | about 6 months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "www.bseindia.com | about 6 months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "hemadmin.hemsecurities.com | about 6 months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "fintellectualadvisors.com | about 6 months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    }
+  },
+  "documents": [
+    {
+      "age": "about 1 month",
+      "slug": "advit-jewels-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_RAMBHAJO.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 9329407,
+        "attempts": 1,
+        "is_pdf": false,
+        "verdict": "NOT A PDF — served \"PK\\u0003\\u0004\\u0014\" (a login or error page returns 200 too)",
+        "body_head": "PK\u0003\u0004\u0014\u0000\u0000\u0000\u0000\u0000p��\\\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 \u0000 \u0000RHP_RAMBHAJO/ux \u0000\u0001\u0004\u0000\u0000\u0000\u0000\u0004\u0000\u0000\u0000\u0000UT \u0000\u0007 <1j�|2j�\u001c1jPK\u0003\u0004\u0014\u0000\b\u0000\b\u0000cu�\\\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000-\u0000 \u0000RHP_RAMBHAJO/General Information Document.pdfux \u0000\u0001\u0004\u0000\u0000\u0000\u0000\u0004\u0000\u0000\u0000\u0000UT \u0000\u0007��+j5|2j��+jL�C�%��,�.۶m۶m۶"
+      }
+    },
+    {
+      "age": "about 1 month",
+      "slug": "waterways-leisure-tourism-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_CORDELIA.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 10710994,
+        "attempts": 1,
+        "is_pdf": false,
+        "verdict": "NOT A PDF — served \"PK\\u0003\\u0004\\u0014\" (a login or error page returns 200 too)",
+        "body_head": "PK\u0003\u0004\u0014\u0000\u0000\u0000\u0000\u0000�U�\\\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 \u0000 \u0000RHP_CORDELIA/ux \u0000\u0001\u0004\u0000\u0000\u0000\u0000\u0004\u0000\u0000\u0000\u0000UT \u0000\u0007��4j�-5j\"�3jPK\u0003\u0004\u0014\u0000\b\u0000\b\u0000���\\\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0019\u0000 \u0000RHP_CORDELIA/RHP CORD.pdfux \u0000\u0001\u0004\u0000\u0000\u0000\u0000\u0004\u0000\u0000\u0000\u0000UT \u0000\u0007j�2jU!5jj�2jܝw U���I\u001af�H��\u0010��{�\"e5����u����\")\u0012I"
+      }
+    },
+    {
+      "age": "about 1 month",
+      "slug": "riyaasat-lifestyle-ltd",
+      "segment": "SME",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://www.chittorgarh.net/reports/ipo_notes/riyaasat-rhp.pdf",
+      "attempt": {
+        "host": "www.chittorgarh.net",
+        "status": 200,
+        "ok": true,
+        "bytes": 8408503,
+        "attempts": 1,
+        "is_pdf": true,
+        "first_page_text": "Red Herring Prospectus Dated: June 12, 2026 100% Book Built Issue Please read Section 26 and 32 of the Companies Act, 2013 RIYAASAT LIFESTYLE LIMITED Please scan this QR Code Corporate Identity Numbers: U18100GJ2021PLC126637 to view the RHP REGISTERED OFFICE CONTACT PERSON TELEPHONE AND EMAIL WEBSITE 01/GF, 'Time Square', B/S. 'Pariseema', C.G. Ms. Mansi Pratik Patel Mobile No: +918866115025 www.riyaasat.in Road, Ahmedabad -380009, Gujarat, India. Company Secretary and Compliance Officer Email Id: cs@riyaasat.in PROMOTERS OF OUR COMPANY: GAURANG RAMANBHAI GALIYA, RAMANBHAI NANUBHAI GALIYA AND",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 1 month",
+      "slug": "shreedhar-spinners-ltd",
+      "segment": "SME",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_SHREEDHAR.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 6406724,
+        "attempts": 1,
+        "is_pdf": false,
+        "verdict": "NOT A PDF — served \"PK\\u0003\\u0004\\u0014\" (a login or error page returns 200 too)",
+        "body_head": "PK\u0003\u0004\u0014\u0000\u0000\u0000\u0000\u0000�v�\\\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u000e\u0000 \u0000RHP_SHREEDHAR/ux \u0000\u0001\u0004\u0000\u0000\u0000\u0000\u0004\u0000\u0000\u0000\u0000UT \u0000\u0007@g2j\u0019\u00025j�e2jPK\u0003\u0004\u0014\u0000\b\u0000\b\u0000v��\\\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0015\u0000 \u0000RHP_SHREEDHAR/GID.pdfux \u0000\u0001\u0004\u0000\u0000\u0000\u0000\u0004\u0000\u0000\u0000\u0000UT \u0000\u0007yT1j\u0019\u00025jyT1j�|u\\U۶��[�k+ ͆Mw�Rҝ�.aSҍt����tw7\"�J��"
+      }
+    },
+    {
+      "age": "about 6 months",
+      "slug": "powerica-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 160,
+      "type": "PROSPECTUS",
+      "url": "https://nsearchives.nseindia.com/corporate/FP_INE921L01032_30MAR2026.pdf",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 11722888,
+        "attempts": 1,
+        "is_pdf": true,
+        "first_page_text": "PROSPECTUS Dated March 27, 2026 Please read Section 26 of the Companies Act, 2013 100% Book Built Offer (Please scan this QR code to view the Prospectus and the ICDR Abridged Prospectus) POWERICA LIMITED CORPORATE IDENTIFICATION NUMBER: U31100MH1984PLC032825 REGISTERED AND CONTACT PERSON EMAIL AND TELEPHONE WEBSITE CORPORATE OFFICE 9th Floor, Bakhtawar, Nariman Point, Anita Praful Renuse Email: investorrelations@powericaltd.com www.powericaltd.com Mumbai � 400 021, Maharashtra, India Company Secretary and Telephone: 022 - 43152525 Compliance Officer THE PROMOTERS OF OUR COMPANY: BHARAT OBEROI,",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 6 months",
+      "slug": "sai-parenteral-s-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 160,
+      "type": "PROSPECTUS",
+      "url": "https://www.bseindia.com/corporates/download/367498/IPO%20BasisOfAllotment/Sai%20Parenterals_Prospectus_20260330110546.pdf",
+      "attempt": {
+        "host": "www.bseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 4321133,
+        "attempts": 1,
+        "is_pdf": true,
+        "first_page_text": "PROSPECTUS Dated: March 28, 2026 Please read Section 32 of the Companies Act, 2013 100% Book Built Offer (Please scan this QR Code to view this Prospectus) SAI PARENTERAL'S LIMITED CORPORATE IDENTITY NUMBER: U24231TG2001PLC036043 REGISTERED CORPORATE OFFICE CONTACT E-MAIL AND WEBSITE OFFICE PERSON TELEPHONE Plot No 39, 5th floor, - Shivali Aggarwal, Tel: +91 79979 91301 www.saiparenterals.c Lavanya Arcade Company E-mail: om/ Jayabheri Enclave, Secretary and cs@saiparenterals.com Gachibowli, Compliance K.V.Rangareddy, Officer Seri Lingampally, Telangana, India, 500032 OUR PROMOTERS: ANIL KUMAR",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 6 months",
+      "slug": "vivid-electromech-ltd",
+      "segment": "SME",
+      "age_days": 155,
+      "type": "PROSPECTUS",
+      "url": "https://hemadmin.hemsecurities.com/images/Files/offer/1055.pdf",
+      "attempt": {
+        "host": "hemadmin.hemsecurities.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 7302878,
+        "attempts": 1,
+        "is_pdf": true,
+        "first_page_text": "PROSPECTUS 100% Book Built Offer Dated: April 2, 2026 Please read Section 26 and 32 of the Companies Act, 2013 (Please scan this QR Code to view the Prospectus) VIVID ELECTROMECH LIMITED CIN: U31200MH1990PLC057679 REGISTERED OFFICE CONTACT PERSON EMAIL AND TELEPHONE WEBSITE Plot No. A-173/7, T.T.C Industrial Area, MIDC, Kharine, Chaitali Rajesh Shah E-mail: cs@vividgroup.in www.vividgroup.in Navi Mumbai, 400710, Maharashtra, India Company Secretary & Tel No: +022-68175555 Compliance Officer PROMOTERS OF THE COMPANY Sameer Vishvanath Attavar, Meeta Sameer Attavar and Hardik Dinesh Shah DETAILS",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 6 months",
+      "slug": "highness-microelectronics-ltd",
+      "segment": "SME",
+      "age_days": 160,
+      "type": "PROSPECTUS",
+      "url": "https://fintellectualadvisors.com/wp-content/uploads/2026/03/Prospectus_Highness-Microelectronics-Limited.pdf",
+      "attempt": {
+        "host": "fintellectualadvisors.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 22955140,
+        "attempts": 1,
+        "is_pdf": true,
+        "first_page_text": "Prospectus 100% Book Building Issue Dated: March 30 , 2026 Please read Section 26, 28 and 32 of the Companies Act, 2013 (Please scan this QR code to view the Prospectus) HIGHNESS MICROELECTRONICS LIMITED (Formerly known as Highness Microelectronics Private Limited) Corporate Identification Number: U72900MH2007PLC173854 Registered Office Contact Person Email and Telephone Website Office 1C3, 1st Floor, Gundecha Onclave, Ms. Preeti Paresh Rathi Email Id: cs@highnessmicro.com www.highnessmicro.com Kherani Road, Saki Vihar, Andheri (East), (Company Secretary and Tel no: 022-28507123, +91 84540 405",
+        "verdict": "OBTAINABLE"
+      }
+    }
+  ]
+}
