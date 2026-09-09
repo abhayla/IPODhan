@@ -752,8 +752,8 @@ as far as the pull loop depends on it:
 |---|---|---|
 | Discovery | **4× a day — 08:30, 11:00, 14:00, 17:30 IST** | `due-step-cycle.ts:15` |
 | Due list | with discovery and after any filing — **not every 30 minutes** | `due-step-cycle.ts` |
-| Live numbers | every wake **in market hours, Mon–Fri 10:00–17:00 IST, OPEN IPOs only** | `due-step-cycle.ts:81-85`, `index.ts:343` |
-| Aggregators | once per filing + daily while open | `index.ts:180,346-370` |
+| Live numbers | every wake **in market hours, Mon–Fri 10:00–17:00 IST, OPEN IPOs only** | `due-step-cycle.ts:81-85`, `scraper/src/index.ts:343` |
+| Aggregators | **UPCOMING/OPEN only, at most once a day** | `scraper/src/index.ts:186` (`AGGREGATOR_INTERVAL_MINUTES = 24 * 60`), `scraper/src/index.ts:367` |
 | Sat / Sun / NSE holiday | only UPCOMING/PRE_OPEN/OPEN candidates do network work | `document-cycle-calendar-gate.ts` |
 
 **The pull walk runs in the four discovery slots**, plus whenever a document for a phase-1 IPO

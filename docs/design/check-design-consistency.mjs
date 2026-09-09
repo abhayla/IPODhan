@@ -8,7 +8,10 @@
 // plan-row count appeared as 131, 150 and 153; and §1 carried ranks that Appendix A
 // had since changed. Every one of those was caught by a reader, not by a check.
 //
-// This is the check. It reads only documents; it touches no product code.
+// This is the check. It derives no design fact from product code — the documents are the only
+// source of truth here. The one place it opens a source file is D11, which verifies that a
+// `file:line` citation still points at a line that exists: a citation nobody can follow is how
+// seven false claims about our own code survived the first draft.
 //
 //   node docs/design/check-design-consistency.mjs           report, exit 0
 //   node docs/design/check-design-consistency.mjs --gate     report + exit 1 on any FAIL
@@ -199,6 +202,50 @@ try {
   });
   if (wrongly.length) fail('D10c', 'Owner comments marked settled that the owner has not settled: ' + wrongly.join(', '));
   else ok('D10c', 'No undecided owner comment is written up as settled.');
+
+  // --- D11: every file:line citation must resolve, and resolve UNAMBIGUOUSLY ---
+  // WHY. D8 counts citations; it never asks whether they are true. Audited 2026-09-09: of 25
+  // distinct citations, `index.ts:180` pointed at the cycle-lock TTL while the design used it to
+  // describe aggregator cadence (really line 186), and the cited range 346-370 lands in the LIVE
+  // block, not the aggregator block at 367. Worse, `index.ts` is a basename shared by 12 files, so
+  // "the citation resolves" depended on which one you happened to open. A citation nobody can
+  // follow is indistinguishable from an invented one.
+  var CODE_ROOTS = ['scraper/', 'web/', 'packages/', 'scripts/'];
+  var cites = [...new Set((md.match(/[a-zA-Z0-9/._-]+\.(?:ts|mjs|sh):\d+/g) || []))];
+  var citeBad = [];
+  var citeOk = 0;
+  for (var ci = 0; ci < cites.length; ci++) {
+    var cite = cites[ci];
+    var cut = cite.lastIndexOf(':');
+    var cpath = cite.slice(0, cut);
+    var cline = parseInt(cite.slice(cut + 1), 10);
+    var matches = [];
+    if (cpath.indexOf('/') >= 0) {
+      if (fs.existsSync(cpath)) matches = [cpath];
+    } else {
+      // basename: search the code roots rather than guessing
+      var stack = CODE_ROOTS.slice();
+      while (stack.length) {
+        var dir = stack.pop();
+        var entries = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { continue; }
+        for (var ei = 0; ei < entries.length; ei++) {
+          var name = entries[ei].name;
+          if (name === 'node_modules' || name === 'dist' || name === '.next') continue;
+          var full = path.join(dir, name);
+          if (entries[ei].isDirectory()) stack.push(full + '/');
+          else if (name === cpath) matches.push(full);
+        }
+      }
+    }
+    if (matches.length === 0) { citeBad.push(cite + ' (no such file)'); continue; }
+    if (matches.length > 1) { citeBad.push(cite + ' (AMBIGUOUS - ' + matches.length + ' files share that name; use a path)'); continue; }
+    var lines = fs.readFileSync(matches[0], 'utf8').split('\n').length;
+    if (cline > lines) citeBad.push(cite + ' (' + matches[0] + ' has only ' + lines + ' lines)');
+    else citeOk++;
+  }
+  if (citeBad.length) fail('D11', citeBad.length + ' of ' + cites.length + ' code citations do not resolve: ' + citeBad.join(' | '));
+  else ok('D11', 'All ' + cites.length + ' code citations resolve to a real file and a line that exists.');
 
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);
