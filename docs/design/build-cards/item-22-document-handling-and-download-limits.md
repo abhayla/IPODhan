@@ -167,7 +167,7 @@ export type VerifyFailureReason =
 
 /**
  * Today: verifyDownload's zip handling keeps exactly ONE PDF member
- * (selectZipMemberForType, line 241) even when the zip holds several real
+ * (selectZipMemberForType, document-download-verifier.ts:241 - NOT the classifier) even when the zip holds several real
  * volumes. NEW: when document-classifier's multi-volume check fires, every
  * real PDF member is verified and stored individually — storeDocument called
  * once per part, each with a `partNumber` (1-indexed, in the member-name

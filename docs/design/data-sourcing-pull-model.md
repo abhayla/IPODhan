@@ -130,6 +130,7 @@ nothing", fails the gate.
 |---|---|---|---|
 | O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in the phase-1 build uses a language model, so there is nothing to approve yet. |
 | O-14 | The 19 rows whose `offering_type` is `OFS` may be either of two different things: the offer-for-sale COMPONENT of a public issue (a property of an IPO, already measured by `ipo_details.ofs_issue`), or SEBI's OFS-through-stock-exchange mechanism for an already-listed company — a one- or two-day auction with a floor price, no offer document, no lot size and no anchor round. Probe `probes/ofs-rows.mjs` settles WHICH they are. What it cannot settle is what the site should then do: model the exchange mechanism as its own offering type with a much smaller field set and its own page shape, or keep it inside the IPO shape with most fields marked NOT_APPLICABLE. | **RECOMMENDED: let the probe decide the fact, then model the exchange mechanism as its own type with roughly 35 applicable fields rather than 205.** A page that shows a price band, a lot size and an anchor book for an offering that has none of them is wrong in a way a reader notices immediately. §1.11 is written PROVISIONAL on this. · 2026-09-09 | It changes what a whole class of page looks like, and how many rows the coverage numbers are measured against — a product call, not an implementation detail |
+| O-15 | The design now shows a post-listing price on every IPO page, taken every 15 minutes from NSE's and BSE's free public quote endpoints and labelled "delayed". Fetching them is free; **republishing them may not be permitted**. NSE's Data Sharing and Usage Policy forbids a subscriber from redistributing market data except under an agreement, and nseindia.com's terms of use prohibit automated extraction and redistribution. The question is whether a 15-minute-delayed, dated, labelled last price on a public page counts as redistribution, and if so what licence covers it. | **RECOMMENDED: proceed with the 15-minute delayed, dated, clearly-labelled price while you check the licence position**, because a delayed and attributed quote is the lowest-risk form and the alternative — no price at all after listing — removes the most-asked number on a listed IPO's page. §2.1 is written PROVISIONAL on this. · 2026-09-09 | You are a Zerodha Authorised Person bound by the NSE Code of Advertisement; a redistribution question is a compliance call, not an engineering one, and the cost of being wrong is not a bug report |
 
 ### 0.0.3 The standard of proof this document is held to (OD-25)
 
@@ -302,10 +303,15 @@ Three rules follow, and check **D17** enforces all three:
 
 - `LIVE_WINDOW_DAYS_AFTER_LISTING` (`document-state-machine.ts:749`) stops gating document work. An
   IPO's documents are workable for the life of the IPO row.
-- The purge clock changes its anchor. Today `decidePurge` (`document-store.ts:264`) deletes at
-  `close_date + 7 days` — a date that has nothing to do with whether we ever read the file. Under
-  OD-32 it deletes at **last successful extraction + 7 days**, and it never deletes a document that
-  has no successful extraction yet.
+- The purge clock changes its anchor — and the code is already further along than an earlier draft
+  of this section claimed. `decidePurge` (`document-store.ts:264`) has had a three-arm rule since
+  T-403 M7: past the soft window it purges only when **every document is read**, keeps an unread one
+  until the 30-day hard cap (`DEFAULT_MAX_RETENTION_DAYS`, `document-store.ts:45`), and purges
+  regardless past that cap. It is `isPurgeDue` (`document-store.ts:231`) that tests the date alone,
+  and this section previously described that function while citing the other one's line.
+  So OD-32 changes two things, not four: the soft window's **anchor** moves from `close_date` to
+  **last successful extraction**, and the **hard cap stops deleting an unread document** — today a
+  file nobody managed to read is destroyed at day 30 with nothing stored in its place.
 - **Nothing re-downloads an already-extracted document.** After the seven days the PDF is gone on
   purpose, and a design section that asks for it back is a defect, not a feature — that is exactly
   what D17 fails on.
@@ -453,17 +459,17 @@ where that contract already names the section; new rows extend it in the same sh
 | 1 | `symbol` | 259 | D | DOC | NSE | BSE | keep | E7 cover | `^[A-Z0-9&-]{1,20}$`; matches the exchange's symbol for the same ISIN | NSE + BSE. Disagreement = re-read the cover. | SME/BSE: BSE is rank 2, NSE absent |
 | 2 | `company_name` | 327 | D | DOC | NSE | BSE | keep | cover | legal-name form (ends Limited/Ltd); normalised name matches the exchange's ±1 token | CG, MC. Disagreement on the legal suffix is not a conflict; a different entity is. | — |
 | 3 | `issue_size` | 327 | D | DOC | BSE | CG | **→ Cr** | A5+A6 | `fresh + OFS = total ±0.5%`; `shares_at_cap × cap ≈ total ±0.5%`; > ₹1 cr and < ₹50,000 cr | CG, MC, BSE. Disagreement = re-read A5/A6 from the PBA, never adopt the website number. | Rights/OFS/NCD: no PBA — rank 1 becomes the offer letter, rank 2 BSE |
-| 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | **two-sided, and the same statement as §1.11**: mainboard `₹10,000 ≤ lot × floor ≤ ₹15,000` (SEBI's retail band, so a lot ten times too large fails too); SME `lot_multiple × lot × floor ≥ ₹1,00,000` with `lot_multiple` READ from the row and the rule effective from SEBI's 2025 SME framework (F-66, F-67) | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
+| 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | **two-sided, and the same statement as §1.11**: mainboard `₹10,000 ≤ lot × CAP ≤ ₹15,000` — against the **cap**, because issuers size the lot at the top of the band (Tata Technologies: 30 × ₹500 = ₹15,000 exactly), so a floor-based test drifts low and false-fails a legal lot. SME, per lot: `lot × floor ≥ ₹1,00,000`; and per application from **2025-07-01**: `lot_multiple × lot × floor > ₹2,00,000` with `lot_multiple` READ from the row (F-66, F-67) | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
 | 5 | `open_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `open ≤ close`; within 90 days of the RHP filing date | the other exchange, then CG. **The document is NOT a verification source** — see §1.2.1 | **Named exception E-1 (§1.2.1).** Owner decision 2026-09-08. |
-| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | **scoped by offering type** (F-71): `close ≥ open` always; for IPO and FPO `3 ≤ working_days(open, close) ≤ 10` (SEBI ICDR Reg 46, including any price-band extension); for RIGHTS a calendar bound of roughly 7–30 days; for NCD its own window from the prospectus. Applied unconditionally, the public-issue bound rejects all 8 legitimate rights issues on production | as 5 | **Named exception E-1** |
-| 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; `listing ≤ close + 3` working days (T+3) | as 5 | **Named exception E-1** |
+| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | **scoped by offering type** (F-71): `close ≥ open` always; for IPO and FPO the issue must be **kept open** for 3 to 10 working days — an INCLUSIVE count, so the test is `3 ≤ working_days_inclusive(open, close) ≤ 10`, which for a Monday open and a Wednesday close is 3. Written as a difference it is 2, and false-fails nearly every mainboard IPO. SEBI ICDR **Reg 46** for a public issue, **Reg 140** for a further public offer, including any price-band extension; for RIGHTS a calendar bound of roughly 7–30 days; for NCD its own window from the prospectus. Applied unconditionally, the public-issue bound rejects all 8 legitimate rights issues on production | as 5 | **Named exception E-1** |
+| 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; **effective-dated**: `listing ≤ close + 3` working days for issues OPENING on or after **2023-12-01** (voluntary from 2023-09-01), `≤ close + 6` before that. Unconditional, it rejects roughly 200 legitimate LISTED rows the 22:00 job walks backwards into — the F-65 class exactly | as 5 | **Named exception E-1** |
 | 8 | `status` | 327 | **T** | **NSE** | **BSE** | CG | keep | — | must be a legal transition (UPCOMING→OPEN→CLOSED→LISTED); never regresses without an ADMIN row | our own date arithmetic. A status contradicting the dates is a conflict. | **Named exception E-1.** WITHDRAWN / POSTPONED only from the exchange or ADMIN |
 | 9 | `registrar` | 267 | D | DOC | BSE | CG | keep | E3 | resolves to a row in `registrars` by name or SEBI reg no. | CG, MC. Disagreement = re-read E3. | — |
 | 10 | `registrar_id` | 267 | **C** | — | — | — | keep | — | FK resolved from field 9 | derived; never sourced | — |
 | 11 | `rating_override` | 327 | **I** | ADMIN | — | — | keep | — | boolean, admin-only | — | — |
 | 12 | `slug` | 327 | **C** | — | — | — | keep | — | `generateIPOSlug(company_name)`; unique; old slug written to `ipo_slug_redirects` | — | — |
 | 13 | `sector` | 196 | D | DOC | CG | MC | keep | F1 | non-empty, from the fixed sector list | CG. | — |
-| 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | `floor < cap`; `cap ≤ 1.2 × floor` mainboard, `≤ 1.4 ×` SME; `floor ≥ face_value` | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
+| 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | `floor < cap`; **`1.05 × floor ≤ cap ≤ 1.20 × floor` for BOTH segments**; `floor ≥ face_value`. ICDR Reg 30(2) caps the band at 120% of the floor and a December 2021 amendment set a minimum 5% spread; Chapter IX applies both to SME, so the **`≤ 1.4 ×` SME carve-out an earlier draft carried does not exist** and would have passed an illegal 40% band | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
 | 15 | `price_range_max` | 300 | D | DOC | NSE | BSE | keep | A1 | as 14 | as 14 | as 14 |
 | 16 | `last_scraped_at` | 327 | **I** | — | — | — | keep | — | pipeline clock, UTC | — | — |
 | 17 | `listing_exchanges` | 327 | **T** | **NSE** | **BSE** | CG | keep | A15 | non-empty subset of {NSE, BSE}; an SME row may not claim both unless both confirm | the other exchange | **Named exception E-1.** Also **the only field that distinguishes SME-on-NSE from SME-on-BSE** — `ipos.exchange` is NULL on all 327 rows and `bse_scrip_code` on 0 of 327 |
@@ -781,11 +787,18 @@ Written once here rather than duplicated into every row.
 | Type | Population today | Exceptions that apply |
 |---|---:|---|
 | **Mainboard IPO** | 99 | The base case. Full document set; both exchanges available as rank 2 and 3. |
-| **SME on BSE** | 106 | `listing_exchanges = ["BSE"]`. **NSE cannot be rank 2 or 3 for any field** — there is no NSE payload. Minimum application is **2 lots for issues opening on or after SEBI's 2025 SME framework**, recorded in `ipo_details.lot_multiple`; before that date it is 1 lot, and **167 SME rows on production predate the rule** (F-67), so the rule carries an effective date exactly as §5.3 requires of every validation rule. The check is stated ONCE, here and in §1.2 row 4, as `lot_multiple × lot × floor ≥ ₹1,00,000` with `lot_multiple` read from the row rather than assumed — the two earlier phrasings differed by a factor of two, and the weaker one (`2 × lot × floor ≥ ₹1,00,000` with a ₹50k floor) could never fail on a real SME issue (F-66). Applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the `cap ≤ 1.2 × floor` check is skipped and floor = cap is expected. Designated exchange is always BSE. |
+| **SME on BSE** | 106 | `listing_exchanges = ["BSE"]`. **NSE cannot be rank 2 or 3 for any field** — there is no NSE payload. **Minimum application, corrected twice and now cited.** For issues opening **on or after 2025-07-01** (NSE and BSE circulars of 2025-06-18, implementing SEBI's March-2025 ICDR amendment) an individual must bid a **minimum of 2 lots with an application value ABOVE ₹2,00,000**; the "Retail Individual Investor" category is replaced by **"Individual Investor"**. Before that date the minimum was 1 lot at ₹1,00,000, and **167 SME rows on production predate the rule** (F-67), so the rule carries a specific effective DATE — not "the 2025 framework" — exactly as §5.3 requires.
+
+The check is stated ONCE, here and in §1.2 row 4, and it is stated **per lot** so that it can actually fail:
+
+    lot × floor ≥ ₹1,00,000                     (the per-lot invariant, both eras)
+    lot_multiple × lot × floor > ₹2,00,000       (the application invariant, from 2025-07-01)
+
+An earlier draft wrote it as `lot_multiple × lot × floor ≥ ₹1,00,000`, which with `lot_multiple = 2` reduces to `lot × floor ≥ ₹50,000` — **the weaker form this very paragraph identifies as F-66, re-adopted by accident.** A review caught it. Applying the mainboard check instead is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the `cap ≤ 1.2 × floor` check is skipped and floor = cap is expected. Designated exchange is always BSE. |
 | **SME on NSE** | 61 | Mirror image: `listing_exchanges = ["NSE"]`, **BSE cannot be rank 2 or 3**. Same 2-lot rule. |
 | **SME on both** | 5 | Unusual for SME. Treat as mainboard for ranking, but flag for review — this is more likely a data error than a genuine dual listing, and §4 gives it a check. |
 | **Rights issue** | 8 | No DRHP, no price band advertisement, no anchor round, no lot size in the IPO sense. Rank 1 is the letter of offer; where no document type exists for it, rank 1 falls to BSE. Fields 93–109, 131–137 are `NOT_APPLICABLE`, not gaps. **Three facts a rights-issue reader needs most are not among the 240 fields at all (F-72): the RECORD DATE, the ENTITLEMENT RATIO (for example 3 for every 5 held) and the rights-entitlement trading window.** Named here as a gap this design surfaces rather than closes — the same treatment the NCD row gets — with the letter of offer as rank 1 and the exchange's rights-issue circular as rank 2 when they are added. **The bidding-window check does not apply**: §1.2 row 6's `close ≤ open + 10 working days` is SEBI ICDR Reg 46, a PUBLIC-issue rule; a rights issue is legitimately open 7–30 calendar days (F-71). |
-| **OFS** | 19 | **MEASURED 2026-09-09 by `probes/ofs-rows.mjs`, and the answer is the exchange mechanism** (F-70). Of the 19 rows: **0 have a lot size, 0 have any document at all, 0 have a fresh issue, 0 have `ofs_issue` set, and exactly 1 of the 19 has a price band.** The company names settle it beyond the counts: Coal India, BHEL, NHPC, NLC India, Hindustan Zinc, IRFC, IndiGrid and three public-sector banks — every one of them **already listed** when the row was created. That is SEBI's OFS-through-stock-exchange — a promoter of an already-LISTED company selling in a one- or two-day auction with a floor price — not the offer-for-sale COMPONENT of a public issue, which is what field 36 `ipo_details.ofs_issue` measures. **Two sentences this row used to carry are therefore false and are gone**: "`issue_size = ofs_issue`" (no row has `ofs_issue` at all) and the implication that a document ladder applies (no row has a document). The price band, lot size, anchor and allotment fields are `NOT_APPLICABLE` for this type, not gaps. **One row is an outlier and is not swept up with the rest**: HMA Agro Industries carries a price band but no lot size and no document, so it is reviewed individually rather than typed by the majority — 18 of 19 is a finding, not a rule. **PROVISIONAL on O-14** for the remaining question, which is a product one: whether these get their own page shape with roughly 35 applicable fields instead of 205. |
+| **OFS** | 19 | **MEASURED 2026-09-09 by `probes/ofs-rows.mjs`, and the answer is the exchange mechanism** (F-70). Of the 19 rows: **0 have a lot size, 0 have any document at all, 0 have a fresh issue, 0 have `ofs_issue` set, and exactly 1 of the 19 has a price band.** **The counts alone would NOT settle it**, and a review was right to say so: zero documents is partly our own coverage gap (`filing_date` is populated on 24 of 256 documents), and "no fresh issue" is equally true of a 100%-OFS public issue, which is common. What settles it is the **company names** — Coal India, BHEL, NHPC, NLC India, Hindustan Zinc, IRFC, IndiGrid and three public-sector banks, **every one already listed** when the row was created, which a public issue by definition is not. Two further tests belong in the build and are named here so they are not forgotten: the company has a **prior listing date or ISIN**, and an exchange OFS runs **T-day non-retail, T+1 retail**, so `close = open + 1`. That is SEBI's OFS-through-stock-exchange — a promoter of an already-LISTED company selling in a one- or two-day auction with a floor price — not the offer-for-sale COMPONENT of a public issue, which is what field 36 `ipo_details.ofs_issue` measures. **Two sentences this row used to carry are therefore false and are gone**: "`issue_size = ofs_issue`" (no row has `ofs_issue` at all) and the implication that a document ladder applies (no row has a document). The price band, lot size, anchor and allotment fields are `NOT_APPLICABLE` for this type, not gaps. **One row is an outlier and is not swept up with the rest**: HMA Agro Industries carries a price band but no lot size and no document, so it is reviewed individually rather than typed by the majority — 18 of 19 is a finding, not a rule. **PROVISIONAL on O-14** for the remaining question, which is a product one: whether these get their own page shape with roughly 35 applicable fields instead of 205. |
 | **NCD** | 7 | Debt. Price band, EPS, PE, promoter holding and peer comparison are all `NOT_APPLICABLE`. Its own prospectus is rank 1 for coupon, tenor and rating — **none of which we currently store**, which is a gap this design surfaces rather than closes. |
 | **INVITS / REITS** | 5 | `segment` is NULL for all 5 today. Unit-based, not share-based; lot size and face value do not apply in the same sense. Out of the pull model's first release — say so explicitly rather than letting them fail every check. |
 | **BUYBACK / TENDER** | 17 | Corporate actions, not offerings. They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 `offering_type` is the guard; §4.6 gives it a check. |
@@ -982,8 +995,16 @@ endpoints, with the 90-day windows."*
 - **Label:** the page shows the price **with the timestamp it was read at, marked "delayed"**. A
   price with no as-of stamp is the defect this rule exists to prevent.
 - **What is refused, and why:** a broker feed (Zerodha Kite, Angel One SmartAPI, Upstox) is licensed
-  for the account holder's own use. Redistributing a quote to the public needs an NSE Data and
-  Analytics licence, which this project does not hold. No broker feed reaches the public site.
+  for the account holder's own use. No broker feed reaches the public site.
+- **PROVISIONAL on O-15 — and this is a legal question, not an engineering one.** A review pointed
+  out that the licence trigger is **redistribution**, not where the number came from: NSE's Data
+  Sharing and Usage Policy says a subscriber "shall not be permitted to redistribute any Market
+  Data, except as agreed in the Relevant Agreement", and nseindia.com's terms of use prohibit
+  automated extraction and redistribution. **Free to fetch is not free to republish.** An earlier
+  draft asserted the free endpoints were fine; that assertion is withdrawn and recorded as O-15,
+  because the owner is a Zerodha Authorised Person and the cost of being wrong is not a bug report.
+  The design proceeds on the recommendation that a 15-minute-delayed price, labelled and dated, is
+  the lowest-risk form — and it is stated as an open fork, not as permission.
 
 #### Why these numbers, and what they cost
 
@@ -1433,15 +1454,23 @@ offering", which is the question that actually decides whether to write into a r
 
 **The lapsed-draft rule.** A new draft for a company whose existing row never opened:
 
-- If the existing row is **WITHDRAWN**, or its draft is **older than the SEBI observation-validity
-  period with no RHP filed**, the old offering has lapsed: **freeze it** with a forward-linking
+- If the existing row is **WITHDRAWN**, or **SEBI's observations on its draft are older than the
+  validity period and no RHP has been filed**, the old offering has lapsed: **freeze it** with a forward-linking
   notice (the OD-8 mechanism — the page stays, it says what happened, and it points at the new row)
   and **create a new row**.
 - Otherwise it is a **re-filing of the same offering** and it updates the existing row (S-05).
 
-**The period is twelve months, and it is cited, not remembered.** SEBI ICDR Regulations 2018,
-**Regulation 44(1)**: *"A public issue/rights issue may be opened within twelve months from the date
-of issuance of observations by SEBI, in terms of Regulation 44(1), 85 and 140."* The clause is saved
+**The period is twelve months FROM THE OBSERVATION DATE, and it is cited, not remembered.** SEBI ICDR
+Regulations 2018, **Regulation 44(1)**: *"A public issue/rights issue may be opened within twelve
+months from the date of issuance of observations by SEBI, in terms of Regulation 44(1), 85 and 140."*
+
+**The clock starts at the observation letter, not at the filing.** A review caught an earlier draft
+measuring from the DRHP's filing date, which is wrong in the direction that destroys data: SEBI's
+observations routinely arrive three to twelve months after a draft is filed, so a DRHP filed in
+January 2025 whose observations came in November 2025 is valid until November 2026 — and the
+filing-date reading would have frozen its row in January 2026 and minted a duplicate. The observation
+date is published in SEBI's own "Processing Status of Draft Offer Documents"; where we do not hold
+it, the row is **not** lapsed and is listed as unknown rather than guessed. The clause is saved
 at `probes/fixtures/sebi-icdr-observation-validity-2026-09-09.txt` with the URL it came from and
 what SEBI's own site did and did not serve on the day.
 
@@ -1837,6 +1866,13 @@ in terms the numbers cannot carry:
   document, not a lower-ranked filing.
 - A corrigendum whose `filing_date` is **before** the prospectus is superseded by it in full, as
   the numbers already say.
+- **And "terminal" is not terminal for a fixed-price issue.** A fixed-price issue has no RHP: the
+  Prospectus is filed with the Registrar of Companies **before the issue opens**, so PROSPECTUS
+  (precedence 100) is the FIRST document rather than the last. Read literally, rule 3 would lock
+  every later filing out of the ~167 commonly fixed-price SME rows on production from day one. So
+  the rule is stated as: **the prospectus is terminal for a BOOK-BUILT issue**; for a fixed-price
+  issue it is the baseline, and later filings of any type supersede it normally. A review caught
+  this, and OD-46's fixed-price SME walkthrough is where it would otherwise have been discovered.
 - **Named test:** `corrigendum-after-prospectus-wins-for-named-fields`, and its mirror,
   `corrigendum-before-prospectus-is-superseded`.
 

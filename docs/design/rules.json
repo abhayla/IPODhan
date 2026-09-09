@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-09T10:06:08.375Z",
+  "generated_at": "2026-09-09T10:20:25.488Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 157,
-    "retired": 11
+    "live": 156,
+    "retired": 13
   },
-  "next_id": 169,
+  "next_id": 170,
   "rules": [
     {
       "id": "R-151",
@@ -14,15 +14,6 @@
       "section": "0.5.1 What is kept, and for how long (OD-32, owner 2026-09-09 — replaces OD-23)",
       "kind": "table-normative",
       "text": "The row in documents — URL, type, filing date, sha256, the exchange's own document id — the life of the IPO row — it is how we know we already have this document and must not fetch it again",
-      "first_seen": "2026-09-09",
-      "retired": false
-    },
-    {
-      "id": "R-152",
-      "hash": "868b2b77e81c",
-      "section": "0.5.1 What is kept, and for how long (OD-32, owner 2026-09-09 — replaces OD-23)",
-      "kind": "prose",
-      "text": "- LIVE_WINDOW_DAYS_AFTER_LISTING (document-state-machine.ts:749) stops gating document work. An IPO's documents are workable for the life of the IPO row. - The purge clock changes its anchor. Today decidePurge (document-store.ts:264) deletes at close_date + 7 days — a date that has nothing to do with whether we ever read the file. Under OD-32 it deletes at last successful extraction + 7 days, and it never deletes a document that has no successful extraction yet. - Nothing re-downloads an already-extracted document. After the seven days the PDF is gone on purpose, and a design section that asks for it back is a defect, not a feature — that is exactly what D17 fails on.",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -54,11 +45,11 @@
       "retired": false
     },
     {
-      "id": "R-166",
-      "hash": "26639a8533b8",
+      "id": "R-169",
+      "hash": "fb4d45f8556f",
       "section": "1.11 Exceptions by IPO type, gathered",
-      "kind": "table-normative",
-      "text": "SME on BSE — 106 — listing_exchanges = [\"BSE\"]. NSE cannot be rank 2 or 3 for any field — there is no NSE payload. Minimum application is 2 lots for issues opening on or after SEBI's 2025 SME framework, recorded in ipo_details.lot_multiple; before that date it is 1 lot, and 167 SME rows on production predate the rule (F-67), so the rule carries an effective date exactly as §5.3 requires of every validation rule. The check is stated ONCE, here and in §1.2 row 4, as lot_multiple × lot × floor ≥ ₹1,00,000 with lot_multiple read from the row rather than assumed — the two earlier phrasings differed by a factor of two, and the weaker one (2 × lot × floor ≥ ₹1,00,000 with a ₹50k floor) could never fail on a real SME issue (F-66). Applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the cap ≤ 1.2 × floor check is skipped and floor = cap is expected. Designated exchange is always BSE.",
+      "kind": "prose",
+      "text": "An earlier draft wrote it as lot_multiple × lot × floor ≥ ₹1,00,000, which with lot_multiple = 2 reduces to lot × floor ≥ ₹50,000 — the weaker form this very paragraph identifies as F-66, re-adopted by accident. A review caught it. Applying the mainboard check instead is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the cap ≤ 1.2 × floor check is skipped and floor = cap is expected. Designated exchange is always BSE. |",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -1420,6 +1411,24 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-152",
+      "hash": "868b2b77e81c",
+      "section": "0.5.1 What is kept, and for how long (OD-32, owner 2026-09-09 — replaces OD-23)",
+      "kind": "prose",
+      "text": "- LIVE_WINDOW_DAYS_AFTER_LISTING (document-state-machine.ts:749) stops gating document work. An IPO's documents are workable for the life of the IPO row. - The purge clock changes its anchor. Today decidePurge (document-store.ts:264) deletes at close_date + 7 days — a date that has nothing to do with whether we ever read the file. Under OD-32 it deletes at last successful extraction + 7 days, and it never deletes a document that has no successful extraction yet. - Nothing re-downloads an already-extracted document. After the seven days the PDF is gone on purpose, and a design section that asks for it back is a defect, not a feature — that is exactly what D17 fails on.",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-166",
+      "hash": "26639a8533b8",
+      "section": "1.11 Exceptions by IPO type, gathered",
+      "kind": "table-normative",
+      "text": "SME on BSE — 106 — listing_exchanges = [\"BSE\"]. NSE cannot be rank 2 or 3 for any field — there is no NSE payload. Minimum application is 2 lots for issues opening on or after SEBI's 2025 SME framework, recorded in ipo_details.lot_multiple; before that date it is 1 lot, and 167 SME rows on production predate the rule (F-67), so the rule carries an effective date exactly as §5.3 requires of every validation rule. The check is stated ONCE, here and in §1.2 row 4, as lot_multiple × lot × floor ≥ ₹1,00,000 with lot_multiple read from the row rather than assumed — the two earlier phrasings differed by a factor of two, and the weaker one (2 × lot × floor ≥ ₹1,00,000 with a ₹50k floor) could never fail on a real SME issue (F-66). Applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the cap ≤ 1.2 × floor check is skipped and floor = cap is expected. Designated exchange is always BSE.",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-156",
