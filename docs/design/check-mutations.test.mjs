@@ -293,12 +293,13 @@ const CASES = [
   },
   {
     // drift: an open owner fork is written up as decided in its own status cell — the assumption
-    // the owner never made, laundered into a decision. expect: D10c names O-14.
+    // the owner never made, laundered into a decision. expect: D10c names O-7 (the only fork still
+    // open in 0.0.2 as of OD-53/OD-54, which decided O-14 and O-15 and moved them out of this table).
     id: 'D10c open comments — mark an undecided fork APPROVED in its status cell',
     files: [DESIGN],
     mutate() {
-      write(DESIGN, read(DESIGN).replace('**RECOMMENDED: let the probe decide the fact',
-        '**APPROVED by the owner: let the probe decide the fact'));
+      write(DESIGN, read(DESIGN).replace('| O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT |',
+        '| O-7 | *"Language model, only for the last stretch, and under strict conditions."* | APPROVED by the owner: STANDING CONSTRAINT |'));
     },
     gate: designGate,
     expect: /^\[FAIL\] D10c\b/m,
@@ -359,7 +360,7 @@ const CASES = [
     // the owner had been asked. expect: D14 names the dangling marker.
     id: 'D14 provisional markers — point a marker at an O-id that has no row',
     files: [DESIGN],
-    mutate() { write(DESIGN, read(DESIGN).replace('PROVISIONAL on O-14', 'PROVISIONAL on O-99')); },
+    mutate() { write(DESIGN, read(DESIGN).replace('| O-7 | *"Language model,', 'PROVISIONAL on O-99\n\n| O-7 | *"Language model,')); },
     gate: designGate,
     expect: /^\[FAIL\] D14\b/m,
   },
