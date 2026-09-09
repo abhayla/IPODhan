@@ -190,7 +190,11 @@ try {
   var openOwner = md.slice(md.indexOf('### 0.0.2'));
   var wrongly = [];
   ['O-1', 'O-2', 'O-3'].forEach(function (id) {
-    var re = new RegExp(id + '[^|\n]{0,80}(APPROVED|RESOLVED|DECIDED|owner (approved|decided))', 'i');
+    // Stay on the row (no \n) but DO cross pipes: this lives in a markdown table, so the word
+    // that would betray a false approval is always on the far side of a "|". The first version
+    // used [^|\n] and was pure decoration - a mutation that wrote "| O-2 | APPROVED by owner."
+    // passed it clean.
+    var re = new RegExp(id + '[^\n]{0,120}(APPROVED|RESOLVED|DECIDED|SETTLED|owner (approved|decided))', 'i');
     if (re.test(openOwner)) wrongly.push(id);
   });
   if (wrongly.length) fail('D10c', 'Owner comments marked settled that the owner has not settled: ' + wrongly.join(', '));
