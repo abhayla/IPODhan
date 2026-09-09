@@ -458,6 +458,22 @@ try {
   // day before. Each row below is one decision's mechanical fingerprint. A row is a REGEX over the
   // design MINUS the register in 0.0, because the register describes these rules and would
   // otherwise satisfy every one of them by quoting itself.
+  // D17 also scans the build cards and the walkthroughs — a card or a regenerated walkthrough is
+  // exactly where a superseded decision's wording actually reappears (OD-23's "for the life of the
+  // IPO row" about a PDF was found live in item-18's card AND in every walkthrough's job-timeline
+  // row on 2026-09-09; checking only the design doc's own prose, as this block did before, would
+  // have missed both). Read once, checked by every row below that supplies a fourth element.
+  function readAllMd(dir) {
+    var out = '';
+    var entries;
+    try { entries = fs.readdirSync(dir); } catch (e) { return out; }
+    entries.filter(function (f) { return f.endsWith('.md'); }).forEach(function (f) {
+      out += '\n\n<<<' + f + '>>>\n' + fs.readFileSync(path.join(dir, f), 'utf8');
+    });
+    return out;
+  }
+  var cardsAndWalkthroughsText = readAllMd(path.join(HERE, 'build-cards')) + readAllMd(path.join(HERE, 'walkthroughs'));
+
   var D17 = [
     ['OD-27 two locks', /\|\s*`heavy`\s*\|/, true],
     ['OD-27 live lock', /\|\s*`live`\s*\|/, true],
@@ -496,10 +512,20 @@ try {
     ['OD-51 config not code', /Nothing in this table may be a literal in a `\.ts` file/, true],
     ['OD-51 module rule', /a lower layer never imports a higher one/, true],
     ['OD-52 rule ids', /generate-rule-index\.mjs/, true],
+    // --- widened scan: build cards + walkthroughs, not just the design doc (2026-09-09 delta) ---
+    ['OD-23 phrasing: a PDF/document kept for the life of the row (build cards + walkthroughs)',
+      /\b(PDF|document file|documents?)\b[^.\n]{0,60}\bkept\b[^.\n]{0,20}\bfor the life of\b[^.\n]{0,10}\b(the IPO row|this row|the row)\b/i,
+      false, cardsAndWalkthroughsText],
+    ['OD-23 phrasing: "keep everything" (build cards + walkthroughs)',
+      /keep everything/i, false, cardsAndWalkthroughsText],
+    ['re-download-on-a-timer wording (build cards + walkthroughs)',
+      /\bre-?download(?:s|ed|ing)?\b[^.\n]{0,60}\b(?:schedule|timer|on an interval|periodically|every \d+ (?:day|days|hour|hours|minute|minutes))\b/i,
+      false, cardsAndWalkthroughsText],
   ];
   var d17bad = [];
   D17.forEach(function (row) {
-    var present = row[1].test(body);
+    var text = row[3] || body;
+    var present = row[1].test(text);
     if (present !== row[2]) d17bad.push(row[0] + (row[2] ? ' (missing)' : ' (a forbidden statement is back)'));
   });
   if (d17bad.length) fail('D17', d17bad.length + ' decision signature(s) of 2026-09-09 no longer hold: ' + d17bad.join(' | '));
