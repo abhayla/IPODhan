@@ -52,8 +52,21 @@ export function globalEnv(key) {
  * connection, so it holds even for a query this file never saw.
  */
 export async function openReadOnlyPool(database = 'ipodhan') {
-  const { Pool } = req('pg');
+  const pg = req('pg');
+  const { Pool } = pg;
   const password = globalEnv('IPODHAN_APP_DB_PASSWORD');
+
+  // A `date` column comes back as a STRING, not a Date. (F-104, found 2026-09-09 by a walkthrough.)
+  //
+  // node-pg's default parser turns a bare `date` into a JavaScript Date at LOCAL midnight. Read
+  // from an IST machine that is 2026-09-10T00:00+05:30, whose UTC form is 2026-09-09T18:30Z — so
+  // every `.toISOString().slice(0,10)` in every probe printed the day BEFORE the real one. Every
+  // date in both walkthroughs published this morning was one day early, and nothing noticed,
+  // because a plausible date looks exactly like a correct one.
+  //
+  // 1082 is the `date` OID. Returning the raw 'YYYY-MM-DD' the server sent removes the timezone
+  // from the question entirely, which is the only fix that cannot drift back.
+  pg.types.setTypeParser(1082, (v) => v);
   const pool = new Pool({
     host: 'localhost',
     port: 15432,
@@ -141,3 +154,30 @@ export function saveOutput(probeName, obj) {
 }
 
 export const nowStamp = () => new Date().toISOString();
+
+// ---------------------------------------------------------------------------
+// Saying WHY something failed
+// ---------------------------------------------------------------------------
+/**
+ * A human-readable cause for any error, including the ones whose `.message` is empty.
+ *
+ * WHY THIS EXISTS. On 2026-09-09 `duplicate-scan.mjs` recorded `"unreachable on 2026-09-09 — "`
+ * with nothing after the dash, and the run could not tell a dead tunnel from a wrong password
+ * without re-running it. The cause was a Node `AggregateError` from `pg-pool`: its `.message` is
+ * the empty string and the real information lives in `.code` and `.errors[0]`. A failure that
+ * cannot be classified from its log line is a defect of the LOGGER, not of the reader
+ * (`.claude/rules/signal-ownership.md` R6), so every probe reports through this.
+ */
+export function causeOf(err) {
+  if (!err) return 'unknown (no error object)';
+  const bits = [];
+  if (err.code) bits.push(String(err.code));
+  if (err.message) bits.push(err.message);
+  const inner = Array.isArray(err.errors) ? err.errors : (err.cause ? [err.cause] : []);
+  for (const e of inner.slice(0, 3)) {
+    const s = [e && e.code, e && e.message].filter(Boolean).join(' ');
+    if (s) bits.push(`<- ${s}`);
+  }
+  if (!bits.length) bits.push(err.constructor ? err.constructor.name : String(err));
+  return bits.join(' ');
+}

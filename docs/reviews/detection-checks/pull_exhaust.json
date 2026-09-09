@@ -1,0 +1,14 @@
+{
+  "id": "pull_exhaust",
+  "designId": "PULL-EXHAUST",
+  "findingClass": "pull-model verification check PULL-EXHAUST: EXHAUSTED rows by (IPO, field, reason), NEW vs GONE vs SAME",
+  "whatItAsks": "EXHAUSTED rows by (IPO, field, reason), NEW vs GONE vs SAME",
+  "healthy": "shrinking",
+  "alarmsWhen": "any NEW one on a phase-1 IPO",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "explicitly NEW vs GONE vs SAME and paired in the design’s own worked proof with PULL-YIELD as “the same night”’s evidence — a nightly diff, not a per-slot count",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

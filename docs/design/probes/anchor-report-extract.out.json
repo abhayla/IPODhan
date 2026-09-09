@@ -1,0 +1,23 @@
+{
+  "probe": "anchor-report-extract",
+  "generated_at": "2026-09-09T11:26:51.509Z",
+  "method": "download the real ANCHOR_ALLOCATION_REPORT ZIP from documents.url (public NSE archive), unzip, run the REAL extractPageTexts + parseAnchorReport via a thin tsx bridge.",
+  "runs": [
+    {
+      "slug": "asset-reconstruction-company-india-ltd",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ARCIL.zip",
+      "download": {
+        "status": 200,
+        "ok": true,
+        "bytes": 692691
+      },
+      "pdf": {
+        "name": "ANCHOR_ARCIL\\Arcil Anchor Allocation Intimation Revised.pdf",
+        "bytes": 754222
+      },
+      "pageCount": 4,
+      "result": "parseAnchorReport ran (4 pages of real text) but returned NO parse — reason=\"only 0 investor rows could be read from the anchor report\". Recorded honestly: fields_filled is empty, not guessed.",
+      "fields_filled": {}
+    }
+  ]
+}

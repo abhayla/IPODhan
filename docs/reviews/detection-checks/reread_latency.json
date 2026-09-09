@@ -1,0 +1,14 @@
+{
+  "id": "reread_latency",
+  "designId": "REREAD-LATENCY",
+  "findingClass": "pull-model verification check REREAD-LATENCY: oldest actionable disagreement with no re-read attempt",
+  "whatItAsks": "oldest actionable disagreement with no re-read attempt",
+  "healthy": "under 48 h",
+  "alarmsWhen": "over 48 h, listed by IPO and field",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "a 48-hour staleness watch is naturally read once a night (each cycle re-checking it would be redundant with the 30-minute cadence) and needs a diffing consumer to compare the oldest age night over night",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

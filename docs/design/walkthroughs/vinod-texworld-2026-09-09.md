@@ -10,7 +10,7 @@ column is read from a payload saved under `docs/design/probes/fixtures/`. Nothin
 | status / segment | OPEN / SME |
 | resolved type for Appendix A | **SME_NSE** |
 | listing exchanges | ["NSE"] |
-| open / close / listing | 2026-09-08 / 2026-09-10 / 2026-09-16 |
+| open / close / listing | 2026-09-09 / 2026-09-11 / 2026-09-17 |
 | documents on file | DRHP (COMPLETED), RATIOS_BASIS_ISSUE_PRICE (PENDING) |
 
 ## What this walk found, before the table
@@ -24,12 +24,12 @@ column is read from a payload saved under `docs/design/probes/fixtures/`. Nothin
 
 | When | Job | What it does for this IPO |
 |---|---|---|
-| before 2026-09-08, at 00:00 / 08:00 / 14:00 | Data job | discovers the IPO, downloads each document as it is filed, extracts it once on arrival, and walks the field plan. It never re-opens a document because time passed. |
-| 2026-09-08 to 2026-09-10, every 30 min 10:00–18:30 | Live-figures job | subscription, demand graph and grey-market premium only. It touches no document, no plan row and no static field. |
-| 2026-09-08 to 2026-09-10, at 00:00 / 08:00 / 14:00 | Data job | re-walks only fields whose plan row is still PENDING or due for verification; a newly filed corrigendum or price band advertisement is a new reason to read, and is read on the next data job rather than within the hour. |
-| 2026-09-10 to 2026-09-16 | Data job | the timetable family (E-1) is re-read from NSE then BSE, because a printed advertisement is never reissued when a window moves. |
-| after 2026-09-16 | Data job | listing performance; the documents stay on disk for the life of this row (OD-23), so this IPO never joins the closed backlog document-less. |
-| from the first night after 2026-09-10, 22:00 | Closed-IPO job | eligible once `close_date` is in the past. Ten IPOs a night, newest close date first, this one marked done in `closed_ipo_resourcing` so it is never picked twice. |
+| before 2026-09-09, at 00:00 / 08:00 / 14:00 | Data job | discovers the IPO, downloads each document as it is filed, extracts it once on arrival, and walks the field plan. It never re-opens a document because time passed. |
+| 2026-09-09 to 2026-09-11, every 30 min 10:00–18:30 | Live-figures job | subscription, demand graph and grey-market premium only. It touches no document, no plan row and no static field. |
+| 2026-09-09 to 2026-09-11, at 00:00 / 08:00 / 14:00 | Data job | re-walks only fields whose plan row is still PENDING or due for verification; a newly filed corrigendum or price band advertisement is a new reason to read, and is read on the next data job rather than within the hour. |
+| 2026-09-11 to 2026-09-17 | Data job | the timetable family (E-1) is re-read from NSE then BSE, because a printed advertisement is never reissued when a window moves. |
+| after 2026-09-17 | Data job | listing performance; the extracted text stays on disk for the life of this row (OD-32), so this IPO never joins the closed backlog document-less. |
+| from the first night after 2026-09-11, 22:00 | Closed-IPO job | eligible once `close_date` is in the past. Ten IPOs a night, newest close date first, this one marked done in `closed_ipo_resourcing` so it is never picked twice. |
 
 ## Every applicable field
 
@@ -43,9 +43,9 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `ipos.company_name` | D | DOC | NSE · CG | _(searched, no matching label)_ | `Vinod Texworld Limited` | _(no rule stated)_ | — |
 | `ipos.issue_size` | D | DOC | CG · — | _(searched, no matching label)_ | `428300000.00` | pass — Rs 42.83 crore | — |
 | `ipos.lot_size` | D | DOC | NSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `1200` | pass | — |
-| `ipos.open_date` | T | NSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | 2026-09-08 | pass | — |
-| `ipos.close_date` | T | NSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | 2026-09-10 | pass | — |
-| `ipos.listing_date` | T | NSE | CG · — | _(searched, no matching label)_ | 2026-09-16 | pass | — |
+| `ipos.open_date` | T | NSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `2026-09-09` | pass | — |
+| `ipos.close_date` | T | NSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `2026-09-11` | pass | — |
+| `ipos.listing_date` | T | NSE | CG · — | _(searched, no matching label)_ | `2026-09-17` | pass | — |
 | `ipos.status` | T | NSE | CG · — | status | `OPEN` | _(no rule stated)_ | `nse/ipo-current-issue.json` |
 | `ipos.registrar` | D | DOC | NSE · CG | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
 | `ipos.registrar_id` | C | — | — · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
@@ -54,7 +54,7 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `ipos.sector` | D | DOC | CG · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
 | `ipos.price_range_min` | D | DOC | NSE · CG | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
 | `ipos.price_range_max` | D | DOC | NSE · CG | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
-| `ipos.last_scraped_at` | I | — | — · — | _(searched, no matching label)_ | 2026-09-08 | _(no rule stated)_ | — |
+| `ipos.last_scraped_at` | I | — | — · — | _(searched, no matching label)_ | 2026-09-09 | _(no rule stated)_ | — |
 | `ipos.listing_exchanges` | T | NSE | CG · — | _(searched, no matching label)_ | `["NSE"]` | _(no rule stated)_ | — |
 | `ipos.face_value` | D | DOC | NSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `10` | pass | — |
 | `ipos.allotment_date` | T | NSE | CG · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |

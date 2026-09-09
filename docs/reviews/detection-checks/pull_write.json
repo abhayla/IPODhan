@@ -1,0 +1,14 @@
+{
+  "id": "pull_write",
+  "designId": "PULL-WRITE",
+  "findingClass": "pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped",
+  "whatItAsks": "plan rows marked SUPPLIED whose write returned skipped",
+  "healthy": "0",
+  "alarmsWhen": "any non-zero",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "per-cycle failure reading (identities)",
+  "consumerReason": "brief-assigned: a SUPPLIED-but-skipped write is a per-cycle plan/write mismatch, resolved to the plan row that produced it",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

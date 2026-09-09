@@ -1,0 +1,52 @@
+SEBI ICDR observation-letter validity — the clause the lapsed-draft rule (OD-35) rests on
+Fetched: 2026-09-09 (IST) by the pull-model delta run. Saved because a design rule that says
+"twelve months" must cite the regulation, not a memory of it.
+
+WHAT WAS ASKED
+--------------
+How long does an issuer have to OPEN a public issue after SEBI issues its observations on the draft
+offer document? The design's lapsed-draft rule uses that period to decide whether an old draft with
+no open date is a lapsed offering (new row) or a re-filing of the same one (same row).
+
+SOURCE 1 — the regulation, quoted by Shardul Amarchand Mangaldas & Co
+--------------------------------------------------------------------
+URL: https://www.amsshardul.com/insight/relaxation-of-compliances-under-icdr-regulations-re-validity-of-sebi-observations-rights-issues/
+Fetched: 2026-09-09
+
+  "A public issue/rights issue may be opened within twelve months from the date of issuance of
+   observations by SEBI, in terms of Regulation 44(1), 85 and 140."
+
+=> TWELVE months, SEBI (Issue of Capital and Disclosure Requirements) Regulations, 2018,
+   Regulation 44(1) for a public issue (85 and 140 carry the same period for the other issue types).
+
+SOURCE 2 — the eighteen-month variant, and a live relaxation (secondary, NOT verbatim-verified)
+-----------------------------------------------------------------------------------------------
+Commentary on SEBI's circular of 2026-04-07 (taxmann.com, mondaq.com, studycafe.in; searched
+2026-09-09) states two further things which the design must not ignore:
+
+  (a) Regulations 44(1) AND 59C are described together as requiring a public issue to be opened
+      "within twelve months or eighteen months from the date of issuance of SEBI's observations" —
+      i.e. an eighteen-month period exists for a class of issues. The verbatim text of 59C was NOT
+      reachable in this run, so the design treats eighteen months as REPORTED, not verified.
+  (b) SEBI granted a ONE-TIME RELAXATION on 2026-04-07: observation letters expiring between
+      2026-04-01 and 2026-09-30 are valid until 2026-09-30, subject to a Lead Manager undertaking
+      under Schedule XVI.
+
+WHAT SEBI'S OWN SITE GAVE (three attempts, recorded rather than hidden)
+----------------------------------------------------------------------
+  https://www.sebi.gov.in/legal/regulations/aug-2026/...-2018-last-amended-on-august-2026-_84532.html  -> HTTP 404
+  https://www.sebi.gov.in/legal/regulations/sep-2018/...-2018-_40328.html                              -> page served, body not in the fetched text
+  https://www.sebi.gov.in/acts/icdrreg.html                                                            -> table of contents and Chapter I only
+
+  UNREACHABLE on 2026-09-09 for the verbatim clause. The twelve months therefore rests on a named
+  law firm's direct quotation of Regulation 44(1), not on the primary text, and this file says so.
+
+WHAT THE DESIGN DOES WITH THIS
+------------------------------
+1. The lapsed-draft threshold is TWELVE months, citing Regulation 44(1).
+2. Because an eighteen-month class exists and one-time relaxations are issued (2026-04-07 is one),
+   the threshold is CONFIGURATION, not a constant in code (OD-51), and the rule is written so that
+   changing it is a config edit with a dated reason — never a code deploy.
+3. A draft that is past the threshold is NOT declared lapsed on the calendar alone: the row is
+   frozen with a forward-linking notice only when the draft is past the period AND no RHP has
+   arrived. A relaxation that we did not notice therefore costs a stale notice, never a deleted row.

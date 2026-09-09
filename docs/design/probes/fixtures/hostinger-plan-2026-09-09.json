@@ -1,0 +1,40 @@
+{
+  "_provenance": {
+    "source": "Hostinger API, VPS_getVirtualMachinesV1",
+    "fetched_by": "the pull-model delta run, through the session's authenticated Hostinger MCP tool",
+    "fetched_at": "2026-09-09",
+    "why": "OD-45 requires the running-cost table to be measured against the box's REAL limits. This project's own notes described the disk as 96 GB; the API says 102,400 MB."
+  },
+  "fetched_at": "2026-09-09",
+  "payload": [
+    {
+      "id": 1707492,
+      "firewall_group_id": null,
+      "subscription_id": "Azye2PVKnEoFaE9W",
+      "data_center_id": 13,
+      "plan": "KVM 2",
+      "hostname": "srv1707492.hstgr.cloud",
+      "state": "running",
+      "actions_lock": "unlocked",
+      "cpus": 2,
+      "memory": 8192,
+      "disk": 102400,
+      "bandwidth": 8192000,
+      "ns1": "153.92.2.6",
+      "ns2": "1.1.1.1",
+      "ipv4": [
+        { "id": 1324326, "address": "72.61.240.224", "ptr": "srv1707492.hstgr.cloud" }
+      ],
+      "ipv6": [
+        { "id": 1356346, "address": "2a02:4780:12:6184::1", "ptr": "srv1707492.hstgr.cloud" }
+      ],
+      "template": {
+        "id": 1077,
+        "name": "Ubuntu 24.04 LTS",
+        "description": "Ubuntu is a computer operating system based on the Debian Linux distribution and distributed as free and open source software, using its own desktop environment.",
+        "documentation": null
+      },
+      "created_at": "2026-05-27T04:52:11Z"
+    }
+  ]
+}

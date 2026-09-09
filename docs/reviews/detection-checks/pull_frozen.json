@@ -1,0 +1,14 @@
+{
+  "id": "pull_frozen",
+  "designId": "PULL-FROZEN",
+  "findingClass": "pull-model verification check PULL-FROZEN: SUPPLIED rows whose chosen_document_id has been superseded",
+  "whatItAsks": "SUPPLIED rows whose chosen_document_id has been superseded",
+  "healthy": "0",
+  "alarmsWhen": "any non-zero — the guard on §2.5",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "per-cycle failure reading (identities)",
+  "consumerReason": "brief-assigned: this is a live guard on the current cycle’s chosen-document state, same shape as PULL-WRITE/PULL-NOBLANK",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

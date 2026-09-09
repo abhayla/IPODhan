@@ -56,7 +56,7 @@ against the wrong root cause.
 | Path | State | Change |
 |---|---|---|
 | `packages/shared/src/utils/company-name-normalizer.ts` | exists (271 lines) | `normalizeCompanyNameForMatching` (lines 71–115) and its SQL twin `normalizedCompanyNameSql` (lines 178–271) both need the whole-word fold below, replacing (or running before) the current suffix-anchored `company`/`co`/legal-suffix chain. Both must change together — the file's own header says they "MUST stay in lock-step" and an agreement test enforces it. |
-| `packages/shared/src/utils/company-name-normalizer.agreement.test.ts` (or wherever that integration test lives — **not located this session; a fork for the implementer to find via the file's own doc comment reference**) | exists, path unverified | Fixture list must gain the ARCIL pair and the InvestorGain-suffix cases below; this is the test that currently passes with the two variants NOT colliding, and must be updated to assert they DO. | (NEW)
+| `packages/shared/src/utils/company-name-normalizer.agreement.test.ts` (NEW) (or wherever that integration test lives — **not located this session; a fork for the implementer to find via the file's own doc comment reference**) | exists, path unverified | Fixture list must gain the ARCIL pair and the InvestorGain-suffix cases below; this is the test that currently passes with the two variants NOT colliding, and must be updated to assert they DO. | (NEW)
 | `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs` | exists | **Not changed by this card — read as the reference implementation.** Its `foldName()` (lines ~43–48) already implements the exact word list and whole-word strategy this card specifies; it is a one-off repair-invariant script, not wired into discovery. Item 12 is what promotes this logic (or a shared copy of it) into the live discovery path. |
 | `scraper/src/services/document-discovery-runner.ts` | exists | New step: after a candidate IPO row is created/matched at discovery (the design does not name the exact function; **fork** — I did not trace the discovery insert/match call site this session, budget did not extend to it), run the stricter de-duplication key against all LIVE-status rows and raise `AMBIGUOUS`/log a duplicate candidate rather than silently inserting a second row. |
 | `scraper/src/scrapers/investorgain-gmp-orchestrator-v2.ts` | exists, cited at lines 331–336 by the design (§2.3.2, F-46) | The row-binding call (`normalizeCompanyNameForMatching` per design's citation) needs the three-outcome contract below (exact-one / `AMBIGUOUS` / `UNBOUND`) plus the open/close-date cross-check (§2.3.3's "one cross-check the binding gets for free"). I did not re-read this file's current binding code this session — **fork**: whether it already has partial ambiguity handling or none is unverified; the design's own text ("nothing yet — F-46") says none exists. |
@@ -73,6 +73,26 @@ it by name so it is visible" for `UNBOUND`, which reads as a requirement to pers
 queryable, not merely log — but does not name the table. Until the owner picks, this card cannot
 specify migration SQL. **No schema change is committed by this card; the schema question is the
 fork.**
+
+**Two columns this section's own rules cannot run without, named here because §2.3.3.2 is the
+section this item owns (`rule-ownership.json`) and neither exists in the schema today (grepped
+this session):**
+
+- **`ipos.company_id`** (R-045) — §2.3.3.2's table: "Same identifier, offering type changes (IPO →
+  FPO, IPO → rights) — **new row, linked by `company_id`**." There is no `company_id` column and no
+  `companies` table (F-105). This card does not design that table — the design does not specify one
+  — but the column this rule reads is `ipos.company_id`, and it is named here so the gap is not
+  silently re-lost the next time someone greps for it.
+- **`ipos.sebi_observation_date`** (R-170) — §2.3.3.2's lapsed-draft rule: "the lapsed-draft rule
+  needs a new field (`ipos.sebi_observation_date`, sourced from SEBI's processing-status page)."
+  `date`, nullable — an unknown observation date means not lapsed, never a guess (§2.3.3.2). Until
+  this column lands, no row is ever declared lapsed; the rule is written but structurally cannot
+  fire (§4.6, owned by item 10, lists it among the rules whose input does not exist yet).
+
+Neither column is added by THIS card's own migration — both are blocked on the same owner fork
+above (a `companies` table's shape, and SEBI processing-status ingestion are separate build
+decisions this card does not make) — but the columns they need are named here rather than left for
+a future reader to discover by grep a second time.
 
 ## Interfaces
 
@@ -144,7 +164,7 @@ function findDuplicateCandidates(companyName: string, openDate: string | null,
    design's own measurement, cited from §2.3.3.1's table — not re-measured this session).
 
 **The merge mechanism itself is out of scope for item 12.** The design's own closed-in note on F-55
-says the ARCIL merge ran via `scripts/merge-duplicate-ipo.mjs`, "owner-authorised," "dry run,"
+says the ARCIL merge ran via `scraper/scripts/repair-merge-duplicate-ipo.ts`, "owner-authorised," "dry run,"
 "backup," "refusal on any disagreeing strong identifier" — item 12 is detection (flagging), not
 the merge tool; §2.3.3.1's automatic-merge-on-converging-identifier behavior is **not scoped by
 this card** — the design describes it as a rule the loop should follow but item 12's own listed
@@ -182,7 +202,7 @@ first, prod after a staging soak (per `defect-fix-contract.md` proof requirement
 
 ## Detection
 
-New check, `docs/reviews/detection-checks/duplicate-ipo-at-discovery.json` (or promote
+New check, `docs/reviews/detection-checks/duplicate-ipo-at-discovery.json` (NEW) (or promote
 `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs`'s `foldName` logic into a nightly audit
 entry) — asserts zero live-status rows share a fold+open-date key, run nightly, reported by IPO name
 per `signal-ownership.md` R1 ("a number is not a reading"). This satisfies
@@ -220,3 +240,23 @@ payments/secrets/DB migrations" class by analogy: a wrong bind here writes one c
 another's row). `Budget: 30 min wall-clock, 60 tool calls` for implementation; reviewer gets the
 full Tier A adversarial pass with mutation tests on the fold function (per
 `.claude/rules/engineering-roles.md` Tier A definition) given the ARCIL incident's blast radius.
+
+## Rules implemented
+
+<!-- generated by docs/design/apply-rule-ownership.mjs - edits inside this block are overwritten -->
+
+22 rule(s) from `docs/design/rules.json`, generated by
+`node docs/design/apply-rule-ownership.mjs --apply` from `rule-ownership.json`.
+
+| Design section | Rule ids |
+|---|---|
+| §2.3.1 | R-030, R-031 |
+| §2.3.3 | R-032, R-033, R-034, R-035, R-036, R-038, R-039, R-167 |
+| §2.3.3.1 | R-177, R-178 |
+| §2.3.3.2 | R-041, R-042, R-043, R-044, R-045, R-046, R-047, R-048, R-170 |
+| §2.3.4 | R-053 |
+
+## Known gaps
+
+None recorded yet. A finding this item owns but does not close is written here, with its
+id and the reason — that is what stops "zero open findings" being reached by dropping one.

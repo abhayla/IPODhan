@@ -1,0 +1,14 @@
+{
+  "id": "pull_excused",
+  "designId": "PULL-EXCUSED",
+  "findingClass": "pull-model verification check PULL-EXCUSED: NOT_PRINTED count per (IPO, document type), NEW vs yesterday by name",
+  "whatItAsks": "NOT_PRINTED count per (IPO, document type), NEW vs yesterday by name",
+  "healthy": "stable",
+  "alarmsWhen": "a document’s excused set grows at all — this is what catches a mis-resolved type",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "the check is explicitly a day-over-day diff (“NEW vs yesterday”), the same NEW/GONE/SAME shape the floor-delta consumer already reads",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

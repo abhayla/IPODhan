@@ -1,0 +1,23 @@
+{
+  "probe": "plan-limits",
+  "generated_at": "2026-09-09T09:42:13.183Z",
+  "source": "Hostinger API VPS_getVirtualMachinesV1, saved verbatim at fixtures/hostinger-plan-2026-09-09.json on 2026-09-09",
+  "host": "srv1707492.hstgr.cloud",
+  "ipv4": [
+    "72.61.240.224"
+  ],
+  "plan": "KVM 2",
+  "template": "Ubuntu 24.04 LTS",
+  "limits": {
+    "vcpu": 2,
+    "memory_mb": 8192,
+    "memory_gb": 8,
+    "disk_mb": 102400,
+    "disk_gb": 100,
+    "bandwidth_mb_per_month": 8192000,
+    "bandwidth_gb_per_month": 8000,
+    "bandwidth_tb_per_month": 7.81
+  },
+  "scraper_share_of_bandwidth": 0.25,
+  "scraper_bandwidth_budget_gb_per_month": 2000
+}

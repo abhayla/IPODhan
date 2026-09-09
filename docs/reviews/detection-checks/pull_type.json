@@ -1,0 +1,14 @@
+{
+  "id": "pull_type",
+  "designId": "PULL-TYPE",
+  "findingClass": "pull-model verification check PULL-TYPE: plan rows whose resolved ranks do not match the IPO’s current type; IPOs with a null segment",
+  "whatItAsks": "plan rows whose resolved ranks do not match the IPO’s current type; IPOs with a null segment",
+  "healthy": "0 / 0",
+  "alarmsWhen": "any non-zero",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "per-cycle failure reading (identities)",
+  "consumerReason": "ranks are resolved at plan-build time each cycle (§2.3.5) — a rank/type mismatch is a fact about this cycle’s plan, read by identity (IPO, plan row)",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

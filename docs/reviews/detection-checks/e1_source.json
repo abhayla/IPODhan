@@ -1,0 +1,14 @@
+{
+  "id": "e1_source",
+  "designId": "E1-SOURCE",
+  "findingClass": "pull-model verification check E1-SOURCE: for the ten E-1 fields, field_sources.source is never DRHP",
+  "whatItAsks": "for the ten E-1 fields, field_sources.source is never DRHP",
+  "healthy": "true",
+  "alarmsWhen": "any E-1 field written by the document path — asserts the outcome, not the declared intent",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "a snapshot assertion over the whole ipos/field_sources table, the same shape as the existing nightly floor checks (e.g. c_issue_size_floor) — not a per-cycle write-path fact but a standing invariant read once a night",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

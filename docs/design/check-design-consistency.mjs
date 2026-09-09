@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, '../..');
 const DESIGN = path.join(HERE, 'data-sourcing-pull-model.md');
 const FINDINGS = path.join(HERE, 'findings.json');
 const SPEC = path.join(HERE, 'field-source-resolution.spec.mjs');
@@ -76,13 +77,25 @@ try {
   else ok('D2', 'No generator-owned count is hand-typed, and every generated block matches its generator.');
 
   // --- D3: E-1's size is stated once and consistently ---
+  // 2026-09-09, mutation round two: the word list ran 5, 9, 12, 13 — and the spec says TEN, so the
+  // one word the design actually uses was not in the list at all. Deleting every stated count from
+  // the prose left the check green, because it could only ever notice a count it disagreed with,
+  // never a count that had gone. Two assertions now: the RIGHT word is present at least once, and
+  // no OTHER number word appears in an E-1 phrase.
   const e1Spec = F.filter((f) => f.o && f.o.e1).length;
-  const words = { 5: 'five', 9: 'nine', 12: 'twelve', 13: 'thirteen' };
+  const words = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven',
+    8: 'eight', 9: 'nine', 10: 'ten', 11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen',
+    15: 'fifteen', 16: 'sixteen', 17: 'seventeen', 18: 'eighteen', 19: 'nineteen', 20: 'twenty' };
+  const e1Phrase = (w) => new RegExp(`\\b${w} E-1\\b|E-1 (?:fields )?[—-] ${w}\\b|the ${w} E-1\\b`, 'i');
   const wrong = Object.entries(words)
-    .filter(([n, w]) => Number(n) !== e1Spec && new RegExp(`${w} E-1|E-1 (?:fields )?— ${w}|the ${w} E-1`, 'i').test(md))
+    .filter(([n, w]) => Number(n) !== e1Spec && e1Phrase(w).test(md))
     .map(([n, w]) => w);
+  const rightWord = words[e1Spec];
+  const statesIt = rightWord ? e1Phrase(rightWord).test(md) || new RegExp(`E-1[^.\\n]{0,40}\\b${e1Spec}\\b`).test(md)
+                             : new RegExp(`E-1[^.\\n]{0,40}\\b${e1Spec}\\b`).test(md);
   if (wrong.length) fail('D3', `E-1 is ${e1Spec} fields in the spec but the design also says: ${wrong.join(', ')}.`);
-  else ok('D3', `E-1 is ${e1Spec} fields, stated consistently.`);
+  else if (!statesIt) fail('D3', `The design never states E-1's size. The spec has ${e1Spec} fields; a count that is nowhere written down cannot be checked against anything, and this check would then be guarding nothing.`);
+  else ok('D3', `E-1 is ${e1Spec} fields, stated in the design and stated consistently.`);
 
   // --- D4: the design does not claim readiness while a critical finding is open ---
   const openCrit = findings.findings.filter((f) => f.status === 'OPEN' && f.sev === 'CRITICAL');
@@ -101,9 +114,21 @@ try {
   else ok('D5', `All ${findings.findings.length} findings carry a declared status.`);
 
   // --- D6: phase-1 scope is stated in the design and matches the register ---
-  const phase1InDesign = /open and upcoming|OPEN \+ UPCOMING|phase 1/i.test(md);
-  if (!phase1InDesign) fail('D6', 'The design does not state the phase-1 scope the owner set.');
-  else ok('D6', 'Phase-1 scope is stated in the design.');
+  // 2026-09-09, mutation round two: this used to be /open and upcoming|OPEN \+ UPCOMING|phase 1/i
+  // over the WHOLE document, and "phase 1" appears on nearly every page. Deleting the owner's scope
+  // sentence outright left it green — the check was satisfied by any table that happened to quote
+  // the words. The scope is stated in ONE place, the blockquote under the title, and that is what is
+  // asserted: a scope statement that names its owner, the date, and the population.
+  const scopeLine = md.split(String.fromCharCode(10)).find(function (l) {
+    return /^>\s*\*\*Scope \(owner[^)]*\)/.test(l);
+  });
+  if (!scopeLine) {
+    fail('D6', 'The design has no owner scope statement. It is a blockquote line beginning "> **Scope (owner, <date>):" and it is the one place phase 1 is defined; the words "open and upcoming" appearing in a table elsewhere is not a scope statement.');
+  } else if (!/open and upcoming/i.test(scopeLine)) {
+    fail('D6', 'The scope statement no longer says phase 1 is open and upcoming IPOs only: "' + scopeLine.trim().slice(0, 120) + '"');
+  } else {
+    ok('D6', 'Phase-1 scope is stated where it belongs: ' + scopeLine.replace(/^>\s*/, '').trim().slice(0, 90));
+  }
 
   // --- D7: the seven false claims about our own code must not reappear ---
   // The first draft asserted seven things about existing behaviour that the code
@@ -126,17 +151,52 @@ try {
   else ok('D7', 'None of the seven disproved claims about our own code appear.');
 
   // --- D8: the rewritten sections cite the code they describe ---
-  var core = md.slice(md.indexOf('## 2. How we go and get it'), md.indexOf('## 5.'));
+  // 2026-09-09, mutation round two: the floor was a bare 12 while the document carried 52, so forty
+  // citations could be deleted — every citation in a whole section — and the check stayed green
+  // saying the sections "carry citations". A floor forty below the truth measures nothing. It is now
+  // a RATCHET against the committed version, the same shape as D15: the count may rise, and a fall
+  // is a failure unless the change says so out loud.
+  var coreOf = function (text) {
+    var a = text.indexOf('## 2. How we go and get it');
+    var b = text.indexOf('## 5.');
+    if (a < 0 || b < 0 || b < a) return null;
+    return text.slice(a, b);
+  };
+  var core = coreOf(md);
+  if (core === null) throw new Error('D8: sections 2-4 could not be located (a heading was renamed) — re-anchor the check');
   var cites = (core.match(/[a-z-]+\.(ts|mjs|sh):\d+/g) || []).length;
-  if (cites < 12) fail('D8', 'Sections 2-4 make claims about existing behaviour with only ' + cites + ' file:line citations. Uncited claims are how the seven false assertions got in.');
-  else ok('D8', 'Sections 2-4 carry ' + cites + ' file:line citations for claims about existing behaviour.');
+  var prevCites = null;
+  var prevMd = spawnSync('git', ['show', 'HEAD:docs/design/data-sourcing-pull-model.md'],
+                         { encoding: 'utf8', cwd: path.resolve(HERE, '../..'), maxBuffer: 32 * 1024 * 1024 });
+  if (prevMd.status === 0) {
+    var prevCore = coreOf(String(prevMd.stdout));
+    if (prevCore !== null) prevCites = (prevCore.match(/[a-z-]+\.(ts|mjs|sh):\d+/g) || []).length;
+  }
+  // The one deliberate way down: say it in the document, with a reason, the way a PR body declares
+  // "No detection change". Anything else that lowers the count is drift.
+  var citeCut = /citations reduced deliberately:\s*\S[^\n]{19,}/i.test(md);
+  if (cites < 12) {
+    fail('D8', 'Sections 2-4 make claims about existing behaviour with only ' + cites + ' file:line citations. Uncited claims are how the seven false assertions got in.');
+  } else if (prevCites !== null && cites < prevCites && !citeCut) {
+    fail('D8', 'Sections 2-4 lost ' + (prevCites - cites) + ' file:line citation(s) in this change (' + prevCites +
+      ' at HEAD, ' + cites + ' now). Citations are a ratchet: rewriting a section is not a reason to stop citing the code it describes. ' +
+      'If the reduction is intended, write a line "Citations reduced deliberately: <reason, 20+ chars>" in the design.');
+  } else {
+    ok('D8', 'Sections 2-4 carry ' + cites + ' file:line citations for claims about existing behaviour' +
+      (prevCites !== null ? ' (' + prevCites + ' at HEAD; the count is a ratchet)' : '') + '.');
+  }
 
   // --- D9: the design must not park work in a phase that does not exist ---
   // Owner, 2026-09-08: "there is no phase 2". A bucket with no date, no trigger
   // and no owner is where work disappears; ten findings had been put in one.
   // The sentence DECLARING there is no phase 2 is the fix, not the defect - exclude it.
-  var mdNoDecl = md.split(String.fromCharCode(10)).filter(function(l){ return !/There is no ..?phase/i.test(l); }).join(String.fromCharCode(10));
-  if (/phases*2/i.test(mdNoDecl)) fail('D9', 'The design names a "phase 2". There is none - every deferred item must name the EVENT that brings it into scope.');
+  // 2026-09-09, mutation round two: the pattern was /phases*2/i — "phase", then zero or more "s",
+  // then "2". It cannot match the string "phase 2", which is the only way anybody writes it. The
+  // check had never been able to fail. The declaration filter had the mirror-image bug: it required
+  // one or two characters between "no" and "phase", so it did not match "There is no phase 2"
+  // either, and only the first bug kept the gate green.
+  var mdNoDecl = md.split(String.fromCharCode(10)).filter(function(l){ return !/there is no\b[^.\n]{0,12}phase\s*2/i.test(l); }).join(String.fromCharCode(10));
+  if (/phase\s*2\b/i.test(mdNoDecl)) fail('D9', 'The design names a "phase 2". There is none - every deferred item must name the EVENT that brings it into scope.');
   else ok('D9', 'No work is parked in a non-existent phase.');
   var noTrigger = findings.findings.filter(function(f){ return f.status === 'TRIGGERED' && !f.trigger; });
   if (noTrigger.length) fail('D9b', 'TRIGGERED findings with no named trigger: ' + noTrigger.map(function(f){return f.id;}).join(', '));
@@ -236,7 +296,7 @@ try {
   // block, not the aggregator block at 367. Worse, `index.ts` is a basename shared by 12 files, so
   // "the citation resolves" depended on which one you happened to open. A citation nobody can
   // follow is indistinguishable from an invented one.
-  var CODE_ROOTS = ['scraper/', 'web/', 'packages/', 'scripts/'];
+  var CODE_ROOTS = ['scraper/', 'web/', 'packages/', 'scripts/'].map(function (r) { return path.join(REPO_ROOT, r) + path.sep; });
   var cites = [...new Set((md.match(/[a-zA-Z0-9/._-]+\.(?:ts|mjs|sh):\d+/g) || []))];
   var citeBad = [];
   var citeOk = 0;
@@ -247,7 +307,8 @@ try {
     var cline = parseInt(cite.slice(cut + 1), 10);
     var matches = [];
     if (cpath.indexOf('/') >= 0) {
-      if (fs.existsSync(cpath)) matches = [cpath];
+      var abs = path.join(REPO_ROOT, cpath);
+      if (fs.existsSync(abs)) matches = [abs];
     } else {
       // basename: search the code roots rather than guessing
       var stack = CODE_ROOTS.slice();
@@ -290,7 +351,12 @@ try {
   JOBS.forEach(function (j) { if (!j[1].test(md)) cadenceMissing.push(j[0]); });
   // A document read scheduled by elapsed time. Lines that say it is NOT done, or that describe the
   // behaviour being removed, are the fix rather than the defect.
-  var NEGATION = /\bnever\b|\bnot\b|\bno longer\b|\bstops?\b|\bremoved?\b|\bused to\b|\bwas\b|\bgoes\b|\buntil\b|\bwithout\b/i;
+  // The exemption list is the whole risk in this check, and it was a universal excuse: "was",
+  // "goes", "until" and "without" are ordinary words that appear in perfectly affirmative
+  // sentences. Proved 2026-09-09 by a mutation — "Each offer document is re-read every 30 minutes
+  // until the extraction goes clean" scheduled a document read on a clock and was waved through by
+  // the word "until". Only words that actually DENY the behaviour, or place it in the past, count.
+  var NEGATION = /\bnever\b|\bnot\b|\bno longer\b|\bstops? (being|doing)\b|\bis removed\b|\bwas removed\b|\bused to\b|\bno document\b|\bnothing\b/i;
   var onAClock = [];
   md.split(String.fromCharCode(10)).forEach(function (line, i) {
     if (!/document|extraction|re-extract|re-read|prospectus|filing/i.test(line)) return;
@@ -321,7 +387,13 @@ try {
     // that convert" became "the columns, and which of them actually move", because most of them do
     // not convert) and D13 went red on a rename rather than on a real disagreement — a check that
     // breaks when the prose is improved teaches people to stop improving the prose.
-    var s52 = md.slice(md.indexOf('### 5.2 O-2'), md.indexOf('#### O-12'));
+    // The end anchor moved on 2026-09-09 when O-12 was DECIDED (OD-48) and its heading stopped being
+    // a question. An indexOf that misses returns -1, and slice(start, -1) silently runs to the end of
+    // the document — the table would then absorb every later table and D13 would fail on rows that
+    // are not amount columns at all. So the anchor is asserted, not assumed.
+    var s52End = md.indexOf('#### The five rupee columns');
+    if (s52End < 0) throw new Error('D13: section 5.2 lost its end anchor "#### The five rupee columns" — re-anchor the check, do not let it slice to the end of the file');
+    var s52 = md.slice(md.indexOf('### 5.2 O-2'), s52End);
     var haveCrore = [...s52.matchAll(/^\| `([a-z_0-9]+)` \| `([a-z_0-9]+)` \|/gm)]
       .map(function (m) { return m[1] + '.' + m[2]; }).sort();
     var missCrore = wantCrore.filter(function (x) { return haveCrore.indexOf(x) < 0; });
@@ -365,7 +437,7 @@ try {
   // evidence reference that does not resolve to a file that exists (an unfollowable citation is an
   // invented one, D11's lesson applied to sources), and it RATCHETS coverage — the floor in the
   // spec can be raised but never silently dropped, so a later edit cannot quietly un-evidence a row.
-  var evPairs = 0, evHave = 0, evBad = [], evCache = {};
+  var evPairs = 0, evHave = 0, evBad = [], evCache = {}, evUnreachable = 0;
   var EV_DIR = path.join(HERE, 'probes');
   F.forEach(function (f) {
     var srcs = new Set();
@@ -376,6 +448,11 @@ try {
       evPairs++;
       var e = f.o.ev && f.o.ev[src];
       if (!e) return;
+      // A pair a probe genuinely could not reach is DECLARED so, rather than left silent (a bare
+      // string matching this exact form) — signal-ownership.md R2: "known" needs a stated reason,
+      // never assumed. It is NOT evidence: it does not count toward evHave, and it never fails the
+      // gate. Anything else that is a bare string (the old, pre-label shape) still fails below.
+      if (typeof e === 'string' && /^unreachable on \d{4}-\d{2}-\d{2}: .{5,}$/.test(e)) { evUnreachable++; return; }
       var ref = typeof e === 'string' ? e : e.ref;
       var label = typeof e === 'string' ? null : e.label;
       var p = path.join(EV_DIR, String(ref).split('#')[0]);
@@ -400,12 +477,36 @@ try {
     });
   });
   var floor = typeof EVIDENCE_FLOOR === 'number' ? EVIDENCE_FLOOR : 0;
+
+  // The ratchet has to hold against the PREVIOUS COMMIT, not against itself.
+  // A reviewer proved on 2026-09-09 what the self-referential version was worth: they set
+  // EVIDENCE_FLOOR to 0 and emptied evidence.json, and the gate printed
+  // "[PASS] D15  0 of 387 (field, source) pairs carry evidence that resolves (floor 0)".
+  // A floor that the same change may lower is not a floor. So the committed value is read back out
+  // of git and a DECREASE is a failure in itself, whatever the new number is compared against.
+  var prevFloor = null;
+  var prevRun = spawnSync('git', ['show', 'HEAD:docs/design/field-source-resolution.spec.mjs'],
+                          { encoding: 'utf8', cwd: path.resolve(HERE, '../..') });
+  if (prevRun.status === 0) {
+    var pm = String(prevRun.stdout).match(/EVIDENCE_FLOOR\s*=\s*(\d+)/);
+    if (pm) prevFloor = Number(pm[1]);
+  }
   if (evBad.length) {
     fail('D15', evBad.length + ' of ' + evPairs + ' evidence reference(s) do not hold up: ' + evBad.slice(0, 4).join(' | '));
+  } else if (prevFloor !== null && floor < prevFloor) {
+    fail('D15', 'The evidence floor was LOWERED from ' + prevFloor + ' to ' + floor + ' in this change. ' +
+      'It is a ratchet: it may be raised, and it may only fall with a per-pair reason recorded in the spec ' +
+      'and an explicit owner note. Lowering it silently is how coverage disappears.');
   } else if (evHave < floor) {
     fail('D15', 'Evidence coverage fell below the ratchet: ' + evHave + ' of ' + evPairs + ' (field, source) pairs evidenced, floor is ' + floor + '. Evidence is never removed, only added.');
   } else {
-    ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor + ').');
+    // The PASS line says what is actually asserted. It used to read like a coverage claim; it is
+    // not one. 72 of 387 is 19%, and the 315 pairs with no evidence at all are not checked by this
+    // check — they are counted here so the number cannot be mistaken for reassurance.
+    ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor +
+      (prevFloor !== null ? (floor > prevFloor ? ', raised from ' + prevFloor : ', unchanged from HEAD') : '') + '). ' +
+      evUnreachable + ' declared unreachable. ' + (evPairs - evHave - evUnreachable) +
+      ' pairs carry NO evidence and are outside this check.');
   }
 
   // --- D16: the build cards keep their promise ---
@@ -420,6 +521,194 @@ try {
   var cardsTail = String(cardsRun.stdout || '').trim().split(String.fromCharCode(10));
   if (cardsRun.status === 0) ok('D16', cardsTail[0] + ' — ' + cardsTail[cardsTail.length - 1]);
   else fail('D16', 'build cards incomplete: ' + cardsTail.filter(function (l) { return l.indexOf('FAIL') >= 0; }).slice(0, 3).join(' | ') + (cardsRun.status === 2 ? ' (the card check itself broke)' : ''));
+
+  // --- D17: the signatures of the decisions taken on 2026-09-09 afternoon (OD-27 … OD-51) ---
+  // WHY. D10 asks whether each decision's SECTION still exists; D10b asks whether the older
+  // decisions' signatures still hold. Twenty-five new decisions arrived with no signature at all,
+  // which means a later edit could delete the substance of any of them and the gate would still
+  // read 19/19 — the exact "a check that asserts nothing" failure a reviewer proved on D15 the
+  // day before. Each row below is one decision's mechanical fingerprint. A row is a REGEX over the
+  // design MINUS the register in 0.0, because the register describes these rules and would
+  // otherwise satisfy every one of them by quoting itself.
+  // D17 also scans the build cards and the walkthroughs — a card or a regenerated walkthrough is
+  // exactly where a superseded decision's wording actually reappears (OD-23's "for the life of the
+  // IPO row" about a PDF was found live in item-18's card AND in every walkthrough's job-timeline
+  // row on 2026-09-09; checking only the design doc's own prose, as this block did before, would
+  // have missed both). Read once, checked by every row below that supplies a fourth element.
+  function readAllMd(dir) {
+    var out = '';
+    var entries;
+    try { entries = fs.readdirSync(dir); } catch (e) { return out; }
+    entries.filter(function (f) { return f.endsWith('.md'); }).forEach(function (f) {
+      out += '\n\n<<<' + f + '>>>\n' + fs.readFileSync(path.join(dir, f), 'utf8');
+    });
+    return out;
+  }
+  var cardsAndWalkthroughsText = readAllMd(path.join(HERE, 'build-cards')) + readAllMd(path.join(HERE, 'walkthroughs'));
+
+  var D17 = [
+    ['OD-27 two locks', /\|\s*`heavy`\s*\|/, true],
+    ['OD-27 live lock', /\|\s*`live`\s*\|/, true],
+    ['OD-28 GMP off the bidding gate', /Grey-market premium\*\*[^\n]*every 30 minutes[^\n]*UPCOMING or OPEN/, true],
+    ['OD-29 price window', /every 15 minutes during exchange market hours, for 90 days after listing/, true],
+    ['OD-29 no broker feed', /No broker feed reaches the public site/, true],
+    ['OD-30 same-type ordering', /Two documents of the same type are ordered by `filing_date`/, true],
+    ['OD-30 corrigendum freeze', /frozen against every earlier document of any type/, true],
+    ['OD-30 prospectus terminal', /corrigendum-after-prospectus-wins-for-named-fields/, true],
+    ['OD-31 opening-day check', /Opening-day check\*\*[^\n]*09:45/, true],
+    ['OD-31 time from a probe', /exchange-list-change-time\.mjs/, true],
+    ['OD-32 seven-day PDF window', /seven days after its LAST SUCCESSFUL extraction|last successful extraction \+ 7 days/, true],
+    ['OD-32 no PDF kept for life', /(PDF|document file)[^.\n]{0,40}kept for the life of the IPO row/i, false],
+    ['OD-33 sha256 identity', /identity is the sha256 of the content, not the URL/, true],
+    ['OD-33 backoff removed', /The timed backoff retry is removed/, true],
+    ['OD-34 binding order', /CIN[\s\S]{0,400}SEBI draft filing number[\s\S]{0,400}exchange symbol[\s\S]{0,400}normalised name/, true],
+    ['OD-35 180 days', /open dates within \*\*180 days\*\*/, true],
+    ['OD-35 ICDR cited', /Regulation 44\(1\)/, true],
+    ['OD-36 five handling rules', /Multi-part filings are extracted per part/, true],
+    ['OD-37 size cap', /the response is abandoned \*\*the moment it passes the cap\*\*/, true],
+    ['OD-37 cap is enforced during the read', /MAX_DOCUMENT_BYTES = 150 MB/, true],
+    ['OD-37 two-minute timeout', /DOWNLOAD_TIMEOUT_MS = 120_000/, true],
+    ['OD-38 unmerge', /An `unmerge` command/, true],
+    ['OD-38 delisting', /three consecutive times/, true],
+    ['OD-39 provenance line', /From the offer document, confirmed/, true],
+    ['OD-40 revalidate call', /calls one authenticated endpoint on the site with the touched slugs/, true],
+    ['OD-41 canonical', /A canonical tag on every IPO page/, true],
+    ['OD-43 corpus rules', /One directory per source/, true],
+    ['OD-44 two staging cycles', /Two consecutive staging cycles/, true],
+    ['OD-45 cost table', /\*\*1\.46\*\*|1\.46 GB a month/, true],
+    ['OD-45 zero paid calls', /phase 1 makes no paid call/, true],
+    ['OD-48 rupee precision', /numeric\(15,2\)/, true],
+    ['OD-48 Aramco test', /Aramco scale/, true],
+    ['OD-49 never grandfather', /Never grandfather the script|never by grandfathering it into the shrink-only ratchet baseline/, true],
+    ['OD-50 two cadences', /never two production deploys in one day/, true],
+    ['OD-51 config not code', /Nothing in this table may be a literal in a `\.ts` file/, true],
+    ['OD-51 module rule', /a lower layer never imports a higher one/, true],
+    ['OD-52 rule ids', /generate-rule-index\.mjs/, true],
+    // --- widened scan: build cards + walkthroughs, not just the design doc (2026-09-09 delta) ---
+    ['OD-23 phrasing: a PDF/document kept for the life of the row (build cards + walkthroughs)',
+      /\b(PDF|document file|documents?)\b[^.\n]{0,60}\bkept\b[^.\n]{0,20}\bfor the life of\b[^.\n]{0,10}\b(the IPO row|this row|the row)\b/i,
+      false, cardsAndWalkthroughsText],
+    ['OD-23 phrasing: "keep everything" (build cards + walkthroughs)',
+      /keep everything/i, false, cardsAndWalkthroughsText],
+    ['re-download-on-a-timer wording (build cards + walkthroughs)',
+      /\bre-?download(?:s|ed|ing)?\b[^.\n]{0,60}\b(?:schedule|timer|on an interval|periodically|every \d+ (?:day|days|hour|hours|minute|minutes))\b/i,
+      false, cardsAndWalkthroughsText],
+  ];
+  var d17bad = [];
+  D17.forEach(function (row) {
+    var text = row[3] || body;
+    var present = row[1].test(text);
+    if (present !== row[2]) d17bad.push(row[0] + (row[2] ? ' (missing)' : ' (a forbidden statement is back)'));
+  });
+  if (d17bad.length) fail('D17', d17bad.length + ' decision signature(s) of 2026-09-09 no longer hold: ' + d17bad.join(' | '));
+  else ok('D17', D17.length + ' signatures of the 2026-09-09 decisions all hold.');
+
+  // --- D20: the document is UTF-8 and stays UTF-8 ---
+  // WHY. Found 2026-09-09: 69 em dashes across 37 lines of section 5.2 read as "â€”" because a
+  // probe's console output was pasted into the document on Windows, where the console encodes in
+  // CP1252. Nothing noticed for a day. It is cosmetic until a reader hits it, and then it is the
+  // most visible possible signal that nobody proof-read the page.
+  // The byte pairs that UTF-8 read as CP1252 actually produces: a lead byte of Â/Ã/â followed by a
+  // continuation byte, plus the replacement character. The first version listed three literal
+  // strings and a reviewer walked straight past it with "Â lakh" — Â is the commonest mojibake of
+  // the lot, because it is what a non-breaking space, a degree sign and ± all turn into.
+  // Built from code points rather than escapes, because two attempts at writing this line as a
+  // literal were mangled in transit — once into a pair of literal backspace bytes, once into a
+  // class that matched the letter "s". A regex nobody can read back is a regex nobody can trust.
+  var MOJI_LEAD = [0xC2, 0xC3, 0xE2, 0xEF].map(function (c) { return String.fromCharCode(c); }).join('');
+  var NON_ASCII = '[^' + String.fromCharCode(0) + '-' + String.fromCharCode(0x7F) + ']';
+  var MOJIBAKE = new RegExp(
+    '[' + MOJI_LEAD + ']' + NON_ASCII +          // Â/Ã/â/ï followed by any non-ASCII byte
+    '|' + String.fromCharCode(0xFFFD) +          // the replacement character itself
+    '|' + String.fromCharCode(0xC2) + '(?=\\s|$)' // a lone Â before whitespace OR at end of line
+  );
+  var mojiLines = [];
+  md.split(String.fromCharCode(10)).forEach(function (l, i) { if (MOJIBAKE.test(l)) mojiLines.push(i + 1); });
+  if (mojiLines.length) {
+    fail('D20', mojiLines.length + ' line(s) carry mis-encoded text (UTF-8 read as CP1252), first at line ' + mojiLines[0] + '. A generated block was pasted from a Windows console; write it to a file instead.');
+  } else {
+    ok('D20', 'No mis-encoded text: the document is clean UTF-8.');
+  }
+
+  // --- D18: every check this design names has a registered CONSUMER ---
+  // WHY. OD-42, and the signal-ownership rule behind it: "a check nobody reads is no detection".
+  // Section 4 names sixteen checks and 4.5 a seventeenth. Before this, all seventeen existed only
+  // as rows in a markdown table — no id anywhere else in the repository, no script, and nothing
+  // that would notice if one of them silently stopped being produced. The registry entry is what
+  // ties a check to the thing that READS it, and this asserts the tie exists.
+  var CHECK_DIR = path.join(HERE, '..', 'reviews', 'detection-checks');
+  var s4 = md.slice(md.indexOf('## 4. How we would know it worked'), md.indexOf('## 5. The open comments'));
+  // Matched WITH OR WITHOUT backticks, and with digits and inner dashes allowed. A reviewer removed
+  // the backticks around one id on 2026-09-09 — a pure formatting edit — and this check silently
+  // went from seventeen ids to sixteen and still said PASS, leaving PULL-NOBLANK unguarded. A check
+  // that quietly guards less than it did is worse than one that fails.
+  var namedChecks = [...new Set([...s4.matchAll(/\b((?:PULL|REREAD|E1|CHECK|CORPUS)-[A-Z][A-Z0-9-]*)\b/g)].map(function (m) { return m[1]; }))];
+  // And the count is pinned. Section 4 names seventeen checks today; if it ever names fewer, either
+  // a check was deleted (say so deliberately and lower this number in the same change) or the
+  // matching broke again.
+  var MIN_NAMED_CHECKS = 17;
+  var registered = {};
+  try {
+    fs.readdirSync(CHECK_DIR).filter(function (f) { return f.endsWith('.json') && f !== '_meta.json'; })
+      .forEach(function (f) {
+        var e = JSON.parse(fs.readFileSync(path.join(CHECK_DIR, f), 'utf8'));
+        if (e.designId) registered[e.designId] = e;
+      });
+  } catch (e) { /* handled below by the empty map */ }
+  var CONSUMERS = ['nightly floor-delta', 'per-cycle failure reading'];
+  var unregistered = namedChecks.filter(function (id) { return !registered[id]; });
+  var noConsumer = namedChecks.filter(function (id) {
+    var e = registered[id];
+    return e && !CONSUMERS.some(function (c) { return String(e.consumer || '').indexOf(c) === 0; });
+  });
+  if (namedChecks.length < MIN_NAMED_CHECKS) {
+    fail('D18', 'Section 4 now names only ' + namedChecks.length + ' checks; it named ' + MIN_NAMED_CHECKS +
+      '. Either a check was deleted (lower MIN_NAMED_CHECKS in the same change, deliberately) or the id matching broke and this check is guarding less than it reports.');
+  } else if (unregistered.length || noConsumer.length) {
+    fail('D18', (unregistered.length ? unregistered.length + ' check(s) the design names have no registry entry: ' + unregistered.join(', ') + '. ' : '') +
+      (noConsumer.length ? noConsumer.length + ' registered check(s) name no known consumer: ' + noConsumer.join(', ') : ''));
+  } else {
+    ok('D18', namedChecks.length + ' checks named in section 4, every one registered in docs/reviews/detection-checks/ with a named consumer.');
+  }
+
+  // --- D19: every rule of this design is claimed by a build card, or declared unclaimed ---
+  // WHY. OD-52. rules.json gives every rule an id; that is only worth something if each id is
+  // OWNED. A rule nobody implements is the failure this design keeps meeting from the other side —
+  // a decision with no build item. Rules that are genuinely not code (the deploy cadence, the
+  // uncertainties, the language-model constraint) are allowed, but they must be DECLARED with a
+  // reason in rules-unclaimed.json. Unclaimed is fine; unclaimed and silent is not.
+  var RULES = path.join(HERE, 'rules.json');
+  var UNCLAIMED = path.join(HERE, 'rules-unclaimed.json');
+  if (!fs.existsSync(RULES)) {
+    fail('D19', 'docs/design/rules.json is missing — run: node docs/design/generate-rule-index.mjs --apply');
+  } else {
+    var idxRun = spawnSync(process.execPath, [path.join(HERE, 'generate-rule-index.mjs'), '--check'], { encoding: 'utf8' });
+    var ruleFile = JSON.parse(fs.readFileSync(RULES, 'utf8'));
+    var liveIds = ruleFile.rules.filter(function (r) { return !r.retired; }).map(function (r) { return r.id; });
+    var claimed = new Set();
+    var CARD_DIR = path.join(HERE, 'build-cards');
+    fs.readdirSync(CARD_DIR).filter(function (f) { return /^item-\d+-.*\.md$/.test(f); }).forEach(function (f) {
+      var t = fs.readFileSync(path.join(CARD_DIR, f), 'utf8');
+      var sec = t.slice(t.indexOf('## Rules implemented'));
+      sec = sec.slice(0, sec.indexOf('## Known gaps') >= 0 ? sec.indexOf('## Known gaps') : sec.length);
+      (sec.match(/R-\d{3}/g) || []).forEach(function (id) { claimed.add(id); });
+    });
+    var declared = new Set();
+    if (fs.existsSync(UNCLAIMED)) {
+      var u = JSON.parse(fs.readFileSync(UNCLAIMED, 'utf8'));
+      Object.keys(u.unclaimed || {}).forEach(function (id) { if (String(u.unclaimed[id]).length >= 20) declared.add(id); });
+    }
+    var orphans = liveIds.filter(function (id) { return !claimed.has(id) && !declared.has(id); });
+    var ghosts = [...claimed].filter(function (id) { return liveIds.indexOf(id) < 0; });
+    if (idxRun.status !== 0) {
+      fail('D19', 'rules.json has drifted from the design — run: node docs/design/generate-rule-index.mjs --apply');
+    } else if (orphans.length || ghosts.length) {
+      fail('D19', (orphans.length ? orphans.length + ' of ' + liveIds.length + ' rule(s) claimed by no build card and not declared unclaimed (' + orphans.slice(0, 5).join(', ') + ')' : '') +
+        (ghosts.length ? (orphans.length ? '; ' : '') + ghosts.length + ' card(s) claim a retired or unknown rule id (' + ghosts.slice(0, 5).join(', ') + ')' : ''));
+    } else {
+      ok('D19', liveIds.length + ' design rules, every one claimed by a build card or declared unclaimed with a reason; zero orphans.');
+    }
+  }
 
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);

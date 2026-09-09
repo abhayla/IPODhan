@@ -1,0 +1,22 @@
+{
+  "probe": "exchange-list-change-time",
+  "question": "At what IST time does each exchange first show an IPO that opens today, so the opening-day check (OD-31) can be placed 15 minutes after the later of the two?",
+  "method": "poll both list endpoints every 5 minutes from 08:30 to 10:00 IST on a day an IPO is due to open; record the first poll at which the row appears",
+  "observations": [],
+  "verdict": {
+    "state": "insufficient",
+    "observations": 0,
+    "needed": 3,
+    "design_uses": "09:45 IST, PROVISIONAL",
+    "why": "Three opening-day observations are needed before a time is a measurement rather than a guess; 0 exist. The design states 09:45 and marks it provisional until this file says otherwise."
+  },
+  "from_fixtures": {
+    "payloads_present": [
+      "nse/ipo-current-issue.json",
+      "bse/IPO_HomePageDetail.json"
+    ],
+    "answer": "insufficient",
+    "why": "The saved payloads carry the DATE they were fetched, not the minute at which the exchange first published the row. Appearance time cannot be recovered from a single snapshot, and inventing one would be exactly the failure OD-25 exists to prevent."
+  },
+  "generated_at": "2026-09-09T11:26:56.303Z"
+}

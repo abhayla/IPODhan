@@ -1,0 +1,330 @@
+{
+  "probe": "document-types-by-segment",
+  "generated_at": "2026-09-09T10:04:11.188Z",
+  "source": "production, documents JOIN ipos ON documents.ipo_id = ipos.id (read-only tunnel)",
+  "finding": "F-91",
+  "ipo_count_by_segment": [
+    {
+      "segment": "MAINBOARD",
+      "ipos": 147
+    },
+    {
+      "segment": "NULL",
+      "ipos": 6
+    },
+    {
+      "segment": "SME",
+      "ipos": 177
+    }
+  ],
+  "totals_by_segment": {
+    "all_rows": [
+      {
+        "segment": "MAINBOARD",
+        "documents": 154,
+        "distinct_ipos": 37
+      },
+      {
+        "segment": "SME",
+        "documents": 112,
+        "distinct_ipos": 79
+      }
+    ],
+    "active_only": [
+      {
+        "segment": "MAINBOARD",
+        "documents": 154,
+        "distinct_ipos": 37
+      },
+      {
+        "segment": "SME",
+        "documents": 112,
+        "distinct_ipos": 79
+      }
+    ]
+  },
+  "matrix_all_rows": [
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "documents": 22,
+      "distinct_ipos": 22
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "documents": 1,
+      "distinct_ipos": 1
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "BIDDING_CENTERS",
+      "documents": 8,
+      "distinct_ipos": 8
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "CORRIGENDUM",
+      "documents": 1,
+      "distinct_ipos": 1
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "DRHP",
+      "documents": 18,
+      "distinct_ipos": 18
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "PRICE_BAND_AD",
+      "documents": 13,
+      "distinct_ipos": 13
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "PROSPECTUS",
+      "documents": 17,
+      "distinct_ipos": 17
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "documents": 25,
+      "distinct_ipos": 25
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "RHP",
+      "documents": 28,
+      "distinct_ipos": 27
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "SAMPLE_APPLICATION_FORMS",
+      "documents": 8,
+      "distinct_ipos": 8
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "SECURITY_PARAMS_POST_ANCHOR",
+      "documents": 5,
+      "distinct_ipos": 5
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "SECURITY_PARAMS_PRE_ANCHOR",
+      "documents": 8,
+      "distinct_ipos": 8
+    },
+    {
+      "segment": "SME",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "documents": 7,
+      "distinct_ipos": 7
+    },
+    {
+      "segment": "SME",
+      "doc_type": "DRHP",
+      "documents": 1,
+      "distinct_ipos": 1
+    },
+    {
+      "segment": "SME",
+      "doc_type": "PROSPECTUS",
+      "documents": 64,
+      "distinct_ipos": 64
+    },
+    {
+      "segment": "SME",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "documents": 9,
+      "distinct_ipos": 9
+    },
+    {
+      "segment": "SME",
+      "doc_type": "RHP",
+      "documents": 15,
+      "distinct_ipos": 14
+    },
+    {
+      "segment": "SME",
+      "doc_type": "SAMPLE_APPLICATION_FORMS",
+      "documents": 6,
+      "distinct_ipos": 6
+    },
+    {
+      "segment": "SME",
+      "doc_type": "SECURITY_PARAMS_POST_ANCHOR",
+      "documents": 4,
+      "distinct_ipos": 4
+    },
+    {
+      "segment": "SME",
+      "doc_type": "SECURITY_PARAMS_PRE_ANCHOR",
+      "documents": 6,
+      "distinct_ipos": 6
+    }
+  ],
+  "matrix_active_only": [
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "documents": 22,
+      "distinct_ipos": 22
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "documents": 1,
+      "distinct_ipos": 1
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "BIDDING_CENTERS",
+      "documents": 8,
+      "distinct_ipos": 8
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "CORRIGENDUM",
+      "documents": 1,
+      "distinct_ipos": 1
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "DRHP",
+      "documents": 18,
+      "distinct_ipos": 18
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "PRICE_BAND_AD",
+      "documents": 13,
+      "distinct_ipos": 13
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "PROSPECTUS",
+      "documents": 17,
+      "distinct_ipos": 17
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "documents": 25,
+      "distinct_ipos": 25
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "RHP",
+      "documents": 28,
+      "distinct_ipos": 27
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "SAMPLE_APPLICATION_FORMS",
+      "documents": 8,
+      "distinct_ipos": 8
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "SECURITY_PARAMS_POST_ANCHOR",
+      "documents": 5,
+      "distinct_ipos": 5
+    },
+    {
+      "segment": "MAINBOARD",
+      "doc_type": "SECURITY_PARAMS_PRE_ANCHOR",
+      "documents": 8,
+      "distinct_ipos": 8
+    },
+    {
+      "segment": "SME",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "documents": 7,
+      "distinct_ipos": 7
+    },
+    {
+      "segment": "SME",
+      "doc_type": "DRHP",
+      "documents": 1,
+      "distinct_ipos": 1
+    },
+    {
+      "segment": "SME",
+      "doc_type": "PROSPECTUS",
+      "documents": 64,
+      "distinct_ipos": 64
+    },
+    {
+      "segment": "SME",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "documents": 9,
+      "distinct_ipos": 9
+    },
+    {
+      "segment": "SME",
+      "doc_type": "RHP",
+      "documents": 15,
+      "distinct_ipos": 14
+    },
+    {
+      "segment": "SME",
+      "doc_type": "SAMPLE_APPLICATION_FORMS",
+      "documents": 6,
+      "distinct_ipos": 6
+    },
+    {
+      "segment": "SME",
+      "doc_type": "SECURITY_PARAMS_POST_ANCHOR",
+      "documents": 4,
+      "distinct_ipos": 4
+    },
+    {
+      "segment": "SME",
+      "doc_type": "SECURITY_PARAMS_PRE_ANCHOR",
+      "documents": 6,
+      "distinct_ipos": 6
+    }
+  ],
+  "claim_check": {
+    "mainboard_price_band_ad": {
+      "all": 13,
+      "active": 13
+    },
+    "sme_price_band_ad": {
+      "all": 0,
+      "active": 0
+    },
+    "mainboard_drhp": {
+      "all": 18,
+      "active": 18
+    },
+    "sme_drhp": {
+      "all": 1,
+      "active": 1
+    },
+    "sme_prospectus": {
+      "all": 64,
+      "active": 64
+    },
+    "mainboard_prospectus": {
+      "all": 17,
+      "active": 17
+    }
+  },
+  "reconciliation_against_document_store_size": {
+    "design_claim": "SME PRICE_BAND_AD = 0, MAINBOARD PRICE_BAND_AD = 12 (sum = 12)",
+    "document_store_size_figure": 13,
+    "this_probe_active_only_sum": 13,
+    "this_probe_all_rows_sum": 13,
+    "matches_active_only": true,
+    "matches_all_rows": true,
+    "verdict": "RECONCILES against document-store-size on the active-only population."
+  },
+  "verdicts": {
+    "sme_zero_price_band_ad": "HOLDS: SME has zero PRICE_BAND_AD documents under both readings.",
+    "sme_one_drhp": "HOLDS (all rows): SME has exactly 1 DRHP document.",
+    "sme_64_prospectus": "HOLDS (all rows): SME has exactly 64 PROSPECTUS documents."
+  }
+}

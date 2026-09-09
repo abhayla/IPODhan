@@ -56,8 +56,21 @@
 1. **The key is widened, not replaced.** `field_sources` and `data_conflicts` each gain a `row_key varchar(200) NOT NULL DEFAULT ''`. Empty string is the singleton sentinel for every table with one row per IPO; it is NOT nullable, because two NULLs are not equal under a unique index and two empty strings are.
 2. **The unique constraint is renamed as well as widened.** `unique_field_source_per_ipo` becomes `unique_field_source_per_ipo_row` on `(ipo_id, table_name, row_key, field_name)`. A constraint whose meaning changed but whose name did not is a trap for the next migration that only ALTERs.
 3. **The natural key per table is the build card's**, not this run's to invent: `fiscalYear:basis` for `financial_statements`, `pricingEvent` for `ipo_valuation`, normalised company name for `promoters` and `peer_companies`, `role:normalizedName` for `ipo_intermediaries`, a heading hash for `ipo_risk_factors`, and `''` for `ipo_details` and `anchor_investors`.
-4. **Dropping a unique constraint is destructive DDL.** The generated migration is split: the additive half (add column, add index) goes in the normal journal; the constraint swap goes in `web/drizzle/migrations/_gated/` and is applied by hand after the owner signs off. Adding a `_gated/` file to `meta/_journal.json` is what drops production columns; it is never done.
-5. **The flag is `ENABLE_CHILD_TABLE_CONSOLIDATION`,** default OFF in every slot including local. It is turned on for staging only, by the owner, after the migration has been applied there.
+4. **The normalised-name column DOES NOT EXIST YET, and that changes the order of the work.** Measured
+   2026-09-09 by `docs/design/probes/duplicate-scan.mjs` against production and confirmed against
+   `packages/shared/src/db/schema.ts`: **`promoters`, `peer_companies` and `ipo_intermediaries` have
+   no `normalized_name` column at all** (27, 326 and 178 rows respectively). Decision 3's natural key
+   therefore names a column that has never been written, and a migration that adds
+   `UNIQUE (ipo_id, normalized_name)` cannot run. The order is: **(a)** add and backfill the column
+   using the SAME normaliser the binding key uses (§2.3.3 of the design — the whole-word strip
+   shipped in `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs`, not the trailing-suffix regex
+   that F-60 showed does not fold `(India)`); **(b)** re-run `duplicate-scan.mjs` against the REAL
+   normaliser and repair whatever it finds; **(c)** only then add the constraint. Under a stand-in
+   lower-and-trim normalisation there are **zero** duplicate groups on all three tables today, which
+   is encouraging and is emphatically not the same test — a real normaliser folds more names
+   together, so it can only find MORE collisions, never fewer. Finding **F-74**, carded to this item.
+5. **Dropping a unique constraint is destructive DDL.** The generated migration is split: the additive half (add column, add index) goes in the normal journal; the constraint swap goes in `web/drizzle/migrations/_gated/` and is applied by hand after the owner signs off. Adding a `_gated/` file to `meta/_journal.json` is what drops production columns; it is never done.
+6. **The flag is `ENABLE_CHILD_TABLE_CONSOLIDATION`,** default OFF in every slot including local. It is turned on for staging only, by the owner, after the migration has been applied there.
 6. **The old provenance write is deleted, not left running in parallel.** `trackField(tableName, 'rows')` writes one synthetic row per table and is superseded by per-field rows; leaving both would double-count every provenance report.
 7. **If a decision genuinely is the owner's** — irreversible, outward-facing, or two valid builds with no best-practice winner — record it in the progress log with a recommendation, continue on the recommendation, and list it first in the final report. Do not halt an hour in.
 

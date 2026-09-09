@@ -120,6 +120,29 @@ const index = {};   // source -> [{ label, fixture, sample }]
   index.IG = rows;
 }
 
+// --- REG. A registrar's own public page (registrar-payload.mjs, run 2026-09-09). Most of these
+// pages are a client-side search form — the static fetch gets the shell, not a result — so the
+// only genuine rows are the ones a person actually read off the saved HTML: the page's own
+// <title> (which names the page, and is a real label on a real page, not a nav link), and — for
+// Cameo specifically, confirmed by a direct read of the saved fixture — the registrar's own legal
+// name, printed in its footer/body copy. Nothing here is a synonym guess; every row was read.
+{
+  const rows = [];
+  const dir = path.join(FIX, 'registrars');
+  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+    const html = readText('registrars/' + f);
+    const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1];
+    if (title) rows.push({ label: title.trim(), fixture: 'registrars/' + f, sample: '(page title)' });
+  }
+  // Confirmed by direct read 2026-09-09: Cameo's own homepage prints its own legal name in body
+  // copy (not just the title), which is what `registrars.name` actually claims a registrar page
+  // carries.
+  if (exists('registrars/Cameo-website.html')) {
+    rows.push({ label: 'Cameo Corporate Services Limited', fixture: 'registrars/Cameo-website.html', sample: '(registrar’s own legal name, printed in page body)' });
+  }
+  index.REG = rows;
+}
+
 // --- DOC. The real extractor's real output on real PDFs — but ONLY the leaves that are an
 // extracted VALUE. The extractor also emits `fields.<name>.source_doc`, `.check.*` and `.detail`
 // alongside each value, and indexing those is how a first version of this mapper "proved" that the
@@ -148,7 +171,7 @@ const index = {};   // source -> [{ label, fixture, sample }]
 }
 
 // Sources with no probe of their own. Recorded as unprobed rather than assumed either way.
-const UNPROBED = { REG: 'no registrar-site probe was run in this round', ADMIN: 'an admin-only field has no external source to probe', MC: 'Moneycontrol is retired by OD-3 and serves no field' };
+const UNPROBED = { ADMIN: 'an admin-only field has no external source to probe', MC: 'Moneycontrol is retired by OD-3 and serves no field' };
 
 // ---------------------------------------------------------------------------
 // Matching a column to a label.
@@ -247,6 +270,24 @@ const CURATED = {
   'subscriptions.shares_offered': { NSE: 'noOfSharesOffered' },
   'subscriptions.total_shares_bid': { NSE: 'noOfsharesBid' },
   'subscriptions.total_subscription': { NSE: 'noOfTime' },
+  // REG (registrar-payload.mjs, 2026-09-09). `registrars.short_name/email/phone/address` are
+  // deliberately absent here — the probe found no literal match for them on a registrar homepage
+  // (most surface a phone/email only on a separate "contact" page this round did not fetch), and a
+  // weak substring guess is exactly what the token matcher was banned for producing. They are
+  // UNPROVEN, honestly, not forced.
+  'registrars.name':               { REG: 'Cameo Corporate Services Limited' },
+  'registrars.website':            { REG: 'Cameo India - Business Processes Driven by Values. Enabled with Agility.' },
+  'registrars.allotment_check_url': { REG: 'Cameo IPO Updates' },
+};
+
+// A pair a probe genuinely CANNOT reach (as opposed to one that was searched and simply had no
+// match) is DECLARED so, rather than left silent. D15 accepts this string form and does not count
+// it toward the floor — it is a statement that nothing was found, not evidence that something was.
+const DECLARED_UNREACHABLE = {
+  'registrars.short_name': { REG: 'unreachable on 2026-09-09: the confirmed literal match on a registrar homepage is its full legal NAME (registrars.name); its short brand form ("Cameo", "KFin") also appears but only as short, common substrings that would need a person to confirm each one is the brand and not a coincidence — registrar-payload.mjs recorded the pages, none was hand-confirmed for short_name' },
+  'registrars.email':      { REG: 'unreachable on 2026-09-09: none of the six registrar homepages fetched by registrar-payload.mjs printed a literal email address on the page itself — it sits behind a separate Contact page this round did not fetch' },
+  'registrars.phone':      { REG: 'unreachable on 2026-09-09: same as email — no literal phone number on the fetched homepage; a separate Contact page was not fetched this round' },
+  'registrars.address':    { REG: 'unreachable on 2026-09-09: same as email — no literal registered address on the fetched homepage; a separate Contact page was not fetched this round' },
 };
 
 function match(col, source, table) {
@@ -349,6 +390,14 @@ if (apply) {
     // reference checkable.
     (evByField[p.field] = evByField[p.field] || {})[p.source] = { ref: 'fixtures/' + p.fixture, label: p.label };
   }
+  const pairCount = Object.values(evByField).reduce((n, o) => n + Object.keys(o).length, 0);
+  // Declared-unreachable pairs are written into the SAME file (so D15 sees them) but AFTER the
+  // floor is computed — they carry no evidence and must never inflate the ratchet.
+  for (const [field, bySrc] of Object.entries(DECLARED_UNREACHABLE)) {
+    for (const [src, reason] of Object.entries(bySrc)) {
+      (evByField[field] = evByField[field] || {})[src] = reason;
+    }
+  }
   const EV_FILE = path.resolve(HERE, '../evidence.json');
   fs.writeFileSync(EV_FILE, JSON.stringify({
     generated_by: 'docs/design/probes/evidence-map.mjs --apply',
@@ -357,8 +406,7 @@ if (apply) {
           'Never hand-edit: re-run the mapper.',
     fields: Object.fromEntries(Object.entries(evByField).sort(([x], [y]) => x.localeCompare(y))),
   }, null, 2) + String.fromCharCode(10));
-  const pairCount = Object.values(evByField).reduce((n, o) => n + Object.keys(o).length, 0);
-  console.log(`wrote docs/design/evidence.json: ${Object.keys(evByField).length} fields, ${pairCount} (field, source) pairs`);
+  console.log(`wrote docs/design/evidence.json: ${Object.keys(evByField).length} fields, ${pairCount} (field, source) pairs carry evidence`);
   console.log(`EVIDENCE_FLOOR should now be ${pairCount} in field-source-resolution.spec.mjs`);
 }
 console.log('written: evidence-map.out.json');
