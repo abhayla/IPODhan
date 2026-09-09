@@ -1225,6 +1225,56 @@
       "phase1": true,
       "detail": "The edge-case walkthrough run appended F-99 to F-105 to findings.json and reported \"D5 All 101 findings carry a declared status\". The parent session was editing the same file, and its write won: the file on disk went back to 94 findings and the seven were gone. Nothing detected it — the gate reported 23/23 either way, because a finding that no longer exists cannot be OPEN. It was caught only because the parent went looking for the ids it expected.",
       "fixed_in": "FIXED 2026-09-09 by restoring all seven from the run's report, and by the rule that follows: a parallel run NEVER writes a file the parent also writes. It writes its own file (`findings-<slug>.json`) and the parent merges. The same rule already applies to the design document and is why no walkthrough run edits it."
+    },
+    {
+      "id": "F-119",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "gate",
+      "phase1": true,
+      "title": "D3 could notice a WRONG count of E-1, never a DELETED one",
+      "detail": "D3's word list ran five, nine, twelve, thirteen — and the spec says TEN, so the one number word the design actually uses was not in the list. It could only ever fail on a count it disagreed with. A mutation deleted every stated count of E-1 from the prose and the gate stayed green, which leaves the size of the named exception to the owner's 100% rule written down nowhere and checked against nothing.",
+      "fixed_in": "D3 in docs/design/check-design-consistency.mjs: the word list covers one to twenty, and the check now asserts BOTH that the correct word is stated at least once and that no other number word appears in an E-1 phrase. Proven by the case \"D3 E-1 size - delete every stated count of E-1 from the prose\" in docs/design/check-mutations.test.mjs."
+    },
+    {
+      "id": "F-120",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "gate",
+      "phase1": true,
+      "title": "D6 was satisfied by any table quoting the words 'open and upcoming'",
+      "detail": "D6 tested /open and upcoming|OPEN \\+ UPCOMING|phase 1/i over the whole document, and 'phase 1' appears on nearly every page. Deleting the owner's scope blockquote — the single place phase 1 is defined — left the check green. It was reporting 'Phase-1 scope is stated in the design' on the strength of the register row that quotes the scope, not the scope itself.",
+      "fixed_in": "D6 now finds the blockquote line beginning '> **Scope (owner, <date>):' and asserts it still names open and upcoming IPOs; its PASS line prints the sentence it found. Proven by the case 'D6 phase-1 scope - delete the owner scope statement'."
+    },
+    {
+      "id": "F-121",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "gate",
+      "phase1": true,
+      "title": "D8 held a floor of 12 citations against a document carrying 52",
+      "detail": "Forty file:line citations could be deleted — every citation in a whole section — and D8 still printed that sections 2-4 carry citations for their claims about existing behaviour. A floor forty below the truth measures nothing, and uncited claims are exactly how the seven false assertions about our own code got into the first draft.",
+      "fixed_in": "D8 is now a ratchet against the committed version, the same shape as D15: it reads HEAD of the design, and a fall in the citation count fails the gate unless the design carries a line \"Citations reduced deliberately: <reason>\". Proven by the case \"D8 citations - strip 30 file:line citations out of sections 2-4\"."
+    },
+    {
+      "id": "F-122",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "gate",
+      "phase1": true,
+      "title": "D9 could not match the string it existed to forbid",
+      "detail": "D9's pattern was /phases*2/i — the letters 'phase', then zero or more 's', then '2'. It cannot match 'phase 2', which is the only way anybody writes it, so the check had never been capable of failing. Its declaration filter carried the mirror-image bug (it required one or two characters between 'no' and 'phase', so it did not match 'There is no phase 2' either), and only the first bug kept the gate green. Owner, 2026-09-08: 'there is no phase 2'.",
+      "fixed_in": "D9 matches /phase\\s*2\\b/i, and the filter that exempts the sentence DECLARING there is no phase 2 was corrected with it. Proven by the case 'D9 non-existent phase - park an item in \"phase 2\"'."
+    },
+    {
+      "id": "F-123",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "area": "gate",
+      "phase1": true,
+      "title": "D12's negation list was a universal excuse for putting a document read back on a clock",
+      "detail": "The list exempting a line from D12's on-a-clock rule included 'was', 'goes', 'until' and 'without' — ordinary words that appear in perfectly affirmative sentences. The mutation 'Each offer document is re-read every 30 minutes until the extraction goes clean' schedules exactly the behaviour the owner has now twice said no to, and the gate waved it through on the word 'until'. Same shape as the (LOCAL) marker that became a universal excuse in the card gate.",
+      "fixed_in": "D12's NEGATION now lists only words that actually deny the behaviour or place it in the past (never, not, no longer, nothing, used to, is/was removed, stops being/doing). Proven by the case 'D12 documents on a clock - re-read every 30 minutes, in a sentence containing \"until\"'."
     }
   ],
   "false_assertions": [

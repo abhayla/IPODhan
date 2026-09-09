@@ -76,13 +76,25 @@ try {
   else ok('D2', 'No generator-owned count is hand-typed, and every generated block matches its generator.');
 
   // --- D3: E-1's size is stated once and consistently ---
+  // 2026-09-09, mutation round two: the word list ran 5, 9, 12, 13 — and the spec says TEN, so the
+  // one word the design actually uses was not in the list at all. Deleting every stated count from
+  // the prose left the check green, because it could only ever notice a count it disagreed with,
+  // never a count that had gone. Two assertions now: the RIGHT word is present at least once, and
+  // no OTHER number word appears in an E-1 phrase.
   const e1Spec = F.filter((f) => f.o && f.o.e1).length;
-  const words = { 5: 'five', 9: 'nine', 12: 'twelve', 13: 'thirteen' };
+  const words = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven',
+    8: 'eight', 9: 'nine', 10: 'ten', 11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen',
+    15: 'fifteen', 16: 'sixteen', 17: 'seventeen', 18: 'eighteen', 19: 'nineteen', 20: 'twenty' };
+  const e1Phrase = (w) => new RegExp(`\\b${w} E-1\\b|E-1 (?:fields )?[—-] ${w}\\b|the ${w} E-1\\b`, 'i');
   const wrong = Object.entries(words)
-    .filter(([n, w]) => Number(n) !== e1Spec && new RegExp(`${w} E-1|E-1 (?:fields )?— ${w}|the ${w} E-1`, 'i').test(md))
+    .filter(([n, w]) => Number(n) !== e1Spec && e1Phrase(w).test(md))
     .map(([n, w]) => w);
+  const rightWord = words[e1Spec];
+  const statesIt = rightWord ? e1Phrase(rightWord).test(md) || new RegExp(`E-1[^.\\n]{0,40}\\b${e1Spec}\\b`).test(md)
+                             : new RegExp(`E-1[^.\\n]{0,40}\\b${e1Spec}\\b`).test(md);
   if (wrong.length) fail('D3', `E-1 is ${e1Spec} fields in the spec but the design also says: ${wrong.join(', ')}.`);
-  else ok('D3', `E-1 is ${e1Spec} fields, stated consistently.`);
+  else if (!statesIt) fail('D3', `The design never states E-1's size. The spec has ${e1Spec} fields; a count that is nowhere written down cannot be checked against anything, and this check would then be guarding nothing.`);
+  else ok('D3', `E-1 is ${e1Spec} fields, stated in the design and stated consistently.`);
 
   // --- D4: the design does not claim readiness while a critical finding is open ---
   const openCrit = findings.findings.filter((f) => f.status === 'OPEN' && f.sev === 'CRITICAL');
@@ -101,9 +113,21 @@ try {
   else ok('D5', `All ${findings.findings.length} findings carry a declared status.`);
 
   // --- D6: phase-1 scope is stated in the design and matches the register ---
-  const phase1InDesign = /open and upcoming|OPEN \+ UPCOMING|phase 1/i.test(md);
-  if (!phase1InDesign) fail('D6', 'The design does not state the phase-1 scope the owner set.');
-  else ok('D6', 'Phase-1 scope is stated in the design.');
+  // 2026-09-09, mutation round two: this used to be /open and upcoming|OPEN \+ UPCOMING|phase 1/i
+  // over the WHOLE document, and "phase 1" appears on nearly every page. Deleting the owner's scope
+  // sentence outright left it green — the check was satisfied by any table that happened to quote
+  // the words. The scope is stated in ONE place, the blockquote under the title, and that is what is
+  // asserted: a scope statement that names its owner, the date, and the population.
+  const scopeLine = md.split(String.fromCharCode(10)).find(function (l) {
+    return /^>\s*\*\*Scope \(owner[^)]*\)/.test(l);
+  });
+  if (!scopeLine) {
+    fail('D6', 'The design has no owner scope statement. It is a blockquote line beginning "> **Scope (owner, <date>):" and it is the one place phase 1 is defined; the words "open and upcoming" appearing in a table elsewhere is not a scope statement.');
+  } else if (!/open and upcoming/i.test(scopeLine)) {
+    fail('D6', 'The scope statement no longer says phase 1 is open and upcoming IPOs only: "' + scopeLine.trim().slice(0, 120) + '"');
+  } else {
+    ok('D6', 'Phase-1 scope is stated where it belongs: ' + scopeLine.replace(/^>\s*/, '').trim().slice(0, 90));
+  }
 
   // --- D7: the seven false claims about our own code must not reappear ---
   // The first draft asserted seven things about existing behaviour that the code
@@ -126,17 +150,52 @@ try {
   else ok('D7', 'None of the seven disproved claims about our own code appear.');
 
   // --- D8: the rewritten sections cite the code they describe ---
-  var core = md.slice(md.indexOf('## 2. How we go and get it'), md.indexOf('## 5.'));
+  // 2026-09-09, mutation round two: the floor was a bare 12 while the document carried 52, so forty
+  // citations could be deleted — every citation in a whole section — and the check stayed green
+  // saying the sections "carry citations". A floor forty below the truth measures nothing. It is now
+  // a RATCHET against the committed version, the same shape as D15: the count may rise, and a fall
+  // is a failure unless the change says so out loud.
+  var coreOf = function (text) {
+    var a = text.indexOf('## 2. How we go and get it');
+    var b = text.indexOf('## 5.');
+    if (a < 0 || b < 0 || b < a) return null;
+    return text.slice(a, b);
+  };
+  var core = coreOf(md);
+  if (core === null) throw new Error('D8: sections 2-4 could not be located (a heading was renamed) — re-anchor the check');
   var cites = (core.match(/[a-z-]+\.(ts|mjs|sh):\d+/g) || []).length;
-  if (cites < 12) fail('D8', 'Sections 2-4 make claims about existing behaviour with only ' + cites + ' file:line citations. Uncited claims are how the seven false assertions got in.');
-  else ok('D8', 'Sections 2-4 carry ' + cites + ' file:line citations for claims about existing behaviour.');
+  var prevCites = null;
+  var prevMd = spawnSync('git', ['show', 'HEAD:docs/design/data-sourcing-pull-model.md'],
+                         { encoding: 'utf8', cwd: path.resolve(HERE, '../..'), maxBuffer: 32 * 1024 * 1024 });
+  if (prevMd.status === 0) {
+    var prevCore = coreOf(String(prevMd.stdout));
+    if (prevCore !== null) prevCites = (prevCore.match(/[a-z-]+\.(ts|mjs|sh):\d+/g) || []).length;
+  }
+  // The one deliberate way down: say it in the document, with a reason, the way a PR body declares
+  // "No detection change". Anything else that lowers the count is drift.
+  var citeCut = /citations reduced deliberately:\s*\S[^\n]{19,}/i.test(md);
+  if (cites < 12) {
+    fail('D8', 'Sections 2-4 make claims about existing behaviour with only ' + cites + ' file:line citations. Uncited claims are how the seven false assertions got in.');
+  } else if (prevCites !== null && cites < prevCites && !citeCut) {
+    fail('D8', 'Sections 2-4 lost ' + (prevCites - cites) + ' file:line citation(s) in this change (' + prevCites +
+      ' at HEAD, ' + cites + ' now). Citations are a ratchet: rewriting a section is not a reason to stop citing the code it describes. ' +
+      'If the reduction is intended, write a line "Citations reduced deliberately: <reason, 20+ chars>" in the design.');
+  } else {
+    ok('D8', 'Sections 2-4 carry ' + cites + ' file:line citations for claims about existing behaviour' +
+      (prevCites !== null ? ' (' + prevCites + ' at HEAD; the count is a ratchet)' : '') + '.');
+  }
 
   // --- D9: the design must not park work in a phase that does not exist ---
   // Owner, 2026-09-08: "there is no phase 2". A bucket with no date, no trigger
   // and no owner is where work disappears; ten findings had been put in one.
   // The sentence DECLARING there is no phase 2 is the fix, not the defect - exclude it.
-  var mdNoDecl = md.split(String.fromCharCode(10)).filter(function(l){ return !/There is no ..?phase/i.test(l); }).join(String.fromCharCode(10));
-  if (/phases*2/i.test(mdNoDecl)) fail('D9', 'The design names a "phase 2". There is none - every deferred item must name the EVENT that brings it into scope.');
+  // 2026-09-09, mutation round two: the pattern was /phases*2/i — "phase", then zero or more "s",
+  // then "2". It cannot match the string "phase 2", which is the only way anybody writes it. The
+  // check had never been able to fail. The declaration filter had the mirror-image bug: it required
+  // one or two characters between "no" and "phase", so it did not match "There is no phase 2"
+  // either, and only the first bug kept the gate green.
+  var mdNoDecl = md.split(String.fromCharCode(10)).filter(function(l){ return !/there is no\b[^.\n]{0,12}phase\s*2/i.test(l); }).join(String.fromCharCode(10));
+  if (/phase\s*2\b/i.test(mdNoDecl)) fail('D9', 'The design names a "phase 2". There is none - every deferred item must name the EVENT that brings it into scope.');
   else ok('D9', 'No work is parked in a non-existent phase.');
   var noTrigger = findings.findings.filter(function(f){ return f.status === 'TRIGGERED' && !f.trigger; });
   if (noTrigger.length) fail('D9b', 'TRIGGERED findings with no named trigger: ' + noTrigger.map(function(f){return f.id;}).join(', '));
@@ -290,7 +349,12 @@ try {
   JOBS.forEach(function (j) { if (!j[1].test(md)) cadenceMissing.push(j[0]); });
   // A document read scheduled by elapsed time. Lines that say it is NOT done, or that describe the
   // behaviour being removed, are the fix rather than the defect.
-  var NEGATION = /\bnever\b|\bnot\b|\bno longer\b|\bstops?\b|\bremoved?\b|\bused to\b|\bwas\b|\bgoes\b|\buntil\b|\bwithout\b/i;
+  // The exemption list is the whole risk in this check, and it was a universal excuse: "was",
+  // "goes", "until" and "without" are ordinary words that appear in perfectly affirmative
+  // sentences. Proved 2026-09-09 by a mutation — "Each offer document is re-read every 30 minutes
+  // until the extraction goes clean" scheduled a document read on a clock and was waved through by
+  // the word "until". Only words that actually DENY the behaviour, or place it in the past, count.
+  var NEGATION = /\bnever\b|\bnot\b|\bno longer\b|\bstops? (being|doing)\b|\bis removed\b|\bwas removed\b|\bused to\b|\bno document\b|\bnothing\b/i;
   var onAClock = [];
   md.split(String.fromCharCode(10)).forEach(function (line, i) {
     if (!/document|extraction|re-extract|re-read|prospectus|filing/i.test(line)) return;
