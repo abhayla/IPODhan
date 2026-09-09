@@ -10,7 +10,7 @@ column is read from a payload saved under `docs/design/probes/fixtures/`. Nothin
 | status / segment | LISTED / MAINBOARD |
 | resolved type for Appendix A | **MAINBOARD** |
 | listing exchanges | ["NSE"] |
-| open / close / listing | 2026-08-31 / 2026-09-02 / 2026-09-07 |
+| open / close / listing | 2026-09-01 / 2026-09-03 / 2026-09-08 |
 | documents on file | ANCHOR_ALLOCATION_REPORT (MANUAL_REVIEW), BIDDING_CENTERS (PENDING), RATIOS_BASIS_ISSUE_PRICE (PENDING), RHP (COMPLETED), SAMPLE_APPLICATION_FORMS (PENDING), SECURITY_PARAMS_POST_ANCHOR (PENDING), SECURITY_PARAMS_PRE_ANCHOR (PENDING) |
 
 ## What this walk found, before the table
@@ -24,12 +24,12 @@ column is read from a payload saved under `docs/design/probes/fixtures/`. Nothin
 
 | When | Job | What it does for this IPO |
 |---|---|---|
-| before 2026-08-31, at 00:00 / 08:00 / 14:00 | Data job | discovers the IPO, downloads each document as it is filed, extracts it once on arrival, and walks the field plan. It never re-opens a document because time passed. |
-| 2026-08-31 to 2026-09-02, every 30 min 10:00–18:30 | Live-figures job | subscription, demand graph and grey-market premium only. It touches no document, no plan row and no static field. |
-| 2026-08-31 to 2026-09-02, at 00:00 / 08:00 / 14:00 | Data job | re-walks only fields whose plan row is still PENDING or due for verification; a newly filed corrigendum or price band advertisement is a new reason to read, and is read on the next data job rather than within the hour. |
-| 2026-09-02 to 2026-09-07 | Data job | the timetable family (E-1) is re-read from NSE then BSE, because a printed advertisement is never reissued when a window moves. |
-| after 2026-09-07 | Data job | listing performance; the documents stay on disk for the life of this row (OD-23), so this IPO never joins the closed backlog document-less. |
-| from the first night after 2026-09-02, 22:00 | Closed-IPO job | eligible once `close_date` is in the past. Ten IPOs a night, newest close date first, this one marked done in `closed_ipo_resourcing` so it is never picked twice. |
+| before 2026-09-01, at 00:00 / 08:00 / 14:00 | Data job | discovers the IPO, downloads each document as it is filed, extracts it once on arrival, and walks the field plan. It never re-opens a document because time passed. |
+| 2026-09-01 to 2026-09-03, every 30 min 10:00–18:30 | Live-figures job | subscription, demand graph and grey-market premium only. It touches no document, no plan row and no static field. |
+| 2026-09-01 to 2026-09-03, at 00:00 / 08:00 / 14:00 | Data job | re-walks only fields whose plan row is still PENDING or due for verification; a newly filed corrigendum or price band advertisement is a new reason to read, and is read on the next data job rather than within the hour. |
+| 2026-09-03 to 2026-09-08 | Data job | the timetable family (E-1) is re-read from NSE then BSE, because a printed advertisement is never reissued when a window moves. |
+| after 2026-09-08 | Data job | listing performance; the extracted text stays on disk for the life of this row (OD-32), so this IPO never joins the closed backlog document-less. |
+| from the first night after 2026-09-03, 22:00 | Closed-IPO job | eligible once `close_date` is in the past. Ten IPOs a night, newest close date first, this one marked done in `closed_ipo_resourcing` so it is never picked twice. |
 
 ## Every applicable field
 
@@ -43,9 +43,9 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `ipos.company_name` | D | DOC | NSE · BSE | _(searched, no matching label)_ | `Rays of Belief Limited- For Profit Social Enterprise` | _(no rule stated)_ | — |
 | `ipos.issue_size` | D | DOC | BSE · CG | _(searched, no matching label)_ | `749936590.00` | pass — Rs 74.99 crore | — |
 | `ipos.lot_size` | D | DOC | BSE · NSE | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `62` | pass | — |
-| `ipos.open_date` | T | NSE | BSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | 2026-08-31 | pass | — |
-| `ipos.close_date` | T | NSE | BSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | 2026-09-02 | pass | — |
-| `ipos.listing_date` | T | NSE | BSE · CG | _(searched, no matching label)_ | 2026-09-07 | pass | — |
+| `ipos.open_date` | T | NSE | BSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `2026-09-01` | pass | — |
+| `ipos.close_date` | T | NSE | BSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `2026-09-03` | pass | — |
+| `ipos.listing_date` | T | NSE | BSE · CG | _(searched, no matching label)_ | `2026-09-08` | pass | — |
 | `ipos.status` | T | NSE | BSE · CG | status | `LISTED` | _(no rule stated)_ | `nse/ipo-current-issue.json` |
 | `ipos.registrar` | D | DOC | NSE · BSE | _(searched, no matching label)_ | `Kfin Technologies Limited` | _(no rule stated)_ | — |
 | `ipos.registrar_id` | C | — | — · — | _(searched, no matching label)_ | `0897d435-f4b2-4443-9121-26c84ee20f43` | _(no rule stated)_ | — |
@@ -57,7 +57,7 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `ipos.last_scraped_at` | I | — | — · — | _(searched, no matching label)_ | 2026-09-04 | _(no rule stated)_ | — |
 | `ipos.listing_exchanges` | T | NSE | BSE · CG | _(searched, no matching label)_ | `["NSE"]` | _(no rule stated)_ | — |
 | `ipos.face_value` | D | DOC | BSE · NSE | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `10` | pass | — |
-| `ipos.allotment_date` | T | NSE | BSE · CG | _(searched, no matching label)_ | 2026-09-03 | _(no rule stated)_ | — |
+| `ipos.allotment_date` | T | NSE | BSE · CG | _(searched, no matching label)_ | `2026-09-04` | _(no rule stated)_ | — |
 | `ipos.company_description` | D | DOC | CG · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
 | `ipos.lead_managers` | D | DOC | NSE · BSE | _(searched, no matching label)_ | `["Mefcom Capital Markets Limited"]` | _(no rule stated)_ | — |
 | `ipos.isin` | D | DOC | NSE · BSE | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
@@ -262,7 +262,7 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `listing_performance.current_price_nse` | M | NSE | — · — | _(searched, no matching label)_ | `228.34` | _(no rule stated)_ | — |
 | `listing_performance.symbol` | C | — | — · — | _(searched, no matching label)_ | `MOMSBELIEF` | _(no rule stated)_ | — |
 | `listing_performance.company_name` | C | — | — · — | _(searched, no matching label)_ | `Rays of Belief Limited- For Profit Social Enterprise` | _(no rule stated)_ | — |
-| `listing_performance.listing_date` | C | — | — · — | _(searched, no matching label)_ | 2026-09-07 | _(no rule stated)_ | — |
+| `listing_performance.listing_date` | C | — | — · — | _(searched, no matching label)_ | `2026-09-08` | _(no rule stated)_ | — |
 | `listing_performance.data_source` | I | — | — · — | _(searched, no matching label)_ | `SCRAPER` | _(no rule stated)_ | — |
 | `ipo_demand_graph.timestamp` | I | — | — · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
 | `ipo_demand_graph.price_point` | X | NSE | BSE · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
@@ -283,157 +283,3 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 ---
 
 _Regenerate: `node docs/design/probes/walkthrough.mjs rays-of-belief-ltd`._
-
-
----
-
-# The walk against the design, field by field
-
-Everything above this line is generated by `docs/design/probes/walkthrough.mjs`. Everything below it
-is the walk itself: the field plan of `docs/design/data-sourcing-pull-model.md` applied to this row
-in field order, stopping at the FIRST rule that gives no answer. Numbers below are read from
-production through the read-only tunnel on 2026-09-09; none are typed from memory.
-
-**Two things the generated table gets wrong for every IPO, stated once so no reader is misled:**
-
-1. **Every date in the table is one day early.** `ipos.open_date` for this row reads `2026-09-01`
-   in the database (`select open_date::text`); the table prints `2026-08-31`. `node-pg` parses a
-   PostgreSQL `date` as local midnight and this machine runs IST (UTC+5:30), so `toISOString()`
-   rolls it back a day. The two walkthroughs published earlier carry the same error. Recorded as
-   finding **F-104**.
-2. **The `documents.*` rows read `_(empty)_` and that is a generator artefact, not a data gap.**
-   `walkthrough.mjs` loads eleven child tables into `stored` and `documents` is not one of them.
-   This row has seven active document rows; they are listed in the header table above.
-
-
-## Why this IPO was chosen — and what the query the design ASKED for actually returned
-
-§2.3.3.2 does not merely allow a probe here, it **owes one**:
-
-> **The test this rule owes** is a REAL rename pair, not a synthetic one: a company whose draft and
-> its RHP carry different names, found by probe over `documents` and `ipos` on production. If no such
-> pair exists in our data, the test uses the pair the probe found on the exchange and the finding
-> says so.
-
-So `docs/design/probes/pick-walkthrough-ipos.mjs` now runs exactly that query, and a second one, and
-reports both.
-
-**Query 3a — the draft-vs-filing rename the design asked for.** Fold `ipos.company_name` and the
-`DRHP` document's title to significant words (lowercase, strip punctuation, delete
-`limited ltd private pvt company co corporation corp incorporated inc india indian and the of drhp
-rhp udrhp prospectus draft red herring` as whole words) and keep the rows where the two differ.
-
-**Result: no genuine rename exists on production.** All 19 active `DRHP` documents were compared. The
-query returns two rows and neither is a rename:
-
-| slug | `company_name` folded | DRHP title | title folded |
-|---|---|---|---|
-| `karamtara-engineering-ltd` | `karamtara engineering` | `Prospectus GID` | `gid` |
-| `rentomojo-ltd` | `rentomojo` | `Prospectus GID` | `gid` |
-
-Both are documents fetched from `listing.bseindia.com/…/PreAnchor/…RHP_2026090718….pdf` and stored
-under type `DRHP` with the generic BSE title *"Prospectus GID"*. That is a document-typing and
-titling defect, not a company changing its name. **Every one of the other 17 DRHP titles folds to the
-same key as its IPO's `company_name`.**
-
-**So the design's owed test has its answer, and it is the "if no such pair exists" branch: there is
-no draft-vs-RHP rename on production today.** Recorded as finding **F-102** because §2.3.3.2 says the
-finding must say so.
-
-**Query 3b — the pair production actually holds.** Reached from the other side: rows sharing one CIN
-under two different `company_name` values.
-
-> IPOs sharing one CIN with another row that carries a DIFFERENT `company_name` — one company, two
-> names, two rows; the row with the exchange documents first
-
-**Exactly one group on all 330 production IPOs**, and it is this one:
-
-| slug | `company_name` | symbol | status | `issue_size` | band | open | docs | subs rows | GMP rows |
-|---|---|---|---|---:|---|---|---:|---:|---:|
-| `rays-of-belief-ltd` | `Rays of Belief Limited- For Profit Social Enterprise` | `MOMSBELIEF` | LISTED | ₹74.99 cr | 227–239 | 2026-09-01 | 7 | 146 | 167 |
-| `rays-of-belief-ltd-o` | `Rays of Belief Ltd.` | *(none)* | LISTED | **₹125.00 cr** | 227–239 | 2026-09-01 | 2 | 18 | 110 |
-
-Same CIN `U85110DL2017PLC322623`. Same band. Same open, close and listing dates. **Two names, two
-rows, two issue sizes 67% apart, and the company's own filings split across both**: the NSE bundle
-(RHP, anchor report, ratios, bidding centres, forms, both security-parameter files) sits on the first
-row; the SEBI `DRHP` and the SEBI `RHP` sit on the second. Both rows have their own
-`listing_performance` row, and both have been accumulating live subscription and grey-market rows for
-the whole window.
-
-This is the same shape the rename rule exists to handle — one company, more than one name, filings
-that do not all bind to the same place — reached through the identifier the design ranks first
-instead of through the document title.
-
-## The walk stops before field 1
-
-A field-by-field walk needs a row to walk. This company has two, and the design's own rules disagree
-about whether that is possible.
-
-## THE STOP: §2.3.3.1 point 3 — "converging identifiers mean a merge, not an alert" has no trigger for a convergence that is already in the data
-
-§2.3.3.1 states the rule in four parts. Parts 2 and 3 are the ones this row tests:
-
-> 2. **Every time a stronger identifier arrives, check it against every other row.**
-> 3. **Converging identifiers mean a merge, not an alert.** Two rows sharing one symbol, one CIN or
->    one ISIN are the same IPO by definition. The merge is automatic …
-
-**Both of these rows already carry the CIN.** Neither is waiting for an identifier to arrive: both
-are `LISTED`, the offering is over, and no stronger identifier will ever be assigned to the second row
-— it has no symbol and no ISIN and never will. Part 3 says they are *"the same IPO by definition"*.
-Part 2 is the only place a check is scheduled, and its trigger — *"every time a stronger identifier
-arrives"* — **has already happened and did not fire**, because when the CIN was written the loop that
-would have compared it did not exist.
-
-**The question the design cannot answer:** what runs the convergence check over rows whose
-identifiers are already present and already equal? There is no sweep. §2.3.3 places de-duplication
-*"at discovery"* — *"Duplicate detection is a check that runs at discovery, on a deliberately
-stricter key than the binding key"* — and discovery for both of these rows happened in August, before
-either had a CIN, on names that the stricter key does not fold together either. Applying §2.3.3's own
-published key by hand:
-
-```
-Rays of Belief Limited- For Profit Social Enterprise -> raysbeliefforprofitsocialenterprise
-Rays of Belief Ltd.                                  -> raysbelief
-```
-
-They do not match. The `for profit social enterprise` tail is a SEBI category descriptor carried into
-the exchange's company field, and no list of corporate-form words removes it.
-
-**And that makes a sentence in §2.3.3 a false all-clear.** The design reports, of the same key:
-*"After the merge, across all 329 production IPOs it produces 329 distinct keys: zero false
-merges."* Distinct keys were read as evidence that no duplicate remains. This pair is a duplicate the
-key cannot see — which is precisely the trap §2.3.3 itself names one paragraph earlier
-(*"Zero collisions does not mean the matching is safe"*), recurring one level up, against the fix
-rather than against the original normaliser.
-
-**Rule and section named: §2.3.3.1 point 3, "converging identifiers mean a merge", and §2.3.3's
-"at discovery" placement of the duplicate check. Recorded as finding F-103.**
-
-## Continuing past the gap — everything below is PROVISIONAL on F-103
-
-**The second rule with no answer, which only appears once you accept the merge should happen.**
-§2.3.3.1 part 3 says the merge *"keeps the union of populated fields"*. A union is defined when one
-row has a value and the other does not. Here **both rows have `issue_size` populated and they
-disagree**: ₹74,99,36,590 against ₹1,25,00,00,000. The union rule gives no answer, §2.3.3.3's merge
-log records both but does not choose, and the two candidate reconciliations point in opposite
-directions (₹125 cr is the shape of a total issue; ₹74.99 cr is the shape of a fresh-issue or
-post-anchor component). The same is true of `company_name` itself — the surviving name is a choice
-the design never makes, and one of the two candidates does not even satisfy §1.2 row 2's own check,
-*"legal-name form (ends Limited/Ltd)"*.
-
-**Third, the field-order walk of the row that was chosen** (`rays-of-belief-ltd`, the one with the
-exchange documents), for completeness, all of it provisional on which row survives:
-
-| # | Field | Design | Result on this row |
-|---:|---|---|---|
-| 1 | `ipos.symbol` | §1.2 row 1 | `MOMSBELIEF`, passes |
-| 2 | `ipos.company_name` | §1.2 row 2: *"legal-name form (ends Limited/Ltd)"*; *"Disagreement on the legal suffix is not a conflict; a different entity is"* | `Rays of Belief Limited- For Profit Social Enterprise` — **does not end in Limited/Ltd**, so it fails its own check; and the disagreement with the other row is neither a suffix difference nor a different entity, the only two cases the rule names |
-| 3 | `ipos.issue_size` | §1.2 row 3 | ₹74.99 cr passes the range bound; the disagreement above is invisible to it because the check never compares rows |
-| 4 | `ipos.lot_size` | §1.2 row 4 | 62 × 227 = ₹14,074, inside `₹10,000 ≤ lot × floor ≤ ₹15,000`, passes |
-| 14–15 | price band | §1.2 rows 14–15 | 227 < 239, and 239 ≤ 272.4, passes |
-| 17 | `ipos.listing_exchanges` | §1.2 row 17 | `["NSE"]` on a MAINBOARD row — legal, and the reason this row's rank 2/3 resolve to NSE first |
-| 22 | `ipos.isin` | §1.2 row 22 | empty on a LISTED row, which §1.2 row 22 allows only pre-listing; after listing an empty ISIN is a gap, and it is the identifier that would have caught this duplicate for free |
-
-Of the 240 fields, **182 are empty on production for this row**, and **2** have a rank-1 source backed
-by a payload saved for this IPO. The other row's 240 are a second, separate set of gaps for the same
-company.

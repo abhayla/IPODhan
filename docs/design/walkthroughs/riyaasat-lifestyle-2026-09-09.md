@@ -10,7 +10,7 @@ column is read from a payload saved under `docs/design/probes/fixtures/`. Nothin
 | status / segment | LISTED / SME |
 | resolved type for Appendix A | **SME_BSE** |
 | listing exchanges | ["BSE"] |
-| open / close / listing | 2026-06-17 / 2026-06-24 / 2026-06-30 |
+| open / close / listing | 2026-06-18 / 2026-06-25 / 2026-07-01 |
 | documents on file | RHP (PENDING) |
 
 ## What this walk found, before the table
@@ -24,12 +24,12 @@ column is read from a payload saved under `docs/design/probes/fixtures/`. Nothin
 
 | When | Job | What it does for this IPO |
 |---|---|---|
-| before 2026-06-17, at 00:00 / 08:00 / 14:00 | Data job | discovers the IPO, downloads each document as it is filed, extracts it once on arrival, and walks the field plan. It never re-opens a document because time passed. |
-| 2026-06-17 to 2026-06-24, every 30 min 10:00–18:30 | Live-figures job | subscription, demand graph and grey-market premium only. It touches no document, no plan row and no static field. |
-| 2026-06-17 to 2026-06-24, at 00:00 / 08:00 / 14:00 | Data job | re-walks only fields whose plan row is still PENDING or due for verification; a newly filed corrigendum or price band advertisement is a new reason to read, and is read on the next data job rather than within the hour. |
-| 2026-06-24 to 2026-06-30 | Data job | the timetable family (E-1) is re-read from NSE then BSE, because a printed advertisement is never reissued when a window moves. |
-| after 2026-06-30 | Data job | listing performance; the documents stay on disk for the life of this row (OD-23), so this IPO never joins the closed backlog document-less. |
-| from the first night after 2026-06-24, 22:00 | Closed-IPO job | eligible once `close_date` is in the past. Ten IPOs a night, newest close date first, this one marked done in `closed_ipo_resourcing` so it is never picked twice. |
+| before 2026-06-18, at 00:00 / 08:00 / 14:00 | Data job | discovers the IPO, downloads each document as it is filed, extracts it once on arrival, and walks the field plan. It never re-opens a document because time passed. |
+| 2026-06-18 to 2026-06-25, every 30 min 10:00–18:30 | Live-figures job | subscription, demand graph and grey-market premium only. It touches no document, no plan row and no static field. |
+| 2026-06-18 to 2026-06-25, at 00:00 / 08:00 / 14:00 | Data job | re-walks only fields whose plan row is still PENDING or due for verification; a newly filed corrigendum or price band advertisement is a new reason to read, and is read on the next data job rather than within the hour. |
+| 2026-06-25 to 2026-07-01 | Data job | the timetable family (E-1) is re-read from NSE then BSE, because a printed advertisement is never reissued when a window moves. |
+| after 2026-07-01 | Data job | listing performance; the extracted text stays on disk for the life of this row (OD-32), so this IPO never joins the closed backlog document-less. |
+| from the first night after 2026-06-25, 22:00 | Closed-IPO job | eligible once `close_date` is in the past. Ten IPOs a night, newest close date first, this one marked done in `closed_ipo_resourcing` so it is never picked twice. |
 
 ## Every applicable field
 
@@ -43,9 +43,9 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `ipos.company_name` | D | DOC | BSE · CG | _(searched, no matching label)_ | `Riyaasat Lifestyle Ltd.` | _(no rule stated)_ | — |
 | `ipos.issue_size` | D | DOC | BSE · CG | _(searched, no matching label)_ | `302000000.00` | pass — Rs 30.20 crore | — |
 | `ipos.lot_size` | D | DOC | BSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `1200` | pass | — |
-| `ipos.open_date` | T | BSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | 2026-06-17 | pass | — |
-| `ipos.close_date` | T | BSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | 2026-06-24 | pass | — |
-| `ipos.listing_date` | T | BSE | CG · — | _(searched, no matching label)_ | 2026-06-30 | pass | — |
+| `ipos.open_date` | T | BSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `2026-06-18` | pass | — |
+| `ipos.close_date` | T | BSE | CG · — | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `2026-06-25` | pass | — |
+| `ipos.listing_date` | T | BSE | CG · — | _(searched, no matching label)_ | `2026-07-01` | pass | — |
 | `ipos.status` | T | BSE | CG · — | _(searched, no matching label)_ | `LISTED` | _(no rule stated)_ | — |
 | `ipos.registrar` | D | DOC | BSE · CG | _(searched, no matching label)_ | `Skyline Financial Services Private Limited` | _(no rule stated)_ | — |
 | `ipos.registrar_id` | C | — | — · — | _(searched, no matching label)_ | `f7daaab7-56ed-4d3f-b0b6-af236584a783` | _(no rule stated)_ | — |
@@ -57,7 +57,7 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `ipos.last_scraped_at` | I | — | — · — | _(searched, no matching label)_ | 2026-09-03 | _(no rule stated)_ | — |
 | `ipos.listing_exchanges` | T | BSE | CG · — | _(searched, no matching label)_ | `["BSE"]` | _(no rule stated)_ | — |
 | `ipos.face_value` | D | DOC | BSE · CG | _(the source carries this field, but the only saved payload proving it belongs to a DIFFERENT IPO — nothing quoted)_ | `10` | pass | — |
-| `ipos.allotment_date` | T | BSE | CG · — | _(searched, no matching label)_ | 2026-06-28 | _(no rule stated)_ | — |
+| `ipos.allotment_date` | T | BSE | CG · — | _(searched, no matching label)_ | `2026-06-29` | _(no rule stated)_ | — |
 | `ipos.company_description` | D | DOC | CG · — | _(searched, no matching label)_ | `Incorporated in October 2021, Riyaasat Lifestyle Limited ...` | _(no rule stated)_ | — |
 | `ipos.lead_managers` | D | DOC | BSE · CG | _(searched, no matching label)_ | `["Mark Corporate"]` | _(no rule stated)_ | — |
 | `ipos.isin` | D | DOC | BSE · CG | _(searched, no matching label)_ | `INE0KYI01012` | _(no rule stated)_ | — |
@@ -261,7 +261,7 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 | `listing_performance.current_price_bse` | M | BSE | — · — | _(searched, no matching label)_ | `70.35` | _(no rule stated)_ | — |
 | `listing_performance.symbol` | C | — | — · — | _(searched, no matching label)_ | `RIYAASAT` | _(no rule stated)_ | — |
 | `listing_performance.company_name` | C | — | — · — | _(searched, no matching label)_ | `Riyaasat Lifestyle Ltd.` | _(no rule stated)_ | — |
-| `listing_performance.listing_date` | C | — | — · — | _(searched, no matching label)_ | 2026-06-30 | _(no rule stated)_ | — |
+| `listing_performance.listing_date` | C | — | — · — | _(searched, no matching label)_ | `2026-07-01` | _(no rule stated)_ | — |
 | `listing_performance.data_source` | I | — | — · — | _(searched, no matching label)_ | `SCRAPER` | _(no rule stated)_ | — |
 | `ipo_demand_graph.timestamp` | I | — | — · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
 | `ipo_demand_graph.price_point` | X | BSE | — · — | _(searched, no matching label)_ | _(empty)_ | _(no rule stated)_ | — |
@@ -282,115 +282,3 @@ searched and no label matched, which is a rank to re-examine, not proof the sour
 ---
 
 _Regenerate: `node docs/design/probes/walkthrough.mjs riyaasat-lifestyle-ltd`._
-
-
----
-
-# The walk against the design, field by field
-
-Everything above this line is generated by `docs/design/probes/walkthrough.mjs`. Everything below it
-is the walk itself: the field plan of `docs/design/data-sourcing-pull-model.md` applied to this row
-in field order, stopping at the FIRST rule that gives no answer. Numbers below are read from
-production through the read-only tunnel on 2026-09-09 or from the generated table above; none are
-typed from memory.
-
-**Two things the generated table gets wrong for every IPO, stated once so no reader is misled:**
-
-1. **Every date in the table is one day early.** `ipos.open_date` for this row reads
-   `2026-06-18` in the database (`select open_date::text`), and the table prints
-   `2026-06-17`. `node-pg` parses a PostgreSQL `date` as local midnight, and this machine runs
-   IST (UTC+5:30), so `toISOString()` rolls it back a day. This affects the two walkthroughs
-   published earlier as well — Asset Reconstruction opened on 2026-09-09, not the 2026-09-08 its
-   file prints. Recorded as finding **F-104**.
-2. **The `documents.*` rows read `_(empty)_` and that is a generator artefact, not a data gap.**
-   `walkthrough.mjs` loads eleven child tables into `stored` and `documents` is not one of them, so
-   every `documents.*` field renders empty. This IPO has one active document rows; they are
-   listed in the header table above.
-
-
-## Why this IPO was chosen
-
-By query, in `docs/design/probes/pick-walkthrough-ipos.mjs`:
-
-> SME issues quoted at a single price (`price_range_min = price_range_max`, both non-null), ranked by
-> documents on disk, then most recent close date
-
-**50 candidates**, and Riyaasat Lifestyle Ltd. ranks first: one active document, the most recent
-close date among the rows that have one. The ranking is in `pick-walkthrough-ipos.out.json` in full,
-so the choice is reproducible and nobody picked the flattering row.
-
-**The reason the rule had to be written that way is itself the finding.** The field that would say
-`FIXED_PRICE` is `ipo_details.issue_type` (§1.3 field 34, checked `BOOK_BUILDING / FIXED_PRICE /
-HYBRID; FIXED_PRICE requires floor = cap`). On production it is **null for all 50** of these rows —
-in fact `ipo_details` has **25 rows against 330 IPOs**, and the 19 rows that carry an `issue_type` all
-say `BOOK_BUILDING`. **There is no `FIXED_PRICE` value anywhere on production.** So the only
-production signal that an issue is fixed-price is that its band is a point.
-
-## The walk, in field order
-
-| # | Field | What the design says | Result |
-|---:|---|---|---|
-| 1 | `ipos.symbol` | §1.2 row 1; SME-BSE resolves to DOC · BSE · CG (§1.11: NSE cannot be rank 2 or 3) | stored `RIYAASAT`, passes |
-| 2 | `ipos.company_name` | §1.2 row 2 | `Riyaasat Lifestyle Ltd.`, passes |
-| 3 | `ipos.issue_size` | §1.2 row 3 | ₹30.20 crore, inside the 1–50,000 crore bound; the two component identities cannot run — `fresh_issue` and `ofs_issue` are empty |
-| 4 | `ipos.lot_size` | §1.2 row 4 / §1.11: SME `lot_multiple × lot × floor ≥ ₹1,00,000`, `lot_multiple` READ from the row, effective from SEBI's 2025 framework | `lot_multiple` is **empty**, so the multiplier the rule insists on reading is not there. On `1 × 1200 × 106 = ₹1,27,200` it passes; the rule's own instruction cannot be followed |
-
-And at field 14 it stops.
-
-## THE STOP: §1.2 row 14 — `floor < cap` is a strict inequality that every fixed-price issue fails, and the exception that saves it needs a field production does not have
-
-§1.2 row 14, the check before write for `price_range_min`:
-
-> `floor < cap`; `cap ≤ 1.2 × floor` mainboard, `≤ 1.4 ×` SME; `floor ≥ face_value`
-
-and its exception column:
-
-> Fixed-price issues: floor = cap; the ratio check is skipped
-
-§1.11's SME-on-BSE row says the same thing from the other side: *"Commonly FIXED_PRICE, so the
-`cap ≤ 1.2 × floor` check is skipped and floor = cap is expected."*
-
-**Stored on this row: `price_range_min` = 106, `price_range_max` = 106.** `floor < cap` is
-**false**. Whether that is a validation failure or the expected shape of a legitimate issue depends
-entirely on whether this is a fixed-price issue — and:
-
-- `ipo_details.issue_type` is **empty** for this row, and for all 50 single-price SME rows;
-- its rank-1 source is `DOC`, and this IPO's one document is an `RHP` hosted on Chittorgarh
-  (`chittorgarh.net/reports/ipo_notes/riyaasat-rhp.pdf`) whose `extraction_status` is `PENDING`;
-- rank 2 for SME-BSE is `CG`, which the generated table records as *"searched, no matching label"*.
-
-**The question the design cannot answer:** how does the loop decide an issue is `FIXED_PRICE` when
-`issue_type` has not arrived? The dependency is circular as written — the band check's applicability
-is decided by a field whose own value must be read from a document, and until it is read the loop
-cannot tell a legitimate fixed price (106 = 106) from a corrupted band (a cap lost, a floor copied
-into both columns), which is a live class on this site. The design never states the inference in the
-one direction that would break the circle: **floor = cap on an SME row implies FIXED_PRICE until a
-document says otherwise.** It states only the converse — *"FIXED_PRICE requires floor = cap"* — which
-cannot be run backwards.
-
-**Rule and section named: §1.2 row 14 "check before write" and its exception column, restated in
-§1.11 (SME on BSE). Recorded as finding F-101.**
-
-## Continuing past the gap — everything below is PROVISIONAL on F-101
-
-**The same missing field disables four more rows, and this time it costs money.** Appendix A marks
-fields 227–230 (`ipo_demand_graph.price_point`, `is_cut_off`, `cumulative_quantity`, `exchange`)
-*"N/A whenever `ipo_details.issue_type = FIXED_PRICE` (F-26) — a fixed-price issue has no bid book."*
-For this row `issue_type` is empty, so the N/A cannot be resolved, and the generated table above
-duly shows all four as applicable with rank 1 = `BSE`. This IPO has **0 rows in `ipo_demand_graph`**,
-because it never had a bid book to read.
-
-Under §2.1's cadence the live-figures job runs **every 30 minutes from 10:00 to 18:30** for the whole
-bidding window. On a seven-day SME window that is roughly 120 fetches of a demand graph that does not
-exist, per fixed-price issue — and 50 of the 173 SME rows with a band on production are
-single-priced. This is the same finding as F-101 seen from the cost side rather than the correctness
-side, and it is why F-101 is filed against the inference rule rather than against the band check
-alone.
-
-**What does resolve cleanly for this row, and is worth saying:** the SME-BSE rank resolution itself
-behaves exactly as §1.11 promises. Every field's rank 2 and 3 in the generated table are drawn from
-`BSE` and `CG` only; `NSE` appears nowhere. The exception is written correctly and the walk confirms
-it on a real row.
-
-Of the 240 fields, **239 apply** to an SME-BSE issue, **170 are empty on production**, and **1** has a
-rank-1 source backed by a payload saved for this IPO.
