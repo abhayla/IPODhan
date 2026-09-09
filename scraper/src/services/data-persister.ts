@@ -1924,6 +1924,8 @@ export async function createPeerCompanies(
       const peerCompanyData = scrapedPeers.map((peer) => ({
         ipoId,
         companyName: peer.companyName,
+        // Item 1 slice s1 (row-key prep, F-74): the future row key.
+        normalizedName: normalizeCompanyNameForMatching(peer.companyName),
         sector: peer.sector || null,
         isListed: peer.isListed,
         peRatio: peer.peRatio?.toString() || null,
