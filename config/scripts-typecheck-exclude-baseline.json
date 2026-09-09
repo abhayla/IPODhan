@@ -1,0 +1,29 @@
+{
+  "_comment": "Shrink-only baseline (same model as config/write-ratchet-baseline.json, T-316) for scraper/tsconfig.scripts.json's `exclude` array. This list is the ONLY source of legitimate exclusions for scraper/scripts/**/*.ts from `npm run type-check:scripts`. Regenerate ONLY when REMOVING an entry (a script was fixed to type-check cleanly under scraper/tsconfig.scripts.json) via `node scripts/tests/scripts-typecheck-exclude-shrink.test.mjs --update`. NEVER hand-add a new entry to grandfather a newly-broken script into the exclude list — fix the script's types instead. See issue #434.",
+  "count": 23,
+  "files": [
+    "scripts/backfill-anchor-investor-list-json.ts",
+    "scripts/backfill-anchor-investors.ts",
+    "scripts/backfill-band-provenance-t276.ts",
+    "scripts/backfill-bse-historical.ts",
+    "scripts/backfill-financial-data.ts",
+    "scripts/backfill-financials-chittorgarh-detail.ts",
+    "scripts/backfill-financials-pdf.ts",
+    "scripts/backfill-ipo-reviews.ts",
+    "scripts/backfill-issue-size-chittorgarh-detail.ts",
+    "scripts/backfill-objectives.ts",
+    "scripts/backfill-peer-companies.ts",
+    "scripts/dedup-bse-mainboard.ts",
+    "scripts/merge-citius-t287.ts",
+    "scripts/merge-duplicate-ipos.ts",
+    "scripts/persist-filing.ts",
+    "scripts/quick-consolidation-analysis.ts",
+    "scripts/readback-document-state.ts",
+    "scripts/repair-dates-and-leadmanagers-t299.ts",
+    "scripts/repair-lead-managers-from-payload.ts",
+    "scripts/repair-segment-hygiene-t287.ts",
+    "scripts/repair-subscription-regressions-t299.ts",
+    "scripts/retype-ratios-documents.ts",
+    "scripts/run-document-discovery.ts"
+  ]
+}

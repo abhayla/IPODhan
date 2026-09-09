@@ -50,6 +50,13 @@ jobs:
         # stop catching that pattern class. No deps needed (Node builtins only).
         run: node --test scripts/tests/check-write-ratchet.test.mjs
 
+      - name: Scripts type-check exclude shrink-only guard (issue #434)
+        # config/scripts-typecheck-exclude-baseline.json is the only
+        # legitimate source of scraper/tsconfig.scripts.json exclusions; a
+        # hand-added exclusion or a grown exclude count turns this red. No
+        # deps needed (Node builtins only).
+        run: node --test scripts/tests/scripts-typecheck-exclude-shrink.test.mjs
+
       - name: Detection-floor checks self-test (T-335)
         # Mutation-proof: scripts/tests/audit-detection-floor.test.mjs imports
         # the actual predicates from scripts/lib/detection-floor-checks.mjs
