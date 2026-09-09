@@ -192,6 +192,27 @@ export {};
 - `scripts/tests/repair-crore-conversion.test.mjs` (NEW) — dry-run on a fixture DB produces the
   correct diff and writes nothing; `--apply` writes exactly the resourced value and a `field_sources`
   row; a row with no re-fetchable source is left untouched and reported.
+- **The owner's scale test (OD-48, §5.2, verbatim)** — `packages/shared/tests/unit/crore-scale.test.ts` (NEW):
+  feeds three real scales through **every amount column, every conversion, every API route
+  and every page formatter** and asserts no overflow, no rounding at the last rupee, and a correct
+  display string at each:
+  1. **Aramco scale** — an issue of Rs 2,50,000 crore (`2,500,000,000,000` rupees), the largest IPO
+     ever priced anywhere.
+  2. **Indian largest scale** — Hyundai Motor India at Rs 27,870 crore, the largest issue in this
+     market, which the site will actually have a row for.
+  3. **SME floor scale** — an issue of Rs 5 crore, where the risk is the opposite one: a crore
+     column rounding a small number away.
+
+  The test also asserts that the numeric guard added in **#423 does not fire** at Aramco scale — a
+  guard that rejects a legitimate world-record issue is the same defect as one that lets a share
+  count through as rupees, pointing the other way. And it states and tests the **JavaScript
+  safe-integer boundary**: `Number.MAX_SAFE_INTEGER` is 9,007,199,254,740,991 (about 90 lakh crore)
+  — 900 times the rupee column's own ceiling below — so no rupee value read as a `number` anywhere
+  in the stack can lose a rupee in transit. Column precision asserted by the same test: **crore
+  columns are `numeric(12,2)`** (max 9,999,999,999.99 crore — Aramco is 0.0000025% of that ceiling)
+  and **the five rupee-exception columns (§5.2) are `numeric(15,2)`** (max
+  9,999,999,999,999.99 rupees, about 10 lakh crore — Aramco's Rs 2.5 lakh crore is one quarter of
+  that ceiling).
 
 ## Detection
 
