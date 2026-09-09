@@ -435,7 +435,7 @@ try {
   // evidence reference that does not resolve to a file that exists (an unfollowable citation is an
   // invented one, D11's lesson applied to sources), and it RATCHETS coverage — the floor in the
   // spec can be raised but never silently dropped, so a later edit cannot quietly un-evidence a row.
-  var evPairs = 0, evHave = 0, evBad = [], evCache = {};
+  var evPairs = 0, evHave = 0, evBad = [], evCache = {}, evUnreachable = 0;
   var EV_DIR = path.join(HERE, 'probes');
   F.forEach(function (f) {
     var srcs = new Set();
@@ -446,6 +446,11 @@ try {
       evPairs++;
       var e = f.o.ev && f.o.ev[src];
       if (!e) return;
+      // A pair a probe genuinely could not reach is DECLARED so, rather than left silent (a bare
+      // string matching this exact form) — signal-ownership.md R2: "known" needs a stated reason,
+      // never assumed. It is NOT evidence: it does not count toward evHave, and it never fails the
+      // gate. Anything else that is a bare string (the old, pre-label shape) still fails below.
+      if (typeof e === 'string' && /^unreachable on \d{4}-\d{2}-\d{2}: .{5,}$/.test(e)) { evUnreachable++; return; }
       var ref = typeof e === 'string' ? e : e.ref;
       var label = typeof e === 'string' ? null : e.label;
       var p = path.join(EV_DIR, String(ref).split('#')[0]);
@@ -497,7 +502,8 @@ try {
     // not one. 72 of 387 is 19%, and the 315 pairs with no evidence at all are not checked by this
     // check — they are counted here so the number cannot be mistaken for reassurance.
     ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor +
-      (prevFloor !== null ? ', unchanged from HEAD' : '') + '). ' + (evPairs - evHave) +
+      (prevFloor !== null ? (floor > prevFloor ? ', raised from ' + prevFloor : ', unchanged from HEAD') : '') + '). ' +
+      evUnreachable + ' declared unreachable. ' + (evPairs - evHave - evUnreachable) +
       ' pairs carry NO evidence and are outside this check.');
   }
 

@@ -1,6 +1,6 @@
 {
   "probe": "evidence-map",
-  "generated_at": "2026-09-09T05:21:01.881Z",
+  "generated_at": "2026-09-09T11:29:24.318Z",
   "method": "For every (field, source) pair Appendix A resolves, look for the field in the SAVED payload for that source. CARRIES records the label and the fixture. UNPROVEN means the payload was searched and nothing matched — it is a rank to re-examine, not a pass. UNPROBED means no probe was run for that source in this round.",
   "caveat": "Matching is by token overlap with a synonym table, so a CARRIES verdict names the label it matched and that label is auditable. A reviewer disagreeing with one match should say so against the recorded label, not against the number.",
   "index_sizes": {
@@ -8,12 +8,13 @@
     "BSE": 48,
     "CG": 207,
     "IG": 29,
+    "REG": 13,
     "DOC": 172
   },
   "totals": {
-    "UNPROVEN": 305,
-    "CARRIES": 72,
-    "UNPROBED": 10
+    "UNPROVEN": 309,
+    "CARRIES": 75,
+    "UNPROBED": 3
   },
   "by_source": {
     "DOC": {
@@ -39,7 +40,8 @@
       "CARRIES": 1
     },
     "REG": {
-      "UNPROBED": 7
+      "CARRIES": 3,
+      "UNPROVEN": 4
     }
   },
   "pairs": [
@@ -2538,8 +2540,12 @@
     {
       "field": "registrars.name",
       "source": "REG",
-      "verdict": "UNPROBED",
-      "why": "no registrar-site probe was run in this round"
+      "verdict": "CARRIES",
+      "label": "Cameo Corporate Services Limited",
+      "fixture": "registrars/Cameo-website.html",
+      "sample": "(registrar’s own legal name, printed in page body)",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
     },
     {
       "field": "registrars.name",
@@ -2560,8 +2566,8 @@
     {
       "field": "registrars.short_name",
       "source": "REG",
-      "verdict": "UNPROBED",
-      "why": "no registrar-site probe was run in this round"
+      "verdict": "UNPROVEN",
+      "why": "probed REG: no curated or exact label for \"short_name\""
     },
     {
       "field": "registrars.short_name",
@@ -2578,8 +2584,8 @@
     {
       "field": "registrars.email",
       "source": "REG",
-      "verdict": "UNPROBED",
-      "why": "no registrar-site probe was run in this round"
+      "verdict": "UNPROVEN",
+      "why": "probed REG: no curated or exact label for \"email\""
     },
     {
       "field": "registrars.email",
@@ -2596,8 +2602,8 @@
     {
       "field": "registrars.phone",
       "source": "REG",
-      "verdict": "UNPROBED",
-      "why": "no registrar-site probe was run in this round"
+      "verdict": "UNPROVEN",
+      "why": "probed REG: no curated or exact label for \"phone\""
     },
     {
       "field": "registrars.phone",
@@ -2608,8 +2614,12 @@
     {
       "field": "registrars.website",
       "source": "REG",
-      "verdict": "UNPROBED",
-      "why": "no registrar-site probe was run in this round"
+      "verdict": "CARRIES",
+      "label": "Cameo India - Business Processes Driven by Values. Enabled with Agility.",
+      "fixture": "registrars/Cameo-website.html",
+      "sample": "(page title)",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
     },
     {
       "field": "registrars.website",
@@ -2626,8 +2636,12 @@
     {
       "field": "registrars.allotment_check_url",
       "source": "REG",
-      "verdict": "UNPROBED",
-      "why": "no registrar-site probe was run in this round"
+      "verdict": "CARRIES",
+      "label": "Cameo IPO Updates",
+      "fixture": "registrars/Cameo-allotment.html",
+      "sample": "(page title)",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
     },
     {
       "field": "registrars.address",
@@ -2638,8 +2652,8 @@
     {
       "field": "registrars.address",
       "source": "REG",
-      "verdict": "UNPROBED",
-      "why": "no registrar-site probe was run in this round"
+      "verdict": "UNPROVEN",
+      "why": "probed REG: no curated or exact label for \"address\""
     },
     {
       "field": "registrars.address",

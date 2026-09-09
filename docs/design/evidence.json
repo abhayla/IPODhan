@@ -1,6 +1,6 @@
 {
   "generated_by": "docs/design/probes/evidence-map.mjs --apply",
-  "generated_at": "2026-09-09T05:21:01.889Z",
+  "generated_at": "2026-09-09T11:29:24.324Z",
   "note": "Per (field, source) evidence references. Paths are relative to docs/design/probes/. Never hand-edit: re-run the mapper.",
   "fields": {
     "financial_data.eps": {
@@ -371,10 +371,38 @@
         "label": "Name"
       }
     },
+    "registrars.address": {
+      "REG": "unreachable on 2026-09-09: same as email — no literal registered address on the fetched homepage; a separate Contact page was not fetched this round"
+    },
+    "registrars.allotment_check_url": {
+      "REG": {
+        "ref": "fixtures/registrars/Cameo-allotment.html",
+        "label": "Cameo IPO Updates"
+      }
+    },
+    "registrars.email": {
+      "REG": "unreachable on 2026-09-09: none of the six registrar homepages fetched by registrar-payload.mjs printed a literal email address on the page itself — it sits behind a separate Contact page this round did not fetch"
+    },
     "registrars.name": {
+      "REG": {
+        "ref": "fixtures/registrars/Cameo-website.html",
+        "label": "Cameo Corporate Services Limited"
+      },
       "CG": {
         "ref": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html",
         "label": "Name"
+      }
+    },
+    "registrars.phone": {
+      "REG": "unreachable on 2026-09-09: same as email — no literal phone number on the fetched homepage; a separate Contact page was not fetched this round"
+    },
+    "registrars.short_name": {
+      "REG": "unreachable on 2026-09-09: the confirmed literal match on a registrar homepage is its full legal NAME (registrars.name); its short brand form (\"Cameo\", \"KFin\") also appears but only as short, common substrings that would need a person to confirm each one is the brand and not a coincidence — registrar-payload.mjs recorded the pages, none was hand-confirmed for short_name"
+    },
+    "registrars.website": {
+      "REG": {
+        "ref": "fixtures/registrars/Cameo-website.html",
+        "label": "Cameo India - Business Processes Driven by Values. Enabled with Agility."
       }
     },
     "subscriptions.shares_offered": {
