@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, '../..');
 const DESIGN = path.join(HERE, 'data-sourcing-pull-model.md');
 const FINDINGS = path.join(HERE, 'findings.json');
 const SPEC = path.join(HERE, 'field-source-resolution.spec.mjs');
@@ -295,7 +296,7 @@ try {
   // block, not the aggregator block at 367. Worse, `index.ts` is a basename shared by 12 files, so
   // "the citation resolves" depended on which one you happened to open. A citation nobody can
   // follow is indistinguishable from an invented one.
-  var CODE_ROOTS = ['scraper/', 'web/', 'packages/', 'scripts/'];
+  var CODE_ROOTS = ['scraper/', 'web/', 'packages/', 'scripts/'].map(function (r) { return path.join(REPO_ROOT, r) + path.sep; });
   var cites = [...new Set((md.match(/[a-zA-Z0-9/._-]+\.(?:ts|mjs|sh):\d+/g) || []))];
   var citeBad = [];
   var citeOk = 0;
@@ -306,7 +307,8 @@ try {
     var cline = parseInt(cite.slice(cut + 1), 10);
     var matches = [];
     if (cpath.indexOf('/') >= 0) {
-      if (fs.existsSync(cpath)) matches = [cpath];
+      var abs = path.join(REPO_ROOT, cpath);
+      if (fs.existsSync(abs)) matches = [abs];
     } else {
       // basename: search the code roots rather than guessing
       var stack = CODE_ROOTS.slice();

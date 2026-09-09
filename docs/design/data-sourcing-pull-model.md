@@ -3241,7 +3241,7 @@ The difference matters more than the page count, and this round moved several ro
 | **Measured this round** | 27 unreachable matrix keys of 77, 22 of them orphans (§0.6); 149 of 240 fields empty on a live mainboard IPO (walkthrough); the ten-a-night arithmetic behind §7.3 item 6 | Generated, not typed. Where a measured number contradicted an earlier written one, the measurement won — four times |
 | **Read from the code, cited** | the cadence, the budget derivation, the write path, the 32-of-240 consolidation gap | 30 citations, each re-resolved by D11 to a file and a line that exists |
 | **Judgement** | the build ORDER, the tier sizes, where a re-read stops, what counts as a conflict, which of two owner statements governs when they collide | Argued in place, never measured. This is the part worth disagreeing with |
-| **Provisional on an owner fork** | §5.2's five retail rupee columns (O-12); §2.1's grey-market premium (O-13) | Written on a stated recommendation, marked in place, and D14 fails if a marker loses its row |
+| **Provisional on an owner fork** | §1.11's OFS page shape (O-14); §2.1's post-listing price licence question (O-15) | Written on a stated recommendation, marked in place, and D14 fails if a marker loses its row |
 
 **The part with the worst track record is still claims about our own code**, and this round added to
 the evidence for that. Four separate statements in this document were wrong about our own code and
@@ -3265,11 +3265,14 @@ where it applies:
 | | Recommendation the design is written on | Blocks |
 |---|---|---|
 | **O-7** language model | standing constraint; nothing in phase 1 uses one | nothing |
+| **O-14** OFS page shape | model the exchange mechanism as its own type, ~35 applicable fields | how the 19 OFS rows are typed and counted |
+| **O-15** post-listing price licence | proceed with the 15-minute delayed, labelled price while the licence position is checked | the post-listing price shown on every listed IPO's page |
 
 Five of the comments that were open a day ago are now decisions in §0.0.1, each with a check
 enforcing it: the cadence, the money unit and partial failure in the morning (OD-19, OD-20, OD-21),
 and the five retail rupee columns and the grey-market premium in the afternoon (OD-48, OD-28). O-7,
-the language-model constraint, is the only fork left, and nothing in phase 1 depends on it.
+O-14 and O-15 are the forks still left, and none of them blocks phase 1 — each is written on a
+recommendation and marked in place per OD-24.
 
 #### The one thing that blocks a merge, and it is not a design question (OD-49)
 
