@@ -162,6 +162,60 @@ interface UnmatchedTarget {
   crlf: string;
 }
 
+interface RepairPlanItem {
+  tag: string;
+  hash: string;
+  rowId: number;
+  before: string;
+  after: number;
+}
+
+/**
+ * The outcome + exit code this tool commits to (#449's fix): a target that
+ * cannot be matched to a row is a LOUD failure (exit 1), never
+ * indistinguishable from "nothing needed repairing" (exit 0). Every other
+ * path — all rows already correct, a non-empty dry-run plan, or a completed
+ * --apply — is a success (exit 0). `main()` is the only caller; this
+ * function does no I/O so a test can assert both directions without a
+ * database or process.exit.
+ */
+export type RepairDecision =
+  | { outcome: 'unmatched'; exitCode: 1; unmatched: readonly UnmatchedTarget[] }
+  | { outcome: 'already-correct'; exitCode: 0; targetCount: number }
+  | { outcome: 'dry-run'; exitCode: 0; plan: readonly RepairPlanItem[] }
+  | { outcome: 'apply'; exitCode: 0; plan: readonly RepairPlanItem[] };
+
+/**
+ * Pure decision (#449): given the matched/unmatched split from
+ * `matchTargetsToRows()` and whether this is an --apply run, decides the
+ * outcome and exit code. Mirrors `main()`'s prior inline logic exactly —
+ * this is a restructuring, not a behavior change: any target left unmatched
+ * (partial or zero matches) is exit 1; every target resolved to a row is
+ * exit 0, whether that means nothing to change, a dry-run plan, or an apply.
+ */
+export function decideRepairOutcome(
+  matched: readonly MatchedTarget[],
+  unmatched: readonly UnmatchedTarget[],
+  apply: boolean
+): RepairDecision {
+  if (unmatched.length > 0) {
+    return { outcome: 'unmatched', exitCode: 1, unmatched };
+  }
+
+  const plan: RepairPlanItem[] = [];
+  for (const m of matched) {
+    const beforeMs = Number(m.row.created_at);
+    if (beforeMs === m.correctedWhen) continue;
+    plan.push({ tag: m.tag, hash: m.row.hash, rowId: m.row.id, before: m.row.created_at, after: m.correctedWhen });
+  }
+
+  if (plan.length === 0) {
+    return { outcome: 'already-correct', exitCode: 0, targetCount: matched.length };
+  }
+
+  return { outcome: apply ? 'apply' : 'dry-run', exitCode: 0, plan };
+}
+
 /**
  * Pure matching decision (#449): resolves each target to a
  * drizzle.__drizzle_migrations row by ANY of its raw, LF-normalized, or
@@ -273,15 +327,28 @@ async function main() {
 
   const { matched, unmatched } = matchTargetsToRows(targets, allRows);
 
-  // A zero (or partial) match must be a LOUD failure (#449) — "expected N,
-  // matched M" is silently indistinguishable from "nothing needed
-  // repairing" unless the tool says so and exits non-zero.
-  if (unmatched.length > 0) {
+  for (const m of matched) {
+    const beforeMs = Number(m.row.created_at);
     console.log(
-      `\nFAILED to match ${unmatched.length} of ${targets.length} target(s) on "${dbName}" — this is NOT the ` +
+      `  ${m.tag}: row id=${m.row.id} (matched via ${m.matchedVia} hash) created_at ${beforeMs} (${new Date(beforeMs).toISOString()}) -> ${m.correctedWhen} (${new Date(m.correctedWhen).toISOString()})`
+    );
+    if (beforeMs === m.correctedWhen) {
+      console.log(`    already correct — skipping (idempotent).`);
+    }
+  }
+
+  // The decision (#449, restructured so it is a value a test can inspect,
+  // not a side effect buried in here): a zero or partial match is a LOUD
+  // failure (exit 1) — "expected N, matched M" must never be
+  // indistinguishable from "nothing needed repairing".
+  const decision = decideRepairOutcome(matched, unmatched, APPLY);
+
+  if (decision.outcome === 'unmatched') {
+    console.log(
+      `\nFAILED to match ${decision.unmatched.length} of ${targets.length} target(s) on "${dbName}" — this is NOT the ` +
         `same thing as "nothing to repair":`
     );
-    unmatched.forEach((u) => {
+    decision.unmatched.forEach((u) => {
       console.log(`  - ${u.tag}: tried raw hash ${u.raw}, LF-normalized hash ${u.normalized}, and CRLF hash ${u.crlf} — none is present in drizzle.__drizzle_migrations on "${dbName}".`);
     });
     console.log(
@@ -290,37 +357,24 @@ async function main() {
         `slot needs no repair.`
     );
     console.log('='.repeat(80));
-    process.exit(1);
+    process.exit(decision.exitCode);
   }
 
-  const plan: Array<{ tag: string; hash: string; rowId: number; before: string; after: number }> = [];
-
-  for (const m of matched) {
-    const beforeMs = Number(m.row.created_at);
-    console.log(
-      `  ${m.tag}: row id=${m.row.id} (matched via ${m.matchedVia} hash) created_at ${beforeMs} (${new Date(beforeMs).toISOString()}) -> ${m.correctedWhen} (${new Date(m.correctedWhen).toISOString()})`
-    );
-    if (beforeMs === m.correctedWhen) {
-      console.log(`    already correct — skipping (idempotent).`);
-      continue;
-    }
-    plan.push({ tag: m.tag, hash: m.row.hash, rowId: m.row.id, before: m.row.created_at, after: m.correctedWhen });
-  }
-
-  if (plan.length === 0) {
+  if (decision.outcome === 'already-correct') {
     console.log(`\nAll ${targets.length} target row(s) found on "${dbName}" and already at their corrected created_at — 0 rows need a change.`);
     console.log('='.repeat(80));
-    process.exit(0);
+    process.exit(decision.exitCode);
   }
 
+  const plan = decision.plan;
   const backupPath = path.join(EVIDENCE_DIR, `migration-journal-dates-backup-${dbName}.json`);
   writeLedgerFile(backupPath, { dbName, capturedAt: new Date().toISOString(), rows: plan });
   console.log(`\nbackup written: ${backupPath} (${plan.length} row(s))`);
 
-  if (!APPLY) {
+  if (decision.outcome === 'dry-run') {
     console.log(`\nDRY-RUN: ${plan.length} row(s) on "${dbName}" WOULD be corrected. Re-run with --apply.`);
     console.log('='.repeat(80));
-    process.exit(0);
+    process.exit(decision.exitCode);
   }
 
   await db.transaction(async (tx) => {
@@ -340,7 +394,7 @@ async function main() {
 
   console.log(`\nAPPLY complete on "${dbName}": ${plan.length} row(s) corrected.`);
   console.log('='.repeat(80));
-  process.exit(0);
+  process.exit(decision.exitCode);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

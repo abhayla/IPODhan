@@ -4,7 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openRepairDb } from '../../../scripts/lib/repair-tool.js';
-import { hashMigrationFile, findJournalMismatches, hashContentVariants, matchTargetsToRows } from '../../../scripts/repair-migration-journal-dates.js';
+import {
+  hashMigrationFile,
+  findJournalMismatches,
+  hashContentVariants,
+  matchTargetsToRows,
+  decideRepairOutcome,
+} from '../../../scripts/repair-migration-journal-dates.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // scraper/tests/unit/scripts -> repo root is four levels up.
@@ -241,5 +247,147 @@ describe('repair-migration-journal-dates.ts — matches a row regardless of whic
     expect(unmatched[0].tag).toBe('tag-c');
     expect(unmatched[0].raw).toBe(c.raw);
     expect(unmatched[0].normalized).toBe(c.normalized);
+  });
+});
+
+/**
+ * The exit-code decision (#449's actual gap): a target that could not be
+ * matched to a row is exit 1, always — no matter how many other targets
+ * DID match. Every path where every target resolved to a row is exit 0.
+ * This is the function the reviewer's mutation (flipping the unmatched
+ * path's process.exit(1) to process.exit(0)) must turn RED — see the fix
+ * round's proof: mutating the unmatched branch's exitCode literal from 1 to
+ * 0 in this module turns this describe block's first test RED; reverting
+ * turns it GREEN.
+ */
+describe('repair-migration-journal-dates.ts — decideRepairOutcome() exit-code contract', () => {
+  it('exits 1 when any target is unmatched — even with other targets matched', () => {
+    const unmatched = [{ tag: 'missing-tag', raw: 'r', normalized: 'n', crlf: 'c' }];
+    const matched = [
+      {
+        tag: 'found-tag',
+        correctedWhen: 100,
+        row: { id: 1, hash: 'h', created_at: '999' },
+        matchedVia: 'raw' as const,
+      },
+    ];
+    const decision = decideRepairOutcome(matched, unmatched, false);
+    expect(decision.outcome).toBe('unmatched');
+    expect(decision.exitCode).toBe(1);
+    if (decision.outcome === 'unmatched') {
+      expect(decision.unmatched).toEqual(unmatched);
+    }
+  });
+
+  it('exits 0 when every target resolved to a row and every row is already at the corrected value', () => {
+    const matched = [
+      {
+        tag: 'a',
+        correctedWhen: 100,
+        row: { id: 1, hash: 'h', created_at: '100' }, // already correct
+        matchedVia: 'raw' as const,
+      },
+      {
+        tag: 'b',
+        correctedWhen: 200,
+        row: { id: 2, hash: 'h2', created_at: '200' }, // already correct
+        matchedVia: 'normalized' as const,
+      },
+    ];
+    const decision = decideRepairOutcome(matched, [], false);
+    expect(decision.outcome).toBe('already-correct');
+    expect(decision.exitCode).toBe(0);
+  });
+
+  it('exits 0 with a non-empty plan on a dry run when every target matched but needs correction', () => {
+    const matched = [
+      {
+        tag: 'a',
+        correctedWhen: 100,
+        row: { id: 1, hash: 'h', created_at: '999' }, // needs correction
+        matchedVia: 'raw' as const,
+      },
+    ];
+    const decision = decideRepairOutcome(matched, [], false);
+    expect(decision.outcome).toBe('dry-run');
+    expect(decision.exitCode).toBe(0);
+    if (decision.outcome === 'dry-run') {
+      expect(decision.plan).toHaveLength(1);
+      expect(decision.plan[0].tag).toBe('a');
+    }
+  });
+
+  it('exits 0 for the same matched plan when apply=true, tagged as an apply outcome', () => {
+    const matched = [
+      {
+        tag: 'a',
+        correctedWhen: 100,
+        row: { id: 1, hash: 'h', created_at: '999' },
+        matchedVia: 'raw' as const,
+      },
+    ];
+    const decision = decideRepairOutcome(matched, [], true);
+    expect(decision.outcome).toBe('apply');
+    expect(decision.exitCode).toBe(0);
+  });
+});
+
+/**
+ * Cheap coverage the review also asked for (item 1): mixed line endings
+ * within a single file produce three DISTINCT hashes (raw, normalized,
+ * crlf), all computed, none double-counted — the case a file that is
+ * consistently all-LF or all-CRLF does not exercise.
+ */
+describe('repair-migration-journal-dates.ts — mixed line endings within one file', () => {
+  it('produces three distinct hashes for content mixing \r\n and bare \n', () => {
+    const mixedContent = 'CREATE TABLE foo (id int);\r\nALTER TABLE foo ADD COLUMN bar int;\nALTER TABLE foo ADD COLUMN baz int;\r\n';
+    const variants = hashContentVariants(mixedContent);
+
+    expect(variants.raw).not.toBe(variants.normalized);
+    expect(variants.raw).not.toBe(variants.crlf);
+    expect(variants.normalized).not.toBe(variants.crlf);
+
+    // normalized must equal the hash of the fully-LF form, and crlf must
+    // equal the hash of the fully-CRLF form of that SAME normalized content.
+    const fullyLf = mixedContent.replace(/\r\n/g, '\n');
+    const fullyCrlf = fullyLf.replace(/\n/g, '\r\n');
+    expect(variants.normalized).toBe(hashContentVariants(fullyLf).raw);
+    expect(variants.crlf).toBe(hashContentVariants(fullyCrlf).raw);
+  });
+
+  it('matches a row on whichever of the three variants the row was stored under, for mixed-ending content', () => {
+    const mixedContent = 'A\r\nB\nC\r\n';
+    const variants = hashContentVariants(mixedContent);
+    const targets = [{ tag: 'mixed', correctedWhen: 1, ...variants }];
+    const rows = [{ id: 1, hash: variants.normalized, created_at: '999' }];
+    const { matched, unmatched } = matchTargetsToRows(targets, rows);
+    expect(unmatched).toHaveLength(0);
+    expect(matched).toHaveLength(1);
+    expect(matched[0].matchedVia).toBe('normalized');
+  });
+});
+
+/**
+ * Cheap coverage the review also asked for (item 2): removing the dedup
+ * guards in matchTargetsToRows() is behaviourally inert against a real DB
+ * (.find returns the first hit either way) but a collapsed variant set
+ * MUST still produce exactly one lookup candidate, so the guards are never
+ * mistaken for dead code and deleted later.
+ */
+describe('repair-migration-journal-dates.ts — variant de-duplication before lookup', () => {
+  it('a file whose raw, normalized, and crlf hashes all collapse to the same value is still matched exactly once, not three times', () => {
+    // A file with no line-ending-sensitive bytes at all: raw === normalized === crlf.
+    const content = 'SELECT 1;';
+    const variants = hashContentVariants(content);
+    expect(variants.raw).toBe(variants.normalized);
+    expect(variants.normalized).toBe(variants.crlf);
+
+    const targets = [{ tag: 'no-newlines', correctedWhen: 1, ...variants }];
+    const rows = [{ id: 1, hash: variants.raw, created_at: '999' }];
+    const { matched, unmatched } = matchTargetsToRows(targets, rows);
+
+    expect(matched).toHaveLength(1);
+    expect(unmatched).toHaveLength(0);
+    expect(matched[0].matchedVia).toBe('raw');
   });
 });
