@@ -322,6 +322,35 @@ Without `DUPLICATE_INVARIANT_FOLDS` that invariant reports every duplicate group
 the right shape for detection but useless as a per-repair proof: staging carries 12 unrelated groups
 (finding F-57), so an unscoped run is permanently red there.
 
+### 8c. Row-key UNIQUE constraints on promoters / peer_companies / ipo_intermediaries (item 1 slice s2, gated)
+
+`web/drizzle/migrations/_gated/E1_row_key_unique_constraints.sql` is deliberately kept OUT of
+`meta/_journal.json` (see that file's own header and `_gated/README.md` entry 10) — it is
+owner-applied per slot, in this exact order, never skipped:
+
+1. **Add the column via a release.** `normalized_name` (`NOT NULL DEFAULT ''`) already ships in
+   journaled migration `20260909153933_sloppy_morph` — this step is done once the release
+   carrying that migration has deployed to the slot.
+2. **Run the backfill.** `scraper/scripts/backfill-normalized-name.ts` against the slot — dry run
+   first, then `--apply` — until it reports 0 rows still at `''`.
+3. **Apply this gated file** (`E1_row_key_unique_constraints.sql`) by hand, through the tunnel.
+
+**Precheck before step 3 — all three MUST read 0:**
+```bash
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" psql "$DATABASE_URL" -c "
+  SELECT 'promoters' AS t, count(*) FROM promoters WHERE normalized_name = ''
+  UNION ALL SELECT 'peer_companies', count(*) FROM peer_companies WHERE normalized_name = ''
+  UNION ALL SELECT 'ipo_intermediaries', count(*) FROM ipo_intermediaries WHERE normalized_name = '';
+"
+```
+
+**If the precheck reports a non-zero count for any table:** do NOT apply the gated file — go back to
+step 2 (`backfill-normalized-name.ts --apply`) for that table and re-run the precheck. Applying the
+file first fails immediately: every pre-existing `''` row on that table collides on the very first
+`ADD CONSTRAINT` (27 promoters, 326 peer_companies, 178 ipo_intermediaries in prod as of this slice),
+and the migration — and the deploy, if it were journaled — dies mid-flight.
+
 ## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
 Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`
 (owner word after reading the first dry-run log `/root/data-audit-ipodhan/state/run-<date>.log`: `ISSUES-DRY-RUN` + the

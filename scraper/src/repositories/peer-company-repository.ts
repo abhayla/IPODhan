@@ -11,7 +11,18 @@ import * as schema from '@ipodhan/shared/db/schema';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 
 export type PeerCompany = InferSelectModel<typeof schema.peerCompanies>;
-export type PeerCompanyInsert = InferInsertModel<typeof schema.peerCompanies>;
+// normalizedName narrowed to required: the column keeps its '' schema
+// default (gated DROP DEFAULT, see web/drizzle/migrations/_gated/
+// E1_row_key_unique_constraints.sql) so drizzle-orm's InferInsertModel
+// still infers it optional — narrowed here the same way
+// promoters-repository.ts and ipo-intermediaries-repository.ts narrow it,
+// so a caller omitting the row key fails at build time, not at runtime.
+export type PeerCompanyInsert = Omit<
+  InferInsertModel<typeof schema.peerCompanies>,
+  'normalizedName'
+> & {
+  normalizedName: string;
+};
 
 export class PeerCompanyRepository {
   constructor(private db: NodePgDatabase<typeof schema>) {}

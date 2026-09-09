@@ -71,20 +71,41 @@ function readConstraintDDL(): string[] {
     .map((line) => line.replace(/;$/, ''));
 }
 
+/**
+ * Parse "ALTER TABLE "<table>" ADD CONSTRAINT "<name>" UNIQUE(...)" so the
+ * constraint can be dropped by name before being re-applied. Table and
+ * constraint names in the gated file are plain identifiers (no embedded
+ * quotes), so this simple extraction is safe for this fixed DDL set.
+ */
+function parseTableAndConstraintName(ddl: string): { table: string; constraint: string } {
+  const match = ddl.match(/ALTER TABLE "([^"]+)" ADD CONSTRAINT "([^"]+)"/);
+  if (!match) {
+    throw new Error(`Could not parse table/constraint name from DDL: ${ddl}`);
+  }
+  return { table: match[1], constraint: match[2] };
+}
+
+/**
+ * Make the gated file authoritative over whatever ipodhan_test already
+ * holds: drop each of these three constraints if present, THEN apply the
+ * file's DDL fresh. Without the drop, a local database that already carries
+ * the constraint (from a prior manual apply) would skip re-applying it and
+ * the test would silently exercise the DATABASE's existing constraint
+ * definition instead of the DDL committed in the gated file — the gap a
+ * mutation on the file's constraint columns would not catch without first
+ * manually dropping it (Tier A review finding, fix round 1).
+ */
 async function ensureConstraints(pool: Pool): Promise<void> {
   const ddlStatements = readConstraintDDL();
   expect(ddlStatements.length).toBe(3);
+
   for (const ddl of ddlStatements) {
-    try {
-      await pool.query(ddl);
-    } catch (err: unknown) {
-      // 42710 = duplicate_object (constraint already exists), 42P07 =
-      // duplicate_table (the constraint's implicit index already exists) —
-      // both expected when this test runs against an already hand-migrated
-      // ipodhan_test.
-      const code = (err as { code?: string }).code;
-      if (code !== '42710' && code !== '42P07') throw err;
-    }
+    const { table, constraint } = parseTableAndConstraintName(ddl);
+    await pool.query(`ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`);
+  }
+
+  for (const ddl of ddlStatements) {
+    await pool.query(ddl);
   }
 }
 
