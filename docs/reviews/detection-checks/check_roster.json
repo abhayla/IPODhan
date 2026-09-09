@@ -10,5 +10,6 @@
   "consumerReason": "explicitly “tonight’s report” in the design text — a nightly roster-completeness meta-check over the other 16 checks’ own nightly report",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "CHECK-ROSTER (pull-model verification check CHECK-ROSTER: every id above appears in tonight’s report) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('check_roster' call lands in the audit script."
 }

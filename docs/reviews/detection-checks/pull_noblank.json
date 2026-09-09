@@ -10,5 +10,6 @@
   "consumerReason": "brief-assigned: “this slot” is a per-cycle fact and the guard exists to catch a single cycle’s bad write before the next one compounds it",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "PULL-NOBLANK (pull-model verification check PULL-NOBLANK: fields that went from a value to absent this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_noblank' call lands in the audit script."
 }

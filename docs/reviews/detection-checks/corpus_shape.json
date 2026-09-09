@@ -10,5 +10,6 @@
   "consumerReason": "the design specifies a weekly scheduled job (§4.5); the floor-delta consumer is the only one of the two named consumers that already runs on a schedule independent of the pull cycle, so the weekly run rides that same NEW/GONE/SAME diffing consumer",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4.5 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "CORPUS-SHAPE (pull-model verification check CORPUS-SHAPE: per source, does the live page behind each fixture still match the fixture’s SHAPE (labels + structure the extractor depends on, never the values)) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('corpus_shape' call lands in the audit script."
 }

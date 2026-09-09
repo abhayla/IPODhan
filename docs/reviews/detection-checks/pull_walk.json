@@ -10,5 +10,6 @@
   "consumerReason": "brief-assigned: a per-slot walk count is read each cycle, by which IPO was skipped, not accumulated as a nightly trend",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "PULL-WALK (pull-model verification check PULL-WALK: every phase-1 IPO walked this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_walk' call lands in the audit script."
 }
