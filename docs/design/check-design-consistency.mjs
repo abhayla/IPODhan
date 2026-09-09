@@ -514,7 +514,16 @@ try {
   // continuation byte, plus the replacement character. The first version listed three literal
   // strings and a reviewer walked straight past it with "Â lakh" — Â is the commonest mojibake of
   // the lot, because it is what a non-breaking space, a degree sign and ± all turn into.
-  var MOJIBAKE = /[ÂÃâï][^ -]|�|Â(?=[s ])/;
+  // Built from code points rather than escapes, because two attempts at writing this line as a
+  // literal were mangled in transit — once into a pair of literal backspace bytes, once into a
+  // class that matched the letter "s". A regex nobody can read back is a regex nobody can trust.
+  var MOJI_LEAD = [0xC2, 0xC3, 0xE2, 0xEF].map(function (c) { return String.fromCharCode(c); }).join('');
+  var NON_ASCII = '[^' + String.fromCharCode(0) + '-' + String.fromCharCode(0x7F) + ']';
+  var MOJIBAKE = new RegExp(
+    '[' + MOJI_LEAD + ']' + NON_ASCII +          // Â/Ã/â/ï followed by any non-ASCII byte
+    '|' + String.fromCharCode(0xFFFD) +          // the replacement character itself
+    '|' + String.fromCharCode(0xC2) + '(?=\\s|$)' // a lone Â before whitespace OR at end of line
+  );
   var mojiLines = [];
   md.split(String.fromCharCode(10)).forEach(function (l, i) { if (MOJIBAKE.test(l)) mojiLines.push(i + 1); });
   if (mojiLines.length) {

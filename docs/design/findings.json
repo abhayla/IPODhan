@@ -1025,6 +1025,206 @@
       "title": "One number, 52,731,946, is the recorded evidence for four distinct columns, and the other source's evidence for the same IPO's share count is 43% smaller — nothing compares them",
       "detail": "For the same IPO (ARCIL) the committed evidence records: ipo_valuation.shares_at_cap | DOC | label='total_offer_shares_at_cap' | sample='52731946'; ipo_valuation.total_shares_at_cap | DOC | 'total_offer_shares_at_cap' | '52731946'; ipo_valuation.ofs_shares | DOC | 'ofs_shares' | '52731946'; anchor_investors.total_shares_offered | DOC | 'total_offer_shares_at_cap' | '52731946'. Four columns that are four different quantities — the total offer, the OFS component, and the anchor allocation — all evidenced by the same figure. If ofs_shares == total_offer_shares_at_cap is truly what the extractor produced, then fresh issue = 0 for this IPO, which makes the design's A7 invariant (\"fresh + OFS = total at the same price point\", line 629) trivially satisfied and unable to detect anything on this fixture; and an anchor allocation equal to the entire offer is not possible under SEBI's anchor cap. Meanwhile the BSE payload for the same IPO gives Issue_Size_No_of_shares = 36912363 — 43% below the document figure — and that pair is separately recorded as CARRIES (F-85). The mapper records label and fixture per pair and never compares the VALUES two sources give for the same quantity on the same IPO, so a 43% cross-source disagreement and a physically impossible anchor figure both pass as evidence. [verification review, 2026-09-09; where: docs/design/probes/evidence-map.out.json (ipo_valuation.shares_at_cap, ipo_valuation.total_shares_at_cap, ipo_valuation.ofs_shares, anchor_investors.total_shares_offered, ipos.issue_size/BSE); docs/design/data-sourcing-pull-model.md:629-630 (A7); fixtures/extraction/asset-reconstruction-company-india-ltd-*.json]",
       "fix_in": "Same change: a value is no longer evidence for anything. Only a LABEL is, and only a curated or exact one."
+    },
+    {
+      "id": "F-106",
+      "sev": "CRITICAL",
+      "status": "FIXED",
+      "title": "The D16 fix opened a wider hole than it closed: (LOCAL) excused any missing path",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. The marker check was placed before the isIgnored branch, so `(LOCAL)` excused ANY nonexistent path, not only a gitignored one — a second-round reviewer renamed a real file and the gate passed. LOCAL is now valid only when git actually ignores the path, and a LOCAL on a tracked path is its own failure. The prefix class no longer eats a dash, which had let \"— NEW method\" prose count as a marker."
+    },
+    {
+      "id": "F-107",
+      "sev": "CRITICAL",
+      "status": "FIXED",
+      "title": "The price-band fix false-failed every fixed-price row",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. §1.2 row 14 exempted only `cap <= 1.2 x floor` for fixed price; the new lower bound `1.05 x floor <= cap` and the strict `floor < cap` both fail when floor = cap, which is every one of the 50 single-price SME rows. All three are now exempted together, in the rule cell rather than in a different column."
+    },
+    {
+      "id": "F-108",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The lot-value rule used the cap for mainboard and the floor for SME in one sentence",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. Both segments test against the CAP. The floor-based SME form false-fails a book-built SME at band 95-100 with a lot of 1,000 (95,000 < 1,00,000)."
+    },
+    {
+      "id": "F-109",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The SME effective date was stated twice, six months apart",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. §5.3.1 said 2025-01-01 and §1.11 said 2025-07-01. The circulars are dated 2025-06-18 and effective 2025-07-01; rows in between legitimately carry lot_multiple = 1."
+    },
+    {
+      "id": "F-110",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The lapsed-draft rule reads a SEBI observation date that is stored nowhere",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED by admitting it. §2.3.3.2 and §4.6 now state that no column exists, that the rule therefore cannot fire today, that a new field is required, and that until it lands NO row is ever declared lapsed. A rule that cannot fire is the same defect as a check that cannot fail."
+    },
+    {
+      "id": "F-111",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "working_days_inclusive was named where it is used and defined nowhere",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. §4.6 defines it once, inclusive of both ends, excluding weekends and the exchange holiday calendar, and names the holiday source. Row 7 now counts the same way rather than saying plain \"working days\"."
+    },
+    {
+      "id": "F-112",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The book-built / fixed-price discriminator was never named, and is 94% empty",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. §2.5.5 names field 34 `ipo_details.issue_type`, records that it is populated on 19 of 330 rows, and states the fallback inference explicitly."
+    },
+    {
+      "id": "F-113",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The SME per-application invariant reads a field populated on 8 of 330 rows",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED by stating it. §1.2 row 4 and §4.6 both record that lot_multiple is populated on 8 rows, so the second invariant is aspirational until item 2 fills it."
+    },
+    {
+      "id": "F-114",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "OD-32 left an unread PDF with no purge trigger at all",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. Moving the soft anchor to last-successful-extraction AND stopping the hard cap deleting unread files removes every trigger, and while the reader is unwired nothing ever reaches EXTRACTED. OD-32 now ships with a THIRD arm: a document that has exhausted its retries or sat unread past the hard cap is purged with its failure recorded. The 2026-06-13 disk-full outage is the cost of getting this wrong."
+    },
+    {
+      "id": "F-115",
+      "sev": "MINOR",
+      "status": "FIXED",
+      "title": "D20 walked past mojibake at the end of a line",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. The lone-C2 arm now matches before whitespace OR at end of line, and the whole expression is built from code points because two attempts at writing it as a literal were mangled in transit."
+    },
+    {
+      "id": "F-116",
+      "sev": "MINOR",
+      "status": "FIXED",
+      "title": "check-mutations.test.mjs claimed to restore every file but did not list findings.json",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. Running the gate rewrites no tracked file now that the suite refuses on a dirty tree, and the claim in its header is scoped to the files it actually lists."
+    },
+    {
+      "id": "F-117",
+      "sev": "MINOR",
+      "status": "FIXED",
+      "title": "The SME application threshold used a strict inequality with no fixture",
+      "area": "second review round, 2026-09-09",
+      "phase1": true,
+      "detail": "Raised by the second-round reviewer reading only the sections the first round changed. Every one of these is an error introduced or left by TODAY's fixes, which is what a second round is for.",
+      "fixed_in": "FIXED. Stated as `>= Rs 2,00,000` rather than `>`, so an issue priced at exactly two lakh for two lots passes; the circulars say \"of Rs 2 Lakhs or above\"."
+    },
+    {
+      "id": "F-99",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The corrigendum rules order documents by a filing_date that 239 of 266 documents do not have",
+      "area": "edge-case walkthroughs, 2026-09-09",
+      "phase1": true,
+      "detail": "Walked on Veegaland Developers (MAINBOARD, UPCOMING, opens 2026-09-10) — the only IPO on production with a CORRIGENDUM. All three of §2.5.5's rules key on `filing_date`. Measured: 27 of 266 active documents carry one; 0 of 1 CORRIGENDUM, 0 of 13 PRICE_BAND_AD, 0 of 81 PROSPECTUS. Rule 2's word \"earlier\" therefore has no referent, and no fallback ordering was stated.",
+      "fixed_in": "FIXED 2026-09-09. §4.6 states the fallback: document precedence, then the exchange document id, then discovery order, with `ordered_without_filing_date` recorded on the plan row. The backfill is named a PREREQUISITE of §2.5.5."
+    },
+    {
+      "id": "F-100",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "Nothing said what a field holds while a corrigendum naming it is still unread",
+      "area": "edge-case walkthroughs, 2026-09-09",
+      "phase1": true,
+      "detail": "Veegaland's corrigendum is PENDING and the IPO opens tomorrow. A corrigendum exists because a published number is wrong, so the window between discovering one and reading it is exactly when the page must not keep asserting the old value.",
+      "fixed_in": "FIXED 2026-09-09. §2.5.5: from DISCOVERY, every field of the corrected document type is marked \"being rechecked\" on the page and the corrigendum jumps the extraction queue."
+    },
+    {
+      "id": "F-101",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The fixed-price exception depends on issue_type, which is null on all 50 single-price SME rows",
+      "area": "edge-case walkthroughs, 2026-09-09",
+      "phase1": true,
+      "detail": "Walked on Riyaasat Lifestyle (SME, BSE, floor = cap = 106, lot 1200). `floor < cap` is strict and 106 = 106 fails it; the exception that saves it needs `issue_type = FIXED_PRICE`, and `ipo_details` holds 25 rows against 330 IPOs with no FIXED_PRICE value anywhere. The check's applicability is decided by a field only a document can supply — circular.",
+      "fixed_in": "FIXED 2026-09-09. §1.2 row 14 exempts all three checks together for fixed price, and §4.6 records the population with `floor = cap` as the stated fallback inference."
+    },
+    {
+      "id": "F-102",
+      "sev": "MINOR",
+      "status": "FIXED",
+      "title": "The real rename pair §2.3.3.2 owes does not exist on production",
+      "area": "edge-case walkthroughs, 2026-09-09",
+      "phase1": true,
+      "detail": "All 19 DRHPs fold to their own row name. The two apparent hits are BSE prospectuses mis-typed as DRHP and titled \"Prospectus GID\" — a document-typing defect, not a rename.",
+      "fixed_in": "FIXED 2026-09-09. §2.3.3.2 records the measurement and writes the test against a rename pair captured from the exchange filing history instead, naming which company and which two filings."
+    },
+    {
+      "id": "F-103",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "A convergence already in the data has no trigger, and there is a live duplicate on production today",
+      "area": "edge-case walkthroughs, 2026-09-09",
+      "phase1": true,
+      "detail": "Walked on Rays of Belief. Two LISTED rows share CIN U85110DL2017PLC322623 with issue sizes 67% apart. §2.3.3.1 point 2 fires only when a stronger identifier ARRIVES; for these rows it arrived long ago, so the rule can never fire and the duplicate stands for ever. §2.3.3's de-dup key also fails to fold the two names, making its \"329 distinct keys: zero false merges\" a false all-clear.",
+      "fixed_in": "FIXED 2026-09-09. §2.3.3.1 point 2 now has two halves: the arrival check, plus a standing nightly sweep that groups every row by each identifier it holds and reports any group larger than one, by name."
+    },
+    {
+      "id": "F-104",
+      "sev": "MINOR",
+      "status": "FIXED",
+      "title": "Every date in every walkthrough, including the two published this morning, is one day early",
+      "area": "edge-case walkthroughs, 2026-09-09",
+      "phase1": true,
+      "detail": "node-pg parses a bare `date` column into a JavaScript Date at LOCAL midnight. Read from an IST machine, 2026-09-10 becomes 2026-09-09T18:30Z, and every `.toISOString().slice(0,10)` printed the day before. A plausible date looks exactly like a correct one, which is why nothing noticed.",
+      "fixed_in": "FIXED 2026-09-09 at the source: `docs/design/probes/_lib.mjs` registers a type parser for the date OID (1082) returning the raw YYYY-MM-DD. Verified after the fix — Veegaland reads 2026-09-10, the day it actually opens. The two walkthroughs published this morning still carry the old dates and the report says so."
+    },
+    {
+      "id": "F-105",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "The IPO to FPO link names a company_id column that does not exist",
+      "area": "edge-case walkthroughs, 2026-09-09",
+      "phase1": true,
+      "detail": "Walked on the FPO case, which found zero FPO rows on production (\"no real IPO reachable, rule untested\"). §2.3.3.2 routes an offering-type change to \"a new row, linked by `company_id`\" — there is no `company_id` column and no companies table in the schema.",
+      "fixed_in": "FIXED 2026-09-09. §4.6 lists it among the inputs that do not exist at all and assigns it to build item 12."
+    },
+    {
+      "id": "F-118",
+      "sev": "MAJOR",
+      "status": "FIXED",
+      "title": "Seven findings filed by a parallel run were lost, because two writers shared one file",
+      "area": "process",
+      "phase1": true,
+      "detail": "The edge-case walkthrough run appended F-99 to F-105 to findings.json and reported \"D5 All 101 findings carry a declared status\". The parent session was editing the same file, and its write won: the file on disk went back to 94 findings and the seven were gone. Nothing detected it — the gate reported 23/23 either way, because a finding that no longer exists cannot be OPEN. It was caught only because the parent went looking for the ids it expected.",
+      "fixed_in": "FIXED 2026-09-09 by restoring all seven from the run's report, and by the rule that follows: a parallel run NEVER writes a file the parent also writes. It writes its own file (`findings-<slug>.json`) and the parent merges. The same rule already applies to the design document and is why no walkthrough run edits it."
     }
   ],
   "false_assertions": [

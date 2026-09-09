@@ -52,8 +52,21 @@ export function globalEnv(key) {
  * connection, so it holds even for a query this file never saw.
  */
 export async function openReadOnlyPool(database = 'ipodhan') {
-  const { Pool } = req('pg');
+  const pg = req('pg');
+  const { Pool } = pg;
   const password = globalEnv('IPODHAN_APP_DB_PASSWORD');
+
+  // A `date` column comes back as a STRING, not a Date. (F-104, found 2026-09-09 by a walkthrough.)
+  //
+  // node-pg's default parser turns a bare `date` into a JavaScript Date at LOCAL midnight. Read
+  // from an IST machine that is 2026-09-10T00:00+05:30, whose UTC form is 2026-09-09T18:30Z — so
+  // every `.toISOString().slice(0,10)` in every probe printed the day BEFORE the real one. Every
+  // date in both walkthroughs published this morning was one day early, and nothing noticed,
+  // because a plausible date looks exactly like a correct one.
+  //
+  // 1082 is the `date` OID. Returning the raw 'YYYY-MM-DD' the server sent removes the timezone
+  // from the question entirely, which is the only fix that cannot drift back.
+  pg.types.setTypeParser(1082, (v) => v);
   const pool = new Pool({
     host: 'localhost',
     port: 15432,

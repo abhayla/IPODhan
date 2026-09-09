@@ -1,12 +1,12 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-09T10:20:25.488Z",
+  "generated_at": "2026-09-09T10:31:04.267Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 156,
-    "retired": 13
+    "live": 166,
+    "retired": 14
   },
-  "next_id": 170,
+  "next_id": 181,
   "rules": [
     {
       "id": "R-151",
@@ -423,11 +423,20 @@
       "retired": false
     },
     {
-      "id": "R-040",
-      "hash": "1c3928ef54b0",
+      "id": "R-177",
+      "hash": "1eaa12d3ff6a",
       "section": "2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert",
       "kind": "prose",
-      "text": "1. Create on the best identity available. At discovery that is the normalised name — which is why §2.3.3's normaliser must fold corporate-form words, not only the legal suffix. 2. Every time a stronger identifier arrives, check it against every other row. When the second row is assigned its symbol it becomes ARCIL, and ARCIL already exists. That collision is the detection, and it is guaranteed to arrive before listing even though it is absent today. 3. Converging identifiers mean a merge, not an alert. Two rows sharing one symbol, one CIN or one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated fields, and preserves the provenance of both — a warning nobody reads is what produced the current state. 4. Use CIN earlier than we do. It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN, it exists from incorporation — long before any exchange assigns anything, and we already extract it from the filing (§E7). It is not sufficient alone, because one company can return with a rights issue or an FPO, but CIN plus open date is a strong pair available early.",
+      "text": "1. Create on the best identity available. At discovery that is the normalised name — which is why §2.3.3's normaliser must fold corporate-form words, not only the legal suffix. 2. Every time a stronger identifier arrives, check it against every other row — AND sweep for collisions that are already there. When the second row is assigned its symbol it becomes ARCIL, and ARCIL already exists. That collision is the detection, and it is guaranteed to arrive before listing even though it is absent today.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-178",
+      "hash": "958cdb13da4a",
+      "section": "2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert",
+      "kind": "prose",
+      "text": "On arrival is not enough, and a walkthrough proved it (F-103). Two LISTED rows on production share CIN U85110DL2017PLC322623 right now, with issue sizes 67% apart. Both identifiers arrived long ago, so an arrival-triggered check can never fire for them: the rule as first written would leave a live duplicate in place for ever and report nothing. So the rule has two halves — the arrival check above, and a standing sweep in the nightly audit that groups every row by each identifier it holds and reports any group of more than one, by name. The sweep is what catches the ones already in the data; the arrival check is what stops new ones forming. 3. Converging identifiers mean a merge, not an alert. Two rows sharing one symbol, one CIN or one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated fields, and preserves the provenance of both — a warning nobody reads is what produced the current state. 4. Use CIN earlier than we do. It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN, it exists from incorporation — long before any exchange assigns anything, and we already extract it from the filing (§E7). It is not sufficient alone, because one company can return with a rights issue or an FPO, but CIN plus open date is a strong pair available early.",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -491,6 +500,15 @@
       "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
       "kind": "prose",
       "text": "The lapsed-draft rule. A new draft for a company whose existing row never opened:",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-170",
+      "hash": "6c92e6690932",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "And we do not hold it anywhere. grep -in observation packages/shared/src/db/schema.ts returns nothing: there is no column for it, and no field in the manifest. So this rule cannot fire today — which makes it, as written, a rule that can never fail, the exact class this round was fixing. Stated plainly rather than left as a nice sentence: the lapsed-draft rule needs a new field (ipos.sebi_observation_date, sourced from SEBI's processing-status page), it is listed in §4.6 with the other rules whose input does not exist, and until that field lands no row is ever declared lapsed — an unknown observation date means not lapsed, never a guess. The clause is saved at probes/fixtures/sebi-icdr-observation-validity-2026-09-09.txt with the URL it came from and what SEBI's own site did and did not serve on the day.",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -747,6 +765,24 @@
       "retired": false
     },
     {
+      "id": "R-179",
+      "hash": "31c773e0eb71",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "prose",
+      "text": "And what the page shows while the corrigendum is still UNREAD (F-100). This is not a corner case: the only corrigendum on production today belongs to an IPO that opens tomorrow, and its state is PENDING. A corrigendum exists precisely because a published number is wrong, so continuing to show the old number as confirmed is the one thing the design must not do.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-180",
+      "hash": "33438cc3a60e",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "blockquote",
+      "text": "From the moment a CORRIGENDUM document is discovered — before it is downloaded, before it is read — every field it could touch is marked being rechecked on the page (the grey §2.11 marker), and the corrigendum is put at the front of the extraction queue, ahead of the ordinary document budget.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
       "id": "R-076",
       "hash": "81d044935965",
       "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
@@ -986,6 +1022,60 @@
       "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
       "kind": "table",
       "text": "The 53 grandfathered fixtures are backfilled or deleted — one pass down config/fixture-provenance-baseline.json: if the source page can be re-fetched and still matches, the .meta.json is written from that fetch and the baseline entry drops out; if it cannot, the fixture is deleted and its test re-pointed at a fresh capture. There is no third option — an unattributable fixture stays a liability forever, and the baseline is shrink-only precisely so that the list cannot grow while nobody is looking",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-171",
+      "hash": "b7b22945326c",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "blockquote",
+      "text": "The rules are well written one at a time, and several of them cannot run at all, because the field they key on is empty on production.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-172",
+      "hash": "88b8d1da70df",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "blockquote",
+      "text": "Every normative rule states the field it reads, and what it does when that field is empty. \"Nothing happens\" is an acceptable answer only when it is written down. An unstated fallback is a defect, and the reviewer or the walkthrough that finds it is doing the work the rule should have done.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-173",
+      "hash": "b0966bf32004",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "table",
+      "text": "§2.5.5 same-type ordering — filing_date — falls back to document precedence, then the exchange's own document id, then discovery order — and records ordered_without_filing_date on the plan row, so the audit can count how often it happened rather than the ordering being silently arbitrary",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-174",
+      "hash": "e468957f1b3a",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "table",
+      "text": "§1.2 row 14 / §2.5.5 terminal — issue_type — floor = cap is treated as fixed-price on that evidence alone; the row is flagged issue_type_inferred and the flag is what a reviewer looks for",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-175",
+      "hash": "8f60132318bf",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "table",
+      "text": "§2.3.3.2 lapsed draft — SEBI observation date — no row is ever declared lapsed. Unknown means not lapsed",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-176",
+      "hash": "870131623c61",
+      "section": "4.6 Every rule names the field it needs, and what it does when that field is empty",
+      "kind": "blockquote",
+      "text": "working_days_inclusive(a, b) = the number of days from a to b inclusive of both ends, counting only days that are not a Saturday, not a Sunday, and not in the exchange holiday calendar. Monday to Wednesday is 3.",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -1411,6 +1501,15 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-040",
+      "hash": "1c3928ef54b0",
+      "section": "2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert",
+      "kind": "prose",
+      "text": "1. Create on the best identity available. At discovery that is the normalised name — which is why §2.3.3's normaliser must fold corporate-form words, not only the legal suffix. 2. Every time a stronger identifier arrives, check it against every other row. When the second row is assigned its symbol it becomes ARCIL, and ARCIL already exists. That collision is the detection, and it is guaranteed to arrive before listing even though it is absent today. 3. Converging identifiers mean a merge, not an alert. Two rows sharing one symbol, one CIN or one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated fields, and preserves the provenance of both — a warning nobody reads is what produced the current state. 4. Use CIN earlier than we do. It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN, it exists from incorporation — long before any exchange assigns anything, and we already extract it from the filing (§E7). It is not sufficient alone, because one company can return with a rights issue or an FPO, but CIN plus open date is a strong pair available early.",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-152",

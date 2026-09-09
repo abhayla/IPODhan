@@ -328,9 +328,17 @@ anything had ever read them, so the backlog grew and each new member got harder 
 time. OD-32 keeps the text forever and the bytes only while they are still useful; the backlog stops
 compounding, and the 22:00 job (§6) drains it.
 
-The 5 GB store ceiling stays. Under OD-32 it is far easier to honour than under OD-23, because the
-only files on disk are the ones extracted within the last seven days plus anything not yet
-successfully extracted — a working set, not an archive.
+**The gap this opens, which a review caught and which matters more than it reads.** Move the soft
+window's anchor to *last successful extraction* AND stop the hard cap deleting unread files, and an
+unread PDF has **no purge trigger left at all**. While the reader is unwired nothing reaches
+EXTRACTED, so "the last seven days' extractions" is an empty set and the store grows without bound.
+That is not hypothetical: this project lost production to a full disk on 2026-06-13.
+
+So OD-32 ships with a **third arm, not two**: a document that has failed extraction its full retry
+count, or has sat unread past the hard cap, is purged **with its failure recorded** — the row and the
+URL survive, the bytes do not, and the failure is what the next re-read attempt reads. The 5 GB
+ceiling (`DEFAULT_MAX_STORE_GB`, `document-store.ts:46`) is the backstop, and it is a backstop rather
+than a policy: reaching it means the third arm is not working.
 
 **The number behind the ceiling** — the current on-disk size of the document store, and the size
 projected at 500 IPOs — comes from `docs/design/probes/document-store-size.mjs`, whose saved output
@@ -459,17 +467,17 @@ where that contract already names the section; new rows extend it in the same sh
 | 1 | `symbol` | 259 | D | DOC | NSE | BSE | keep | E7 cover | `^[A-Z0-9&-]{1,20}$`; matches the exchange's symbol for the same ISIN | NSE + BSE. Disagreement = re-read the cover. | SME/BSE: BSE is rank 2, NSE absent |
 | 2 | `company_name` | 327 | D | DOC | NSE | BSE | keep | cover | legal-name form (ends Limited/Ltd); normalised name matches the exchange's ±1 token | CG, MC. Disagreement on the legal suffix is not a conflict; a different entity is. | — |
 | 3 | `issue_size` | 327 | D | DOC | BSE | CG | **→ Cr** | A5+A6 | `fresh + OFS = total ±0.5%`; `shares_at_cap × cap ≈ total ±0.5%`; > ₹1 cr and < ₹50,000 cr | CG, MC, BSE. Disagreement = re-read A5/A6 from the PBA, never adopt the website number. | Rights/OFS/NCD: no PBA — rank 1 becomes the offer letter, rank 2 BSE |
-| 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | **two-sided, and the same statement as §1.11**: mainboard `₹10,000 ≤ lot × CAP ≤ ₹15,000` — against the **cap**, because issuers size the lot at the top of the band (Tata Technologies: 30 × ₹500 = ₹15,000 exactly), so a floor-based test drifts low and false-fails a legal lot. SME, per lot: `lot × floor ≥ ₹1,00,000`; and per application from **2025-07-01**: `lot_multiple × lot × floor > ₹2,00,000` with `lot_multiple` READ from the row (F-66, F-67) | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
+| 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | **two-sided, against the CAP in both segments** — issuers size the lot at the top of the band (Tata Technologies: 30 × ₹500 = ₹15,000 exactly), so a floor-based test drifts low and false-fails a legal lot. Mainboard `₹10,000 ≤ lot × cap ≤ ₹15,000`. SME per lot `lot × cap ≥ ₹1,00,000`, and per application from **2025-07-01** `lot_multiple × lot × cap ≥ ₹2,00,000`. An earlier draft used the cap for mainboard and the floor for SME in the same sentence, which false-fails a book-built SME at band ₹95–100 with a lot of 1,000 (F-66, F-67). **`lot_multiple` is populated on 8 of 330 rows**, so the second invariant is aspirational today — see §4.6 | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
 | 5 | `open_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `open ≤ close`; within 90 days of the RHP filing date | the other exchange, then CG. **The document is NOT a verification source** — see §1.2.1 | **Named exception E-1 (§1.2.1).** Owner decision 2026-09-08. |
-| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | **scoped by offering type** (F-71): `close ≥ open` always; for IPO and FPO the issue must be **kept open** for 3 to 10 working days — an INCLUSIVE count, so the test is `3 ≤ working_days_inclusive(open, close) ≤ 10`, which for a Monday open and a Wednesday close is 3. Written as a difference it is 2, and false-fails nearly every mainboard IPO. SEBI ICDR **Reg 46** for a public issue, **Reg 140** for a further public offer, including any price-band extension; for RIGHTS a calendar bound of roughly 7–30 days; for NCD its own window from the prospectus. Applied unconditionally, the public-issue bound rejects all 8 legitimate rights issues on production | as 5 | **Named exception E-1** |
-| 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; **effective-dated**: `listing ≤ close + 3` working days for issues OPENING on or after **2023-12-01** (voluntary from 2023-09-01), `≤ close + 6` before that. Unconditional, it rejects roughly 200 legitimate LISTED rows the 22:00 job walks backwards into — the F-65 class exactly | as 5 | **Named exception E-1** |
+| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | **scoped by offering type** (F-71): `close ≥ open` always; for IPO and FPO the issue must be **kept open** for 3 to 10 working days — an INCLUSIVE count, so the test is `3 ≤ working_days_inclusive(open, close) ≤ 10`, which for a Monday open and a Wednesday close is 3. **`working_days_inclusive` is defined once, in §4.6, and it needs a holiday calendar we already hold** — `market_holidays` is reference data in the schema, and a rule that counts working days without naming its holiday source is not implementable. Written as a difference it is 2, and false-fails nearly every mainboard IPO. SEBI ICDR **Reg 46** for a public issue, **Reg 140** for a further public offer, including any price-band extension; for RIGHTS a calendar bound of roughly 7–30 days; for NCD its own window from the prospectus. Applied unconditionally, the public-issue bound rejects all 8 legitimate rights issues on production | as 5 | **Named exception E-1** |
+| 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; **effective-dated**, and counted the same inclusive way as row 6 (`working_days_inclusive`, §4.6): `listing ≤ close + 3` working days for issues OPENING on or after **2023-12-01** (voluntary from 2023-09-01), `≤ close + 6` before that. Unconditional, it rejects roughly 200 legitimate LISTED rows the 22:00 job walks backwards into — the F-65 class exactly | as 5 | **Named exception E-1** |
 | 8 | `status` | 327 | **T** | **NSE** | **BSE** | CG | keep | — | must be a legal transition (UPCOMING→OPEN→CLOSED→LISTED); never regresses without an ADMIN row | our own date arithmetic. A status contradicting the dates is a conflict. | **Named exception E-1.** WITHDRAWN / POSTPONED only from the exchange or ADMIN |
 | 9 | `registrar` | 267 | D | DOC | BSE | CG | keep | E3 | resolves to a row in `registrars` by name or SEBI reg no. | CG, MC. Disagreement = re-read E3. | — |
 | 10 | `registrar_id` | 267 | **C** | — | — | — | keep | — | FK resolved from field 9 | derived; never sourced | — |
 | 11 | `rating_override` | 327 | **I** | ADMIN | — | — | keep | — | boolean, admin-only | — | — |
 | 12 | `slug` | 327 | **C** | — | — | — | keep | — | `generateIPOSlug(company_name)`; unique; old slug written to `ipo_slug_redirects` | — | — |
 | 13 | `sector` | 196 | D | DOC | CG | MC | keep | F1 | non-empty, from the fixed sector list | CG. | — |
-| 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | `floor < cap`; **`1.05 × floor ≤ cap ≤ 1.20 × floor` for BOTH segments**; `floor ≥ face_value`. ICDR Reg 30(2) caps the band at 120% of the floor and a December 2021 amendment set a minimum 5% spread; Chapter IX applies both to SME, so the **`≤ 1.4 ×` SME carve-out an earlier draft carried does not exist** and would have passed an illegal 40% band | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
+| 14 | `price_range_min` | 300 | D | DOC | NSE | BSE | keep | A1 | **book-built only**: `floor < cap` AND `1.05 × floor ≤ cap ≤ 1.20 × floor`, both segments. ICDR Reg 30(2) caps the band at 120% of the floor; a December 2021 amendment set a 5% minimum spread; Chapter IX applies both to SME, so the `≤ 1.4 ×` SME carve-out an earlier draft carried **does not exist** and would have passed an illegal 40% band. **`issue_type = FIXED_PRICE` skips all three** — floor = cap, so the strict inequality AND the new lower bound both fail on a legal fixed-price issue; the first version of this fix exempted only the upper bound and would have failed every one of the 50 single-price SME rows. `floor ≥ face_value` always | NSE, BSE, CG. Disagreement = re-read the PBA cover. | Fixed-price issues: floor = cap; the ratio check is skipped |
 | 15 | `price_range_max` | 300 | D | DOC | NSE | BSE | keep | A1 | as 14 | as 14 | as 14 |
 | 16 | `last_scraped_at` | 327 | **I** | — | — | — | keep | — | pipeline clock, UTC | — | — |
 | 17 | `listing_exchanges` | 327 | **T** | **NSE** | **BSE** | CG | keep | A15 | non-empty subset of {NSE, BSE}; an SME row may not claim both unless both confirm | the other exchange | **Named exception E-1.** Also **the only field that distinguishes SME-on-NSE from SME-on-BSE** — `ipos.exchange` is NULL on all 327 rows and `bse_scrip_code` on 0 of 327 |
@@ -1403,9 +1411,18 @@ duplicate proves the point: the second Asset Reconstruction row carries **no ide
 
 1. **Create on the best identity available.** At discovery that is the normalised name — which is
    why §2.3.3's normaliser must fold corporate-form words, not only the legal suffix.
-2. **Every time a stronger identifier arrives, check it against every other row.** When the second
-   row is assigned its symbol it becomes `ARCIL`, **and `ARCIL` already exists**. That collision is
-   the detection, and it is guaranteed to arrive before listing even though it is absent today.
+2. **Every time a stronger identifier arrives, check it against every other row** — AND sweep for
+   collisions that are already there. When the second row is assigned its symbol it becomes
+   `ARCIL`, **and `ARCIL` already exists**. That collision is the detection, and it is guaranteed to
+   arrive before listing even though it is absent today.
+
+   **On arrival is not enough, and a walkthrough proved it (F-103).** Two LISTED rows on production
+   share CIN `U85110DL2017PLC322623` right now, with issue sizes 67% apart. Both identifiers
+   arrived long ago, so an arrival-triggered check can never fire for them: the rule as first
+   written would leave a live duplicate in place for ever and report nothing. So the rule has two
+   halves — the arrival check above, **and a standing sweep** in the nightly audit that groups every
+   row by each identifier it holds and reports any group of more than one, by name. The sweep is
+   what catches the ones already in the data; the arrival check is what stops new ones forming.
 3. **Converging identifiers mean a merge, not an alert.** Two rows sharing one symbol, one CIN or
    one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated
    fields, and preserves the provenance of both — a warning nobody reads is what produced the
@@ -1440,8 +1457,15 @@ arrives. The flag is not decorative: a `name-bound` row may not be auto-merged w
 `name-bound` rows by name — never as a count (`signal-ownership.md` R1).
 
 **The test this rule owes** is a REAL rename pair, not a synthetic one: a company whose draft and its
-RHP carry different names, found by probe over `documents` and `ipos` on production. If no such pair
-exists in our data, the test uses the pair the probe found on the exchange and the finding says so.
+RHP carry different names.
+
+**Measured, and there is no such pair in our data (F-102).** A probe folded every DRHP's document
+title against its row's `company_name`: all 19 fold to their own name, and the two apparent hits are
+BSE prospectuses mis-typed as `DRHP` and titled "Prospectus GID" — a document-typing defect, not a
+rename. So the test is written against a rename pair captured from the **exchange's** own filing
+history, the fixture records which company and which two filings, and this paragraph records that
+our own data could not supply one. A test built on a synthetic pair would prove only that the code
+does what the test author imagined.
 
 **One row is one offering (OD-35).** The identifier answers "same company". This answers "same
 offering", which is the question that actually decides whether to write into a row or create one.
@@ -1469,8 +1493,15 @@ measuring from the DRHP's filing date, which is wrong in the direction that dest
 observations routinely arrive three to twelve months after a draft is filed, so a DRHP filed in
 January 2025 whose observations came in November 2025 is valid until November 2026 — and the
 filing-date reading would have frozen its row in January 2026 and minted a duplicate. The observation
-date is published in SEBI's own "Processing Status of Draft Offer Documents"; where we do not hold
-it, the row is **not** lapsed and is listed as unknown rather than guessed. The clause is saved
+date is published in SEBI's own "Processing Status of Draft Offer Documents".
+
+**And we do not hold it anywhere.** `grep -in observation packages/shared/src/db/schema.ts` returns
+nothing: there is no column for it, and no field in the manifest. So this rule **cannot fire today**
+— which makes it, as written, a rule that can never fail, the exact class this round was fixing.
+Stated plainly rather than left as a nice sentence: the lapsed-draft rule needs a new field
+(`ipos.sebi_observation_date`, sourced from SEBI's processing-status page), it is listed in §4.6 with
+the other rules whose input does not exist, and until that field lands **no row is ever declared
+lapsed** — an unknown observation date means not lapsed, never a guess. The clause is saved
 at `probes/fixtures/sebi-icdr-observation-validity-2026-09-09.txt` with the URL it came from and
 what SEBI's own site did and did not serve on the day.
 
@@ -1850,6 +1881,21 @@ bit the corrigendum fixed".
 must move the band and must leave the lot size, the objects and the financials exactly as the RHP
 had them; a following RHP re-extraction must not move the band back.
 
+**And what the page shows while the corrigendum is still UNREAD (F-100).** This is not a corner
+case: the only corrigendum on production today belongs to an IPO that opens tomorrow, and its state
+is PENDING. A corrigendum exists precisely because a published number is wrong, so continuing to
+show the old number as confirmed is the one thing the design must not do.
+
+> From the moment a CORRIGENDUM document is **discovered** — before it is downloaded, before it is
+> read — every field it could touch is marked **being rechecked** on the page (the grey §2.11
+> marker), and the corrigendum is put at the **front of the extraction queue**, ahead of the
+> ordinary document budget.
+
+Which fields "it could touch" is unknown until it is read, so the honest scope is the fields of the
+document type it corrects: a corrigendum to a price-band advertisement marks the band, the lot and
+the dates. Over-marking for a few hours costs a grey line on a page; under-marking publishes a
+number we already know to be wrong.
+
 **Rule 3 — the prospectus is terminal, with one exception, and the exception needs a rule the
 precedence table cannot express.**
 
@@ -1864,6 +1910,11 @@ in terms the numbers cannot carry:
 - A corrigendum whose `filing_date` is **after** the prospectus's, and which names the prospectus,
   is treated as **precedence 100 + 1** for the fields it names — an amendment to the terminal
   document, not a lower-ranked filing.
+- **What decides book-built versus fixed-price is field 34, `ipo_details.issue_type`** — and it is
+  populated on **19 of 330 rows** (measured on production, 2026-09-09). So on 311 rows this rule
+  cannot currently be evaluated at all. Until the field is filled, an issue with `floor = cap` is
+  treated as fixed-price on that evidence alone, and the fallback is written down here rather than
+  left for an implementer to invent. §4.6 lists this with the other rules whose input is missing.
 - A corrigendum whose `filing_date` is **before** the prospectus is superseded by it in full, as
   the numbers already say.
 - **And "terminal" is not terminal for a fixed-price issue.** A fixed-price issue has no RHP: the
@@ -2241,6 +2292,74 @@ silently stops being extracted, which is exactly the class this whole design exi
 check is a handful of HTTP requests a week, and it fails *loudly*, on a shape, before any value on
 the site is wrong. It is registered under OD-42 with a named consumer, like every other check.
 
+### 4.6 Every rule names the field it needs, and what it does when that field is empty
+
+This section exists because four edge-case walkthroughs and a second review round arrived at the same
+conclusion from different directions, and it is the most important thing this design learned about
+itself:
+
+> **The rules are well written one at a time, and several of them cannot run at all, because the
+> field they key on is empty on production.**
+
+A rule whose input is absent does not fail loudly. It silently does nothing — which is
+indistinguishable from a rule that passes, and is exactly the "check that cannot fail" this document
+spends §4 warning about, arriving through a different door.
+
+#### What is actually populated, measured 2026-09-09 through the read-only tunnel
+
+| Field | The rules that key on it | Populated | Of |
+|---|---|---:|---:|
+| `documents.filing_date` | §2.5.5's three same-type and corrigendum rules; supersession ordering | **27** | 266 documents |
+| `ipo_details` (the row itself) | every rule about lot, band, issue type, application size | **25** | 330 IPOs |
+| `ipo_details.issue_type` | book-built vs fixed-price: §1.2 row 14's exemption, §2.5.5's terminal rule | **19** | 330 IPOs |
+| `ipo_details.lot_multiple` | the SME per-application invariant (§1.2 row 4, §1.11) | **8** | 330 IPOs |
+| SEBI observation date | §2.3.3.2's lapsed-draft rule | **0 — no column exists** | — |
+| `company_id` / a companies table | §2.3.3.2's IPO → FPO link | **0 — does not exist** | — |
+
+Read that as a whole and the pattern is unmistakable: **six rules, five missing inputs, and not one
+of them was noticed by reading the rules.** They were found by walking four real IPOs and by a
+reviewer asking, of each new sentence, "is its input populated?"
+
+#### The rule this design now imposes on itself
+
+> **Every normative rule states the field it reads, and what it does when that field is empty.**
+> "Nothing happens" is an acceptable answer only when it is written down. An unstated fallback is a
+> defect, and the reviewer or the walkthrough that finds it is doing the work the rule should have
+> done.
+
+Three fallbacks are settled here rather than left to an implementer:
+
+| Rule | Input | What it does when the input is absent |
+|---|---|---|
+| §2.5.5 same-type ordering | `filing_date` | falls back to **document precedence, then the exchange's own document id, then discovery order** — and records `ordered_without_filing_date` on the plan row, so the audit can count how often it happened rather than the ordering being silently arbitrary |
+| §1.2 row 14 / §2.5.5 terminal | `issue_type` | `floor = cap` is treated as fixed-price on that evidence alone; the row is flagged `issue_type_inferred` and the flag is what a reviewer looks for |
+| §2.3.3.2 lapsed draft | SEBI observation date | **no row is ever declared lapsed.** Unknown means not lapsed |
+
+And two are build items rather than fallbacks, because there is nothing to fall back to:
+
+- **`filing_date` backfill** — already item 17's job, and now named as a *prerequisite* of §2.5.5
+  rather than a nice-to-have. Ninety per cent of documents lack it.
+- **`company_id`** — §2.3.3.2's IPO → FPO link names a column that does not exist. Item 12 owns it.
+
+#### `working_days_inclusive`, defined once
+
+Rows 6 and 7 of §1.2 both count working days, and neither said what that means:
+
+> `working_days_inclusive(a, b)` = the number of days from `a` to `b` **inclusive of both ends**,
+> counting only days that are not a Saturday, not a Sunday, and not in the exchange holiday
+> calendar. Monday to Wednesday is **3**.
+
+The holiday calendar is reference data the schema already carries; a working-day rule that does not
+name its holiday source is not implementable, and the two rules that use this were written for a day
+without naming it.
+
+#### Why this is a section and not a finding
+
+A finding gets fixed once. This is a **question to ask of every rule**, including the ones written
+after today: *what does this read, is it there, and what happens when it is not?* The traceability
+check (§8.5, build item 20) is where it becomes mechanical — a rule id whose named input is a column
+that does not exist is a check CI can run, and it is the natural next arm of that check.
+
 ## 5. The open comments, answered inside the design
 
 ### 5.1 O-1 — when the pull runs, and why
@@ -2493,7 +2612,7 @@ OD-21 the rule becomes explicit, scoped and effective-dated:
 | Rule id | Applies to | Assertion | From |
 |---|---|---|---|
 | `lot-multiple-range` | `ipo_details.lot_multiple`, all segments | `1 <= value <= 10` | a minimum application is one or two lots; ten is a generous ceiling, and 107 is not a near miss |
-| `lot-multiple-sme` | `ipo_details.lot_multiple`, segment SME, effective 2025-01-01 onward | `value = 2` | the SME minimum application became two lots in 2025 |
+| `lot-multiple-sme` | `ipo_details.lot_multiple`, segment SME, effective **2025-07-01** onward | `value = 2` | NSE and BSE circulars of 2025-06-18, effective 2025-07-01: a minimum of two lots and an application value of at least ₹2,00,000. This table said 2025-01-01 while §1.11 said 2025-07-01 — six months apart, and the rows in between legitimately carry `lot_multiple = 1` |
 | `lot-multiple-not-lot-size` | `ipo_details.lot_multiple` | `value != ipos.lot_size` unless `lot_size <= 10` | the specific failure observed: the extractor copying the lot size into the multiple |
 
 The extractor emitting one into the other is a live defect, not a design question. It belongs to

@@ -75,13 +75,27 @@ try {
         // `NOT-A-REAL-FILE-xyz.ts` on such a line and the gate still printed "only paths that
         // resolve". A marker that any sentence can supply is not a marker.
         const rest = line.slice(m.index + m[0].length, m.index + m[0].length + 48);
-        const marked = /^[\s|—-]*\(?(NEW|LOCAL)\b/.test(rest) || /^[\s|]*\*\*(NEW|LOCAL)\*\*/.test(rest);
+        // The two markers are NOT interchangeable, and the first version of this fix made them so.
+        // A second-round reviewer renamed a real file to `NOT-A-REAL-FILE-xyz.ts` (LOCAL) and the
+        // gate passed: a regression the fix itself introduced, and worse than the hole it closed,
+        // because LOCAL is now a universal excuse. LOCAL is only ever valid for a path git actually
+        // ignores; NEW is for a path this item creates.
+        //
+        // The prefix class also no longer eats a dash. `[\s|—-]*` let "— NEW method" prose count as
+        // a marker, which is the same "any sentence can supply it" hole one step smaller.
+        const isNew = /^[\s|]*\(?\*{0,2}NEW\b/.test(rest);
+        const isLocal = /^[\s|]*\(?\*{0,2}LOCAL\b/.test(rest);
         // A path the repository deliberately IGNORES cannot exist in a fresh checkout, so this
         // check used to pass only on the machine that had run the probe. Found 2026-09-09: a card
         // cited `docs/design/probes/fixtures/pdf/`, which `.gitignore` excludes on purpose (PDFs
         // are never committed, OD-43), and the gate went red in every new worktree. An ignored path
         // is legitimate — it just has to say so, so a reader knows not to go looking for it.
-        if (marked) { excused++; continue; }
+        if (isNew || (isLocal && isIgnored(p))) { excused++; continue; }
+        if (isLocal && !isIgnored(p)) {
+          pathsMissing++;
+          problems.push(`${f}: cites \`${p}\` (LOCAL), but git does not ignore that path — LOCAL is only for a path .gitignore excludes. If this item creates the file, mark it (NEW).`);
+          continue;
+        }
         pathsMissing++;
         problems.push(isIgnored(p)
           ? `${f}: cites \`${p}\`, which .gitignore excludes — write \`${p}\` (LOCAL) so a reader knows it exists only on a machine that ran the probe`
