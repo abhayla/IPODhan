@@ -25,6 +25,7 @@
     "backfill:description:execute": "tsx src/scripts/backfill-description-sector.ts --execute",
     "ingest:historical": "tsx src/scripts/ingest-historical-ipo.ts",
     "build": "tsc && tsc-alias",
+    "type-check:scripts": "tsc -p tsconfig.scripts.json",
     "test": "vitest",
     "test:unit": "vitest --config vitest.config.ts",
     "test:integration": "vitest run -c vitest.integration.config.ts",
