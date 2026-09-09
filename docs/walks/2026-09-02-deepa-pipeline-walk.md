@@ -1405,3 +1405,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   recorded and marked in place: O-12 (five retail rupee columns) and O-13 (the grey-market premium
   versus the market-hours gate, where OD-19 read literally would undo the F-41 change approved on
   2026-09-08). Gate 19/19. Docs-only, no behaviour shipped.
+
+- **2026-09-09 16:06 IST — pull-model design delta, branch `docs/pull-model-delta`, docs-only.** The
+  twenty-six owner decisions of the afternoon folded into §0.0.1 in the owner's words and enforced by
+  four new checks (D17 signatures, D18 every check has a registered consumer, D19 every rule is
+  owned, D20 the document is clean UTF-8). Seven new sections: what the reader sees, the test corpus,
+  switch-over, running cost, how this ships, configuration over code, and how implementation proves
+  it followed the design. Twenty-two build cards, each carrying the rule ids it implements; 166
+  design rules indexed with stable ids, every one owned by a card or declared unclaimed with a
+  reason. Findings 18 open → 0 (114 total). Four adversarial reviews including a second round on the
+  fixes: the domain round found the SME minimum application shipped at half the legal floor, the
+  verification round broke five of the six checks it attacked, and the second round found a CRITICAL
+  regression the first fix had introduced. All fixed, and the check fixes are proved by a standing
+  mutation suite (4 caught, 0 missed). Four edge-case IPOs walked; three of the four stopped on the
+  same class — a rule keyed on a field production does not have — which is now §4.6, with the
+  populations measured: `filing_date` 27/266, `issue_type` 19/330, `lot_multiple` 8/330, and two
+  fields that do not exist at all. Measured, not remembered: the box is 100 GB and 7.81 TB/month, and
+  the whole design costs 0.018% of that bandwidth. Two owner forks recorded: O-14 (what the 19 OFS
+  rows should look like) and O-15 (whether a delayed exchange quote may be republished). Gate 23/23
+  at every commit. No behaviour shipped.

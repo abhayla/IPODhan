@@ -69,6 +69,42 @@ zero-match greps; and `job-cost.mjs`'s arithmetic against its own inputs.
 
 ---
 
+## 4. Second round — one fresh reviewer, on only the sections the fixes changed
+
+Run against `b4375d87`, reading only what the first round's fixes had touched. It returned **12
+findings, two of them CRITICAL**, and the first is the one that justifies the whole idea of a second
+round:
+
+| # | Sev | What | State |
+|---|---|---|---|
+| 1 | **CRITICAL** | **A regression the fix itself introduced.** The D16 marker check was placed before the `isIgnored` branch, so `(LOCAL)` excused ANY nonexistent path. The reviewer renamed a real file to `NOT-A-REAL-FILE-xyz.ts (LOCAL)` and the gate passed | fixed — LOCAL is valid only where git ignores the path; the dash prefix that let "— NEW method" prose count as a marker is gone |
+| 2 | **CRITICAL** | The price-band fix exempted only the upper bound for fixed price, so `floor < cap` and the new `1.05 x floor` lower bound both false-failed all 50 single-price SME rows | fixed — all three exempted together, in the rule cell |
+| 3 | MAJOR | The lot rule used the cap for mainboard and the floor for SME in one sentence; a book-built SME at band 95-100 with a lot of 1,000 false-fails | fixed — the cap in both |
+| 4 | MAJOR | The SME effective date was 2025-01-01 in §5.3.1 and 2025-07-01 in §1.11 | fixed — 2025-07-01, the circulars' date |
+| 5 | MAJOR | The lapsed-draft rule reads a SEBI observation date stored nowhere | fixed by admitting it: no column exists, the rule cannot fire, no row is ever declared lapsed until a field lands |
+| 6 | MAJOR | `working_days_inclusive` was named where it is used and defined nowhere; row 7 still said plain "working days" | fixed — defined once in §4.6 with its holiday source |
+| 7 | MAJOR | The book-built / fixed-price discriminator was never named, and is 94% empty | fixed — field 34, 19 of 330, with a stated fallback |
+| 8 | MAJOR | The SME per-application invariant reads `lot_multiple`, populated on 8 of 330 | fixed by stating it |
+| 9 | MAJOR | OD-32 left an unread PDF with no purge trigger at all — and while the reader is unwired, nothing ever reaches EXTRACTED | fixed — a third arm purges an exhausted or long-unread document with its failure recorded |
+| 10 | MINOR | D20 walked past mojibake at end of line | fixed |
+| 11 | MINOR | the mutation suite's restore claim was wider than its file list | fixed |
+| 12 | MINOR | the SME threshold used a strict `>` with no fixture | fixed — `>=`, matching "Rs 2 Lakhs or above" |
+
+**Sound and done, in the reviewer's own words:** the OFS rewrite, row 7's effective dating, §2.5.5's
+direction, the D15 git-readback ratchet, and D18's pinned count.
+
+## 5. The four walkthroughs, and the class they found
+
+| Case | IPO | Stopped at |
+|---|---|---|
+| Corrigendum | Veegaland Developers (the only CORRIGENDUM on production; opens 2026-09-10) | §2.5.5's three rules all key on `filing_date`, which 239 of 266 documents lack |
+| Fixed-price SME | Riyaasat Lifestyle (floor = cap = 106) | `floor < cap` is strict and fails; the exception needs `issue_type`, null on all 50 such rows |
+| Rename | Rays of Belief | two LISTED rows share one CIN today, and the merge rule only fires when an identifier ARRIVES — for these it arrived long ago |
+| FPO | none exists on production | the IPO → FPO link names a `company_id` column that does not exist |
+
+**Three of the four stopped for the same reason**, and the second-round reviewer reached it
+independently: a rule that reads a field production does not have. That is now §4.6.
+
 ## Still open after this round
 
 | Item | Why it is not closed |
