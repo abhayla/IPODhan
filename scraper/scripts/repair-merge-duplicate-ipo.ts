@@ -183,12 +183,12 @@ async function main(): Promise<number> {
   const survivor = (survivorResult as unknown as { rows: Record<string, unknown>[] }).rows?.[0];
 
   const redirectResult = await db.execute(
-    sql`select 1 from ipo_slug_redirects where old_slug = ${drop.slug} and ipo_id = ${KEEP} limit 1`
+    sql`select 1 from ipo_slug_redirects where old_slug = ${plan.drop.slug} and ipo_id = ${KEEP} limit 1`
   );
   const redirectExists = ((redirectResult as unknown as { rows: unknown[] }).rows?.length ?? 0) > 0;
 
   const sameDayResult = await db.execute(
-    sql`select slug from ipos where open_date = ${keep.openDate} and id <> ${KEEP}`
+    sql`select slug from ipos where open_date = ${plan.keep.openDate} and id <> ${KEEP}`
   );
   const sameDaySiblingSlugs = (
     (sameDayResult as unknown as { rows: { slug: string }[] }).rows ?? []
@@ -215,6 +215,11 @@ async function main(): Promise<number> {
     readback,
   });
 
+  if (!readbackOk) {
+    console.error('\nVERIFY FAILED — the write committed but a post-apply check did not confirm it. See VERIFY lines above.');
+    return 2;
+  }
+
   console.log('\nAPPLIED.');
   console.log(`   provenance rows written: ${applied.provenanceWritten.length}`);
   applied.provenanceWritten.forEach((p) =>
@@ -225,11 +230,6 @@ async function main(): Promise<number> {
   console.log(
     '\n   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).'
   );
-
-  if (!readbackOk) {
-    console.error('\nVERIFY FAILED — the write committed but a post-apply check did not confirm it. See VERIFY lines above.');
-    return 2;
-  }
   return 0;
 }
 

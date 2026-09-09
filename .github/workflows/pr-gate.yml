@@ -200,6 +200,14 @@ jobs:
         run: npm run test:unit
         working-directory: ./web
 
+      - name: Type-check scraper scripts (T-433 MAJOR-4 - scraper/tsconfig.json only ever covered src/**)
+        run: npm run type-check:scripts
+        working-directory: ./scraper
+
+      - name: Run shared package unit tests (T-433 MAJOR-5 - packages/shared test files had no runner)
+        run: npx vitest run
+        working-directory: ./packages/shared
+
       - name: Run scraper unit test suite (full, T-301)
         # T-268C/T-268F originally added ONLY two targeted regression files
         # here because the scraper workspace carried a baseline of 44
