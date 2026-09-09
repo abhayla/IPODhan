@@ -105,6 +105,8 @@ it by assuming.
 | OD-50 | *"Avoid lot of deployments. If there is any urgent code change, it should happen the same day in the evening. If it is a normal code change, then it can be delayed for a week, or maybe it can happen on weekends."* | 2026-09-09 | §7.5 | the branching model and the two deploy cadences are stated, and the release grouping lists every build item (D17) |
 | OD-51 | *"For settings, we should use customization not code changes. When I said change the source of the field from currently one to three, you should just make a small customization change, not a code change. Everything is properly modularized and can easily be updated without affecting the whole code."* | 2026-09-09 | §7.6 | every tunable named in the design appears in the configuration schema, and the module map with its dependency rule is stated (D17) |
 | OD-52 | *"How will the implementation prove it has followed this design, rule by rule?"* — every normative rule gets an id, every build card lists the ids it implements, every test declares them, and CI refuses a PR that breaks the chain | 2026-09-09 | §8.5 | every R-id in `docs/design/rules.json` is claimed by at least one build card, with zero orphans (D19) |
+| OD-53 | *"Go with your recommendation for O-14"* — the 19 offer-for-sale rows are SEBI's OFS-through-stock-exchange mechanism, not the OFS component of a public issue; the 19 rows already-listed-public-sector names with no lot size and no document are frozen as non-IPO listings with a notice (reusing the OD-8 withdrawn-page freeze mechanism), out of phase 1, so the pull walk spends no document budget on them | 2026-09-09 | §1.11 | §1.11's OFS row states the freeze, not a page-shape build, and no section still marks O-14 provisional |
+| OD-54 | *"Yes I accept 15-minute delayed prices from the exchanges' public endpoints, with the 90-day windows"* and *"go with your recommendation for O-15"* — post-listing prices are 15-minute-delayed values polled from the free NSE/BSE public quote endpoints, labelled "delayed", for 90 days after listing then frozen with the last price and its date; no broker feed on the public site; the licensing caveat stays recorded | 2026-09-09 | §1.9, §2.1 | §2.1's post-listing price rule is stated as decided, the licensing caveat sentence survives, and no section still marks O-15 provisional |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -112,15 +114,16 @@ These are owner comments the design does **not** answer for him. Nothing here de
 particular answer, and **D10c fails if any section writes one of them up as settled.** They are in
 one place so the list of what needs him is not scattered through a tracker.
 
-**Five of them are no longer here.** O-1 (cadence), O-2 (money unit) and O-3 (partial failure) were
+**Seven of them are no longer here.** O-1 (cadence), O-2 (money unit) and O-3 (partial failure) were
 answered by the owner on the morning of 2026-09-09 and moved to §0.0.1 as OD-19, OD-20 and OD-21.
 **O-12** (the five retail rupee columns) and **O-13** (the grey-market premium and the market-hours
-gate) were answered that afternoon and moved as **OD-48** and **OD-28**. A row leaves
-this table only by being decided, never by being assumed.
+gate) were answered that afternoon and moved as **OD-48** and **OD-28**. **O-14** (the OFS page
+shape) and **O-15** (the post-listing price licence question) were answered that evening and moved
+as **OD-53** and **OD-54**. A row leaves this table only by being decided, never by being assumed.
 
 **How a new fork gets added (OD-24).** When work on this design meets a decision that is genuinely
 the owner's — irreversible, outward-facing, a change to the public product, or two valid builds with
-no best-practice winner — it is added here as `O-12` onward with the question in one sentence, the
+no best-practice winner — it is added here as `O-16` onward with the question in one sentence, the
 recommended answer and the reason. Every section that depends on it opens with **PROVISIONAL on
 O-nn**, and the work continues on the recommendation rather than stopping. Check **D14** ties the two
 together: a marker with no row, or a row this run added with neither a marker nor the words "blocks
@@ -129,8 +132,6 @@ nothing", fails the gate.
 | id | The comment, or the fork | Status / recommendation | Why it is still his |
 |---|---|---|---|
 | O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in the phase-1 build uses a language model, so there is nothing to approve yet. |
-| O-14 | The 19 rows whose `offering_type` is `OFS` may be either of two different things: the offer-for-sale COMPONENT of a public issue (a property of an IPO, already measured by `ipo_details.ofs_issue`), or SEBI's OFS-through-stock-exchange mechanism for an already-listed company — a one- or two-day auction with a floor price, no offer document, no lot size and no anchor round. Probe `probes/ofs-rows.mjs` settles WHICH they are. What it cannot settle is what the site should then do: model the exchange mechanism as its own offering type with a much smaller field set and its own page shape, or keep it inside the IPO shape with most fields marked NOT_APPLICABLE. | **RECOMMENDED: let the probe decide the fact, then model the exchange mechanism as its own type with roughly 35 applicable fields rather than 205.** A page that shows a price band, a lot size and an anchor book for an offering that has none of them is wrong in a way a reader notices immediately. §1.11 is written PROVISIONAL on this. · 2026-09-09 | It changes what a whole class of page looks like, and how many rows the coverage numbers are measured against — a product call, not an implementation detail |
-| O-15 | The design now shows a post-listing price on every IPO page, taken every 15 minutes from NSE's and BSE's free public quote endpoints and labelled "delayed". Fetching them is free; **republishing them may not be permitted**. NSE's Data Sharing and Usage Policy forbids a subscriber from redistributing market data except under an agreement, and nseindia.com's terms of use prohibit automated extraction and redistribution. The question is whether a 15-minute-delayed, dated, labelled last price on a public page counts as redistribution, and if so what licence covers it. | **RECOMMENDED: proceed with the 15-minute delayed, dated, clearly-labelled price while you check the licence position**, because a delayed and attributed quote is the lowest-risk form and the alternative — no price at all after listing — removes the most-asked number on a listed IPO's page. §2.1 is written PROVISIONAL on this. · 2026-09-09 | You are a Zerodha Authorised Person bound by the NSE Code of Advertisement; a redistribution question is a compliance call, not an engineering one, and the cost of being wrong is not a bug report |
 
 ### 0.0.3 The standard of proof this document is held to (OD-25)
 
@@ -806,7 +807,7 @@ An earlier draft wrote it as `lot_multiple × lot × floor ≥ ₹1,00,000`, whi
 | **SME on NSE** | 61 | Mirror image: `listing_exchanges = ["NSE"]`, **BSE cannot be rank 2 or 3**. Same 2-lot rule. |
 | **SME on both** | 5 | Unusual for SME. Treat as mainboard for ranking, but flag for review — this is more likely a data error than a genuine dual listing, and §4 gives it a check. |
 | **Rights issue** | 8 | No DRHP, no price band advertisement, no anchor round, no lot size in the IPO sense. Rank 1 is the letter of offer; where no document type exists for it, rank 1 falls to BSE. Fields 93–109, 131–137 are `NOT_APPLICABLE`, not gaps. **Three facts a rights-issue reader needs most are not among the 240 fields at all (F-72): the RECORD DATE, the ENTITLEMENT RATIO (for example 3 for every 5 held) and the rights-entitlement trading window.** Named here as a gap this design surfaces rather than closes — the same treatment the NCD row gets — with the letter of offer as rank 1 and the exchange's rights-issue circular as rank 2 when they are added. **The bidding-window check does not apply**: §1.2 row 6's `close ≤ open + 10 working days` is SEBI ICDR Reg 46, a PUBLIC-issue rule; a rights issue is legitimately open 7–30 calendar days (F-71). |
-| **OFS** | 19 | **MEASURED 2026-09-09 by `probes/ofs-rows.mjs`, and the answer is the exchange mechanism** (F-70). Of the 19 rows: **0 have a lot size, 0 have any document at all, 0 have a fresh issue, 0 have `ofs_issue` set, and exactly 1 of the 19 has a price band.** **The counts alone would NOT settle it**, and a review was right to say so: zero documents is partly our own coverage gap (`filing_date` is populated on 24 of 256 documents), and "no fresh issue" is equally true of a 100%-OFS public issue, which is common. What settles it is the **company names** — Coal India, BHEL, NHPC, NLC India, Hindustan Zinc, IRFC, IndiGrid and three public-sector banks, **every one already listed** when the row was created, which a public issue by definition is not. Two further tests belong in the build and are named here so they are not forgotten: the company has a **prior listing date or ISIN**, and an exchange OFS runs **T-day non-retail, T+1 retail**, so `close = open + 1`. That is SEBI's OFS-through-stock-exchange — a promoter of an already-LISTED company selling in a one- or two-day auction with a floor price — not the offer-for-sale COMPONENT of a public issue, which is what field 36 `ipo_details.ofs_issue` measures. **Two sentences this row used to carry are therefore false and are gone**: "`issue_size = ofs_issue`" (no row has `ofs_issue` at all) and the implication that a document ladder applies (no row has a document). The price band, lot size, anchor and allotment fields are `NOT_APPLICABLE` for this type, not gaps. **One row is an outlier and is not swept up with the rest**: HMA Agro Industries carries a price band but no lot size and no document, so it is reviewed individually rather than typed by the majority — 18 of 19 is a finding, not a rule. **PROVISIONAL on O-14** for the remaining question, which is a product one: whether these get their own page shape with roughly 35 applicable fields instead of 205. |
+| **OFS** | 19 | **MEASURED 2026-09-09 by `probes/ofs-rows.mjs`, and the answer is the exchange mechanism** (F-70). Of the 19 rows: **0 have a lot size, 0 have any document at all, 0 have a fresh issue, 0 have `ofs_issue` set, and exactly 1 of the 19 has a price band.** **The counts alone would NOT settle it**, and a review was right to say so: zero documents is partly our own coverage gap (`filing_date` is populated on 24 of 256 documents), and "no fresh issue" is equally true of a 100%-OFS public issue, which is common. What settles it is the **company names** — Coal India, BHEL, NHPC, NLC India, Hindustan Zinc, IRFC, IndiGrid and three public-sector banks, **every one already listed** when the row was created, which a public issue by definition is not. Two further tests belong in the build and are named here so they are not forgotten: the company has a **prior listing date or ISIN**, and an exchange OFS runs **T-day non-retail, T+1 retail**, so `close = open + 1`. That is SEBI's OFS-through-stock-exchange — a promoter of an already-LISTED company selling in a one- or two-day auction with a floor price — not the offer-for-sale COMPONENT of a public issue, which is what field 36 `ipo_details.ofs_issue` measures. **Two sentences this row used to carry are therefore false and are gone**: "`issue_size = ofs_issue`" (no row has `ofs_issue` at all) and the implication that a document ladder applies (no row has a document). The price band, lot size, anchor and allotment fields are `NOT_APPLICABLE` for this type, not gaps. **One row is an outlier and is not swept up with the rest**: HMA Agro Industries carries a price band but no lot size and no document, so it is reviewed individually rather than typed by the majority — 18 of 19 is a finding, not a rule. **DECIDED (OD-53, 2026-09-09): these 18 rows — already-listed public-sector names with no lot size and no document — are frozen as non-IPO listings with a notice, reusing the OD-8 withdrawn-page freeze mechanism (the page stays, it says what it is, and it points at the listed company), out of phase 1.** The pull walk spends no document budget on them; they leave the §4 denominators the same way a WITHDRAWN row does. HMA Agro Industries is reviewed individually rather than frozen with the majority, per the outlier note above. |
 | **NCD** | 7 | Debt. Price band, EPS, PE, promoter holding and peer comparison are all `NOT_APPLICABLE`. Its own prospectus is rank 1 for coupon, tenor and rating — **none of which we currently store**, which is a gap this design surfaces rather than closes. |
 | **INVITS / REITS** | 5 | `segment` is NULL for all 5 today. Unit-based, not share-based; lot size and face value do not apply in the same sense. Out of the pull model's first release — say so explicitly rather than letting them fail every check. |
 | **BUYBACK / TENDER** | 17 | Corporate actions, not offerings. They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 `offering_type` is the guard; §4.6 gives it a check. |
@@ -1010,15 +1011,16 @@ endpoints, with the 90-day windows."*
   price with no as-of stamp is the defect this rule exists to prevent.
 - **What is refused, and why:** a broker feed (Zerodha Kite, Angel One SmartAPI, Upstox) is licensed
   for the account holder's own use. No broker feed reaches the public site.
-- **PROVISIONAL on O-15 — and this is a legal question, not an engineering one.** A review pointed
-  out that the licence trigger is **redistribution**, not where the number came from: NSE's Data
-  Sharing and Usage Policy says a subscriber "shall not be permitted to redistribute any Market
-  Data, except as agreed in the Relevant Agreement", and nseindia.com's terms of use prohibit
-  automated extraction and redistribution. **Free to fetch is not free to republish.** An earlier
-  draft asserted the free endpoints were fine; that assertion is withdrawn and recorded as O-15,
-  because the owner is a Zerodha Authorised Person and the cost of being wrong is not a bug report.
-  The design proceeds on the recommendation that a 15-minute-delayed price, labelled and dated, is
-  the lowest-risk form — and it is stated as an open fork, not as permission.
+- **DECIDED (OD-54, 2026-09-09) — and the caveat stays recorded, because it is a legal question, not
+  an engineering one.** A review pointed out that the licence trigger is **redistribution**, not
+  where the number came from: NSE's Data Sharing and Usage Policy says a subscriber "shall not be
+  permitted to redistribute any Market Data, except as agreed in the Relevant Agreement", and
+  nseindia.com's terms of use prohibit automated extraction and redistribution. **Free to fetch is
+  not free to republish.** An earlier draft asserted the free endpoints were fine; that assertion was
+  withdrawn and recorded as O-15. The owner's words: *"yes I accept 15-minute delayed prices from
+  the exchanges' public endpoints, with the 90-day windows"* — accepting the licensing caveat
+  knowingly, as a Zerodha Authorised Person. The design proceeds on the 15-minute-delayed, labelled
+  and dated price on that basis, not on an open fork.
 
 #### Why these numbers, and what they cost
 
@@ -3241,7 +3243,7 @@ The difference matters more than the page count, and this round moved several ro
 | **Measured this round** | 27 unreachable matrix keys of 77, 22 of them orphans (§0.6); 149 of 240 fields empty on a live mainboard IPO (walkthrough); the ten-a-night arithmetic behind §7.3 item 6 | Generated, not typed. Where a measured number contradicted an earlier written one, the measurement won — four times |
 | **Read from the code, cited** | the cadence, the budget derivation, the write path, the 32-of-240 consolidation gap | 30 citations, each re-resolved by D11 to a file and a line that exists |
 | **Judgement** | the build ORDER, the tier sizes, where a re-read stops, what counts as a conflict, which of two owner statements governs when they collide | Argued in place, never measured. This is the part worth disagreeing with |
-| **Provisional on an owner fork** | §1.11's OFS page shape (O-14); §2.1's post-listing price licence question (O-15) | Written on a stated recommendation, marked in place, and D14 fails if a marker loses its row |
+| **Provisional on an owner fork** | O-7 (the language-model constraint) — nothing else remains provisional; O-14 and O-15 were decided this evening (OD-53, OD-54) | Written on a stated recommendation, marked in place, and D14 fails if a marker loses its row |
 
 **The part with the worst track record is still claims about our own code**, and this round added to
 the evidence for that. Four separate statements in this document were wrong about our own code and
@@ -3265,14 +3267,13 @@ where it applies:
 | | Recommendation the design is written on | Blocks |
 |---|---|---|
 | **O-7** language model | standing constraint; nothing in phase 1 uses one | nothing |
-| **O-14** OFS page shape | model the exchange mechanism as its own type, ~35 applicable fields | how the 19 OFS rows are typed and counted |
-| **O-15** post-listing price licence | proceed with the 15-minute delayed, labelled price while the licence position is checked | the post-listing price shown on every listed IPO's page |
 
-Five of the comments that were open a day ago are now decisions in §0.0.1, each with a check
+Seven of the comments that were open a day ago are now decisions in §0.0.1, each with a check
 enforcing it: the cadence, the money unit and partial failure in the morning (OD-19, OD-20, OD-21),
-and the five retail rupee columns and the grey-market premium in the afternoon (OD-48, OD-28). O-7,
-O-14 and O-15 are the forks still left, and none of them blocks phase 1 — each is written on a
-recommendation and marked in place per OD-24.
+the five retail rupee columns and the grey-market premium in the afternoon (OD-48, OD-28), and the
+OFS page shape and the post-listing price licence question that evening (OD-53, OD-54). **O-7 is the
+only fork still left**, and it does not block phase 1 — it is written on a recommendation and marked
+in place per OD-24.
 
 #### The one thing that blocks a merge, and it is not a design question (OD-49)
 
