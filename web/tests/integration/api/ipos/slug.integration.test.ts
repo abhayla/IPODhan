@@ -34,6 +34,7 @@ import { GET } from '@/app/api/ipos/[slug]/route';
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import type { IPODetailResponse } from '@/lib/db/types';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 // ==================== TEST DATA ====================
 
@@ -253,11 +254,15 @@ async function seedTestData() {
       },
     ]);
 
-    // Insert peer companies data (from peerCompanies table)
+    // Insert peer companies data (from peerCompanies table). Item 01 slice
+    // s1b (R-158): normalizedName is the row key slice s2's
+    // UNIQUE (ipo_id, normalized_name) constraint enforces — derive it via
+    // the same shared rowKeyForName function every write path uses.
     await db.insert(peerCompanies).values([
       {
         ipoId: testIpoId,
         companyName: 'Dominos India',
+        normalizedName: rowKeyForName('Dominos India')!,
         sector: 'Food Delivery',
         isListed: true,
         peRatio: '85.00',

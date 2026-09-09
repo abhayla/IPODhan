@@ -20,6 +20,7 @@ config({ path: envPath });
 import { db } from '../lib/db/index';
 import { ipos, peerCompanies } from '../lib/db';
 import { sql } from 'drizzle-orm';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 // Sample peer company names by sector
 const PEER_TEMPLATES = {
@@ -118,9 +119,21 @@ async function main() {
         for (let i = 0; i < numPeers; i++) {
           const metrics = generatePeerMetrics();
 
+          // Item 01 slice s1b (R-158): the row key depends only on the
+          // name — the same function every scraper write path uses. A
+          // curated `PEER_TEMPLATES` name is never blank, but a null/skip
+          // guard stays here for consistency and to catch a future
+          // template change that produces an empty name.
+          const normalizedName = rowKeyForName(peerNames[i]);
+          if (normalizedName === null) {
+            console.warn(`✗ Skipping peer with no name identity for IPO ${ipo.companyName}`);
+            continue;
+          }
+
           await db.insert(peerCompanies).values({
             ipoId: ipo.id,
             companyName: peerNames[i],
+            normalizedName,
             sector: ipo.sector,
             isListed: true,
             peRatio: metrics.peRatio.toString(),

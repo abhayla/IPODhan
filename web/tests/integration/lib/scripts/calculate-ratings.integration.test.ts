@@ -15,6 +15,7 @@ import { FinancialDataRepository } from '@/lib/repositories/financial-data-repos
 import { calculateIPORating } from '@/lib/services/rating-service';
 import * as schema from '@/lib/db';
 import { eq } from 'drizzle-orm';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 // ==================== TEST SETUP ====================
 
@@ -134,13 +135,20 @@ async function createTestFinancialData(
  * Create test peer companies
  */
 async function createTestPeerCompanies(ipoId: string, peRatios: number[]) {
-  const peers = peRatios.map((peRatio, index) => ({
-    ipoId,
-    companyName: `Test Peer ${index + 1}`,
-    sector: 'Technology',
-    isListed: true,
-    peRatio: peRatio.toString(),
-  }));
+  // Item 01 slice s1b (R-158): normalizedName is the row key slice s2's
+  // UNIQUE (ipo_id, normalized_name) constraint enforces — derive it via
+  // the same shared rowKeyForName function every write path uses.
+  const peers = peRatios.map((peRatio, index) => {
+    const companyName = `Test Peer ${index + 1}`;
+    return {
+      ipoId,
+      companyName,
+      normalizedName: rowKeyForName(companyName)!,
+      sector: 'Technology',
+      isListed: true,
+      peRatio: peRatio.toString(),
+    };
+  });
 
   return await db.insert(schema.peerCompanies).values(peers);
 }
