@@ -134,7 +134,7 @@ the flag exists only to decouple deploy from enable.
   fixture through `run()` returns `{"error": "unknown doc type RATIOS_BASIS_ISSUE_PRICE"}` at
   `main()`'s validation (line 2681-2682) before `run()` is ever reached, so the red state is trivial
   and mechanical, not a subtle miss.
-- **Fixtures needed, not yet in the repo.** `docs/design/probes/fixtures/pdf/` already gitignores
+- **Fixtures needed, not yet in the repo.** `docs/design/probes/fixtures/pdf/` (LOCAL — the directory exists only on a machine that has run the probe; .gitignore excludes it on purpose) already gitignores
   raw PDFs; the two documents the probes already fetched —
   `nsearchives.nseindia.com/content/ipo/RATIOS_ARCIL.zip` (asset-reconstruction-company-india-ltd)
   and `RATIOS_VINOD.zip` (vinod-texworld-ltd) — are the two real fixtures to extract from and
@@ -185,3 +185,14 @@ already-written bad rows would need the same per-field correction any other bad 
 **Tier B** (per the task brief and design §7.1: "medium, independent" — ordinary app code, no
 deploy/auth/migration/deletion). `Budget: 45 min wall-clock, 90 tool calls` for implementation
 (fixture transcription + parser + tests + review) — this card itself is Tier C design work.
+
+## Rules implemented
+
+None. This item implements no numbered rule of the design — it is scaffolding for
+the items that do. Stated explicitly rather than left blank, because an empty list and
+a forgotten list look identical.
+
+## Known gaps
+
+None recorded yet. A finding this item owns but does not close is written here, with its
+id and the reason — that is what stops "zero open findings" being reached by dropping one.

@@ -1,13 +1,85 @@
 {
   "generated_by": "docs/design/generate-rule-index.mjs",
-  "generated_at": "2026-09-09T09:46:19.782Z",
+  "generated_at": "2026-09-09T10:01:41.159Z",
   "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
   "counts": {
-    "live": 147,
-    "retired": 1
+    "live": 156,
+    "retired": 11
   },
-  "next_id": 149,
+  "next_id": 168,
   "rules": [
+    {
+      "id": "R-151",
+      "hash": "c4ccfac250da",
+      "section": "0.5.1 What is kept, and for how long (OD-32, owner 2026-09-09 — replaces OD-23)",
+      "kind": "table-normative",
+      "text": "The row in documents — URL, type, filing date, sha256, the exchange's own document id — the life of the IPO row — it is how we know we already have this document and must not fetch it again",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-152",
+      "hash": "868b2b77e81c",
+      "section": "0.5.1 What is kept, and for how long (OD-32, owner 2026-09-09 — replaces OD-23)",
+      "kind": "prose",
+      "text": "- LIVE_WINDOW_DAYS_AFTER_LISTING (document-state-machine.ts:749) stops gating document work. An IPO's documents are workable for the life of the IPO row. - The purge clock changes its anchor. Today decidePurge (document-store.ts:264) deletes at close_date + 7 days — a date that has nothing to do with whether we ever read the file. Under OD-32 it deletes at last successful extraction + 7 days, and it never deletes a document that has no successful extraction yet. - Nothing re-downloads an already-extracted document. After the seven days the PDF is gone on purpose, and a design section that asks for it back is a defect, not a feature — that is exactly what D17 fails on.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-153",
+      "hash": "8a2637d8ca60",
+      "section": "1.1 How to read it",
+      "kind": "prose",
+      "text": "Class counts across the 240, computed from the field list rather than estimated: D 162 · T 10 · X 13 · M 4 · W 1 · C 13 · I 37 = 240 (authoritative count, from the generated spec in Appendix A — an earlier estimate in this section was slightly off and Appendix A wins). The pull loop walks the D, T, X, W and M fields — 190 of the 240. The 10 T fields are the named exception E-1 (§1.2.1) and are the only fields excluded from the 100% rule. The 13 C fields are recomputed after their inputs settle (2 of them — the anchor lock-in dates — moved here from T, F-22). The 37 I fields are written by the pipeline itself and are never sourced.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-154",
+      "hash": "c1da99d44b30",
+      "section": "1.1 How to read it",
+      "kind": "prose",
+      "text": "Document type order inside rank 1, inherited from 9db4529d: for price-dependent fields PRICE_BAND_AD / CORRIGENDUM > RHP > PROSPECTUS > DRHP; for final post-issue facts PROSPECTUS > CORRIGENDUM > PRICE_BAND_AD > RHP > DRHP. A newer document can heal an older one; an older draft can never overwrite a final advertisement.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-155",
+      "hash": "a16c8da79216",
+      "section": "1.1 How to read it",
+      "kind": "prose",
+      "text": "Source labels: DOC = the IPO's own offer document, best available type · NSE · BSE · CG = Chittorgarh · MC = Moneycontrol · IG = InvestorGain (grey market) · REG = the registrar's own site · ADMIN = manual, always above every rank.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-166",
+      "hash": "26639a8533b8",
+      "section": "1.11 Exceptions by IPO type, gathered",
+      "kind": "table-normative",
+      "text": "SME on BSE — 106 — listing_exchanges = [\"BSE\"]. NSE cannot be rank 2 or 3 for any field — there is no NSE payload. Minimum application is 2 lots for issues opening on or after SEBI's 2025 SME framework, recorded in ipo_details.lot_multiple; before that date it is 1 lot, and 167 SME rows on production predate the rule (F-67), so the rule carries an effective date exactly as §5.3 requires of every validation rule. The check is stated ONCE, here and in §1.2 row 4, as lot_multiple × lot × floor ≥ ₹1,00,000 with lot_multiple read from the row rather than assumed — the two earlier phrasings differed by a factor of two, and the weaker one (2 × lot × floor ≥ ₹1,00,000 with a ₹50k floor) could never fail on a real SME issue (F-66). Applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the cap ≤ 1.2 × floor check is skipped and floor = cap is expected. Designated exchange is always BSE.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-157",
+      "hash": "d8aecb93dfcd",
+      "section": "1.11.1 Retired source: Moneycontrol (owner decision, 2026-09-09)",
+      "kind": "prose",
+      "text": "1. Now, in this design: zero ranks, and no capability entry. The pull loop never asks it. 2. Next: stop scheduling the scraper. This is where the saving is — one fewer source fetched every aggregator run. 3. Not done: the MONEYCONTROL value stays in the scraper_source enum, and the ~180 existing provenance rows stay exactly as they are. Those rows are the historical truth of where a value came from — rewriting them would be falsifying provenance. They will be superseded naturally as the pull loop re-sources those fields from the document. 4. Kept, and separate: moneycontrol-rss.ts reads an IPO news feed, not IPO data. It is a different thing that happens to share a domain name and is untouched by this decision.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-158",
+      "hash": "9c313cadd3a7",
+      "section": "1.12 Retired fields — never write these (owner decision, 2026-09-08)",
+      "kind": "prose",
+      "text": "1. Now, in this design: all 25 are marked never write. No plan row, no rank, no config entry. 2. Next release, as its own small change: the 19 stop appearing in the API response. This is near-zero risk and not really a breaking change — a field that is null on every IPO is already functionally absent to every consumer. A reader gets null today and undefined afterwards; both are falsy and every consumer already handles the empty case, because that is all it has ever received. Only code testing for the key's existence rather than its value would notice, and the owner confirmed nothing outside this repo reads this API. 3. Later, after phase 1: drop the columns, behind a per-table consumer audit. That is the part that carries real risk — listing_performance.current_price is populated and shares a name with the dead ipos.current_price, so a name-based grep cannot tell them apart.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
     {
       "id": "R-001",
       "hash": "453d1f515995",
@@ -198,11 +270,11 @@
       "retired": false
     },
     {
-      "id": "R-022",
-      "hash": "ba1e32b73916",
+      "id": "R-159",
+      "hash": "3b10a68e55ab",
       "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
       "kind": "table",
-      "text": "Image-only pages go to OCR, marked — a page whose extractable text is below a density floor is treated as a scan: it is routed to OCR, every value taken from it is stamped ocr with a lower confidence, and a field whose only source is an OCR page is never allowed to win a disagreement against a text page — one scanned annexure per SME batch is the norm; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
+      "text": "Image-only pages go to OCR, marked — already built. scraper/scripts/ocr_pages.py exists and extract_filing.py's run() already takes an ocr_confidence map keyed by page (scraper/scripts/extract_filing.py:2590). What this design ADDS is one rule on top of it: a field whose only source is an OCR page never wins a disagreement against a text page — the OCR path is exercised today; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -216,11 +288,11 @@
       "retired": false
     },
     {
-      "id": "R-024",
-      "hash": "d40df10b187e",
+      "id": "R-160",
+      "hash": "a8199afb215b",
       "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
       "kind": "table",
-      "text": "Content is sniffed before it is stored — the first bytes must be %PDF (or the zip magic) — a 200 response carrying an HTML error page is not stored, and the cause is recorded against the attempt — today contentType is captured (document-discovery-runner.ts:622) but nothing asserts the body actually is a PDF, so an exchange error page can be stored as a filing",
+      "text": "Content is sniffed before it is stored — already built, and better than this design first claimed. verifyDownload (scraper/src/services/document-download-verifier.ts:274) refuses an HTML body, refuses an unacceptable content-type, unwraps a zip to its PDF member, and requires the %PDF magic bytes (document-download-verifier.ts:331) — with a size floor re-applied after unzipping, because a 60 KB zip can unpack to a 2 KB stub. Nothing is added here — the first draft of this section said \"nothing asserts the body actually is a PDF\". That was false, and the build card for item 22 caught it",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -333,11 +405,11 @@
       "retired": false
     },
     {
-      "id": "R-037",
-      "hash": "aaac1be76ee7",
+      "id": "R-167",
+      "hash": "60e53ed7d6c8",
       "section": "2.3.3 Binding a list row to an IPO (F-46)",
       "kind": "prose",
-      "text": "1. The normaliser must fold corporate-form words — Company/Co., Corporation/Corp., Industries/Inds. — not only the legal suffix. 2. Duplicate detection is a check that runs at discovery, on a deliberately stricter key than the binding key. A sweep with such a key over production finds exactly one duplicate group today: this one. Binding and de-duplication want opposite error biases, so they must not share a key.",
+      "text": "1. The normaliser must strip corporate-form words as WHOLE WORDS, wherever they sit — not only in trailing position. This is a correction of an earlier reading of this design (F-60): company and co are already in the normaliser's list (T-293 added them), so the cause of the ARCIL collision failure was never a missing word. Verified live in Node on 2026-09-09: \"ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED\" normalises to asset reconstruction company india, and \"Asset Reconstruction Co.(India) Ltd.\" to asset reconstruction co india — they still fail to collide. The reason is pipeline order: the parenthetical (India) is never made trailing before the company|co suffix regex runs, so the word is not in suffix position when the regex looks for it. The fix is the whole-word strip already shipped in scripts/lib/repair-invariants/duplicate-ipo-rows.mjs, not another word in a list that already contains it. 2. Duplicate detection is a check that runs at discovery, on a deliberately stricter key than the binding key. A sweep with such a key over production finds exactly one duplicate group today: this one. Binding and de-duplication want opposite error biases, so they must not share a key.",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -756,11 +828,11 @@
       "retired": false
     },
     {
-      "id": "R-084",
-      "hash": "331975b7f450",
+      "id": "R-165",
+      "hash": "a7effbf6b26e",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
       "kind": "prose",
-      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:141) — one query per page, not one per field. - A stale value says so, in grey: \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under: the detail page's existing key, getIPODetailKey (web/lib/cache/cache-keys.ts:47), at CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16) — the provenance line is part of the page payload, not a second fetch.",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:143) — one query per page, not one per field. - A stale value says so, in grey: \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/ — the per-id route handler, line 298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16); the provenance line is part of the page payload, not a second fetch.",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -783,6 +855,15 @@
       "retired": false
     },
     {
+      "id": "R-162",
+      "hash": "2c190fbfe96a",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "An automatic merge (§2.3.3.1) retires a slug. Three rules — and after reading the code for the item-21 build card, all three are already true. This subsection is therefore a statement of what must not regress, not a list of work. That is worth saying plainly: a design that invents work already done costs an implementer a day and costs the reader their trust in the rest of it.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
       "id": "R-087",
       "hash": "9eb14c71ae27",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
@@ -792,20 +873,20 @@
       "retired": false
     },
     {
-      "id": "R-088",
-      "hash": "64c35299d6f7",
+      "id": "R-163",
+      "hash": "df9f8e860c73",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
       "kind": "table",
-      "text": "The sitemap contains live rows only — already true, and worth stating. web/app/sitemap.ts reads every IPO (limit 1000) and excludes any slug present in ipo_slug_redirects (web/app/sitemap.ts:93). Its own revalidate is 900 (web/app/sitemap.ts:21)",
+      "text": "The sitemap contains live rows only — already true, and worth stating. web/app/sitemap.ts reads every IPO (limit 1000) and excludes any slug present in ipo_slug_redirects (web/app/sitemap.ts:99). Its own revalidate is 900 (web/app/sitemap.ts:21)",
       "first_seen": "2026-09-09",
       "retired": false
     },
     {
-      "id": "R-089",
-      "hash": "5d43e570b5a2",
+      "id": "R-164",
+      "hash": "60b6dfd9e268",
       "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
       "kind": "table",
-      "text": "A canonical tag on every IPO page — DOES NOT EXIST. Eight other pages set alternates.canonical (for example web/app/ofs/page.tsx:69); the IPO detail page sets none. After a merge, the survivor page has nothing telling a search engine which URL is the real one",
+      "text": "A canonical tag on every IPO page — already true. web/lib/seo/metadata.ts:203 sets alternates.canonical to /ipos/<slug> for every IPO page, and the detail page's generateMetadata (web/app/ipos/[slug]/page.tsx:130) uses it. A first draft of this section said it did not exist, because it grepped the page file rather than the metadata helper the page calls — absence in one file is not absence. This item does no work here",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -882,11 +963,11 @@
       "retired": false
     },
     {
-      "id": "R-098",
-      "hash": "790c42a8aad8",
+      "id": "R-149",
+      "hash": "fd875242230b",
       "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
       "kind": "table",
-      "text": "A header on every fixture — the URL, the fetch date, the IPO it belongs to, and that IPO's identifier. In JSON as a _provenance object; in HTML as a leading comment. A fixture with no header fails the corpus check",
+      "text": "A header on every fixture — already the convention and already gated: a sibling <file>.meta.json with sourceUrl, capturedAt and either company or pageType. For an HTML fixture the page's own company name must match both the meta and the filename (scripts/ci/require-fixture-provenance.mjs). This design adds nothing here except the instruction to drain the baseline",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -909,11 +990,11 @@
       "retired": false
     },
     {
-      "id": "R-101",
-      "hash": "5f7d10b74c65",
+      "id": "R-150",
+      "hash": "a139c0e3f5a5",
       "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
       "kind": "table",
-      "text": "The 42 fixtures without provenance are backfilled or deleted — one pass: if the source page can be re-fetched and still matches, the header is written from that fetch; if it cannot, the fixture is deleted and the test that used it is re-pointed at a fresh capture. There is no third option — an unattributable fixture stays a liability forever",
+      "text": "The 53 grandfathered fixtures are backfilled or deleted — one pass down config/fixture-provenance-baseline.json: if the source page can be re-fetched and still matches, the .meta.json is written from that fetch and the baseline entry drops out; if it cannot, the fixture is deleted and its test re-pointed at a fresh capture. There is no third option — an unattributable fixture stays a liability forever, and the baseline is shrink-only precisely so that the list cannot grow while nobody is looking",
       "first_seen": "2026-09-09",
       "retired": false
     },
@@ -1330,6 +1411,96 @@
       "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
       "first_seen": "2026-09-09",
       "retired": false
+    },
+    {
+      "id": "R-156",
+      "hash": "73ea81f973fd",
+      "section": "1.11 Exceptions by IPO type, gathered",
+      "kind": "table-normative",
+      "text": "SME on BSE — 106 — listing_exchanges = [\"BSE\"]. NSE cannot be rank 2 or 3 for any field — there is no NSE payload. Minimum application is 2 lots (SEBI 2025), recorded in ipo_details.lot_multiple, so the lot-value check is 2 × lot × floor ≥ ₹1,00,000; applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the cap ≤ 1.2 × floor check is skipped and floor = cap is expected. Designated exchange is always BSE.",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-037",
+      "hash": "aaac1be76ee7",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "1. The normaliser must fold corporate-form words — Company/Co., Corporation/Corp., Industries/Inds. — not only the legal suffix. 2. Duplicate detection is a check that runs at discovery, on a deliberately stricter key than the binding key. A sweep with such a key over production finds exactly one duplicate group today: this one. Binding and de-duplication want opposite error biases, so they must not share a key.",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-161",
+      "hash": "7f41b58b513b",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:143) — one query per page, not one per field. - A stale value says so, in grey: \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under, and the one it must NOT use: the detail page's real key is getIPOBySlugKey — that is what IPORepository.findBySlug caches under (web/lib/repositories/ipo-repository.ts:389). getIPODetailKey exists in web/lib/cache/cache-keys.ts:47 and looks like the obvious choice, but its only caller is an admin edit route (web/app/api/admin/ipos/[id]/route.ts:298) invalidating a key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so the design names the key rather than the function that sounds right. TTL is CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16); the provenance line is part of the page payload, not a second fetch.",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-084",
+      "hash": "331975b7f450",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:141) — one query per page, not one per field. - A stale value says so, in grey: \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under: the detail page's existing key, getIPODetailKey (web/lib/cache/cache-keys.ts:47), at CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16) — the provenance line is part of the page payload, not a second fetch.",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-088",
+      "hash": "64c35299d6f7",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "table",
+      "text": "The sitemap contains live rows only — already true, and worth stating. web/app/sitemap.ts reads every IPO (limit 1000) and excludes any slug present in ipo_slug_redirects (web/app/sitemap.ts:93). Its own revalidate is 900 (web/app/sitemap.ts:21)",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-089",
+      "hash": "5d43e570b5a2",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "table",
+      "text": "A canonical tag on every IPO page — DOES NOT EXIST. Eight other pages set alternates.canonical (for example web/app/ofs/page.tsx:69); the IPO detail page sets none. After a merge, the survivor page has nothing telling a search engine which URL is the real one",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-022",
+      "hash": "ba1e32b73916",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "Image-only pages go to OCR, marked — a page whose extractable text is below a density floor is treated as a scan: it is routed to OCR, every value taken from it is stamped ocr with a lower confidence, and a field whose only source is an OCR page is never allowed to win a disagreement against a text page — one scanned annexure per SME batch is the norm; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-024",
+      "hash": "d40df10b187e",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "Content is sniffed before it is stored — the first bytes must be %PDF (or the zip magic) — a 200 response carrying an HTML error page is not stored, and the cause is recorded against the attempt — today contentType is captured (document-discovery-runner.ts:622) but nothing asserts the body actually is a PDF, so an exchange error page can be stored as a filing",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-098",
+      "hash": "790c42a8aad8",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "A header on every fixture — the URL, the fetch date, the IPO it belongs to, and that IPO's identifier. In JSON as a _provenance object; in HTML as a leading comment. A fixture with no header fails the corpus check",
+      "first_seen": "2026-09-09",
+      "retired": true
+    },
+    {
+      "id": "R-101",
+      "hash": "5f7d10b74c65",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "The 42 fixtures without provenance are backfilled or deleted — one pass: if the source page can be re-fetched and still matches, the header is written from that fetch; if it cannot, the fixture is deleted and the test that used it is re-pointed at a fresh capture. There is no third option — an unattributable fixture stays a liability forever",
+      "first_seen": "2026-09-09",
+      "retired": true
     },
     {
       "id": "R-100",

@@ -1,0 +1,19 @@
+{
+  "_why": "OD-52. A rule that no build item implements is allowed — the deploy cadence, the honest uncertainties, the language-model constraint are rules about how we WORK, not code. What is not allowed is silence. D19 fails on any rule id that is neither claimed by a card nor listed here with a reason.",
+  "_generated_by": "docs/design/apply-rule-ownership.mjs",
+  "unclaimed": {
+    "R-119": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
+    "R-120": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
+    "R-121": "5.6 — A standing constraint on HOW we work (no language model in the phase-1 pipeline), not a thing any build item constructs. OD-52 allows this, provided it is declared rather than silent.",
+    "R-132": "7.1 — The build sequence describes the items themselves; a rule about the order of the work is not implemented BY one of the items in it.",
+    "R-133": "7.3 — The honest list of what the author is unsure about. These become rules only once they are answered, and then they land in the section that answers them.",
+    "R-134": "7.3 — The honest list of what the author is unsure about. These become rules only once they are answered, and then they land in the section that answers them.",
+    "R-135": "7.3 — The honest list of what the author is unsure about. These become rules only once they are answered, and then they land in the section that answers them.",
+    "R-136": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
+    "R-137": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
+    "R-138": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
+    "R-139": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
+    "R-140": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code.",
+    "R-141": "7.5 — The deployment and branching policy. It is enforced by the release process and by `.claude/rules/branching-model.md`, not by application code."
+  }
+}

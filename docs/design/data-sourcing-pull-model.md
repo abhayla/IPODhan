@@ -129,6 +129,7 @@ nothing", fails the gate.
 | id | The comment, or the fork | Status / recommendation | Why it is still his |
 |---|---|---|---|
 | O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in the phase-1 build uses a language model, so there is nothing to approve yet. |
+| O-14 | The 19 rows whose `offering_type` is `OFS` may be either of two different things: the offer-for-sale COMPONENT of a public issue (a property of an IPO, already measured by `ipo_details.ofs_issue`), or SEBI's OFS-through-stock-exchange mechanism for an already-listed company — a one- or two-day auction with a floor price, no offer document, no lot size and no anchor round. Probe `probes/ofs-rows.mjs` settles WHICH they are. What it cannot settle is what the site should then do: model the exchange mechanism as its own offering type with a much smaller field set and its own page shape, or keep it inside the IPO shape with most fields marked NOT_APPLICABLE. | **RECOMMENDED: let the probe decide the fact, then model the exchange mechanism as its own type with roughly 35 applicable fields rather than 205.** A page that shows a price band, a lot size and an anchor book for an offering that has none of them is wrong in a way a reader notices immediately. §1.11 is written PROVISIONAL on this. · 2026-09-09 | It changes what a whole class of page looks like, and how many rows the coverage numbers are measured against — a product call, not an implementation detail |
 
 ### 0.0.3 The standard of proof this document is held to (OD-25)
 
@@ -452,9 +453,9 @@ where that contract already names the section; new rows extend it in the same sh
 | 1 | `symbol` | 259 | D | DOC | NSE | BSE | keep | E7 cover | `^[A-Z0-9&-]{1,20}$`; matches the exchange's symbol for the same ISIN | NSE + BSE. Disagreement = re-read the cover. | SME/BSE: BSE is rank 2, NSE absent |
 | 2 | `company_name` | 327 | D | DOC | NSE | BSE | keep | cover | legal-name form (ends Limited/Ltd); normalised name matches the exchange's ±1 token | CG, MC. Disagreement on the legal suffix is not a conflict; a different entity is. | — |
 | 3 | `issue_size` | 327 | D | DOC | BSE | CG | **→ Cr** | A5+A6 | `fresh + OFS = total ±0.5%`; `shares_at_cap × cap ≈ total ±0.5%`; > ₹1 cr and < ₹50,000 cr | CG, MC, BSE. Disagreement = re-read A5/A6 from the PBA, never adopt the website number. | Rights/OFS/NCD: no PBA — rank 1 becomes the offer letter, rank 2 BSE |
-| 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | `lot × floor ≥ ₹10,000` mainboard; `≥ ₹1,00,000` SME (2 lots × ₹50k floor, SEBI 2025) | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
+| 4 | `lot_size` | 266 | D | DOC | BSE | NSE | keep | A3 | **two-sided, and the same statement as §1.11**: mainboard `₹10,000 ≤ lot × floor ≤ ₹15,000` (SEBI's retail band, so a lot ten times too large fails too); SME `lot_multiple × lot × floor ≥ ₹1,00,000` with `lot_multiple` READ from the row and the rule effective from SEBI's 2025 SME framework (F-66, F-67) | NSE, BSE, CG. | **SME: minimum application is 2 lots since SEBI's 2025 rule** — the check is on `2 × lot × floor`, which is what caused the Qualiance false alarm |
 | 5 | `open_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `open ≤ close`; within 90 days of the RHP filing date | the other exchange, then CG. **The document is NOT a verification source** — see §1.2.1 | **Named exception E-1 (§1.2.1).** Owner decision 2026-09-08. |
-| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | `close ≥ open`; `close ≤ open + 10` working days | as 5 | **Named exception E-1** |
+| 6 | `close_date` | 327 | **T** | **NSE** | **BSE** | CG | keep | B2 | **scoped by offering type** (F-71): `close ≥ open` always; for IPO and FPO `3 ≤ working_days(open, close) ≤ 10` (SEBI ICDR Reg 46, including any price-band extension); for RIGHTS a calendar bound of roughly 7–30 days; for NCD its own window from the prospectus. Applied unconditionally, the public-issue bound rejects all 8 legitimate rights issues on production | as 5 | **Named exception E-1** |
 | 7 | `listing_date` | 266 | **T** | **NSE** | **BSE** | CG | keep | B6 | `listing > close`; `listing ≤ close + 3` working days (T+3) | as 5 | **Named exception E-1** |
 | 8 | `status` | 327 | **T** | **NSE** | **BSE** | CG | keep | — | must be a legal transition (UPCOMING→OPEN→CLOSED→LISTED); never regresses without an ADMIN row | our own date arithmetic. A status contradicting the dates is a conflict. | **Named exception E-1.** WITHDRAWN / POSTPONED only from the exchange or ADMIN |
 | 9 | `registrar` | 267 | D | DOC | BSE | CG | keep | E3 | resolves to a row in `registrars` by name or SEBI reg no. | CG, MC. Disagreement = re-read E3. | — |
@@ -603,7 +604,7 @@ Rank 2 is the exchange circular where one exists, rank 3 Chittorgarh's detail pa
 | 47 | `upi_cutoff_time` | 9 | DOC | NSE | — | keep | B7 | time-of-day on the close date | NSE circular | — |
 | 48 | `designated_exchange` | 8 | DOC | NSE | BSE | keep | A14 | one of {NSE, BSE}; must be in `listing_exchanges` | internal | SME-on-BSE: always BSE |
 | 49 | `lot_multiple` | 8 | DOC | BSE | — | keep | A3 | positive integer; `lot_multiple × lot × floor` is the true minimum | BSE | **SME: 2 since the 2025 rule** — this is the field that records it, rather than doubling `lot_size` |
-| 50 | `allocation_pct` | 6 | DOC | NSE | — | keep | A13 | QIB + NII + retail ≤ 100; book-built QIB ≥ 50 (≥ 75 where the regulation is cited) | NSE circular | Fixed-price SME: different split, check relaxed to ≤ 100 only |
+| 50 | `allocation_pct` | 6 | DOC | NSE | — | keep | A13 | **split by route, keyed on field 54 `sebi_regulation_cited`** (F-68): Reg 6(1) book-built → QIB **≤** 50, NII ≥ 15, retail ≥ 35; Reg 6(2) → QIB ≥ 75, NII ≤ 15, retail ≤ 10; fixed-price → its own split. The three net-offer categories must **sum to 100 ± 0.5**, not merely stay under it, and the anchor portion is part of the QIB share — never added on top | NSE circular | Fixed-price SME: different split, check relaxed to ≤ 100 only |
 | 51 | `pre_ipo_placement` | 5 | DOC | — | — | keep | D6 | boolean | none | absent for Rights/OFS |
 | 52 | `bid_windows` | 10 | DOC | NSE | — | keep | B8 | each window inside open..close | NSE | — |
 | 53 | `promoter_shares_held` | 1 | DOC | — | — | keep | D2 | `≤ total pre-issue shares` | none | — |
@@ -780,11 +781,11 @@ Written once here rather than duplicated into every row.
 | Type | Population today | Exceptions that apply |
 |---|---:|---|
 | **Mainboard IPO** | 99 | The base case. Full document set; both exchanges available as rank 2 and 3. |
-| **SME on BSE** | 106 | `listing_exchanges = ["BSE"]`. **NSE cannot be rank 2 or 3 for any field** — there is no NSE payload. Minimum application is **2 lots** (SEBI 2025), recorded in `ipo_details.lot_multiple`, so the lot-value check is `2 × lot × floor ≥ ₹1,00,000`; applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the `cap ≤ 1.2 × floor` check is skipped and floor = cap is expected. Designated exchange is always BSE. |
+| **SME on BSE** | 106 | `listing_exchanges = ["BSE"]`. **NSE cannot be rank 2 or 3 for any field** — there is no NSE payload. Minimum application is **2 lots for issues opening on or after SEBI's 2025 SME framework**, recorded in `ipo_details.lot_multiple`; before that date it is 1 lot, and **167 SME rows on production predate the rule** (F-67), so the rule carries an effective date exactly as §5.3 requires of every validation rule. The check is stated ONCE, here and in §1.2 row 4, as `lot_multiple × lot × floor ≥ ₹1,00,000` with `lot_multiple` read from the row rather than assumed — the two earlier phrasings differed by a factor of two, and the weaker one (`2 × lot × floor ≥ ₹1,00,000` with a ₹50k floor) could never fail on a real SME issue (F-66). Applying the mainboard check is what produced the Qualiance false alarm. Commonly FIXED_PRICE, so the `cap ≤ 1.2 × floor` check is skipped and floor = cap is expected. Designated exchange is always BSE. |
 | **SME on NSE** | 61 | Mirror image: `listing_exchanges = ["NSE"]`, **BSE cannot be rank 2 or 3**. Same 2-lot rule. |
 | **SME on both** | 5 | Unusual for SME. Treat as mainboard for ranking, but flag for review — this is more likely a data error than a genuine dual listing, and §4 gives it a check. |
-| **Rights issue** | 8 | No DRHP, no price band advertisement, no anchor round, no lot size in the IPO sense. Rank 1 is the letter of offer; where no document type exists for it, rank 1 falls to BSE. Fields 93–109, 131–137 are `NOT_APPLICABLE`, not gaps. |
-| **OFS** | 19 | No fresh issue: field 35 is legitimately 0 and `issue_size = ofs_issue`. No objects of the offer (field 27 empty is correct). No DRHP stage. |
+| **Rights issue** | 8 | No DRHP, no price band advertisement, no anchor round, no lot size in the IPO sense. Rank 1 is the letter of offer; where no document type exists for it, rank 1 falls to BSE. Fields 93–109, 131–137 are `NOT_APPLICABLE`, not gaps. **Three facts a rights-issue reader needs most are not among the 240 fields at all (F-72): the RECORD DATE, the ENTITLEMENT RATIO (for example 3 for every 5 held) and the rights-entitlement trading window.** Named here as a gap this design surfaces rather than closes — the same treatment the NCD row gets — with the letter of offer as rank 1 and the exchange's rights-issue circular as rank 2 when they are added. **The bidding-window check does not apply**: §1.2 row 6's `close ≤ open + 10 working days` is SEBI ICDR Reg 46, a PUBLIC-issue rule; a rights issue is legitimately open 7–30 calendar days (F-71). |
+| **OFS** | 19 | **PROVISIONAL on O-14** (F-70). "OFS" names two different things in this market: the offer-for-sale COMPONENT of a public issue (which is what field 36 `ipo_details.ofs_issue` measures, and which is a property of an IPO rather than an offering type), and SEBI's OFS-through-stock-exchange mechanism, in which a promoter of an already-listed company sells in a one- or two-day auction with a floor price, no offer document, no lot size and no anchor round. Which of the two these 19 rows are is settled by probe `probes/ofs-rows.mjs`, not by prose. Until that probe's output is folded in, the row is written on the reading the data supports: no fresh issue (field 35 legitimately 0, `issue_size = ofs_issue`), no objects of the offer, no DRHP stage. |
 | **NCD** | 7 | Debt. Price band, EPS, PE, promoter holding and peer comparison are all `NOT_APPLICABLE`. Its own prospectus is rank 1 for coupon, tenor and rating — **none of which we currently store**, which is a gap this design surfaces rather than closes. |
 | **INVITS / REITS** | 5 | `segment` is NULL for all 5 today. Unit-based, not share-based; lot size and face value do not apply in the same sense. Out of the pull model's first release — say so explicitly rather than letting them fail every check. |
 | **BUYBACK / TENDER** | 17 | Corporate actions, not offerings. They should arguably not be on an IPO site at all (the Mopshop / Sarda class). Field 24 `offering_type` is the guard; §4.6 gives it a check. |
@@ -1143,18 +1144,21 @@ documents were unwritten until now, and each is a rule with one real fixture beh
 | Rule | What it means in the loop | The fixture that proves the case is real |
 |---|---|---|
 | **Multi-part filings are extracted per part** | a filing published as Volume I / Volume II (or an NSE `.zip` holding several PDFs) is extracted part by part, and the **part number is written into provenance** beside the page number, so a field's citation reads "part 2, page 118" and can be checked | `probes/fixtures/` — the Skyways NSE archive is a 23 MB zip (`document-discovery-runner.ts:200` records the case that set the download budget) |
-| **Image-only pages go to OCR, marked** | a page whose extractable text is below a density floor is treated as a scan: it is routed to OCR, every value taken from it is stamped `ocr` with a **lower confidence**, and a field whose only source is an OCR page is never allowed to win a disagreement against a text page | one scanned annexure per SME batch is the norm; the fixture is captured by `probes/extract-real-pdf.mjs` on a real filing |
+| **Image-only pages go to OCR, marked** | **already built.** `scraper/scripts/ocr_pages.py` exists and `extract_filing.py`'s `run()` already takes an `ocr_confidence` map keyed by page (`scraper/scripts/extract_filing.py:2590`). What this design ADDS is one rule on top of it: a field whose only source is an OCR page never wins a disagreement against a text page | the OCR path is exercised today; the fixture is captured by `probes/extract-real-pdf.mjs` on a real filing |
 | **A password-protected PDF gets one blank attempt** | try the empty password once, and on failure stop: the document is marked `unreadable` **with the cause recorded**, and nothing retries it on a clock | a real encrypted filing, captured as a fixture with its error string |
-| **Content is sniffed before it is stored** | the first bytes must be `%PDF` (or the zip magic) — a 200 response carrying an HTML error page is **not stored**, and the cause is recorded against the attempt | today `contentType` is captured (`document-discovery-runner.ts:622`) but nothing asserts the body actually is a PDF, so an exchange error page can be stored as a filing |
+| **Content is sniffed before it is stored** | **already built, and better than this design first claimed.** `verifyDownload` (`scraper/src/services/document-download-verifier.ts:274`) refuses an HTML body, refuses an unacceptable content-type, unwraps a zip to its PDF member, and requires the `%PDF` magic bytes (`document-download-verifier.ts:331`) — with a size floor re-applied after unzipping, because a 60 KB zip can unpack to a 2 KB stub. Nothing is added here | the first draft of this section said "nothing asserts the body actually is a PDF". That was false, and the build card for item 22 caught it |
 | **The exchange's own document id is stored beside the URL** | NSE and BSE both carry a stable identifier for a filing; storing it means a moved or re-hosted link is still recognisably the same document | `documents` gains the column; the discovery runner already knows the id at parse time |
 
 **Download limits (OD-37).** These bound a request whose URL came off a page we do not control.
+More of this is already built than the first draft of this section believed — the build card for
+item 22 read the code and corrected four claims here. What survives is stated as what is MISSING,
+which is the only useful form for an implementer.
 
 | Limit | Value | Where it stands today |
 |---|---|---|
 | **Host allow-list** | NSE, BSE, SEBI, **the registrars in the `registrars` table**, and the issuer's own host as printed in its filing | mostly built: `TRUSTED_DOCUMENT_HOSTS` (`company-host-source.ts:336`) with exact-or-DNS-suffix matching (`company-host-source.ts:375`) and the company-rung rule (`company-host-source.ts:395`). **New:** the registrar hosts, which are data rather than a constant |
-| **Private and loopback addresses refused** | any resolved address in a private, loopback, link-local or unique-local range is refused before the request is made | **new.** The allow-list makes this unreachable in practice today; the check is what keeps it unreachable after the registrar hosts turn a constant into a database table |
-| **100 MB per file** | the response is abandoned the moment it passes 100 MB | **new, and the real gap.** `defaultFetcher` buffers the whole body with `await res.arrayBuffer()` (`document-discovery-runner.ts:619`) with no ceiling at all — on a 2 GB response the process dies of memory, not of a limit. The number is set from measurement: the mean stored document is 7.4 MB and the largest type averages 11 MB (`probes/document-store-size.out.json`), so 100 MB is roughly nine times the largest thing we have ever legitimately stored |
+| **Private and loopback addresses refused** | any **resolved** address in a private, loopback, link-local or unique-local range is refused before the request is made | **partly built, and the gap is precise.** `PRIVATE_HOST_PATTERNS` (`scraper/src/services/company-host-source.ts:225`) already refuses private-looking HOSTNAMES on one rung. It matches the string, not the address, so a public name that resolves to `127.0.0.1` still passes — the DNS-rebinding case. The new part is resolving first, then judging the address |
+| **A size ceiling, enforced while the body streams** | the response is abandoned **the moment it passes the cap**, not after it has been read | **half built, and the half that is missing is the one that matters.** A cap already exists — `MAX_DOCUMENT_BYTES = 150 MB` (`document-download-verifier.ts:34`), checked at `document-download-verifier.ts:300`. But it is checked AFTER `defaultFetcher` has buffered the whole body with `await res.arrayBuffer()` (`document-discovery-runner.ts:619`), so a 2 GB response is fully held in memory on an 8 GB box and only then refused as `too_large`. The design's rule is that the ceiling is enforced DURING the read. Whether the number stays 150 MB or drops to 100 MB is a configuration value (§7.6); measurement says either is generous — the mean stored document is 7.4 MB and the largest type averages 11 MB (`probes/document-store-size.out.json`) |
 | **Two-minute timeout** | one request, 120 seconds | **already true** — `DOWNLOAD_TIMEOUT_MS = 120_000` (`document-discovery-runner.ts:206`), split from the 20-second API budget after a 25 MB RHP timed out at exactly 20,018 ms |
 | **Every refusal is logged with URL, host and reason** | the refusal joins the per-cycle failure reading as an identity, not a count | **new**, and it is the half that matters: a limit that refuses silently is indistinguishable from a source that has no document (`.claude/rules/signal-ownership.md`, R1) |
 
@@ -1310,8 +1314,17 @@ recurring.
 only as good as the normalisation, and a normaliser that never collides is a normaliser that never
 detects a duplicate either. Two things follow, and both belong to the loop rather than to a repair:
 
-1. **The normaliser must fold corporate-form words** — `Company`/`Co.`, `Corporation`/`Corp.`,
-   `Industries`/`Inds.` — not only the legal suffix.
+1. **The normaliser must strip corporate-form words as WHOLE WORDS, wherever they sit** — not
+   only in trailing position. This is a correction of an earlier reading of this design (F-60):
+   `company` and `co` are **already** in the normaliser's list (T-293 added them), so the cause of
+   the ARCIL collision failure was never a missing word. Verified live in Node on 2026-09-09:
+   `"ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED"` normalises to
+   `asset reconstruction company india`, and `"Asset Reconstruction Co.(India) Ltd."` to
+   `asset reconstruction co india` — they still fail to collide. The reason is **pipeline order**:
+   the parenthetical `(India)` is never made trailing before the `company|co` suffix regex runs, so
+   the word is not in suffix position when the regex looks for it. The fix is the whole-word strip
+   already shipped in `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs`, not another word in a
+   list that already contains it.
 2. **Duplicate detection is a check that runs at discovery**, on a deliberately stricter key than
    the binding key. A sweep with such a key over production finds exactly one duplicate group today:
    this one. Binding and de-duplication want opposite error biases, so they must not share a key.
@@ -1962,7 +1975,7 @@ pixel of that reaches the page**.
 | Piece | State today | Citation |
 |---|---|---|
 | A per-field provenance record | **exists and is populated** — `field_sources` (`packages/shared/src/db/schema.ts:1376`) | — |
-| A repository to read it | **exists** — `FieldSourcesRepository` (`web/lib/repositories/field-sources-repository.ts:53`), including `getIPOSourceMap(ipoId)` (`web/lib/repositories/field-sources-repository.ts:141`), which returns exactly the per-field summary a page needs | — |
+| A repository to read it | **exists** — `FieldSourcesRepository` (`web/lib/repositories/field-sources-repository.ts:53`), including `getIPOSourceMap(ipoId)` (`web/lib/repositories/field-sources-repository.ts:143`), which returns exactly the per-field summary a page needs | — |
 | Any page or component that reads it | **DOES NOT EXIST.** A search of `web/app` and `web/components` for that repository returns zero hits; only two scripts and the integration tests import it | measured 2026-09-09 |
 | A confidence badge | exists — `ConfidenceBadge` (`web/components/ipo/ConfidenceBadge.tsx:32`) renders HIGH / MEDIUM / LOW. It says how sure we are; it never says **who told us, or when** | — |
 | A "last confirmed" marker | **DOES NOT EXIST** in the UI. §2.6 writes the staleness state; nothing displays it | — |
@@ -1978,17 +1991,22 @@ One shared component, rendered under each key-facts block on the IPO detail page
 
 - **Where the words come from:** `chosen_source`, `chosen_document_type` and the confirmation date on
   the plan row (§2.3), read through `FieldSourcesRepository.getIPOSourceMap(ipoId)`
-  (`web/lib/repositories/field-sources-repository.ts:141`) — one query per page, not one per field.
+  (`web/lib/repositories/field-sources-repository.ts:143`) — one query per page, not one per field.
 - **A stale value says so, in grey:** *"last confirmed 28 August 2026, being rechecked"*. That is the
   §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never
   blanked.
 - **A conflict stays admin-only.** An unresolved disagreement (§3.4) is not shown to the public. A
   reader cannot act on "two sources disagree"; showing it converts our internal uncertainty into
   their doubt about every other number on the page.
-- **The cache key it lives under:** the detail page's existing key, `getIPODetailKey`
-  (`web/lib/cache/cache-keys.ts:47`), at `CacheTTL.IPO_DETAIL = 900` seconds
-  (`web/lib/cache/cache-keys.ts:16`) — the provenance line is part of the page payload, not a
-  second fetch.
+- **The cache key it lives under, and the one it must NOT use:** the detail page's real key is
+  `getIPOBySlugKey` — that is what `IPORepository.findBySlug` caches under
+  (`web/lib/repositories/ipo-repository.ts:389`). `getIPODetailKey` exists in
+  `web/lib/cache/cache-keys.ts:47` and looks like the obvious choice, but its only caller is an
+  admin edit route (`web/app/api/admin/ipos/` — the per-id route handler, line 298) invalidating a
+  key nothing populates. A revalidate that drops the wrong key is a correction that never reaches the page, so
+  the design names the key rather than the function that sounds right. TTL is
+  `CacheTTL.IPO_DETAIL = 900` seconds (`web/lib/cache/cache-keys.ts:16`); the provenance line is
+  part of the page payload, not a second fetch.
 
 #### Making a correction visible within the cycle, not within the hour (OD-40)
 
@@ -2016,13 +2034,16 @@ keep the old number for the rest of the afternoon is the failure this rule close
 
 #### After a merge, the old page must not outlive the merge (OD-41)
 
-An automatic merge (§2.3.3.1) retires a slug. Three rules, and one of them is already true:
+An automatic merge (§2.3.3.1) retires a slug. Three rules — and after reading the code for the
+item-21 build card, **all three are already true**. This subsection is therefore a statement of what
+must not regress, not a list of work. That is worth saying plainly: a design that invents work
+already done costs an implementer a day and costs the reader their trust in the rest of it.
 
 | Rule | State today |
 |---|---|
 | **A permanent redirect from the retired slug** | **already true.** `web/app/ipos/[slug]/page.tsx:233` calls `permanentRedirect()` — a real 308, deliberately not `redirect()`, which Next 15.5.4 serves as a 307. The design keeps it and names it rather than reinventing it |
-| **The sitemap contains live rows only** | **already true, and worth stating.** `web/app/sitemap.ts` reads every IPO (limit 1000) and excludes any slug present in `ipo_slug_redirects` (`web/app/sitemap.ts:93`). Its own `revalidate` is 900 (`web/app/sitemap.ts:21`) |
-| **A canonical tag on every IPO page** | **DOES NOT EXIST.** Eight other pages set `alternates.canonical` (for example `web/app/ofs/page.tsx:69`); the IPO detail page sets none. After a merge, the survivor page has nothing telling a search engine which URL is the real one |
+| **The sitemap contains live rows only** | **already true, and worth stating.** `web/app/sitemap.ts` reads every IPO (limit 1000) and excludes any slug present in `ipo_slug_redirects` (`web/app/sitemap.ts:99`). Its own `revalidate` is 900 (`web/app/sitemap.ts:21`) |
+| **A canonical tag on every IPO page** | **already true.** `web/lib/seo/metadata.ts:203` sets `alternates.canonical` to `/ipos/<slug>` for every IPO page, and the detail page's `generateMetadata` (`web/app/ipos/[slug]/page.tsx:130`) uses it. A first draft of this section said it did not exist, because it grepped the page file rather than the metadata helper the page calls — absence in one file is not absence. This item does no work here |
 
 The sitemap is regenerated as part of the OD-40 call, so a merge is reflected in the sitemap on the
 same cycle rather than up to 15 minutes later.
@@ -2149,30 +2170,35 @@ argument: the round that produced it found **51 wrong source ranks**, each built
 sentence about a page nobody had fetched. A test fixture with no record of where it came from is the
 same failure wearing a filename.
 
-**What the corpus looks like today, measured 2026-09-09** by counting the files, not by remembering
-them:
+**Half of this is already built, and the design has to say so.** A first pass at this section
+counted "carries a URL or a date in its first lines" and reported 13 of 55 — which measured the
+wrong thing. The repository already has a **fixture-provenance gate** (`scripts/ci/require-fixture-provenance.mjs`,
+T-518), wired into the PR gate, with a real convention: a sibling `<file>.meta.json` carrying
+`sourceUrl` and `capturedAt`, plus, for an HTML fixture, a check that the page's OWN embedded
+company name matches both the meta and the filename. It exists because a captured page filed under
+one company's name turned out to be another company's page, and a test asserting against it passed.
+
+**What is measured, 2026-09-09, by running the gate rather than by counting bytes:**
 
 | | Count |
 |---|---:|
-| Fixture files under `scraper/tests` | **55** |
-| Of those, carrying a URL or a fetch date in their first lines | **13** |
-| Carrying no provenance at all | **42** |
+| Fixtures the gate scans | **53** |
+| New provenance violations | **0** |
+| Fixtures grandfathered in `config/fixture-provenance-baseline.json` (shrink-only) | **53** |
 | PDFs committed to the repository | **0** |
 
-Two readings of that. The good one: nobody has ever committed a 20 MB prospectus, so the repository
-has not been used as a document store. The bad one: **for 42 of 55 fixtures, nobody can now say which
-page, from which date, they were cut out of** — so when a source changes its markup, there is no way
-to tell a fixture that is stale from one that is correct.
+So the rule is enforced for every NEW fixture, and **every existing one is still exempt**. The
+backlog is the whole corpus, and the baseline is shrink-only, so it can only ever get better.
 
 **The rules (OD-43).**
 
 | Rule | What it means |
 |---|---|
 | **One directory per source** | `scraper/tests/fixtures/<source>/…` — `nse/`, `bse/`, `sebi/`, `chittorgarh/`, `investorgain/`, `registrar/`. A file's directory says who served it, so a source's whole shape can be re-captured in one pass |
-| **A header on every fixture** | the URL, the fetch date, the IPO it belongs to, and that IPO's identifier. In JSON as a `_provenance` object; in HTML as a leading comment. A fixture with no header fails the corpus check |
+| **A header on every fixture** | already the convention and already gated: a sibling `<file>.meta.json` with `sourceUrl`, `capturedAt` and either `company` or `pageType`. For an HTML fixture the page's own company name must match both the meta and the filename (`scripts/ci/require-fixture-provenance.mjs`). This design adds nothing here except the instruction to drain the baseline |
 | **PDFs are never committed** | the extracted **text** plus the PDF's sha256 goes in, and the PDF does not. This is the same rule as OD-32 seen from the other side: the words are the evidence, the bytes are a working file |
 | **A weekly live shape check, per source** (`CORPUS-SHAPE`) | one scheduled job re-fetches the live page behind each fixture and compares its SHAPE — the labels and the structure the extractor depends on, never the values, which are supposed to change. On a difference it files an issue naming the source, the fixture and the label that moved |
-| **The 42 fixtures without provenance are backfilled or deleted** | one pass: if the source page can be re-fetched and still matches, the header is written from that fetch; if it cannot, the fixture is deleted and the test that used it is re-pointed at a fresh capture. There is no third option — an unattributable fixture stays a liability forever |
+| **The 53 grandfathered fixtures are backfilled or deleted** | one pass down `config/fixture-provenance-baseline.json`: if the source page can be re-fetched and still matches, the `.meta.json` is written from that fetch and the baseline entry drops out; if it cannot, the fixture is deleted and its test re-pointed at a fresh capture. There is no third option — an unattributable fixture stays a liability forever, and the baseline is shrink-only precisely so that the list cannot grow while nobody is looking |
 
 **Why the weekly check earns its cost.** The alternative is discovering a markup change when a field
 silently stops being extracted, which is exactly the class this whole design exists to stop. The
@@ -2679,7 +2705,7 @@ nowhere to put them would have left three owner decisions with no implementer.
 | 3 | Matrix cleanup: delete the 13 dead snake_case keys, adopt the manifest | 2 | B | medium, mechanical | `config` |
 | 4 | **Per-field validation before the write (OD-21)** — the failure row, the rule configuration, and the effective dating that closes F-10 | 2 | **A** | medium — it is a write-path change, not a helper | `validation` |
 | 5 | `ipo_field_plan` table + generator | 1, 2, 3 | **A** | medium | `plan` |
-| 6 | The pull walk over the plan | 5 | **A** | large — the core | `walk` |
+| 6 | The pull walk over the plan | 5, 15 | **A** | large — the core | `walk` |
 | 7 | **The job scheduler and the budgets** — the three jobs of §2.1 with their cron lines and PM2 change, the removal of the `cron_restart` force-kill, the lock-skip rule, the new extraction/wake/lock budgets and the never-spawn-without-budget invariant; then demand-ordered tiering (O-4) | — (scheduler) · 6 (tiering) | **A** | medium | `schedule` |
 | 8 | The ratios / basis-for-offer-price extractor (32 pending documents) | — | B | medium, independent | `extraction` |
 | 9 | The re-read loop | 6 | **A** | medium | `re-read` |
@@ -2687,7 +2713,7 @@ nowhere to put them would have left three owner decisions with no implementer.
 | 11 | **Crore conversion (OD-20)** for the amount columns §5.2 lists, the source-backed repair tool, the one-release API overlap, and `financial_data` becomes derived | 10 | **A** | large, own release | `consolidation + read-side` |
 | 12 | Fold corporate-form words into the name normaliser, and run duplicate detection at discovery on the stricter key in §2.3.3 — F-46, F-55 | — | **A** | small code, high blast radius: it changes what binds to what | `discovery (identity)` |
 | 13 | Extract `ofs_issue` in both the rupee form and the share form, fix `fresh_issue`, gate the write on `fresh + OFS = total ±0.5%` — F-51 | 2 | **A** | medium — it is wrong on 6 of 9 live IPOs today | `extraction` |
-| 14 | Convert BSE `Issue_Size_No_of_shares` from a share count to rupees, with a conversion test — F-54 | 13 | B | small, but it is the recurrence class the detection gate exists for | `extraction` |
+| 14 | **BSE share count to rupees — mostly ALREADY BUILT (F-94)** — `computeBSEIssueSize` (`scraper/src/scrapers/bse-api-scraper.ts:147-151`) already multiplies the share count by the floor price, and `scraper/tests/unit/scrapers/bse-api-scraper.test.ts:113-130` carries three passing regression tests. What is left: confirm those tests still assert the CLASS, and wire the two existing detection checks (`c_issue_size_consistency`, `c_issue_size_floor`) into the pull model's nightly audit. Do not rebuild the conversion | 13 | C | small — verification, not construction | `extraction` |
 | 15 | Revive `valueActuallyChanged` so no-op suppression can be measured — F-49 | — | B | small; **prerequisite of item 6**, which cannot be verified without it | `consolidation` |
 | 16 | **Retire Moneycontrol (OD-3)** — stop scheduling it; keep the enum value and the provenance rows already written | — | C | small | `discovery` |
 | 17 | **The closed-IPO job (OD-22)** — the 22:00 schedule, `closed_ipo_resourcing`, the selection query and cap, the `field_sources` snapshot that closes F-31, and the `documents.filing_date` backfill | 6, 7, 10 | **A** | medium | `schedule` |
@@ -3102,6 +3128,15 @@ order in which they merge is yours to choose:
 
 Either way item 19 is the unblocker, and neither PR changes behaviour, so nothing on the site waits
 on this decision.
+
+**And there are TWO merge tools, which the item-19 card found by reading rather than by assuming.**
+`scripts/merge-duplicate-ipo.mjs` is the singular, owner-run one that item 19 targets and that the
+ratchet is failing on today. `scraper/scripts/merge-duplicate-ipos.ts` (plural) is an older automatic
+clustering tool which **also** writes raw SQL to `ipos` and is **already in the ratchet baseline**
+(`config/write-ratchet-baseline.json`, line 97) — grandfathered before that rule existed. It is out
+of item 19's scope, and naming it here is deliberate: the baseline is shrink-only, so the honest
+reading is that the project owes a second routing job, not that the second tool is fine. It becomes
+item 19's follow-on the first time anything touches it.
 
 ### 8.4 Done means
 

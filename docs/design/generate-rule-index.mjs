@@ -63,12 +63,18 @@ function skeleton(s) {
 const hashOf = (text) => crypto.createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 12);
 
 /**
- * Sections the index covers. Sections 0 and 1 describe what is TRUE TODAY and what each field is;
- * they are measurements and a mapping, not rules to implement. Appendix A is generated. Including
- * them would put hundreds of ids into the index that no build item could ever implement, which
- * turns D19 from a check into noise.
+ * Sections the index covers. Most of sections 0 and 1 describe what is TRUE TODAY and what each
+ * field is — measurements and a mapping, not rules to implement — and Appendix A is generated.
+ * Indexing all of them would put hundreds of ids into the file that no build item could implement,
+ * which turns D19 from a check into noise. The five subsections in COVERED_EXTRA are the exception:
+ * they state rules (retention, the 100% target, the per-type exceptions, the retired sources and
+ * the never-write list) that build items 1, 2, 3, 16 and 18 exist to implement.
  */
 const COVERED = /^#{2,4} (2|3|4|5|6|7)(\.|\s)/;
+// Four subsections of 0 and 1 DO state rules rather than measurements, and leaving them out left
+// three build items (document retention, the BSE share count, the Moneycontrol retirement) with no
+// rule to their name — an item that implements nothing is a signal, and it was a false one.
+const COVERED_EXTRA = /^#{2,4} (0\.5\.1|1\.1|1\.11|1\.11\.1|1\.12)(\.|\s)/;
 const NORMATIVE = /\b(must|never|always)\b/i;
 
 function extract(md) {
@@ -90,7 +96,7 @@ function extract(md) {
       // was skipped while the index reported "in step". An h2 always re-decides, because
       // "## Appendix A" must not inherit section 8.
       const numbered = /^#{2,4} \d/.test(line);
-      if (heading[1].length === 2 || numbered) covered = COVERED.test(line);
+      if (heading[1].length === 2 || numbered) covered = COVERED.test(line) || COVERED_EXTRA.test(line);
       if (numbered || heading[1].length === 2) section = line.replace(/^#+\s*/, '').trim();
       inTable = false;
       tableIsRules = false;
