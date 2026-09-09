@@ -151,6 +151,14 @@ above idx 32's honest value) that is out of this change's scope to correct, and 
 below 33 would fail CI on that entry — see the comment above `MONOTONIC_CHECK_FROM_IDX` in
 `scripts/lib/migration-journal-lint.mjs` for the exact pair and how the boundary was verified.
 
+**Residue an operator should know about.** Idx 25-31 still carry a fabricated one-per-day ladder
+(`when` hand-typed to an exact `09:20:00.000Z`, one day apart) rather than real authoring times, and
+correcting idx 32 pulled it below idx 31, leaving exactly one known monotonic drop (idx 31 -> idx 32,
+pinned by a regression test in `scripts/tests/check-migration-journal.test.mjs` so a second one fails
+CI). This is harmless only because idx 32-34 are already applied on every slot; it would stop being
+harmless for a database whose recorded state sits precisely between idx 31 and idx 32 (0048 applied,
+0049 not yet run), which no known slot is in today but a partial restore could create.
+
 **What an operator must do on staging and production.** Fixing the journal file alone does nothing for
 a database that already applied idx 32-34 with their future `created_at` — the DB rows need the same
 correction, per slot:
