@@ -192,17 +192,19 @@ invariant crashed, or the cycle marker never advanced within the timeout — nev
 
 Used 2026-09-09 on Asset Reconstruction Company (India) Ltd, which production carried twice (`ARCIL`
 plus a nameless `asset-reconstruction-co-india-ltd`) because the name normaliser folds `Ltd` but not
-`Company` vs `Co.`. Tool: `scripts/merge-duplicate-ipo.mjs` — dry-run by default, refuses a prod
-`--apply` without `--allow-prod`, backs up both rows and every child to `scripts/state/` first, and
+`Company` vs `Co.`. Tool: `scraper/scripts/repair-merge-duplicate-ipo.ts` (routed through `IPORepository.mergeDuplicateInto`, the shared write path — its raw-SQL prototype `scripts/merge-duplicate-ipo.mjs` failed the write ratchet as a NEW unrouted `ipos` writer) — dry-run by default, refuses a prod
+`--apply` without `--allow-prod`, backs up both rows and every child to `scraper/scripts/state/` first, and
 runs the whole merge in one transaction.
 
 ```bash
-PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+# run from scraper/ -- the tool uses @ipodhan/shared's db pool (DATABASE_HOST wins over DATABASE_URL)
+export DATABASE_HOST=localhost DATABASE_PORT=15432 DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW"
 # 1. rehearse on staging (it usually carries the same pair)
-DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging"   node scripts/merge-duplicate-ipo.mjs --keep <uuid> --drop <uuid> [--set-issue-size <rupees>]
+DATABASE_NAME=ipodhan_staging npx tsx scripts/repair-merge-duplicate-ipo.ts --keep <uuid> --drop <uuid> [--set-issue-size <rupees>]
 #    ... then the same line with --apply
-# 2. prod dry run (no DATABASE_URL = the prod tunnel)
-node scripts/merge-duplicate-ipo.mjs --keep <uuid> --drop <uuid> --set-issue-size <rupees>   --issue-size-note "<the evidence that proves the number>"
+# 2. prod dry run
+DATABASE_NAME=ipodhan npx tsx scripts/repair-merge-duplicate-ipo.ts --keep <uuid> --drop <uuid> --set-issue-size <rupees>   --issue-size-note "<the evidence that proves the number>"
 # 3. prod write (owner word only)
   ... --apply --allow-prod
 ```
