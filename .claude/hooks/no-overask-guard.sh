@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# Stop hook — deterministic STOP-DISCIPLINE guard (over-ask + narrate-and-stop).
+# Stop hook — TELEMETRY-ONLY stop-discipline logger (over-ask + narrate-and-stop).
 #
-# WHY: advisory rules ("decide reversible work, don't ask" + "build, don't
-# narrate-and-stop") lose under long context — turns end either asking a
-# question the assistant should have decided (decision-authority.md), OR
-# DESCRIBING the next step ("next step is edit/delete") and stopping instead of
-# doing it. Per rule-writing-meta.md, zero-exception behaviour needs a HOOK,
-# not prose. This hook BLOCKS the stop and RE-INJECTS the rule so the model
-# keeps going.
+# T-143 (owner-approved 2026-08-16 on the hub; synced to IPODhan 2026-09-09 evening):
+# this hook used to BLOCK the stop and RE-INJECT a rule to force continuation. Owner
+# review found it blocking genuine waits on background workers (four turns blocked on
+# 2026-09-09 alone) and, per the hub's own review, compliance never converged while each
+# block cost a paid extra model turn. Owner decision: the logs stay (they are the
+# instrument that lets a human or a later mechanism see the pattern), the whip goes.
+# This hook now ONLY LOGS every miss class below — it NEVER emits {"decision":"block"}
+# and NEVER re-opens a turn. Detection (below) is UNCHANGED from the blocking version;
+# only the final action (block vs. log-and-release) changed.
 #
-# Two BLOCKING stop-violation classes detected:
+# Two LOGGED (never blocking) stop-violation classes detected:
 #   A. OVER-ASK — trailing offer / multiple-choice / recommendation+question.
 #   B. NARRATE-AND-STOP — ending by describing the NEXT reversible step
 #      ("next step is…", "next I'll…", "continuation…", "remaining … tracked",
 #      "from here…") instead of executing it.
-# On either (and NOT a genuine blocker), it emits {"decision":"block","reason":…}
-# to force continuation. A per-user-turn counter (.claude/.keepgoing-count, reset
-# by prompt-enhance-reminder.sh) caps auto-continues at 12 to prevent any loop.
+# On either (and NOT a genuine blocker), it appends a line to
+# .claude/.overask-violations.log and exits 0 — nothing is re-injected, nothing blocks.
+# The per-user-turn counter (.claude/.keepgoing-count) is kept only as a sequence number
+# in the log line (autocontinue #N) for continuity with historical telemetry; it no
+# longer gates anything (there is nothing left to cap).
 #
 # GENUINE-WAIT MARKER: a final text may contain the literal token
 # `[waiting: background]` to declare, unambiguously, that the turn is ending
@@ -121,10 +125,6 @@ ends_q=$(printf '%s' "$tail_part" | grep -qE '\?[[:space:]]*$' && echo 1 || echo
 # `next up`, which matches "next update". A false block is not free - it burns an
 # auto-continue off the 12-cap and pushes the model to invent work after it has finished.
 # Regression tests: .claude/hooks/tests/test_word_boundary_regression.py.
-# UPSTREAM DRIFT: the hub copy (GetWorkDone .../core/.claude/hooks/) is 298 lines and
-# TELEMETRY-ONLY since T-143 (owner-approved 2026-08-16: "the logs stay, the whip goes").
-# THIS copy is the older 155-line BLOCKING version. Syncing it is an owner call, not a
-# drive-by: it would reverse the blocking behaviour and turn 19 existing tests red.
 # ── B. Narrate-and-stop detection (deferred next-step language) ──
 [ -z "$flag" ] && printf '%s' "$tail_part" | grep -qE "next step|next, i|next i('|’)?ll|the continuation|continuation from here|from here[.:]|immediate next|next up\b|i('|’)?ll (work|tackle|start|do|continue|extend|implement|build|close|fix|add|wire|drive|cover)|remaining[^.]{0,40}(tracked|stays|remain|in #)|the rest[^.]{0,40}(tracked|stays|remain|in #)|that('|’)?s the continuation|is the continuation|work #[0-9]|items? (left|remain)|the only[^.]{0,40}(left|remain|item)|remainder|narrow (remainder|bit|layer|follow|scope|item)|separate[, ]{0,3}(thin )?scope|thin scope|follow-?up|noted in #[0-9]|tracked in #[0-9]|are (genuinely )?separate|stays? (a |as )?follow|two items|one (narrow|thin)\b" && flag="narrate-and-stop"
 
@@ -148,18 +148,15 @@ fi
 
 [ -z "$flag" ] && exit 0
 
-# ── Loop-guard: cap auto-continues per user turn ──
+# ── T-143 (owner-approved on the hub 2026-08-16; synced 2026-09-09): TELEMETRY-ONLY.
+# Log the stop-violation and release the turn. Never emit {"decision":"block"} — the
+# loop-guard/cap machinery that used to gate re-opening the turn is gone (there is
+# nothing left to cap). $n is kept only as a sequence number in the log line so
+# historical log lines and any tooling reading them (e.g. lint_rule_compliance
+# equivalents) keep the same format.
 cf="$root/.claude/.keepgoing-count"
 n=$(cat "$cf" 2>/dev/null || echo 0); case "$n" in ''|*[!0-9]*) n=0 ;; esac
 log="$root/.claude/.overask-violations.log"
 printf '%s\tstop-violation (%s) — autocontinue #%s\n' "$(jq -rn 'now|todate' 2>/dev/null || echo now)" "$flag" "$((n+1))" >> "$log" 2>/dev/null
-
-if [ "$n" -ge 12 ]; then
-  echo "STOP-DISCIPLINE: auto-continue cap (12) hit this turn — yielding. If real reversible work remains, you are over-stopping; if you're blocked, state the blocker explicitly."
-  exit 0
-fi
 printf '%s' "$((n+1))" > "$cf" 2>/dev/null
-
-reason="STOP BLOCKED ($flag). decision-authority.md + build-don't-narrate: you ended your turn with a stop-violation on REVERSIBLE work. DO NOT ask, and DO NOT narrate-and-stop (describe the next step then stop). EXECUTE the next item NOW in this same turn — if it's reversible/internal (edit/delete coverage, the next tracked #issue item, the next fix, a commit, the next queued task) just DO it; chain through the WHOLE queue until ONLY a genuine blocker remains (your credentials, a destructive/irreversible op, spend, deploy, a true product fork — then state it in one line). Keep going."
-jq -nc --arg r "$reason" '{decision:"block", reason:$r}'
 exit 0
