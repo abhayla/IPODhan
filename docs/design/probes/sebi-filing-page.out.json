@@ -1,0 +1,47 @@
+{
+  "probe": "sebi-filing-page",
+  "generated_at": "2026-09-09T11:18:19.567Z",
+  "walkthrough_sebi_filings": [
+    {
+      "url": "https://www.sebi.gov.in/sebi_data/attachdocs/aug-2025/1754291226095.pdf",
+      "type": "DRHP",
+      "slug": "asset-reconstruction-company-india-ltd"
+    },
+    {
+      "url": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1788331195841.pdf",
+      "type": "RHP",
+      "slug": "asset-reconstruction-company-india-ltd"
+    }
+  ],
+  "note": "No field in Appendix A currently ranks SEBI as a source; this probe establishes whether SEBI's public listing pages carry anything readable to a plain fetch, ahead of any future rank change. Individual filing PDFs (DRHP/RHP) are fetched by extract-real-pdf.mjs, not here.",
+  "attempts": [
+    {
+      "what": "public issues listing",
+      "url": "https://www.sebi.gov.in/filings/public-issues.html",
+      "status": 200,
+      "ok": true,
+      "bytes": 6035,
+      "attempts": 1,
+      "fixture": "fixtures/sebi/public-issues-listing.html",
+      "reads": "carries nothing readable — this is a kendo-grid SPA shell; rows load via a client-side AJAX call the static fetch never makes, and the only regex hit was a nav-link label, not filing data"
+    },
+    {
+      "what": "offer documents listing",
+      "url": "https://www.sebi.gov.in/sebi_data/dprfilings/dprfiling.html",
+      "status": 404,
+      "ok": false,
+      "bytes": 5200,
+      "attempts": 3,
+      "reads": "unreachable after 3 attempt(s) — HTTP 404"
+    },
+    {
+      "what": "processing status of draft offer documents",
+      "url": "https://www.sebi.gov.in/filings/pending-clearances.html",
+      "status": 404,
+      "ok": false,
+      "bytes": 5200,
+      "attempts": 3,
+      "reads": "unreachable after 3 attempt(s) — HTTP 404"
+    }
+  ]
+}
