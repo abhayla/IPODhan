@@ -164,6 +164,9 @@ a database that already applied idx 32-34 with their future `created_at` — the
 correction, per slot:
 ```bash
 cd scraper
+# Durable backup location — the tool's default (OS temp dir) can be cleared by the OS before anyone
+# reads it, and this backup is the only record of the pre-change rows for a production --apply.
+export MIGRATION_JOURNAL_REPAIR_EVIDENCE_DIR=/root/evidence/migration-journal-dates-442
 # 1. staging (tunnel env — see section 4/5 for the PW= line): dry run, then apply
 DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging \
   npx tsx scripts/repair-migration-journal-dates.ts            # dry-run, prints the plan + backup path
@@ -177,7 +180,8 @@ Idempotent (a second run against an already-corrected slot finds 0 rows to repai
 exactly the three rows named in #442, matched by `sha256(<migration .sql file content>)` — the same
 hash drizzle-orm's own migrator computes — never by a slot's possibly-drifted `created_at`. Backup of
 the pre-change rows defaults to the OS temp directory (`MIGRATION_JOURNAL_REPAIR_EVIDENCE_DIR` to
-override); it must never default to a path outside this repo.
+override); it must never default to a path outside this repo — set the override above before any
+production `--apply` so the backup survives on durable storage, not somewhere the OS may sweep it.
 
 **Shared guards (T-490):** every repair/backfill tool imports `scraper/scripts/lib/repair-tool.ts` - `openRepairDb()`
 (prints `current_database(): <name>` from the WRITING pool and refuses a prod `--apply` without `--allow-prod`),

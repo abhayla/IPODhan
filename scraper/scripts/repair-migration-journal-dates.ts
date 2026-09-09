@@ -27,9 +27,12 @@
  * `drizzle.__drizzle_migrations` is left untouched.
  *
  * SAFETY: backup-first (writes the pre-change rows to evidence/), one
- * transaction, idempotent (`created_at IS DISTINCT FROM <target>` guard — a
- * second run finds nothing to do), dry-run by default, `--apply` to write,
- * `--allow-prod` gate present and never exercised by this slice.
+ * transaction, idempotent (a JS `beforeMs === correctedWhen` check skips any
+ * row already at its target value before it is even added to the plan, and
+ * the UPDATE itself is additionally guarded by `AND created_at = <before>`
+ * so a row that changed since the plan was built is left untouched rather
+ * than double-applied), dry-run by default, `--apply` to write, `--allow-prod`
+ * gate present and never exercised by this slice.
  *
  * Run from scraper/ with tunnel env exported
  * (DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 DATABASE_NAME=ipodhan_test ...):
@@ -74,8 +77,8 @@ const TARGET_ENTRIES: ReadonlyArray<{ tag: string; correctedWhen: number }> = [
   { tag: '20260908004955_left_loners', correctedWhen: 1788828595000 }, // 2026-09-08T00:49:55.000Z (its own tag)
 ];
 
-/** sha256(sql file content) — identical to drizzle-orm's readMigrationFiles(). */
-function hashMigrationFile(tag: string): string {
+/** sha256(sql file content) — identical to drizzle-orm's readMigrationFiles(). Exported so the unit test can drive the real function instead of re-deriving the algorithm. */
+export function hashMigrationFile(tag: string): string {
   const sqlPath = path.join(MIGRATIONS_DIR, `${tag}.sql`);
   const content = fs.readFileSync(sqlPath, 'utf8');
   return crypto.createHash('sha256').update(content).digest('hex');
@@ -87,10 +90,66 @@ interface MigrationRow {
   created_at: string; // bigint comes back as string from node-postgres
 }
 
+interface JournalEntryLike {
+  tag: string;
+  when: number;
+}
+
+/**
+ * Pure precondition: the on-disk journal this checkout is running from MUST
+ * already carry the corrected `when` for every row this tool is about to
+ * write into the database — otherwise a released checkout that has NOT yet
+ * shipped the journal fix would drive the database's `created_at` LOWER than
+ * the deployed journal's `when`, and the next `db:migrate` would find idx
+ * 32-34 "pending" again and insert duplicate rows in
+ * `drizzle.__drizzle_migrations`. Exported so the check is testable without
+ * touching disk. Returns one message per mismatch/missing entry; empty means
+ * the journal is safe to repair against.
+ */
+export function findJournalMismatches(
+  journalEntries: readonly JournalEntryLike[],
+  targets: ReadonlyArray<{ tag: string; correctedWhen: number }>
+): string[] {
+  const byTag = new Map(journalEntries.map((e) => [e.tag, e.when]));
+  const mismatches: string[] = [];
+  for (const t of targets) {
+    const journalWhen = byTag.get(t.tag);
+    if (journalWhen === undefined) {
+      mismatches.push(`${t.tag}: not present in the on-disk journal`);
+    } else if (journalWhen !== t.correctedWhen) {
+      mismatches.push(
+        `${t.tag}: on-disk journal 'when'=${journalWhen} (${new Date(journalWhen).toISOString()}) does not match the ` +
+          `corrected value ${t.correctedWhen} (${new Date(t.correctedWhen).toISOString()}) this tool is about to write into the database`
+      );
+    }
+  }
+  return mismatches;
+}
+
+/** Reads meta/_journal.json off disk and throws if it hasn't shipped the corrected `when` values yet. */
+function assertJournalOnDiskMatchesTargets(): void {
+  const journalPath = path.join(MIGRATIONS_DIR, 'meta', '_journal.json');
+  const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as { entries: JournalEntryLike[] };
+  const mismatches = findJournalMismatches(journal.entries, TARGET_ENTRIES);
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Refusing to repair drizzle.__drizzle_migrations.created_at: the on-disk journal at "${journalPath}" does not ` +
+        `carry the corrected 'when' values this tool is about to write into the database:\n` +
+        mismatches.map((m) => `  - ${m}`).join('\n') +
+        `\nRunning this repair from a checkout/release where the journal fix has not shipped would make the ` +
+        `database's created_at LOWER than the deployed journal's 'when', so the next db:migrate would re-run idx ` +
+        `32-34 and insert duplicate rows in drizzle.__drizzle_migrations. Deploy the journal fix (this slice's ` +
+        `meta/_journal.json change) to this checkout/release first, then re-run.`
+    );
+  }
+}
+
 async function main() {
   console.log('='.repeat(80));
   console.log(`MIGRATION JOURNAL DATES REPAIR (#442) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
   console.log('='.repeat(80));
+
+  assertJournalOnDiskMatchesTargets();
 
   const { dbName } = await openRepairDb(db, {
     apply: APPLY,

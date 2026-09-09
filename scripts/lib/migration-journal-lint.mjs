@@ -183,7 +183,9 @@ export function findFutureDatedWhen(entries, nowMs) {
       violations.push(
         `idx ${e.idx} (${e.tag}) has when=${e.when}, more than ${CLOCK_SKEW_TOLERANCE_MS}ms in the future relative to now (${nowMs}) ` +
           `and beyond the minimum needed to stay monotonic past its predecessor (allowed max ${allowedMax}). ` +
-          `Hand-typed future dates are exactly the class that caused a migration to be silently skipped (T-403 round 3).`
+          `Hand-typed future dates are exactly the class that caused a migration to be silently skipped (T-403 round 3). ` +
+          `Fix the machine's clock and regenerate this migration (drizzle-kit generate) so its 'when' is stamped fresh — ` +
+          `do NOT hand-edit the 'when' value in meta/_journal.json; a hand-edit here is exactly the act that caused #442.`
       );
     }
     prevViolated = violated;

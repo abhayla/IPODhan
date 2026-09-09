@@ -114,8 +114,9 @@ jobs:
         # strictly greater than the last applied created_at. Entries 0045-0049
         # carry hand-typed future dates (up to 2026-09-10); a real migration
         # authored after them could sort BELOW them and be silently skipped.
-        # This gate checks monotonic `when` (from idx 33 on), no new
-        # future-dated `when` (after idx 33), and that every entry has its
+        # This gate checks monotonic `when` (from idx 33 on), rejects any
+        # entry dated more than a small clock-skew tolerance into the future
+        # (no blanket future-dated exemption), and that every entry has its
         # .sql / snapshot artifacts. Mutation-proof: the self-test imports the
         # real predicates from scripts/lib/migration-journal-lint.mjs.
         run: |
