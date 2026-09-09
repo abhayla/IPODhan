@@ -176,7 +176,7 @@ already purged; money is stored in four different units across six tables, not t
 site publishes Annu Projects' FY2024 income when its own document reports FY2026, a figure we
 already hold.
 
-**Status:** DESIGN DELIVERED, awaiting your read. One owner call is open and is the only thing
+**Status:** DESIGN COMPLETE, awaiting your read. Zero findings open (45 fixed, 11 deferred with a named trigger, 1 deliberately not done); every finding needing code names a build item in §7.1. Section 0.0 is the owner-decision register and checks D10/D10b/D10c/D11 enforce it - run `node docs/design/check-design-consistency.mjs` (14/14). No owner call blocks the design: O-1, O-2, O-3 and O-7 stay open and only O-2 blocks a build item (11). **Prev:** — **Now:** 100%
 blocking a scoped implementation — see below. **Prev:** 0% **Now:** 60% (design done; approval and
 the target-metric decision outstanding)
 

@@ -1372,3 +1372,18 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   session), so the row can be re-minted. The --cycles 2 held-proof is RUNNING - discovery next fires
   08:30 IST, ten minutes after the merge. New finding F-57: staging carries 12 duplicate groups from a DIFFERENT defect
   (slug suffixes -o/-lt/-ct), so an unscoped duplicate check is permanently red there.
+
+- 2026-09-09 09:17 IST — pull-model design COMPLETE. Zero findings open: 45 fixed, 11 deferred each naming the
+  event that brings it back, 1 deliberately not done. The last five (F-46, F-49, F-51, F-54, F-55)
+  were all the same shape - the design question was answerable, the remainder was code - so each now
+  names a build item in §7.1 (items 12-15) rather than sitting in the register with no owner.
+  New this pass: §0.0 is the owner-decision register (18 decisions in Abhay's own words, dated, each
+  pointing at the section that implements it) and checks D10/D10b/D10c/D11 make "the design follows
+  your guidance" a command rather than a claim. All four new checks failed on first run and all four
+  were MY bug, not the design's; D10c was pure decoration until a mutation test caught that it
+  excluded pipe characters inside a markdown table. D11 audited all 25 code citations and found two
+  wrong - index.ts:180 described aggregator cadence while pointing at the cycle-lock TTL, and
+  index.ts is a basename shared by twelve files. §8 rewritten into an honest split of measured vs
+  cited vs judgement. Four owner comments remain Abhay's (O-1 wake interval, O-2 crore, O-3 partial
+  persistence, O-7 language model); none blocks anything except build item 11. 14/14 consistent,
+  pushed to docs/pull-model-design.
