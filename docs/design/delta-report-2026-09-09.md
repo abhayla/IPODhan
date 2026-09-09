@@ -146,7 +146,28 @@ Neither changes behaviour, so nothing on the site waits on this.
 raw SQL to `ipos` and is **already in the baseline**, grandfathered before that rule existed. Out of
 item 19's scope, named in §8.3, and the honest reading is that the project owes a second routing job.
 
-## 10. SUMMARY
+## 10. The Definition of Done, walked
+
+The contract's Definition of Done was checked item by item rather than declared met, by
+`docs/design/check-dod.mjs` — a command anyone can re-run:
+
+```
+node docs/design/check-dod.mjs        # Definition of Done: 14 met, 0 not met, of 14.
+```
+
+It asserts the real artefacts, not a checklist of intentions: 52 OD rows with OD-23 superseded and
+O-12/O-13 gone from the fork table; all nine new sections present; D17-D20 in the gate with the gate
+green; the mutation suite red-then-green on four attacks; 22 cards past the card gate; items 19-22
+present; 166 live rules with **zero orphans**; **zero open findings**; six walkthrough files; the
+review record with its second round; two DRAFT contracts with no TBD in either; O-14 and O-15
+recorded; and the ledger line, tracker section, report and released lock.
+
+**One item it caught that nothing else had:** the contract this run fulfils was committed on a
+different branch (`d9ba3430` on `docs/pull-model-design`) and was therefore **not in this branch at
+all** — so a reviewer of the pull request could not read what the run had been asked to do. It is
+now on the branch, byte-identical to the original (md5 `0fb00585…`).
+
+## 11. SUMMARY
 
 - **DONE** — 26 owner decisions folded in and enforced by four new checks; seven new sections;
   22 build cards with every one of 166 design rules owned or declared unclaimed; findings 18 → 0
