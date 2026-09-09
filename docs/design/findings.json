@@ -629,6 +629,26 @@
       "title": "Staging carries 12 duplicate IPO groups from a DIFFERENT defect: slug-suffix rows",
       "detail": "Found 2026-09-09 while proving the duplicate invariant on both databases. Prod has ZERO duplicate groups; staging has 12, several with three or four rows: shree-balaji-mala-textiles-ltd has FOUR (plain, -ipo, -ipo-lt, -ipo-o), h-r-hygiene-products and g-v-electricals three each, plus gulf-lloyds -ct, laser-power-and-infra -o, indo-mim -o, silverstorm-parks -o, poojaa-precision -o, propshop-events -ct, caliber-mining -o, ic-electricals (co vs company), atharva-polyplast vs atharva-poly-plast. Every row inside a group carries an IDENTICAL issue_size, so this is not two sources disagreeing - it is one row minted repeatedly under suffixed slugs (-o, -lt, -ct, and slugs that embed the ipo name a second time). That is a slug-collision path, NOT the name-fold gap that produced the Asset Reconstruction duplicate (F-55), so fixing the normaliser will not clear them. Open dates are Jun-Jul 2026, so they are old rows, most likely repeated seeding. Why it matters: any duplicate check gated on staging goes permanently red at 12 violations, and staging stops being a usable proof surface for this class - which is precisely why scripts/lib/repair-invariants/duplicate-ipo-rows.mjs needed a DUPLICATE_INVARIANT_FOLDS scope to serve as a repair proof at all.",
       "fix_in": "staging data clean-up, plus finding where the -o/-lt/-ct slug suffix is minted"
+    },
+    {
+      "id": "F-58",
+      "sev": "MAJOR",
+      "area": "source capability",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "NSE returns an EMPTY issueInfo block for an SME IPO, so every SME-NSE rank that relies on an NSE LABEL is unproven",
+      "detail": "Probed 2026-09-09 against two live OPEN IPOs. /api/ipo-detail?symbol=ARCIL (mainboard) returns issueInfo.dataList with 39 labelled rows including Name of the Registrar, Book Running Lead Managers, Face Value, Tick Size, Bid Lot, Sponsor Bank, IPO Market Timings and Price Range. /api/ipo-detail?symbol=VINOD (SME, NSE Emerge) returns issueInfo as an EMPTY OBJECT - dataList length 0 - while still returning bidDetails and activeCat. /api/ipo-current-issue DOES carry the SME row (dates, series SME, symbol, noOfSharesOffered). So for SME on NSE the list row exists and the labelled issue-information block does not. Appendix A ranks NSE for SME_NSE on fields that only the labelled block carries. Evidence: probes/fixtures/nse/ipo-detail-ARCIL.json, probes/fixtures/nse/ipo-detail-VINOD.json, probes/fixtures/nse/ipo-current-issue.json.",
+      "fix_in": "Not fixed in this round on purpose: one observation of one live SME IPO is enough to FLAG a rank, not to re-rank a family of fields - that is the design's own standard of proof. Put to the review round with the saved payloads. If confirmed, the SME_NSE column needs a capability rule of its own and the ranks move to the document and Chittorgarh."
+    },
+    {
+      "id": "F-59",
+      "sev": "MINOR",
+      "area": "source capability",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Chittorgarh coverage differs per PAGE, and a per-page absence was recorded as a capability limit",
+      "detail": "The spec excluded peer_companies.pbv_ratio from Chittorgarh on one observation of one mainboard page on 2026-09-08. The Vinod Texworld page saved 2026-09-09 prints a company-level 'Price to Book Value 2.55 3.37' row and a peer table whose column header is 'P/BV Ratio'. The Asset Reconstruction page, three days into its issue, carries no peer table at all. So the source CAN serve the field and had simply not filled that page yet - which is NOT_AVAILABLE_YET on the plan row, not a missing capability.",
+      "fix_in": "field-source-resolution.spec.mjs: peer_companies.pbv_ratio removed from CG_CANNOT with the evidence cited inline. financial_data.pe_ratio stays excluded - the mainboard page's 'PE Ratio' column belongs to other recently listed IPOs, which is a different and still-live defect."
     }
   ],
   "false_assertions": [

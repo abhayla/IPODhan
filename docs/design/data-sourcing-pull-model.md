@@ -2476,6 +2476,54 @@ set is dominated by the prospectus (64). So for SME the rank-1 document order is
 the price band, share counts and market cap come from the prospectus. The earlier draft assumed the
 advertisement existed everywhere; it does not.
 
+#### The fifth verification round, 2026-09-09 — every rank against a saved payload
+
+The four earlier rounds checked this appendix against itself, against the code, and (in round four)
+against live pages read by hand. This round did it mechanically, and the numbers below are generated
+by `probes/evidence-map.mjs` rather than counted by a person.
+
+Every (field, source) pair the appendix resolves — across the mainboard, SME-BSE and SME-NSE columns
+— was looked up in the **saved payload** for that source: the real NSE and BSE responses, the real
+Chittorgarh pages, the real InvestorGain report, and the real output of `extract_filing.py` run on
+four real offer documents.
+
+| Source | Rank backed by a saved payload | Searched, nothing matched | Not probed this round |
+|---|---:|---:|---:|
+| `DOC` | 48 | 115 | 0 |
+| `NSE` | 19 | 38 | 0 |
+| `BSE` | 15 | 40 | 0 |
+| `CG` | 31 | 69 | 0 |
+| `IG` | 1 | 0 | 0 |
+| `REG` | 0 | 0 | 7 |
+| `ADMIN` | 0 | 0 | 3 |
+
+**114 of 386 pairs are backed by a payload we hold.** Check **D15** enforces that number as a
+ratchet: it may rise, and the gate fails if it falls.
+
+**What the other 272 mean, precisely, because this is where an honest report is easy to fake.**
+"Searched, nothing matched" is **not** proof that the source lacks the field. It means: in the
+payload saved for the two IPOs walked in this round, no label matched that column. Three separate
+things produce it, and they need different answers:
+
+1. **The source genuinely does not carry it** — a real rank correction, and the reason to look.
+2. **The source carries it for a different IPO type** — see F-58: NSE returns a rich labelled block
+   for a mainboard IPO and an empty one for an SME IPO, so an SME-NSE rank can look unproven while
+   the mainboard rank is solid.
+3. **The source carries it but this page had not filled it yet** — see F-59: Chittorgarh prints a
+   peer table with a P/BV column for one IPO and no peer table at all for another that opened three
+   days ago. That is `NOT_AVAILABLE_YET` on a plan row, not a missing capability.
+
+**Two sources were not probed at all this round** and say so rather than being credited: the
+registrar sites (`REG`, 7 pairs) have no probe yet, and `ADMIN` fields (3 pairs) have no external
+source by design.
+
+**A matched pair records the label it matched**, so a reviewer who disagrees can argue with the
+evidence rather than with the total. That mattered: the first version of this mapper reported 231
+backed pairs by matching loosely, and its matches included `ipos.registrar` against a plausibility
+check, `gmp_records.gmp` against a page title and `financial_statements.pat` against "PAT Margin".
+Tightening it to full-token matches on real table labels, with a block on tokens that change what a
+number means, cut the total to 114 — and made every one of them auditable.
+
 ### A.1 The 240 fields
 
 | # | Field | Cls | R1 | R2 | R3 | SME-BSE | SME-NSE | Doc § | Note / why no lower rank |
@@ -2652,7 +2700,7 @@ advertisement existed everywhere; it does not.
 | 170 | `peer_companies.diluted_eps` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C9 |  |
 | 171 | `peer_companies.ronw` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C9 |  |
 | 172 | `peer_companies.nav` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C9 |  |
-| 173 | `peer_companies.pbv_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: observed absent from a live Chittorgarh IPO page 2026-09-08 - it prints NAV, EPS, P/E and market cap, never P/BV |
+| 173 | `peer_companies.pbv_ratio` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C9 | CORRECTED 2026-09-09: a real CG page carries both a company-level Price to Book Value row and a peer-table P/BV Ratio column; the 2026-09-08 absence was one page that had not been filled, not a capability limit (F-59) |
 | 174 | `peer_companies.data_source` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 175 | `peer_companies.last_updated` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 176 | `peer_companies.financial_statement_type` | D | DOC | — | — | DOC · — · — | DOC · — · — | C8 | no rank 2: CG does not print which basis (restated/standalone) the peer figures use |

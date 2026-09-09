@@ -1,0 +1,2705 @@
+{
+  "probe": "evidence-map",
+  "generated_at": "2026-09-09T04:55:46.630Z",
+  "method": "For every (field, source) pair Appendix A resolves, look for the field in the SAVED payload for that source. CARRIES records the label and the fixture. UNPROVEN means the payload was searched and nothing matched — it is a rank to re-examine, not a pass. UNPROBED means no probe was run for that source in this round.",
+  "caveat": "Matching is by token overlap with a synonym table, so a CARRIES verdict names the label it matched and that label is auditable. A reviewer disagreeing with one match should say so against the recorded label, not against the number.",
+  "index_sizes": {
+    "NSE": 94,
+    "BSE": 48,
+    "CG": 207,
+    "IG": 29,
+    "DOC": 172
+  },
+  "totals": {
+    "CARRIES": 114,
+    "UNPROVEN": 262,
+    "UNPROBED": 10
+  },
+  "by_source": {
+    "DOC": {
+      "CARRIES": 48,
+      "UNPROVEN": 115
+    },
+    "NSE": {
+      "CARRIES": 19,
+      "UNPROVEN": 38
+    },
+    "BSE": {
+      "CARRIES": 15,
+      "UNPROVEN": 40
+    },
+    "CG": {
+      "UNPROVEN": 69,
+      "CARRIES": 31
+    },
+    "ADMIN": {
+      "UNPROBED": 3
+    },
+    "IG": {
+      "CARRIES": 1
+    },
+    "REG": {
+      "UNPROBED": 7
+    }
+  },
+  "pairs": [
+    {
+      "field": "ipos.symbol",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "business_description",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "Our Company is an asset reconstruction company (“ARC”) opera",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.symbol",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Symbol",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "ARCIL",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.symbol",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Symbol",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "ARCIL",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.symbol",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"symbol\""
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_name\""
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "companyName",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "ARCIL",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "ScripName",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"company_name\""
+    },
+    {
+      "field": "ipos.issue_size",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"issue_size\""
+    },
+    {
+      "field": "ipos.issue_size",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Issue_Size_No_of_shares",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "36912363",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.issue_size",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Issue Size",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "(column header)",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "lot_size",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "107",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"lot_size\""
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"lot_size\""
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Lot Size",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "107 Shares",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.open_date",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Issue Period",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "09-Sep-2026 to 11-Sep-2026",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.open_date",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Issue_Period",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "09 Sep 2026 to 11 Sep 2026",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.open_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"open_date\""
+    },
+    {
+      "field": "ipos.close_date",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Issue Period",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "09-Sep-2026 to 11-Sep-2026",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.close_date",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Issue_Period",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "09 Sep 2026 to 11 Sep 2026",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.close_date",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Period Ended",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "31 Mar 2026 | 31 Mar 2025 | 31 Mar 2024",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.listing_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"listing_date\""
+    },
+    {
+      "field": "ipos.listing_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"listing_date\""
+    },
+    {
+      "field": "ipos.listing_date",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Listing Date",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Thu, Sep 17, 2026 T",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.status",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "status",
+      "fixture": "nse/ipo-current-issue.json",
+      "sample": "Active",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.status",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"status\""
+    },
+    {
+      "field": "ipos.status",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"status\""
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"registrar\""
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Name of the Registrar",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "MUFG Intime India Private Limited",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Registrar",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "MUFG Intime India Private Limited^C-101, 247 Park,LBS Marg, Vikhroli (West) 400083||||||||",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Profit After Tax",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "407.84 | 355.32 | 305.34",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.rating_override",
+      "source": "ADMIN",
+      "verdict": "UNPROBED",
+      "why": "an admin-only field has no external source to probe"
+    },
+    {
+      "field": "ipos.sector",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"sector\""
+    },
+    {
+      "field": "ipos.sector",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"sector\""
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "price_band_floor",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "132",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"price_range_min\""
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"price_range_min\""
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"price_range_min\""
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "price_band_cap",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "139",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"price_range_max\""
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"price_range_max\""
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"price_range_max\""
+    },
+    {
+      "field": "ipos.listing_exchanges",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"listing_exchanges\""
+    },
+    {
+      "field": "ipos.listing_exchanges",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"listing_exchanges\""
+    },
+    {
+      "field": "ipos.listing_exchanges",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"listing_exchanges\""
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "face_value",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "10",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Face_Value",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "10.00",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Face Value",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Rs. 10 per Equity Share",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Face Value",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "₹ 10 per share",
+      "how": "exact label"
+    },
+    {
+      "field": "ipos.allotment_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"allotment_date\""
+    },
+    {
+      "field": "ipos.allotment_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"allotment_date\""
+    },
+    {
+      "field": "ipos.allotment_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"allotment_date\""
+    },
+    {
+      "field": "ipos.company_description",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_description\""
+    },
+    {
+      "field": "ipos.company_description",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"company_description\""
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"lead_managers\""
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Book Running Lead Managers",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"IIFL Capital Services Limited, IDBI Capital Markets & Securities Limited and JM Financial",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Book_Running_Lead_Manager",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "IIFL Capital Services Limited^24th Floor, One Lodha Place, Senapati Bapat Marg,Lower Parel",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"lead_managers\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipos.segment",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"segment\""
+    },
+    {
+      "field": "ipos.segment",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "series",
+      "fixture": "nse/ipo-current-issue.json",
+      "sample": "EQ",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.segment",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"segment\""
+    },
+    {
+      "field": "ipos.segment",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"segment\""
+    },
+    {
+      "field": "ipos.offering_type",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"offering_type\""
+    },
+    {
+      "field": "ipos.offering_type",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"offering_type\""
+    },
+    {
+      "field": "ipos.offering_type",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"offering_type\""
+    },
+    {
+      "field": "ipos.scraper_locked",
+      "source": "ADMIN",
+      "verdict": "UNPROBED",
+      "why": "an admin-only field has no external source to probe"
+    },
+    {
+      "field": "ipos.objectives",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"objectives\""
+    },
+    {
+      "field": "ipos.objectives",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Issue Objects",
+      "fixture": "chittorgarh/vinod-texworld-ltd.html",
+      "sample": "(column header)",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipos.bse_ipo_no",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"bse_ipo_no\""
+    },
+    {
+      "field": "ipos.bse_payload_lead_manager_count",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"bse_payload_lead_manager_count\""
+    },
+    {
+      "field": "ipos.company_website",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_website\""
+    },
+    {
+      "field": "ipos.company_website",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"company_website\""
+    },
+    {
+      "field": "ipos.cin",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "cin",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "U65999MH2002PLC134884",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.company_description",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_description\""
+    },
+    {
+      "field": "ipo_details.company_description",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"company_description\""
+    },
+    {
+      "field": "ipo_details.issue_type",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "issue_price_type",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-RHP.json",
+      "sample": "BOOK_BUILDING",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.issue_type",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Issue Type",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Book Building",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.issue_type",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Issue Type",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Bookbuilding IPO",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.fresh_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"fresh_issue\""
+    },
+    {
+      "field": "ipo_details.fresh_issue",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"fresh_issue\""
+    },
+    {
+      "field": "ipo_details.fresh_issue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"fresh_issue\""
+    },
+    {
+      "field": "ipo_details.ofs_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"ofs_issue\""
+    },
+    {
+      "field": "ipo_details.ofs_issue",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Issue_Size_No_of_shares",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "36912363",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.ofs_issue",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Offer for Sale",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "5,27,31,946 shares of ₹ 10 (agg. up to ₹ 733 Cr)",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.face_value",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "face_value",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "10",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.face_value",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Face_Value",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "10.00",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.face_value",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Face Value",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "₹ 10 per share",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.basis_of_allotment_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"basis_of_allotment_date\""
+    },
+    {
+      "field": "ipo_details.basis_of_allotment_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"basis_of_allotment_date\""
+    },
+    {
+      "field": "ipo_details.basis_of_allotment_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"basis_of_allotment_date\""
+    },
+    {
+      "field": "ipo_details.initiation_of_refunds_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"initiation_of_refunds_date\""
+    },
+    {
+      "field": "ipo_details.initiation_of_refunds_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"initiation_of_refunds_date\""
+    },
+    {
+      "field": "ipo_details.initiation_of_refunds_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"initiation_of_refunds_date\""
+    },
+    {
+      "field": "ipo_details.credit_of_shares_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"credit_of_shares_date\""
+    },
+    {
+      "field": "ipo_details.credit_of_shares_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"credit_of_shares_date\""
+    },
+    {
+      "field": "ipo_details.credit_of_shares_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"credit_of_shares_date\""
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "designated_stock_exchange",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "NSE",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"exchanges\""
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"exchanges\""
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"exchanges\""
+    },
+    {
+      "field": "ipo_details.compliance_officer",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "compliance_officer",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "Ameet Ashok Kela",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.compliance_officer_phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"compliance_officer_phone\""
+    },
+    {
+      "field": "ipo_details.compliance_officer_email",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "compliance_officer_email",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "cs@arcil.co.in",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.upi_cutoff_time",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "upi_cutoff_time",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "17:00",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.upi_cutoff_time",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Cut-off time for UPI Mandate Confirmation",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"11-Sep-2026 (upto 5:00 PM) The new cut-off time for UPI mandate acceptance is 05:00 PM on",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.upi_cutoff_time",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"upi_cutoff_time\""
+    },
+    {
+      "field": "ipo_details.designated_exchange",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "designated_stock_exchange",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "NSE",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.lot_multiple",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "lot_multiple",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "107",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.lot_multiple",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"lot_multiple\""
+    },
+    {
+      "field": "ipo_details.lot_multiple",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"lot_multiple\""
+    },
+    {
+      "field": "ipo_details.allocation_pct",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"allocation_pct\""
+    },
+    {
+      "field": "ipo_details.pre_ipo_placement",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "pre_ipo_placement",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "false",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.bid_windows",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "bid_windows",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "[6]",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.bid_windows",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"bid_windows\""
+    },
+    {
+      "field": "ipo_details.bid_windows",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"bid_windows\""
+    },
+    {
+      "field": "ipo_details.promoter_shares_held",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"promoter_shares_held\""
+    },
+    {
+      "field": "ipo_details.sebi_regulation_cited",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"sebi_regulation_cited\""
+    },
+    {
+      "field": "ipo_details.promoter_group_transactions_since_drhp",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"promoter_group_transactions_since_drhp\""
+    },
+    {
+      "field": "ipo_details.cut_off_price",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"cut_off_price\""
+    },
+    {
+      "field": "ipo_details.min_investment",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"min_investment\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"isin\""
+    },
+    {
+      "field": "ipo_details.registrar_link",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"registrar_link\""
+    },
+    {
+      "field": "ipo_details.lead_managers",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"lead_managers\""
+    },
+    {
+      "field": "ipo_details.lead_managers",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Book_Running_Lead_Manager",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "IIFL Capital Services Limited^24th Floor, One Lodha Place, Senapati Bapat Marg,Lower Parel",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.lead_managers",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"lead_managers\""
+    },
+    {
+      "field": "ipo_details.company_address",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_address\""
+    },
+    {
+      "field": "ipo_details.company_phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_phone\""
+    },
+    {
+      "field": "ipo_details.company_email",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_email\""
+    },
+    {
+      "field": "ipo_details.company_city",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_city\""
+    },
+    {
+      "field": "ipo_details.company_state",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_state\""
+    },
+    {
+      "field": "ipo_details.company_pincode",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_pincode\""
+    },
+    {
+      "field": "ipo_details.qib_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"qib_shares_offered\""
+    },
+    {
+      "field": "ipo_details.qib_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"qib_shares_offered\""
+    },
+    {
+      "field": "ipo_details.nii_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"nii_shares_offered\""
+    },
+    {
+      "field": "ipo_details.nii_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"nii_shares_offered\""
+    },
+    {
+      "field": "ipo_details.retail_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"retail_shares_offered\""
+    },
+    {
+      "field": "ipo_details.retail_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"retail_shares_offered\""
+    },
+    {
+      "field": "ipo_details.retail_max_allottees",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"retail_max_allottees\""
+    },
+    {
+      "field": "ipo_details.retail_max_allottees",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"retail_max_allottees\""
+    },
+    {
+      "field": "ipo_details.employee_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"employee_shares_offered\""
+    },
+    {
+      "field": "ipo_details.employee_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"employee_shares_offered\""
+    },
+    {
+      "field": "ipo_details.anchor_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"anchor_shares_offered\""
+    },
+    {
+      "field": "ipo_details.anchor_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"anchor_shares_offered\""
+    },
+    {
+      "field": "ipo_details.max_retail_subscription",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"max_retail_subscription\""
+    },
+    {
+      "field": "ipo_details.max_retail_subscription",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Maximum Subscription Amount for Retail Investor",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"Rs. 2,00,000\"",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.max_employee_subscription",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"max_employee_subscription\""
+    },
+    {
+      "field": "ipo_details.max_employee_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"max_employee_subscription\""
+    },
+    {
+      "field": "ipo_details.employee_discount",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"employee_discount\""
+    },
+    {
+      "field": "ipo_details.employee_discount",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"employee_discount\""
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"sponsor_banks\""
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"sponsor_banks\""
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"sponsor_banks\""
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"sponsor_banks\""
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"tick_size\""
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Tick Size",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Re. 1",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Tick_Size",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "1.00",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"tick_size\""
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"ipo_market_timings\""
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "IPO Market Timings",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "10.00 a.m. to 5.00 p.m.",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "IPO_Market_Timings",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"ipo_market_timings\""
+    },
+    {
+      "field": "ipo_details.category_details",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"category_details\""
+    },
+    {
+      "field": "ipo_details.category_details",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "bidDetails.category",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_details.sub_categories_upi",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"sub_categories_upi\""
+    },
+    {
+      "field": "ipo_details.sub_categories_upi",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Sub-Categories applicable for UPI",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "IND (upto 5 Lakhs)",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_data.revenue_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"revenue_fy2022\""
+    },
+    {
+      "field": "financial_data.revenue_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"revenue_fy2022\""
+    },
+    {
+      "field": "financial_data.revenue_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"revenue_fy2023\""
+    },
+    {
+      "field": "financial_data.revenue_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"revenue_fy2023\""
+    },
+    {
+      "field": "financial_data.revenue_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"revenue_fy2024\""
+    },
+    {
+      "field": "financial_data.revenue_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"revenue_fy2024\""
+    },
+    {
+      "field": "financial_data.profit_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"profit_fy2022\""
+    },
+    {
+      "field": "financial_data.profit_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"profit_fy2022\""
+    },
+    {
+      "field": "financial_data.profit_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"profit_fy2023\""
+    },
+    {
+      "field": "financial_data.profit_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"profit_fy2023\""
+    },
+    {
+      "field": "financial_data.profit_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"profit_fy2024\""
+    },
+    {
+      "field": "financial_data.profit_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"profit_fy2024\""
+    },
+    {
+      "field": "financial_data.net_worth",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "net_worth_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "{\"2023\":22397.43,\"2024\":24625.11,\"2025\":27677.98}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_data.net_worth",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "NET Worth",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "3,079.39 | 2,767.80 | 2,462.51",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_data.eps",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "eps_basic_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "{\"2024\":10.17,\"2025\":10.14,\"2026\":10.82}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_data.eps",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "EPS (₹)",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "12.55 | 12.55",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_data.roe",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"roe\""
+    },
+    {
+      "field": "financial_data.roe",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "ROE",
+      "fixture": "chittorgarh/vinod-texworld-ltd.html",
+      "sample": "24.31% | 28.50%",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_data.debt_to_equity",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"debt_to_equity\""
+    },
+    {
+      "field": "financial_data.debt_to_equity",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"debt_to_equity\""
+    },
+    {
+      "field": "financial_data.reserves_and_surplus",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"reserves_and_surplus\""
+    },
+    {
+      "field": "financial_data.reserves_and_surplus",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Reserves and Surplus",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "2,751.18 | 2,439.19 | 2,135.20",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_data.total_assets",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_assets\""
+    },
+    {
+      "field": "financial_data.total_assets",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"total_assets\""
+    },
+    {
+      "field": "financial_data.total_borrowing",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_borrowing\""
+    },
+    {
+      "field": "financial_data.total_borrowing",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Total Borrowing",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "1,205.50 | 305.93 | 149.95",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_data.promoter_holding_pre_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"promoter_holding_pre_issue\""
+    },
+    {
+      "field": "financial_data.promoter_holding_pre_issue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"promoter_holding_pre_issue\""
+    },
+    {
+      "field": "financial_data.promoter_holding_post_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"promoter_holding_post_issue\""
+    },
+    {
+      "field": "financial_data.promoter_holding_post_issue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"promoter_holding_post_issue\""
+    },
+    {
+      "field": "financial_data.market_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"market_cap\""
+    },
+    {
+      "field": "financial_data.market_cap",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Market Cap at Offer Price",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "- | ₹4,516.07 Cr",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_data.pre_ipo_eps",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"pre_ipo_eps\""
+    },
+    {
+      "field": "financial_data.pre_ipo_eps",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"pre_ipo_eps\""
+    },
+    {
+      "field": "financial_data.post_ipo_eps",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"post_ipo_eps\""
+    },
+    {
+      "field": "financial_data.post_ipo_eps",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"post_ipo_eps\""
+    },
+    {
+      "field": "financial_data.ronw",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "weighted_average_ronw",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "12.94",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_data.ronw",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "RoNW",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "13.95% | 13.59%",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_data.pe_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"pe_ratio\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"ebitda_fy2022\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"ebitda_fy2022\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"ebitda_fy2023\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"ebitda_fy2023\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"ebitda_fy2024\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"ebitda_fy2024\""
+    },
+    {
+      "field": "financial_data.total_income_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_income_fy2022\""
+    },
+    {
+      "field": "financial_data.total_income_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"total_income_fy2022\""
+    },
+    {
+      "field": "financial_data.total_income_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_income_fy2023\""
+    },
+    {
+      "field": "financial_data.total_income_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"total_income_fy2023\""
+    },
+    {
+      "field": "financial_data.total_income_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_income_fy2024\""
+    },
+    {
+      "field": "financial_data.total_income_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"total_income_fy2024\""
+    },
+    {
+      "field": "financial_data.current_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"current_ratio\""
+    },
+    {
+      "field": "financial_data.quick_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"quick_ratio\""
+    },
+    {
+      "field": "financial_data.inventory_turnover",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"inventory_turnover\""
+    },
+    {
+      "field": "financial_statements.fiscal_year",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "fiscal_years",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "[3]",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.fiscal_year",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"fiscal_year\""
+    },
+    {
+      "field": "financial_statements.revenue",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "revenue_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "{\"2023\":7513.14,\"2024\":5701.41,\"2025\":5964.23}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.revenue",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Total Income",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "785.08 | 623.40 | 574.11",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.total_income",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "total_income_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "{\"2023\":7537.11,\"2024\":5741.06,\"2025\":6233.99}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.total_income",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Total Income",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "785.08 | 623.40 | 574.11",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_statements.ebitda",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "ebitda_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "{\"2023\":3727.26,\"2024\":4423.89,\"2025\":4649.12}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.ebitda",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "EBITDA",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "588.93 | 491.88 | 416.36",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_statements.pat",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "pat_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "{\"2023\":2391.24,\"2024\":3053.41,\"2025\":3553.19}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.pat",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Market Cap at Offer Price",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "- | ₹4,516.07 Cr",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.net_worth",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "net_worth_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "{\"2023\":22397.43,\"2024\":24625.11,\"2025\":27677.98}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.net_worth",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "NET Worth",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "3,079.39 | 2,767.80 | 2,462.51",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_statements.basis",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "financial_basis",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "restated_consolidated",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.basis",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"basis\""
+    },
+    {
+      "field": "financial_statements.unit",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "unit",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "millions",
+      "how": "exact label"
+    },
+    {
+      "field": "financial_statements.unit",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"unit\""
+    },
+    {
+      "field": "financial_statements.eps_basic",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "eps_basic_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "{\"2024\":10.17,\"2025\":10.14,\"2026\":10.82}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.eps_diluted",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "eps_diluted_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "{\"2024\":10.17,\"2025\":10.14,\"2026\":10.82}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "financial_statements.op_cash_flow",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"op_cash_flow\""
+    },
+    {
+      "field": "financial_statements.dscr",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"dscr\""
+    },
+    {
+      "field": "financial_statements.rent_expense",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"rent_expense\""
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "price_band_floor",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "132",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"price_floor\""
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"price_floor\""
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"price_floor\""
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "price_band_cap",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "139",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"price_cap\""
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"price_cap\""
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Market Cap at Offer Price",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "- | ₹4,516.07 Cr",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_valuation.mcap_at_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"mcap_at_cap\""
+    },
+    {
+      "field": "ipo_valuation.mcap_at_cap",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Market Cap at Offer Price",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "- | ₹4,516.07 Cr",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_valuation.pe_at_cap",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "pe_at_cap",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "12.85",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_valuation.pe_at_cap",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"pe_at_cap\""
+    },
+    {
+      "field": "ipo_valuation.mcap_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"mcap_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.pe_at_floor",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "pe_at_floor",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "12.2",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_valuation.ronw_weighted_3y",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"ronw_weighted_3y\""
+    },
+    {
+      "field": "ipo_valuation.pricing_event",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"pricing_event\""
+    },
+    {
+      "field": "ipo_valuation.shares_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"shares_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.shares_at_cap",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "total_offer_shares_at_cap",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-RHP.json",
+      "sample": "52731946",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_valuation.fresh_shares_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"fresh_shares_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.fresh_shares_at_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"fresh_shares_at_cap\""
+    },
+    {
+      "field": "ipo_valuation.ofs_shares",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "ofs_shares",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "52731946",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_valuation.total_shares_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_shares_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.total_shares_at_cap",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "total_offer_shares_at_cap",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-RHP.json",
+      "sample": "52731946",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_valuation.pe_not_ascertainable_reason",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"pe_not_ascertainable_reason\""
+    },
+    {
+      "field": "promoters.name",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "promoter_name",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "Avenue India Resurgence Pte. Ltd",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "promoters.name",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Name",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Category | No. of Shares Offered | Amount ( cr.)",
+      "how": "exact label"
+    },
+    {
+      "field": "promoters.waca",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"waca\""
+    },
+    {
+      "field": "promoters.is_promoter_group",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"is_promoter_group\""
+    },
+    {
+      "field": "ipo_intermediaries.role",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"role\""
+    },
+    {
+      "field": "ipo_intermediaries.role",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"role\""
+    },
+    {
+      "field": "ipo_intermediaries.role",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"role\""
+    },
+    {
+      "field": "ipo_intermediaries.name",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "promoter_name",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "Avenue India Resurgence Pte. Ltd",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_intermediaries.name",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "ScripName",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_intermediaries.name",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Name",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Category | No. of Shares Offered | Amount ( cr.)",
+      "how": "exact label"
+    },
+    {
+      "field": "ipo_risk_factors.seq",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"seq\""
+    },
+    {
+      "field": "ipo_risk_factors.heading",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"heading\""
+    },
+    {
+      "field": "brlm_track_record.brlm_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"brlm_name\""
+    },
+    {
+      "field": "brlm_track_record.as_of_date",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"as_of_date\""
+    },
+    {
+      "field": "brlm_track_record.issues_3y",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "brlm_issues_3y_total",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "88",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "brlm_track_record.closed_below_issue_price",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"closed_below_issue_price\""
+    },
+    {
+      "field": "promoters.shares_held",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"shares_held\""
+    },
+    {
+      "field": "promoters.waca_last_year",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"waca_last_year\""
+    },
+    {
+      "field": "ipo_intermediaries.sebi_reg_no",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"sebi_reg_no\""
+    },
+    {
+      "field": "ipo_intermediaries.contact_person",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"contact_person\""
+    },
+    {
+      "field": "ipo_intermediaries.phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"phone\""
+    },
+    {
+      "field": "ipo_intermediaries.email",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "compliance_officer_email",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "cs@arcil.co.in",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_intermediaries.grievance_email",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"grievance_email\""
+    },
+    {
+      "field": "ipo_risk_factors.body",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"body\""
+    },
+    {
+      "field": "ipo_risk_factors.kpis",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "concentration_kpis",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "[2]",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "promoter_acquisition_ranges.period",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"period\""
+    },
+    {
+      "field": "promoter_acquisition_ranges.waca",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"waca\""
+    },
+    {
+      "field": "promoter_acquisition_ranges.cap_multiple",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "cap_multiple_of_face",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "13.9",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "promoter_acquisition_ranges.price_low",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"price_low\""
+    },
+    {
+      "field": "promoter_acquisition_ranges.price_high",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"price_high\""
+    },
+    {
+      "field": "peer_companies.company_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"company_name\""
+    },
+    {
+      "field": "peer_companies.company_name",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"company_name\""
+    },
+    {
+      "field": "peer_companies.is_listed",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"is_listed\""
+    },
+    {
+      "field": "peer_companies.is_listed",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"is_listed\""
+    },
+    {
+      "field": "peer_companies.pe_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"pe_ratio\""
+    },
+    {
+      "field": "peer_companies.pe_ratio",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "PE Ratio",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "(column header)",
+      "how": "exact label"
+    },
+    {
+      "field": "peer_companies.eps",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "eps_basic_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "{\"2024\":10.17,\"2025\":10.14,\"2026\":10.82}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "peer_companies.eps",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "EPS (₹)",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "12.55 | 12.55",
+      "how": "exact label"
+    },
+    {
+      "field": "peer_companies.diluted_eps",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "eps_diluted_by_fy",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "{\"2024\":10.17,\"2025\":10.14,\"2026\":10.82}",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "peer_companies.diluted_eps",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"diluted_eps\""
+    },
+    {
+      "field": "peer_companies.ronw",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "weighted_average_ronw",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "12.94",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "peer_companies.ronw",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "RoNW",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "13.95% | 13.59%",
+      "how": "exact label"
+    },
+    {
+      "field": "peer_companies.nav",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"nav\""
+    },
+    {
+      "field": "peer_companies.nav",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "NAV",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "94.78 | 81.97",
+      "how": "exact label"
+    },
+    {
+      "field": "peer_companies.pbv_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"pbv_ratio\""
+    },
+    {
+      "field": "peer_companies.financial_statement_type",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"financial_statement_type\""
+    },
+    {
+      "field": "anchor_investors.bid_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"bid_date\""
+    },
+    {
+      "field": "anchor_investors.bid_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"bid_date\""
+    },
+    {
+      "field": "anchor_investors.bid_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"bid_date\""
+    },
+    {
+      "field": "anchor_investors.total_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_shares_offered\""
+    },
+    {
+      "field": "anchor_investors.total_amount_raised",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"total_amount_raised\""
+    },
+    {
+      "field": "anchor_investors.anchor_investors_count",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"anchor_investors_count\""
+    },
+    {
+      "field": "anchor_investors.investor_list",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"investor_list\""
+    },
+    {
+      "field": "documents.filing_date",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "rhp_filing_date",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "2025-08-01",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "documents.filing_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"filing_date\""
+    },
+    {
+      "field": "subscriptions.qib_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"qib_subscription\""
+    },
+    {
+      "field": "subscriptions.qib_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"qib_subscription\""
+    },
+    {
+      "field": "subscriptions.qib_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"qib_subscription\""
+    },
+    {
+      "field": "subscriptions.nii_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"nii_subscription\""
+    },
+    {
+      "field": "subscriptions.nii_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"nii_subscription\""
+    },
+    {
+      "field": "subscriptions.nii_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"nii_subscription\""
+    },
+    {
+      "field": "subscriptions.retail_subscription",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Maximum Subscription Amount for Retail Investor",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"Rs. 2,00,000\"",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "subscriptions.retail_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"retail_subscription\""
+    },
+    {
+      "field": "subscriptions.retail_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"retail_subscription\""
+    },
+    {
+      "field": "subscriptions.total_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"total_subscription\""
+    },
+    {
+      "field": "subscriptions.total_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"total_subscription\""
+    },
+    {
+      "field": "subscriptions.total_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"total_subscription\""
+    },
+    {
+      "field": "subscriptions.employee_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"employee_subscription\""
+    },
+    {
+      "field": "subscriptions.employee_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"employee_subscription\""
+    },
+    {
+      "field": "subscriptions.b_nii_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"b_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.b_nii_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"b_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.s_nii_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"s_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.s_nii_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"s_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.total_shares_bid",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"total_shares_bid\""
+    },
+    {
+      "field": "subscriptions.total_shares_bid",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"total_shares_bid\""
+    },
+    {
+      "field": "subscriptions.shares_offered",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "bidDetails.noOfSharesOffered",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "subscriptions.shares_offered",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"shares_offered\""
+    },
+    {
+      "field": "gmp_records.gmp",
+      "source": "IG",
+      "verdict": "CARRIES",
+      "label": "GMP",
+      "fixture": "investorgain/gmp-live.json",
+      "sample": "&#8377;<b>248</b> (-%)<br><small style=\"font-size: 12px; col",
+      "how": "exact label"
+    },
+    {
+      "field": "gmp_records.gmp",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"gmp\""
+    },
+    {
+      "field": "listing_performance.listing_price",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"listing_price\""
+    },
+    {
+      "field": "listing_performance.listing_price",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"listing_price\""
+    },
+    {
+      "field": "listing_performance.listing_price",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"listing_price\""
+    },
+    {
+      "field": "listing_performance.current_price",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"current_price\""
+    },
+    {
+      "field": "listing_performance.current_price",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"current_price\""
+    },
+    {
+      "field": "listing_performance.current_price",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"current_price\""
+    },
+    {
+      "field": "listing_performance.current_price_bse",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"current_price_bse\""
+    },
+    {
+      "field": "listing_performance.current_price_nse",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"current_price_nse\""
+    },
+    {
+      "field": "ipo_demand_graph.price_point",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"price_point\""
+    },
+    {
+      "field": "ipo_demand_graph.price_point",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"price_point\""
+    },
+    {
+      "field": "ipo_demand_graph.is_cut_off",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Cut-off time for UPI Mandate Confirmation",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"11-Sep-2026 (upto 5:00 PM) The new cut-off time for UPI mandate acceptance is 05:00 PM on",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_demand_graph.is_cut_off",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Cut_off_time_for_UPI_Mandate_Confirmation",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "ipo_demand_graph.cumulative_quantity",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"cumulative_quantity\""
+    },
+    {
+      "field": "ipo_demand_graph.cumulative_quantity",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"cumulative_quantity\""
+    },
+    {
+      "field": "ipo_demand_graph.exchange",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"exchange\""
+    },
+    {
+      "field": "ipo_demand_graph.exchange",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"exchange\""
+    },
+    {
+      "field": "registrars.name",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "promoter_name",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "Avenue India Resurgence Pte. Ltd",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "registrars.name",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.name",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Name",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Category | No. of Shares Offered | Amount ( cr.)",
+      "how": "exact label"
+    },
+    {
+      "field": "registrars.short_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"short_name\""
+    },
+    {
+      "field": "registrars.short_name",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.short_name",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"short_name\""
+    },
+    {
+      "field": "registrars.email",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "compliance_officer_email",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "cs@arcil.co.in",
+      "how": "all tokens in label"
+    },
+    {
+      "field": "registrars.email",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.email",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"email\""
+    },
+    {
+      "field": "registrars.phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"phone\""
+    },
+    {
+      "field": "registrars.phone",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.phone",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"phone\""
+    },
+    {
+      "field": "registrars.website",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.website",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"website\""
+    },
+    {
+      "field": "registrars.website",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"website\""
+    },
+    {
+      "field": "registrars.allotment_check_url",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.address",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"address\""
+    },
+    {
+      "field": "registrars.address",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.address",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"address\""
+    },
+    {
+      "field": "registrars.active",
+      "source": "ADMIN",
+      "verdict": "UNPROBED",
+      "why": "an admin-only field has no external source to probe"
+    }
+  ]
+}
