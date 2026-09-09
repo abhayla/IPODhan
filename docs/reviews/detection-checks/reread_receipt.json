@@ -1,0 +1,14 @@
+{
+  "id": "reread_receipt",
+  "designId": "REREAD-RECEIPT",
+  "findingClass": "pull-model verification check REREAD-RECEIPT: re-reads with a receipt hashed this cycle ÷ re-reads recorded",
+  "whatItAsks": "re-reads with a receipt hashed this cycle ÷ re-reads recorded",
+  "healthy": "1.0",
+  "alarmsWhen": "below 1.0 — the guard on §3.2",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "per-cycle failure reading (identities)",
+  "consumerReason": "explicitly scoped “this cycle” in the design text — a per-cycle receipt/record reconciliation, resolved to the re-read that is missing its receipt",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

@@ -1,0 +1,1344 @@
+{
+  "generated_by": "docs/design/generate-rule-index.mjs",
+  "generated_at": "2026-09-09T09:46:19.782Z",
+  "extraction": "blockquotes and rows of Rule-headed tables, in sections 2-7 of data-sourcing-pull-model.md",
+  "counts": {
+    "live": 147,
+    "retired": 1
+  },
+  "next_id": 149,
+  "rules": [
+    {
+      "id": "R-001",
+      "hash": "453d1f515995",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "Data job — 00:00, 08:00, 14:00 — heavy — discovery; document download and extraction; the per-field pull walk; verification reads — never re-read a document because time passed",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-002",
+      "hash": "5c2d0e7affbe",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "Opening-day check — about 09:45, only on a day an IPO is due to open (OD-31) — heavy, skipped if held — the two exchange lists only: register a new or changed IPO so the live jobs can see it — never fetch, download or extract a filing; it writes identity and status, nothing else",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-003",
+      "hash": "1c2c1caa3092",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "Live-figures job — every 30 minutes, 10:00–18:30, only on a day when at least one IPO is OPEN — live — subscription and the demand graph (OD-28) — never touch a document, a field plan row, or any static field",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-004",
+      "hash": "d1a236ce1dbf",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "Grey-market premium — every 30 minutes on the same wake, whenever any IPO is UPCOMING or OPEN — evenings, weekends and holidays included (OD-28, F-41) — live — gmp_records only — never gated on bidding hours, and never touches a document or a static field",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-005",
+      "hash": "0bccf6aa7b37",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "Post-listing price — every 15 minutes during exchange market hours, for 90 days after listing, then it stops (OD-29) — live — ipos.current_price and its as-of stamp, from the free NSE and BSE public quote endpoints — never a broker feed, and never touches a document or a static field",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-006",
+      "hash": "d59737fe2411",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "Closed-IPO job — 22:00 — heavy — at most 10 IPOs a night, status LISTED or CLOSED, close date before today, ordered by close date descending, each marked done so it is never picked twice — never start while the heavy lock is held",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-007",
+      "hash": "bcb34f6b96ce",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "prose",
+      "text": "The owner's rule: \"The live figures job should have its own lock. The data job and the ten o'clock job can share the heavy one. The data job must never block the live figures.\"",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-008",
+      "hash": "037f2dd5b132",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table-normative",
+      "text": "heavy — the data job, the opening-day check, the closed-IPO job — 55 min (derived below) — the arriving job skips this occurrence and logs the skip with the holder's start time; it never kills, never queues, never waits",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-009",
+      "hash": "152b8111a114",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "prose",
+      "text": "Two locks, not one, for a measured reason: a data job may legitimately run for 50 minutes (the wake budget below), and on a closing day the subscription figure must keep moving through all 50 of those minutes. Under one lock the 14:00 data job would blank the most-watched number on the site for the rest of the afternoon. Check D17 fails the design if the live-figures job is ever described as taking, waiting on, or being skipped by the heavy lock.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-010",
+      "hash": "a1f4e8a37f4e",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table",
+      "text": "The same bytes are never downloaded twice: identity is the sha256 of the content, not the URL — a second discovery of the same PDF at a different URL produces zero downloads — already true — document-state-machine.ts:670 compares the hash before storing",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-011",
+      "hash": "b0cf19eb1fa1",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table",
+      "text": "A COMPLETED document is never extracted a second time — re-running a cycle over an IPO whose filings are all COMPLETED spawns no extractor — partly true; the exception below is the only one allowed",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-012",
+      "hash": "e5a8af1c70ec",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table",
+      "text": "The one allowed re-extraction is an extractor-version change, and only for the fields that failed — a bumped extractorVersion re-runs only rows whose field set is incomplete — extractorVersion exists (document-state-machine.ts:295); the field-level condition is build item 8",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-013",
+      "hash": "23a1b136cf3e",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "table",
+      "text": "The timed backoff retry is removed — no code path schedules a document fetch by elapsed time — not true today — the 15-minute backoff doubling to 6 hours over 10 attempts still exists and is deleted by OD-21 and this rule",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-014",
+      "hash": "252582049bdd",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "prose",
+      "text": "Every later re-read (a website disagreement, a fixed extractor) works from the stored text, never from a fresh download — which is what makes OD-32's seven-day PDF window safe.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-015",
+      "hash": "d00361058d1d",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "prose",
+      "text": "A document is read once, on arrival, and again only when (a) a newer document type arrives for that IPO, (b) the extractor version changes, or (c) the re-read loop of §3 asks for it. There is no interval, no backoff timer and no nightly re-extraction of a document that has not changed. This is the whole of \"offer document never on a clock\", and check D12 fails the design if any section puts a document read back on an interval.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-016",
+      "hash": "176b50895c6f",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "prose",
+      "text": "The 08:00 data job can run before either exchange has published the day's opening list, and the next data job is at 14:00 — so an IPO that opens at 10:00 could be invisible on the site for the first four hours of its own bidding window. The fix is a discovery-only check: fetch the two exchange lists, register anything new or changed, and stop. It downloads nothing and extracts nothing, which is why it is safe to run on a clock without violating \"offer document never on a clock\".",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-017",
+      "hash": "060f1c53c69f",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "prose",
+      "text": "Under OD-19 the force-kill goes. Each job is started by a scheduler that skips its start when the cycle lock is held — it never kills what is running. That unlocks the budget changes the owner directed, and they have to be derived rather than typed, because three constants are coupled:",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-018",
+      "hash": "33e7215a6f27",
+      "section": "2.1 What runs, and when — the owner's cadence, decided 2026-09-09",
+      "kind": "blockquote",
+      "text": "A filing extraction is never started unless the remaining wake budget is at least EXTRACT_TIMEOUT_MS.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-019",
+      "hash": "9cd12cb2c859",
+      "section": "2.1.3 A contradiction with an existing approved spec, surfaced rather than buried",
+      "kind": "prose",
+      "text": "docs/specs/per-ipo-due-step-pipeline.md §6 (source tiers S-03/S-04, decided 2026-09-03) says tier-1a filings are the truth for \"every static field (terms, timeline, financials, promoters, intermediaries, objects, risks)\", and that a tier-1b exchange value must never override a filing value.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-020",
+      "hash": "1fa33122f09f",
+      "section": "2.1.3 A contradiction with an existing approved spec, surfaced rather than buried",
+      "kind": "prose",
+      "text": "Exception E-1 in this design does the opposite for the bidding timetable — it puts NSE and BSE above the document for open, close, allotment and listing dates, because a printed advertisement is never reissued when a window is extended (W-117).",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-021",
+      "hash": "7150e7de6de5",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "Multi-part filings are extracted per part — a filing published as Volume I / Volume II (or an NSE .zip holding several PDFs) is extracted part by part, and the part number is written into provenance beside the page number, so a field's citation reads \"part 2, page 118\" and can be checked — probes/fixtures/ — the Skyways NSE archive is a 23 MB zip (document-discovery-runner.ts:200 records the case that set the download budget)",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-022",
+      "hash": "ba1e32b73916",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "Image-only pages go to OCR, marked — a page whose extractable text is below a density floor is treated as a scan: it is routed to OCR, every value taken from it is stamped ocr with a lower confidence, and a field whose only source is an OCR page is never allowed to win a disagreement against a text page — one scanned annexure per SME batch is the norm; the fixture is captured by probes/extract-real-pdf.mjs on a real filing",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-023",
+      "hash": "d6166b66966e",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "A password-protected PDF gets one blank attempt — try the empty password once, and on failure stop: the document is marked unreadable with the cause recorded, and nothing retries it on a clock — a real encrypted filing, captured as a fixture with its error string",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-024",
+      "hash": "d40df10b187e",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "Content is sniffed before it is stored — the first bytes must be %PDF (or the zip magic) — a 200 response carrying an HTML error page is not stored, and the cause is recorded against the attempt — today contentType is captured (document-discovery-runner.ts:622) but nothing asserts the body actually is a PDF, so an exchange error page can be stored as a filing",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-025",
+      "hash": "6d49deb82a4f",
+      "section": "2.2.1 What arrives is not always a clean PDF (OD-36, OD-37)",
+      "kind": "table",
+      "text": "The exchange's own document id is stored beside the URL — NSE and BSE both carry a stable identifier for a filing; storing it means a moved or re-hosted link is still recognisably the same document — documents gains the column; the discovery runner already knows the id at parse time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-026",
+      "hash": "8dfee8267147",
+      "section": "2.3 Where the loop records what it asked",
+      "kind": "prose",
+      "text": "The loop needs somewhere to record what was asked and what came back, because field_sources records only successful writes — a field never attempted and a field attempted and failed look identical in it, both absent.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-027",
+      "hash": "ada6dbd925c1",
+      "section": "2.3 Where the loop records what it asked",
+      "kind": "table-normative",
+      "text": "rank1_source, rank2_source, rank3_source — resolved for this IPO's type, so an SME-on-BSE IPO never lists NSE",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-028",
+      "hash": "9625f1a7dd95",
+      "section": "2.3 Where the loop records what it asked",
+      "kind": "table-normative",
+      "text": "manifest_version — so the plan is reconciled when the manifest changes, never regenerated per cycle",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-029",
+      "hash": "d3e06b425945",
+      "section": "2.3 Where the loop records what it asked",
+      "kind": "prose",
+      "text": "The plan row is written from the result of the write, never in parallel with it. consolidatedUpsertIPO returns skipped: true, skipReason: 'LOCK_NOT_ACQUIRED' (data-consolidation-orchestrator.ts:137-139) when it cannot take its per-slug lock — silently. A plan row marked SUPPLIED against a write that was dropped is a false-clean state that every check downstream would read as success. So: a skipped return leaves the row PENDING with attempts untouched.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-030",
+      "hash": "b16b641d9f98",
+      "section": "2.3.1 Every non-document fetch must prove the page is this IPO",
+      "kind": "blockquote",
+      "text": "Before any value is read from a fetched page, the page must name the IPO we asked about, compared through the existing company-name normaliser. If it does not match: read nothing, record IDENTITY_MISMATCH on the plan row, and clear the stored URL so it is rediscovered from the listing page rather than reused.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-031",
+      "hash": "2807454d27dd",
+      "section": "2.3.1 Every non-document fetch must prove the page is this IPO",
+      "kind": "prose",
+      "text": "No extra request, no new dependency. And the standing check that turns a silent inheritance into a detected one: for every IPO holding a verifier_url, the nightly audit asserts the page names that IPO — reported by IPO name, never as a count.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-032",
+      "hash": "7e9c142c12e7",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "For a list source the page is never wrong — the binding is. The rule:",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-033",
+      "hash": "ebe59c2bdde9",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "Bind on the strongest key the row carries, and never on a partial or similarity match.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-034",
+      "hash": "b09ac53601fc",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "Outcomes, all three of which must be recorded:",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-035",
+      "hash": "90cb4f52e4d2",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "And one cross-check the binding gets for free. A list row carries its own dates. If the row's open or close date disagrees with the IPO it just bound to, the binding is suspect — record it and write nothing. A wrong binding almost always shows up here first, because two different IPOs rarely share a bidding window.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-036",
+      "hash": "cb923a31fb3b",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "So the binding rule above is necessary but not sufficient. Exact-match on a normalised name is only as good as the normalisation, and a normaliser that never collides is a normaliser that never detects a duplicate either. Two things follow, and both belong to the loop rather than to a repair:",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-037",
+      "hash": "aaac1be76ee7",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "1. The normaliser must fold corporate-form words — Company/Co., Corporation/Corp., Industries/Inds. — not only the legal suffix. 2. Duplicate detection is a check that runs at discovery, on a deliberately stricter key than the binding key. A sweep with such a key over production finds exactly one duplicate group today: this one. Binding and de-duplication want opposite error biases, so they must not share a key.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-038",
+      "hash": "11bdd95bc8a6",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "Two rows are the same IPO when this key matches and they share an open date. The open-date condition is what keeps the key safe: it is deliberately lossy — india and industries-style words are dropped — so on its own it would over-merge. Two genuinely different companies almost never open the same day, and if they do, the AMBIGUOUS outcome above already covers it.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-039",
+      "hash": "e6ea26062446",
+      "section": "2.3.3 Binding a list row to an IPO (F-46)",
+      "kind": "prose",
+      "text": "Why this is a de-duplication key and not the binding key. Binding must never bind the wrong row, so it errors toward UNBOUND. De-duplication must never miss a duplicate, so it errors toward flagging. Sharing one key would force one of those to be wrong. The binding key stays the strict one in the numbered list above; this looser key only ever raises a duplicate for review — it never merges anything by itself. The ARCIL merge was run by an owner-authorised tool with a dry run, a backup and a refusal on any disagreeing strong identifier; nothing in the loop merges rows.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-040",
+      "hash": "1c3928ef54b0",
+      "section": "2.3.3.1 One row per IPO — identity is late-binding, so the rule cannot be enforced at insert",
+      "kind": "prose",
+      "text": "1. Create on the best identity available. At discovery that is the normalised name — which is why §2.3.3's normaliser must fold corporate-form words, not only the legal suffix. 2. Every time a stronger identifier arrives, check it against every other row. When the second row is assigned its symbol it becomes ARCIL, and ARCIL already exists. That collision is the detection, and it is guaranteed to arrive before listing even though it is absent today. 3. Converging identifiers mean a merge, not an alert. Two rows sharing one symbol, one CIN or one ISIN are the same IPO by definition. The merge is automatic, keeps the union of populated fields, and preserves the provenance of both — a warning nobody reads is what produced the current state. 4. Use CIN earlier than we do. It is on 8 of 13 upcoming IPOs and, unlike a symbol or an ISIN, it exists from incorporation — long before any exchange assigns anything, and we already extract it from the filing (§E7). It is not sufficient alone, because one company can return with a rights issue or an FPO, but CIN plus open date is a strong pair available early.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-041",
+      "hash": "17d73b4be5cc",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "The binding order (OD-34). First match wins; a later identifier never re-opens an earlier bind.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-042",
+      "hash": "b74b41892976",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table-normative",
+      "text": "4 — The normalised name — discovery, always — the weakest, and the only one available at the moment a row is created",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-043",
+      "hash": "e06cd0bde8dc",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "A row bound on nothing stronger than the name carries the flag name-bound until an identifier arrives. The flag is not decorative: a name-bound row may not be auto-merged with another name-bound row (that is two guesses agreeing, not evidence), and the nightly audit reports the name-bound rows by name — never as a count (signal-ownership.md R1).",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-044",
+      "hash": "20de5d1fa4c1",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "Same identifier, open dates within 180 days of each other (or one not yet open) — same offering — write into the existing row — a postponed issue keeps its identity; 180 days is wider than any real postponement and narrower than any real re-offering",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-045",
+      "hash": "746ef5064044",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "Same identifier, offering type changes (IPO → FPO, IPO → rights) — new row, linked by company_id — an FPO is a different offering with different terms. Writing it into the IPO row is how a page starts showing two issues' numbers mixed",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-046",
+      "hash": "51965c3f97e4",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "table",
+      "text": "Same identifier, a new draft arrives while the existing row has no open date — the lapsed-draft rule below — this is the case the owner raised, and it is the only one where the answer depends on time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-047",
+      "hash": "c290c1e1979c",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "The lapsed-draft rule. A new draft for a company whose existing row never opened:",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-048",
+      "hash": "e8eab9c8170b",
+      "section": "2.3.3.2 The binding order, and what counts as one offering (OD-34, OD-35)",
+      "kind": "prose",
+      "text": "So the threshold is configuration with a dated reason, never a constant in code (OD-51), and the rule is written to fail safely: a draft past the period is frozen only when no RHP has arrived, so a relaxation nobody noticed costs a stale notice, never a deleted row.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-049",
+      "hash": "efeb71aa81fe",
+      "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
+      "kind": "table",
+      "text": "A merge log, not a diff — before the merge, both original rows are stored whole: every field value and every provenance row, keyed by the merge id. Not \"what changed\" — the rows themselves",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-050",
+      "hash": "d258f6a30c3e",
+      "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
+      "kind": "table",
+      "text": "An unmerge command — scripts/merge-duplicate-ipo.mjs gains unmerge <merge-id>: it restores both rows from the log and re-points the slug redirect so the page that was redirected goes back to its own row",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-051",
+      "hash": "b95380a3be12",
+      "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
+      "kind": "table",
+      "text": "A live merge is announced — a merge touching an IPO that is OPEN or UPCOMING posts to the Notifier immediately (GLOBAL.md §2), because that is the case where a wrong merge is visible to readers within the hour",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-052",
+      "hash": "1b3869e08687",
+      "section": "2.3.3.3 Delisting, and undoing a merge that was wrong (OD-38)",
+      "kind": "table",
+      "text": "The tool writes through the shared write path — it does not hold its own SQL. This is build item 19, and it is also what makes PR #432's gate green — see §8.3",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-053",
+      "hash": "afec9c6d7679",
+      "section": "2.3.4 A correct page still contains other companies' numbers",
+      "kind": "blockquote",
+      "text": "A value is only read from within the page section that is about this IPO. Extraction anchors on the section — the company's own financial table, its own valuation block — never on a label matched across the whole document. A label that appears in more than one section is a defect in the extractor, not a value.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-054",
+      "hash": "7b9e11fd871b",
+      "section": "2.3.5 The priority order is configuration, not code (owner requirement, 2026-09-08)",
+      "kind": "prose",
+      "text": "So priority is configurable within capability, never over it.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-055",
+      "hash": "46510b3bc1f1",
+      "section": "2.3.5 The priority order is configuration, not code (owner requirement, 2026-09-08)",
+      "kind": "prose",
+      "text": "- An override is validated before it takes effect. Every named source must be capable of that field, and the order must satisfy S-05 (per-ipo-due-step-pipeline.md). An invalid override is refused and logged — never partially applied. - An override expires. expires_at defaults to 30 days. A change meant to be permanent goes into the registry, where it is reviewed. This stops the override table quietly becoming the real configuration that nobody reads. - Provenance records which configuration produced the value — registry version or override id. Without it, \"why does this field say that?\" is unanswerable after any config change. - A nightly check reports every active override by field and reason, and fails on one that is expired, invalid, or older than its stated intent. An override nobody remembers is the same class as a stale ranking in code, only harder to find.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-056",
+      "hash": "75bbe85d04b0",
+      "section": "2.4 What the loop does, per field",
+      "kind": "prose",
+      "text": "for rank in 1, 2, 3: answer = ask(source[rank]) SUPPLIED -> value passes its §1 check: write it, record the evidence, stop CHECK_FAILED / EXTRACT_FAILED -> record the named check or cause, try the next rank NOT_PRINTED -> this source never carries it: try the next rank, no retry, no error NOT_AVAILABLE_YET -> it will exist but does not yet: try the next rank for a PROVISIONAL value, and keep the field due so rank 1 reclaims it",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-057",
+      "hash": "321ea5324792",
+      "section": "2.5 When a supplied value is asked for again",
+      "kind": "prose",
+      "text": "The first draft said a correct value is frozen and never re-asked. That is wrong, and it was the single worst error in the document: a draft prospectus filed in July gives an internally consistent issue size that passes its check and freezes; the September RHP prints the final, larger number; the site publishes the July figure for the life of the IPO.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-058",
+      "hash": "7e8c15160c4c",
+      "section": "2.5 When a supplied value is asked for again",
+      "kind": "blockquote",
+      "text": "A field is not re-asked while chosen_document_id is still the best available document, of the highest-precedence type, for that field.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-059",
+      "hash": "4e5d49022234",
+      "section": "2.5.1 Every trigger that re-asks a field, in one place",
+      "kind": "table-normative",
+      "text": "1 — State is PENDING — never supplied — an SME prospectus not yet filed: the price band is asked four times a day and comes back empty — No — nothing to protect",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-060",
+      "hash": "206f1ac95dd1",
+      "section": "2.5.1 Every trigger that re-asks a field, in one place",
+      "kind": "table-normative",
+      "text": "7 — A visible bidding date moved (S-05) — NSE moves the close date from 2 to 4 September; allotment, refund and credit dates move with it, and the advertisement is never reprinted — Yes",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-061",
+      "hash": "36c87bb88235",
+      "section": "2.5.2 A re-ask must not rewrite an unchanged value",
+      "kind": "prose",
+      "text": "This also protects a signal we would otherwise destroy. ipos.updated_at and field_sources.updated_at must keep meaning the value changed, not we looked at it. The moment verification writes on every pass, every freshness check downstream reads noise.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-062",
+      "hash": "417ceb0d3cbc",
+      "section": "2.5.2 A re-ask must not rewrite an unchanged value",
+      "kind": "prose",
+      "text": "- A normalised comparison — areEquivalent + normalizeChosen (scraper/src/services/data-consolidation-service.ts:919-932). It exists because Postgres returns a numeric as the string \"6800000000.00\" while the scraper holds the number 6800000000, so every re-scrape of an unchanged number used to count as a write. The same comparison now decides both the row update and the provenance row, so the two cannot disagree. - A row-level gate — the update is built as a diff and skipped when the diff is empty (scraper/src/services/data-persister.ts:2258). An earlier version keyed on a counter that never counted listingExchanges, registrarId or offeringType, so a resolved registrar could be dropped forever.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-063",
+      "hash": "7caf023a7877",
+      "section": "2.5.2 A re-ask must not rewrite an unchanged value",
+      "kind": "prose",
+      "text": "Under the pull model that counter is the only thing separating \"verification confirmed 2,850 fields and nothing changed\" from \"verification rewrote 2,850 fields identically.\" A dead counter makes the no-op suppression unverifiable, so W-106 becomes a prerequisite rather than a follow-up, and check PULL-NOOP below is what proves it: writes per cycle divided by fields re-asked per cycle, which on a quiet day must be near zero.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-064",
+      "hash": "487d1d72ef70",
+      "section": "2.5.3 Computed fields need their formulas audited — no source ranking can catch a wrong one",
+      "kind": "table-normative",
+      "text": "5 — gmp_percentage — gmp ÷ price cap × 100 — recomputed, never taken from the source",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-065",
+      "hash": "54637cd3362f",
+      "section": "2.5.3 Computed fields need their formulas audited — no source ranking can catch a wrong one",
+      "kind": "table-normative",
+      "text": "11–13 — listing_performance.symbol / company_name / listing_date — copies of ipos. — must equal the source row — a divergence is a defect, not a disagreement",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-066",
+      "hash": "16e416c606b1",
+      "section": "2.5.4 Issue-size components are provisional until the prospectus, and the check runs inside one document",
+      "kind": "prose",
+      "text": "ipo_details.pre_ipo_placement is a boolean. A red herring prospectus says \"Fresh Issue of up to ₹400 crore, subject to reduction by a Pre-IPO Placement of up to ₹80 crore\"; if the placement happens, the final prospectus prints ₹320 crore. A yes/no records that it happened, never by how much — and the issue size feeds market cap, shares at cap and the P/E, which cross-check against each other and therefore agree while all being wrong.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-067",
+      "hash": "ea0ea36cfefb",
+      "section": "2.5.4 Issue-size components are provisional until the prospectus, and the check runs inside one document",
+      "kind": "prose",
+      "text": "Measured 2026-09-08: the flag is false on 5 IPOs and null on 20. It has never once been true across 25 extractions, which is itself worth checking — a boolean that is never true may be a detector that never fires rather than a fact that never occurs.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-068",
+      "hash": "4e8f51ac458e",
+      "section": "2.5.4 Issue-size components are provisional until the prospectus, and the check runs inside one document",
+      "kind": "prose",
+      "text": "1. Issue-size fields are provisional until sourced from a PROSPECTUS. An RHP figure is an upper bound (\"up to\"), not a final number. 2. fresh + OFS = total is evaluated within ONE document, never across two. Comparing a draft's fresh issue against a final total fails a correct extraction — and under the deleted blanking rule that failure would have destroyed the data.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-069",
+      "hash": "78c3a071d7e2",
+      "section": "2.5.4 Issue-size components are provisional until the prospectus, and the check runs inside one document",
+      "kind": "prose",
+      "text": "1. ofs_issue is never extracted — all six. The offer for sale is stated two ways: in rupees (\"OFS aggregating up to Rs. 4,200 million\") and in shares (\"OFS of up to 20,213,722 equity shares\"). Neither form is being captured. The share form additionally needs multiplying by the cap price, which is where §1's unit discipline applies. 2. fresh_issue is mis-extracted on two of six — Kanohar reads ₹60 cr against NSE's ₹300 cr, Glass Wall ₹260 cr against ₹60 cr. Both are wrong in the digits, not the units, so a magnitude bound would not catch them. Only the reconciliation check does.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-070",
+      "hash": "7b3b7b49efb5",
+      "section": "2.5.4 Issue-size components are provisional until the prospectus, and the check runs inside one document",
+      "kind": "prose",
+      "text": "What this says about the design. The check specified here would have caught all six on day one; it is not built. And §2.6's rule earns itself again: under the deleted blanking rule, six live IPOs would have had their issue size destroyed by a check that was correctly failing on a component that was never extracted.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-071",
+      "hash": "183a0379f275",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "prose",
+      "text": "Rule 1 — within one type, the later filing date wins, and an old re-extraction never wins.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-072",
+      "hash": "8cde0dd44965",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "blockquote",
+      "text": "Two documents of the same type are ordered by filing_date. A re-extraction of the OLDER one never overwrites a value that came from the newer one, whatever order the extractions finish in.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-073",
+      "hash": "b204edaf5d98",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "prose",
+      "text": "The failure this stops is not hypothetical: a re-extraction is triggered by an extractor-version bump, which fires across the whole corpus at once, so the old document's extraction can land after the new one's on any given cycle. The guard is that supersession compares (precedence, filing_date) of the SOURCE documents, never the order in which extractions completed. Named test: same-type-later-filing-wins — two RHPs, the older extracted second, asserting the stored value is the newer document's.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-074",
+      "hash": "f1374d5f298c",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "blockquote",
+      "text": "A corrigendum overrides only the fields it explicitly names, and those fields are then frozen against every earlier document of any type until a newer corrigendum or the final prospectus arrives.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-075",
+      "hash": "91091349f533",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "prose",
+      "text": "Without the freeze, the next re-extraction of the RHP quietly restores the number the corrigendum existed to correct — the RHP still says it, and nothing in a type-precedence table says \"except the bit the corrigendum fixed\". Named test: corrigendum-overrides-named-fields-only — a corrigendum naming the price band must move the band and must leave the lot size, the objects and the financials exactly as the RHP had them; a following RHP re-extraction must not move the band back.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-076",
+      "hash": "81d044935965",
+      "section": "2.5.5 Two documents of the same type, and what a corrigendum does (OD-30)",
+      "kind": "blockquote",
+      "text": "After the final prospectus, no document changes a document-owned field except a corrigendum to the prospectus.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-077",
+      "hash": "218edec461b2",
+      "section": "2.6 When all three sources fail",
+      "kind": "prose",
+      "text": "The first draft said: write null with a reason, never leave a stale value. That is deleted, for two reasons.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-078",
+      "hash": "78863ca0e98a",
+      "section": "2.6 When all three sources fail",
+      "kind": "blockquote",
+      "text": "A field that currently holds a value which passed its check is never blanked. EXHAUSTED marks the plan row, not the data. A field that has never held a value stays absent.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-079",
+      "hash": "52fab110146e",
+      "section": "2.8 When the plan itself is wrong",
+      "kind": "prose",
+      "text": "The rule: when segment is absent, infer it as SME if lot_size × price_range_max ≥ ₹50,000 and the IPO lists on a single exchange; otherwise MAINBOARD. Record the inference in provenance as a derived value, never as a scraped one, and let a later document or exchange value overwrite it under S-05. Flag any IPO where the inference and a sourced segment disagree — that combination means one of the two is wrong and it is exactly the Qualiance false-alarm shape.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-080",
+      "hash": "628d516073ff",
+      "section": "2.9 Statuses outside the three the first draft named",
+      "kind": "prose",
+      "text": "- POSTPONED — not terminal, it comes back. Stays in scope at the normal four-slot cadence. A relaunched issue almost always carries a revised price band and a new window, so its document-sourced fields are invalidated the moment the relaunch filing arrives (§2.5 trigger 3) — the old terms must not survive the relaunch. - WITHDRAWN — terminal. The walk stops. Existing values are kept as a record, because someone who applied wants to see what they applied to. The page stays at its URL with a clear withdrawal notice rather than redirecting — people who applied will search for it. GMP and subscription polling stop, because a withdrawn issue with a ticking grey-market premium reads as live and is actively misleading. And the IPO leaves the §4 denominators, so a dead issue does not drag the coverage numbers of the live ones.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-081",
+      "hash": "b0a292fd3627",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "table-normative",
+      "text": "A confidence badge — exists — ConfidenceBadge (web/components/ipo/ConfidenceBadge.tsx:32) renders HIGH / MEDIUM / LOW. It says how sure we are; it never says who told us, or when — —",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-082",
+      "hash": "3e7f9ef74f54",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "So the read side is not a new capability. It is a wire that was never connected, and OD-39 is the instruction to connect it.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-083",
+      "hash": "e71ae79b9011",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "blockquote",
+      "text": "From the offer document, confirmed 6 September 2026",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-084",
+      "hash": "331975b7f450",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "- Where the words come from: chosen_source, chosen_document_type and the confirmation date on the plan row (§2.3), read through FieldSourcesRepository.getIPOSourceMap(ipoId) (web/lib/repositories/field-sources-repository.ts:141) — one query per page, not one per field. - A stale value says so, in grey: \"last confirmed 28 August 2026, being rechecked\". That is the §2.6 state finally becoming visible: a value we could not reconfirm is kept and marked, never blanked. - A conflict stays admin-only. An unresolved disagreement (§3.4) is not shown to the public. A reader cannot act on \"two sources disagree\"; showing it converts our internal uncertainty into their doubt about every other number on the page. - The cache key it lives under: the detail page's existing key, getIPODetailKey (web/lib/cache/cache-keys.ts:47), at CacheTTL.IPO_DETAIL = 900 seconds (web/lib/cache/cache-keys.ts:16) — the provenance line is part of the page payload, not a second fetch.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-085",
+      "hash": "62d9bbab6a21",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "blockquote",
+      "text": "At the end of a cycle that wrote published fields, the writer drops the Redis keys for the touched IPOs and then calls one authenticated endpoint on the site with the touched slugs. The endpoint revalidates those IPO pages and the list pages. One call per cycle, not one per IPO or per field.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-086",
+      "hash": "640ee8f06f71",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "prose",
+      "text": "- The endpoint is new. A search of web/ for revalidatePath / revalidateTag / /api/revalidate returns zero matches: nothing in this application has ever revalidated a path on demand. - Authenticated, because an unauthenticated revalidate endpoint is a free way for anyone to make the site rebuild every page on demand. - Failure is not fatal. If the call fails, the timed rebuild still applies and the correction appears on the next natural revalidation; the failure is logged with its cause (signal-ownership.md R6), never swallowed. - The detail page also gets an explicit revalidate, so its fallback behaviour is a stated number rather than a framework default.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-087",
+      "hash": "9eb14c71ae27",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "table",
+      "text": "A permanent redirect from the retired slug — already true. web/app/ipos/[slug]/page.tsx:233 calls permanentRedirect() — a real 308, deliberately not redirect(), which Next 15.5.4 serves as a 307. The design keeps it and names it rather than reinventing it",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-088",
+      "hash": "64c35299d6f7",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "table",
+      "text": "The sitemap contains live rows only — already true, and worth stating. web/app/sitemap.ts reads every IPO (limit 1000) and excludes any slug present in ipo_slug_redirects (web/app/sitemap.ts:93). Its own revalidate is 900 (web/app/sitemap.ts:21)",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-089",
+      "hash": "5d43e570b5a2",
+      "section": "2.11 What the reader sees (OD-39, OD-40, OD-41)",
+      "kind": "table",
+      "text": "A canonical tag on every IPO page — DOES NOT EXIST. Eight other pages set alternates.canonical (for example web/app/ofs/page.tsx:69); the IPO detail page sets none. After a merge, the survivor page has nothing telling a search engine which URL is the real one",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-090",
+      "hash": "2a26751a5e34",
+      "section": "3.1 Why this cannot be left to chance",
+      "kind": "prose",
+      "text": "But a conflict row is only written when a second source arrives and disagrees. Under §2.4 a supplied field is not re-asked, so no second value is produced, so no conflict is written — the first draft's re-read loop could never have fired on exactly the fields it was meant to protect.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-091",
+      "hash": "6728f49783d1",
+      "section": "3.2 What happens on a disagreement",
+      "kind": "prose",
+      "text": "The website's number is never adopted. That is the whole instruction behind this design.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-092",
+      "hash": "b13bdf6cfae1",
+      "section": "4. How we would know it worked",
+      "kind": "prose",
+      "text": "The rule this section is built on. The old version of it opened by warning that a check counting all-time rows can never alarm on a collapse — and then made the same mistake one level down, by using ratios whose denominators are produced by the machinery under test. If a document type mis-resolved, fewer fields counted as document-owned, the denominator shrank, and the score went up. The worse the extraction, the better the number.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-093",
+      "hash": "e52ba9e1d310",
+      "section": "4. How we would know it worked",
+      "kind": "prose",
+      "text": "1. A named denominator floor, asserted first. A ratio whose denominator moved more than 5% overnight reports UNVERIFIABLE, never PASS. 2. A type-independent denominator. What the document should print for this offering type — a fixed constant — never what the document that happened to resolve says it prints. 3. An id, an emitting script, and a line in the nightly report that the existing delta consumer reads. A line in a process log is not detection. 4. Failures resolve to identities. Never \"12 failed\" — always which IPO and which field.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-094",
+      "hash": "ebfcb146d62e",
+      "section": "4. How we would know it worked",
+      "kind": "table-normative",
+      "text": "E1-SOURCE — for the ten E-1 fields, field_sources.source is never DRHP — true — any E-1 field written by the document path — asserts the outcome, not the declared intent",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-095",
+      "hash": "5aac85024c96",
+      "section": "4. How we would know it worked",
+      "kind": "table-normative",
+      "text": "REREAD-VERDICT — share of re-reads ending verified_against_document over 7 days — below 0.95 — at or above 0.95 — a source that is never wrong is a source never actually consulted",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-096",
+      "hash": "2784deb7c4fd",
+      "section": "4. How we would know it worked",
+      "kind": "table-normative",
+      "text": "CHECK-ROSTER — every id above appears in tonight's report — all present — any missing — a check that crashed must not read as \"no findings\"",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-097",
+      "hash": "126fa32b7e89",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "One directory per source — scraper/tests/fixtures/<source>/… — nse/, bse/, sebi/, chittorgarh/, investorgain/, registrar/. A file's directory says who served it, so a source's whole shape can be re-captured in one pass",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-098",
+      "hash": "790c42a8aad8",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "A header on every fixture — the URL, the fetch date, the IPO it belongs to, and that IPO's identifier. In JSON as a _provenance object; in HTML as a leading comment. A fixture with no header fails the corpus check",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-099",
+      "hash": "e5e063966d31",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "PDFs are never committed — the extracted text plus the PDF's sha256 goes in, and the PDF does not. This is the same rule as OD-32 seen from the other side: the words are the evidence, the bytes are a working file",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-145",
+      "hash": "1991dbc72490",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "A weekly live shape check, per source (CORPUS-SHAPE) — one scheduled job re-fetches the live page behind each fixture and compares its SHAPE — the labels and the structure the extractor depends on, never the values, which are supposed to change. On a difference it files an issue naming the source, the fixture and the label that moved",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-101",
+      "hash": "5f7d10b74c65",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "The 42 fixtures without provenance are backfilled or deleted — one pass: if the source page can be re-fetched and still matches, the header is written from that fetch; if it cannot, the fixture is deleted and the test that used it is re-pointed at a fresh capture. There is no third option — an unattributable fixture stays a liability forever",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-102",
+      "hash": "62523426bb3f",
+      "section": "5.1 O-1 — when the pull runs, and why",
+      "kind": "table-normative",
+      "text": "Documents — processed on the four discovery slots and on state changes — never on a clock; read once on arrival, again only on a new reason",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-103",
+      "hash": "05f48aa0b5e1",
+      "section": "5.1 O-1 — when the pull runs, and why",
+      "kind": "table-normative",
+      "text": "Backlog — \"its own nightly window\", unscheduled — 22:00, at most 10 closed IPOs a night, newest close date first, never repeated",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-104",
+      "hash": "fde987361da3",
+      "section": "5.1 O-1 — when the pull runs, and why",
+      "kind": "prose",
+      "text": "Why the design's own proposal was the weaker answer. It kept a 30-minute drumbeat and made the work inside it conditional. That is the shape that produced the problem in the first place: a half-hourly process that must decide, every half hour, whether to do nothing — and that gets killed on the boundary when it decides to do something. The owner's version removes the drumbeat instead of teaching it restraint. The only thing genuinely lost is latency on a document filed between jobs, and §2.1 states that cost out loud rather than hiding it.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-105",
+      "hash": "d3c3da5001b5",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "prose",
+      "text": "Generated by the probe; never hand-edited here. The class says what a column MEANS; the unit says what it holds today, and only the second decides whether a repair tool goes anywhere near it. A first version of this section presented all thirty-seven as \"numeric → crore\", which would have sent a repair at twenty-five columns that are already in crore and divided them by ten million a second time. The build-card round caught it by reading the writers.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-106",
+      "hash": "afb8724c67e4",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "table-normative",
+      "text": "financial_statements — ebitda — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-107",
+      "hash": "a207d6d818df",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "table-normative",
+      "text": "financial_statements — net_worth — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-108",
+      "hash": "5e3d85a5508c",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "table-normative",
+      "text": "financial_statements — op_cash_flow — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-109",
+      "hash": "5671990ab2ac",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "table-normative",
+      "text": "financial_statements — pat — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-110",
+      "hash": "897c515b7222",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "table-normative",
+      "text": "financial_statements — rent_expense — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-111",
+      "hash": "f1c5ca77d8d8",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "table-normative",
+      "text": "financial_statements — revenue — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-112",
+      "hash": "221fd5c97476",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "table-normative",
+      "text": "financial_statements — total_income — PER_ROW_UNIT — financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted — nothing — read via its own unit column at derive time",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-113",
+      "hash": "27f1baf09881",
+      "section": "5.2 O-2 — money in crore",
+      "kind": "prose",
+      "text": "Never by arithmetic on the stored number. A row whose unit is unknown cannot be divided by 10,000,000 and trusted — that is precisely how a share count once became a rupee amount. The repair is a re-runnable tool that, per row, re-reads the value from its source (the offer document via the extractor, or the exchange payload) and writes the crore value with a fresh field_sources row; a row whose source cannot be re-read is left alone and reported, not guessed. Dry-run is the default, --apply is explicit, and the proof that it held is scripts/assert-repair-held.mjs <invariant> --cycles 2 on staging, because a clean read straight after a repair proves nothing about whether the next real scraper cycle overwrites it.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-114",
+      "hash": "d2c89f554524",
+      "section": "5.3 O-3 — one bad field must not discard the row, and must not loop",
+      "kind": "prose",
+      "text": "1. Every extracted field is validated on its own, before the write. Not the document, not the row — the field. 2. A field that fails is dropped from the write and recorded in a failure row carrying: the IPO, the table and column, the document id and sha256 it came from, the rule id that rejected it, the value as extracted (truncated, never silently reshaped), and the cause in plain words. A failure that cannot be classified from its own row is a defect of the logger (signal-ownership.md R6). 3. The remaining fields are written. Rentomojo's lead managers, dates, registrar and ISIN go in even when fresh_issue is rejected. Nothing is all-or-nothing. 4. The pull loop then asks rank 2 for the dropped field (§2.5), and if that fails too the field is written null with a reason (§2.8) — \"keep that field blank and get it from other sources\". 5. A document is re-extracted only when a new reason exists: a newer document type arrives, the extractor version changes, or the re-read loop asks. Never on a backoff timer. Seven re-extractions of the same bytes becomes impossible by construction rather than by a retry limit somebody remembers to set.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-115",
+      "hash": "ec10f88fa2a6",
+      "section": "5.3.1 One rule this design owes immediately: `lot_multiple` is a count of LOTS",
+      "kind": "prose",
+      "text": "lot_multiple is the number of lots in a minimum application: 1 for a mainboard issue, and 2 for an SME issue since 2025. It is never a share count. With 107 in it, a minimum application computed as lot_multiple × lot_size × floor reads Rs 15,12,468 instead of Rs 14,873 — a hundredfold error on the number a retail reader uses to decide whether they can afford to apply.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-116",
+      "hash": "db432e61963f",
+      "section": "5.4 O-4 — the unextracted backlog, drained without starving a live IPO",
+      "kind": "prose",
+      "text": "Updated 2026-09-09 (OD-19, OD-22). The backlog tier now has a real window: 22:00 IST, at most ten closed IPOs a night, specified in §6. F-35's objection — a third extractor on a 2-vCPU box that already took a Cloudflare 522 outage from two concurrent ones — is answered by when rather than by whether: the 22:00 job runs when neither data job nor live-figures job does, and it skips its turn outright if the cycle lock is held. The live tier keeps absolute priority, so a live IPO can never queue behind history. The causes and the answers below are unchanged; only the scheduling is.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-117",
+      "hash": "1d789bb788cc",
+      "section": "5.4 O-4 — the unextracted backlog, drained without starving a live IPO",
+      "kind": "table-normative",
+      "text": "Budget of 3 filings per cycle — 91 — Demand-ordered allocation (§2.7) plus the 22:00 closed-IPO job (§6). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-118",
+      "hash": "bc90ca17a99b",
+      "section": "5.5 O-5 — the document outranks websites: what is inherited and what remains",
+      "kind": "prose",
+      "text": "What remains after it, and why the ranking alone was never going to be enough:",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-119",
+      "hash": "da399fa59190",
+      "section": "5.6 O-7 — where a language model is genuinely needed, and where it is not",
+      "kind": "prose",
+      "text": "Treated as a constraint the design obeys, per Abhay's conditions: the model never writes a value, it proposes one with the page number and the exact sentence; every arithmetic check must still pass; a website disagreement sends it back to the document, never to the website's number; model-sourced values are marked in provenance so their accuracy is measurable and the whole thing can be switched off; deterministic extraction is always tried first.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-120",
+      "hash": "db42c0047aa1",
+      "section": "5.6 O-7 — where a language model is genuinely needed, and where it is not",
+      "kind": "table-normative",
+      "text": "A Issue terms (price band, lot, face value, issue size, share counts, market cap) — Yes — Printed on the cover in fixed labelled forms, with arithmetic that cross-checks itself. Never needs a model.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-121",
+      "hash": "51c3614bc357",
+      "section": "5.6 O-7 — where a language model is genuinely needed, and where it is not",
+      "kind": "table-normative",
+      "text": "F4 Objects of the offer — Yes — A table with amounts that must sum to net proceeds.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-122",
+      "hash": "df3c10a6c3c6",
+      "section": "6.1 What the job does",
+      "kind": "prose",
+      "text": "At 22:00 IST, once a day. It starts only if the data job's cycle lock is free; if the 14:00 job is somehow still running, the 22:00 job skips its turn and says so. It never kills anything.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-123",
+      "hash": "353c0879b85c",
+      "section": "6.1 What the job does",
+      "kind": "prose",
+      "text": "What it does to each one: exactly the pull walk of §2.4 over that IPO's field plan, with the same ranks, the same validation and the same provenance. There is no separate \"migration\" code path — a closed IPO is walked by the same walk as a live one, which is the only way the walk stays worth trusting. The one difference is priority: the closed-IPO job may never take a resource a live IPO wants, so it runs at 22:00 when the data jobs do not, and it yields the cycle lock rather than competing for it.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-124",
+      "hash": "e66e84d72125",
+      "section": "6.2 The done-marker, and why a boolean is not enough",
+      "kind": "prose",
+      "text": "Why not a resourced boolean on ipos. A boolean answers \"have we touched it\" and nothing else. The two questions that actually come up are \"why did that one fail\" and \"which failures are worth retrying now\", and a boolean answers neither. The retry rule is precisely the one the owner's words imply: a DONE row is never picked again; a FAILED row is picked again only when its cause class has changed — a new extractor exists, the document became obtainable, the rule that rejected it was corrected. Same cause, same outcome, no retry. That is what stops the job spending all ten of its nightly slots on the same ten impossible IPOs forever.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-125",
+      "hash": "7a0d31814bb4",
+      "section": "6.5 The document-type precondition, unchanged",
+      "kind": "prose",
+      "text": "A re-extraction must resolve a real document type, or type ranking degrades to newest-write-wins and an old draft overwrites a final price band advertisement. documents.filing_date is populated on a minority of rows and the healing rule depends on it. Backfilling it is part of build item 17, not a separate errand.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-126",
+      "hash": "e8c273307dc0",
+      "section": "6.6 Switch-over: how the site moves onto the pull model without a bad hour (OD-44)",
+      "kind": "table",
+      "text": "Reconciliation groups flip together, never field by field — issue size, fresh issue, OFS, price band and lot size are arithmetically tied: fresh + OFS = total, issue size = shares x price. Flipping fresh_issue to the document while ofs_issue still comes from the exchange produces a page whose parts do not equal its total — a visible, embarrassing state that no individual field is wrong in",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-127",
+      "hash": "38aeb91e50b8",
+      "section": "6.6 Switch-over: how the site moves onto the pull model without a bad hour (OD-44)",
+      "kind": "table",
+      "text": "Every member of a group must be answered before the group flips — if the document gives four of the five, the group waits. A partly-answered group is the same defect as a partly-flipped one",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-128",
+      "hash": "159525a3f615",
+      "section": "6.6 Switch-over: how the site moves onto the pull model without a bad hour (OD-44)",
+      "kind": "table",
+      "text": "Fields outside a group flip individually — registrar, isin, face_value and the long tail have no arithmetic partner; flipping them one at a time is safe and keeps the blast radius at one value",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-129",
+      "hash": "737d5c6ef690",
+      "section": "6.6 Switch-over: how the site moves onto the pull model without a bad hour (OD-44)",
+      "kind": "table",
+      "text": "Order: open and upcoming IPOs first, one cycle each — they are the ones being read. A regression there is seen in minutes, which is exactly why they go first — the fastest feedback, on the smallest set (19 rows on production today)",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-130",
+      "hash": "8b26ed1164c9",
+      "section": "6.6 Switch-over: how the site moves onto the pull model without a bad hour (OD-44)",
+      "kind": "table",
+      "text": "Then the backlog, through the 22:00 job, at ten a night — the closed and listed IPOs flip on the same schedule that re-sources them, so no separate migration run exists to go wrong",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-131",
+      "hash": "b7fcd1734d9a",
+      "section": "6.6 Switch-over: how the site moves onto the pull model without a bad hour (OD-44)",
+      "kind": "blockquote",
+      "text": "Two consecutive staging cycles in which the audit's reconciliation failures for the flipped IPOs go to zero, read from the cycle logs by identity (which IPO, which group), never as a count.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-132",
+      "hash": "cd5a1dcfd698",
+      "section": "7.1 Sequence",
+      "kind": "table-normative",
+      "text": "7 — The job scheduler and the budgets — the three jobs of §2.1 with their cron lines and PM2 change, the removal of the cron_restart force-kill, the lock-skip rule, the new extraction/wake/lock budgets and the never-spawn-without-budget invariant; then demand-ordered tiering (O-4) — — (scheduler) · 6 (tiering) — A — medium — schedule",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-133",
+      "hash": "fa719a285934",
+      "section": "7.3 What I am not sure about, plainly",
+      "kind": "prose",
+      "text": "1. Whether the old PDFs are still downloadable. This was the single biggest unknown in the whole document, and it is now half answered and half measured rather than deferred. Half answered: OD-32 keeps every document's extracted text for the life of its IPO row, so no IPO closing from here on will ever reach the backlog with nothing readable — the unknown applies only to the IPOs that already lost theirs to the seven-day purge. Half measured: probes/old-document-availability.mjs (§6.3) downloads real documents for LISTED IPOs at three ages from documents.source_url and from NSE, BSE and SEBI, and reports per source and per age what is still obtainable. Where a class turns out to be unobtainable, those fields stay website-sourced with a source_note, and the design says so rather than promising a number. 2. ~~Whether ipo_field_plan should be a new table or columns on field_sources~~ RESOLVED 2026-09-09: a new table. field_sources records what a successful write used; the plan has to record what was asked for and did not come back, which is a different row with a different lifetime — a field never attempted and a field attempted and failed are indistinguishable in field_sources, both simply absent. Bolting plan state onto it would overload one table with two meanings, and the per-field backoff and claim columns would be null for every provenance row. The DDL and the two queries the walk runs against it are in the item-5 build card. 3. The FPO rules are unexercised. Zero rows on production. They are written from the general pattern and have a higher chance of being wrong than anything else in §1.11. 4. ~~The target metric~~ RESOLVED by the owner, 2026-09-08: the target is 100%, per field, not a blended average (§2.1.1). I had proposed 90% of a chosen denominator; that was the wrong shape, because a blended percentage lets the worst fields hide inside a good average and nobody has to name which ones. The rule is: if the offer document prints the field, the offer document supplies it, and every fall-through to round 2 or 3 is a named exception with a reason (§2.5) rather than an accepted residue.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-134",
+      "hash": "edffe212d441",
+      "section": "7.3 What I am not sure about, plainly",
+      "kind": "prose",
+      "text": "| | Value | Source | |---|---:|---| | Document-owned fields on a real mainboard IPO (Deepa Jewellers) | 56 of 61 tracked | field_sources, this session | | Of those, supplied by the document today | 47 (84%) | same | | Fields it currently loses to a website that the document prints | 9 — company name, lead managers, lot size, registrar, symbol, price band low/high, segment, offering type | same | | Fields that can never be document-owned | 5 — open date, close date, listing date, status, listing exchange | the W-117 rule (§1.2) |",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-135",
+      "hash": "feba26b352d2",
+      "section": "7.3 What I am not sure about, plainly",
+      "kind": "prose",
+      "text": "7. ~~The timeline fields~~ RESOLVED by the owner, 2026-09-08. They stay on the exchanges as named exception E-1, NSE first and BSE second, and the owner then directed that the rule apply to the full timetable family, not only the five he first named. E-1 was established at twelve fields by testing every date- and schedule-like field among the 194 against one question — does this value change when the bidding window changes? — then reduced to ten closing F-22 (2026-09-08): the two anchor lock-in dates are derived (allotment_date + 30d / + 90d), not independently sourced, so they were never really E-1 members and are now class C (§1.2.1).",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-146",
+      "hash": "62deb3067548",
+      "section": "7.4 What this costs to run (OD-45)",
+      "kind": "prose",
+      "text": "1.46 GB a month is 0.018% of the plan's bandwidth. The honest conclusion is that bandwidth is not a constraint on this design and never will be — and saying so is the point of measuring. The two jobs that carry 96% of the bytes are the two that download documents; everything else is rounding error.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-147",
+      "hash": "afcae32e03fa",
+      "section": "7.4 What this costs to run (OD-45)",
+      "kind": "table-normative",
+      "text": "CPU — 2 vCPU, shared with the web app and the notifier — a 50-minute wake budget, dominated by PDF extraction — never start an extraction with less than EXTRACT_TIMEOUT_MS of wake left (§2.1). CPU seconds per cycle are not measured here — a laptop cannot measure them honestly. They are read from a staging cycle log, and the first release that ships item 7 must print them",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-148",
+      "hash": "a75a17319505",
+      "section": "7.4 What this costs to run (OD-45)",
+      "kind": "prose",
+      "text": "Each job carries a daily call budget and a daily byte budget in configuration (§7.6), set at roughly twice the table above so ordinary variation never pages anyone. The alarm is deliberately slow: a job over 150% of its line for three consecutive days posts to the Notifier. One busy day — five IPOs opening at once — is normal; three in a row is a change in behaviour, and that is what is worth waking someone for.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-136",
+      "hash": "44e9c86ec9b6",
+      "section": "7.5 How this ships (OD-50)",
+      "kind": "prose",
+      "text": "A design that produces twenty-one build items and no shipping plan produces twenty-one deploys. This section is the plan, and it is part of the design because the release grouping decides which items must land together to keep the site consistent.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-137",
+      "hash": "16c2cf6f5e20",
+      "section": "7.5 How this ships (OD-50)",
+      "kind": "table-normative",
+      "text": "main — integration. Every item lands here by PR. Every push auto-deploys staging, so staging is always soaking the next release",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-138",
+      "hash": "629e7bd4f4b9",
+      "section": "7.5 How this ships (OD-50)",
+      "kind": "table-normative",
+      "text": "hotfix/ — an outage-class fix for the CURRENT production line: branched from the release branch, deployed from it, then cherry-picked into main — never the other way round",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-139",
+      "hash": "b8794e3bd6a9",
+      "section": "7.5 How this ships (OD-50)",
+      "kind": "prose",
+      "text": "And the rule that binds both: never two production deploys in one day. The reason is not elegance. Five production deploys in a single day in September consumed the scraper's cron slots and enough GitHub Actions minutes that GitHub asked for billing — a cost the project pays directly.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-140",
+      "hash": "42ed178af24a",
+      "section": "7.5 How this ships (OD-50)",
+      "kind": "prose",
+      "text": "- Local gates first. npm run lint:ci, tsc --noEmit, the unit suites and the design gate all run on the laptop. A push is for work that has already passed, never to see whether it passes. - Full suites on workflow_dispatch. Integration and E2E do not run per PR by design; they are dispatched once per release bundle. - Docs-only commits skip CI — this design's own PRs are docs-only and cost nothing. - One PR per item, one merge per item, one deploy per bundle. Stacked PRs where items depend on each other, so a bundle is reviewed as a set rather than as five separate green checks.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-141",
+      "hash": "596ae55762c6",
+      "section": "7.5 How this ships (OD-50)",
+      "kind": "prose",
+      "text": "One rule the grouping must not break: an item in a later release must never be a prerequisite of an earlier one. §7.1's Depends on column is the check, and item 20's CI job enforces the other direction — a release is refused while any rule id in its items lacks a green test (§8.5).",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-142",
+      "hash": "42c236f1aca3",
+      "section": "7.6 Configuration over code, and the modules this splits into (OD-51)",
+      "kind": "table-normative",
+      "text": "Reconciliation groups — OD-44, §6.6 — which fields must flip together",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-143",
+      "hash": "9026c7966c4d",
+      "section": "7.6 Configuration over code, and the modules this splits into (OD-51)",
+      "kind": "prose",
+      "text": "The dependency rule: a lower layer never imports a higher one. The order is discovery → download → extraction → validation → consolidation, with plan, walk, verification and re-read above them, and read-side above everything, reading only through repositories.",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-144",
+      "hash": "ccf99112b175",
+      "section": "7.6 Configuration over code, and the modules this splits into (OD-51)",
+      "kind": "prose",
+      "text": "And a test that fails when the rule is broken — a static import-graph check in CI, not a convention in a document. Conventions about layering are obeyed until the first deadline; a failing build is obeyed always. It is part of build item 20, beside the traceability check, because both answer the same question: does the code still match what this design says it is?",
+      "first_seen": "2026-09-09",
+      "retired": false
+    },
+    {
+      "id": "R-100",
+      "hash": "8239cfab9981",
+      "section": "4.5 The test corpus, and why a fixture without provenance is not evidence (OD-43)",
+      "kind": "table",
+      "text": "A weekly live shape check, per source — one scheduled job re-fetches the live page behind each fixture and compares its SHAPE — the labels and the structure the extractor depends on, never the values, which are supposed to change. On a difference it files an issue naming the source, the fixture and the label that moved",
+      "first_seen": "2026-09-09",
+      "retired": true
+    }
+  ]
+}

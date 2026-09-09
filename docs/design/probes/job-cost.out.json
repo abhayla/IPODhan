@@ -1,0 +1,82 @@
+{
+  "probe": "job-cost",
+  "generated_at": "2026-09-09T09:42:56.807Z",
+  "measured_inputs": {
+    "payload_bytes": {
+      "nse_list_current": 3469,
+      "nse_list_upcoming": 2376,
+      "nse_detail": 7075,
+      "nse_active_category": 376,
+      "bse_list": 8693,
+      "bse_detail": 4662,
+      "chittorgarh_detail": 302721,
+      "investorgain_gmp": 35166
+    },
+    "mean_document_bytes": 7759462,
+    "mean_document_source": "probes/document-store-size.out.json — production documents.file_size"
+  },
+  "derived_inputs": {
+    "live_ipos": 19,
+    "closed_per_night": 10,
+    "new_documents_per_day": 3,
+    "bidding_wakes": 18,
+    "gmp_wakes": 48,
+    "price_wakes": 25,
+    "listed_in_price_window": 12
+  },
+  "jobs": [
+    {
+      "job": "data job (00:00, 08:00, 14:00)",
+      "calls_per_day": 123,
+      "bytes_per_day": 23983881,
+      "mb_per_day": 22.87,
+      "gb_per_month": 0.67
+    },
+    {
+      "job": "opening-day check (~09:45)",
+      "calls_per_day": 2,
+      "bytes_per_day": 11069,
+      "mb_per_day": 0.01,
+      "gb_per_month": 0
+    },
+    {
+      "job": "live figures (every 30 min, 10:00-18:30)",
+      "calls_per_day": 342,
+      "bytes_per_day": 128592,
+      "mb_per_day": 0.12,
+      "gb_per_month": 0
+    },
+    {
+      "job": "grey-market premium (every 30 min, all day)",
+      "calls_per_day": 48,
+      "bytes_per_day": 1687968,
+      "mb_per_day": 1.61,
+      "gb_per_month": 0.05
+    },
+    {
+      "job": "post-listing price (every 15 min, market hours, 90 days)",
+      "calls_per_day": 300,
+      "bytes_per_day": 112800,
+      "mb_per_day": 0.11,
+      "gb_per_month": 0
+    },
+    {
+      "job": "closed-IPO job (22:00, 10 a night)",
+      "calls_per_day": 20,
+      "bytes_per_day": 26305596,
+      "mb_per_day": 25.09,
+      "gb_per_month": 0.73
+    }
+  ],
+  "totals": {
+    "calls_per_day": 835,
+    "mb_per_day": 49.81,
+    "gb_per_month": 1.46
+  },
+  "against_plan": {
+    "plan_bandwidth_gb_per_month": 8000,
+    "scraper_budget_gb_per_month": 2000,
+    "percent_of_plan": 0.018
+  },
+  "paid_api_calls_per_day": 0
+}

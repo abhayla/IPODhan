@@ -1,0 +1,14 @@
+{
+  "id": "reread_verdict",
+  "designId": "REREAD-VERDICT",
+  "findingClass": "pull-model verification check REREAD-VERDICT: share of re-reads ending verified_against_document over 7 days",
+  "whatItAsks": "share of re-reads ending verified_against_document over 7 days",
+  "healthy": "below 0.95",
+  "alarmsWhen": "at or above 0.95 — a source that is never wrong is a source never actually consulted",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "explicitly a 7-day rolling share — needs a nightly cadence to accumulate and diff, not a single cycle’s data",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

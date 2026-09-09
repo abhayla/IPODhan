@@ -1,0 +1,14 @@
+{
+  "id": "check_roster",
+  "designId": "CHECK-ROSTER",
+  "findingClass": "pull-model verification check CHECK-ROSTER: every id above appears in tonight’s report",
+  "whatItAsks": "every id above appears in tonight’s report",
+  "healthy": "all present",
+  "alarmsWhen": "any missing — a check that crashed must not read as \"no findings\"",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "explicitly “tonight’s report” in the design text — a nightly roster-completeness meta-check over the other 16 checks’ own nightly report",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}

@@ -321,7 +321,13 @@ try {
     // that convert" became "the columns, and which of them actually move", because most of them do
     // not convert) and D13 went red on a rename rather than on a real disagreement — a check that
     // breaks when the prose is improved teaches people to stop improving the prose.
-    var s52 = md.slice(md.indexOf('### 5.2 O-2'), md.indexOf('#### O-12'));
+    // The end anchor moved on 2026-09-09 when O-12 was DECIDED (OD-48) and its heading stopped being
+    // a question. An indexOf that misses returns -1, and slice(start, -1) silently runs to the end of
+    // the document — the table would then absorb every later table and D13 would fail on rows that
+    // are not amount columns at all. So the anchor is asserted, not assumed.
+    var s52End = md.indexOf('#### The five rupee columns');
+    if (s52End < 0) throw new Error('D13: section 5.2 lost its end anchor "#### The five rupee columns" — re-anchor the check, do not let it slice to the end of the file');
+    var s52 = md.slice(md.indexOf('### 5.2 O-2'), s52End);
     var haveCrore = [...s52.matchAll(/^\| `([a-z_0-9]+)` \| `([a-z_0-9]+)` \|/gm)]
       .map(function (m) { return m[1] + '.' + m[2]; }).sort();
     var missCrore = wantCrore.filter(function (x) { return haveCrore.indexOf(x) < 0; });
@@ -420,6 +426,145 @@ try {
   var cardsTail = String(cardsRun.stdout || '').trim().split(String.fromCharCode(10));
   if (cardsRun.status === 0) ok('D16', cardsTail[0] + ' — ' + cardsTail[cardsTail.length - 1]);
   else fail('D16', 'build cards incomplete: ' + cardsTail.filter(function (l) { return l.indexOf('FAIL') >= 0; }).slice(0, 3).join(' | ') + (cardsRun.status === 2 ? ' (the card check itself broke)' : ''));
+
+  // --- D17: the signatures of the decisions taken on 2026-09-09 afternoon (OD-27 … OD-51) ---
+  // WHY. D10 asks whether each decision's SECTION still exists; D10b asks whether the older
+  // decisions' signatures still hold. Twenty-five new decisions arrived with no signature at all,
+  // which means a later edit could delete the substance of any of them and the gate would still
+  // read 19/19 — the exact "a check that asserts nothing" failure a reviewer proved on D15 the
+  // day before. Each row below is one decision's mechanical fingerprint. A row is a REGEX over the
+  // design MINUS the register in 0.0, because the register describes these rules and would
+  // otherwise satisfy every one of them by quoting itself.
+  var D17 = [
+    ['OD-27 two locks', /\|\s*`heavy`\s*\|/, true],
+    ['OD-27 live lock', /\|\s*`live`\s*\|/, true],
+    ['OD-28 GMP off the bidding gate', /Grey-market premium\*\*[^\n]*every 30 minutes[^\n]*UPCOMING or OPEN/, true],
+    ['OD-29 price window', /every 15 minutes during exchange market hours, for 90 days after listing/, true],
+    ['OD-29 no broker feed', /No broker feed reaches the public site/, true],
+    ['OD-30 same-type ordering', /Two documents of the same type are ordered by `filing_date`/, true],
+    ['OD-30 corrigendum freeze', /frozen against every earlier document of any type/, true],
+    ['OD-30 prospectus terminal', /corrigendum-after-prospectus-wins-for-named-fields/, true],
+    ['OD-31 opening-day check', /Opening-day check\*\*[^\n]*09:45/, true],
+    ['OD-31 time from a probe', /exchange-list-change-time\.mjs/, true],
+    ['OD-32 seven-day PDF window', /seven days after its LAST SUCCESSFUL extraction|last successful extraction \+ 7 days/, true],
+    ['OD-32 no PDF kept for life', /(PDF|document file)[^.\n]{0,40}kept for the life of the IPO row/i, false],
+    ['OD-33 sha256 identity', /identity is the sha256 of the content, not the URL/, true],
+    ['OD-33 backoff removed', /The timed backoff retry is removed/, true],
+    ['OD-34 binding order', /CIN[\s\S]{0,400}SEBI draft filing number[\s\S]{0,400}exchange symbol[\s\S]{0,400}normalised name/, true],
+    ['OD-35 180 days', /open dates within \*\*180 days\*\*/, true],
+    ['OD-35 ICDR cited', /Regulation 44\(1\)/, true],
+    ['OD-36 five handling rules', /Multi-part filings are extracted per part/, true],
+    ['OD-37 size cap', /\*\*100 MB per file\*\*/, true],
+    ['OD-37 two-minute timeout', /DOWNLOAD_TIMEOUT_MS = 120_000/, true],
+    ['OD-38 unmerge', /An `unmerge` command/, true],
+    ['OD-38 delisting', /three consecutive times/, true],
+    ['OD-39 provenance line', /From the offer document, confirmed/, true],
+    ['OD-40 revalidate call', /calls one authenticated endpoint on the site with the touched slugs/, true],
+    ['OD-41 canonical', /A canonical tag on every IPO page/, true],
+    ['OD-43 corpus rules', /One directory per source/, true],
+    ['OD-44 two staging cycles', /Two consecutive staging cycles/, true],
+    ['OD-45 cost table', /\*\*1\.46\*\*|1\.46 GB a month/, true],
+    ['OD-45 zero paid calls', /phase 1 makes no paid call/, true],
+    ['OD-48 rupee precision', /numeric\(15,2\)/, true],
+    ['OD-48 Aramco test', /Aramco scale/, true],
+    ['OD-49 never grandfather', /Never grandfather the script|never by grandfathering it into the shrink-only ratchet baseline/, true],
+    ['OD-50 two cadences', /never two production deploys in one day/, true],
+    ['OD-51 config not code', /Nothing in this table may be a literal in a `\.ts` file/, true],
+    ['OD-51 module rule', /a lower layer never imports a higher one/, true],
+    ['OD-52 rule ids', /generate-rule-index\.mjs/, true],
+  ];
+  var d17bad = [];
+  D17.forEach(function (row) {
+    var present = row[1].test(body);
+    if (present !== row[2]) d17bad.push(row[0] + (row[2] ? ' (missing)' : ' (a forbidden statement is back)'));
+  });
+  if (d17bad.length) fail('D17', d17bad.length + ' decision signature(s) of 2026-09-09 no longer hold: ' + d17bad.join(' | '));
+  else ok('D17', D17.length + ' signatures of the 2026-09-09 decisions all hold.');
+
+  // --- D20: the document is UTF-8 and stays UTF-8 ---
+  // WHY. Found 2026-09-09: 69 em dashes across 37 lines of section 5.2 read as "â€”" because a
+  // probe's console output was pasted into the document on Windows, where the console encodes in
+  // CP1252. Nothing noticed for a day. It is cosmetic until a reader hits it, and then it is the
+  // most visible possible signal that nobody proof-read the page.
+  var MOJIBAKE = /â€|Ã©|ï¿½/;
+  var mojiLines = [];
+  md.split(String.fromCharCode(10)).forEach(function (l, i) { if (MOJIBAKE.test(l)) mojiLines.push(i + 1); });
+  if (mojiLines.length) {
+    fail('D20', mojiLines.length + ' line(s) carry mis-encoded text (UTF-8 read as CP1252), first at line ' + mojiLines[0] + '. A generated block was pasted from a Windows console; write it to a file instead.');
+  } else {
+    ok('D20', 'No mis-encoded text: the document is clean UTF-8.');
+  }
+
+  // --- D18: every check this design names has a registered CONSUMER ---
+  // WHY. OD-42, and the signal-ownership rule behind it: "a check nobody reads is no detection".
+  // Section 4 names sixteen checks and 4.5 a seventeenth. Before this, all seventeen existed only
+  // as rows in a markdown table — no id anywhere else in the repository, no script, and nothing
+  // that would notice if one of them silently stopped being produced. The registry entry is what
+  // ties a check to the thing that READS it, and this asserts the tie exists.
+  var CHECK_DIR = path.join(HERE, '..', 'reviews', 'detection-checks');
+  var s4 = md.slice(md.indexOf('## 4. How we would know it worked'), md.indexOf('## 5. The open comments'));
+  var namedChecks = [...new Set([...s4.matchAll(/`((?:PULL|REREAD|E1|CHECK|CORPUS)-[A-Z]+)`/g)].map(function (m) { return m[1]; }))];
+  var registered = {};
+  try {
+    fs.readdirSync(CHECK_DIR).filter(function (f) { return f.endsWith('.json') && f !== '_meta.json'; })
+      .forEach(function (f) {
+        var e = JSON.parse(fs.readFileSync(path.join(CHECK_DIR, f), 'utf8'));
+        if (e.designId) registered[e.designId] = e;
+      });
+  } catch (e) { /* handled below by the empty map */ }
+  var CONSUMERS = ['nightly floor-delta', 'per-cycle failure reading'];
+  var unregistered = namedChecks.filter(function (id) { return !registered[id]; });
+  var noConsumer = namedChecks.filter(function (id) {
+    var e = registered[id];
+    return e && !CONSUMERS.some(function (c) { return String(e.consumer || '').indexOf(c) === 0; });
+  });
+  if (!namedChecks.length) {
+    fail('D18', 'Section 4 names no checks at all — either the section was gutted or its check ids stopped being written in backticks, and this check is now guarding nothing.');
+  } else if (unregistered.length || noConsumer.length) {
+    fail('D18', (unregistered.length ? unregistered.length + ' check(s) the design names have no registry entry: ' + unregistered.join(', ') + '. ' : '') +
+      (noConsumer.length ? noConsumer.length + ' registered check(s) name no known consumer: ' + noConsumer.join(', ') : ''));
+  } else {
+    ok('D18', namedChecks.length + ' checks named in section 4, every one registered in docs/reviews/detection-checks/ with a named consumer.');
+  }
+
+  // --- D19: every rule of this design is claimed by a build card, or declared unclaimed ---
+  // WHY. OD-52. rules.json gives every rule an id; that is only worth something if each id is
+  // OWNED. A rule nobody implements is the failure this design keeps meeting from the other side —
+  // a decision with no build item. Rules that are genuinely not code (the deploy cadence, the
+  // uncertainties, the language-model constraint) are allowed, but they must be DECLARED with a
+  // reason in rules-unclaimed.json. Unclaimed is fine; unclaimed and silent is not.
+  var RULES = path.join(HERE, 'rules.json');
+  var UNCLAIMED = path.join(HERE, 'rules-unclaimed.json');
+  if (!fs.existsSync(RULES)) {
+    fail('D19', 'docs/design/rules.json is missing — run: node docs/design/generate-rule-index.mjs --apply');
+  } else {
+    var idxRun = spawnSync(process.execPath, [path.join(HERE, 'generate-rule-index.mjs'), '--check'], { encoding: 'utf8' });
+    var ruleFile = JSON.parse(fs.readFileSync(RULES, 'utf8'));
+    var liveIds = ruleFile.rules.filter(function (r) { return !r.retired; }).map(function (r) { return r.id; });
+    var claimed = new Set();
+    var CARD_DIR = path.join(HERE, 'build-cards');
+    fs.readdirSync(CARD_DIR).filter(function (f) { return /^item-\d+-.*\.md$/.test(f); }).forEach(function (f) {
+      var t = fs.readFileSync(path.join(CARD_DIR, f), 'utf8');
+      var sec = t.slice(t.indexOf('## Rules implemented'));
+      sec = sec.slice(0, sec.indexOf('## Known gaps') >= 0 ? sec.indexOf('## Known gaps') : sec.length);
+      (sec.match(/R-\d{3}/g) || []).forEach(function (id) { claimed.add(id); });
+    });
+    var declared = new Set();
+    if (fs.existsSync(UNCLAIMED)) {
+      var u = JSON.parse(fs.readFileSync(UNCLAIMED, 'utf8'));
+      Object.keys(u.unclaimed || {}).forEach(function (id) { if (String(u.unclaimed[id]).length >= 20) declared.add(id); });
+    }
+    var orphans = liveIds.filter(function (id) { return !claimed.has(id) && !declared.has(id); });
+    var ghosts = [...claimed].filter(function (id) { return liveIds.indexOf(id) < 0; });
+    if (idxRun.status !== 0) {
+      fail('D19', 'rules.json has drifted from the design — run: node docs/design/generate-rule-index.mjs --apply');
+    } else if (orphans.length || ghosts.length) {
+      fail('D19', (orphans.length ? orphans.length + ' of ' + liveIds.length + ' rule(s) claimed by no build card and not declared unclaimed (' + orphans.slice(0, 5).join(', ') + ')' : '') +
+        (ghosts.length ? (orphans.length ? '; ' : '') + ghosts.length + ' card(s) claim a retired or unknown rule id (' + ghosts.slice(0, 5).join(', ') + ')' : ''));
+    } else {
+      ok('D19', liveIds.length + ' design rules, every one claimed by a build card or declared unclaimed with a reason; zero orphans.');
+    }
+  }
 
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);

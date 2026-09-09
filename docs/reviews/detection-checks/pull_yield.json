@@ -1,0 +1,14 @@
+{
+  "id": "pull_yield",
+  "designId": "PULL-YIELD",
+  "findingClass": "pull-model verification check PULL-YIELD: of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied",
+  "whatItAsks": "of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied",
+  "healthy": "rising toward 100%",
+  "alarmsWhen": "falls, or the denominator moves more than 5% overnight",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots (docs/design/data-sourcing-pull-model.md §2.1)",
+  "consumer": "nightly floor-delta (Notifier post + issue on NEW)",
+  "consumerReason": "the design’s own worked proof reads this as an overnight trend (“PULL-YIELD rising ... on the same night”, §4) and the alarm condition is explicitly framed as an overnight denominator move",
+  "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
+  "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
+  "section": "checks"
+}
