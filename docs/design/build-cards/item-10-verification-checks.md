@@ -40,7 +40,7 @@ No schema change. Every check reads `ipo_field_plan` (item 5/6), `field_sources`
 State needed to compute NEW/GONE/SAME per check-run (the `signal-ownership.md` R3 requirement, and the
 same pattern `audit-detection-floor.mjs` already uses per its `"audit's own state dir on the box"`
 comment at line 158 of that script) is a JSON state file per script under the audit's existing state
-directory (`scripts/state/`, already present in this worktree per `git status` — not a DB table).
+directory (`scripts/state/`, already present in this worktree per `git status` — not a DB table). (NEW)
 
 ## Interfaces
 
@@ -107,7 +107,7 @@ a nightly digest the way a bare `dedupeKey` would.
 
 ## Tests
 
-- **Self-tests, red before the change:** `scripts/tests/audit-pull-plan.test.mjs` etc. — each asserting
+- **Self-tests, red before the change:** `scripts/tests/audit-pull-plan.test.mjs` etc. — each asserting (NEW)
   the script's exit-code contract (0/1/2/3) against fixture rows, per the existing
   `scripts/tests/audit-detection-floor.test.mjs` pattern named in `_meta.json`'s `"selfTest"` field.
 - **Unit:** `CheckResult` shape validation — every one of the fourteen ids present in a script's own

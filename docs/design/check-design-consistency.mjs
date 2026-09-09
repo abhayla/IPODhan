@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DESIGN = path.join(HERE, 'data-sourcing-pull-model.md');
@@ -373,6 +374,19 @@ try {
   } else {
     ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor + ').');
   }
+
+  // --- D16: the build cards keep their promise ---
+  // WHY. A build card exists so an engineer who was in none of these conversations can build the
+  // item without asking. That is only true while every card answers all eleven questions and every
+  // path it names resolves. Run as a child process rather than re-implemented here: one check, one
+  // home. Its first run found nine bad citations, including `company-name-normalizer.ts` placed in
+  // `scraper/src/utils/` when it lives in `packages/shared/src/utils/` — the kind of near-miss that
+  // costs an implementer twenty minutes and reads as correct.
+  var cardsRun = spawnSync(process.execPath, [path.join(HERE, 'check-build-cards.mjs'), '--gate'],
+                           { encoding: 'utf8' });
+  var cardsTail = String(cardsRun.stdout || '').trim().split(String.fromCharCode(10));
+  if (cardsRun.status === 0) ok('D16', cardsTail[0] + ' — ' + cardsTail[cardsTail.length - 1]);
+  else fail('D16', 'build cards incomplete: ' + cardsTail.filter(function (l) { return l.indexOf('FAIL') >= 0; }).slice(0, 3).join(' | ') + (cardsRun.status === 2 ? ' (the card check itself broke)' : ''));
 
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);

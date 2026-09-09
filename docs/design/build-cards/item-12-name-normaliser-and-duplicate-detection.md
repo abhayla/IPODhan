@@ -56,10 +56,10 @@ against the wrong root cause.
 | Path | State | Change |
 |---|---|---|
 | `packages/shared/src/utils/company-name-normalizer.ts` | exists (271 lines) | `normalizeCompanyNameForMatching` (lines 71–115) and its SQL twin `normalizedCompanyNameSql` (lines 178–271) both need the whole-word fold below, replacing (or running before) the current suffix-anchored `company`/`co`/legal-suffix chain. Both must change together — the file's own header says they "MUST stay in lock-step" and an agreement test enforces it. |
-| `packages/shared/src/utils/company-name-normalizer.agreement.test.ts` (or wherever that integration test lives — **not located this session; a fork for the implementer to find via the file's own doc comment reference**) | exists, path unverified | Fixture list must gain the ARCIL pair and the InvestorGain-suffix cases below; this is the test that currently passes with the two variants NOT colliding, and must be updated to assert they DO. |
+| `packages/shared/src/utils/company-name-normalizer.agreement.test.ts` (or wherever that integration test lives — **not located this session; a fork for the implementer to find via the file's own doc comment reference**) | exists, path unverified | Fixture list must gain the ARCIL pair and the InvestorGain-suffix cases below; this is the test that currently passes with the two variants NOT colliding, and must be updated to assert they DO. | (NEW)
 | `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs` | exists | **Not changed by this card — read as the reference implementation.** Its `foldName()` (lines ~43–48) already implements the exact word list and whole-word strategy this card specifies; it is a one-off repair-invariant script, not wired into discovery. Item 12 is what promotes this logic (or a shared copy of it) into the live discovery path. |
 | `scraper/src/services/document-discovery-runner.ts` | exists | New step: after a candidate IPO row is created/matched at discovery (the design does not name the exact function; **fork** — I did not trace the discovery insert/match call site this session, budget did not extend to it), run the stricter de-duplication key against all LIVE-status rows and raise `AMBIGUOUS`/log a duplicate candidate rather than silently inserting a second row. |
-| `scraper/src/services/investorgain-gmp-orchestrator-v2.ts` | exists, cited at lines 331–336 by the design (§2.3.2, F-46) | The row-binding call (`normalizeCompanyNameForMatching` per design's citation) needs the three-outcome contract below (exact-one / `AMBIGUOUS` / `UNBOUND`) plus the open/close-date cross-check (§2.3.3's "one cross-check the binding gets for free"). I did not re-read this file's current binding code this session — **fork**: whether it already has partial ambiguity handling or none is unverified; the design's own text ("nothing yet — F-46") says none exists. |
+| `scraper/src/scrapers/investorgain-gmp-orchestrator-v2.ts` | exists, cited at lines 331–336 by the design (§2.3.2, F-46) | The row-binding call (`normalizeCompanyNameForMatching` per design's citation) needs the three-outcome contract below (exact-one / `AMBIGUOUS` / `UNBOUND`) plus the open/close-date cross-check (§2.3.3's "one cross-check the binding gets for free"). I did not re-read this file's current binding code this session — **fork**: whether it already has partial ambiguity handling or none is unverified; the design's own text ("nothing yet — F-46") says none exists. |
 
 ## Schema
 
@@ -187,7 +187,7 @@ New check, `docs/reviews/detection-checks/duplicate-ipo-at-discovery.json` (or p
 entry) — asserts zero live-status rows share a fold+open-date key, run nightly, reported by IPO name
 per `signal-ownership.md` R1 ("a number is not a reading"). This satisfies
 `.claude/rules/recurrence-detection-gate.md` (item 12 touches
-`scraper/src/services/investorgain-gmp-orchestrator-v2.ts` and `document-discovery-runner.ts`, both
+`scraper/src/scrapers/investorgain-gmp-orchestrator-v2.ts` and `document-discovery-runner.ts`, both
 under the gate's paths). **Not "No detection change"** — a detection upgrade is required and named
 here: check id `DUPLICATE-DISCOVERY`, asserting the same invariant `duplicate-ipo-rows.mjs` already
 proves post-repair, but running every cycle rather than only under `assert-repair-held.mjs`.

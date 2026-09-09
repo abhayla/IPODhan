@@ -5,7 +5,7 @@
 ## Purpose
 
 After this ships, which document type prints a field, its rank order per IPO type, and which
-sources are even capable of serving it live in one validated file family under `scraper/config/`
+sources are even capable of serving it live in one validated file family under `scraper/config/` (NEW)
 instead of scattered across `field-priority-matrix.ts` TypeScript and this design's Appendix A —
 so changing a rank order is a config edit and a deploy, never a code change and a PR.
 

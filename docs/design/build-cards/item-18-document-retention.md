@@ -181,7 +181,7 @@ Red before the change:
   `listingDate` more than `LIVE_WINDOW_DAYS_AFTER_LISTING` (10) days in the past — today this test
   would fail (excluded); after the change it must pass (included). Directly closes the 228-IPO gap
   §0.5 measured ("LISTED more than 10 days ago (no document work at all)").
-- `scraper/src/services/document-store.test.ts` (or wherever `decidePurge`/`isPurgeDue` are
+- `scraper/tests/unit/services/document-store.test.ts` (or wherever `decidePurge`/`isPurgeDue` are
   currently tested — confirm path) — every existing red/green case for those functions is deleted,
   not left to fail against removed exports.
 - `scraper/tests/unit/services/document-compaction.test.ts` (**NEW**) — asserts: (a) compaction is
