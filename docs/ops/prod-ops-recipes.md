@@ -188,6 +188,58 @@ Staging cycles land at :15/:45, so 2 cycles takes up to ~35 min — launch it in
 #192 plan). Exit 0 = held; exit 1 = regressed (per-cycle counts printed); exit 2 = UNVERIFIABLE (the
 invariant crashed, or the cycle marker never advanced within the timeout — never a silent pass).
 
+### Merging two rows that are one IPO (duplicate rows)
+
+Used 2026-09-09 on Asset Reconstruction Company (India) Ltd, which production carried twice (`ARCIL`
+plus a nameless `asset-reconstruction-co-india-ltd`) because the name normaliser folds `Ltd` but not
+`Company` vs `Co.`. Tool: `scripts/merge-duplicate-ipo.mjs` — dry-run by default, refuses a prod
+`--apply` without `--allow-prod`, backs up both rows and every child to `scripts/state/` first, and
+runs the whole merge in one transaction.
+
+```bash
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+# 1. rehearse on staging (it usually carries the same pair)
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging"   node scripts/merge-duplicate-ipo.mjs --keep <uuid> --drop <uuid> [--set-issue-size <rupees>]
+#    ... then the same line with --apply
+# 2. prod dry run (no DATABASE_URL = the prod tunnel)
+node scripts/merge-duplicate-ipo.mjs --keep <uuid> --drop <uuid> --set-issue-size <rupees>   --issue-size-note "<the evidence that proves the number>"
+# 3. prod write (owner word only)
+  ... --apply --allow-prod
+```
+
+It refuses the merge unless the two rows share an open date and their names fold together, and it
+refuses outright when a strong identifier (`cin`/`isin`/`symbol`/`bse_ipo_no`/`bse_scrip_code`)
+**disagrees** — that proves two offers rather than one row twice. It carries a column onto the
+survivor only where the survivor is empty, writes a `field_sources` row (camelCase `field_name`)
+keeping `previous_source` for every column it writes, repoints person-created children
+(`user_watchlist`, `affiliate_clicks`, `ipo_reviews`, `audit_logs`, `brlm_track_record`) and deletes
+only scraper-derived ones. Child tables are discovered from `information_schema` — 30 tables carry an
+`ipo_id`, and a hand-typed list missed 11 of them on the first attempt.
+
+Then drop the cache and verify:
+
+```bash
+ssh rfp-vps 'u=$(grep -h "^REDIS_URL=" /var/www/ipodhan/shared/env-prod/scraper.env | head -1 | cut -d= -f2- | tr -d "\"");
+  pw=${u#redis://:}; pw=${pw%%@*};
+  redis-cli -a "$pw" --no-auth-warning -n 0 DEL "ipo:slug:<old>" "ipo:slug:<new>" "ipo:id:<oldid>" "ipo:id:<newid>"'
+curl -s "https://ipodhan.com/api/ipos/<new-slug>?cb=$RANDOM"     # the merged row
+curl -s "https://ipodhan.com/api/ipos/<old-slug>?cb=$RANDOM"     # 200, serving the SURVIVOR via ipo_slug_redirects
+```
+
+(The env file is `shared/env-prod/scraper.env`, not `shared/scraper.env`.)
+
+**The merge alone does not hold.** Discovery is what minted the duplicate, so unless the normaliser
+is fixed the row can be re-created next cycle — `assert-repair-held.mjs` records that happening to
+T-277C's merged duplicates. The held-proof is:
+
+```bash
+DUPLICATE_INVARIANT_FOLDS=<foldedname> node scripts/assert-repair-held.mjs   scripts/lib/repair-invariants/duplicate-ipo-rows.mjs --cycles 2
+```
+
+Without `DUPLICATE_INVARIANT_FOLDS` that invariant reports every duplicate group table-wide, which is
+the right shape for detection but useless as a per-repair proof: staging carries 12 unrelated groups
+(finding F-57), so an unscoped run is permanently red there.
+
 ## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
 Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`
 (owner word after reading the first dry-run log `/root/data-audit-ipodhan/state/run-<date>.log`: `ISSUES-DRY-RUN` + the
