@@ -37,7 +37,7 @@ try {
   const findings = JSON.parse(fs.readFileSync(FINDINGS, 'utf8'));
 
   // --- D1: the appendix in the design still has one row per field in the spec ---
-  const { F } = await import('file://' + SPEC.replace(/\\/g, '/'));
+  const { F, RESOLVE, EVIDENCE_FLOOR } = await import('file://' + SPEC.replace(/\\/g, '/'));
   const appendix = md.slice(md.indexOf('### A.1'));
   const rowFields = [...appendix.matchAll(/^\| \d+ \| `([a-z_]+\.[a-z_0-9]+)`/gm)].map((m) => m[1]);
   const specFields = F.map((f) => `${f.t}.${f.c}`);
@@ -190,9 +190,17 @@ try {
   // --- D10c: an OPEN owner comment must not be written up as settled ---
   // The owner has NOT decided O-1, O-2 or O-3. A section claiming otherwise would build on an
   // assumption they never made - the exact failure this register exists to prevent.
-  var openOwner = md.slice(md.indexOf('### 0.0.2'));
+  // 2026-09-09: the id list used to be hard-coded ['O-1','O-2','O-3']. All three were decided that
+  // morning and moved to 0.0.1, which would have left this check scanning for ids that are no longer
+  // in the table it reads — passing forever while guarding nothing, the exact decoration failure
+  // that D10c's own comment above warns about. The ids now come FROM the table.
+  var openOwner = md.slice(md.indexOf('### 0.0.2'), md.indexOf('### 0.0.3'));
+  var openIds = [...new Set([...openOwner.matchAll(/^\| (O-\d+) \|/gm)].map(function (m) { return m[1]; }))];
   var wrongly = [];
-  ['O-1', 'O-2', 'O-3'].forEach(function (id) {
+  if (!openIds.length) {
+    fail('D10c', 'The open-comment table in 0.0.2 has no rows at all. Either it was gutted, or a decided comment was deleted instead of being moved to 0.0.1.');
+  }
+  openIds.forEach(function (id) {
     // Stay on the row (no \n) but DO cross pipes: this lives in a markdown table, so the word
     // that would betray a false approval is always on the far side of a "|". The first version
     // used [^|\n] and was pure decoration - a mutation that wrote "| O-2 | APPROVED by owner."
@@ -246,6 +254,119 @@ try {
   }
   if (citeBad.length) fail('D11', citeBad.length + ' of ' + cites.length + ' code citations do not resolve: ' + citeBad.join(' | '));
   else ok('D11', 'All ' + cites.length + ' code citations resolve to a real file and a line that exists.');
+
+  // --- D12: the owner's cadence (OD-19), and no document read on an interval ---
+  // WHY. The owner has now twice had to say the same thing: do not fetch IPO data every thirty
+  // minutes, and never put the offer document on a clock. The first time it was recorded as prose
+  // and the design kept a 30-minute wake with conditional work inside it. Prose did not hold it, so
+  // this does: the three jobs and their times are asserted by name, and any sentence that puts a
+  // document read back on an interval fails the gate.
+  var cadenceMissing = [];
+  var JOBS = [
+    ['Data job', /\*\*Data job\*\*[^\n]*00:00, 08:00, 14:00/],
+    ['Live-figures job', /\*\*Live-figures job\*\*[^\n]*every 30 minutes, 10:00.18:30/],
+    ['Closed-IPO job', /\*\*Closed-IPO job\*\*[^\n]*22:00/],
+    ['no-kill rule', /no job ever kills a running cycle/i],
+    ['exchanges before websites', /exchanges first[^.]{0,60}NSE[^.]{0,40}BSE|exchanges? (first|before)[^.]{0,60}websites/i],
+  ];
+  JOBS.forEach(function (j) { if (!j[1].test(md)) cadenceMissing.push(j[0]); });
+  // A document read scheduled by elapsed time. Lines that say it is NOT done, or that describe the
+  // behaviour being removed, are the fix rather than the defect.
+  var NEGATION = /\bnever\b|\bnot\b|\bno longer\b|\bstops?\b|\bremoved?\b|\bused to\b|\bwas\b|\bgoes\b|\buntil\b|\bwithout\b/i;
+  var onAClock = [];
+  md.split(String.fromCharCode(10)).forEach(function (line, i) {
+    if (!/document|extraction|re-extract|re-read|prospectus|filing/i.test(line)) return;
+    if (!/every \d+ (minute|hour)|every (thirty|half)|hourly|on a (timer|clock)|backoff (timer|doubling)|nightly re-?extract/i.test(line)) return;
+    if (NEGATION.test(line)) return;
+    onAClock.push('line ' + (i + 1) + ': ' + line.trim().slice(0, 110));
+  });
+  if (cadenceMissing.length || onAClock.length) {
+    fail('D12', (cadenceMissing.length ? 'OD-19 cadence elements missing: ' + cadenceMissing.join(', ') + '. ' : '') +
+      (onAClock.length ? onAClock.length + ' line(s) schedule a document read on an interval: ' + onAClock.join(' | ') : ''));
+  } else {
+    ok('D12', 'The three jobs, their times and the no-kill rule are stated; nothing schedules a document read on an interval.');
+  }
+
+  // --- D13: the amount-column inventory is the probe's, not a typist's ---
+  // WHY. OD-20 makes crore the default for every amount column. Getting that list wrong in either
+  // direction is a 10,000,000x error on a public page, and the design already shipped the OPPOSITE
+  // conversion once (PR #423). So the inventory in section 5.2 must equal what
+  // probes/amount-columns.mjs classifies as CRORE, with zero columns left unruled.
+  var AMOUNTS = path.join(HERE, 'probes', 'amount-columns.out.json');
+  if (!fs.existsSync(AMOUNTS)) {
+    fail('D13', 'probes/amount-columns.out.json is missing — the amount inventory has no evidence behind it. Run: node docs/design/probes/amount-columns.mjs');
+  } else {
+    var amt = JSON.parse(fs.readFileSync(AMOUNTS, 'utf8'));
+    var wantCrore = amt.columns.filter(function (c) { return c.cls === 'CRORE'; })
+      .map(function (c) { return c.table + '.' + c.col; }).sort();
+    var s52 = md.slice(md.indexOf('#### The columns that convert'), md.indexOf('#### O-12'));
+    var haveCrore = [...s52.matchAll(/^\| `([a-z_0-9]+)` \| `([a-z_0-9]+)` \|/gm)]
+      .map(function (m) { return m[1] + '.' + m[2]; }).sort();
+    var missCrore = wantCrore.filter(function (x) { return haveCrore.indexOf(x) < 0; });
+    var extraCrore = haveCrore.filter(function (x) { return wantCrore.indexOf(x) < 0; });
+    if (amt.unclassified.length || missCrore.length || extraCrore.length) {
+      fail('D13', 'Amount inventory disagrees with the probe — ' + amt.unclassified.length + ' unclassified column(s), ' +
+        missCrore.length + ' missing from the design (' + missCrore.slice(0, 3).join(', ') + '), ' +
+        extraCrore.length + ' in the design but not CRORE (' + extraCrore.slice(0, 3).join(', ') + ').');
+    } else {
+      ok('D13', wantCrore.length + ' amount columns listed in 5.2, matching the probe exactly, with every one of ' + amt.total_numeric_bigint_columns + ' numeric columns ruled.');
+    }
+  }
+
+  // --- D14: a provisional section names a real open fork, and a new fork is not orphaned ---
+  // WHY. OD-24 lets work continue past a decision that is the owner's, by recording the fork and
+  // marking what depends on it. That is only safe while the two halves stay tied together: a
+  // marker pointing at a row nobody wrote, or a row nobody marked, is how a guess gets laundered
+  // into a decision.
+  var forkTable = md.slice(md.indexOf('### 0.0.2'), md.indexOf('### 0.0.3'));
+  var forkIds = [...new Set([...forkTable.matchAll(/^\| (O-\d+) \|/gm)].map(function (m) { return m[1]; }))];
+  var markers = [...new Set([...md.matchAll(/PROVISIONAL on (O-\d+)/g)].map(function (m) { return m[1]; }))];
+  var danglingMarkers = markers.filter(function (id) { return forkIds.indexOf(id) < 0; });
+  // Rows this run added are O-12 onward; O-1..O-11 predate it.
+  var newForks = forkIds.filter(function (id) { return Number(id.slice(2)) >= 12; });
+  var orphanForks = newForks.filter(function (id) {
+    if (markers.indexOf(id) >= 0) return false;
+    var row = forkTable.split(String.fromCharCode(10)).find(function (l) { return l.indexOf('| ' + id + ' |') === 0; }) || '';
+    return !/blocks nothing/i.test(row);
+  });
+  if (danglingMarkers.length || orphanForks.length) {
+    fail('D14', (danglingMarkers.length ? 'PROVISIONAL markers naming no row in 0.0.2: ' + danglingMarkers.join(', ') + '. ' : '') +
+      (orphanForks.length ? 'Forks added by this round with neither a PROVISIONAL marker nor "blocks nothing": ' + orphanForks.join(', ') : ''));
+  } else {
+    ok('D14', forkIds.length + ' open fork(s) in 0.0.2, ' + markers.length + ' provisional marker(s), every one tied to a row.');
+  }
+
+  // --- D15: every rank in Appendix A rests on evidence, and the coverage only ever goes up ---
+  // WHY. Round four of this design found 51 wrong ranks, every one of them a confident sentence
+  // nobody had checked against a live payload. OD-25 makes a probe output, a saved fixture or a
+  // file:line the only acceptable basis for a rank. This check does two things: it refuses an
+  // evidence reference that does not resolve to a file that exists (an unfollowable citation is an
+  // invented one, D11's lesson applied to sources), and it RATCHETS coverage — the floor in the
+  // spec can be raised but never silently dropped, so a later edit cannot quietly un-evidence a row.
+  var evPairs = 0, evHave = 0, evBad = [];
+  var EV_DIR = path.join(HERE, 'probes');
+  F.forEach(function (f) {
+    var srcs = new Set();
+    ['MAINBOARD', 'SME_BSE', 'SME_NSE'].forEach(function (t) {
+      (RESOLVE(f, t) || []).forEach(function (r) { if (r !== '—' && r !== 'N/A') srcs.add(r); });
+    });
+    srcs.forEach(function (src) {
+      evPairs++;
+      var ref = f.o.ev && f.o.ev[src];
+      if (!ref) return;
+      var p = path.join(EV_DIR, String(ref).split('#')[0]);
+      if (fs.existsSync(p)) evHave++;
+      else evBad.push(f.t + '.' + f.c + ' [' + src + '] -> ' + ref);
+    });
+  });
+  var floor = typeof EVIDENCE_FLOOR === 'number' ? EVIDENCE_FLOOR : 0;
+  if (evBad.length) {
+    fail('D15', evBad.length + ' evidence reference(s) point at a file that does not exist: ' + evBad.slice(0, 4).join(' | '));
+  } else if (evHave < floor) {
+    fail('D15', 'Evidence coverage fell below the ratchet: ' + evHave + ' of ' + evPairs + ' (field, source) pairs evidenced, floor is ' + floor + '. Evidence is never removed, only added.');
+  } else {
+    ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor + ').');
+  }
 
 } catch (err) {
   console.error('check-design-consistency: the check itself failed —', err.message);

@@ -112,22 +112,22 @@
       "sev": "CRITICAL",
       "area": "migration",
       "phase1": false,
-      "status": "TRIGGERED",
+      "status": "FIXED",
       "title": "Backlog re-download is undone by decidePurge on the next cycle",
       "detail": "document-store.ts:279 hard_cap is unconditional past 30 days. Reopens for phase 2.",
-      "fix_in": "§6",
-      "trigger": "the first closed IPO is re-sourced. decidePurge deletes any re-downloaded PDF past 30 days, so a retain_until pin must exist BEFORE the first one is attempted - not after."
+      "fix_in": "Design: OD-23 / section 0.5.1 - the purge stops deleting, so there is nothing left to undo a re-download. Code: build item 18.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
     },
     {
       "id": "F-10",
       "sev": "CRITICAL",
       "area": "checks",
       "phase1": false,
-      "status": "TRIGGERED",
+      "status": "FIXED",
       "title": "Checks wrong for a class silently blank that class",
       "detail": "NCD face value 1000, pre-Dec-2023 T+6 listings, pre-2025 SME lot rule. All 19 phase-1 IPOs are current-era plain IPOs. Reopens for phase 2.",
-      "fix_in": "§1 checks",
-      "trigger": "the first closed IPO is re-sourced. Its checks must be effective-dated first: face_value {1,2,5,10} is wrong for an NCD at 1000, and listing <= close+3 working days is wrong for anything that listed before Dec 2023."
+      "fix_in": "Design: OD-21 / section 5.3 - every validation rule carries the date window it governs, and a value outside every window is recorded as NO_RULE_APPLIES and written, never rejected. Code: build item 4.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
     },
     {
       "id": "F-11",
@@ -335,20 +335,20 @@
       "sev": "MAJOR",
       "area": "migration",
       "phase1": false,
-      "status": "TRIGGERED",
+      "status": "OPEN",
       "title": "Four of the six migration gates are prose, not commands",
-      "fix_in": "§6",
-      "trigger": "the first closed IPO is re-sourced. Each gate becomes a named script with an exit code before any row is rewritten."
+      "fix_in": "Build item 10 (see section 7.1). Open until that card is implemented.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
     },
     {
       "id": "F-31",
       "sev": "MAJOR",
       "area": "migration",
       "phase1": false,
-      "status": "TRIGGERED",
+      "status": "OPEN",
       "title": "field_sources holds one prior value, so the per-field rollback claim fails past one overwrite",
-      "fix_in": "§7.2",
-      "trigger": "the first closed IPO is re-sourced. field_sources holds ONE prior value, so a second overwrite loses the original - snapshot it (6,600 rows, cheap) before the first re-source, not after."
+      "fix_in": "Build item 17 (see section 7.1). Open until that card is implemented.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
     },
     {
       "id": "F-32",
@@ -386,11 +386,11 @@
       "sev": "MAJOR",
       "area": "infrastructure",
       "phase1": false,
-      "status": "TRIGGERED",
+      "status": "OPEN",
       "title": "A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two",
       "detail": "scripts/deploy-linux.sh:231-235 records the incident. No backlog drain in phase 1.",
-      "fix_in": "§2.3 + §5.4",
-      "trigger": "a backlog drain is scheduled. The box took a Cloudflare 522 outage from two concurrent extractors (deploy-linux.sh:231-235); a third workload needs its own slot decided first."
+      "fix_in": "Build item 7 (see section 7.1). Open until that card is implemented.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
     },
     {
       "id": "F-36",

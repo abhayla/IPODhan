@@ -475,3 +475,16 @@ The release branch `release/prod-2026-09-08` was cut this morning at commit 95b3
 
 **Recommendation: keep the cut as approved.** The 14 missing IPOs are the user-facing win and they are already proven;
 today's merged fixes are internal correctness that can wait one day and get a full soak.
+
+---
+
+## Pull-model implementation-ready run — updates
+
+Plain-language progress on taking the data-sourcing design from "complete" to "an engineer can build
+from it without asking a question". No behaviour ships from this run — it is design and evidence only.
+
+| Time | What it means for the site | Previous | Now | Notes |
+|---|---|---|---:|---:|---|
+| 09:57 | **Your Tuesday decisions are now written into the design and enforced by a command, not by trust.** The scraper's schedule (three data runs a day, live figures every half hour while bidding is open, old IPOs at ten at night), crore as the money unit, and one-bad-field-does-not-lose-the-row are all in the document, and four new checks fail the build if a later edit contradicts any of them. | 0% | 100% (of stage 1 of 7) | Every one of the four new checks was deliberately broken first to prove it actually fires — one of them caught a mistake of mine within a minute of being written |
+| 09:57 | **Two things that would have bitten the implementer are fixed.** The table of 240 fields had no generator committed anywhere, so the rule "never hand-edit that table" was unenforceable; it now has one. And a helper file was silently writing junk files into the repository every time a check ran. | — | fixed | The stray file called `--gate` sitting in your main folder was that bug |
+| 09:57 | **One decision came back to you.** Five money columns are amounts, but showing them in crore would read as "0.0015" on the page — the minimum application, the two application limits, and the two grey-market rates. Recommendation: keep those five in rupees as named exceptions. Work continues on that recommendation; the design is marked so you can overrule it in one place. | — | awaiting you | Recorded as O-12 |

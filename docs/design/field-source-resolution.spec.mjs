@@ -1,4 +1,6 @@
 import fs from 'fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // [table, column, class, [r1,r2,r3], opts]
 // opts.doc = extraction-contract section; opts.only = why there is no rank 2;
@@ -323,6 +325,13 @@ function pool(f) {
   return p;
 }
 
+// EVIDENCE_FLOOR is D15's ratchet: the number of (field, source) pairs that MUST carry a resolving
+// evidence reference. It is raised as probes land and is never lowered — dropping it is how a row
+// quietly stops being evidenced. Stage B of the implementation-ready round raises it to the total.
+export const EVIDENCE_FLOOR = 0;
+
+export function RESOLVE(f, type) { return resolve(f, type); }
+
 function resolve(f, type) {
   const naSet = f.o.na || [];
   const base = type.startsWith('SME') ? 'IPO' : type;
@@ -341,31 +350,59 @@ function resolve(f, type) {
   return r;
 }
 
-let out = [];
-out.push('| # | Field | Cls | R1 | R2 | R3 | SME-BSE | SME-NSE | Doc § | Note / why no lower rank |');
-out.push('|---:|---|---|---|---|---|---|---|---|---|');
-F.forEach((f, i) => {
-  const m = resolve(f, 'MAINBOARD');
-  const sb = resolve(f, 'SME_BSE').join(' · ');
-  const sn = resolve(f, 'SME_NSE').join(' · ');
-  const note = f.o.e1 ? '**E-1** (§1.2.1)' : f.o.formula ? `computed: ${f.o.formula}`
-    : f.o.note ? f.o.note : f.o.only ? `no rank 2: ${f.o.only}` : '';
-  out.push(`| ${i + 1} | \`${f.t}.${f.c}\` | ${f.cls} | ${m[0]} | ${m[1]} | ${m[2]} | ${sb} | ${sn} | ${f.o.doc || '—'} | ${note} |`);
-});
-
-// N/A matrix for the seven non-IPO types
-let na = [];
-na.push('| Offering type | IPOs on prod | Fields N/A | Fields with a live resolution |');
-na.push('|---|---:|---:|---:|');
-for (const t of ['FPO','RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK']) {
-  const naN = F.filter(f => resolve(f, t)[0] === 'N/A').length;
-  na.push(`| ${t} | ${({FPO:0,RIGHTS:8,OFS:19,NCD:7,INVITS:3,REITS:2,TENDER:16,BUYBACK:1})[t]} | ${naN} | ${F.length - naN} |`);
+// ---------------- rendering ----------------
+// EXPORTED (2026-09-09) so `generate-appendix-a.mjs` renders Appendix A from the same code that
+// produced it, instead of a second copy of resolve()/pool(). Appendix A was regenerated inline by
+// the authoring session and no generator was ever committed, so A.1 could drift from this spec with
+// nothing but D1 to notice after the fact. The argv[2] path below is unchanged and still writes the
+// same bytes it always did.
+export function renderA1() {
+  const out = [];
+  out.push('| # | Field | Cls | R1 | R2 | R3 | SME-BSE | SME-NSE | Doc § | Note / why no lower rank |');
+  out.push('|---:|---|---|---|---|---|---|---|---|---|');
+  F.forEach((f, i) => {
+    const m = resolve(f, 'MAINBOARD');
+    const sb = resolve(f, 'SME_BSE').join(' · ');
+    const sn = resolve(f, 'SME_NSE').join(' · ');
+    const note = f.o.e1 ? '**E-1** (§1.2.1)' : f.o.formula ? `computed: ${f.o.formula}`
+      : f.o.note ? f.o.note : f.o.only ? `no rank 2: ${f.o.only}` : '';
+    out.push(`| ${i + 1} | \`${f.t}.${f.c}\` | ${f.cls} | ${m[0]} | ${m[1]} | ${m[2]} | ${sb} | ${sn} | ${f.o.doc || '—'} | ${note} |`);
+  });
+  return out;
 }
 
-if (process.argv[2]) {
+// N/A matrix for the seven non-IPO types
+export function renderA2() {
+  const na = [];
+  na.push('| Offering type | IPOs on prod | Fields N/A | Fields with a live resolution |');
+  na.push('|---|---:|---:|---:|');
+  for (const t of ['FPO','RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK']) {
+    const naN = F.filter(f => resolve(f, t)[0] === 'N/A').length;
+    na.push(`| ${t} | ${({FPO:0,RIGHTS:8,OFS:19,NCD:7,INVITS:3,REITS:2,TENDER:16,BUYBACK:1})[t]} | ${naN} | ${F.length - naN} |`);
+  }
+  return na;
+}
+
+export const STATS = () => ({
+  fields: F.length,
+  classes: F.reduce((a, f) => (a[f.cls] = (a[f.cls] || 0) + 1, a), {}),
+  e1: F.filter(f => f.o.e1).length,
+  singleSource: F.filter(f => f.r[1] === '—' && f.r[0] !== '—').length,
+});
+
+// The CLI half runs only when this file is the process entry point. Before this guard it ran on
+// every IMPORT too, so `check-design-consistency.mjs --gate` (which imports the spec) wrote a file
+// literally named `--gate` into the repo root, and `generate-appendix-a.mjs --check` wrote one
+// named `--check`. The stray `--gate` file sitting untracked in the primary checkout is that bug's
+// artefact. A data module must not write files as a side effect of being read.
+const IS_ENTRY = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (IS_ENTRY && process.argv[2]) {
+  const out = renderA1();
+  const na = renderA2();
   fs.writeFileSync(process.argv[2], out.join('\n') + '\n\n' + na.join('\n') + '\n');
-  console.log('fields in spec:', F.length);
-  console.log('class counts:', JSON.stringify(F.reduce((a, f) => (a[f.cls] = (a[f.cls] || 0) + 1, a), {})));
-  console.log('E-1 fields:', F.filter(f => f.o.e1).length);
-  console.log('single-source (no rank 2):', F.filter(f => f.r[1] === '—' && f.r[0] !== '—').length);
+  const s = STATS();
+  console.log('fields in spec:', s.fields);
+  console.log('class counts:', JSON.stringify(s.classes));
+  console.log('E-1 fields:', s.e1);
+  console.log('single-source (no rank 2):', s.singleSource);
 }

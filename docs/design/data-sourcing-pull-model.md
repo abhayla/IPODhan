@@ -71,19 +71,66 @@ it by assuming.
 | OD-16 | *"Merge the two rows."* (the duplicate Asset Reconstruction row) | 2026-09-09 | F-55 | done on production; the duplicate invariant holds |
 | OD-17 | *"Do not proceed below 95% confidence... ask ONE question at a time, each with your recommendation and a one-line reason."* | 2026-09-08 | how this doc is written | not mechanically checkable — stated so it is not forgotten |
 | OD-18 | *"Every number you state must be measured in this session and its source named."* | 2026-09-08 | whole doc | hand-typed counts the generator owns are banned (D2) |
+| OD-19 | *"Offer document never on a clock. Live figures only during bidding. Subscription-related work can run every hour or even thirty minutes, but not the scraper that is fetching the IPO data. Three runs a day, midnight, eight in the morning, two in the afternoon. Add another cycle at ten o'clock at night that deals only with old IPOs, latest closed first, at most 10 old IPOs a day, do not repeat which are already done."* | 2026-09-09 | §2.1, §5.1 | four named jobs at the stated times, and no section schedules a document read on an interval (D12) |
+| OD-20 | *"Crore should be the default for every amount column."* | 2026-09-09 | §5.2 | the amount-column inventory matches the money columns the schema actually has, with none unclassified (D13) |
+| OD-21 | *"Go with your recommendation"* — per-field validation before the write, the failing field dropped with its cause, rank 2 asked, and no timed retry | 2026-09-09 | §5.3 | the section specifies per-field validation and names the failure row it writes |
+| OD-22 | Closed IPOs are in the build, drained by the 22:00 job, not deferred behind preconditions | 2026-09-09 | §6 | §6 specifies a scheduled job with a done-marker, not a deferral |
+| OD-23 | Offer documents and the data taken from them survive close and listing | 2026-09-09 | §0.5 | the ten-day document window and the seven-day purge are gone from the design |
+| OD-24 | A new owner fork is recorded, marked provisional and continued on the recommendation — never guessed silently, never a halt | 2026-09-09 | §0.0.2 | every `PROVISIONAL on O-nn` marker names a row in §0.0.2, and every row this run added carries a marker or says it blocks nothing (D14) |
+| OD-25 | Probes are the standard of proof: a claim about a source, a document, the code or the data cites a probe output, a saved payload or a `file:line` | 2026-09-09 | §0.0.3 | every rank in Appendix A carries an evidence reference that resolves (D15) |
+| OD-26 | The finish line is the five-part definition of done in the implementation-ready contract, and provisional items are allowed to remain | 2026-09-09 | §8.4 | not mechanically checkable — recorded so it is not quietly widened |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
-These are open owner comments. Nothing in this design depends on a particular answer to them, and
-**D10 fails if a section claims one is settled.** They are listed so the list of what needs you is
-one place, not scattered through a tracker.
+These are owner comments the design does **not** answer for him. Nothing here depends on a
+particular answer, and **D10c fails if any section writes one of them up as settled.** They are in
+one place so the list of what needs him is not scattered through a tracker.
 
-| id | Your comment | Status | Why it is still open |
+**Three of them are no longer here.** O-1 (cadence), O-2 (money unit) and O-3 (partial failure) were
+answered by the owner on 2026-09-09 and have moved to §0.0.1 as OD-19, OD-20 and OD-21. A row leaves
+this table only by being decided, never by being assumed.
+
+**How a new fork gets added (OD-24).** When work on this design meets a decision that is genuinely
+the owner's — irreversible, outward-facing, a change to the public product, or two valid builds with
+no best-practice winner — it is added here as `O-12` onward with the question in one sentence, the
+recommended answer and the reason. Every section that depends on it opens with **PROVISIONAL on
+O-nn**, and the work continues on the recommendation rather than stopping. Check **D14** ties the two
+together: a marker with no row, or a row this run added with neither a marker nor the words "blocks
+nothing", fails the gate.
+
+| id | The comment, or the fork | Status / recommendation | Why it is still his |
 |---|---|---|---|
-| O-1 | *"We already discussed about this not to scrape the documents every thirty minutes."* | AWAITING YOU | The wake interval is unchanged. I recommended making the wake a no-op outside the four discovery slots and market hours, and asked for your target number. You have not given one. |
-| O-2 | *"Store the values in terms of crores... identify all such fields."* | AWAITING YOU | I got this wrong once already and shipped the opposite (PR #423). The conversion changes the public API shape, so it needs your word before anything moves. |
-| O-3 | *"An error should not break the website or that IPO's data... keep that field blank and get it from other sources."* | AWAITING YOU | The design honours the principle throughout, but the choice between per-field pre-validation and full partial persistence is a build decision I have not asked you to make. |
-| O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in phase 1 uses a language model, so there is nothing to approve yet. |
+| O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in the phase-1 build uses a language model, so there is nothing to approve yet. |
+| O-12 | Five rupee columns are amounts, but converting them to crore would make the site worse: `ipo_details.min_investment` (about 15,000 rupees, `0.0015` crore), `max_retail_subscription` and `max_employee_subscription` (the 2-lakh and 5-lakh ceilings people read in lakh), and `gmp_records.kostak_rate` / `subject_rate` (per-application rates in hundreds of rupees). Does "crore is the default for every amount column" admit these five as named exceptions? | **RECOMMENDED: yes, keep these five in rupees** — a default with five reasoned exceptions, not a rule with silent ones. §5.2 and build item 11 are written on the recommendation. · 2026-09-09 | It changes what a reader sees on the page, which is the owner's call, not an implementation detail |
+
+### 0.0.3 The standard of proof this document is held to (OD-25)
+
+Prose cannot prove behaviour. The single most expensive lesson of this design's first four rounds was
+that a confident sentence about a source ("that site carries no restated per-year table", "Chittorgarh
+prints a P/BV") survives every reading until somebody actually fetches the page — and then it turns
+out that 51 of the ranks built on such sentences were wrong. So every claim in this document about
+**how a source behaves, what a document contains, what our own code does, or what the data holds**
+must cite one of exactly three things:
+
+1. **A probe** — a small read-only script under `docs/design/probes/`, with its output saved beside
+   it as `<name>.out.txt` or `<name>.out.json`. The probe is the claim; the output is the evidence.
+2. **A saved payload** under `docs/design/probes/fixtures/`, carrying the URL it came from and the
+   date it was fetched.
+3. **A `file:line` citation** into this repository, which check **D11** re-resolves on every run —
+   a citation nobody can follow is indistinguishable from an invented one.
+
+**What a probe may and may not do.** It may read production and staging through the read-only tunnel
+(`docs/ops/prod-ops-recipes.md` §1), fetch NSE, BSE, SEBI, Chittorgarh and InvestorGain pages, and
+run the **existing** extractors from `scraper/src` **on the laptop** against PDFs copied read-only out
+of the document store. It may not write to any database, may not run on the production box (the VPS
+serves live traffic), and may not add a dependency — it uses what `scraper/` and `web/` already have.
+
+**An unreachable source is recorded as unreachable.** Three attempts, then the row's evidence reads
+`unreachable on <date>, rank carried as judgement` and it is listed as such. A payload is never
+invented to fill a gap, and a rank never rests on a plausible-sounding sentence.
+
+Check **D15** enforces the appendix half of this: every rank of every field in Appendix A.1 carries an
+evidence reference that resolves to a file that exists.
 
 ---
 
@@ -192,10 +239,10 @@ Read out of the code this session:
   `DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE = 1` anchor (`filing-auto-persist.ts`).
 - `EXTRACT_TIMEOUT_MS = 10 * 60 * 1000` — ten minutes per document, inside a
   `DEFAULT_WAKE_BUDGET_MS = 20 * 60 * 1000` wake shared with everything else.
-- `LIVE_WINDOW_DAYS_AFTER_LISTING = 10` — an IPO listed more than ten days ago gets **no document
-  state rows at all**.
+- `LIVE_WINDOW_DAYS_AFTER_LISTING = 10` (`document-state-machine.ts:749`) — an IPO listed more than
+  ten days ago gets **no document state rows at all**. **Removed by OD-23; see §0.5.1.**
 
-That last one is the migration blocker, and it is bigger than it looks:
+That last one was the migration blocker, and it was bigger than it looked:
 
 | Bucket | IPOs |
 |---|---:|
@@ -203,10 +250,33 @@ That last one is the migration blocker, and it is bigger than it looks:
 | LISTED within 10 days (document work allowed) | 23 |
 | **LISTED more than 10 days ago (no document work at all)** | **228** |
 
-**70% of the site's IPOs sit structurally outside the document path.** And their PDFs are gone:
-`document-store.ts` purges an IPO's directory at `close_date + DEFAULT_RETENTION_DAYS (7)`, with a
-hard ceiling of `DEFAULT_MAX_RETENTION_DAYS = 30` and `DEFAULT_MAX_STORE_GB = 5`. The database rows
-and the source URLs survive; the files do not.
+**70% of the site's IPOs sat structurally outside the document path.** And their PDFs were being
+deleted: `decidePurge` (`document-store.ts:264`) removes an IPO's directory at
+`close_date + DEFAULT_RETENTION_DAYS` (7, `document-store.ts:32`), with a hard ceiling of
+`DEFAULT_MAX_RETENTION_DAYS` (30, `document-store.ts:45`) and `DEFAULT_MAX_STORE_GB`
+(5, `document-store.ts:46`). The database rows and the source URLs survived; the files did not.
+
+#### 0.5.1 Both of those limits are removed (OD-23, owner 2026-09-09)
+
+> **Offer documents, and the data taken from them, survive close and listing.**
+
+- `LIVE_WINDOW_DAYS_AFTER_LISTING` (`document-state-machine.ts:749`) stops gating document work. An
+  IPO's documents are workable for the life of the IPO row.
+- The seven-day purge stops deleting. **An offer document is kept for the life of the IPO row.**
+- The 5 GB store ceiling stays, and is honoured by **compressing, not deleting**. When the store
+  approaches the ceiling, the oldest already-extracted PDFs are compressed in place; the file is
+  still there and still re-readable. Deletion is never the pressure valve, because a deleted
+  document is a field that can never be re-sourced without a download that may fail.
+
+**Why this matters more than it looks.** Every IPO that closes today joins the closed-IPO backlog
+tomorrow. Under the old rule it also *lost its documents* seven days later, so the backlog grew and
+each new member of it got harder to fix at the same time. Keeping the documents is what stops the
+backlog compounding; the 22:00 job (§6) is what drains it.
+
+**The number behind the ceiling** — the current on-disk size of the document store, and the size
+projected at 500 IPOs — comes from `docs/design/probes/document-store-size.mjs`, whose saved output
+is the evidence for the compression rule above. A retention policy with no measured store size
+behind it is a wish.
 
 ### 0.6 The matrix has forgotten two thirds of the site
 
@@ -749,24 +819,104 @@ Anything not cited is a proposal, not a fact. That rule exists because the first
 section asserted seven things about our own code that were false, and an implementer who trusted
 them would have built the wrong thing.
 
-### 2.1 What runs, and when — D-13 is the decision; this section only adds to it
+### 2.1 What runs, and when — the owner's cadence, decided 2026-09-09
 
-**The cadence is not this design's to invent.** It was decided by the owner on 2026-09-03 as **D-13**
-(`docs/walks/2026-09-02-deepa-pipeline-walk.md`, decision table) and its conformance is recorded in
-`docs/specs/per-ipo-due-step-pipeline.md` §5.1. Those two are the source of truth. Restated here only
-as far as the pull loop depends on it:
+**This supersedes D-13's timing for everything below.** D-13 (owner, 2026-09-03,
+`docs/walks/2026-09-02-deepa-pipeline-walk.md`) moved discovery off "every wake" and onto four IST
+slots; its code is `scraper/src/scheduler/due-step-cycle.ts:15`. On **2026-09-09** the owner replaced
+that timing (OD-19):
 
-| Work | Cadence (D-13) | Where it lives |
-|---|---|---|
-| Discovery | **4× a day — 08:30, 11:00, 14:00, 17:30 IST** | `due-step-cycle.ts:15` |
-| Due list | with discovery and after any filing — **not every 30 minutes** | `due-step-cycle.ts` |
-| Live numbers | every wake **in market hours, Mon–Fri 10:00–17:00 IST, OPEN IPOs only** | `due-step-cycle.ts:81-85`, `scraper/src/index.ts:343` |
-| Aggregators | **UPCOMING/OPEN only, at most once a day** | `scraper/src/index.ts:186` (`AGGREGATOR_INTERVAL_MINUTES = 24 * 60`), `scraper/src/index.ts:367` |
-| Sat / Sun / NSE holiday | only UPCOMING/PRE_OPEN/OPEN candidates do network work | `document-cycle-calendar-gate.ts` |
+> *"Offer document never on a clock. Live figures only during bidding. Subscription-related work can
+> run every hour or even thirty minutes, but not the scraper that is fetching the IPO data. Three
+> runs a day, midnight, eight in the morning, two in the afternoon. Add another cycle at ten o'clock
+> at night that deals only with old IPOs, latest closed first, at most 10 old IPOs a day, do not
+> repeat which are already done."*
 
-**The pull walk runs in the four discovery slots**, plus whenever a document for a phase-1 IPO
-reaches `EXTRACTED`. It does not run on every wake. Measured: **6 OPEN, 13 UPCOMING** — so the
-expensive walk touches 19 IPOs four times a day, and the cheap live poll touches 6.
+D-13's *principle* survives — work runs on named occasions, not on a drumbeat. Its *slots* do not.
+
+#### The scheduled work, in full
+
+| Job | When (IST) | What it touches | What it must never do |
+|---|---|---|---|
+| **Data job** | **00:00, 08:00, 14:00** | discovery; document download and extraction; the per-field pull walk; verification reads | never re-read a document because time passed |
+| **Live-figures job** | **every 30 minutes, 10:00–18:30**, only on a day when at least one IPO is OPEN | subscription, demand graph, grey-market premium | never touch a document, a field plan row, or any static field |
+| **Closed-IPO job** | **22:00** | at most **10** IPOs a night, status LISTED or CLOSED, close date before today, ordered by close date **descending**, each marked done so it is never picked twice | never start while the data job's cycle lock is held |
+
+Three jobs, and one rule that binds all of them: **no job ever kills a running cycle.**
+
+*(The contract that commissioned this round called these "four jobs". The owner's words define three
+jobs and one rule; the fourth bullet in that list is the no-kill rule, not a job. Recorded here
+rather than inventing a fourth job to match a miscount.)*
+
+**A document is read once, on arrival**, and again only when (a) a newer document *type* arrives for
+that IPO, (b) the extractor version changes, or (c) the re-read loop of §3 asks for it. There is no
+interval, no backoff timer and no nightly re-extraction of a document that has not changed. This is
+the whole of *"offer document never on a clock"*, and check **D12** fails the design if any section
+puts a document read back on an interval.
+
+**Verification reads go to the exchanges first — NSE, then BSE — and only then to websites** (owner,
+2026-09-09). §2.5 orders the verification sources on that rule.
+
+#### Why these numbers, and what they cost
+
+Two or three mainboard IPOs open in a typical week; the static facts about an issue change on the
+day a document is filed, not every half hour. Three data passes a day is roughly ten times more
+often than the underlying data actually moves. What genuinely moves within a day is the
+subscription book, the demand graph and the grey-market premium — and those are the live-figures
+job, which is a handful of HTTP calls and touches nothing static. The exchanges publish the closing
+day's final subscription after 17:00, which is why the live window runs to 18:30 rather than 17:00.
+
+The cost of the change is latency on a document filed at, say, 09:00: it is picked up at 14:00
+rather than within the hour. That is accepted deliberately — the alternative, which is what runs
+today, is a scraper that treats elapsed time as a reason to re-open a document it has already read,
+and gets killed mid-extraction for its trouble.
+
+#### The force-kill goes, and the budgets that depend on it
+
+Today the scraper is started `--no-autorestart --cron-restart="*/30 * * * *"`
+(`scripts/deploy-linux.sh:237` computes that default). A cycle still running on the half hour is
+**killed**, and because extraction is a blocking `spawnSync` the signal handler that releases locks
+cannot run — so `FILING_EXTRACTION_LOCK_TTL_MS` (`filing-auto-persist.ts:530`, 45 minutes) is held to
+expiry and the next wakes lose their extraction slot. That force-kill is what made a 10-minute
+extraction timeout necessary in the first place.
+
+**Under OD-19 the force-kill goes.** Each job is started by a scheduler that **skips its start when
+the cycle lock is held** — it never kills what is running. That unlocks the budget changes the owner
+directed, and they have to be derived rather than typed, because three constants are coupled:
+
+| Constant | Today | Becomes | Where the number comes from |
+|---|---|---|---|
+| `EXTRACT_TIMEOUT_MS` (`filing-auto-persist.ts:166`) | 10 min | **30 min** | owner, OD-19 — a real prospectus extraction is no longer racing a 30-minute kill |
+| wake budget `DOCUMENT_CYCLE_WAKE_BUDGET_MS` (`document-cycle.ts:182`) | 20 min | **50 min** | owner, OD-19 |
+| `CYCLE_LOCK_TTL_MS` (`scraper/src/index.ts:179`) | wake + 5 = 25 min | **55 min** | *derived, not typed* — the existing expression `getWakeBudgetMs() + 5 min` already computes it |
+| `FILING_EXTRACTION_LOCK_TTL_MS` (`filing-auto-persist.ts:530`) | 45 min | **60 min** | derived below |
+| `DEFAULT_MAX_SPAWNS_PER_CYCLE` (`filing-auto-persist.ts:500`) | 3 | **3, but budget-bound** | see the new invariant |
+
+**The invariant that makes this safe, and which does not exist today.** The current derivation
+(`maxAnchorSpawnsWithinLockTtl`, `filing-auto-persist.ts:541`) computes the worst case as
+`DEFAULT_MAX_SPAWNS_PER_CYCLE × EXTRACT_TIMEOUT_MS`. At the new numbers that is 3 × 30 = **90
+minutes**, which is longer than the 50-minute wake it is supposed to fit inside and longer than any
+sane lock TTL. Raising the timeout without touching this would produce exactly the kind of arithmetic
+that passes a unit test and breaks in production.
+
+So the design adds one rule to the extraction runner:
+
+> **A filing extraction is never started unless the remaining wake budget is at least
+> `EXTRACT_TIMEOUT_MS`.**
+
+With that rule the worst case of a whole filing pass is the wake budget itself — 50 minutes, not 90 —
+whatever the spawn count is. The lock TTL then derives as
+`wake budget (50) + one anchor sidecar at its configured timeout + LOCK_SLACK_MS (60 s)`, which is
+under 60 minutes; `FILING_EXTRACTION_LOCK_TTL_MS = 60 min` is that bound rounded up to the minute.
+`maxAnchorSpawnsWithinLockTtl` is re-derived from the wake budget instead of from
+`spawns × timeout`, and the static test that guards it asserts the new expression rather than a
+re-typed number.
+
+The practical effect on throughput: a data job does up to three filing extractions when they are
+quick and one when a big prospectus runs long, instead of starting a third and being killed. Three
+data jobs a day is fewer *slots* than today's forty-eight wakes, but today's slots are mostly spent
+either idle or dying — the honest comparison is against **completed** extractions, which is a number
+this design does not yet have and which §4 makes a named check.
 
 #### 2.1.1 One correction to how D-13 was built: grey-market premium is gated with subscription, and should not be
 
@@ -847,6 +997,13 @@ the field in flight.
 
 This replaces the first draft's four sequential passes per IPO, which were exactly the wrong shape
 for a process on a thirty-minute drumbeat.
+
+**And the drumbeat itself is going (OD-19, §2.1).** The `cron_restart` force-kill is removed and each
+job skips its turn rather than killing the cycle in progress, so fact 1 above stops being true the
+day item 7 ships. The one-field-at-a-time rule survives that change anyway, for a different reason: a
+2-vCPU box can still lose a process to an OOM kill, a deploy or a crash mid-extraction, and a walk
+that is only resumable when it was allowed to finish is not resumable. What the removal buys is that
+being interrupted stops being the **normal** case and becomes the exceptional one.
 
 ### 2.3 Where the loop records what it asked
 
@@ -1604,100 +1761,204 @@ repair.
 
 ### 5.1 O-1 — when the pull runs, and why
 
-**Measured position.** The process still wakes every 30 minutes on production (`*/30`). Discovery
-already runs only at the four IST slots under `ENABLE_DUE_STEP_SCHEDULER`, which is on in both
-environments. What still walks every wake is document processing, protected per document by a 15
-minute backoff doubling to a 6 hour cap. Abhay's read is fair: the visible behaviour is unchanged.
+**ANSWERED by the owner on 2026-09-09 (OD-19).** This section used to end with *"what is still owed
+to Abhay: a target number."* He gave it. The cadence is now three named jobs and one rule, specified
+in full in **§2.1**, and this section only records what changed and why the old answer was wrong.
 
-**The design's answer.** The wake stays at 30 minutes; what runs inside it becomes conditional:
+**What the design proposed before, and what he decided instead:**
 
-- Outside market hours **and** outside the four discovery slots, the wake does nothing but the
-  cheap liveness write. No document queue walk, no HTTP.
-- The pull walk runs **on the four discovery slots and on state changes**, not on a clock.
-- Only genuinely live figures — subscription, demand graph, GMP — run on every in-hours wake, and
-  only for OPEN or UPCOMING IPOs. Measured now: **6 OPEN and 10 UPCOMING, 16 of 327**. Subscription
-  and demand-graph polling narrows further to the 6 OPEN ones.
-- The backlog tier gets its own nightly window.
+| | The design's proposal (2026-09-08) | The owner's decision (2026-09-09) |
+|---|---|---|
+| Wake | keep the 30-minute wake, make it a no-op when nothing is due | no 30-minute wake for data at all — **three data jobs a day**, 00:00 / 08:00 / 14:00 |
+| Documents | processed on the four discovery slots and on state changes | **never on a clock**; read once on arrival, again only on a new reason |
+| Live figures | every in-hours wake | **every 30 minutes, 10:00–18:30, only when an IPO is OPEN** |
+| Backlog | "its own nightly window", unscheduled | **22:00, at most 10 closed IPOs a night, newest close date first, never repeated** |
+| Kill | unaddressed — the cron force-restart stayed | **no job ever kills a running cycle**; a job that finds the lock held skips its turn |
 
-**Why not simply lengthen the wake.** Subscription and grey-market numbers move through the day and
-are the most-read figures on the site during a live issue; an hourly floor would make them stale by
-up to an hour at exactly the moment they matter. Making the wake cheap when there is nothing to do
-gets the cost saving without that cost.
+**Why the design's own proposal was the weaker answer.** It kept a 30-minute drumbeat and made the
+work inside it conditional. That is the shape that produced the problem in the first place: a
+half-hourly process that must decide, every half hour, whether to do nothing — and that gets killed
+on the boundary when it decides to do something. The owner's version removes the drumbeat instead of
+teaching it restraint. The only thing genuinely lost is latency on a document filed between jobs,
+and §2.1 states that cost out loud rather than hiding it.
 
-**What is still owed to Abhay:** a target number. The design works at any wake interval; if he wants
-hourly, only the live-figure row above changes.
+**What this section still owes.** Nothing to the owner. To the implementer it owes the derivation of
+the new budgets, which is in §2.1 under *"the force-kill goes"*, and the completed-extractions
+counter that makes the before-and-after comparable, which is a named check in §4.
 
 ### 5.2 O-2 — money in crore
 
-**The measurement makes the case stronger than the original comment did.** §0.8: four units, six
-tables, one concept, and `financial_statements` does not normalise at all.
+**ANSWERED by the owner on 2026-09-09 (OD-20):** *"Crore should be the default for every amount
+column."*
 
-**Convert to crore (`numeric(14,2)`, storing 999.99 not 9,999,999,999.99):**
+#### What counts as an amount column, and who decides
 
-| Table | Fields | Today |
+Not a sentence — a probe. `docs/design/probes/amount-columns.mjs` reads
+`packages/shared/src/db/schema.ts` and classifies **every** numeric and bigint column into one of
+eight classes, and **refuses to finish if a single column is left unruled**. Its saved output
+(`amount-columns.out.json`) is the evidence behind the table below, and check **D13** fails the gate
+if this table and that output disagree.
+
+The classes, and what happens to each:
+
+| Class | Meaning | Under OD-20 |
 |---|---|---|
-| `ipos` | `issue_size` | rupees |
-| `ipo_details` | `fresh_issue`, `ofs_issue` | rupees |
-| `ipo_valuation` | `mcap_at_floor`, `mcap_at_cap` | rupees |
-| `financial_statements` | `revenue`, `total_income`, `ebitda`, `pat`, `net_worth`, `op_cash_flow` | raw MILLION or LAKH |
-| `anchor_investors` | `total_amount_raised`, and the amounts inside `investor_list` | crore already — becomes the reference |
-| `ipos` | `objectives` amounts (JSON) | mixed |
-| `financial_data` | all money columns | crore already — the reference |
+| `CRORE` | an aggregate rupee amount at company or issue scale | **converted to crore, `numeric(12,2)`** |
+| `RUPEES_KEPT` | a rupee amount at retail scale | stays in rupees — see **O-12** |
+| `PER_SHARE` | a rupee value per share (price, EPS, NAV, WACA, GMP) | unchanged |
+| `PERCENT` · `RATIO` · `MULTIPLE` | percentages, ratios, subscription multiples | unchanged |
+| `SHARE_COUNT` | counts of shares or bids | unchanged |
+| `NON_MONEY` | numeric but not money (a file size) | unchanged |
 
-**Do NOT convert** (§O-2's own list, confirmed against the measured data): per-share prices
-(`price_range_min/max`, `price_floor/cap`, `face_value`, `listing_price`, `issue_price`,
-`current_price*`, `gmp`, all EPS and NAV), percentages and ratios (`roe`, `ronw`, `pe_ratio`,
-`debt_to_equity`, `*_gain_percent`, `promoter_holding_*`), subscription multiples, and every share
-count (`shares_at_*`, `total_shares_bid`, `shares_offered`, `promoter_shares_held`, `lot_size`).
-Converting those makes them harder to read, not easier.
+Converting a price, a percentage or a share count would make it harder to read, not easier — that
+was true in the original comment and the probe does not change it.
 
-**`financial_statements.unit` becomes a record, not an instruction.** Amounts are converted on write;
-the column is renamed `source_unit` and kept for provenance. Any query that forgets to join it is
-then merely missing context rather than wrong by 10×.
+#### The columns that convert
 
-**Honest cost.** This changes what the public API returns for those fields. It touches every page
-that formats money, the audit checks, and the provenance rows already written. It is its own change
-with its own staging proof and its own release — not a rider on the pull model. Doing it *before*
-the migration in §6 is cheaper, because the migration rewrites those rows anyway.
+Generated by the probe; never hand-edited here.
 
-**And the thing worth fixing at the same time (§0.9).** `financial_data`'s hard-coded FY columns are
-already publishing a two-year-old figure for a live IPO. The design's position: `financial_statements`
-becomes the source of truth for financials, and `financial_data` becomes a derived projection of its
-three most recent fiscal years. That removes the hard-coding, fixes Annu Projects, and gives the
-unit conversion one place to happen instead of two.
+| Table | Column | Stored as today | Becomes |
+|---|---|---|---|
+| `anchor_investors` | `total_amount_raised` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `ebitda_fy2022` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `ebitda_fy2023` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `ebitda_fy2024` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `market_cap` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `net_worth` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `profit_fy2022` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `profit_fy2023` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `profit_fy2024` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `reserves_and_surplus` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `revenue_fy2022` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `revenue_fy2023` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `revenue_fy2024` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `total_assets` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `total_borrowing` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `total_borrowings` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `total_income_fy2022` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `total_income_fy2023` | numeric | `numeric(12,2)` crore |
+| `financial_data` | `total_income_fy2024` | numeric | `numeric(12,2)` crore |
+| `financial_statements` | `ebitda` | numeric | `numeric(12,2)` crore |
+| `financial_statements` | `net_worth` | numeric | `numeric(12,2)` crore |
+| `financial_statements` | `op_cash_flow` | numeric | `numeric(12,2)` crore |
+| `financial_statements` | `pat` | numeric | `numeric(12,2)` crore |
+| `financial_statements` | `rent_expense` | numeric | `numeric(12,2)` crore |
+| `financial_statements` | `revenue` | numeric | `numeric(12,2)` crore |
+| `financial_statements` | `total_income` | numeric | `numeric(12,2)` crore |
+| `ipo_details` | `fresh_issue` | numeric | `numeric(12,2)` crore |
+| `ipo_details` | `ofs_issue` | numeric | `numeric(12,2)` crore |
+| `ipo_financials` | `profit_fy1` | numeric | `numeric(12,2)` crore |
+| `ipo_financials` | `profit_fy2` | numeric | `numeric(12,2)` crore |
+| `ipo_financials` | `profit_fy3` | numeric | `numeric(12,2)` crore |
+| `ipo_financials` | `revenue_fy1` | numeric | `numeric(12,2)` crore |
+| `ipo_financials` | `revenue_fy2` | numeric | `numeric(12,2)` crore |
+| `ipo_financials` | `revenue_fy3` | numeric | `numeric(12,2)` crore |
+| `ipo_valuation` | `mcap_at_cap` | numeric | `numeric(12,2)` crore |
+| `ipo_valuation` | `mcap_at_floor` | numeric | `numeric(12,2)` crore |
+| `ipos` | `issue_size` | numeric | `numeric(12,2)` crore |
+
+`ipos.objectives` is not in that list because it is not a numeric column: it is a JSON payload whose
+*amounts inside* are mixed. It converts too, and the item-11 build card specifies the shape of the
+converted payload and the reader that keeps old rows readable.
+
+#### O-12 — the one place "every amount column" needs the owner's word
+
+**PROVISIONAL on O-12.**
+
+Three columns are rupee amounts by any honest reading, and converting them would make the site
+worse: `ipo_details.min_investment` (a retail application of about 15,000 rupees, which in crore
+reads `0.0015`), `ipo_details.max_retail_subscription` and `ipo_details.max_employee_subscription`
+(the 2-lakh and 5-lakh regulatory ceilings, which people read in lakh). `gmp_records.kostak_rate`
+and `subject_rate` are the same shape: per-application rates quoted in hundreds of rupees.
+
+**Recommendation: keep these five in rupees**, and treat "crore is the default" as exactly that — a
+default with five named, reasoned exceptions rather than a rule with silent ones. Recorded as
+**O-12** in §0.0.2; the design proceeds on the recommendation.
+
+#### How existing rows are repaired
+
+**Never by arithmetic on the stored number.** A row whose unit is unknown cannot be divided by
+10,000,000 and trusted — that is precisely how a share count once became a rupee amount. The repair
+is a re-runnable tool that, per row, re-reads the value **from its source** (the offer document via
+the extractor, or the exchange payload) and writes the crore value with a fresh `field_sources` row;
+a row whose source cannot be re-read is left alone and reported, not guessed. Dry-run is the default,
+`--apply` is explicit, and the proof that it held is
+`scripts/assert-repair-held.mjs <invariant> --cycles 2` on staging, because a clean read straight
+after a repair proves nothing about whether the next real scraper cycle overwrites it.
+
+#### What the public sees while this happens
+
+The API serves **both** shapes for one release: the existing field keeps its name and its old unit,
+and a new crore field appears beside it. The old field is retired in the following release. The
+item-11 build card names every API route and every web formatter this touches, and the release it
+happens in.
+
+#### And the defect worth fixing in the same change (§0.9)
+
+`financial_data`'s hard-coded fiscal-year columns already publish a two-year-old figure for a live
+IPO. `financial_statements` becomes the source of truth for financials and `financial_data` becomes
+a derived projection of its three most recent fiscal years. That removes the hard-coding, fixes Annu
+Projects, and gives the unit conversion one place to happen instead of two.
 
 ### 5.3 O-3 — one bad field must not discard the row, and must not loop
 
-Answered structurally rather than by a patch, because the pull model makes it fall out:
+**ANSWERED by the owner on 2026-09-09 (OD-21):** *"Go with your recommendation"* — per-field
+validation before the write. This is no longer "the cheap half" of anything; it is the whole of
+build item 4.
 
-- **The unit of work is the field, not the document.** `ipo_field_plan` has one row per field, and a
-  `CHECK_FAILED` on `fresh_issue` marks that one row. Rentomojo's lead managers, dates, registrar and
-  ISIN are written regardless. Nothing is all-or-nothing any more.
-- **A failed field falls to the next rank** (§2.5) and, failing that, is written null with a reason
-  (§2.8). "Keep that field blank, and get that field from other sources" is precisely the fallback
-  rule.
-- **The loop is bounded by bytes, not by counter** (§3.4): at most 2 attempts per `sha256`, 1
-  re-read per document per day, reset only on genuinely new evidence. Seven re-extractions of the
-  same PDF becomes impossible by construction, not by a retry limit someone remembers to set.
-- **In the meantime**, the cheap version of this — pre-validating each field against its column
-  width before the write and dropping only the offenders — is worth doing on its own, ahead of the
-  pull model. It is small, it is reversible, and it stops today's bleeding. It is not a substitute
-  for the above.
+#### The rule
+
+1. **Every extracted field is validated on its own, before the write.** Not the document, not the
+   row — the field.
+2. **A field that fails is dropped from the write** and recorded in a **failure row** carrying:
+   the IPO, the table and column, the document id and sha256 it came from, the rule id that
+   rejected it, the value as extracted (truncated, never silently reshaped), and the cause in plain
+   words. A failure that cannot be classified from its own row is a defect of the logger
+   (`signal-ownership.md` R6).
+3. **The remaining fields are written.** Rentomojo's lead managers, dates, registrar and ISIN go in
+   even when `fresh_issue` is rejected. Nothing is all-or-nothing.
+4. **The pull loop then asks rank 2 for the dropped field** (§2.5), and if that fails too the field
+   is written null with a reason (§2.8) — *"keep that field blank and get it from other sources"*.
+5. **A document is re-extracted only when a new reason exists**: a newer document type arrives, the
+   extractor version changes, or the re-read loop asks. **Never on a backoff timer.** Seven
+   re-extractions of the same bytes becomes impossible by construction rather than by a retry limit
+   somebody remembers to set.
+
+#### The validation rules are configuration, not code
+
+Same file family as the priority configuration (OD-5, §2.3.5), so a rule can be corrected without a
+deploy. Each rule carries: the id it reports on failure, the columns it applies to, the offering
+types and segments it applies to, **the date range it is valid for**, and the assertion itself.
+
+**The date range is load-bearing, and it is what closes F-10.** `face_value ∈ {1, 2, 5, 10}` is
+right for an equity IPO and wrong for an NCD at 1,000. `listing ≤ close + 3 working days` is right
+today and wrong for anything that listed before December 2023, when T+6 was the rule. Applied
+without effective dates to the closed-IPO backlog, a correct 2022 row would be rejected by a 2026
+rule and silently blanked — a check that damages the data it was written to protect. Every rule
+therefore states the window it governs, and a value outside every window is **not** a failure: it is
+recorded as `NO_RULE_APPLIES` and written.
+
+#### What this does not do
+
+It does not make a doubtful value acceptable. A field that no rank can supply and no rule can pass
+stays empty with its reason attached, and §4's checks count it. The purpose is that one bad field
+costs one field.
 
 ### 5.4 O-4 — the unextracted backlog, drained without starving a live IPO
 
-**Phase-1 note:** the backlog tier and its nightly window are **the closed-IPO work** (F-35 — no backlog drain in
-phase 1; the 2-vCPU box already took a 522 outage from two concurrent extractors). Phase 1 only ever
-extracts a document belonging to one of the 19 open/upcoming IPOs, on demand, inside the normal wake
-budget. Everything below describes the target state this design is building toward; it does not run
-in phase 1.
+**Updated 2026-09-09 (OD-19, OD-22).** The backlog tier now has a real window: **22:00 IST, at most
+ten closed IPOs a night**, specified in §6. F-35's objection — a third extractor on a 2-vCPU box that
+already took a Cloudflare 522 outage from two concurrent ones — is answered by *when* rather than by
+*whether*: the 22:00 job runs when neither data job nor live-figures job does, and it skips its turn
+outright if the cycle lock is held. The live tier keeps absolute priority, so a live IPO can never
+queue behind history. The causes and the answers below are unchanged; only the scheduling is.
 
 **Re-measured this session: 176 unextracted, not 172.** The three causes hold:
 
 | Cause | Documents | The design's answer |
 |---|---:|---|
 | No extractor exists for the type | 78 | Build **one**: the **ratios / basis-for-offer-price** document (32 pending — it carries the KPIs, the WACA and the peer set, all rank-1 document fields in §1). **Deliberately left unread, and recorded as such:** the basis-of-allotment advertisement (1 — see below), sample application forms (14), bidding centres (8), security parameters (23). All report `NOT_APPLICABLE` in the manifest rather than sitting in a backlog forever. |
-| Budget of 3 filings per cycle | 91 | Demand-ordered allocation (§2.7) plus the **backlog tier's own nightly window** (§2.3, **the closed-IPO work**). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here. |
+| Budget of 3 filings per cycle | 91 | Demand-ordered allocation (§2.7) plus the **22:00 closed-IPO job** (§6). The live tier keeps absolute priority, so a live IPO can never queue behind history. This converts 91 already-downloaded documents into data with no new parsing code — the single biggest win here. |
 | 10-minute extraction cap | the Skyways class | A separate, longer budget for large or scanned documents, run in the backlog window only (**the closed-IPO work**), where a 40-minute extraction costs nothing. The live path keeps its 10-minute cap so it cannot blow the wake budget. |
 
 O-4 is already marked APPROVED by the owner, so this section is the *how*, not a request.
@@ -1777,78 +2038,127 @@ for it until the deterministic 119 are actually being read.
 
 ---
 
-## 6. Re-sourcing closed IPOs — not scheduled, and each precondition has a named trigger
+## 6. The closed-IPO job — scheduled, capped, and never repeating itself
 
-**There is no "phase 2" (owner, 2026-09-08).** An earlier draft parked ten findings in one, which is
-how work disappears: a bucket with no date, no trigger and no owner. Every one of them now names the
-**event** that brings it into scope, and none of them names a phase.
+**This section used to say "not scheduled".** On 2026-09-09 the owner put closed IPOs into the build
+(OD-22) with a job of their own:
 
-**The owner's sequence for closed IPOs, in his words:** *"We will not touch any closed IPO as of now.
-Once those are done, then we will plan to check and update data for closed IPO gradually one by one
-in sequence of IPO closing date — latest closed IPO first and older IPO closed later, but one by
-one."*
+> *"Add another cycle at ten o'clock at night that deals only with old IPOs, latest closed first, at
+> most 10 old IPOs a day, do not repeat which are already done."*
 
-One at a time, newest close date first. Not a batch, not a migration, not a phase.
+So this is a specification now, not a deferral. It is the third of the three jobs in §2.1.
 
-**His ordering has a property worth naming**, because it was not the reason he chose it. Measured
-against the purge rule:
+### 6.1 What the job does
 
-| Closed | IPOs | Their PDFs |
-|---|---:|---|
-| ≤ 7 days ago | 13 | **still on disk** |
-| 8–30 days | 35 | **inside the hard retention cap** |
-| 31–180 days | 107 | purged — must be re-downloaded |
-| > 180 days | 100 | purged, oldest |
+**At 22:00 IST, once a day.** It starts only if the data job's cycle lock is free; if the 14:00 job
+is somehow still running, the 22:00 job skips its turn and says so. It never kills anything.
 
-**Newest-first means the first 48 are the ones whose files we still hold.** The re-download gamble —
-the largest unknown in the whole plan — is deferred until after 48 IPOs have already proven the
-machinery works.
+**Which IPOs it picks, in order:**
 
-### 6.1 What must be true before the FIRST closed IPO is touched
+1. `status` is `LISTED` or `CLOSED`, and `close_date` is before today.
+2. Not already marked done, and not marked failed with the **same cause class** as last time.
+3. Ordered by `close_date` **descending** — newest closed first, which is the owner's sequence.
+4. **At most ten.**
 
-These are not future work. They are **preconditions**, and each is a finding with a trigger rather
-than a line in a plan:
+**What it does to each one:** exactly the pull walk of §2.4 over that IPO's field plan, with the
+same ranks, the same validation and the same provenance. There is no separate "migration" code path
+— a closed IPO is walked by the same walk as a live one, which is the only way the walk stays worth
+trusting. The one difference is priority: the closed-IPO job may never take a resource a live IPO
+wants, so it runs at 22:00 when the data jobs do not, and it yields the cycle lock rather than
+competing for it.
 
-| Finding | What must exist first | Why, concretely |
+### 6.2 The done-marker, and why a boolean is not enough
+
+*"Do not repeat which are already done"* needs somewhere to record it. One new table,
+`closed_ipo_resourcing`, one row per IPO:
+
+| Column | Purpose |
+|---|---|
+| `ipo_id` (PK) | the IPO |
+| `first_attempt_at`, `last_attempt_at`, `attempts` | when, and how often |
+| `outcome` | `DONE` · `PARTIAL` · `FAILED` |
+| `cause_class` | for `PARTIAL`/`FAILED`: the class of what stopped it — `DOCUMENT_UNOBTAINABLE`, `EXTRACTOR_MISSING`, `VALIDATION_REJECTED`, `SOURCE_UNREACHABLE`, `WRITE_SKIPPED` |
+| `cause_detail` | the cause text, so the failure is readable from its own row |
+| `fields_written`, `fields_left_empty` | what actually changed, so "we did 10 last night" can be checked against "and 340 fields moved" |
+| `resourced_at_version` | the extractor/manifest version it was done under, so a later version can legitimately re-do it |
+
+**Why not a `resourced` boolean on `ipos`.** A boolean answers "have we touched it" and nothing else.
+The two questions that actually come up are *"why did that one fail"* and *"which failures are worth
+retrying now"*, and a boolean answers neither. The retry rule is precisely the one the owner's words
+imply: a `DONE` row is never picked again; a `FAILED` row is picked again **only when its cause class
+has changed** — a new extractor exists, the document became obtainable, the rule that rejected it was
+corrected. Same cause, same outcome, no retry. That is what stops the job spending all ten of its
+nightly slots on the same ten impossible IPOs forever.
+
+### 6.3 The one thing nobody knows yet: are the old documents still there
+
+This was the largest unknown in the whole design, and OD-23 has now removed **half** of it: from here
+on, documents are kept for the life of the IPO row, so no IPO closing today will ever join this
+backlog document-less. The other half — the IPOs that already lost their files to the seven-day purge
+— is a question about the outside world, and it is answered by measurement, not by hope.
+
+`docs/design/probes/old-document-availability.mjs` downloads offer documents for at least twelve
+LISTED IPOs on production at three ages (about 1 month, 6 months and 12+ months since listing, four
+at each age, mainboard and SME both represented), first from the URL stored in
+`documents.source_url` and, when that fails, from NSE's, BSE's and SEBI's public document pages. It
+records the HTTP status, the byte size and the first page of text for each attempt. The result — per
+source and per age, what is still obtainable — is a table in this design and in the final report.
+
+**If a class turns out to be unobtainable**, those IPOs' fields stay website-sourced and carry a
+`source_note` the site can show. That is a worse answer than the document, and it is an honest one.
+
+### 6.4 The preconditions, re-checked against the decisions of 2026-09-09
+
+The five preconditions this section used to list have moved:
+
+| Finding | Was | Now |
 |---|---|---|
-| **F-09** | a `retain_until` pin the purge honours | `decidePurge` deletes any PDF past 30 days unconditionally (`document-store.ts:279`). Without the pin, we re-download a 2025 RHP, extract one field group, and the next cycle deletes it — a treadmill |
-| **F-10** | effective-dated checks | `face_value ∈ {1,2,5,10}` is wrong for an NCD at ₹1,000; `listing ≤ close + 3 working days` is wrong for anything that listed before Dec 2023. Applied to history as-is, these fail correct data |
-| **F-30** | each gate as a script with an exit code | four of the six are prose today. Prose cannot stop a bad run |
-| **F-31** | a `field_sources` snapshot | it holds **one** prior value, so a second overwrite loses the original. 6,600 rows — cheap before, impossible after |
-| **F-35** | a decided slot for the extractor | the box took a Cloudflare 522 outage from two concurrent extractors (`scripts/deploy-linux.sh:231-235`). A third workload needs its slot agreed, not discovered |
+| **F-09** re-downloaded PDFs deleted by the next purge | blocked the first closed IPO | **answered by OD-23** — the purge stops deleting; §0.5.1. The code half is build item 18 |
+| **F-10** checks wrong for a class silently blank that class | blocked the first closed IPO | **answered by OD-21** — validation rules carry effective dates, and a value outside every window is recorded, not rejected; §5.3. The code half is build item 4 |
+| **F-30** four of six gates are prose, not commands | blocked the first closed IPO | **still open**, owned by build item 10: each check becomes a named script with an exit code |
+| **F-31** `field_sources` holds one prior value | blocked the first closed IPO | **still open**, owned by build item 17: the snapshot is taken **before** the first closed IPO is walked, not after |
+| **F-35** a third extractor on a 2-vCPU box | blocked a backlog drain | **still open**, owned by build item 7: the 22:00 slot is the decided answer, and the lock-skip rule is what enforces it |
 
-### 6.2 The document-type precondition, unchanged
+### 6.5 The document-type precondition, unchanged
 
-A re-extraction must resolve a **real document type**, or the type ranking degrades to
-newest-write-wins and an old draft overwrites a final price band advertisement. **`documents.filing_date`
-is populated on 24 of 256 rows**, and the healing rule depends on it. Backfilling it is a
-prerequisite of the first closed IPO, not part of the work.
-
+A re-extraction must resolve a **real document type**, or type ranking degrades to
+newest-write-wins and an old draft overwrites a final price band advertisement.
+`documents.filing_date` is populated on a minority of rows and the healing rule depends on it.
+Backfilling it is part of build item 17, not a separate errand.
 
 ## 7. Cost, sequence, and what I am not sure about
 
 ### 7.1 Sequence
 
+**Eighteen items, not fifteen.** Three of the owner's decisions of 2026-09-09 created work that no
+existing item owned: the job scheduler and the budget derivation that comes with removing the
+force-kill (folded into item 7, which already owned budgets), the closed-IPO job (item 17) and the
+document-retention change (item 18). Item 16 is the Moneycontrol retirement (OD-3). Inventing
+nowhere to put them would have left three owner decisions with no implementer.
+
 | # | Piece | Depends on | Tier | Rough size |
 |---|---|---|---|---|
 | 1 | **The child-table consolidated writer** — extend the consolidation contract to `ipo_details`, `financial_statements`, `ipo_valuation`, `ipo_risk_factors`, `promoters`, `anchor_investors`, `ipo_intermediaries`, `peer_companies`: per-field priority resolution, `field_sources` rows, `data_conflicts` rows | — | **A** | **large — and it is the gate on everything below** |
-| 2 | Field manifest: which document type prints which field | — | B | small — the spec turned into data |
+| 2 | Field manifest + priority configuration: which document type prints which field, and the rank order, as one validated configuration file family | — | B | small — the spec turned into data |
 | 3 | Matrix cleanup: delete the 13 dead snake_case keys, adopt the manifest | 2 | B | medium, mechanical |
-| 4 | Per-field validation before write (the cheap half of O-3) | — | B | small, ships on its own |
+| 4 | **Per-field validation before the write (OD-21)** — the failure row, the rule configuration, and the effective dating that closes F-10 | 2 | **A** | medium — it is a write-path change, not a helper |
 | 5 | `ipo_field_plan` table + generator | 1, 2, 3 | **A** | medium |
 | 6 | The pull walk over the plan | 5 | **A** | large — the core |
-| 7 | Tiering and demand-ordered budgets (O-4) | 6 | **A** | medium |
+| 7 | **The job scheduler and the budgets** — the three jobs of §2.1 with their cron lines and PM2 change, the removal of the `cron_restart` force-kill, the lock-skip rule, the new extraction/wake/lock budgets and the never-spawn-without-budget invariant; then demand-ordered tiering (O-4) | — (scheduler) · 6 (tiering) | **A** | medium |
 | 8 | The ratios / basis-for-offer-price extractor (32 pending documents) | — | B | medium, independent |
 | 9 | The re-read loop | 6 | **A** | medium |
-| 10 | The verification checks in §4 | 6, 9 | B | medium — nothing above is proven without it |
-| 11 | Unit conversion (O-2) + `financial_data` becomes derived | 10 | **A** | large, own release |
-| 12 | **Fold corporate-form words in the name normaliser, and run duplicate detection at discovery** on the stricter key specified in §2.3.3 — F-46, F-55 | — | **A** | small code, high blast radius: it changes what binds to what |
-| 13 | **Extract `ofs_issue`, in both the rupee form and the share form**, and fix `fresh_issue`; gate the write on `fresh + OFS = total ±0.5%` — F-51 | 2 | **A** | medium — it is wrong on 6 of 9 live IPOs today |
-| 14 | **Convert BSE `Issue_Size_No_of_shares` from a share count to rupees**, with a conversion test — F-54 | 13 | B | small, but it is the recurrence class the detection gate exists for |
-| 15 | **Revive `valueActuallyChanged`** so no-op suppression can be measured — F-49 | — | B | small; **prerequisite of item 6**, which cannot be verified without it |
+| 10 | The verification checks in §4, each a named script with an exit code (closes F-30) | 6, 9 | B | medium — nothing above is proven without it |
+| 11 | **Crore conversion (OD-20)** for the amount columns §5.2 lists, the source-backed repair tool, the one-release API overlap, and `financial_data` becomes derived | 10 | **A** | large, own release |
+| 12 | Fold corporate-form words into the name normaliser, and run duplicate detection at discovery on the stricter key in §2.3.3 — F-46, F-55 | — | **A** | small code, high blast radius: it changes what binds to what |
+| 13 | Extract `ofs_issue` in both the rupee form and the share form, fix `fresh_issue`, gate the write on `fresh + OFS = total ±0.5%` — F-51 | 2 | **A** | medium — it is wrong on 6 of 9 live IPOs today |
+| 14 | Convert BSE `Issue_Size_No_of_shares` from a share count to rupees, with a conversion test — F-54 | 13 | B | small, but it is the recurrence class the detection gate exists for |
+| 15 | Revive `valueActuallyChanged` so no-op suppression can be measured — F-49 | — | B | small; **prerequisite of item 6**, which cannot be verified without it |
+| 16 | **Retire Moneycontrol (OD-3)** — stop scheduling it; keep the enum value and the provenance rows already written | — | C | small |
+| 17 | **The closed-IPO job (OD-22)** — the 22:00 schedule, `closed_ipo_resourcing`, the selection query and cap, the `field_sources` snapshot that closes F-31, and the `documents.filing_date` backfill | 6, 7, 10 | **A** | medium |
+| 18 | **Document retention (OD-23)** — remove the live window and the purge, keep documents for the life of the IPO row, compress rather than delete at the store ceiling | — | B | small, and it stops the backlog compounding |
 
-**Item 1 is first, by owner decision (2026-09-08), and nothing from item 5 onward is contracted
-until it lands.**
+**Item 1 is first, by owner decision (2026-09-08), and nothing from item 5 onward is contracted until
+it lands.**
 
 **Items 12–15 are the code halves of findings this design settled but cannot itself fix.** They are
 listed here rather than left in the register because a finding whose fix has no build item is a
@@ -1873,31 +2183,44 @@ as no work at all.**
 **Deliberately not done first: the walk.** Building it early would "work" — on 32 fields — and give a
 confident reading on the easiest third of the problem while the hard part is untouched.
 
-Items 4 and 8 are genuinely independent and can start immediately, in parallel with item 1, without
-prejudging anything.
-Everything from 4 onward is one design and should not be half-built.
+Items 4, 8, 16 and 18 are genuinely independent and can start immediately, in parallel with item 1,
+without prejudging anything. Item 7's scheduler half is independent too; its tiering half is not.
+Everything from 5 onward is one design and should not be half-built.
 
 ### 7.2 What is reversible and what is not
 
-- **Reversible:** items 1, 2, 3, 7, 9 — additive, behind flags, no data rewritten.
-- **Reversible with effort:** items 4, 5, 6, 8 — new writer, but `field_sources` records the previous
-  value and source for every field, so a bad batch can be rolled back per field.
-- **Not cleanly reversible:** item 10, the unit conversion, once the public API has served the new
-  shape; and item 11 from M3 onward, once website-sourced values have been overwritten. Both need
-  the staging proof to be real, not a green test.
+- **Reversible:** items 1, 2, 3, 9, 10, 15, 16, 18 — additive or subtractive behind a flag, with no
+  stored value rewritten. Item 18 (retention) is reversible only in the sense that the constants go
+  back; documents already deleted under the old rule do not come back, which is the argument for
+  doing it early rather than late.
+- **Reversible with effort:** items 4, 5, 6, 7, 8, 12, 13, 14 — they change what gets written, but
+  `field_sources` records the previous value and source for every field, so a bad batch can be rolled
+  back per field. Item 7's scheduler half is a configuration change and is reversible immediately;
+  its budget half needs the new invariant to go back with it.
+- **Not cleanly reversible:** item 11 (the crore conversion) once the public API has served the new
+  shape, and item 17 (the closed-IPO job) once website-sourced values on historical rows have been
+  overwritten. Both need a staging proof that is real, not a green test, and item 17 additionally
+  needs F-31's `field_sources` snapshot taken **before** the first row is walked — that snapshot is
+  the only thing that makes "roll it back per field" true past the first overwrite.
 
 ### 7.3 What I am not sure about, plainly
 
-1. **Whether the old PDFs are still downloadable.** M1 exists because I do not know, and the answer
-   decides whether the 100% target (item 4 below) applies to the whole site or only to IPOs from here forward. I
-   would not promise the number before M1 reports. **This was the single biggest unknown in the whole
-   document, and the 2026-09-08 phase-1 scope cut defers it entirely** — M1 is inside §6, which is now
-   the closed-IPO work (no closed IPO, no re-download of purged documents, in phase 1). Phase 1 only ever reads a
-   document that is still on disk for one of today's 19 open/upcoming IPOs, so this unknown does not
-   block phase-1 work — it blocks the closed-IPO work, and stays unanswered until the closed-IPO work starts.
-2. **Whether `ipo_field_plan` should be a new table or columns on `field_sources`.** I have argued
-   for the table. It is a real decision with a maintenance cost either way, and I would revisit it
-   with the code in front of me.
+1. **Whether the old PDFs are still downloadable.** This was the single biggest unknown in the whole
+   document, and it is now half answered and half measured rather than deferred. **Half answered:**
+   OD-23 keeps every document for the life of its IPO row, so no IPO closing from here on will ever
+   reach the backlog without its files — the unknown applies only to the IPOs that already lost
+   theirs to the seven-day purge. **Half measured:** `probes/old-document-availability.mjs` (§6.3)
+   downloads real documents for LISTED IPOs at three ages from `documents.source_url` and from NSE,
+   BSE and SEBI, and reports per source and per age what is still obtainable. Where a class turns out
+   to be unobtainable, those fields stay website-sourced with a `source_note`, and the design says so
+   rather than promising a number.
+2. ~~Whether `ipo_field_plan` should be a new table or columns on `field_sources`~~ **RESOLVED
+   2026-09-09: a new table.** `field_sources` records what a *successful write* used; the plan has to
+   record what was *asked for and did not come back*, which is a different row with a different
+   lifetime — a field never attempted and a field attempted and failed are indistinguishable in
+   `field_sources`, both simply absent. Bolting plan state onto it would overload one table with two
+   meanings, and the per-field backoff and claim columns would be null for every provenance row. The
+   DDL and the two queries the walk runs against it are in the item-5 build card.
 3. **The FPO rules are unexercised.** Zero rows on production. They are written from the general
    pattern and have a higher chance of being wrong than anything else in §1.11.
 4. ~~The target metric~~ **RESOLVED by the owner, 2026-09-08: the target is 100%, per field, not a
@@ -1919,12 +2242,17 @@ Everything from 4 onward is one design and should not be half-built.
    So 100% is reachable on the document-owned set; the 5 excluded fields are excluded by our own
    deliberate decision, not by a shortfall. **What still needs the owner's word is whether those 5
    stay excluded** — see item 7.
-5. **Whether `financial_data` should become derived or be dropped.** Deriving it keeps the API stable
-   and fixes Annu Projects. Dropping it is cleaner and breaks the public shape. I have proposed
-   deriving; I hold that loosely.
-6. **The cost in wall-clock of M5.** 228 IPOs × re-download + extract, at one nightly window and the
-   current extraction speed, is weeks. I have not modelled it properly and I would not want the
-   estimate quoted.
+5. ~~Whether `financial_data` should become derived or be dropped~~ **RESOLVED 2026-09-09: derived.**
+   Dropping it is cleaner and breaks the public API shape for every consumer of the three hard-coded
+   fiscal-year columns; deriving it from `financial_statements` keeps that shape, fixes the live Annu
+   Projects defect (§0.9) and gives the crore conversion one place to happen instead of two. It ships
+   inside item 11, not as a separate change, because doing the derivation and the unit conversion in
+   two releases would mean converting the same numbers twice.
+6. **The cost in wall-clock of draining the closed-IPO backlog.** At the owner's cap of ten IPOs a
+   night, 228 historical IPOs is **at least 23 nights** if every night succeeds — and nights on which
+   documents turn out to be unobtainable will retry nothing, so the real figure is longer and depends
+   on the availability probe of §6.3. That arithmetic is the honest floor; the extraction time per
+   IPO is not modelled here and should not be quoted from this document.
 
 7. ~~The timeline fields~~ **RESOLVED by the owner, 2026-09-08.** They stay on the exchanges as
    named exception E-1, NSE first and BSE second, and the owner then directed that the rule apply to
