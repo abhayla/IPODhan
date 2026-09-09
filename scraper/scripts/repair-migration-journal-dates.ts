@@ -28,14 +28,20 @@
  * platform wrote or checked out the file. A migration applied by the Linux
  * deploy runner (LF) hashes differently from the SAME logical file read
  * from a Windows checkout where git's `core.autocrlf` converted it to CRLF
- * — so a row this tool is looking for can exist and still not match. This
- * tool computes BOTH the raw hash (file as read) and the LF-normalized
- * hash (CRLF collapsed to LF) for every target, and accepts a row matching
- * EITHER — never normalizes only one direction, which would just move the
- * blind spot to slots migrated from Windows. When a file is already LF,
- * raw and normalized are equal, so `matchTargetsToRows()` checks raw first
- * and returns on that hit — it never looks up the same hash twice or
- * counts one row as two matches.
+ * — so a row this tool is looking for can exist and still not match, in
+ * EITHER direction. This tool computes all three of {raw (file as read),
+ * LF-normalized, CRLF} for every target, and accepts a row matching ANY of
+ * them — never normalizes only one direction, which would leave the
+ * opposite platform's rows unreachable (a Windows checkout could not see a
+ * Linux-written row on the first round; a Linux checkout could not see a
+ * Windows-written row until this round). The CRLF variant is built by
+ * normalizing to LF first and then expanding — never by blindly replacing
+ * `\n` with `\r\n` on as-read content, which would turn an already-CRLF
+ * file's `\r\n` into `\r\r\n`. When two or three variants collapse to the
+ * same value (the common case — a file already LF, or already CRLF),
+ * `matchTargetsToRows()` de-duplicates before looking up: it checks each
+ * DISTINCT hash at most once, so a row is never looked up twice or counted
+ * as two matches.
  *
  * SCOPE: exactly the three rows named in #442. Every other row in
  * `drizzle.__drizzle_migrations` is left untouched.
@@ -96,16 +102,22 @@ function sha256(content: string): string {
 }
 
 /**
- * Both hashes a target might match on drizzle.__drizzle_migrations (#449):
- * `raw` is sha256 of the content exactly as read (whatever line endings the
- * current checkout produced); `normalized` collapses CRLF to LF first. When
- * the file is already LF, `raw === normalized` — callers must not treat
- * that as two independent matches (see `matchTargetsToRows`).
+ * All three hashes a target might match on drizzle.__drizzle_migrations
+ * (#449): `raw` is sha256 of the content exactly as read (whatever line
+ * endings the current checkout produced); `normalized` collapses CRLF to LF
+ * first; `crlf` expands that LF-normalized form back out to CRLF — always
+ * derived from the already-normalized (LF) content, never from `content`
+ * directly, so an as-read CRLF file is never double-converted into CRCRLF.
+ * Any two (or all three) of these commonly collapse to the same value —
+ * callers must not treat that as independent matches (see
+ * `matchTargetsToRows`, which de-dupes before looking up).
  */
-export function hashContentVariants(content: string): { raw: string; normalized: string } {
+export function hashContentVariants(content: string): { raw: string; normalized: string; crlf: string } {
   const raw = sha256(content);
-  const normalized = sha256(content.replace(/\r\n/g, '\n'));
-  return { raw, normalized };
+  const lf = content.replace(/\r\n/g, '\n');
+  const normalized = sha256(lf);
+  const crlf = sha256(lf.replace(/\n/g, '\r\n'));
+  return { raw, normalized, crlf };
 }
 
 /** sha256(sql file content) — identical to drizzle-orm's readMigrationFiles(). Exported so the unit test can drive the real function instead of re-deriving the algorithm. */
@@ -115,8 +127,8 @@ export function hashMigrationFile(tag: string): string {
   return sha256(content);
 }
 
-/** Both candidate hashes (raw + LF-normalized) for the migration file `tag` as it exists in this checkout. */
-export function hashMigrationFileVariants(tag: string): { raw: string; normalized: string } {
+/** All three candidate hashes (raw, LF-normalized, CRLF) for the migration file `tag` as it exists in this checkout. */
+export function hashMigrationFileVariants(tag: string): { raw: string; normalized: string; crlf: string } {
   const sqlPath = path.join(MIGRATIONS_DIR, `${tag}.sql`);
   const content = fs.readFileSync(sqlPath, 'utf8');
   return hashContentVariants(content);
@@ -133,29 +145,35 @@ interface HashedTarget {
   correctedWhen: number;
   raw: string;
   normalized: string;
+  crlf: string;
 }
 
 interface MatchedTarget {
   tag: string;
   correctedWhen: number;
   row: MigrationRow;
-  matchedVia: 'raw' | 'normalized';
+  matchedVia: 'raw' | 'normalized' | 'crlf';
 }
 
 interface UnmatchedTarget {
   tag: string;
   raw: string;
   normalized: string;
+  crlf: string;
 }
 
 /**
  * Pure matching decision (#449): resolves each target to a
- * drizzle.__drizzle_migrations row by EITHER its raw or its LF-normalized
- * hash, so a row written by a platform whose line endings differ from this
- * checkout's is still found. Raw is checked first; normalized is checked
- * only when it differs from raw, so an already-LF file is never looked up
- * (or counted) twice. Exported so tests drive the real matching logic
- * without a database.
+ * drizzle.__drizzle_migrations row by ANY of its raw, LF-normalized, or
+ * CRLF hash, so a row written by a platform whose line endings differ from
+ * this checkout's is still found — in either direction (Windows checkout
+ * reading a Linux-written row, or Linux checkout reading a Windows-written
+ * row). Variants are de-duplicated before lookup: raw is checked first,
+ * then normalized only if it differs from raw, then crlf only if it
+ * differs from BOTH raw and normalized — so a variant is never looked up
+ * (or counted as a match) more than once, even when all three collapse to
+ * the same value. Exported so tests drive the real matching logic without
+ * a database.
  */
 export function matchTargetsToRows(
   targets: readonly HashedTarget[],
@@ -165,17 +183,16 @@ export function matchTargetsToRows(
   const matched: MatchedTarget[] = [];
   const unmatched: UnmatchedTarget[] = [];
   for (const t of targets) {
-    const rawRow = byHash.get(t.raw);
-    if (rawRow) {
-      matched.push({ tag: t.tag, correctedWhen: t.correctedWhen, row: rawRow, matchedVia: 'raw' });
-      continue;
+    const candidates: Array<{ hash: string; via: MatchedTarget['matchedVia'] }> = [{ hash: t.raw, via: 'raw' }];
+    if (t.normalized !== t.raw) candidates.push({ hash: t.normalized, via: 'normalized' });
+    if (t.crlf !== t.raw && t.crlf !== t.normalized) candidates.push({ hash: t.crlf, via: 'crlf' });
+
+    const hit = candidates.map((c) => ({ ...c, row: byHash.get(c.hash) })).find((c) => c.row);
+    if (hit && hit.row) {
+      matched.push({ tag: t.tag, correctedWhen: t.correctedWhen, row: hit.row, matchedVia: hit.via });
+    } else {
+      unmatched.push({ tag: t.tag, raw: t.raw, normalized: t.normalized, crlf: t.crlf });
     }
-    const normRow = t.normalized !== t.raw ? byHash.get(t.normalized) : undefined;
-    if (normRow) {
-      matched.push({ tag: t.tag, correctedWhen: t.correctedWhen, row: normRow, matchedVia: 'normalized' });
-      continue;
-    }
-    unmatched.push({ tag: t.tag, raw: t.raw, normalized: t.normalized });
   }
   return { matched, unmatched };
 }
@@ -265,7 +282,7 @@ async function main() {
         `same thing as "nothing to repair":`
     );
     unmatched.forEach((u) => {
-      console.log(`  - ${u.tag}: tried raw hash ${u.raw} and LF-normalized hash ${u.normalized} — neither is present in drizzle.__drizzle_migrations on "${dbName}".`);
+      console.log(`  - ${u.tag}: tried raw hash ${u.raw}, LF-normalized hash ${u.normalized}, and CRLF hash ${u.crlf} — none is present in drizzle.__drizzle_migrations on "${dbName}".`);
     });
     console.log(
       `\nEither the migration truly has not been applied on this slot yet, or the matching logic still cannot ` +

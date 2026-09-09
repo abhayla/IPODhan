@@ -180,6 +180,36 @@ describe('repair-migration-journal-dates.ts — matches a row regardless of whic
     expect(matched[0].matchedVia).toBe('raw');
   });
 
+  it('a row written by a CRLF (Windows) checkout matches a target read from a Linux/LF checkout, via the crlf variant', () => {
+    // The reverse of the first case above: this checkout already holds LF
+    // content (a Linux checkout), but the stored row's hash was computed
+    // from the SAME logical file's CRLF form (written by a Windows
+    // checkout). Without a third variant that re-expands LF -> CRLF, raw
+    // === normalized on an LF checkout and the CRLF hash is never tried —
+    // this is the half of #449 the first round left open.
+    const lfContent = 'CREATE TABLE foo (id int);\nALTER TABLE foo ADD COLUMN bar int;\n';
+    const crlfContent = lfContent.replace(/\n/g, '\r\n');
+    const { raw: crlfHash } = hashContentVariants(crlfContent);
+    // Target as a Linux checkout actually reads it: pure LF.
+    const targets = [{ tag: 'x', correctedWhen: 111, ...hashContentVariants(lfContent) }];
+    const rows = [{ id: 1, hash: crlfHash, created_at: '999' }];
+    const { matched, unmatched } = matchTargetsToRows(targets, rows);
+    expect(unmatched).toHaveLength(0);
+    expect(matched).toHaveLength(1);
+    expect(matched[0].row.id).toBe(1);
+    expect(matched[0].matchedVia).toBe('crlf');
+  });
+
+  it('converting LF to CRLF never double-converts an already-CRLF file into CRCRLF', () => {
+    const crlfContent = 'CREATE TABLE foo (id int);\r\nALTER TABLE foo ADD COLUMN bar int;\r\n';
+    const variants = hashContentVariants(crlfContent);
+    // raw (as-read CRLF) and crlf (LF normalized then re-expanded to CRLF)
+    // must be the SAME hash — if the conversion double-applied, they'd
+    // differ (CRCRLF would hash differently from CRLF).
+    expect(variants.crlf).toBe(variants.raw);
+  });
+
+
   it('a file already in LF is matched once via raw, never counted twice', () => {
     const lfContent = 'CREATE TABLE only_lf (id int);\n';
     const variants = hashContentVariants(lfContent);

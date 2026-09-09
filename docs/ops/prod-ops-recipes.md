@@ -195,14 +195,17 @@ migration `.sql` file exactly as `readMigrationFiles()` (drizzle-orm) and this t
 that byte content depends on which platform wrote/checked it out. A migration applied by the Linux
 deploy runner writes an LF hash into `drizzle.__drizzle_migrations`; the same logical file read from a
 Windows checkout (git `core.autocrlf` converting to CRLF) hashes differently, so the tool matched zero
-of the three named rows and printed "nothing to repair" — indistinguishable from the healthy case. The
-tool now computes BOTH the raw hash (file as this checkout reads it) and the LF-normalized hash (CRLF
-collapsed to LF) for every target, and accepts a `drizzle.__drizzle_migrations` row matching **either** —
-normalizing only one direction was rejected because a slot whose migrations were applied from a Windows
-checkout would then fail the same way in the opposite direction. When a file is already LF, raw and
-normalized hash are identical, so a row is matched (and counted) once, never twice.
+of the three named rows and printed "nothing to repair" — indistinguishable from the healthy case, in
+EITHER direction (a Windows checkout could not see a Linux-written row; a Linux checkout could not see
+a Windows-written row). The tool now computes all THREE of {raw (file as this checkout reads it),
+LF-normalized, CRLF} for every target, and accepts a `drizzle.__drizzle_migrations` row matching **any**
+of them — normalizing only one direction was rejected because a slot whose migrations were applied from
+a Windows checkout would then fail the same way in the opposite direction. The CRLF variant is always
+built by normalizing to LF first and then expanding, never by converting as-read content directly,
+so an already-CRLF file is never turned into CRCRLF. When two or three variants collapse to the same
+value (the common case), a row is matched (and counted) once, never twice.
 **A zero — or partial — match is now a loud failure**, not a quiet "0 rows to repair": if the tool
-matches fewer of `TARGET_ENTRIES` than it was asked to find, it prints every unmatched tag with both
+matches fewer of `TARGET_ENTRIES` than it was asked to find, it prints every unmatched tag with all three
 hashes it tried and exits **1**; only when every target resolves to a row (whether or not that row still
 needs a `created_at` correction) does it exit 0. Re-run the dry run in section 8a above from a Windows
 checkout against `ipodhan_staging`/`ipodhan` any time the previous run reported "nothing to repair" from
