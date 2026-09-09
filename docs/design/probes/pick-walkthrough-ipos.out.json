@@ -1,6 +1,6 @@
 {
   "probe": "pick-walkthrough-ipos",
-  "generated_at": "2026-09-09T04:29:15.587Z",
+  "generated_at": "2026-09-09T10:16:48.751Z",
   "slot": "production (read-only tunnel, localhost:15432 -> 103.118.16.189)",
   "mainboard": {
     "requested_slug": "asset-reconstruction-company-india-ltd",
@@ -81,6 +81,19 @@
         "extracted_at": null,
         "filing_date": null,
         "uploaded_at": "2026-09-07T11:30:59.973Z"
+      },
+      {
+        "id": "aba24407-c9ec-4fbe-920d-f614250c3cce",
+        "type": "ANCHOR_ALLOCATION_REPORT",
+        "title": "ARCIL — Anchor Allocation Report",
+        "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ARCIL.zip",
+        "file_size": "754222",
+        "sha256": "c1f765786863bf46d7b29ff244ef3ad620362ddd79ab9e9273143df5e472821a",
+        "exchange": "NSE",
+        "extraction_status": "MANUAL_REVIEW",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-09-09T02:04:02.479Z"
       }
     ]
   },
@@ -219,5 +232,1173 @@
         "uploaded_at": "2026-09-08T18:30:56.363Z"
       }
     ]
+  },
+  "corrigendum": {
+    "rule": "every IPO with at least one active CORRIGENDUM document, most corrigenda first, then most documents",
+    "candidates_considered": 1,
+    "ranked": [
+      {
+        "slug": "veegaland-developers-ltd",
+        "company_name": "Veegaland Developers Ltd.",
+        "status": "UPCOMING",
+        "segment": "MAINBOARD",
+        "corrigenda": "1",
+        "corrigenda_dated": "0",
+        "documents": "5"
+      }
+    ],
+    "chosen": "veegaland-developers-ltd",
+    "unreachable": null,
+    "row": {
+      "id": "2de04de1-c846-4a76-a64e-bc6c1d5c4b18",
+      "slug": "veegaland-developers-ltd",
+      "company_name": "Veegaland Developers Ltd.",
+      "symbol": "VEEGALAND",
+      "status": "UPCOMING",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "open_date": "2026-09-09T18:30:00.000Z",
+      "close_date": "2026-09-14T18:30:00.000Z",
+      "listing_date": "2026-09-17T18:30:00.000Z",
+      "listing_exchanges": [
+        "NSE",
+        "BSE"
+      ],
+      "issue_size": "2100000000.00",
+      "price_range_min": 130,
+      "price_range_max": 140,
+      "lot_size": 107,
+      "face_value": 10,
+      "isin": null,
+      "registrar": "MUFG Intime India Private Limited",
+      "sector": null
+    },
+    "documents": [
+      {
+        "id": "88293b5e-15c6-45ef-b33b-eae37c26d5aa",
+        "type": "DRHP",
+        "title": "Veegaland Developers Limited",
+        "url": "https://www.sebi.gov.in/sebi_data/attachdocs/jan-2026/1768304860369.pdf",
+        "file_size": "5613279",
+        "sha256": "38e5ff7fb3789565642351a403a804fb64cec439218006a3e68e8cea925bc60f",
+        "exchange": "SEBI",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-03T22:08:42.711Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-03T22:03:49.545Z"
+      },
+      {
+        "id": "838e61ef-b189-4e08-96a6-6bf4ffd386d2",
+        "type": "RHP",
+        "title": "Veegaland Developers Ltd. - RHP",
+        "url": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1788239986820.pdf",
+        "file_size": "4321492",
+        "sha256": "32f150744805c5a7fd08045139aa3b42e9533de72028879362aec764c6bdabf6",
+        "exchange": "SEBI",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-03T22:08:42.897Z",
+        "filing_date": "2026-08-30T18:30:00.000Z",
+        "uploaded_at": "2026-09-03T22:04:22.039Z"
+      },
+      {
+        "id": "bca94b55-74b5-41e1-9505-c01d21dfbdb7",
+        "type": "PRICE_BAND_AD",
+        "title": "Price Band Advertisement",
+        "url": "https://www.bseindia.com/downloads/ipo/Price_band_Advertisement_080920261803.zip",
+        "file_size": "1766165",
+        "sha256": "9f71ef8612a0331b03c38c2d34a0ae14352ff3f1d87bd656f6d0c43a2f65c8d2",
+        "exchange": "BSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-08T08:01:54.906Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-08T08:01:01.484Z"
+      },
+      {
+        "id": "ac7f6131-fa52-406f-92a6-4bcdef883620",
+        "type": "CORRIGENDUM",
+        "title": "Corrigendum",
+        "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/VDL_Corrigendum_Ad_20260908131930.pdf",
+        "file_size": "1102907",
+        "sha256": "101bb72f9dbd1869557b8e4f3f4e994e9f5b287e842d14b2f8c88ab876298e7c",
+        "exchange": "BSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-09-08T08:01:02.276Z"
+      },
+      {
+        "id": "993c57c1-06d8-4922-aed1-c6175dda64b4",
+        "type": "RATIOS_BASIS_ISSUE_PRICE",
+        "title": "VEEGALAND — Ratios / Basis of Issue Price",
+        "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_VEEGALAND.zip",
+        "file_size": "1766165",
+        "sha256": "9f71ef8612a0331b03c38c2d34a0ae14352ff3f1d87bd656f6d0c43a2f65c8d2",
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-09-08T09:31:02.664Z"
+      }
+    ]
+  },
+  "fixed_price_sme": {
+    "rule": "SME issues quoted at a single price (price_range_min = price_range_max, both non-null), ranked by documents on disk, then most recent close date",
+    "candidates_considered": 50,
+    "ranked": [
+      {
+        "slug": "riyaasat-lifestyle-ltd",
+        "company_name": "Riyaasat Lifestyle Ltd.",
+        "status": "LISTED",
+        "price_range_min": 106,
+        "price_range_max": 106,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-06-24T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "diksha-polymers-ltd",
+        "company_name": "Diksha Polymers Ltd.",
+        "status": "LISTED",
+        "price_range_min": 112,
+        "price_range_max": 112,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-06-18T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "liotech-industries-ltd",
+        "company_name": "Liotech Industries Ltd.",
+        "status": "LISTED",
+        "price_range_min": 321,
+        "price_range_max": 321,
+        "lot_size": 400,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-06-18T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "vahh-chemicals-ltd",
+        "company_name": "Vahh Chemicals Ltd.",
+        "status": "LISTED",
+        "price_range_min": 60,
+        "price_range_max": 60,
+        "lot_size": 2000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-06-07T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "yaashvi-jewellers-ltd",
+        "company_name": "Yaashvi Jewellers Ltd.",
+        "status": "LISTED",
+        "price_range_min": 83,
+        "price_range_max": 83,
+        "lot_size": 1600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-05-26T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "autofurnish-ltd",
+        "company_name": "Autofurnish Ltd.",
+        "status": "LISTED",
+        "price_range_min": 41,
+        "price_range_max": 41,
+        "lot_size": 3000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-05-24T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "safety-controls-and-devices-ltd",
+        "company_name": "Safety Controls & Devices Ltd.",
+        "status": "LISTED",
+        "price_range_min": 80,
+        "price_range_max": 80,
+        "lot_size": 1600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-04-07T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "elfin-agro-india-ltd",
+        "company_name": "Elfin Agro India Ltd.",
+        "status": "LISTED",
+        "price_range_min": 47,
+        "price_range_max": 47,
+        "lot_size": 3000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-03-08T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "accord-transformer-and-switchgear-ltd",
+        "company_name": "Accord Transformer & Switchgear Ltd.",
+        "status": "LISTED",
+        "price_range_min": 46,
+        "price_range_max": 46,
+        "lot_size": 3000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-02-24T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "yashhtej-industries-india-ltd",
+        "company_name": "Yashhtej Industries (India) Ltd.",
+        "status": "LISTED",
+        "price_range_min": 110,
+        "price_range_max": 110,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-02-19T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "kanishk-aluminium-india-ltd",
+        "company_name": "Kanishk Aluminium India Ltd.",
+        "status": "LISTED",
+        "price_range_min": 73,
+        "price_range_max": 73,
+        "lot_size": 1600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-01-29T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "narmadesh-brass-industries-ltd",
+        "company_name": "Narmadesh Brass Industries Ltd.",
+        "status": "LISTED",
+        "price_range_min": 515,
+        "price_range_max": 515,
+        "lot_size": 100,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-01-15T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "apollo-techno-industries-ltd",
+        "company_name": "APOLLO TECHNO INDUSTRIES LIMITED",
+        "status": "LISTED",
+        "price_range_min": 123,
+        "price_range_max": 123,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-25T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "nanta-tech-ltd",
+        "company_name": "Nanta Tech Limited",
+        "status": "LISTED",
+        "price_range_min": 209,
+        "price_range_max": 209,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-25T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "1"
+      },
+      {
+        "slug": "mopshop-distribution-ltd",
+        "company_name": "Mopshop Distribution Ltd.",
+        "status": "LISTED",
+        "price_range_min": 138,
+        "price_range_max": 138,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-08-20T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "q-and-t-foods-ltd",
+        "company_name": "Q&T Foods Ltd.",
+        "status": "LISTED",
+        "price_range_min": 115,
+        "price_range_max": 115,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-08-13T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "sham-foam-ltd",
+        "company_name": "Sham Foam Ltd.",
+        "status": "LISTED",
+        "price_range_min": 130,
+        "price_range_max": 130,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-08-12T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "g-v-electricals-ltd",
+        "company_name": "G.V.Electricals Ltd.",
+        "status": "LISTED",
+        "price_range_min": 130,
+        "price_range_max": 130,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-08-06T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "advance-technoforge-ltd",
+        "company_name": "Advance Technoforge Ltd.",
+        "status": "LISTED",
+        "price_range_min": 95,
+        "price_range_max": 95,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-07-28T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "gulf-lloyds-india-ltd",
+        "company_name": "Gulf Lloyds (India) Ltd.",
+        "status": "LISTED",
+        "price_range_min": 100,
+        "price_range_max": 100,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-07-21T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "twinkle-papers-ltd",
+        "company_name": "Twinkle Papers",
+        "status": "LISTED",
+        "price_range_min": 69,
+        "price_range_max": 69,
+        "lot_size": 2000,
+        "listing_exchanges": [
+          "NSE",
+          "BSE"
+        ],
+        "close_date": "2026-07-02T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "teja-engineering-industries-ltd",
+        "company_name": "Teja Engineering Industries Ltd.",
+        "status": "LISTED",
+        "price_range_min": 220,
+        "price_range_max": 220,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "NSE"
+        ],
+        "close_date": "2026-07-01T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "jivial-industries-ltd",
+        "company_name": "Jivial Industries Ltd.",
+        "status": "LISTED",
+        "price_range_min": 196,
+        "price_range_max": 196,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-06-24T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "aureate-tradde-ltd",
+        "company_name": "Aureate Tradde Ltd.",
+        "status": "LISTED",
+        "price_range_min": 70,
+        "price_range_max": 70,
+        "lot_size": 2000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-06-01T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "travels-rentals-ltd",
+        "company_name": "TRAVELS  RENTALS LTD",
+        "status": "LISTED",
+        "price_range_min": 15,
+        "price_range_max": 15,
+        "lot_size": null,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2026-03-05T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "victory-electric-vehicles-international-ltd",
+        "company_name": "Victory Electric Vehicles International Ltd.",
+        "status": "LISTED",
+        "price_range_min": 41,
+        "price_range_max": 41,
+        "lot_size": 3000,
+        "listing_exchanges": [
+          "NSE"
+        ],
+        "close_date": "2026-01-08T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "modern-diagnostic-and-research-centre-ltd",
+        "company_name": "MODERN DIAGNOSTIC AND RESEARCH CENTRE LIMITED",
+        "status": "LISTED",
+        "price_range_min": 85,
+        "price_range_max": 85,
+        "lot_size": 1600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-31T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "admach-systems-ltd",
+        "company_name": "ADMACH SYSTEMS LIMITED",
+        "status": "LISTED",
+        "price_range_min": 227,
+        "price_range_max": 227,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-25T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "bai-kakaji-polymers-ltd",
+        "company_name": "BAI-KAKAJI POLYMERS LIMITED",
+        "status": "LISTED",
+        "price_range_min": 177,
+        "price_range_max": 177,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-24T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "dachepalli-publishers-ltd",
+        "company_name": "Dachepalli Publishers Limited",
+        "status": "LISTED",
+        "price_range_min": 100,
+        "price_range_max": 100,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-23T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "global-ocean-logistics-inda-ltd",
+        "company_name": "GLOBAL OCEAN LOGISTICS INDA LIMITED",
+        "status": "LISTED",
+        "price_range_min": 74,
+        "price_range_max": 74,
+        "lot_size": 1600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-17T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "stanbik-agro-ltd",
+        "company_name": "STANBIK AGRO LIMITED",
+        "status": "CLOSED",
+        "price_range_min": 1000,
+        "price_range_max": 1000,
+        "lot_size": 100,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-15T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "pajson-agro-india-ltd",
+        "company_name": "Pajson Agro India Limited",
+        "status": "LISTED",
+        "price_range_min": 112,
+        "price_range_max": 112,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-14T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "hrs-aluglaze-ltd",
+        "company_name": "HRS Aluglaze Limited",
+        "status": "LISTED",
+        "price_range_min": 94,
+        "price_range_max": 94,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-14T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "unisem-agritech-ltd",
+        "company_name": "Unisem Agritech Limited",
+        "status": "LISTED",
+        "price_range_min": 63,
+        "price_range_max": 63,
+        "lot_size": 2000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-11T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "shipwaves-online-ltd",
+        "company_name": "SHIPWAVES ONLINE LIMITED",
+        "status": "CLOSED",
+        "price_range_min": 12,
+        "price_range_max": 12,
+        "lot_size": 10000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-10T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "riddhi-display-equipments-ltd",
+        "company_name": "Riddhi Display Equipments Limited",
+        "status": "LISTED",
+        "price_range_min": 95,
+        "price_range_max": 95,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-09T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "prodocs-solutions-ltd",
+        "company_name": "Prodocs Solutions Limited",
+        "status": "LISTED",
+        "price_range_min": 131,
+        "price_range_max": 131,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-09T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "methodhub-software-ltd",
+        "company_name": "METHODHUB SOFTWARE LIMITED",
+        "status": "LISTED",
+        "price_range_min": 190,
+        "price_range_max": 190,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-08T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "k-v-toys-india-ltd",
+        "company_name": "K V Toys India Limited",
+        "status": "LISTED",
+        "price_range_min": 227,
+        "price_range_max": 227,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-08T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "luxury-time-ltd",
+        "company_name": "LUXURY TIME LIMITED",
+        "status": "LISTED",
+        "price_range_min": 78,
+        "price_range_max": 78,
+        "lot_size": 1600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-07T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "western-overseas-study-abroad-ltd",
+        "company_name": "WESTERN OVERSEAS STUDY ABROAD LIMITED",
+        "status": "CLOSED",
+        "price_range_min": 56,
+        "price_range_max": 56,
+        "lot_size": 2000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-06T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "shri-kanha-stainless-ltd",
+        "company_name": "Shri Kanha Stainless Limited",
+        "status": "LISTED",
+        "price_range_min": 90,
+        "price_range_max": 90,
+        "lot_size": 1600,
+        "listing_exchanges": [
+          "NSE"
+        ],
+        "close_date": "2025-12-04T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "helloji-holidays-ltd",
+        "company_name": "Helloji Holidays Limited",
+        "status": "LISTED",
+        "price_range_min": 110,
+        "price_range_max": 110,
+        "lot_size": 1200,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-03T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "ravelcare-ltd",
+        "company_name": "RAVELCARE LIMITED",
+        "status": "LISTED",
+        "price_range_min": 123,
+        "price_range_max": 123,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-02T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "logiciel-solutions-ltd",
+        "company_name": "LOGICIEL SOLUTIONS LIMITED",
+        "status": "LISTED",
+        "price_range_min": 183,
+        "price_range_max": 183,
+        "lot_size": 600,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-01T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "exato-technologies-ltd",
+        "company_name": "EXATO TECHNOLOGIES LIMITED",
+        "status": "LISTED",
+        "price_range_min": 133,
+        "price_range_max": 133,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-01T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "purple-wave-infocom-ltd",
+        "company_name": "Purple wave Infocom Limited",
+        "status": "LISTED",
+        "price_range_min": 120,
+        "price_range_max": 120,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2025-12-01T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "maruti-interior-products-ltd",
+        "company_name": "MARUTI INTERIOR PRODUCTS LTD",
+        "status": "LISTED",
+        "price_range_min": 10,
+        "price_range_max": 10,
+        "lot_size": 1000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2022-02-07T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      },
+      {
+        "slug": "net-pix-shorts-digital-media-ltd",
+        "company_name": "NET PIX SHORTS DIGITAL MEDIA LTD",
+        "status": "LISTED",
+        "price_range_min": 32,
+        "price_range_max": 32,
+        "lot_size": 4000,
+        "listing_exchanges": [
+          "BSE"
+        ],
+        "close_date": "2020-11-22T18:30:00.000Z",
+        "stored_issue_type": null,
+        "documents": "0"
+      }
+    ],
+    "chosen": "riyaasat-lifestyle-ltd",
+    "unreachable": null,
+    "row": {
+      "id": "48b9b9e5-f367-43e0-850a-413e5e7261f1",
+      "slug": "riyaasat-lifestyle-ltd",
+      "company_name": "Riyaasat Lifestyle Ltd.",
+      "symbol": "RIYAASAT",
+      "status": "LISTED",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "open_date": "2026-06-17T18:30:00.000Z",
+      "close_date": "2026-06-24T18:30:00.000Z",
+      "listing_date": "2026-06-30T18:30:00.000Z",
+      "listing_exchanges": [
+        "BSE"
+      ],
+      "issue_size": "302000000.00",
+      "price_range_min": 106,
+      "price_range_max": 106,
+      "lot_size": 1200,
+      "face_value": 10,
+      "isin": "INE0KYI01012",
+      "registrar": "Skyline Financial Services Private Limited",
+      "sector": null
+    },
+    "documents": [
+      {
+        "id": "c7267933-a0a4-4494-93f4-52b0246f585c",
+        "type": "RHP",
+        "title": "RHP — Riyaasat Lifestyle Ltd. (Chittorgarh)",
+        "url": "https://www.chittorgarh.net/reports/ipo_notes/riyaasat-rhp.pdf",
+        "file_size": null,
+        "sha256": null,
+        "exchange": "BSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-06-16T12:36:17.965Z"
+      }
+    ]
+  },
+  "renamed_by_document": {
+    "rule": "IPOs whose DRHP title, folded to significant words, differs from ipos.company_name folded the same way — the draft-vs-filing rename section 2.3.3.2 asks for",
+    "candidates_considered": 2,
+    "ranked": [
+      {
+        "slug": "karamtara-engineering-ltd",
+        "company_name": "Karamtara Engineering Limited",
+        "drhp_title": "Prospectus GID",
+        "name_key": "karamtara engineering",
+        "title_key": "gid",
+        "documents": "5"
+      },
+      {
+        "slug": "rentomojo-ltd",
+        "company_name": "Rentomojo Limited",
+        "drhp_title": "Prospectus GID",
+        "name_key": "rentomojo",
+        "title_key": "gid",
+        "documents": "5"
+      }
+    ],
+    "chosen": "karamtara-engineering-ltd",
+    "unreachable": null,
+    "row": {
+      "id": "1efad6de-1778-459c-9dae-f0712bcc79ad",
+      "slug": "karamtara-engineering-ltd",
+      "company_name": "Karamtara Engineering Limited",
+      "symbol": "KARAMTARA",
+      "status": "OPEN",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "open_date": "2026-09-08T18:30:00.000Z",
+      "close_date": "2026-09-10T18:30:00.000Z",
+      "listing_date": "2026-09-16T18:30:00.000Z",
+      "listing_exchanges": [
+        "NSE",
+        "BSE"
+      ],
+      "issue_size": "8750000000.00",
+      "price_range_min": 241,
+      "price_range_max": 254,
+      "lot_size": 59,
+      "face_value": 10,
+      "isin": null,
+      "registrar": "MUFG Intime India Private Limited (Formerly Link Intime India Private Limited)",
+      "sector": null
+    },
+    "documents": [
+      {
+        "id": "1de88def-7346-46e6-8e11-4d1deb12a6fc",
+        "type": "DRHP",
+        "title": "Prospectus GID",
+        "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/KaramtaraEngineeringLimitedRHP_20260907183428.pdf",
+        "file_size": "17662879",
+        "sha256": "383e037890536599866aad760d14412ee13748e3fb8c28e62a83f5ab38cf000e",
+        "exchange": "BSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-07T21:35:46.902Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-07T21:30:58.798Z"
+      },
+      {
+        "id": "489219bd-4818-4341-b774-686e084d161c",
+        "type": "PRICE_BAND_AD",
+        "title": "Price Band Advertisement",
+        "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/KaramtaraPriceBandadvertisement_20260907183428.pdf",
+        "file_size": "3245367",
+        "sha256": "d2705a36ef8ab539c1e2e95ae712943f50721dd5047f4081d53a95f6263c1f96",
+        "exchange": "BSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-07T21:35:47.349Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-07T21:31:13.391Z"
+      },
+      {
+        "id": "522746df-ddf3-42ef-9f89-7eb1948b6476",
+        "type": "RHP",
+        "title": "KARAMTARA — Red Herring Prospectus",
+        "url": "https://nsearchives.nseindia.com/content/ipo/RHP_KARAMTARA.zip",
+        "file_size": "17662879",
+        "sha256": "383e037890536599866aad760d14412ee13748e3fb8c28e62a83f5ab38cf000e",
+        "exchange": "NSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-07T22:35:21.306Z",
+        "filing_date": "2026-09-02T18:30:00.000Z",
+        "uploaded_at": "2026-09-07T22:33:23.955Z"
+      },
+      {
+        "id": "30931dbf-978f-4135-a139-348594424632",
+        "type": "RATIOS_BASIS_ISSUE_PRICE",
+        "title": "KARAMTARA — Ratios / Basis of Issue Price",
+        "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_KARAMTARA.zip",
+        "file_size": "3245367",
+        "sha256": "d2705a36ef8ab539c1e2e95ae712943f50721dd5047f4081d53a95f6263c1f96",
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-09-07T22:33:24.319Z"
+      },
+      {
+        "id": "25a29ca2-e2d2-4268-8687-8ccff4e9e0ec",
+        "type": "ANCHOR_ALLOCATION_REPORT",
+        "title": "KARAMTARA — Anchor Allocation Report",
+        "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_KARAMTARA.zip",
+        "file_size": "3345796",
+        "sha256": "79dff7b615e46943a9c8f481bedd5b998456b852455bbb65e8b87fd97627f998",
+        "exchange": "NSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-08T09:31:33.962Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-08T09:30:27.719Z"
+      }
+    ]
+  },
+  "renamed_by_shared_cin": {
+    "rule": "IPOs sharing one CIN with another row that carries a DIFFERENT company_name — one company, two names, two rows; the row with the exchange documents first",
+    "candidates_considered": 2,
+    "ranked": [
+      {
+        "slug": "rays-of-belief-ltd",
+        "company_name": "Rays of Belief Limited- For Profit Social Enterprise",
+        "cin": "U85110DL2017PLC322623",
+        "symbol": "MOMSBELIEF",
+        "status": "LISTED",
+        "issue_size": "749936590.00",
+        "price_range_min": 227,
+        "price_range_max": 239,
+        "open_date": "2026-09-01",
+        "all_names_for_this_cin": "Rays of Belief Limited- For Profit Social Enterprise || Rays of Belief Ltd.",
+        "documents": "7"
+      },
+      {
+        "slug": "rays-of-belief-ltd-o",
+        "company_name": "Rays of Belief Ltd.",
+        "cin": "U85110DL2017PLC322623",
+        "symbol": null,
+        "status": "LISTED",
+        "issue_size": "1250000000.00",
+        "price_range_min": 227,
+        "price_range_max": 239,
+        "open_date": "2026-09-01",
+        "all_names_for_this_cin": "Rays of Belief Limited- For Profit Social Enterprise || Rays of Belief Ltd.",
+        "documents": "2"
+      }
+    ],
+    "chosen": "rays-of-belief-ltd",
+    "unreachable": null,
+    "row": {
+      "id": "7dc422ac-2a92-4949-a6c1-63117d9c259c",
+      "slug": "rays-of-belief-ltd",
+      "company_name": "Rays of Belief Limited- For Profit Social Enterprise",
+      "symbol": "MOMSBELIEF",
+      "status": "LISTED",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "open_date": "2026-08-31T18:30:00.000Z",
+      "close_date": "2026-09-02T18:30:00.000Z",
+      "listing_date": "2026-09-07T18:30:00.000Z",
+      "listing_exchanges": [
+        "NSE"
+      ],
+      "issue_size": "749936590.00",
+      "price_range_min": 227,
+      "price_range_max": 239,
+      "lot_size": 62,
+      "face_value": 10,
+      "isin": null,
+      "registrar": "Kfin Technologies Limited",
+      "sector": null
+    },
+    "documents": [
+      {
+        "id": "073bf378-3799-4a5c-966a-412fdc88864a",
+        "type": "RATIOS_BASIS_ISSUE_PRICE",
+        "title": "MOMSBELIEF — Ratios / Basis of Issue Price",
+        "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MOMSBELIEF.zip",
+        "file_size": null,
+        "sha256": "642035b99426b1e715f45a8744abeb3f430dcc1ef03ce9399412a76ff86d5e36",
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-08-31T18:00:53.140Z"
+      },
+      {
+        "id": "8937ef8b-1e87-4086-9402-ebbb5b7da572",
+        "type": "RHP",
+        "title": "MOMSBELIEF — Red Herring Prospectus",
+        "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MOMSBELIEF.zip",
+        "file_size": null,
+        "sha256": "6f9a10442c3bdf6d489802d0c17f94dfdcd3945969f1a7b3cf3404a26c155de2",
+        "exchange": "NSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-03T21:07:48.343Z",
+        "filing_date": "2026-08-18T18:30:00.000Z",
+        "uploaded_at": "2026-08-31T18:00:53.162Z"
+      },
+      {
+        "id": "84860077-e0d4-4d76-9d45-888162847506",
+        "type": "BIDDING_CENTERS",
+        "title": "MOMSBELIEF — Bidding Centers",
+        "url": "https://nsearchives.nseindia.com/content/ipo/BIDDING_CENTERS_MOMSBELIEF.zip",
+        "file_size": null,
+        "sha256": null,
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-08-31T18:00:53.178Z"
+      },
+      {
+        "id": "44e63e9c-e16f-444b-8952-af060e08a8ae",
+        "type": "SAMPLE_APPLICATION_FORMS",
+        "title": "MOMSBELIEF — Sample Application Forms",
+        "url": "https://nsearchives.nseindia.com/content/ipo/FORMS_MOMSBELIEF.zip",
+        "file_size": null,
+        "sha256": null,
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-08-31T18:00:53.187Z"
+      },
+      {
+        "id": "7695b3de-810d-42df-9667-b2c3f376f229",
+        "type": "SECURITY_PARAMS_PRE_ANCHOR",
+        "title": "MOMSBELIEF — Security Parameters (Pre Anchor)",
+        "url": "https://nsearchives.nseindia.com/content/ipo/PREANCHOR_PARAMETERS_MOMSBELIEF.zip",
+        "file_size": null,
+        "sha256": null,
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-08-31T18:00:53.197Z"
+      },
+      {
+        "id": "82151c7d-1190-4027-9e79-688021c63a99",
+        "type": "SECURITY_PARAMS_POST_ANCHOR",
+        "title": "MOMSBELIEF — Security Parameters (Post Anchor)",
+        "url": "https://nsearchives.nseindia.com/content/ipo/POSTANCHOR_PARAMETERS_MOMSBELIEF.zip",
+        "file_size": null,
+        "sha256": null,
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-08-31T18:00:53.206Z"
+      },
+      {
+        "id": "03dda7de-cabb-4712-8277-656c74c12662",
+        "type": "ANCHOR_ALLOCATION_REPORT",
+        "title": "MOMSBELIEF — Anchor Allocation Report",
+        "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MOMSBELIEF.zip",
+        "file_size": null,
+        "sha256": "24862bcc437c9519d1f0948e676fef451cb74b95030d12dbe52f7f58be3db5ce",
+        "exchange": "NSE",
+        "extraction_status": "MANUAL_REVIEW",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-08-31T18:00:53.216Z"
+      }
+    ]
+  },
+  "fpo": {
+    "rule": "offering_type = 'FPO', ranked by documents on disk",
+    "candidates_considered": 0,
+    "ranked": [],
+    "chosen": null,
+    "unreachable": "no real IPO reachable, rule untested",
+    "row": null,
+    "documents": []
+  },
+  "fpo_prerequisites": {
+    "ipos_rows_with_offering_type_fpo": 0,
+    "offering_types_present": [
+      {
+        "t": "IPO",
+        "n": 274
+      },
+      {
+        "t": "OFS",
+        "n": 19
+      },
+      {
+        "t": "TENDER",
+        "n": 16
+      },
+      {
+        "t": "RIGHTS",
+        "n": 8
+      },
+      {
+        "t": "NCD",
+        "n": 7
+      },
+      {
+        "t": "INVITS",
+        "n": 3
+      },
+      {
+        "t": "REITS",
+        "n": 2
+      },
+      {
+        "t": "BUYBACK",
+        "n": 1
+      }
+    ],
+    "company_id_column_exists": false,
+    "companies_table_exists": false
   }
 }

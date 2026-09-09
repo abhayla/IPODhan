@@ -46,7 +46,7 @@ function isIgnored(p) {
 try {
   const files = fs.readdirSync(CARDS).filter((f) => /^item-\d+-.*\.md$/.test(f)).sort();
   const problems = [];
-  let pathsChecked = 0, pathsMissing = 0;
+  let pathsChecked = 0, pathsMissing = 0, excused = 0;
 
   for (const f of files) {
     const md = fs.readFileSync(path.join(CARDS, f), 'utf8');
@@ -67,20 +67,25 @@ try {
         if (/[*?]/.test(p)) continue;                       // a glob is a description, not a path
         pathsChecked++;
         if (fs.existsSync(path.join(REPO, p))) continue;
-        if (/\bNEW\b/i.test(line)) continue;                // declared as new on the same line
+        // The marker must sit IMMEDIATELY AFTER the citation, and it is case-sensitive.
+        //
+        // The old test was `/\bNEW\b/i` over the whole line, and a reviewer measured what that was
+        // worth on 2026-09-09: it excused 164 of 352 citations, because ordinary prose on the same
+        // line ("New method", "the new column") satisfied it. They replaced a real path with
+        // `NOT-A-REAL-FILE-xyz.ts` on such a line and the gate still printed "only paths that
+        // resolve". A marker that any sentence can supply is not a marker.
+        const rest = line.slice(m.index + m[0].length, m.index + m[0].length + 48);
+        const marked = /^[\s|—-]*\(?(NEW|LOCAL)\b/.test(rest) || /^[\s|]*\*\*(NEW|LOCAL)\*\*/.test(rest);
         // A path the repository deliberately IGNORES cannot exist in a fresh checkout, so this
         // check used to pass only on the machine that had run the probe. Found 2026-09-09: a card
         // cited `docs/design/probes/fixtures/pdf/`, which `.gitignore` excludes on purpose (PDFs
         // are never committed, OD-43), and the gate went red in every new worktree. An ignored path
         // is legitimate — it just has to say so, so a reader knows not to go looking for it.
-        if (isIgnored(p)) {
-          if (/\bLOCAL\b/.test(line)) continue;
-          pathsMissing++;
-          problems.push(`${f}: cites \`${p}\`, which .gitignore excludes — mark it LOCAL on the same line so a reader knows it exists only on a machine that ran the probe`);
-          continue;
-        }
+        if (marked) { excused++; continue; }
         pathsMissing++;
-        problems.push(`${f}: cites \`${p}\` which does not exist and is not marked NEW`);
+        problems.push(isIgnored(p)
+          ? `${f}: cites \`${p}\`, which .gitignore excludes — write \`${p}\` (LOCAL) so a reader knows it exists only on a machine that ran the probe`
+          : `${f}: cites \`${p}\` which does not exist — write \`${p}\` (NEW) immediately after the path if this item creates it`);
       }
     }
 
@@ -91,7 +96,7 @@ try {
   }
 
   console.log(`build cards: ${files.length}`);
-  console.log(`paths cited: ${pathsChecked}, missing and not marked NEW: ${pathsMissing}`);
+  console.log(`paths cited: ${pathsChecked}, excused by an adjacent (NEW)/(LOCAL): ${excused}, missing and unexcused: ${pathsMissing}`);
   if (!problems.length) {
     console.log('every card carries all thirteen headings in order, a budget, a tier, and only paths that resolve.');
     process.exit(0);

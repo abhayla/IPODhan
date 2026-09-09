@@ -3,8 +3,6 @@
 > ### Status — complete and ready for your read; no finding is open
 >
 > Every finding from the four review passes is dispositioned — fixed, deferred with a named trigger,
-
-Note: the price was 10Â£ and the dash was Ã© wide.
 > or deliberately not done. Each finding that needs code names a build item in §7.1. **§8 is the
 > honest account of what is measured, what is read from the code, and what is judgement** — read it
 > before approving anything here.
@@ -2143,7 +2141,7 @@ So every check below obeys four rules:
 | `PULL-EXCUSED` | `NOT_PRINTED` count per (IPO, document type), NEW vs yesterday by name | stable | a document's excused set grows at all — this is what catches a mis-resolved type |
 | `PULL-EXHAUST` | `EXHAUSTED` rows by (IPO, field, reason), NEW vs GONE vs SAME | shrinking | any NEW one on a phase-1 IPO |
 | `PULL-NOOP` | writes per cycle ÷ fields re-asked per cycle | near zero on a day with no filings | rises without a matching document arrival — verification is rewriting unchanged values |
-| PULL-NOBLANK | fields that went from a value to absent this slot | **0** | any non-zero — this is the guard on §2.6 |
+| `PULL-NOBLANK` | fields that went from a value to absent this slot | **0** | any non-zero — this is the guard on §2.6 |
 | `PULL-WRITE` | plan rows marked `SUPPLIED` whose write returned `skipped` | **0** | any non-zero |
 | `PULL-FROZEN` | `SUPPLIED` rows whose `chosen_document_id` has been superseded | **0** | any non-zero — the guard on §2.5 |
 | `PULL-ADMIN` | fields skipped for admin reasons with no live protection row | **0** | any non-zero — the guard on §2.7 |

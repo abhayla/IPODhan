@@ -406,12 +406,35 @@ try {
     });
   });
   var floor = typeof EVIDENCE_FLOOR === 'number' ? EVIDENCE_FLOOR : 0;
+
+  // The ratchet has to hold against the PREVIOUS COMMIT, not against itself.
+  // A reviewer proved on 2026-09-09 what the self-referential version was worth: they set
+  // EVIDENCE_FLOOR to 0 and emptied evidence.json, and the gate printed
+  // "[PASS] D15  0 of 387 (field, source) pairs carry evidence that resolves (floor 0)".
+  // A floor that the same change may lower is not a floor. So the committed value is read back out
+  // of git and a DECREASE is a failure in itself, whatever the new number is compared against.
+  var prevFloor = null;
+  var prevRun = spawnSync('git', ['show', 'HEAD:docs/design/field-source-resolution.spec.mjs'],
+                          { encoding: 'utf8', cwd: path.resolve(HERE, '../..') });
+  if (prevRun.status === 0) {
+    var pm = String(prevRun.stdout).match(/EVIDENCE_FLOOR\s*=\s*(\d+)/);
+    if (pm) prevFloor = Number(pm[1]);
+  }
   if (evBad.length) {
     fail('D15', evBad.length + ' of ' + evPairs + ' evidence reference(s) do not hold up: ' + evBad.slice(0, 4).join(' | '));
+  } else if (prevFloor !== null && floor < prevFloor) {
+    fail('D15', 'The evidence floor was LOWERED from ' + prevFloor + ' to ' + floor + ' in this change. ' +
+      'It is a ratchet: it may be raised, and it may only fall with a per-pair reason recorded in the spec ' +
+      'and an explicit owner note. Lowering it silently is how coverage disappears.');
   } else if (evHave < floor) {
     fail('D15', 'Evidence coverage fell below the ratchet: ' + evHave + ' of ' + evPairs + ' (field, source) pairs evidenced, floor is ' + floor + '. Evidence is never removed, only added.');
   } else {
-    ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor + ').');
+    // The PASS line says what is actually asserted. It used to read like a coverage claim; it is
+    // not one. 72 of 387 is 19%, and the 315 pairs with no evidence at all are not checked by this
+    // check — they are counted here so the number cannot be mistaken for reassurance.
+    ok('D15', evHave + ' of ' + evPairs + ' (field, source) pairs carry evidence that resolves (floor ' + floor +
+      (prevFloor !== null ? ', unchanged from HEAD' : '') + '). ' + (evPairs - evHave) +
+      ' pairs carry NO evidence and are outside this check.');
   }
 
   // --- D16: the build cards keep their promise ---
@@ -487,7 +510,11 @@ try {
   // probe's console output was pasted into the document on Windows, where the console encodes in
   // CP1252. Nothing noticed for a day. It is cosmetic until a reader hits it, and then it is the
   // most visible possible signal that nobody proof-read the page.
-  var MOJIBAKE = /â€|Ã©|ï¿½/;
+  // The byte pairs that UTF-8 read as CP1252 actually produces: a lead byte of Â/Ã/â followed by a
+  // continuation byte, plus the replacement character. The first version listed three literal
+  // strings and a reviewer walked straight past it with "Â lakh" — Â is the commonest mojibake of
+  // the lot, because it is what a non-breaking space, a degree sign and ± all turn into.
+  var MOJIBAKE = /[ÂÃâï][^ -]|�|Â(?=[s ])/;
   var mojiLines = [];
   md.split(String.fromCharCode(10)).forEach(function (l, i) { if (MOJIBAKE.test(l)) mojiLines.push(i + 1); });
   if (mojiLines.length) {
@@ -504,7 +531,15 @@ try {
   // ties a check to the thing that READS it, and this asserts the tie exists.
   var CHECK_DIR = path.join(HERE, '..', 'reviews', 'detection-checks');
   var s4 = md.slice(md.indexOf('## 4. How we would know it worked'), md.indexOf('## 5. The open comments'));
-  var namedChecks = [...new Set([...s4.matchAll(/`((?:PULL|REREAD|E1|CHECK|CORPUS)-[A-Z]+)`/g)].map(function (m) { return m[1]; }))];
+  // Matched WITH OR WITHOUT backticks, and with digits and inner dashes allowed. A reviewer removed
+  // the backticks around one id on 2026-09-09 — a pure formatting edit — and this check silently
+  // went from seventeen ids to sixteen and still said PASS, leaving PULL-NOBLANK unguarded. A check
+  // that quietly guards less than it did is worse than one that fails.
+  var namedChecks = [...new Set([...s4.matchAll(/\b((?:PULL|REREAD|E1|CHECK|CORPUS)-[A-Z][A-Z0-9-]*)\b/g)].map(function (m) { return m[1]; }))];
+  // And the count is pinned. Section 4 names seventeen checks today; if it ever names fewer, either
+  // a check was deleted (say so deliberately and lower this number in the same change) or the
+  // matching broke again.
+  var MIN_NAMED_CHECKS = 17;
   var registered = {};
   try {
     fs.readdirSync(CHECK_DIR).filter(function (f) { return f.endsWith('.json') && f !== '_meta.json'; })
@@ -519,8 +554,9 @@ try {
     var e = registered[id];
     return e && !CONSUMERS.some(function (c) { return String(e.consumer || '').indexOf(c) === 0; });
   });
-  if (!namedChecks.length) {
-    fail('D18', 'Section 4 names no checks at all — either the section was gutted or its check ids stopped being written in backticks, and this check is now guarding nothing.');
+  if (namedChecks.length < MIN_NAMED_CHECKS) {
+    fail('D18', 'Section 4 now names only ' + namedChecks.length + ' checks; it named ' + MIN_NAMED_CHECKS +
+      '. Either a check was deleted (lower MIN_NAMED_CHECKS in the same change, deliberately) or the id matching broke and this check is guarding less than it reports.');
   } else if (unregistered.length || noConsumer.length) {
     fail('D18', (unregistered.length ? unregistered.length + ' check(s) the design names have no registry entry: ' + unregistered.join(', ') + '. ' : '') +
       (noConsumer.length ? noConsumer.length + ' registered check(s) name no known consumer: ' + noConsumer.join(', ') : ''));
