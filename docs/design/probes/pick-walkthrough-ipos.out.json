@@ -1,0 +1,223 @@
+{
+  "probe": "pick-walkthrough-ipos",
+  "generated_at": "2026-09-09T04:29:15.587Z",
+  "slot": "production (read-only tunnel, localhost:15432 -> 103.118.16.189)",
+  "mainboard": {
+    "requested_slug": "asset-reconstruction-company-india-ltd",
+    "found": 1,
+    "row": {
+      "id": "48c19421-3ba3-428c-8050-be7c91638406",
+      "slug": "asset-reconstruction-company-india-ltd",
+      "company_name": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
+      "symbol": "ARCIL",
+      "status": "OPEN",
+      "segment": "MAINBOARD",
+      "offering_type": "IPO",
+      "open_date": "2026-09-08T18:30:00.000Z",
+      "close_date": "2026-09-10T18:30:00.000Z",
+      "listing_date": "2026-09-16T18:30:00.000Z",
+      "listing_exchanges": [
+        "BSE",
+        "NSE"
+      ],
+      "issue_size": "7329740494.00",
+      "price_range_min": 132,
+      "price_range_max": 139,
+      "lot_size": 107,
+      "face_value": 10,
+      "isin": null,
+      "registrar": "MUFG Intime India Private Limited",
+      "sector": null
+    },
+    "documents": [
+      {
+        "id": "2aa9f079-402f-4daa-af53-37e7d5bd7220",
+        "type": "DRHP",
+        "title": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED -  DRHP",
+        "url": "https://www.sebi.gov.in/sebi_data/attachdocs/aug-2025/1754291226095.pdf",
+        "file_size": "7312460",
+        "sha256": "9888e5a0ac4cbebcad9fd656ea258826f14cfed32e2c581859fc2ca5a13f4d52",
+        "exchange": "SEBI",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-05T21:36:59.176Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-05T21:30:56.875Z"
+      },
+      {
+        "id": "252be1ec-870e-49d5-9c90-f8a7d3d2e2eb",
+        "type": "RHP",
+        "title": "ASSET RECONSTRUCTION COMPANY (INDIA) Limited - RHP",
+        "url": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1788331195841.pdf",
+        "file_size": "9281808",
+        "sha256": "fd8c906fb7a1307ad99845cdb1fddbdbf4f9749f0e264f0218f78345ac033dea",
+        "exchange": "SEBI",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-05T21:36:59.473Z",
+        "filing_date": "2026-08-31T18:30:00.000Z",
+        "uploaded_at": "2026-09-05T21:31:15.007Z"
+      },
+      {
+        "id": "fa93f9ca-1c34-4cee-a137-09fb8168e584",
+        "type": "PRICE_BAND_AD",
+        "title": "Price Band Advertisement",
+        "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAd_20260904171701.pdf",
+        "file_size": "1097725",
+        "sha256": "9e1e5903a58fb7f83f48ac23da375dc560a46656f0ca28f64dbb14dcc08eab71",
+        "exchange": "BSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-07T05:33:27.104Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-07T04:33:41.729Z"
+      },
+      {
+        "id": "7ab6ea5b-df4c-4bde-aa36-57709a7159b6",
+        "type": "RATIOS_BASIS_ISSUE_PRICE",
+        "title": "ARCIL — Ratios / Basis of Issue Price",
+        "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ARCIL.zip",
+        "file_size": "1027657",
+        "sha256": "e82f909689e85b37e204b8d6a2973c29f81b01f30fdb53bfadbb00bd8c696e68",
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-09-07T11:30:59.973Z"
+      }
+    ]
+  },
+  "sme": {
+    "rule": "the OPEN or UPCOMING SME IPO with the most active documents on production",
+    "candidates_considered": 7,
+    "ranked": [
+      {
+        "slug": "vinod-texworld-ltd",
+        "company_name": "Vinod Texworld Limited",
+        "status": "OPEN",
+        "documents": 2,
+        "extracted": 1,
+        "distinct_types": 2,
+        "types": [
+          "DRHP",
+          "RATIOS_BASIS_ISSUE_PRICE"
+        ]
+      },
+      {
+        "slug": "century-business-media-ltd",
+        "company_name": "CENTURY BUSINESS MEDIA LIMITED",
+        "status": "UPCOMING",
+        "documents": 0,
+        "extracted": 0,
+        "distinct_types": 0,
+        "types": [
+          null
+        ]
+      },
+      {
+        "slug": "om-galaxy-ltd",
+        "company_name": "OM GALAXY LIMITED",
+        "status": "UPCOMING",
+        "documents": 0,
+        "extracted": 0,
+        "distinct_types": 0,
+        "types": [
+          null
+        ]
+      },
+      {
+        "slug": "raksan-transformers-ltd",
+        "company_name": "RAKSAN TRANSFORMERS LIMITED",
+        "status": "UPCOMING",
+        "documents": 0,
+        "extracted": 0,
+        "distinct_types": 0,
+        "types": [
+          null
+        ]
+      },
+      {
+        "slug": "maharaja-and-speedex-india-ltd",
+        "company_name": "Maharaja & Speedex India Limited",
+        "status": "UPCOMING",
+        "documents": 0,
+        "extracted": 0,
+        "distinct_types": 0,
+        "types": [
+          null
+        ]
+      },
+      {
+        "slug": "amtech-esters-ltd",
+        "company_name": "Amtech Esters Ltd.",
+        "status": "OPEN",
+        "documents": 0,
+        "extracted": 0,
+        "distinct_types": 0,
+        "types": [
+          null
+        ]
+      },
+      {
+        "slug": "apana-logistics-ltd",
+        "company_name": "Apana Logistics Ltd.",
+        "status": "OPEN",
+        "documents": 0,
+        "extracted": 0,
+        "distinct_types": 0,
+        "types": [
+          null
+        ]
+      }
+    ],
+    "chosen": "vinod-texworld-ltd",
+    "row": {
+      "id": "b833c41f-0dcd-4a3a-bb5b-a1b75dad1ba0",
+      "slug": "vinod-texworld-ltd",
+      "company_name": "Vinod Texworld Limited",
+      "symbol": "VINOD",
+      "status": "OPEN",
+      "segment": "SME",
+      "offering_type": "IPO",
+      "open_date": "2026-09-08T18:30:00.000Z",
+      "close_date": "2026-09-10T18:30:00.000Z",
+      "listing_date": "2026-09-16T18:30:00.000Z",
+      "listing_exchanges": [
+        "NSE"
+      ],
+      "issue_size": "428300000.00",
+      "price_range_min": null,
+      "price_range_max": null,
+      "lot_size": 1200,
+      "face_value": 10,
+      "isin": null,
+      "registrar": null,
+      "sector": null
+    },
+    "documents": [
+      {
+        "id": "939140de-bffa-43d7-a095-76c3c08cddcc",
+        "type": "DRHP",
+        "title": "DRHP",
+        "url": "https://nsearchives.nseindia.com/emerge/corporates/content/Registration_29092025212200_VTLDraftProspectusfinal.pdf",
+        "file_size": "11874066",
+        "sha256": "5964067e12ec7e3593c6cdc2e560d0c3d320d61a92d9fe01907084012879e7b0",
+        "exchange": "NSE",
+        "extraction_status": "COMPLETED",
+        "extracted_at": "2026-09-08T02:36:50.264Z",
+        "filing_date": null,
+        "uploaded_at": "2026-09-08T00:34:13.991Z"
+      },
+      {
+        "id": "d5e320f1-150b-48e1-a9b4-2246b0a9b70b",
+        "type": "RATIOS_BASIS_ISSUE_PRICE",
+        "title": "VINOD — Ratios / Basis of Issue Price",
+        "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_VINOD.zip",
+        "file_size": "13657769",
+        "sha256": "3e450a616b8468d66c9224773e41c03314c4fc99d45a1636bdef88ede2251df6",
+        "exchange": "NSE",
+        "extraction_status": "PENDING",
+        "extracted_at": null,
+        "filing_date": null,
+        "uploaded_at": "2026-09-08T18:30:56.363Z"
+      }
+    ]
+  }
+}

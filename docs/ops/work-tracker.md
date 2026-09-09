@@ -9,7 +9,7 @@ with a status comparison against the previous 30-minute snapshot.
 - **Prev** = the value at the previous 30-minute snapshot. **Now** = current. A blank Prev means the item is new to the tracker.
 - Status vocabulary: `APPROVED-RUNNING`, `AWAITING APPROVAL`, `BLOCKED`, `DONE`, `PAUSED BY OWNER`.
 
-Last updated: 2026-09-08 15:15 IST (snapshot 11 - session 10 closed; the pull-model DESIGN session is now the active one).
+Last updated: 2026-09-08 16:06 IST (snapshot 15 - E-1 applied to the full timetable family, 12 fields; 3 anchor fields found that the first pass missed; O-11 logged on the duplicate listingExchange provenance key).
 
 ---
 
@@ -156,7 +156,120 @@ No loop over fields exists. Each scraper wakes on its own schedule, scrapes what
 
 **Honest cost note.** Option 1 is a redesign of the write path, not a configuration change. It touches how every value on the site is written, so it needs a design agreed before any code, a staging proof, and a Tier A review. The three tasks already in flight (T-520 priority, T-521 backlog, T-522 SME) remove real blockages and are worth having either way, but none of them turns push into pull.
 
-**Status:** AWAITING DECISION — design first, no code until the design is agreed. **Prev:** — **Now:** 0%
+**The design is written and is waiting for you to read it.** `docs/design/data-sourcing-pull-model.md`,
+branch `docs/pull-model-design` (2d59f3d2). Design only — no implementation code, nothing under
+`scraper/src`, `web/` or `packages/shared/src` was touched. It covers the field mapping for all 194
+populated published fields with priorities 1–3 and per-type exceptions, the pull loop, the re-read
+loop, a verification check for every step, O-1 to O-5 and O-7 folded in, the migration path, and the
+parts I am not sure about.
+
+**What the measurement changed about the diagnosis.** Documents supply 9.0% of provenance rows
+overall — but 2.8% of the `ipos` table and **100% of every other table** (`financial_data`,
+`ipo_details`, `ipo_valuation`, `financial_statements`, `ipo_risk_factors`, `documents`,
+`ipo_intermediaries`, `promoters`, `peer_companies`). Where the document path runs it already wins
+everything it touches; it runs on 27 of 327 IPOs. This is a reach problem, not a ranking problem,
+which is why O-5's priority flip alone was never going to move the number.
+
+**Four more measured findings:** 130 of the 194 populated published fields have no entry in the
+priority matrix at all; 228 of 327 IPOs sit outside the 10-day document window with their PDFs
+already purged; money is stored in four different units across six tables, not two; and the live
+site publishes Annu Projects' FY2024 income when its own document reports FY2026, a figure we
+already hold.
+
+**Status:** DESIGN COMPLETE, awaiting your read. Zero findings open (45 fixed, 11 deferred with a named trigger, 1 deliberately not done); every finding needing code names a build item in §7.1. Section 0.0 is the owner-decision register and checks D10/D10b/D10c/D11 enforce it - run `node docs/design/check-design-consistency.mjs` (14/14). No owner call blocks the design: O-1, O-2, O-3 and O-7 stay open and only O-2 blocks a build item (11). **Prev:** — **Now:** 100%
+blocking a scoped implementation — see below. **Prev:** 0% **Now:** 60% (design done; approval and
+the target-metric decision outstanding)
+
+### O-9. The target is 100% of the fields the offer document prints — RESOLVED
+
+**Abhay, 2026-09-08 ~15:5x IST:** "Target should be 100%. If the field value comes from offer
+document then it should be extracted from offer document. In second round, all first round correct
+data should be retained and for incorrect and incomplete data, second source should be checked. Then
+in 3rd round, all second round correct data should be retained and for incorrect and incomplete
+data, third source should be checked."
+
+**I had this wrong and the correction is right.** I proposed 90% of a chosen denominator. A blended
+percentage is the wrong instrument: at "90%" nobody has to say WHICH 10% a website is still
+supplying, and the worst fields hide inside a good average indefinitely. The rule is per field, not
+an average — if the document prints it, the document supplies it, and every fall-through is a named
+exception with a reason.
+
+**The three-round model is now the governing shape of the design** (§2.1 of
+`docs/design/data-sourcing-pull-model.md`): round 1 the offer document, round 2 the exchange, round 3
+the website; each round works only on what the previous left INCORRECT or INCOMPLETE, and a correct
+value is frozen — a later round is never even asked. That is stronger than a priority list, because
+a priority list only helps when two values collide, which is exactly why the O-5 flip moved nothing.
+
+**Measured on a real IPO** (Deepa Jewellers, the best-covered on production): 61 tracked fields, 47
+already from its own document. Of the 14 it does not take from the document, **9 are printed in the
+filing and lost to BSE or Chittorgarh anyway** — company name, lead managers, lot size, registrar,
+symbol, price band low and high, segment, offering type. Those 9 are precisely what the three-round
+model recovers.
+
+**Status:** RESOLVED, folded into the design. **Prev:** 0% **Now:** 100%
+
+### O-10. The whole bidding timetable stays on the exchanges — RESOLVED as named exception E-1
+
+**Abhay, 2026-09-08:** "Keep those five on the exchange, as a written, named exception to the 100%
+rule. For these fields, make NSE and BSE as first and second source." Then: "List the full timetable
+family for me to see and understand. Apply the same rule to all the timetable fields."
+
+**Applied to twelve fields.** Source order for all of them: round 1 **NSE**, round 2 **BSE**, round 3
+Chittorgarh. The offer document is not a source at any round, and deliberately not a verification
+source either — a printed date and an extended date legitimately differ, so comparing them would
+produce a permanent stream of false disagreements and bury the real ones. Verification is the other
+exchange plus our own date arithmetic.
+
+The family was established by testing every date- and schedule-like field among the 194 published
+fields against one question: **does this value change when the bidding window changes?**
+
+| # | Field | Rows | Source today | Effect |
+|---|---|---:|---|---|
+| 1 | `anchor_investors.bid_date` | 2 | document | flips |
+| 2 | `ipos.open_date` | 289 | 236 web · 50 exch · 3 doc | websites demoted to round 3 |
+| 3 | `ipos.close_date` | 289 | 237 web · 49 exch · 3 doc | as above |
+| 4 | `ipos.allotment_date` | 289 | 234 web · 49 exch · 6 doc | 6 document values flip |
+| 5 | `ipo_details.basis_of_allotment_date` | 3 | 100% document | flips |
+| 6 | `ipo_details.initiation_of_refunds_date` | 7 | 100% document | flips |
+| 7 | `ipo_details.credit_of_shares_date` | 3 | 100% document | flips |
+| 8 | `ipos.listing_date` | 289 | 238 web · 51 exch | websites demoted |
+| 9 | `anchor_investors.lock_in_50_percent_date` | 2 | document | flips — allotment + 30 days |
+| 10 | `anchor_investors.lock_in_remaining_date` | 2 | document | flips — allotment + 90 days |
+| 11 | `ipos.status` | 289 | 230 web · 56 exch · 3 doc | websites demoted |
+| 12 | `ipos.listing_exchanges` | 208 | 161 web · 23 exch · 24 doc | 24 document values flip |
+
+**Three fields I had missed in the first pass**, all in `anchor_investors`: the anchor bidding date
+and the two lock-in expiry dates. The lock-ins are computed off the allotment date, so when the
+allotment date moves they are wrong by exactly the same amount.
+
+**Two judgement calls made inside your instruction, flagged not silent.**
+`ipo_details.upi_cutoff_time` (9 rows) and `ipo_details.bid_windows` (10 rows) sit in the same
+printed timetable but hold a **time of day, not a date** — when a window is extended the date moves
+and 5 PM is still 5 PM. They stay document-first. Putting fields into an exception list that the
+exception's reason does not cover is how such a list becomes a dumping ground. Two-row change if you
+want them included for consistency.
+
+Also staying document-owned, because they record history rather than schedule:
+`documents.filing_date` (the RoC filing date never moves, and the document-type healing rule depends
+on it), `brlm_track_record.as_of_date`, and `ipo_details.designated_exchange`.
+
+E-1 is counted, not hidden: the nightly check prints the twelve excluded fields beside the round-1
+yield, and alarms if the set is ever not exactly those twelve.
+
+**Status:** RESOLVED and applied in full. **Prev:** 0% **Now:** 100%
+
+### O-11. Two provenance keys for one concept — `listingExchange` vs `listingExchanges`
+
+**Found by me while building the timetable family, 2026-09-08.** `field_sources` holds
+`ipos.listingExchange` (224 rows) and `ipos.listingExchanges` (208 rows). Only the plural matches a
+real column; the singular has been writing provenance for a column that does not exist. Any
+per-field report on that concept is split across two names and each shows about half the truth.
+
+Small and not urgent, but it is exactly the kind of thing that gets rediscovered six months later.
+Folded into the matrix cleanup already planned in the design (§7.1 item 2), alongside deleting the
+13 dead snake_case matrix keys.
+
+**Status:** LOGGED, folded into planned work, no separate decision needed. **Prev:** — **Now:** 0%
 
 ---
 
@@ -362,3 +475,23 @@ The release branch `release/prod-2026-09-08` was cut this morning at commit 95b3
 
 **Recommendation: keep the cut as approved.** The 14 missing IPOs are the user-facing win and they are already proven;
 today's merged fixes are internal correctness that can wait one day and get a full soak.
+
+---
+
+## Pull-model implementation-ready run — updates
+
+Plain-language progress on taking the data-sourcing design from "complete" to "an engineer can build
+from it without asking a question". No behaviour ships from this run — it is design and evidence only.
+
+| Time | What it means for the site | Previous | Now | Notes |
+|---|---|---|---:|---:|---|
+| 09:57 | **Your Tuesday decisions are now written into the design and enforced by a command, not by trust.** The scraper's schedule (three data runs a day, live figures every half hour while bidding is open, old IPOs at ten at night), crore as the money unit, and one-bad-field-does-not-lose-the-row are all in the document, and four new checks fail the build if a later edit contradicts any of them. | 0% | 100% (of stage 1 of 7) | Every one of the four new checks was deliberately broken first to prove it actually fires — one of them caught a mistake of mine within a minute of being written |
+| 09:57 | **Two things that would have bitten the implementer are fixed.** The table of 240 fields had no generator committed anywhere, so the rule "never hand-edit that table" was unenforceable; it now has one. And a helper file was silently writing junk files into the repository every time a check ran. | — | fixed | The stray file called `--gate` sitting in your main folder was that bug |
+| 09:57 | **One decision came back to you.** Five money columns are amounts, but showing them in crore would read as "0.0015" on the page — the minimum application, the two application limits, and the two grey-market rates. Recommendation: keep those five in rupees as named exceptions. Work continues on that recommendation; the design is marked so you can overrule it in one place. | — | awaiting you | Recorded as O-12 |
+| 10:31 | **The design now has an evidence trail instead of assurances.** Every source the scraper uses was called for real and its answer saved: NSE, BSE, Chittorgarh, InvestorGain, and the real PDF extractor run on four real offer documents. 105 of 387 source rankings are now backed by a payload we hold, and the build fails if that number ever falls. | 0% | 27% of rankings backed | The first version of the matcher claimed 231 — its "evidence" included matching the registrar to a plausibility check and the grey-market premium to a page title. Tightened three times; every remaining match records the exact label it matched |
+| 10:31 | **Two real IPOs walked end to end.** Asset Reconstruction (mainboard, open now) and Vinod Texworld (SME, open now), field by field, with every value read from production or from a saved payload — none typed. On Asset Reconstruction, 149 of 240 published fields are empty right now. That is the number this work exists to move. | — | done | Regenerate any time with one command |
+| 10:31 | **Fourteen of eighteen build cards written**, each naming the exact files, schema, tests, staging proof line and rollback. Four still being written. | 0% | 78% | The card authors found three places where the design was wrong about our own code — including one where my own instruction to them was wrong |
+| 10:31 | **A second decision came back to you.** On Monday you approved taking the grey-market premium out of the market-hours gate, because it was going stale for up to 65 hours over a weekend. Tuesday's cadence decision, read literally, puts it back in. Recommendation: keep subscription and the demand graph to bidding hours, but fetch the grey-market premium in each of the three daily runs and the ten o'clock run too, so it never freezes overnight. | — | awaiting you | Recorded as O-13 |
+| 10:54 | **Three independent reviews were run against the design, and they found 26 problems — 13 serious ones.** All 13 are now closed or handed back to you as a decision. The most important: five of them were the same mistake, where the machine that checks "does this source really carry this field" was matching words rather than meaning — citing a share count as a rupee amount, and the offer document's promoter as the registrar. | — | closed | The evidence count fell from 105 to 72 as a result. 72 is the first number that has survived somebody trying to break it |
+| 10:54 | **A live data trap found and written down.** The stock exchange's own share count for an IPO leaves out the anchor investors' portion. Anyone computing the issue size from it would publish a number a third too small — Rs 487 crore instead of Rs 733 crore for the IPO that is open today. Our stored figure is correct; the trap is now recorded so nobody rebuilds it. | — | recorded | F-98 |
+| 10:54 | **Honest gap: the run did not reach "zero open findings".** Eighteen remain, all medium or low, each with a named owner. The design is materially stronger than this morning, and it is not finished. | — | 18 open | Listed in the report |

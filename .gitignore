@@ -345,3 +345,11 @@ IPODhan-t*/
 # floor-issues.json register the wave-dispatch gate reads) — never commit,
 # it is per-laptop cache/state, not source
 /scripts/ops/state/
+
+# Pull-model implementation-ready run (2026-09-09): run-local state and PDF fixtures.
+# The PDFs are copied read-only from the production store for laptop-only extractor
+# runs (OD-25); they are evidence inputs, not repository content. Saved JSON/HTML
+# payload fixtures under docs/design/probes/fixtures/ ARE committed — they are the evidence.
+.run-active.lock
+docs/contracts/.run/
+docs/design/probes/fixtures/pdf/

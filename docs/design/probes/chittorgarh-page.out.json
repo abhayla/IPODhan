@@ -1,0 +1,86 @@
+{
+  "probe": "chittorgarh-page",
+  "generated_at": "2026-09-09T04:33:07.022Z",
+  "note": "URLs come from ipos.verifier_url on production. A URL is never built from a slug: the slug segment is ignored by the site, so a constructed URL can serve another company at 200.",
+  "pages": [
+    {
+      "slug": "asset-reconstruction-company-india-ltd",
+      "company_name": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
+      "verifier_url": "https://www.chittorgarh.com/ipo/asset-reconstruction-ipo/2558/",
+      "status": 200,
+      "ok": true,
+      "bytes": 284264,
+      "fixture": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "title": "Asset Reconstruction IPO Date, Price, GMP, Review, Details",
+      "h1": "Asset Reconstruction Co.(India)  IPO Details",
+      "identity_match": true,
+      "labels_present": {
+        "financials_restated_table": true,
+        "amount_unit_footer": false,
+        "market_cap": true,
+        "pe_ratio_own": false,
+        "peer_table": false,
+        "promoters": true,
+        "registrar": true,
+        "lead_managers": true,
+        "objects_of_issue": true,
+        "sector_or_about": false,
+        "lot_size": true,
+        "price_band": true,
+        "pbv_ratio": false
+      }
+    },
+    {
+      "slug": "vinod-texworld-ltd",
+      "company_name": "Vinod Texworld Limited",
+      "verifier_url": "https://www.chittorgarh.com/ipo/vinod-texworld-ipo/2718/",
+      "status": 200,
+      "ok": true,
+      "bytes": 302273,
+      "fixture": "fixtures/chittorgarh/vinod-texworld-ltd.html",
+      "title": "Vinod Texworld IPO Date, Price, GMP, Review, Details",
+      "h1": "Vinod Texworld  IPO Details",
+      "identity_match": true,
+      "labels_present": {
+        "financials_restated_table": true,
+        "amount_unit_footer": false,
+        "market_cap": true,
+        "pe_ratio_own": true,
+        "peer_table": true,
+        "promoters": true,
+        "registrar": true,
+        "lead_managers": true,
+        "objects_of_issue": true,
+        "sector_or_about": false,
+        "lot_size": true,
+        "price_band": false,
+        "pbv_ratio": true
+      }
+    }
+  ],
+  "slug_experiment": {
+    "real_url": "https://www.chittorgarh.com/ipo/asset-reconstruction-ipo/2558/",
+    "tampered_url": "https://www.chittorgarh.com/ipo/this-company-does-not-exist-ipo/2558/",
+    "status": 200,
+    "ok": true,
+    "title_returned": "Asset Reconstruction IPO Date, Price, GMP, Review, Details",
+    "slug_is_ignored": true,
+    "verdict": "the site served a 200 for a slug that does not exist — only the number identifies the page"
+  },
+  "attempts": [
+    {
+      "what": "detail page asset-reconstruction-company-india-ltd",
+      "url": "https://www.chittorgarh.com/ipo/asset-reconstruction-ipo/2558/",
+      "status": 200,
+      "ok": true,
+      "bytes": 284264
+    },
+    {
+      "what": "detail page vinod-texworld-ltd",
+      "url": "https://www.chittorgarh.com/ipo/vinod-texworld-ipo/2718/",
+      "status": 200,
+      "ok": true,
+      "bytes": 302273
+    }
+  ]
+}

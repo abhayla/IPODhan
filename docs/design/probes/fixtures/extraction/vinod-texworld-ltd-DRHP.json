@@ -1,0 +1,781 @@
+{
+  "doc_type": "DRHP",
+  "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+  "pages": 448,
+  "extraction_status": "PARTIAL",
+  "unit": "lakhs",
+  "fiscal_years": [
+    2025,
+    2024,
+    2023
+  ],
+  "fields": {
+    "fiscal_years": {
+      "value": [
+        2025,
+        2024,
+        2023
+      ],
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "fiscal_years_consecutive",
+        "passed": true,
+        "detail": "3 years [2023, 2024, 2025]"
+      }
+    },
+    "unit": {
+      "value": "lakhs",
+      "page": 0,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "unit_not_stated",
+        "passed": true,
+        "detail": "lakhs"
+      }
+    },
+    "headline_source": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "headline_skipped_reason": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "face_value": {
+      "value": 10,
+      "page": 0,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "cover_face_value_plausible",
+        "passed": true,
+        "detail": "10.0"
+      }
+    },
+    "price_band_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "price_band_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "lot_size": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "shares_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "ofs_shares": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "total_offer_shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "issue_structure": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "issue_price_type": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "fresh_issue_amount": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "ofs_amount": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "ofs_amount_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "total_offer_amount_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "DRHP has no price band by law (face value kept)"
+      }
+    },
+    "revenue_by_fy": {
+      "value": {
+        "2023": 20066.9,
+        "2024": 27148.8,
+        "2025": 33536.93
+      },
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "revenue_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2023, 2024, 2025]"
+      }
+    },
+    "total_income_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "total_income_by_fy_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      }
+    },
+    "pat_by_fy": {
+      "value": {
+        "2023": 67.65,
+        "2024": 529.68,
+        "2025": 920.76
+      },
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "pat_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2023, 2024, 2025]"
+      }
+    },
+    "eps_basic_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "eps_basic_by_fy_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      }
+    },
+    "ebitda_by_fy": {
+      "value": {
+        "2023": 480.24,
+        "2024": 1229.09,
+        "2025": 2099
+      },
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "ebitda_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2023, 2024, 2025]"
+      }
+    },
+    "net_worth_by_fy": {
+      "value": {
+        "2023": 1647.56,
+        "2024": 2277.24,
+        "2025": 3198
+      },
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "net_worth_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2023, 2024, 2025]"
+      }
+    },
+    "rhp_filing_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "rhp_filing_date_on_cover",
+        "passed": false,
+        "detail": "check_failed: None"
+      }
+    },
+    "financial_plausibility_pat_not_above_revenue": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "pat_not_above_revenue",
+        "passed": true,
+        "detail": "PAT <= revenue for 3 years"
+      }
+    },
+    "financial_plausibility_ebitda_at_least_pat": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "ebitda_at_least_pat",
+        "passed": true,
+        "detail": "EBITDA >= PAT for 3 profitable years"
+      }
+    },
+    "financial_plausibility_yoy_ratio_within_bounds": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "yoy_ratio_within_bounds",
+        "passed": true,
+        "detail": "SME band 0.05x..20.0x — 8 steps within band"
+      }
+    },
+    "financial_plausibility_eps_times_shares_matches_pat": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "eps_times_shares_matches_pat",
+        "passed": true,
+        "detail": "skipped: weighted share count unavailable"
+      }
+    },
+    "financial_plausibility_min_two_fiscal_years": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "min_two_fiscal_years",
+        "passed": true,
+        "detail": "3 fiscal years found for P&L metrics"
+      }
+    },
+    "financial_plausibility_years_from_header_only": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "years_from_header_only",
+        "passed": true,
+        "detail": "every metric year is in the parsed header [2023, 2024, 2025]"
+      }
+    },
+    "financial_plausibility_unit_matches_magnitude": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "unit_matches_magnitude",
+        "passed": true,
+        "detail": "not applicable (issue size unavailable or below Rs 10 Cr)"
+      }
+    },
+    "financial_plausibility_unit_stated_near_table": {
+      "value": true,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "unit_stated_near_table",
+        "passed": true,
+        "detail": "read 'in Lakh' from page 326"
+      }
+    },
+    "objects_of_offer": {
+      "value": null,
+      "page": null,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "no 'Utilisation of Net Proceeds' table found"
+      }
+    },
+    "risk_factor_count": {
+      "value": 94,
+      "page": 34,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "risk_factor_minimum_count",
+        "passed": true,
+        "detail": "94"
+      }
+    },
+    "risk_factors": {
+      "value": [
+        {
+          "n": 1,
+          "heading": "Our top ten customers contribute Major portion in the revenue of the Company."
+        },
+        {
+          "n": 2,
+          "heading": "Our Company has not entered into any long-term contracts with any of its customers and we typically operate on the basis of purchase orders."
+        },
+        {
+          "n": 3,
+          "heading": "Our Company has negative cash flows from its operating activity and investing activity, details of which are given below."
+        },
+        {
+          "n": 4,
+          "heading": "Our Company, Promoters and Directors are not involved in certain legal and regulatory proceedings."
+        },
+        {
+          "n": 5,
+          "heading": "Our Company has extended a corporate guarantee of ₹7,627.00 lakhs for a loan availed by a Promoter Group company, Vinod Cotfab Private Limited, as of March 31, 2025."
+        },
+        {
+          "n": 6,
+          "heading": "Any change in our consumer’s likes, preferences or a change in their perception regarding the quality of our products may negatively affect the image and our reputation and in turn affect our revenues and profitability."
+        },
+        {
+          "n": 7,
+          "heading": "We derive a significant portion of our revenue from operations from domestic sales which exposes us to risks specific to Indian market and geographies."
+        },
+        {
+          "n": 8,
+          "heading": "We are exposed to competition from both domestic and international manufacturers and new entrants and consequent pricing pressures could have a material adverse effect on our business growth and prospects, financial condition and results of operations."
+        },
+        {
+          "n": 9,
+          "heading": "We have only one production unit that is located in Ahmedabad, Gujarat and any localized social unrest, natural disaster breakdown of services, or any other natural disaster in and around Ahmedabad, Gujarat"
+        },
+        {
+          "n": 10,
+          "heading": "Our registered office and manufacturing facility, located at 185/2, Saijpur, Gopalpur, Piplaj Pirana Road, Ahmedabad, Gujarat, India – 382405, was transferred to the Company through a non-consideration assignment."
+        },
+        {
+          "n": 11,
+          "heading": "Our registered office and manufacturing facility, located at 185/2, Saijpur, Gopalpur, Piplaj Pirana Road, Ahmedabad, Gujarat, India – 382405, which was transferred to the Company through a non- consideration assignment Our registered office and manufacturing facility, located at 185/2, Saijpur, Gopalpur, Piplaj Pirana Road, Ahmedabad, Gujarat, India – 382405, was acquired on July 5, 2018, from Mr."
+        },
+        {
+          "n": 12,
+          "heading": "Majority of revenue contribution comes from the Gujarat which contributed 64.60%, 61.41% and 49.38% of our revenue from operations for the Fiscal 2025, 2024 and 2023, respectively."
+        },
+        {
+          "n": 13,
+          "heading": "Telangana 15.48 0.05% 40.22 0.15% 1.79 0.01%"
+        },
+        {
+          "n": 14,
+          "heading": "Andhra Pradesh 425.95 1.27% 621.91 2.29% 440.68 2.20% TOTAL (A) 33,205.64 99.01% 26,663.86 98.21% 19,896.87 99.15% EXPORT"
+        },
+        {
+          "n": 15,
+          "heading": "Our inability to manage inventory in an effective manner could affect our business."
+        },
+        {
+          "n": 16,
+          "heading": "The future operating results are difficult to predict and may fluctuate or adversely vary from the past performance."
+        },
+        {
+          "n": 17,
+          "heading": "The loss, shutdown or slowdown of operations of our facility or the under-utilization of any such facility may have a material effect on our results of operations and financial condition."
+        },
+        {
+          "n": 18,
+          "heading": "Supply Chain Disruptions or dependence on dealers and agents without formal agreements may adversely affect our sales, operations, and profitability."
+        },
+        {
+          "n": 19,
+          "heading": "We will continue to be controlled by our Promoter and Promoter Group after the completion of the Issue, which will allow our Promoters to influence the outcome of matters submitted for approval of our shareholders."
+        },
+        {
+          "n": 20,
+          "heading": "We rely on affidavits provided by our promoter group and group companies regarding shareholding in other entities As per the SEBI ICDR Regulations, our Draft Prospectus is required to disclose details of companies in which members of our Promoter Group and our Group Companies hold shareholding."
+        },
+        {
+          "n": 21,
+          "heading": "The Company has obtained credit ratings from Acuité Ratings & Research and CRISIL Ratings which are not favourable for the company."
+        },
+        {
+          "n": 22,
+          "heading": "We require high working capital for our smooth day to day operations of business and any discontinuance or our inability to acquire adequate working capital timely and on favourable terms may have an adverse effect on our operations, profitability and growth prospects."
+        },
+        {
+          "n": 23,
+          "heading": "We have significant power requirements for continuous running of our factories."
+        },
+        {
+          "n": 24,
+          "heading": "We are dependent on third party logistic and support service providers for the delivery of raw materials and finished products and any disruptions in their services including transportation services or a decrease in the quality of their services may adversely affect our business, financial condition and results of operations."
+        },
+        {
+          "n": 25,
+          "heading": "Our Company is yet to place orders for the machineries for the expansion of the existing plant."
+        },
+        {
+          "n": 26,
+          "heading": "Our Company had filed certain ROC forms with delayed fees and Company cannot assure that no proceedings or regulatory actions will be initiated against it in relation to the non-filing and delayed filing."
+        },
+        {
+          "n": 27,
+          "heading": "Certain statutory filings made with the Registrar of Companies in the past may contain defects, and we may be required to re-file such forms, which could result in additional costs, penalties, or delays."
+        },
+        {
+          "n": 28,
+          "heading": "Our Company has duly filed all returns and made statutory payments such as Tax Deducted at Source, Income Tax, Goods and Services Tax, Employee Provident Fund, Employees State Insurance, and other applicable statutory dues within the prescribed timelines."
+        },
+        {
+          "n": 29,
+          "heading": "Our business is manpower intensive and any unavailability of our employees or shortage of labour or any strikes, work stoppages, increased wage demands by workmen or changes in regulations governing hiring of labour may have an adverse impact on our cash flows and results of operations."
+        },
+        {
+          "n": 30,
+          "heading": "Our Promoter-cum-Director has professional experience limited to Group Companies, which may restrict exposure to diverse business practices."
+        },
+        {
+          "n": 31,
+          "heading": "Inability to Substantiate the Educational Qualifications and Prior Professional Experience of Certain Senior Management Personnel, Which Have Accordingly Been Recorded as Nil for the Purpose of this Draft Prospectus."
+        },
+        {
+          "n": 32,
+          "heading": "Company’s warehouse is not owned by the company and taken on the lease."
+        },
+        {
+          "n": 33,
+          "heading": "We have not commissioned an industry report for the disclosures made in the section titled “Industry Overview‟ and made disclosures on the basis of the data available on the internet and such data has not been independently verified by us."
+        },
+        {
+          "n": 34,
+          "heading": "We require various licenses and approvals for undertaking our businesses and the failure to obtain or retain such licenses or approvals in a timely manner, or at all, may adversely affect our operations."
+        },
+        {
+          "n": 35,
+          "heading": "Information relating to our installed capacities and the historical capacity utilization of our manufacturing facility included in this Draft Prospectus is based on various assumptions and estimates and future production and capacity utilization may vary."
+        },
+        {
+          "n": 36,
+          "heading": "We have significant levels of indebtedness, both secured and unsecured, and servicing this debt requires substantial cash flows."
+        },
+        {
+          "n": 37,
+          "heading": "We are significantly dependent on short-term borrowings, including working capital financing, and any inability to obtain or renew such financing on favorable terms could adversely affect our business, operations, and financial condition."
+        },
+        {
+          "n": 38,
+          "heading": "Our inability to effectively manage our growth or to successfully implement our business plan and growth strategy could have an effect on our business, results of operations and financial condition."
+        },
+        {
+          "n": 39,
+          "heading": "Our export sales are negligible and concentrated in a single country, Nepal."
+        },
+        {
+          "n": 40,
+          "heading": "Any deficiency in our products could make our Company liable for client claims, which in turn could affect our Company’s results of operations."
+        },
+        {
+          "n": 41,
+          "heading": "The directors of our company don’t have the experience of the listed company and the requirements of being a listed company may strain our resources."
+        },
+        {
+          "n": 42,
+          "heading": "We face competition in our business from organized and unorganized players, which may adversely affect our business operation and financial condition."
+        },
+        {
+          "n": 43,
+          "heading": "Our inability to secure or renew working capital borrowings in the future may lead to liquidity constraints and adversely affect our operations, financial condition, and growth prospects."
+        },
+        {
+          "n": 44,
+          "heading": "The average cost of acquisition of Equity Shares by our Promoter could be lower than the Issue Price."
+        },
+        {
+          "n": 45,
+          "heading": "We have issued equity shares only through Right Issues since incorporation and not through any bonus issue, and our ability to raise equity capital in the future may depend on shareholders’ continued participation Since incorporation, our Company has not issued any bonus shares and has relied exclusively on Right Issues for augmenting its paid-up share capital."
+        },
+        {
+          "n": 46,
+          "heading": "Our Company enters into related party transactions, which are conducted on an arm’s length basis, and there can be no assurance that such transactions will not give rise to conflicts of interest or that we could not have achieved more favorable terms if such transactions had been entered into with unrelated parties."
+        },
+        {
+          "n": 47,
+          "heading": "Our insurance coverage may not be adequate to protect us against all potential losses to which we may be subject and this may have a material effect on our business and financial condition."
+        },
+        {
+          "n": 48,
+          "heading": "Some of our Group Companies and Promoter Group Entities operate in businesses connected with the textile and garment industry, and we have entered into related party transactions with them."
+        },
+        {
+          "n": 49,
+          "heading": "Within the parameters as mentioned in the chapter titled ‘Objects of the Issue’ beginning on page 122, our Company’s management will have flexibility in applying the proceeds of this Issue."
+        },
+        {
+          "n": 50,
+          "heading": "Our success is dependent on our Promoter, management team and skilled manpower."
+        },
+        {
+          "n": 51,
+          "heading": "Our failure to adapt to technological developments or industry trends could affect the performance and features of our products, and reduce our attractiveness to our customers."
+        },
+        {
+          "n": 52,
+          "heading": "If there is a change in policies related to tax, duties or other such levies applicable to us, it may affect our results of operations."
+        },
+        {
+          "n": 53,
+          "heading": "Our ability to pay dividends in the future may be affected by any material adverse effect on our future earnings, financial condition or cash flows."
+        },
+        {
+          "n": 54,
+          "heading": "We are subject to the risk of failure of or a material weakness in our internal control systems."
+        },
+        {
+          "n": 55,
+          "heading": "The future operating results are difficult to predict and may fluctuate or adversely vary from the past performance."
+        },
+        {
+          "n": 56,
+          "heading": "We rely on effective marketing strategies to drive brand visibility and customer engagement, and any failure to adapt to digital marketing trends or continued reliance on traditional channels may adversely affect our ability to reach new customers, resulting in reduced profitability and growth prospects."
+        },
+        {
+          "n": 57,
+          "heading": "Any penalty, demand, or adverse order raised by statutory or regulatory authorities in the future could adversely affect our financial condition, results of operations, and cash flows."
+        },
+        {
+          "n": 58,
+          "heading": "Our workers are exposed to occupational health and safety hazards, and any failure to maintain adequate safety standards may adversely impact our operations."
+        },
+        {
+          "n": 59,
+          "heading": "Our business operations are highly dependent on our manufacturing machinery, and any breakdown, malfunction, or technological obsolescence may adversely affect our production and financial results."
+        },
+        {
+          "n": 60,
+          "heading": "Certain insurance policies, agreements, deeds, or licenses may continue to remain in the erstwhile name of our Company, and any delay or failure in updating them could adversely impact our operations."
+        },
+        {
+          "n": 61,
+          "heading": "The requirements of being a listed company may strain our resources and distract management."
+        },
+        {
+          "n": 62,
+          "heading": "The directors of our company don’t have the experience of the listed company and the requirements of being a listed company may strain our resources."
+        },
+        {
+          "n": 63,
+          "heading": "Our Company’s board of directors will be utilizing the Net Proceeds from the Issue in the objects of the issue."
+        },
+        {
+          "n": 64,
+          "heading": "Portion of our Issue Proceeds are proposed to be utilized for general corporate purposes which constitute [●] of the Issue Proceed."
+        },
+        {
+          "n": 65,
+          "heading": "We have not identified any alternate source of raising the working capital mentioned as our ‘Objects of the Issue’."
+        },
+        {
+          "n": 66,
+          "heading": "Our Promoter, Directors and Key Managerial Personnel hold Equity Shares in our Company and are therefore interested in the Company’s performance in addition to their remuneration and reimbursement of expenses."
+        },
+        {
+          "n": 67,
+          "heading": "Although we have consistently received payments from our customers on or before the due date, we cannot assure that such timely payments will continue in the future, and any delay or default in collection of trade receivables may adversely affect our cash flows and financial condition."
+        },
+        {
+          "n": 68,
+          "heading": "Our contingent liabilities, including GST demands, bank guarantees, and corporate guarantees, could materially affect our financial condition, cash flows, and business operations."
+        },
+        {
+          "n": 69,
+          "heading": "Our Promoters have provided personal guarantees to certain loan facilities availed by us, which if revoked may require alternative guarantees, repayment of amounts due or termination of the facilities."
+        },
+        {
+          "n": 70,
+          "heading": "The COVID-19 pandemic, or any future pandemic or widespread public health emergency, could materially and adversely impact our business, financial condition, cash flows and results of operations."
+        },
+        {
+          "n": 71,
+          "heading": "Our business is substantially affected by prevailing economic, political and other prevailing conditions in India."
+        },
+        {
+          "n": 72,
+          "heading": "The occurrence of natural or man-made disasters could adversely affect our results of operations, cash flows and financial condition."
+        },
+        {
+          "n": 73,
+          "heading": "Our business and activities may be further regulated by the Competition Act and any adverse application or interpretation of the Competition Act could materially and adversely affect our business, financial condition and results of operations."
+        },
+        {
+          "n": 74,
+          "heading": "The Indian tax regime is currently undergoing substantial changes which could adversely affect our business."
+        },
+        {
+          "n": 75,
+          "heading": "Political, economic or other factors that are beyond our control may have an adverse effect on our business, results of operations and cash flows."
+        },
+        {
+          "n": 76,
+          "heading": "Significant differences exist between Ind AS and other accounting principles, such as Indian GAAP, IFRS and U.S."
+        },
+        {
+          "n": 77,
+          "heading": "Companies in India are required to prepare financial statements under the new Indian Accounting Standards."
+        },
+        {
+          "n": 78,
+          "heading": "Changing laws, rules and regulations and legal uncertainties, including adverse application of tax laws, in the jurisdictions in which we operate may adversely affect our business and results of operations."
+        },
+        {
+          "n": 79,
+          "heading": "Financial instability, economic developments and volatility in securities markets in other countries may also cause the price of the Equity Shares to decline."
+        },
+        {
+          "n": 80,
+          "heading": "A significant change in the Government of India’s economic liberalization and deregulation policies could adversely affect our business and the price of our Equity Shares."
+        },
+        {
+          "n": 81,
+          "heading": "Our Equity Shares have never been publicly traded and may experience price and volume fluctuations following the completion of the Issue, an active trading market for the Equity Shares may not develop, the price of our Equity Shares may be volatile and you may be unable to resell your Equity Shares at or above the Issue Price or at all."
+        },
+        {
+          "n": 82,
+          "heading": "You may not be able to immediately sell any of the Equity Shares you subscribe to in this Offer on an Indian Stock Exchange."
+        },
+        {
+          "n": 83,
+          "heading": "Any further issuance of Equity Shares, or convertible securities or other equity linked instruments by us may dilute your shareholding."
+        },
+        {
+          "n": 84,
+          "heading": "Sale of Equity Shares by our Promoters and Promoter Group in future may adversely affect the market price of the Equity Shares."
+        },
+        {
+          "n": 85,
+          "heading": "The determination of the Price is based on various factors and assumptions and the Offer Price of the Equity Shares may not be indicative of the market price of the Equity Shares after the Offer."
+        },
+        {
+          "n": 86,
+          "heading": "Investor will not be able to sell immediately on Indian Stock Exchanges any of the Equity Shares you purchase in the Issue until the Issue receives appropriate trading permissions The Equity Shares will be listed on the Stock Exchange."
+        },
+        {
+          "n": 87,
+          "heading": "There are restrictions on daily movements in the trading price of the Equity Shares, which may adversely affect a shareholder’s ability to sell Equity Shares or the price at which Equity Shares can be sold at a particular point in time."
+        },
+        {
+          "n": 88,
+          "heading": "If security or industry analysts do not publish research, or publish unfavourable or inaccurate research about the business of our Company, the price and trading volume of the Equity Shares may decline."
+        },
+        {
+          "n": 89,
+          "heading": "A third party could be prevented from acquiring control of our Company because of anti-takeover provisions under Indian law."
+        },
+        {
+          "n": 90,
+          "heading": "Our Company’s ability to raise foreign capital may be constrained by Indian law."
+        },
+        {
+          "n": 91,
+          "heading": "Under Indian law, foreign investors are subject to investment restrictions that limit our Company’s ability to attract foreign investors, which may adversely impact the trading price of the Equity Shares."
+        },
+        {
+          "n": 92,
+          "heading": "Investors may be restricted in their ability to exercise pre-emptive rights under Indian law and thereby may suffer future dilution of their ownership position."
+        },
+        {
+          "n": 93,
+          "heading": "Rights of shareholders under Indian laws may be more limited than under the laws of other jurisdictions."
+        },
+        {
+          "n": 94,
+          "heading": "The Equity Shares of our Company will be listed on the SME platform of the NSE and would be traded in lot size."
+        }
+      ],
+      "page": 34,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "risk_factor_headings_complete",
+        "passed": true,
+        "detail": "94"
+      }
+    },
+    "cin": {
+      "value": "U17200GJ2012PLC071210",
+      "page": 0,
+      "source_doc": "vinod-texworld-ltd-DRHP.pdf",
+      "check": {
+        "name": "cin_matches_mca_pattern",
+        "passed": true,
+        "detail": "U17200GJ2012PLC071210"
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "probe": "matrix-dead-keys",
+  "generated_at": "2026-09-09T05:07:28.710Z",
+  "source": "scraper/src/config/field-priority-matrix.ts",
+  "note": "Consolidation writes camelCase keys, so a snake_case matrix key can never match. A shadowed one is harmless duplication. An ORPHAN is worse: the live camelCase field has no matrix entry at all and silently takes the default rules every cycle.",
+  "total_keys": 77,
+  "snake_case_keys": 27,
+  "shadowed_by_a_camelCase_sibling": [
+    "close_date",
+    "company_description",
+    "gmp_price",
+    "lot_size",
+    "open_date"
+  ],
+  "orphaned_no_sibling": [
+    "expected_listing_price",
+    "fresh_issue_size",
+    "gmp_percentage",
+    "issue_price",
+    "listing_gain_percentage",
+    "listing_price",
+    "min_investment",
+    "nii_subscription",
+    "offer_for_sale_size",
+    "pb_ratio",
+    "peer_companies",
+    "profit_fy1",
+    "profit_fy2",
+    "profit_fy3",
+    "qib_subscription",
+    "retail_subscription",
+    "revenue_fy1",
+    "revenue_fy2",
+    "revenue_fy3",
+    "roce_percentage",
+    "roe_percentage",
+    "total_subscription"
+  ]
+}

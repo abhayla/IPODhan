@@ -1,0 +1,407 @@
+{
+  "probe": "old-document-availability",
+  "generated_at": "2026-09-09T04:48:43.026Z",
+  "question": "For IPOs that already lost their local files to the seven-day purge, is the offer document still downloadable from the URL we stored?",
+  "method": "LISTED IPOs at three ages, both segments, the URL from documents.url, three attempts, then the first page of text so a 200 that is really a login page is not counted as success.",
+  "per_age_target": 6,
+  "attempted": 14,
+  "obtainable": 13,
+  "url_coverage": {
+    "question": "Before asking whether an old document can be re-downloaded, ask whether we stored an address for it at all. A LISTED IPO with no offer-document URL cannot be retried; its document has to be DISCOVERED again from NSE, BSE or SEBI.",
+    "rows": [
+      {
+        "age_bucket": "7+ months",
+        "segment": "MAINBOARD",
+        "listed_ipos": 17,
+        "ipos_with_an_offer_document_url": 1
+      },
+      {
+        "age_bucket": "7+ months",
+        "segment": "SME",
+        "listed_ipos": 47,
+        "ipos_with_an_offer_document_url": 15
+      },
+      {
+        "age_bucket": "about 1-2 months",
+        "segment": "MAINBOARD",
+        "listed_ipos": 24,
+        "ipos_with_an_offer_document_url": 2
+      },
+      {
+        "age_bucket": "about 1-2 months",
+        "segment": "SME",
+        "listed_ipos": 38,
+        "ipos_with_an_offer_document_url": 2
+      },
+      {
+        "age_bucket": "about 1-2 months",
+        "segment": null,
+        "listed_ipos": 1,
+        "ipos_with_an_offer_document_url": 0
+      },
+      {
+        "age_bucket": "about 3-7 months",
+        "segment": "MAINBOARD",
+        "listed_ipos": 21,
+        "ipos_with_an_offer_document_url": 10
+      },
+      {
+        "age_bucket": "about 3-7 months",
+        "segment": "SME",
+        "listed_ipos": 64,
+        "ipos_with_an_offer_document_url": 55
+      },
+      {
+        "age_bucket": "about 3-7 months",
+        "segment": null,
+        "listed_ipos": 4,
+        "ipos_with_an_offer_document_url": 0
+      },
+      {
+        "age_bucket": "listed under 20 days ago",
+        "segment": "MAINBOARD",
+        "listed_ipos": 18,
+        "ipos_with_an_offer_document_url": 13
+      },
+      {
+        "age_bucket": "listed under 20 days ago",
+        "segment": "SME",
+        "listed_ipos": 17,
+        "ipos_with_an_offer_document_url": 5
+      }
+    ]
+  },
+  "by_host_and_age": {
+    "nsearchives.nseindia.com | about 1-2 months": {
+      "attempted": 3,
+      "obtainable": 3,
+      "verdicts": {
+        "OBTAINABLE (ZIP — the archive serves a container, the re-download path must unzip)": 3
+      }
+    },
+    "www.chittorgarh.net | about 1-2 months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "www.icicisecurities.com | about 3-7 months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "cmr.co.in | about 3-7 months": {
+      "attempted": 1,
+      "obtainable": 0,
+      "verdicts": {
+        "UNREACHABLE (0 TypeError: fetch failed)": 1
+      }
+    },
+    "nsearchives.nseindia.com | about 3-7 months": {
+      "attempted": 3,
+      "obtainable": 3,
+      "verdicts": {
+        "OBTAINABLE": 1,
+        "OBTAINABLE (ZIP — the archive serves a container, the re-download path must unzip)": 2
+      }
+    },
+    "www.chittorgarh.net | about 3-7 months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "www.bseindia.com | 7+ months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "shayonaengg.com | 7+ months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "nsearchives.nseindia.com | 7+ months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    },
+    "indorient.in | 7+ months": {
+      "attempted": 1,
+      "obtainable": 1,
+      "verdicts": {
+        "OBTAINABLE": 1
+      }
+    }
+  },
+  "documents": [
+    {
+      "age": "about 1-2 months",
+      "slug": "advit-jewels-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_RAMBHAJO.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 9329407,
+        "attempts": 1,
+        "is_pdf": false,
+        "is_zip": true,
+        "verdict": "OBTAINABLE (ZIP — the archive serves a container, the re-download path must unzip)"
+      }
+    },
+    {
+      "age": "about 1-2 months",
+      "slug": "waterways-leisure-tourism-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_CORDELIA.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 10710994,
+        "attempts": 1,
+        "is_pdf": false,
+        "is_zip": true,
+        "verdict": "OBTAINABLE (ZIP — the archive serves a container, the re-download path must unzip)"
+      }
+    },
+    {
+      "age": "about 1-2 months",
+      "slug": "riyaasat-lifestyle-ltd",
+      "segment": "SME",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://www.chittorgarh.net/reports/ipo_notes/riyaasat-rhp.pdf",
+      "attempt": {
+        "host": "www.chittorgarh.net",
+        "status": 200,
+        "ok": true,
+        "bytes": 8408503,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "Red Herring Prospectus Dated: June 12, 2026 100% Book Built Issue Please read Section 26 and 32 of the Companies Act, 2013 RIYAASAT LIFESTYLE LIMITED Please scan this QR Code Corporate Identity Numbers: U18100GJ2021PLC126637 to view the RHP REGISTERED OFFICE CONTACT PERSON TELEPHONE AND EMAIL WEBSITE 01/GF, 'Time Square', B/S. 'Pariseema', C.G. Ms. Mansi Pratik Patel Mobile No: +918866115025 www.riyaasat.in Road, Ahmedabad -380009, Gujarat, India. Company Secretary and Compliance Officer Email Id: cs@riyaasat.in PROMOTERS OF OUR COMPANY: GAURANG RAMANBHAI GALIYA, RAMANBHAI NANUBHAI GALIYA AND",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 1-2 months",
+      "slug": "shreedhar-spinners-ltd",
+      "segment": "SME",
+      "age_days": 70,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_SHREEDHAR.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 6406724,
+        "attempts": 1,
+        "is_pdf": false,
+        "is_zip": true,
+        "verdict": "OBTAINABLE (ZIP — the archive serves a container, the re-download path must unzip)"
+      }
+    },
+    {
+      "age": "about 3-7 months",
+      "slug": "turtlemint-fintech-solutions-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 72,
+      "type": "RHP",
+      "url": "https://www.icicisecurities.com/console/uploads/actual/TURTLEMINT-FINTECH-SOLUTIONS-LIMITED---RHP_1781540751_81.pdf",
+      "attempt": {
+        "host": "www.icicisecurities.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 15840316,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "RED HERRING PROSPECTUS Dated June 15, 2026 Please read Section 32 of the Companies Act, 2013 100% Book Built Offer (Please scan this QR code to view this Red Herring Prospectus and the Abridged Prospectus) TURTLEMINT FINTECH SOLUTIONS LIMITED (formerly known as Turtlemint Fintech Solutions Private Limited, prior to which it was known as Fintech Blue Solutions Private Limited) CORPORATE IDENTITY NUMBER: U74999MH2015PLC263315 REGISTERED AND CONTACT PERSON TELEPHONE AND E-MAIL WEBSITE CORPORATE OFFICE The ORB Sahar, 4 and 4A, 1st Prashant Saini Tel: 022-68387400 www.turtlemint.com Floor, A wing,",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 3-7 months",
+      "slug": "cmr-green-technologies-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 91,
+      "type": "PROSPECTUS",
+      "url": "https://cmr.co.in/wp-content/uploads/2026/06/Project-Balaji-Prospectus.pdf",
+      "attempt": {
+        "host": "cmr.co.in",
+        "status": 0,
+        "ok": false,
+        "attempts": 3,
+        "error": "TypeError: fetch failed",
+        "verdict": "UNREACHABLE (0 TypeError: fetch failed)"
+      }
+    },
+    {
+      "age": "about 3-7 months",
+      "slug": "powerica-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 160,
+      "type": "PROSPECTUS",
+      "url": "https://nsearchives.nseindia.com/corporate/FP_INE921L01032_30MAR2026.pdf",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 11722888,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "PROSPECTUS Dated March 27, 2026 Please read Section 26 of the Companies Act, 2013 100% Book Built Offer (Please scan this QR code to view the Prospectus and the ICDR Abridged Prospectus) POWERICA LIMITED CORPORATE IDENTIFICATION NUMBER: U31100MH1984PLC032825 REGISTERED AND CONTACT PERSON EMAIL AND TELEPHONE WEBSITE CORPORATE OFFICE 9th Floor, Bakhtawar, Nariman Point, Anita Praful Renuse Email: investorrelations@powericaltd.com www.powericaltd.com Mumbai � 400 021, Maharashtra, India Company Secretary and Telephone: 022 - 43152525 Compliance Officer THE PROMOTERS OF OUR COMPANY: BHARAT OBEROI,",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 3-7 months",
+      "slug": "anubhav-plast-ltd",
+      "segment": "SME",
+      "age_days": 72,
+      "type": "RHP",
+      "url": "https://www.chittorgarh.net/reports/ipo_notes/anubhav-plast-rhp.pdf",
+      "attempt": {
+        "host": "www.chittorgarh.net",
+        "status": 200,
+        "ok": true,
+        "bytes": 12342901,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "RED HERRING PROSPECTUS Dated: June 12, 2026 (Please read Sections 26 & 32 of the Companies Act, 2013) (This Red Herring Prospectus will be updated upon filing of the Prospectus with the ROC) 100% Book Built Issue (Please Scan this QR code to view the Red Herring Prospectus) ANUBHAV PLAST LIMITED (Corporate Identification Number: U25202UP1987PLC008460) Registered Office Contact Person Email and Telephone Website 7/41 A, Basement, Basant Tower, Tilak Mr. Siddharth Tiwari Email: cs@anubhavpole.com Nagar, Swarup Nagar, Kanpur Nagar, Uttar Company Secretary and www.anubhavpole.com Telephone No.: 75",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "about 3-7 months",
+      "slug": "avience-biomedicals-ltd",
+      "segment": "SME",
+      "age_days": 76,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_AVIENCE.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 23407924,
+        "attempts": 1,
+        "is_pdf": false,
+        "is_zip": true,
+        "verdict": "OBTAINABLE (ZIP — the archive serves a container, the re-download path must unzip)"
+      }
+    },
+    {
+      "age": "about 3-7 months",
+      "slug": "clay-craft-india-ltd",
+      "segment": "SME",
+      "age_days": 77,
+      "type": "RHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_CLAYCRAFT.zip",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 7772426,
+        "attempts": 1,
+        "is_pdf": false,
+        "is_zip": true,
+        "verdict": "OBTAINABLE (ZIP — the archive serves a container, the re-download path must unzip)"
+      }
+    },
+    {
+      "age": "7+ months",
+      "slug": "amagi-media-labs-ltd",
+      "segment": "MAINBOARD",
+      "age_days": 231,
+      "type": "PROSPECTUS",
+      "url": "https://www.bseindia.com/corporates/download/337933/IPO%20BasisOfAllotment/Amagi_Prospectus_20260119172451.pdf",
+      "attempt": {
+        "host": "www.bseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 17261595,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "PROSPECTUS Dated: January 16, 2026 Please read Section 26 of the Companies Act, 2013 100% Book Built Offer (Please scan this QR code to view this Prospectus) AMAGI MEDIA LABS LIMITED CORPORATE IDENTITY NUMBER: U73100KA2008PLC045144 REGISTERED OFFICE & CORPORATE OFFICE CONTACT EMAIL AND WEBSITE PERSON TELEPHONE Raj Alkaa Park, Survey No. 29/3 and 32/2, 4th floor, Sridhar Email: https://www.amagi.com/investors Kalena Agrahara Village, Begur Hobli, Bengaluru � 560 Muthukrishnan compliance@ama 076, Karnataka, India gi.com Company Secretary and Telephone: 080- Compliance 46634406 Officer THE PROMOT",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "7+ months",
+      "slug": "shayona-engineering-ltd",
+      "segment": "SME",
+      "age_days": 222,
+      "type": "PROSPECTUS",
+      "url": "https://shayonaengg.com/engineering/wp-content/uploads/2026/01/6.Shayona_Prospectus_Final.pdf",
+      "attempt": {
+        "host": "shayonaengg.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 24045081,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "Prospectus Dated: January 28, 2026 Please read section 26 and 32 of the Companies Act, 2013 100% Book Built Issue (This Prospectus will be updated upon filing with the RoC) (Please scan this QR Code to view the Prospectus) SHAYONA ENGINEERING LIMITED CIN: U29309GJ2017PLC095794 REGISTERED OFFICE CONTACT PERSON TELEPHONE AND EMAIL WEBSITE Shed No. 113/1, GIDC, Makarpura, M.I. Arti Ankitkumar Singh, Tel: +91 9310806080 www.shayonaengg.com Estate, Vadodara-390010, Gujarat, India. Company Secretary and Email: Compliance Officer compliance@shayonaengg.com PROMOTERS OF OUR COMPANY: VIPUL BHIKHABHAI S",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "7+ months",
+      "slug": "krm-ayurveda-ltd",
+      "segment": "SME",
+      "age_days": 223,
+      "type": "PROSPECTUS",
+      "url": "https://nsearchives.nseindia.com/emerge/corporates/content/KRMAyurvedaLimited_PROSP.pdf",
+      "attempt": {
+        "host": "nsearchives.nseindia.com",
+        "status": 200,
+        "ok": true,
+        "bytes": 18540071,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "Prospectus Dated: January 27,2026 100% Book Building Offer Please read Section 26 and 32 of Companies Act, 2013 KRM AYURVEDA LIMITED Please scan this QR Code to ss(Formerly known as KRM Ayurveda Private Limited) view the Prospectus. CIN: U24239DL2019PLC354658 REGISTERED OFFICE CORPORATE OFFICE CONTACT PERSON EMAIL & TELEPHONE WEBSITE Ms. Pooja Garg compliance@krmayurveda.com A-16 G T Karnal road Industrial Area, North West, N.A. Company Secretary & Compliance & www.krmayurvedaindia.com Delhi, Delhi, India-110033. Officer +91- 9289101700 NAME OF PROMOTER(S) OF THE COMPANY MR. PUNEET DHAWAN AND",
+        "verdict": "OBTAINABLE"
+      }
+    },
+    {
+      "age": "7+ months",
+      "slug": "digilogic-systems-ltd",
+      "segment": "SME",
+      "age_days": 224,
+      "type": "PROSPECTUS",
+      "url": "https://indorient.in/assets/documents/PROSPECTUS%20DIGILOGIC_1769169191.pdf",
+      "attempt": {
+        "host": "indorient.in",
+        "status": 200,
+        "ok": true,
+        "bytes": 6768967,
+        "attempts": 1,
+        "is_pdf": true,
+        "is_zip": false,
+        "first_page_text": "PROSPECTUS Dated: January 22, 2026 (Please read section 26 of Companies Act, 2013) 100% Book Built Offer (Please Scan this QR Code DIGILOGIC SYSTEMS LIMITED to view the Prospectus) (Formerly known as �Digilogic Systems Private Limited�) CIN: U62099TG2011PLC077933 REGISTERED OFFICE CONTACT PERSON EMAIL AND TELEPHONE WEBSITE #102, 1ST Floor, DSL Abacus Tech Park Mr. Kameswara Rao Vempati Email: cs@digilogicsystems.com Uppal Kalsa Village, Uppal Mandal, Company Secretary and Compliance Tel: + 040 4547 4601 www.digilogicsystems.com Rangareddy, Telangana, India - 500039 Officer. OUR PROMOTERS: MR.",
+        "verdict": "OBTAINABLE"
+      }
+    }
+  ]
+}

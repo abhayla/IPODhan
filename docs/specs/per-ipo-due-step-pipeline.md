@@ -144,8 +144,8 @@ cycle-overrun RCA (observed 1,210-1,278s cycles, 105-115 network calls on a Sund
 
 | Tier | Sources | Truth for | Never used for |
 |---|---|---|---|
-| 1a Filings | DRHP, RHP, PBA, Corrigendum, Anchor report, Prospectus | every static field (terms, timeline, financials, promoters, intermediaries, objects, risks) | live numbers |
-| 1b Exchange APIs | BSE JSON, NSE JSON | subscription, anchor allocation, listing price/ISIN, status flips, document links | overriding a filing value |
+| 1a Filings | DRHP, RHP, PBA, Corrigendum, Anchor report, Prospectus | every static field (terms, financials, promoters, intermediaries, objects, risks) — and the timeline, subject to S-05 below | live numbers |
+| 1b Exchange APIs | BSE JSON, NSE JSON | subscription, anchor allocation, listing price/ISIN, status flips, document links — and the bidding timetable per S-05 | overriding a filing value on anything S-05 does not name |
 | 2 Aggregators | Chittorgarh, Moneycontrol, InvestorGain | verification of tier-1 values; GMP (only source); peers by sector as fallback | writing a static field when a tier-1 value exists |
 
 Conflict rule: tier-1a vs tier-1b mismatch on a static field writes a `data_conflicts` CRITICAL
@@ -153,6 +153,88 @@ row, the filing value is kept, admin sees it. Tier-2 mismatch writes WARNING, th
 kept, confidence is lowered. The priority matrix's per-field order stays, but "newest wins" is
 limited to live fields; a static field is only overwritten by a higher tier or a newer filing
 (E2 supersession). Listing exchange (W-01) is a merged set, not a single value.
+
+### S-05 — the re-filing test (owner decision, 2026-09-08)
+
+S-03 originally read "tier 1a is truth for every static field (terms, **timeline**, …)". That was
+too strong for one group of fields, and the reason is not that dates are special:
+
+> **The filing wins wherever a change to the fact forces a new filing.
+> The exchange wins where it does not.**
+
+The offer document is authoritative about what was true when it was filed. For almost everything,
+a change to the fact obliges the issuer to file again — so the document stays current by
+construction and tier 1a is correct. The exception is the bidding timetable: **a price band
+advertisement is printed once and is never reprinted when a company extends its bidding window.**
+NSE and BSE publish the new dates the same day; the document cannot. Applying S-03 unmodified
+would publish a closed-looking IPO that is still open, and a reader would miss the window.
+
+Worked examples of the test:
+
+| Fact changes | Does a new filing follow? | Who wins |
+|---|---|---|
+| Price band revised | Yes — a corrigendum is filed | **Filing** |
+| Issue size, lot size, registrar, lead managers, objects | Yes — any change means a new filing | **Filing** |
+| Bidding window extended | **No** — nothing is re-filed | **Exchange** |
+| Allotment / refund / credit dates move with the window | **No** | **Exchange** |
+| Status flips (OPEN → CLOSED → LISTED) | No | **Exchange** |
+
+**Current members of the exchange-wins set** — and the owner's confirmation covers these and no
+others (`docs/design/data-sourcing-pull-model.md` §1.2.1 holds the per-field detail and is generated
+from `docs/design/field-source-resolution.spec.mjs`):
+
+`ipos.open_date` · `ipos.close_date` · `ipos.listing_date` · `ipos.allotment_date` ·
+`ipos.status` · `ipos.listing_exchanges` · `ipo_details.basis_of_allotment_date` ·
+`ipo_details.initiation_of_refunds_date` · `ipo_details.credit_of_shares_date` ·
+`anchor_investors.bid_date` — **ten sourced fields**, plus
+`anchor_investors.lock_in_50_percent_date` and `lock_in_remaining_date`, which are **computed**
+from `allotment_date` (+30 / +90 days) and therefore inherit the rule through their input rather
+than being sourced themselves. The owner's decision named twelve fields; ten are sourced and two
+are derived from one of the ten, so the twelve facts he named are all governed.
+
+**Verified against the live exchanges, 2026-09-08 — and half the set has no exchange source at all.**
+S-05 says the exchange wins where nothing is re-filed. That only helps if the exchange actually
+publishes the value. Fetched both live APIs and checked what our scrapers map:
+
+| E-1 field | NSE | BSE | Verdict |
+|---|---|---|---|
+| `open_date` | `issueStartDate` | `Start_Dt` | exchange-sourced, as designed |
+| `close_date` | `issueEndDate` | `End_Dt` | exchange-sourced, as designed |
+| `status` | `status` | `Status` | exchange-sourced, as designed |
+| `listing_date` | mapped (`nse-api-client.ts`) | — | exchange-sourced, as designed |
+| `listing_exchanges` | derivable from presence in each API | derivable | as designed |
+| `allotment_date` | **absent** | **absent** | **no exchange source** |
+| `basis_of_allotment_date` | **absent** | **absent** | **no exchange source** |
+| `initiation_of_refunds_date` | **absent** | **absent** | **no exchange source** |
+| `credit_of_shares_date` | **absent** | **absent** | **no exchange source** |
+| `anchor_investors.bid_date` | **absent** | **absent** | **no exchange source** |
+
+Evidence: `GET /api/ipo-current-issue` returns exactly
+`companyName, issueEndDate, issuePrice, issueSize, issueStartDate, series, status, symbol,
+category, noOfSharesOffered, noOfTime, noOfsharesBid, srNo`; BSE `IPO_HomePageDetail` returns
+`Scrip_name, Start_Dt, End_Dt, Status, IR_flag, IR_FLAG_FULL, IPO_NO, flag, Scrip_cd,
+Is_retailertype`. And no NSE or BSE scraper in this repo maps an allotment, refund, credit or
+anchor-bid date — `filing-persister.ts:867-869` is their only writer.
+
+**So S-05 splits into two cases, not one.**
+
+- **The exchange publishes it** (the first five). The exchange wins outright, as S-05 says.
+- **Nobody publishes it currently** (the last five). The offer document is the ONLY source that has
+  these at all — it prints the indicative timetable. Moving them to the exchanges would blank 13
+  live values on production for nothing. **They stay document-sourced**, with a staleness rule that
+  follows from S-05 rather than contradicting it:
+
+> When an exchange-sourced E-1 date changes (`open_date`, `close_date` or `listing_date`), every
+> document-sourced timetable date for that IPO is marked stale in the same transaction and is
+> re-read from the newest filing. The whole timetable moves together; a shift in the window we CAN
+> see is the signal that the dates we cannot see have moved too.
+
+This keeps the document as the source of record where it is the only source, and still guarantees
+we never publish a timetable that a visible window change has invalidated.
+
+Adding a field to this set is an owner decision recorded here, never a change made in passing.
+`ipo_details.upi_cutoff_time` and `bid_windows` are deliberately NOT members: they hold a time of
+day, and an extended window moves the date, not the hour.
 
 ## 7. Owner-facing view
 

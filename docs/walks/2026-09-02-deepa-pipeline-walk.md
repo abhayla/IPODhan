@@ -1363,6 +1363,7 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   (ARCIL, CIN, BSE 7950), dropped `asset-reconstruction-co-india-ltd`. Corrected issue_size
   696.06 Cr -> 732.97 Cr: NSE states an OFS of up to 5,27,31,946 shares with no fresh issue, and
   52,731,946 x Rs.139 cap = Rs.7,329,740,494; the stored figure was the same share count at the
+  Rs.132 floor. Tool `scripts/merge-duplicate-ipo.mjs` (dry-run default, --allow-prod gate, backup
   Rs.132 floor. Tool `scraper/scripts/repair-merge-duplicate-ipo.ts` (dry-run default, --allow-prod gate, backup
   first, one transaction, child tables discovered from information_schema because a hand-typed list
   missed 11 of 30). Rehearsed on staging - which carried the identical pair - before prod. Verified:
@@ -1372,3 +1373,36 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   session), so the row can be re-minted. The --cycles 2 held-proof is RUNNING - discovery next fires
   08:30 IST, ten minutes after the merge. New finding F-57: staging carries 12 duplicate groups from a DIFFERENT defect
   (slug suffixes -o/-lt/-ct), so an unscoped duplicate check is permanently red there.
+
+- 2026-09-09 09:17 IST — pull-model design COMPLETE. Zero findings open: 45 fixed, 11 deferred each naming the
+  event that brings it back, 1 deliberately not done. The last five (F-46, F-49, F-51, F-54, F-55)
+  were all the same shape - the design question was answerable, the remainder was code - so each now
+  names a build item in §7.1 (items 12-15) rather than sitting in the register with no owner.
+  New this pass: §0.0 is the owner-decision register (18 decisions in Abhay's own words, dated, each
+  pointing at the section that implements it) and checks D10/D10b/D10c/D11 make "the design follows
+  your guidance" a command rather than a claim. All four new checks failed on first run and all four
+  were MY bug, not the design's; D10c was pure decoration until a mutation test caught that it
+  excluded pipe characters inside a markdown table. D11 audited all 25 code citations and found two
+  wrong - index.ts:180 described aggregator cadence while pointing at the cycle-lock TTL, and
+  index.ts is a basename shared by twelve files. §8 rewritten into an honest split of measured vs
+  cited vs judgement. Four owner comments remain Abhay's (O-1 wake interval, O-2 crore, O-3 partial
+  persistence, O-7 language model); none blocks anything except build item 11. 14/14 consistent,
+  pushed to docs/pull-model-design.
+
+- **2026-09-09 10:40 IST — pull-model design taken from "complete" to implementation-ready** (branch
+  `docs/pull-model-implementation-ready`, worktree `IPODhan-pullmodel-ready`, contract
+  `docs/contracts/2026-09-09-pull-model-design-implementation-ready.md`). The owner's three
+  outstanding comments became decisions OD-19 (three jobs: data at 00:00/08:00/14:00, live figures
+  every 30 minutes 10:00-18:30, closed IPOs at 22:00; no job kills a running cycle), OD-20 (crore is
+  the default amount unit) and OD-21 (per-field validation before the write), plus OD-22 to OD-26.
+  Four new checks D12-D15 enforce them and D16 gates the build cards; every one was deliberately
+  broken before it was trusted, and both runs are logged. Appendix A's ranks stopped being
+  assertions: 105 of 387 (field, source) pairs are now backed by a payload committed in the repo,
+  ratcheted by D15. Eighteen build cards, two real IPOs walked field by field, and a draft contract
+  for build item 1 that is NOT dispatched. Four statements in the design turned out to be wrong about
+  our own code and were corrected against it: the crore conversion touches five columns and not
+  thirty-seven, build item 14 already exists, the matrix has twenty-seven unreachable keys and not
+  thirteen, and F-46's root cause is pipeline order rather than a missing word list. Two owner forks
+  recorded and marked in place: O-12 (five retail rupee columns) and O-13 (the grey-market premium
+  versus the market-hours gate, where OD-19 read literally would undo the F-41 change approved on
+  2026-09-08). Gate 19/19. Docs-only, no behaviour shipped.

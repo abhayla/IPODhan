@@ -115,8 +115,18 @@ printf '%s' "$tail_part" | grep -qE "want me to|should i |shall i |would you lik
 ends_q=$(printf '%s' "$tail_part" | grep -qE '\?[[:space:]]*$' && echo 1 || echo 0)
 [ -z "$flag" ] && [ "$ends_q" = "1" ] && printf '%s' "$full" | grep -qE "recommend" && flag="over-ask: recommendation+question"
 
+# WORD BOUNDARIES ARE LOAD-BEARING HERE (fixed 2026-09-09). `one (narrow|thin)` without a
+# trailing boundary also matches the ordinary word "thing": a turn reporting a COMPLETED
+# production repair was blocked for carrying the heading "## One thing to flag". Same bug in
+# `next up`, which matches "next update". A false block is not free - it burns an
+# auto-continue off the 12-cap and pushes the model to invent work after it has finished.
+# Regression tests: .claude/hooks/tests/test_word_boundary_regression.py.
+# UPSTREAM DRIFT: the hub copy (GetWorkDone .../core/.claude/hooks/) is 298 lines and
+# TELEMETRY-ONLY since T-143 (owner-approved 2026-08-16: "the logs stay, the whip goes").
+# THIS copy is the older 155-line BLOCKING version. Syncing it is an owner call, not a
+# drive-by: it would reverse the blocking behaviour and turn 19 existing tests red.
 # ── B. Narrate-and-stop detection (deferred next-step language) ──
-[ -z "$flag" ] && printf '%s' "$tail_part" | grep -qE "next step|next, i|next i('|’)?ll|the continuation|continuation from here|from here[.:]|immediate next|next up|i('|’)?ll (work|tackle|start|do|continue|extend|implement|build|close|fix|add|wire|drive|cover)|remaining[^.]{0,40}(tracked|stays|remain|in #)|the rest[^.]{0,40}(tracked|stays|remain|in #)|that('|’)?s the continuation|is the continuation|work #[0-9]|items? (left|remain)|the only[^.]{0,40}(left|remain|item)|remainder|narrow (remainder|bit|layer|follow|scope|item)|separate[, ]{0,3}(thin )?scope|thin scope|follow-?up|noted in #[0-9]|tracked in #[0-9]|are (genuinely )?separate|stays? (a |as )?follow|two items|one (narrow|thin)" && flag="narrate-and-stop"
+[ -z "$flag" ] && printf '%s' "$tail_part" | grep -qE "next step|next, i|next i('|’)?ll|the continuation|continuation from here|from here[.:]|immediate next|next up\b|i('|’)?ll (work|tackle|start|do|continue|extend|implement|build|close|fix|add|wire|drive|cover)|remaining[^.]{0,40}(tracked|stays|remain|in #)|the rest[^.]{0,40}(tracked|stays|remain|in #)|that('|’)?s the continuation|is the continuation|work #[0-9]|items? (left|remain)|the only[^.]{0,40}(left|remain|item)|remainder|narrow (remainder|bit|layer|follow|scope|item)|separate[, ]{0,3}(thin )?scope|thin scope|follow-?up|noted in #[0-9]|tracked in #[0-9]|are (genuinely )?separate|stays? (a |as )?follow|two items|one (narrow|thin)\b" && flag="narrate-and-stop"
 
 # ── Genuine-wait exemption — clears ONLY the B (narrate-and-stop) flag, NEVER A. ──
 # WHY: a turn that ends because a dispatched agent / background task is still

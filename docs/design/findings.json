@@ -1,0 +1,1048 @@
+{
+  "meta": {
+    "artefact": "docs/design/data-sourcing-pull-model.md",
+    "reviewed": "2026-09-08",
+    "passes": [
+      "author self-review",
+      "IPO domain (independent)",
+      "engineering (independent)",
+      "verification model (independent)"
+    ],
+    "raw_findings": 55,
+    "consolidated": 40,
+    "note": "55 raw findings across four passes deduplicate to 40 tracked items. Status is the point of this file: a finding with no status is a finding nobody closes."
+  },
+  "status_vocabulary": {
+    "OPEN": "not addressed, in scope now",
+    "FIXED": "addressed in the design and committed",
+    "TRIGGERED": "not in scope now; a NAMED event brings it into scope. The trigger is written on the finding, so it cannot sit in a bucket with no date",
+    "NOT-DOING": "deliberately not done, with the reason it is safe not to"
+  },
+  "findings": [
+    {
+      "id": "F-01",
+      "sev": "CRITICAL",
+      "area": "pull loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The freeze has no release condition, and contradicts document healing",
+      "detail": "A DRHP issue size frozen in July is never corrected by the September RHP. Confirmed by 2 reviewers.",
+      "fix_in": "§2.1",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-02",
+      "sev": "CRITICAL",
+      "area": "re-read loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The freeze starves the only signal that could unfreeze a wrong value",
+      "detail": "data_conflicts rows need a second source to arrive; the freeze means rounds 2 and 3 are never asked, so §3's trigger can never fire on frozen fields.",
+      "fix_in": "§2.1 + §3.1",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-03",
+      "sev": "CRITICAL",
+      "area": "E-1",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "E-1 points six fields at sources that do not carry them; §2.8 then deletes the data",
+      "detail": "filing-persister.ts:867-869 is the only writer of the three ipo_details dates; no exchange scraper writes them. Would blank 13 correct values on live pages.",
+      "fix_in": "§1.2.1 + §2.8",
+      "closed_in": "PROVEN by live fetch 2026-09-08: NSE /api/ipo-current-issue and BSE IPO_HomePageDetail carry open/close/status (and NSE listing date) but NO allotment, refund, credit or anchor-bid date, and no scraper maps one. S-05 now splits: the 5 the exchange publishes move to it; the 5 nobody publishes stay document-sourced with a staleness trigger keyed to a visible window change. 13 live values preserved."
+    },
+    {
+      "id": "F-04",
+      "sev": "CRITICAL",
+      "area": "write path",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "§2.8's null-write is impossible through the writer the design keeps, and fails silently",
+      "detail": "data-consolidation-service.ts:1063-1080 returns the stored value on a null incoming and logs nothing.",
+      "fix_in": "§2.8",
+      "closed_in": "OWNER DECISION 2026-09-08: never blank a value that passed its checks, plus a staleness marker on the page (last confirmed on <date>). Also produced §2.5.1, the seven re-ask triggers in one table - they had been scattered across five sections."
+    },
+    {
+      "id": "F-05",
+      "sev": "CRITICAL",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Round-1 yield rises when extraction gets worse",
+      "detail": "The denominator is produced by the machinery under test. A mis-resolved document type shrinks it and the score goes up.",
+      "fix_in": "§2.1.1 + §4.3",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-06",
+      "sev": "CRITICAL",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Four checks are vacuous when their input collapses to zero",
+      "detail": "4.2, 4.3, 4.8, 4.13 all read healthy at 0/0. Needs a denominator floor on every ratio.",
+      "fix_in": "§4",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-07",
+      "sev": "CRITICAL",
+      "area": "re-read loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Nothing proves the re-read actually opened a file",
+      "detail": "A purged PDF plus a 404 lets an implementation confirm a wrong value forever and then defend it against the website that was right.",
+      "fix_in": "§3.3 + §4.9",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-08",
+      "sev": "CRITICAL",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Five checks are written to a log with no consumer that diffs it",
+      "detail": "Violates signal-ownership R3, which the design quotes approvingly two pages earlier.",
+      "fix_in": "§4",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-09",
+      "sev": "CRITICAL",
+      "area": "migration",
+      "phase1": false,
+      "status": "FIXED",
+      "title": "Backlog re-download is undone by decidePurge on the next cycle",
+      "detail": "document-store.ts:279 hard_cap is unconditional past 30 days. Reopens for phase 2.",
+      "fix_in": "Design: OD-23 / section 0.5.1 - the purge stops deleting, so there is nothing left to undo a re-download. Code: build item 18.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
+    },
+    {
+      "id": "F-10",
+      "sev": "CRITICAL",
+      "area": "checks",
+      "phase1": false,
+      "status": "FIXED",
+      "title": "Checks wrong for a class silently blank that class",
+      "detail": "NCD face value 1000, pre-Dec-2023 T+6 listings, pre-2025 SME lot rule. All 19 phase-1 IPOs are current-era plain IPOs. Reopens for phase 2.",
+      "fix_in": "Design: OD-21 / section 5.3 - every validation rule carries the date window it governs, and a value outside every window is recorded as NO_RULE_APPLIES and written, never rejected. Code: build item 4.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
+    },
+    {
+      "id": "F-11",
+      "sev": "CRITICAL",
+      "area": "field mapping",
+      "phase1": false,
+      "status": "TRIGGERED",
+      "title": "Appendix A resolves only 3 of 11 offering types",
+      "detail": "Phase 1 contains only IPO mainboard, SME-BSE and SME-NSE - exactly the 3 resolved. Reopens for phase 2.",
+      "fix_in": "Appendix A",
+      "trigger": "any non-IPO offering type enters the pull loop. All 19 phase-1 IPOs are plain IPO, so nothing is exposed today - but the appendix resolves only mainboard, SME-BSE and SME-NSE, and its header must say so."
+    },
+    {
+      "id": "F-12",
+      "sev": "CRITICAL",
+      "area": "write path",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "162 of 194 fields have no consolidated writer at all",
+      "detail": "consolidatedUpsertIPO covers the ipos table only; eight child tables have their own writers. The largest single piece of build work, hidden in a bullet saying nothing changes.",
+      "fix_in": "§2.7 + §7.1",
+      "closed_in": "OWNER DECISION 2026-09-08: the child-table consolidated writer is BUILD ITEM 1, and nothing from the plan table onward is contracted until it lands. consolidatedUpsertIPO handles tableName ipos only (data-consolidation-orchestrator.ts:187) = 32 of 240 fields; the eight child tables are written by persistFilingExtraction through their own repositories with no priority resolution, no field_sources and no data_conflicts - which is why they measure 100% document-sourced. 208 of 240 fields have no consolidated writer, so the pull loop would have nowhere to put 87% of what it extracts. Deliberately NOT building the walk first: it would work on 32 fields and give a confident reading on the easiest third."
+    },
+    {
+      "id": "F-13",
+      "sev": "CRITICAL",
+      "area": "field mapping",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The mapping is scoped to fields populated today, so document-only facts can never enter",
+      "detail": "About 46 document-printed columns are empty and therefore absent from the plan. Confirmed by 2 reviewers.",
+      "fix_in": "§1.1 + Appendix A",
+      "closed_in": "sections 1.1/1.12 + spec + Appendix A, 2026-09-08"
+    },
+    {
+      "id": "F-14",
+      "sev": "CRITICAL",
+      "area": "process model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The walk is killed at the 30-minute cron boundary as the scheduled steady state",
+      "detail": "Single pm2 instance, --cron-restart */30, worst-case pass 30 min, spawnSync blocks the SIGINT handler so the lock is held for its full 45-min TTL. Needs a per-row commit boundary and a resume point.",
+      "fix_in": "§2 (new concurrency section)",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-15",
+      "sev": "MAJOR",
+      "area": "process model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No lock, no stated granularity, for the walk",
+      "fix_in": "§2",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-16",
+      "sev": "MAJOR",
+      "area": "process model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No crash recovery; a silent LOCK_NOT_ACQUIRED marks a plan row SUPPLIED for a write that never landed",
+      "fix_in": "§2.2",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-17",
+      "sev": "MAJOR",
+      "area": "state model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "NOT_PRINTED vs NOT_AVAILABLE_YET is undecidable from a per-type manifest",
+      "detail": "The two have opposite permanent consequences and §2.5 gives the same example for both. Derive from lifecycle stage.",
+      "fix_in": "§2.5",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-18",
+      "sev": "MAJOR",
+      "area": "state model",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The NOT_AVAILABLE_YET reclaim has no bound and no backoff",
+      "fix_in": "§2.5",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-19",
+      "sev": "MAJOR",
+      "area": "tiering",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "WITHDRAWN and POSTPONED IPOs match no tier and are never walked",
+      "detail": "Confirmed by 3 reviewers. A phase-1 IPO can become either at any time.",
+      "fix_in": "§2.3",
+      "closed_in": "OWNER DECISION 2026-09-08: withdrawn = terminal, page frozen at its URL with a notice, values kept as a record, GMP and subscription polling stopped, IPO removed from the health denominators. Postponed = stays in scope at normal cadence, document-sourced fields invalidated when the relaunch filing arrives."
+    },
+    {
+      "id": "F-20",
+      "sev": "MAJOR",
+      "area": "plan lifecycle",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Nothing rebuilds the plan when offering_type, segment or listing_exchanges is corrected",
+      "detail": "Measured: no committed type change in 327 IPOs, but Mopshop was stored FPO, disagreed 24 times, and was corrected by hand.",
+      "fix_in": "§2.2",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-21",
+      "sev": "MAJOR",
+      "area": "plan lifecycle",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "An ADMIN override is a one-way door; clearing it never returns the field to the loop",
+      "fix_in": "§2.7",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-22",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Anchor lock-in dates are computed from the bid date; the rule is 30/90 days from allotment",
+      "detail": "anchor-investors-scraper.ts:302. An existing production bug of roughly a week. UNVERIFIED against the circular.",
+      "fix_in": "Appendix A + a separate bug fix",
+      "closed_in": "REGULATION VERIFIED 2026-09-08 (SEBI ICDR 2018 Sch. XIII Part A: 50% locked 30 days from ALLOTMENT, 50% for 90 days, split rule for issues opening on/after 1 Apr 2022) - our code uses bid_date. Measured: ESDS bid 27 Aug, allotment 2 Sep, we publish 26 Sep as the 50% expiry against a correct 2 Oct = SIX DAYS EARLY; three more rows carry the same wrong base, allotment dates not in yet. Design records the verified formula; the code fix and the 4-row recompute are a separate change."
+    },
+    {
+      "id": "F-23",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "TRIGGERED",
+      "title": "Pre-IPO placement and green-shoe change the issue size after the RHP; the design stores a boolean",
+      "fix_in": "Appendix A",
+      "closed_in": "OWNER-DIRECTION 2026-09-08: schema change DEFERRED to phase 2 (the flag is false on 5 IPOs and null on 20 - never once true across 25 extractions). Two rules written now in §2.5.4: issue-size fields are provisional until sourced from a PROSPECTUS, and fresh+OFS=total is evaluated within ONE document, never across two.",
+      "trigger": "a filing carrying a live pre-IPO placement clause is extracted. Until then the boolean records nothing that is happening."
+    },
+    {
+      "id": "F-24",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": false,
+      "status": "TRIGGERED",
+      "title": "NCD structure cannot be represented (base vs retained size, series, coupon, tenor, rating)",
+      "fix_in": "phase 2",
+      "trigger": "an NCD needs sourcing. Face value 1000 fails the current check, and base-vs-retained size, series, coupon, tenor and rating have no fields at all."
+    },
+    {
+      "id": "F-25",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": false,
+      "status": "TRIGGERED",
+      "title": "InvIT/REIT: §1.11 says out of scope, A.2 assigns them 117 resolvable fields",
+      "fix_in": "phase 2",
+      "trigger": "an InvIT or REIT needs sourcing. Unit-based instruments have no lot size or face value in the share sense, and the distribution yield has no field."
+    },
+    {
+      "id": "F-26",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Fixed price is treated as an SME property; it is a property of issue_type",
+      "detail": "A fixed-price issue has no bid book and a different allocation split. Phase 1 has SME IPOs which are commonly fixed price.",
+      "fix_in": "§1 checks",
+      "closed_in": "spec (ipo_demand_graph note), 2026-09-08"
+    },
+    {
+      "id": "F-27",
+      "sev": "MAJOR",
+      "area": "domain",
+      "phase1": true,
+      "status": "NOT-DOING",
+      "title": "The basis-of-allotment extractor is scheduled with nowhere to write",
+      "fix_in": "Appendix A + §5.4",
+      "closed_in": "OWNER DECISION 2026-09-08: drop the extractor from the plan, keep storing the document, mark it NOT_APPLICABLE for extraction with the reason recorded. Building a parser whose output is discarded is waste, and the ordering was my error - it was scheduled without checking there was a target. Not building the fields either: we hold exactly ONE such document, it is published only after close so most of the 19 open/upcoming IPOs have not filed one, and the question users actually ask (did I get shares) is already answered by linking to the registrar - 14 of 19 have an allotment-check URL, 18 healthy. The remaining gap (the allotment ratio, what were the odds) is a PRODUCT decision about what IPODhan publishes, not a sourcing decision. If it becomes a feature the documents will have accumulated, and the order then is fields first, extractor second."
+    },
+    {
+      "id": "F-28",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "A check that crashes reads as an improvement in floor-delta",
+      "detail": "It parses FAIL/PASS only; a vanished check appears as GONE and prints 'no new findings'.",
+      "fix_in": "§4 + floor-delta",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-29",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Check 4.8's healthy value contradicts §3.4's own bounds and would be permanently red",
+      "fix_in": "§4.8",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-30",
+      "sev": "MAJOR",
+      "area": "migration",
+      "phase1": false,
+      "status": "OPEN",
+      "title": "Four of the six migration gates are prose, not commands",
+      "fix_in": "Build item 10 (see section 7.1). Open until that card is implemented.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
+    },
+    {
+      "id": "F-31",
+      "sev": "MAJOR",
+      "area": "migration",
+      "phase1": false,
+      "status": "OPEN",
+      "title": "field_sources holds one prior value, so the per-field rollback claim fails past one overwrite",
+      "fix_in": "Build item 17 (see section 7.1). Open until that card is implemented.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
+    },
+    {
+      "id": "F-32",
+      "sev": "MAJOR",
+      "area": "E-1",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Check 4.6 asserts on declared ranks, not on field_sources.source - it reads intent, not outcome",
+      "fix_in": "§4.6",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-33",
+      "sev": "MAJOR",
+      "area": "schema",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The public API ships 19 fields that are null on all 327 IPOs, with no retirement plan",
+      "fix_in": "§1 + a retirement list",
+      "closed_in": "OWNER DECISION 2026-09-08: (1) all 25 marked never-write in the design now; (2) the 19 leave the API response next release as its own small change - near-zero risk because a field null on every IPO is already functionally absent, and the owner confirmed nothing outside the repo reads this API; (3) the columns are dropped after phase 1 behind a per-table consumer audit, because listing_performance.current_price is populated and shares a name with the dead ipos.current_price. rating and ratingRationale keep their columns - an unbuilt feature (ipo_scores 10 rows, ipo_reviews 0), not a mirror, so the product decision stays open."
+    },
+    {
+      "id": "F-34",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No check has an id, an emitting script, a host or an owner",
+      "detail": "So §3.5's tier-differentiated issue routing cannot be built on the existing per-check-id path.",
+      "fix_in": "§4",
+      "closed_in": "sections 2-4 rewrite, 2026-09-08"
+    },
+    {
+      "id": "F-35",
+      "sev": "MAJOR",
+      "area": "infrastructure",
+      "phase1": false,
+      "status": "OPEN",
+      "title": "A nightly backlog drain adds a third extractor to a 2-vCPU box that already took a 522 outage from two",
+      "detail": "scripts/deploy-linux.sh:231-235 records the incident. No backlog drain in phase 1.",
+      "fix_in": "Build item 7 (see section 7.1). Open until that card is implemented.",
+      "reopened": "2026-09-09: OD-22 puts closed IPOs in the build and OD-19 schedules the 22:00 drain, so this finding trigger is met. It is no longer deferred."
+    },
+    {
+      "id": "F-36",
+      "sev": "MAJOR",
+      "area": "documentation",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "§1 and Appendix A contradict each other; the document says so instead of fixing it",
+      "detail": "Being closed by generating §1 from the same spec as Appendix A.",
+      "fix_in": "§1"
+    },
+    {
+      "id": "F-37",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "E-1 stated as both nine and twelve fields",
+      "fix_in": "§1.2.1"
+    },
+    {
+      "id": "F-38",
+      "sev": "MAJOR",
+      "area": "verification",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The plan-completeness check had three different expected values (131/150/153)",
+      "detail": "Replaced with an assertion against a committed manifest sha - comparing the generator's output to a number the generator produced detects nothing.",
+      "fix_in": "§4.1"
+    },
+    {
+      "id": "F-39",
+      "sev": "MAJOR",
+      "area": "field mapping",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The mapping is designed, not observed; no stage verifies a named source actually serves the field",
+      "status_note": "BUILD-GATE: becomes the first step of the build.",
+      "fix_in": "§6 M1",
+      "closed_in": "Two live Chittorgarh fetches 2026-09-08 verified every CG-ranked field by reading the page text, not by assumption. Four ranks corrected: promoters.name gained CG (it prints Company Promoters: <names>); peer_companies.pbv_ratio lost CG (page has NAV/EPS/PE/market cap, no P/BV); financial_statements.basis and unit gained CG (table headed Financials (Restated Consolidated), footed Amount in Rs Crore, with a per-year standalone note); financial_data.pe_ratio lost CG (the PE Ratio column belongs to a Recently Listed IPOs comparison table of OTHER companies). Produced a new rule, section 2.3.4: a value is only read from the page section about THIS IPO, never by matching a label across the whole page. FOURTH ROUND 2026-09-08/09: NSE, BSE and Moneycontrol verified against live payloads - 51 ranks corrected. Moneycontrol claimed 46 fields, serves 9 + subscription (all three MC scrapers map only closeDate, companyName, issueSize, listingDate, offeringType, openDate, priceRange, segment, status). NSE: 3 wrong (designated_exchange, retail_max_allottees, allocation_pct - the last a false positive on Anchor Allocation Report), 6 missing (registrar, lead_managers, issue_type, sponsor_banks, tick_size, ipo_market_timings all present in issueInfo). BSE: 1 wrong (issue_type not in its payload). Root cause fixed in the generator: pool() appended CG and MC without checking capability, breaking the design own capability-vs-priority rule; it now filters on an observed capability list, on input as well as output."
+    },
+    {
+      "id": "F-40",
+      "sev": "MAJOR",
+      "area": "data quality",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Three of the 19 phase-1 IPOs have segment = NULL, so no rank set can be resolved for them",
+      "detail": "Found 2026-09-08. BSE-only UPCOMING rows. SME and mainboard have different lot-value checks.",
+      "fix_in": "phase-1 precondition",
+      "closed_in": "design rule written 2026-09-08: infer segment from lot x cap >= Rs 50,000 on a single exchange. Measured: mainboard median 14,880 vs SME 127,600; the three unknowns 109,200-144,000, all BSE-only, all SME. The prod data repair remains an owner call."
+    },
+    {
+      "id": "F-41",
+      "sev": "MAJOR",
+      "area": "cadence",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "GMP is gated to market hours with subscription, so it is stale exactly when people read it",
+      "detail": "index.ts:343 runs live:GMP only inside isMarketHoursIST. Measured 2026-09-08 22:03 IST: weekend GMP fetches 2045 before the scheduler, 0 after; newest gmp_records row 16:02 while it was 22:03. timestamp is our own fetch clock (investorgain-gmp-orchestrator-v2.ts:536). Up to ~65h stale over a weekend. Proposed: split the live step - subscription and demand graph stay gated, GMP runs every wake while UPCOMING or OPEN.",
+      "fix_in": "§2.1.1 — owner decision pending",
+      "closed_in": "owner approved 2026-09-08: split the live step, GMP runs every wake while UPCOMING or OPEN"
+    },
+    {
+      "id": "F-42",
+      "sev": "MAJOR",
+      "area": "cadence",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Discovery has a 15-hour overnight hole (17:30 to 08:30)",
+      "detail": "Hypothesis, not measured - our own data cannot show it because discovery only runs at the four slots. If price band ads are commonly filed in the evening, the site shows no band the night before an issue opens. A fifth ~21:00 slot would close it. Owner decision: domain knowledge our data cannot supply.",
+      "fix_in": "§2.1.2 — owner decision pending",
+      "closed_in": "owner approved 2026-09-08: add an evening discovery slot"
+    },
+    {
+      "id": "F-43",
+      "sev": "CRITICAL",
+      "area": "spec conflict",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "E-1 contradicts the approved source-tier spec S-03/S-04 on the timeline",
+      "detail": "per-ipo-due-step-pipeline.md §6 (2026-09-03) says tier-1a filings are truth for every static field INCLUDING the timeline, and a tier-1b exchange value must never override a filing. E-1 puts NSE/BSE above the document for the 12 timetable fields. Both have reasons; they cannot both stand. Design position: E-1 wins for those 12 only. Owner must confirm - it changes an approved spec.",
+      "fix_in": "§2.1.3 — owner decision pending",
+      "closed_in": "owner confirmed the re-filing test 2026-09-08; recorded as S-05 in per-ipo-due-step-pipeline.md §6, E-1 reframed as its application rather than an exception"
+    },
+    {
+      "id": "F-44",
+      "sev": "MAJOR",
+      "area": "pull loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "A rank-2/3 fetch by constructed slug can silently return a DIFFERENT company page",
+      "detail": "DOWNGRADED from CRITICAL after measuring. The mechanism is real - a CG URL is /ipo/<slug>-ipo/<number>/ and only the number identifies the page, so a wrong number returns another company page with HTTP 200 and no redirect. But production does not construct URLs; it reads the href from the listing page (chittorgarh-scraper.ts:72-77) and stores it as verifier_url. Six stored URLs fetched and checked 2026-09-08: all six served the correct company. Not a live defect. Kept as a design rule because a wrong verifier_url is inherited forever with nothing re-checking it, and because the pull loop is new code that may construct a URL when none is stored (114 of 327 IPOs have none).",
+      "fix_in": "§2.4 — a precondition on every non-document fetch",
+      "closed_in": "§2.3.1 identity rule + a nightly assertion that every stored verifier_url names its own IPO"
+    },
+    {
+      "id": "F-45",
+      "sev": "MAJOR",
+      "area": "field mapping",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Two ranks were asserted rather than observed; a live fetch disproved both",
+      "detail": "promoters.name was marked document-only - a live CG page prints \"Company Promoters: <names>\", so CG is now rank 2. peer_companies.pbv_ratio was given CG at rank 2 - the same page carries NAV, EPS, P/E and market cap but NO P/BV, so it is now document-only. Both corrected from evidence, not assumption. This is the first real-fetch verification of any rank (partial close of F-39).",
+      "fix_in": "spec, 2026-09-08",
+      "closed_in": "live Chittorgarh fetch"
+    },
+    {
+      "id": "F-46",
+      "sev": "CRITICAL",
+      "area": "pull loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "List-based sources are matched to our IPOs by NAME, which the page-identity rule does not cover",
+      "detail": "CORRECTED 2026-09-09: I measured zero normalisation collisions across 327 IPOs and reported it as reassuring. That reading was BACKWARDS. Zero collisions does not mean matching is safe - it means the normaliser is too weak to ever merge two rows, INCLUDING two that describe the same company. Proven live: ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED normalises to \"asset reconstruction company (india)\" and Asset Reconstruction Co.(India) Ltd. to \"asset reconstruction co (india)\" - it strips Limited/Ltd/Pvt Ltd but NOT Company vs Co., so a duplicate of a mainboard IPO opening TODAY passes straight through. Two different identity failures, not one. (a) PER-IPO PAGE fetch - Chittorgarh detail via verifier_url - guarded by the F-44 page-identity rule; affects the 47 rank-2 fields (financial_data, financial_statements, peer_companies, ipo_valuation mcap/pe at cap, promoters.name). (b) LIST fetch - InvestorGain GMP (one report endpoint, data-read/331) and the Chittorgarh listing page - where a row is bound to our IPO by normalizeCompanyNameForMatching (investorgain-gmp-orchestrator-v2.ts:331-336, flag ENABLE_GMP_NAME_MATCH). The page-identity rule cannot help there because the page is correct; the ROW binding is what can be wrong. Exposure: gmp_records.gmp is the only field where a website is rank 1, and it is bound this way. Separately 24 distinct fields holding 4,825 values on prod come from the CG listing page by the same mechanism - segment 242, offeringType 241, listingDate 238, closeDate 237, openDate 236, isin 228, faceValue 226, issueSize 221, registrar 219, leadManagers 219. Needed: a stated binding rule (what counts as a match, what a near-match does, what an ambiguous match does) and a check on cross-bound rows.",
+      "fix_in": "§2.3.1 companion rule — row binding for list sources",
+      "closed_in": "§2.3.3 now SPECIFIES the de-duplication key, not just the principle: the exact word list to fold, the open-date condition that keeps a deliberately lossy key safe, and the rule that binding and de-duplication must NOT share a key because they need opposite error biases. Measured both directions on real data: before the merge the key found the one duplicate group on production that the shipped normaliser missed; after it, 329 production IPOs produce 329 distinct keys - zero false merges. Code half is build item 12."
+    },
+    {
+      "id": "F-47",
+      "sev": "MAJOR",
+      "area": "pull loop",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "A correct page still contains other companies numbers",
+      "detail": "OBSERVED: Chittorgarh Prasol Chemicals page carries a PE Ratio column inside a Recently Listed IPOs in Specialty Chemicals table. Matching that label page-wide would write Sudeep Pharma P/E of 47.61 onto Prasol, and no arithmetic check would object because it is a plausible P/E. Third identity failure after wrong page (F-44) and wrong row binding (F-46): right page, wrong table.",
+      "fix_in": "§2.3.4",
+      "closed_in": "section-anchoring rule; financial_data.pe_ratio lost CG as a source"
+    },
+    {
+      "id": "F-48",
+      "sev": "MAJOR",
+      "area": "configuration",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Per-field source priority must be configurable without a code change (owner requirement)",
+      "detail": "Today the order lives in field-priority-matrix.ts, so changing which source leads a field needs a PR and a deploy. Design: separate CAPABILITY (can this source serve this field at all - proven by fetching, updated by the verification job) from PRIORITY (of those that can, which we prefer - configurable). Priority is configurable WITHIN capability, never over it: no config may make CG rank 1 for pe_ratio or NSE rank 1 for a financial, because the result is a permanent NOT_PRINTED and a silent slide down the ranks. Three layers: config/field-sources.json in the repo (generated by the existing spec), a field_source_overrides table shaped on the existing field_protection_metadata for runtime change with no deploy, and the per-IPO admin protection that already exists. Four guards: overrides validated against capability and S-05 before taking effect, a 30-day default expiry so the override table cannot quietly become the real config, provenance records which config produced each value, and a nightly report of every active override by field and reason.",
+      "fix_in": "§2.3.5",
+      "closed_in": "design section written 2026-09-08"
+    },
+    {
+      "id": "F-49",
+      "sev": "MAJOR",
+      "area": "write path",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "W-106: valueActuallyChanged is dead, so no-op suppression cannot be verified under the pull model",
+      "detail": "OWNER APPROVED the rule 2026-09-08: verification is a read; same value writes nothing but a timestamp on the plan row. Owner question 2026-09-08: how do we ensure a re-ask does not rewrite the same value? Two layers already exist (areEquivalent+normalizeChosen at data-consolidation-service.ts:919-932, and the empty-diff row gate at data-persister.ts:2258). But walk item W-106 (2026-09-03) records that valueActuallyChanged is dead on every tested path - a higher-priority source with an equivalent value is treated as convergence before the check is consulted. Filed then as a misleading counter, not a defect. Under the pull model it is the only thing separating verification confirmed 2,850 fields from verification rewrote 2,850 fields identically, so it becomes a PREREQUISITE. Scale: 19 IPOs x ~150 fields weekly = ~2,850 checks/week, ~148k writes/year if unsuppressed, each with a provenance row and a cache drop. Also protects updated_at meaning the value changed rather than we looked at it.",
+      "fix_in": "§2.5.2 + check PULL-NOOP",
+      "closed_in": "§2.5.2 states the rule the owner approved (verification is a read) and check PULL-NOOP measures it. The dead counter is build item 15, named an explicit PREREQUISITE of item 6 rather than a nice-to-have - without it a confirmed field and a rewritten-identically field are indistinguishable, which is the whole claim item 6 rests on."
+    },
+    {
+      "id": "F-50",
+      "sev": "MAJOR",
+      "area": "computed fields",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Computed fields have no audit - no source ranking can catch a wrong formula",
+      "detail": "Raised by the owner 2026-09-08 off the anchor lock-in bug. A wrong formula takes correct inputs and produces a plausible output, so every priority rule, conflict check and arithmetic bound is blind to it - nothing disagrees. 13 computed fields had no equivalent of the source verification this design spent the day doing. Now section 2.5.3: every formula carries the authority it derives from (a regulation, a printed value, or a stored input) and a test asserts it. A formula with no cited authority is the same defect as a source rank with no evidence.",
+      "fix_in": "§2.5.3",
+      "closed_in": "formula audit table written, all 13 given an authority"
+    },
+    {
+      "id": "F-51",
+      "sev": "CRITICAL",
+      "area": "live data",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "fresh + OFS does not reconcile with issue_size on 6 of 9 live IPOs, and one is arithmetically impossible",
+      "detail": "DIAGNOSED 2026-09-09. RCA: the components come from the document and the total from a website - two sources describing one offer, under no obligation to agree. Every PASSING row took its total from the document; every FAILING row took it from a website. But the websites are RIGHT and our extraction is wrong, proven against NSE own wording: Kanohar NSE says fresh Rs 3,000mn = 300 Cr, we store 60; Glass Wall NSE says 600mn = 60 Cr, we store 260. Reconciliations are EXACT once NSE fresh + OFS is used: Kanohar 300 + 11,957,915 x 632 = 1,055.74 = stored total; Glass Wall 60 + 20,213,722 x 182 = 427.89 = stored total; Pranav implied OFS 35.43 Cr over 2,856,869 shares = Rs 124/share = its stored cap; Prasol 80+420=500; Karamtara 675+200=875. TWO DEFECTS: (1) ofs_issue is never extracted - all six - and it appears in two forms, rupees (OFS aggregating up to Rs 4,200 million) and shares (OFS of up to 20,213,722 equity shares), the share form needing multiplication by the cap; (2) fresh_issue mis-extracted on two of six, wrong in the DIGITS not the units, so no magnitude bound catches it - only the reconciliation check does. ASSET RECONSTRUCTION EXPLAINED 2026-09-09: not an impossible value - a DUPLICATE ROW. Two rows for one company (asset-reconstruction-company-india-ltd with symbol ARCIL and bse_ipo_no 7950, issue_size 696.06 Cr, ofs 732.97 Cr; and asset-reconstruction-co-india-ltd with no symbol, issue_size 733.00 Cr). Same open date 9 Sep, same band 132-139. Row 2 issue_size 733.00 IS row 1 so-called impossible ofs 732.97 - the total was written into the OFS field on one row while the other holds it correctly. Both UPCOMING, and it opens today, so the site shows this IPO twice with different numbers. DUPLICATE HALF RESOLVED 2026-09-09: the Asset Reconstruction rows were merged on prod (see F-55); the survivor issue_size is now 7,329,740,494 with ADMIN provenance. The extractor half - ofs_issue never extracted in either rupee or share form, and fresh_issue mis-extracted on two of six - is untouched and still the whole of this finding.",
+      "fix_in": "extractor fix + data repair - needs its own contract, NOT a design change",
+      "closed_in": "The design states the requirement: ofs_issue must be extracted in BOTH forms it appears in - rupees (OFS aggregating up to Rs 4,200 million) and shares (OFS of up to 20,213,722 equity shares, needing multiplication by the cap) - and the write is gated on fresh + OFS = total +/-0.5%, the check that catches a digits-wrong extraction no magnitude bound can. Code half is build item 13. The duplicate-row half of this finding is closed separately (F-55)."
+    },
+    {
+      "id": "F-52",
+      "sev": "MAJOR",
+      "area": "live data",
+      "phase1": true,
+      "status": "TRIGGERED",
+      "title": "pre_ipo_placement has never once been true across 25 extractions",
+      "detail": "false on 5, null on 20. A boolean that is never true may be a detector that never fires rather than a fact that never occurs. Worth one check against a filing known to carry a pre-IPO placement clause before trusting the field.",
+      "fix_in": "extractor check, phase 2 with the schema change",
+      "trigger": "the same event as F-23 - one filing known to carry a placement clause, to prove the detector fires at all."
+    },
+    {
+      "id": "F-53",
+      "sev": "MAJOR",
+      "area": "sources",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Moneycontrol earns zero ranks under the corrected mapping - the scraper may be redundant",
+      "detail": "CORRECTED TWICE: I first said MC serves 46 fields, then 9 from a single grep of a single file. The true output across moneycontrol-scraper.ts and moneycontrol-orchestrator-v2.ts is ~15 core fields plus 4 subscription figures. The conclusion held throughout: for every one of them the document plus both exchanges - or the document plus Chittorgarh - already fill the top three, so MC is fourth-best at everything and reaches no rank. Its ~180 provenance rows exist only because PUSH let it win by arriving first.",
+      "fix_in": "owner decision",
+      "closed_in": "OWNER DECISION 2026-09-09: retire the Moneycontrol scraper. Zero ranks and no capability entry now; stop scheduling it next. NOT deleting the scraper_source enum value or the ~180 existing provenance rows - those are the historical truth of where a value came from and rewriting them would falsify provenance; they supersede naturally as the pull loop re-sources from the document. moneycontrol-rss.ts is an IPO NEWS feed, a different feature sharing a domain name, and is untouched."
+    },
+    {
+      "id": "F-54",
+      "sev": "MAJOR",
+      "area": "sources",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "BSE serves issue size as a SHARE COUNT, and it is ranked second for ipos.issue_size",
+      "detail": "BSE GetMkt_ISSUE_BBS_IPO returns Issue_Size_No_of_shares - a share count, not rupees. ipos.issue_size ranks BSE second. Using it directly is exactly the share-count-stored-as-issue-size class that recurrence-detection-gate.md exists for. The rank stays because BSE does serve the concept; the extractor must convert, and the section 1 arithmetic check (shares x cap = total) is what catches it if it does not. Needs an explicit conversion test before the walk uses BSE for this field.",
+      "fix_in": "extractor + a conversion test",
+      "closed_in": "Build item 14, sequenced AFTER item 13 so the conversion lands with the reconciliation check that proves it. The BSE rank is deliberately unchanged - BSE does serve the concept, it serves it as a share count - so the extractor converts and the shares x cap arithmetic check in section 1 is what catches it if the conversion regresses. This is the recurrence class recurrence-detection-gate.md exists for, so the conversion test is not optional."
+    },
+    {
+      "id": "F-55",
+      "sev": "CRITICAL",
+      "area": "live data",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Duplicate IPO row on production for Asset Reconstruction, opening today - the W-108 class recurring",
+      "detail": "Two rows for one company, both UPCOMING, both opening 9 Sep, same band 132-139: asset-reconstruction-company-india-ltd (ARCIL, bse_ipo_no 7950, issue_size 696.06 Cr, ofs 732.97 Cr) and asset-reconstruction-co-india-ltd (no symbol, issue_size 733.00 Cr). The site shows the IPO twice with different numbers. This is the W-108 class from 2026-09-03 (a second Rays of Belief row, identity tiers 1-5 all missed) recurring on a mainboard IPO. Root cause: the shipped normaliser strips Limited/Ltd/Pvt Ltd but not Company vs Co., so the two names never collide. A sweep with a stricter key finds exactly one duplicate group on prod - this one. Needs: a merge of the two rows (owner call, it is a prod data change), and the normaliser extended to corporate-form words with a duplicate check that runs on discovery. MERGED ON PROD 2026-09-09 ~08:15 IST. scripts/merge-duplicate-ipo.mjs: kept asset-reconstruction-company-india-ltd (48c19421), dropped asset-reconstruction-co-india-ltd (3f112280). Carried listing_date 17 Sep and verifier_url onto the survivor, corrected issue_size 696.06 Cr -> 732.97 Cr (NSE: OFS of up to 5,27,31,946 shares, no fresh issue; 52,731,946 x Rs.139 cap = 7,329,740,494; the stored figure was the same shares at the Rs.132 floor), wrote three field_sources rows keeping previous_source, added a slug redirect, deleted 76 scraper-derived child rows (17 field_sources, 52 pipeline steps, 7 fetch states). Rehearsed on staging first (identical pair, applied clean). Verified: prod duplicate count 0 table-wide, live API serves one row at 7329740494.00, the old slug resolves to the survivor. Backup at scripts/state/merge-backup-ipodhan-3f112280-*.json. STILL OPEN, and this is the honest part: the merge does NOT hold on its own. The normaliser that let the duplicate through is unchanged (it lives in scraper/src, which this design session must not edit), so the next discovery cycle can re-mint the row - assert-repair-held.mjs own header records exactly that happening to T-277C merged duplicates. The held-proof (assert-repair-held.mjs with scripts/lib/repair-invariants/duplicate-ipo-rows.mjs, DUPLICATE_INVARIANT_FOLDS=assetreconstruction, --cycles 2) is RUNNING: the merge landed ~08:15 IST and discovery fires 08:30/11:00/14:00/17:30 IST, with the scraper waking every 30 min in between. NOTE ON TIMING - ipos.updated_at carries the known 5h30m skew, so it read 21:15Z for a merge that happened at 08:15 IST; do not derive wall-clock time from that column. Remaining for this finding: extend the normaliser to corporate-form words, run the duplicate check on discovery, then the held-proof.",
+      "fix_in": "data merge + normaliser fix + a duplicate detection check",
+      "closed_in": "Row merged on production 2026-09-09 ~08:15 IST and HELD across two real scraper cycles (last_scraped_at advanced twice; the duplicate did not return). Production duplicate count is 0 table-wide. The class fix - fold corporate-form words, run duplicate detection at discovery - is build item 12, and the detection that will catch the next one shipped with the repair: scripts/lib/repair-invariants/duplicate-ipo-rows.mjs."
+    },
+    {
+      "id": "F-56",
+      "sev": "CRITICAL",
+      "area": "identity",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "No rule exists for what happens when two rows converge on one identifier",
+      "detail": "Owner question 2026-09-09. Measured: NO open or upcoming IPO has an ISIN (0 of 19) - the depository assigns it near listing, so the only permanently unique id arrives AFTER the row is created and published. The duplicate second Asset Reconstruction row carries no identifier at all: no symbol, no ISIN, no CIN, no BSE number. So one-row-per-unique-id is right but unenforceable at insert. Design now carries late-binding identity: create on the normalised name, re-check every time a stronger identifier arrives, MERGE automatically on a converging symbol/CIN/ISIN keeping the union of fields and both provenances, and use CIN earlier (8 of 13 upcoming have it; it exists from incorporation, unlike a symbol or ISIN). The gap was never the identifiers - we hold four - it was having no rule for convergence. WORKED EXAMPLE 2026-09-09: the Asset Reconstruction merge (F-55) is the first time this convergence was resolved by hand, and scripts/merge-duplicate-ipo.mjs is what the rule would have to automate. What it settled in practice: the survivor is the row holding the strong identifiers (symbol/CIN/BSE number), never the one with the larger field count alone; a disagreeing strong identifier REFUSES the merge because it proves two offers; columns move only where the survivor is empty; person-created rows (watchlists, clicks, reviews, audit) are repointed while scraper-derived rows are deleted; the dropped slug becomes a redirect so the URL keeps resolving; and every moved column writes a field_sources row keeping previous_source. Those six decisions are the content the missing rule needs.",
+      "fix_in": "§2.3.3.1",
+      "closed_in": "identity model written 2026-09-09"
+    },
+    {
+      "id": "F-57",
+      "sev": "MAJOR",
+      "area": "live data",
+      "phase1": false,
+      "status": "TRIGGERED",
+      "trigger": "the next time staging is used to prove anything about duplicate rows, or before any duplicate check is gated on staging",
+      "title": "Staging carries 12 duplicate IPO groups from a DIFFERENT defect: slug-suffix rows",
+      "detail": "Found 2026-09-09 while proving the duplicate invariant on both databases. Prod has ZERO duplicate groups; staging has 12, several with three or four rows: shree-balaji-mala-textiles-ltd has FOUR (plain, -ipo, -ipo-lt, -ipo-o), h-r-hygiene-products and g-v-electricals three each, plus gulf-lloyds -ct, laser-power-and-infra -o, indo-mim -o, silverstorm-parks -o, poojaa-precision -o, propshop-events -ct, caliber-mining -o, ic-electricals (co vs company), atharva-polyplast vs atharva-poly-plast. Every row inside a group carries an IDENTICAL issue_size, so this is not two sources disagreeing - it is one row minted repeatedly under suffixed slugs (-o, -lt, -ct, and slugs that embed the ipo name a second time). That is a slug-collision path, NOT the name-fold gap that produced the Asset Reconstruction duplicate (F-55), so fixing the normaliser will not clear them. Open dates are Jun-Jul 2026, so they are old rows, most likely repeated seeding. Why it matters: any duplicate check gated on staging goes permanently red at 12 violations, and staging stops being a usable proof surface for this class - which is precisely why scripts/lib/repair-invariants/duplicate-ipo-rows.mjs needed a DUPLICATE_INVARIANT_FOLDS scope to serve as a repair proof at all.",
+      "fix_in": "staging data clean-up, plus finding where the -o/-lt/-ct slug suffix is minted"
+    },
+    {
+      "id": "F-58",
+      "sev": "MAJOR",
+      "area": "source capability",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "NSE returns an EMPTY issueInfo block for an SME IPO, so every SME-NSE rank that relies on an NSE LABEL is unproven",
+      "detail": "Probed 2026-09-09 against two live OPEN IPOs. /api/ipo-detail?symbol=ARCIL (mainboard) returns issueInfo.dataList with 39 labelled rows including Name of the Registrar, Book Running Lead Managers, Face Value, Tick Size, Bid Lot, Sponsor Bank, IPO Market Timings and Price Range. /api/ipo-detail?symbol=VINOD (SME, NSE Emerge) returns issueInfo as an EMPTY OBJECT - dataList length 0 - while still returning bidDetails and activeCat. /api/ipo-current-issue DOES carry the SME row (dates, series SME, symbol, noOfSharesOffered). So for SME on NSE the list row exists and the labelled issue-information block does not. Appendix A ranks NSE for SME_NSE on fields that only the labelled block carries. Evidence: probes/fixtures/nse/ipo-detail-ARCIL.json, probes/fixtures/nse/ipo-detail-VINOD.json, probes/fixtures/nse/ipo-current-issue.json.",
+      "fix_in": "Not fixed in this round on purpose: one observation of one live SME IPO is enough to FLAG a rank, not to re-rank a family of fields - that is the design's own standard of proof. Put to the review round with the saved payloads. If confirmed, the SME_NSE column needs a capability rule of its own and the ranks move to the document and Chittorgarh."
+    },
+    {
+      "id": "F-59",
+      "sev": "MINOR",
+      "area": "source capability",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Chittorgarh coverage differs per PAGE, and a per-page absence was recorded as a capability limit",
+      "detail": "The spec excluded peer_companies.pbv_ratio from Chittorgarh on one observation of one mainboard page on 2026-09-08. The Vinod Texworld page saved 2026-09-09 prints a company-level 'Price to Book Value 2.55 3.37' row and a peer table whose column header is 'P/BV Ratio'. The Asset Reconstruction page, three days into its issue, carries no peer table at all. So the source CAN serve the field and had simply not filled that page yet - which is NOT_AVAILABLE_YET on the plan row, not a missing capability.",
+      "fix_in": "field-source-resolution.spec.mjs: peer_companies.pbv_ratio removed from CG_CANNOT with the evidence cited inline. financial_data.pe_ratio stays excluded - the mainboard page's 'PE Ratio' column belongs to other recently listed IPOs, which is a different and still-live defect."
+    },
+    {
+      "id": "F-60",
+      "sev": "MAJOR",
+      "area": "finding accuracy",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "F-46/F-55's stated root cause is wrong: the name normaliser already folds the corporate-form words",
+      "detail": "Verified live in Node against scraper/src/utils/company-name-normalizer.ts during the build-card round on 2026-09-09. 'ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED' normalises to 'asset reconstruction company india' and 'Asset Reconstruction Co.(India) Ltd.' to 'asset reconstruction co india' - so the two still fail to collide, but NOT because company/co are missing from the suffix list. T-293 already added them. The real cause is pipeline ORDER: the parenthetical '(India)' is never made trailing before the company/co suffix regex runs, so the suffix is not in suffix position when the regex looks. The fix is a whole-word strip, matching the foldName already shipped in scripts/lib/repair-invariants/duplicate-ipo-rows.mjs - not adding words to a list that already contains them.",
+      "fix_in": "Build card item-12. The design section that names the fix as 'fold corporate-form words into the normaliser' must be corrected, or an implementer will add words that are already there, see no change, and conclude the finding was wrong."
+    },
+    {
+      "id": "F-61",
+      "sev": "MINOR",
+      "area": "finding accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "F-49 is narrower than 'valueActuallyChanged has no caller'",
+      "detail": "data-consolidation-service.ts:930 defines it and :932 uses it on the next line. It is a local const read exactly once, not a dead function. The real defect is the expression: valueChanged = !existingValueFromMap || (choseIncoming && (hadDifferentSource || valueActuallyChanged)) - the flag only decides the outcome when hadDifferentSource is false, and W-106's walk found that condition never held on any path it tested. A test that greps for callers would pass and prove nothing.",
+      "fix_in": "Build card item-15 replaces the caller test with a three-way counter split (writtenNoExisting / writtenDifferentSource / writtenSameSourceChanged) so the branch is observable."
+    },
+    {
+      "id": "F-62",
+      "sev": "MINOR",
+      "area": "design accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The ratios document is a ROUTING gap, not a zip gap - and this round's own brief got that wrong",
+      "detail": "The old-document-availability probe showed NSE serving offer documents as ZIP, and the build-card brief for item 8 concluded that unzipping was missing work. It is not: zip unwrapping already happens at download time (document-download-verifier.ts:307-325; document-store.ts always writes .pdf) and there is an NSE-ratios-specific override (isNseRatiosArchiveUrl, document-classifier.ts:181) that stops the bytes-win rule mislabelling the archive. The extract-real-pdf output shows the stored sha256 present and the document SKIPPED because the python filing extractor does not handle the type - a routing gap. Also found: financial_data.current_ratio, quick_ratio and inventory_turnover have no extraction or write-path code anywhere today, so they are genuinely new work rather than a wiring change.",
+      "fix_in": "Build card item-08 states the routing gap. Recorded here because the error was mine: a probe result read one step too literally became a brief that would have sent an implementer to build something that already exists."
+    },
+    {
+      "id": "F-93",
+      "sev": "MAJOR",
+      "area": "design accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Section 5.2 presented all 37 amount columns as needing conversion; only 5 hold rupees today",
+      "detail": "The amount-columns probe classifies by MEANING (is this an aggregate rupee amount) and section 5.2 printed the result under the heading 'the columns that convert'. Read out of the writers on 2026-09-09: only ipos.issue_size, ipo_details.fresh_issue, ipo_details.ofs_issue, ipo_valuation.mcap_at_floor and ipo_valuation.mcap_at_cap hold rupees. financial_data.* and ipo_financials.* are already crore at the writer level (toCrore in financial-data-scraper.ts and the filing persister); anchor_investors.total_amount_raised is already crore; financial_statements.* never normalises by design and carries its own per-row unit. A repair tool built from the old table would have divided twenty-five already-crore columns by ten million.",
+      "fix_in": "The probe now records current_unit per CRORE column with the reason, and section 5.2 is regenerated from it with a 'unit stored TODAY' column and an explicit action per column."
+    },
+    {
+      "id": "F-94",
+      "sev": "MAJOR",
+      "area": "build sequence",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Build item 14 (BSE share count to rupees) is largely already built",
+      "detail": "computeBSEIssueSize (scraper/src/scrapers/bse-api-scraper.ts:147-151) already multiplies BSE's Issue_Size_No_of_shares by the floor price, and scraper/tests/unit/scrapers/bse-api-scraper.test.ts:113-130 carries three passing regression tests for it, referencing the earlier W-109/T-403 fixes. Section 7.1 lists item 14 as open work with a conversion test to write. Verified this session by reading both files.",
+      "fix_in": "Item 14's scope shrinks to: confirm the existing tests still assert the class, and confirm the two independent detection checks (c_issue_size_consistency, c_issue_size_floor, already recorded in docs/reviews/failure-classes/share-count-as-issue-size.json) run inside the pull model's nightly audit. Section 7.1's row must be corrected before an implementer rebuilds something that exists."
+    },
+    {
+      "id": "F-95",
+      "sev": "MAJOR",
+      "area": "public behaviour",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The crore conversion silently activates a dormant scoring bug: every IPO currently scores as the largest possible",
+      "detail": "web/lib/services/ipo-scoring-realtime.ts:394-396 and web/lib/utils/rating-calculator.ts:164-168 compare issueSize against 1000/500/100 - crore-scale thresholds - while the column holds rupees. Asset Reconstruction's stored issue_size is 7,329,740,494, so it takes the top bucket, and so does every other IPO. Converting to crore makes the score discriminate for the first time, which is correct and is also a visible change to every IPO's rating on the day it ships.",
+      "fix_in": "Named in section 5.2 and owned by build item 11's release note. It is NOT fixed ahead of the conversion: changing the thresholds while the unit is still rupees would move every rating twice."
+    },
+    {
+      "id": "F-96",
+      "sev": "MINOR",
+      "area": "finding accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Item 13's 'ofs_issue is never extracted' is stale for the share form",
+      "detail": "ipo_valuation.ofs_shares is already captured (filing-persister.ts:1297). What genuinely does not exist is USING it - cross-checking the share form against the rupee form - and the fresh + OFS = total within 0.5% write gate.",
+      "fix_in": "Build card item-13 states the narrower scope."
+    },
+    {
+      "id": "F-97",
+      "sev": "MAJOR",
+      "area": "design accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The design undercounted the dead matrix keys by half, and mis-described what they are",
+      "detail": "Section 0.6 said '13 of the 77 matrix keys are dead duplicates in the wrong case'. Measured by probes/matrix-dead-keys.mjs on 2026-09-09: 27 of 77 are snake_case and therefore unreachable, because consolidation writes camelCase. Only 5 are duplicates (close_date, company_description, gmp_price, lot_size, open_date). The other 22 are ORPHANS - the live camelCase field has no matrix entry at all and silently takes DEFAULT_RULES every cycle, so its source order has never been chosen by anyone. They include total_subscription, retail_subscription, qib_subscription, nii_subscription, listing_price, issue_price, min_investment, roe_percentage, pb_ratio and peer_companies. The draft's own worked example was also wrong: revenue_fy1 is not a mis-cased revenueFy2022, it is the real camelCase name of a third table, ipo_financials (schema.ts:582-587), which nothing in scraper/src writes.",
+      "fix_in": "Section 0.6 is regenerated from the probe. Build item 3's scope grows: deleting 5 duplicates is cleanup; giving 22 orphaned live fields a chosen source order is the actual work."
+    },
+    {
+      "id": "F-98",
+      "sev": "CRITICAL",
+      "area": "source semantics",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "BSE's Issue_Size_No_of_shares EXCLUDES the anchor portion, so a BSE-sourced issue size understates by about a third",
+      "detail": "Measured 2026-09-09 on Asset Reconstruction (ARCIL), from two saved payloads. NSE issueInfo 'Issue Size' reads: 'Offer for Sale of up to 5,27,31,946 Equity shares (including Anchor portion of 1,58,19,583 Equity Shares)'. BSE GetMkt_ISSUE_BBS_IPO reports Issue_Size_No_of_shares = 36912363, and 52731946 - 15819583 = 36912363 EXACTLY - it is the non-anchor remainder, not the offer. Production stores 7329740494, and 52731946 x 139.00 (the CAP price) = 7329740494 exactly, so the stored value is right. computeBSEIssueSize (scraper/src/scrapers/bse-api-scraper.ts:147-151) multiplies the BSE share count by the FLOOR price, which for this IPO gives Rs 487.24 crore against a true Rs 732.97 crore - understated by 33.5 percent. Using the cap price still understates by 30 percent, because the share base itself is wrong. BSE is rank 2 for ipos.issue_size, so under the pull model this is what gets published the first time a document extraction fails its check.",
+      "fix_in": "Design: the BSE rank for ipos.issue_size now carries the trap in its Appendix A note (field-source-resolution.spec.mjs), and the walkthrough generator reconciles stored issue size against the exchange payloads on every run so the next instance is caught rather than remembered. Code: build cards 13 and 14 - the write gate must be fresh + OFS = total within 0.5% AND a BSE-sourced share count must have the anchor portion added back before any multiplication. This is the same class as F-54 (a share count used as an amount) reappearing on a different axis: not the wrong UNIT this time, the wrong POPULATION."
+    },
+    {
+      "id": "F-63",
+      "sev": "CRITICAL",
+      "area": "lots / minimum application",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "lot_multiple holds the LOT SIZE (107), and the design multiplies by it to state the minimum application",
+      "detail": "The design says of field 49: \"`lot_multiple` | 8 | DOC | BSE | - | keep | A3 | positive integer; `lot_multiple x lot x floor` is the true minimum\" (§1.3), and §1.11 builds the SME rule on the same field: \"Minimum application is **2 lots** (SEBI 2025), recorded in `ipo_details.lot_multiple`\". The real extractor output contradicts it. `docs/design/probes/fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json` emits `fields.lot_size = {value: 107}` AND `fields.lot_multiple = {value: 107}` - the same number, because the extractor is putting the lot size into the multiple. The ARCIL walkthrough confirms this reached production: `docs/design/walkthroughs/asset-reconstruction-2026-09-09.md:90` shows `lot_multiple = 107` stored today on a MAINBOARD IPO that is OPEN right now. Apply the design's own formula and the minimum application for ARCIL is 107 x 107 x 132 = Rs 15,12,468, when the true mainboard minimum is one lot at the cap, 107 x 139 = Rs 14,873 - a hundredfold overstatement of the number a retail reader uses to decide whether they can apply. The stated check, \"positive integer\", passes 107 without complaint. In Indian practice `lot_multiple` is 1 for a mainboard issue and 2 for an SME issue since the 2025 SEBI rule; it is never a share count. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.3 field 49, §1.11 (SME rows), Appendix A.1 row 49; evidence docs/design/probes/fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json, docs/design/walkthroughs/asset-reconstruction-2026-09-09.md:90]",
+      "fix_in": "Section 2.5 and the walkthrough now state that lot_multiple is the number of LOTS in a minimum application (1 mainboard, 2 SME since 2025), never a share count, and a validation rule bounds it at 1..10. The extractor emitting lot_size into it is recorded as the live defect it is."
+    },
+    {
+      "id": "F-64",
+      "sev": "CRITICAL",
+      "area": "proof standard / page identity",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The Vinod Texworld walkthrough presents Asset Reconstruction's payload as Vinod's rank-1 source",
+      "detail": "The walkthrough opens: \"every value in the 'what the rank-1 source says' column is read from a payload saved under `docs/design/probes/fixtures/`. Nothing here is typed.\" (docs/design/walkthroughs/vinod-texworld-2026-09-09.md, header). It is read from a payload - the WRONG company's. Vinod Texworld is SME_NSE, listing_exchanges [\"NSE\"], issue size Rs 42.83 crore, stored lot_size 1200. Its rows nonetheless read `lot_size = 107` (line 45), `price_band_floor = 132` / `price_band_cap = 139` (lines 55-56), `lot_multiple = 107` (line 90), `designated_stock_exchange = NSE` (line 89), each citing `extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json` - Asset Reconstruction's price band advertisement, a different, MAINBOARD issue. Vinod's own fixture (`vinod-texworld-ltd-DRHP.json`) returns `price_band_floor: null`, `price_band_cap: null`, `lot_size: null`, so those cells should read '(searched, no matching label)'. This is exactly the defect §2.3.4 says the design fixes - \"A correct page still contains other companies' numbers\" - reproduced inside the design's own evidence, and it is the class that publishes another company's price band on an IPO page. It also breaks OD-25 ('a claim cites a probe output or a saved payload'): ranks the fifth verification round counts as payload-backed for SME_NSE are backed by a mainboard company's payload. Second-order: line 45 shows source 107 against stored 1200 and grades the row `pass`, so the comparison column tolerates an eleven-fold disagreement between rank 1 and production without flagging it. [domain review, 2026-09-09; where: docs/design/walkthroughs/vinod-texworld-2026-09-09.md lines 45, 55, 56, 78, 82, 89, 90, 164, 165; generator docs/design/probes/walkthrough.mjs; contradicts §0.0.3 (OD-25) and §2.3.4]",
+      "fix_in": "The walkthrough generator now refuses a fixture that belongs to another IPO. Vinod Texworld drops from an apparent 52 evidenced rank-1 sources to 2 of its own, with 50 reported as \"the source carries this field, but only another IPO's payload proves it\"."
+    },
+    {
+      "id": "F-65",
+      "sev": "CRITICAL",
+      "area": "SEBI ICDR / anchor lock-in",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The 30/90 anchor lock-in split does not exist before 1 April 2022, but the formula is unconditional and the 22:00 job walks backwards into those IPOs",
+      "detail": "Appendix A.1 row 182 states: \"computed: allotment_date + 30 days - SEBI ICDR 2018 Schedule XIII Part A, VERIFIED 2026-09-08 (50% locked 30 days from allotment, split rule for issues opening on or after 1 Apr 2022)\", and row 183 the same for +90. §2.5.3's audit table then states the formula with no condition at all: \"1-2 | `lock_in_50_percent_date`, `lock_in_remaining_date` | `allotment_date` + 30 / + 90 | **SEBI ICDR Sch. XIII Part A - verified**\". The design has therefore recorded the effective date in the appendix and dropped it from the formula it will build. For any issue that opened before 1 April 2022 the SEBI (ICDR) Fourth Amendment 2021 does not apply: the whole anchor allotment was locked in for 30 days from allotment and there is NO 90-day tranche, so writing `allotment_date + 90` for those IPOs invents a lock-in expiry that never existed - on a date traders watch, which is §2.5.3's own reason for caring. §6.1 makes this reachable rather than theoretical: the 22:00 job picks \"`status` is `LISTED` or `CLOSED`, and `close_date` is before today ... Ordered by `close_date` **descending**\" with no lower bound, and §5.3 confirms pre-2023 rows are in that backlog (\"a correct 2022 row would be rejected by a 2026 rule\"). Separately, the citation itself is misquoted in the direction that matters for OD-25: §2.5.3 says \"50% of an anchor's allotment is locked for 30 days from the date of allotment, the remaining 50% for 90 days\", while Schedule XIII Part A as amended reads that fifty per cent of the shares allotted to anchor investors is locked in for NINETY days and the REMAINING fifty per cent for THIRTY days. The pair of dates is unaffected; the claim 'verified against the regulation' is not. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §2.5.3 (computed-field audit table, rows 1-2), Appendix A.1 rows 182-183, §6.1 (selection order), §5.3 (effective-date machinery)]",
+      "fix_in": "The anchor lock-in formula now carries its effective date: the 50/90 and 50/30 split applies to issues opening on or after 1 April 2022, and nothing before it. This is exactly the effective dating OD-21 makes a first-class part of the rule format."
+    },
+    {
+      "id": "F-66",
+      "sev": "MAJOR",
+      "area": "SME minimum application / plausibility checks",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The SME lot-value check is written two different ways, and the weaker one can never fire",
+      "detail": "§1.2 row 4 states the check as \"`lot x floor >= Rs 10,000` mainboard; `>= Rs 1,00,000` SME (2 lots x Rs 50k floor, SEBI 2025)\" - i.e. ONE lot must be worth at least Rs 1,00,000. §1.11 states the same check as \"the lot-value check is `2 x lot x floor >= Rs 1,00,000`\" - i.e. one lot need only be worth Rs 50,000. The two differ by a factor of two and an implementer will build one of them. The second is the one that cannot work: the design's own §2.6 says \"an SME lot is about Rs 1,00,000-1,50,000\" (line 1594), so `2 x lot x floor >= Rs 1,00,000` is satisfied by every real SME IPO with a 2x margin and would still pass a lot priced at half the exchange floor - a check that cannot fail is not a check. The mainboard side has the mirror problem: `lot x floor >= Rs 10,000` is one-sided, so a lot size wrong by 10x upward (Rs 1,50,000 per lot on a mainboard IPO) passes, and the SEBI minimum-application band for a mainboard issue is a RANGE of roughly Rs 10,000-15,000 evaluated at the cap of the price band, not an open-ended floor evaluated at the bottom. ARCIL, open today, is the worked example: 107 x 139 = Rs 14,873 at the cap sits inside the band; the design checks 107 x 132 = Rs 14,124 at the floor against a lower bound only. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.2 row 4 vs §1.11 (SME on BSE / SME on NSE rows); design's own SME lot range at §2.6]",
+      "fix_in": "NOT fixed in this round. Pick one statement and put it in the validation configuration once (§5.3), not in two prose tables. Recommended: per-lot, two-sided, at the CAP - mainboard `10,000 <= lot x cap <= 15,000`; SME `1,00,000 <= lot x cap <= 2,00,000` - and express the 2-lot minimum-application rule separately as `lot_multiple = 2` (see F-63) rather than folding it into the lot-value bound, which is what made the two statements diverge."
+    },
+    {
+      "id": "F-67",
+      "sev": "MAJOR",
+      "area": "effective dates / SME rule",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The SME 2-lot rule is stated with no effective date, and 167 SME IPOs on production predate it",
+      "detail": "§1.11 states flatly: \"Minimum application is **2 lots** (SEBI 2025), recorded in `ipo_details.lot_multiple`, so the lot-value check is `2 x lot x floor >= Rs 1,00,000`\", applied to \"SME on BSE | 106\" and \"SME on NSE | 61\" - 167 production IPOs. §5.3 establishes exactly the machinery this needs and explains why: \"The date range is load-bearing, and it is what closes F-10 ... `listing <= close + 3 working days` is right today and wrong for anything that listed before December 2023, when T+6 was the rule. Applied without effective dates to the closed-IPO backlog, a correct 2022 row would be rejected by a 2026 rule.\" The SME 2-lot rule is the same shape - it took effect with SEBI's 2025 SME framework, so the overwhelming majority of those 167 SME rows closed under a 1-lot minimum - yet it is the one rule in the inventory stated without its window, and §1.11 is the section an implementer will read. The 22:00 job (§6.1) walks that entire closed population. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.11 (SME on BSE, SME on NSE), §1.2 row 4, against §5.3's own effective-date rule and §6.1's selection]",
+      "fix_in": "NOT fixed in this round. Give the SME 2-lot rule a `valid_from` of the 2025 amendment's commencement date in the validation configuration, and have §1.11 quote the configured rule rather than restating it. Then sweep every rule in §1's Check column and mark each one either with a window or with 'no window - always true', so this is the last rule that reaches the backlog undated."
+    },
+    {
+      "id": "F-68",
+      "sev": "MAJOR",
+      "area": "SEBI ICDR / basis of allotment",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The allocation check has the QIB inequality the wrong way round, allows the categories not to add up, and can double-count anchor shares",
+      "detail": "§1.3 field 50 states the check as: \"QIB + NII + retail <= 100; book-built QIB >= 50 (>= 75 where the regulation is cited)\". SEBI ICDR 2018 Regulation 32(1), for a book-built issue under Reg 6(1), reads the other way: NOT MORE THAN fifty per cent of the net offer to QIBs, NOT LESS THAN fifteen per cent to non-institutional investors, NOT LESS THAN thirty-five per cent to retail individual investors. Only the Reg 6(2) route (Reg 32(2)) makes QIB a floor at seventy-five per cent, with NII not more than fifteen and retail not more than ten. As written, `QIB >= 50` accepts a Reg 6(1) issue showing 65% QIB - a value the regulation forbids and a mis-extraction the check exists to catch - and never tests the retail 35% floor or the NII 15% floor at all, which is where a mis-parsed basis-of-allotment table actually goes wrong. `<= 100` compounds it: the three categories must exhaust the net offer, so a row summing to 70 (one category dropped in extraction) passes silently. Third, field 72 `ipo_details.anchor_shares_offered` is a separate stored field, but the anchor portion is carved OUT of the QIB portion under Schedule XIII, so any sum that adds field 72 to fields 67-69 double-counts it - and the design never says which convention the four fields use. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.3 field 50 (allocation_pct); Appendix A.1 rows 50, 67-69, 72]",
+      "fix_in": "NOT fixed in this round. Split the rule by route, keyed on field 54 `sebi_regulation_cited`: Reg 6(1) -> QIB <= 50, NII >= 15, retail >= 35; Reg 6(2) -> QIB >= 75, NII <= 15, retail <= 10; fixed-price -> its own split. Replace `<= 100` with `= 100 +/- 0.5` over the three net-offer categories. State in the field spec that `anchor_shares_offered` is a subset of `qib_shares_offered` and add `anchor <= qib` as its check, so the double-count cannot be introduced by the writer."
+    },
+    {
+      "id": "F-69",
+      "sev": "MAJOR",
+      "area": "FPO",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "\"No draft prospectus stage\" is wrong for a follow-on offer, and A.2's zero-N/A count contradicts §1.11's own sentence",
+      "detail": "§1.11 says of FPO: \"The rule is written and not exercised: no draft prospectus stage, so rank 1 is the RHP or prospectus directly; everything else follows mainboard.\" A further public offer is made under the same public-issue chapter of SEBI ICDR 2018 as an IPO and a draft offer document IS filed with the Board (Reg 25/26); the only FPOs that skip it are those eligible for the fast-track route (Reg 155), which is a per-issue condition, not a property of the offering type. Building the FPO plan on 'there is no draft' means the DRHP that does arrive has no document-type rank, and §6.5's warning applies directly - \"A re-extraction must resolve a **real document type**, or type ranking degrades to newest-write-wins and an old draft overwrites a final price band advertisement.\" The same sentence also contradicts Appendix A.2, which gives \"FPO | 0 | 0 | 240\" - zero fields N/A. By §1.11's own claim at least field 55 `promoter_group_transactions_since_drhp` must be N/A (§1.3 says it is \"only meaningful when a DRHP preceded the RHP\"), and field 51 `pre_ipo_placement` is meaningless for a company already listed. A.2 already warns FPO \"is the least trustworthy column in this appendix\"; the warning is not a substitute for the fix. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.11 (FPO row), Appendix A.2 (FPO row), against §1.3 field 55 and §6.5]",
+      "fix_in": "NOT fixed in this round. Rewrite the FPO row as: the draft offer document exists unless the issue is fast-track under Reg 155, so the document-type ladder is DRHP -> RHP -> PROSPECTUS exactly as mainboard, and a missing DRHP is NOT_PRINTED rather than NOT_APPLICABLE. Mark fields 51 and 55 N/A for FPO and regenerate A.2 so its FPO column stops claiming 240/240. Add a first-FPO acceptance step to the build sequence: the first row that arrives with `offering_type = FPO` is walked by hand before its page is published."
+    },
+    {
+      "id": "F-70",
+      "sev": "MAJOR",
+      "area": "OFS",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The design never says which of the two Indian meanings of 'OFS' the 19 production rows are, and A.2 grants them 205 fields the exchange mechanism does not have",
+      "detail": "§1.11 says: \"**OFS** | 19 | No fresh issue: field 35 is legitimately 0 and `issue_size = ofs_issue`. No objects of the offer (field 27 empty is correct). No DRHP stage.\" In Indian primary markets 'OFS' names two different things. (a) The offer-for-sale COMPONENT of a public issue - which is what field 36 `ipo_details.ofs_issue` measures, and which is a property of an IPO, not an offering type; §2.5.4 uses it in exactly that sense (\"fresh Rs 600 mn + OFS 20,213,722 shares\"). (b) The SEBI OFS-through-stock-exchange mechanism, by which promoters of an ALREADY LISTED company sell via a one- or two-day exchange auction: there is no offer document, no price band (a floor price only), no lot size, no anchor book, no registrar basis of allotment, no listing date, and settlement is on the exchange. The design reads as (b)-shaped in saying 'no DRHP stage' while ranking rank 1 as the document and, in Appendix A.2, granting \"OFS | 19 | 35 | 205\" - 205 resolvable fields including the price band, the anchor book, the lot and the allotment timetable, none of which the exchange OFS mechanism produces. A.2 itself notes \"OFS and BUYBACK (20 IPOs) have never had a single provenance row written\", so nothing has ever tested which reading is true. If those 19 rows are meaning (a) they are mis-typed and are IPOs; if they are meaning (b) the field plan is wrong for all 19. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.11 (OFS row), Appendix A.2 (OFS row), against §2.5.4's use of the same word and §1.3 field 36]",
+      "fix_in": "NOT fixed in this round. Resolve it with a probe before build item 1, not in prose: read the 19 rows' `offering_type`, `price_range_min/max`, `lot_size` and document set from production and state which meaning they carry. If they are exchange-mechanism OFS, mark the price-band, lot, anchor and allotment families N/A for the type and regenerate A.2; if they are IPOs with an OFS component, correct `offering_type` and let F-20's plan-rebuild rule pick them up. Either way, name the two meanings in the glossary so `offering_type = OFS` and `ipo_details.ofs_issue` are never read as the same fact."
+    },
+    {
+      "id": "F-71",
+      "sev": "MAJOR",
+      "area": "rights issue / bidding window",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The 10-working-day window check is a public-issue rule applied to 8 rights issues that are legitimately open far longer",
+      "detail": "§1.2 row 6 states the check unconditionally: \"`close >= open`; `close <= open + 10` working days\". That bound is SEBI ICDR 2018 Reg 46 - a public issue's bid/offer period is at least three and at most ten working days including any extension on a price-band revision. It does not govern a rights issue, which is made under the rights-issue chapter and is customarily kept open for fifteen to thirty days; §1.11 already knows rights issues are structurally different (\"No DRHP, no price band advertisement, no anchor round, no lot size in the IPO sense\") but the date rule was not scoped with them in mind. There are 8 rights issues on production. Under §5.3's regime they would be rejected as failing a plausibility check that is correct for a class they are not in - the F-10 class the design says it closed, surviving in a rule whose Check cell carries no offering-type scope. §5.3 provides the escape (\"the offering types and segments it applies to\"); §1.2 does not use it. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.2 row 6 (close_date check), against §1.11 (Rights issue row) and §5.3]",
+      "fix_in": "NOT fixed in this round. Scope the rule in the validation configuration: `offering_type IN (IPO, FPO)` -> `3 <= working_days(open, close) <= 10`; `offering_type = RIGHTS` -> a calendar-days bound of roughly 7 to 30; NCD -> its own window from the prospectus. While auditing that rule, add the missing lower bound for public issues - the current check has none, so a one-day window passes."
+    },
+    {
+      "id": "F-72",
+      "sev": "MAJOR",
+      "area": "rights issue / field coverage",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "A rights issue's record date and entitlement ratio are absent from the 240 fields and are not declared as a gap, unlike the equivalent NCD gap",
+      "detail": "§1.11 handles the rights issue purely by subtraction - \"Fields 93-109, 131-137 are `NOT_APPLICABLE`, not gaps\" - and adds nothing. The two facts a rights-issue reader needs above all others are the RECORD DATE (you must hold the shares on that date to receive the entitlement) and the ENTITLEMENT RATIO (for example 3 rights shares for every 5 held), plus the rights-entitlement trading window on the exchange. None of the 240 fields in Appendix A.1 carries any of them, and §1.11 does not list them as missing. The design does exactly the right thing one row above, for NCD: \"Its own prospectus is rank 1 for coupon, tenor and rating - **none of which we currently store**, which is a gap this design surfaces rather than closes.\" The same sentence is owed to rights issues; without it, 8 production rows get a page whose most important dates are structurally unreachable and nobody is told why. [domain review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §1.11 (Rights issue row) vs the NCD row directly below it; Appendix A.1 (no record-date or entitlement-ratio field among the 240)]",
+      "fix_in": "NOT fixed in this round. Add one sentence to the Rights issue row naming record date, entitlement ratio and the RE trading window as fields we do not store, with the letter of offer as rank 1 and the exchange rights-issue circular as rank 2 - the same treatment the NCD row already gets. Then either add the three columns in build item 1 (they are cheap and the class is 8 rows) or record the decision not to, so the omission is a decision rather than an oversight."
+    },
+    {
+      "id": "F-73",
+      "sev": "CRITICAL",
+      "area": "item-01 child-table writer",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "Item 1's Files section never rewires the actual write call sites for 3 of its 8 named tables (ipo_details, financial_statements, ipo_valuation) — they keep writing through the old, non-consolidated path",
+      "detail": "Item 1's Purpose and Schema sections claim all eight tables — 'ipo_details, financial_statements, ipo_valuation, ipo_risk_factors, promoters, anchor_investors, ipo_intermediaries, peer_companies' — get 'per-field priority resolution, field_sources rows, and data_conflicts detection'. But the card's Files table only names call-site changes for the five whole-row-replace tables: 'The five replaceAllowed(...) call sites for whole-row replace (promoters line 1390, promoter_acquisition_ranges line 1435, ipo_risk_factors line 1518, ipo_intermediaries line 1644, peer_companies line 1701)... are replaced by calls to orchestrator.consolidatedUpsertChildRows', plus anchor-persister.ts:540-541. It never names a change to the ipo_details, financial_statements, or ipo_valuation write sites. I read those three sites in scraper/src/services/filing-persister.ts (this session, current main): ipo_details is written via `await deps.ipoDetailsWriter.upsert(ipoId, {...detailsWritable, dataSource: source})` followed by a bare `await trackField('ipo_details', col)` per column (~line 991-996); financial_statements via `await deps.financialStatements.upsert({ipoId, fiscalYear, basis, ...})` followed by `await trackField('financial_statements', 'rows')` (~line 1250-1273); ipo_valuation via `await deps.ipoValuation.upsert({ipoId, pricingEvent, ...})` followed by `await trackField('ipo_valuation', pricingEvent)` (~line 1315-1355). `trackField` is a bare provenance stamp with no priority resolution and no conflict detection — a completely different, third write pattern from the five the card actually rewires. Item 1's own worked example even calls `consolidatedUpsertChildRows(ipoId, 'financial_statements', ...)` as if this were already wired, but no line in the Files table tells an implementer to replace the real call at filing-persister.ts's financial_statements/ipo_valuation/ipo_details sites with that call. An implementer following the Files table literally ships the schema migration and the five replace-based rewires, runs the listed unit/integration tests (which exercise the interface directly, not filing-persister.ts's real call sites), and reports done — while revenue, EBITDA, EPS, valuation multiples and every ipo_details field keep flowing through the old no-priority-resolution path. This directly recreates, for 3 of 8 tables, the exact gap §7.1 says item 1 exists to close ('208 of 240 fields have no consolidated writer at all... the pull loop would have nowhere to put 87% of what it extracts'), and starves item 5/6's field_sources-driven walk of real provenance for financial and valuation data specifically. [engineering review, 2026-09-09; where: docs/design/build-cards/item-01-child-table-consolidated-writer.md — 'Files' table (rows for data-consolidation-orchestrator.ts and filing-persister.ts) and the 'Worked example' under Interfaces; contradicted by scraper/src/services/filing-persister.ts:991-1005 (ipo_details), :1250-1273 (financial_statements), :1315-1355 (ipo_valuation)]",
+      "fix_in": "Build card item-01 gains the three write call sites it missed — ipo_details, financial_statements and ipo_valuation at filing-persister.ts:991, 1250 and 1315."
+    },
+    {
+      "id": "F-74",
+      "sev": "MAJOR",
+      "area": "item-01 child-table writer",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "Item 1 adds three new UNIQUE constraints to production tables with no pre-migration duplicate check or repair step",
+      "detail": "Item 1's Schema section requires adding brand-new unique constraints to tables that have NEVER had one: `promoters` gets `(ipoId, normalizedName)` ('The table has no unique constraint today... because the current write path deletes every row and reinserts'), `ipo_intermediaries` gets `(ipoId, role, normalizedName)` ('none exists today because the write path is whole-table replace'), and `peer_companies` gets `(ipoId, normalizedName)` ('No unique constraint today... same replace-then-insert reason as promoters'). The card's migration section shows the field_sources/data_conflicts row_key migration in full but gives no equivalent DDL, pre-flight duplicate-scan query, or repair tool for these three NEW constraints on promoters/ipo_intermediaries/peer_companies. Because these tables were written by delete-then-insert with no identity concept until now, nothing in the current or historical write path ever prevented two rows normalizing to the same key within a single replace batch (e.g. a promoter and a group-entity of the same name both parsed from one document, or a peer company listed under two share classes) — the risk is exactly the kind the card itself names as real ('a mainboard IPO commonly has 2-4 BRLMs and several syndicate members under the same role value' is given as the reason role-alone collides, i.e. real documents already produce near-duplicate name+role combinations). Running `ALTER TABLE promoters ADD CONSTRAINT ... UNIQUE (ipo_id, normalized_name)` against a table with even one existing duplicate pair fails outright and blocks the whole migration (which also carries the field_sources/data_conflicts row_key changes item 5 and item 6 depend on), with no rollback-safe path described. [engineering review, 2026-09-09; where: docs/design/build-cards/item-01-child-table-consolidated-writer.md — 'Schema' table rows for promoters, ipo_intermediaries, peer_companies ('Requires adding a unique constraint...')]",
+      "fix_in": "NOT fixed in this round. Before generating the migration, run a duplicate-scan query per table (`GROUP BY ipo_id, normalized_name HAVING count(*) > 1` for promoters/peer_companies; `GROUP BY ipo_id, role, normalized_name HAVING count(*) > 1` for ipo_intermediaries) against staging and prod, and add a repair step (keep newest by updated_at, or merge) to the card before the ADD CONSTRAINT statement — or gate the constraint addition behind a script that repairs-then-migrates in one deploy, the same pattern item 11 already uses for its own repair tool."
+    },
+    {
+      "id": "F-75",
+      "sev": "MAJOR",
+      "area": "§7.1 sequence table",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The §7.1 'Depends on' column for item 6 lists only item 5, omitting item 15 — which item 6's own card names as a hard prerequisite",
+      "detail": "§7.1's sequence table row for item 6 reads: '6 | The pull walk over the plan | 5 | A | large — the core'. That is the only dependency edge a reader of the table sees. But item 6's own build card states, twice, that item 15 is a real prerequisite, not merely related work: in Serves — 'the explicit prerequisite named in §2.5.2: item 15 (valueActuallyChanged) must land first or the walk's own no-op-suppression cannot be verified' — and in its Detection section, discussing check PULL-NOOP: 'This check is unbuildable-as-meaningful without item 15... Item 6 does not fix item 15; it depends on it.' Item 6's own 'Tier, budget and cost' section even flags the table gap itself: 'this card's own dependency on item 15 (not listed as a direct §7.1 dependency edge...) means a reviewer should confirm item 15 has actually landed... before approving this item's merge.' Despite the card being self-aware, the SSOT sequencing table that a scheduler or a second implementer would consult first (§7.1, not every card's prose) still only shows '5' in item 6's Depends-on cell. A build ordered strictly off that table's dependency column can start item 6 the moment item 5 lands, without item 15 — shipping a PULL-NOOP check that (per the card's own words) 'would read every higher-priority-source re-confirmation as a real write... never go green on a quiet day even when the walk is behaving correctly', which is precisely the class of drift F-49 already found and that item 6 exists partly to close. [engineering review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md §7.1 sequence table, row 6 ('Depends on' column reads '5'); contradicted by docs/design/build-cards/item-06-pull-walk.md 'Serves', 'Detection', and 'Tier, budget and cost' sections]",
+      "fix_in": "NOT fixed in this round. Update §7.1's item-6 'Depends on' cell to '5, 15' so the table itself — not just item 6's prose — carries the real dependency, and add a one-line note under the table (as items 7/17 already get) explaining why 15 is listed even though it is not a schema/code prerequisite in the strict sense, only a verification one."
+    },
+    {
+      "id": "F-76",
+      "sev": "CRITICAL",
+      "area": "item-07 job scheduler / cadence",
+      "phase1": true,
+      "status": "TRIGGERED",
+      "title": "Item 7 schedules GMP inside the market-hours-gated live-figures job (10:00-18:30 IST), which reverts the owner-approved fix for F-41 (GMP staleness up to ~65h over a weekend) without resolving the contradiction",
+      "detail": "F-41 in findings.json is status FIXED: 'GMP is gated to market hours with subscription, so it is stale exactly when people read it... Up to ~65h stale over a weekend. Proposed: split the live step — subscription and demand graph stay gated, GMP runs every wake while UPCOMING or OPEN.' closed_in: 'owner approved 2026-09-08: split the live step, GMP runs every wake while UPCOMING or OPEN' — i.e. GMP was explicitly taken OUT of the market-hours gate one day before OD-19. Item 7's own card puts GMP back inside the gate: '§2.1's job table puts GMP (grey-market premium) inside the live-figures job, gated to 10:00-18:30 IST and to days with an OPEN IPO — the same market-hours gate that finding F-41... explicitly removed GMP from, because GMP is most active exactly when this gate is closed (evenings, weekends).' The card names this as an 'Open contradiction surfaced, not resolved here' and proceeds anyway 'because that is the literal text under \"What runs, and when\"' in OD-19, while recommending the owner confirm in one line before shipping. As written, and absent that owner confirmation being captured anywhere in the design or findings.json, building item 7 to the letter of its own PM2/cron table (`*/30 10-18 * * * scripts/scraper-wake.sh live` carrying GMP) re-introduces a measured, user-visible data-staleness regression on a field the design itself calls the single highest-signal number retail investors read, on every evening and every weekend, going forward — this is not a hypothetical edge case, it is the exact scenario F-41 measured and fixed. [engineering review, 2026-09-09; where: docs/design/build-cards/item-07-job-scheduler-and-budgets.md — 'Purpose'/'Open contradiction surfaced, not resolved here' paragraph and the PM2 cron table under 'Interfaces'; docs/design/findings.json F-41 (status FIXED, closed_in note)]",
+      "trigger": "the owner answers O-13. OD-19 read literally puts the grey-market premium back inside the market-hours gate, which undoes the F-41 change he approved on 2026-09-08 after the figure was measured going 65 hours stale over a weekend. Section 2.1 is written on the recommendation and marked PROVISIONAL on O-13."
+    },
+    {
+      "id": "F-77",
+      "sev": "MAJOR",
+      "area": "item-11 crore conversion",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "web/lib/utils/rating-calculator.ts has the identical dormant-threshold-activation defect as ipo-scoring-realtime.ts (tracked as F-95), but item 11 documents it without adding it to the fix scope, tests, or detection",
+      "detail": "The task brief's known-findings list records F-95 as 'the crore conversion activates a dormant scoring bug in ipo-scoring-realtime.ts' — one file. Item 11's own Files table, however, independently documents a second file with the same defect class: 'web/lib/utils/rating-calculator.ts:164-168 — Same pattern, same thresholds (>= 1000, >= 500, < 100), same currently-dormant behaviour, same activation risk' as ipo-scoring-realtime.ts's calculateFundamentals() (which the card describes in the row immediately above: 'compares Number(ipo.issueSize) against 1000/500/100 — thresholds that only make sense in crore. Today... every row is > 1000 and this component is a silent always-max no-op. The crore conversion activates this scoring component for the first time in production... Call this out to QA/PM explicitly; it is not covered by this item's own tests'). That explicit 'call this out, not covered by tests' instruction is written for ipo-scoring-realtime.ts only — the rating-calculator.ts row carries no equivalent instruction, no test reference, and is absent from the card's Tests and Detection sections entirely. An implementer or reviewer scoping this item off F-95's single-file framing (the only place this class is tracked with an id) will fix/flag ipo-scoring-realtime.ts and silently leave rating-calculator.ts's rating output wrong for every IPO the day the conversion ships — a second silent always-extreme-score defect activated by the same release, undetected by the same gap. [engineering review, 2026-09-09; where: docs/design/build-cards/item-11-crore-conversion.md — 'Files' table, the two consecutive rows for web/lib/services/ipo-scoring-realtime.ts:390-396 and web/lib/utils/rating-calculator.ts:164-168]",
+      "fix_in": "NOT fixed in this round. Extend F-95's tracked fix scope (or open a companion finding) to explicitly name rating-calculator.ts, add the identical 'call this out to QA/PM, recalibrate or gate the thresholds' instruction item 11 already gives ipo-scoring-realtime.ts, and add both files to the same test/detection coverage before this item ships."
+    },
+    {
+      "id": "F-78",
+      "sev": "CRITICAL",
+      "area": "item-04 per-field validation",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "field_extraction_failures.rowKey is defined nullable with a 'null for singleton tables' comment, contradicting item 1's explicit non-null '' convention for the same key — breaking the join item 4's own comment promises",
+      "detail": "Item 1's Schema section is emphatic and specific about row_key's nullability, twice: 'Never null — a nullable column can't sit inside a unique constraint the way an empty string can (two NULLs are not equal under a unique index; two '' are), which is exactly why '' is the singleton sentinel, not null' — and defines it as `rowKey: varchar('row_key', { length: 200 }).notNull().default('')`. Item 5's ipo_field_plan repeats the identical convention verbatim for the same reason. Item 4's Schema, however, defines field_extraction_failures.rowKey as `varchar('row_key', { length: 100 })` — no `.notNull()`, no `.default('')` — with a comment reading 'Item 1's row_key (null for ipos and every singleton child table; populated for financial_statements/promoters/anchor_investors/etc. rows, matching field_sources.row_key exactly so the two tables join)'. That comment both misstates item 1's own rule (item 1 uses '' for singletons, never null) and then claims a join guarantee ('matching field_sources.row_key exactly') that the chosen nullability breaks: in SQL, `NULL = ''` evaluates to NULL/false, so a JOIN or WHERE clause correlating field_extraction_failures.rowKey with field_sources.rowKey or ipo_field_plan.rowKey on a singleton-table row (ipos, ipo_details, anchor_investors, financial_data) will never match, silently losing exactly the cross-table correlation ('which document said this failed, and what does its provenance record show') that item 4's own comment says this column exists for. The column is also declared varchar(100) here versus varchar(200) in item 1/item 5, a second, smaller inconsistency in the same field. [engineering review, 2026-09-09; where: docs/design/build-cards/item-04-per-field-validation.md — 'Schema' section, `fieldExtractionFailures` table, `rowKey` column and its comment; contradicted by docs/design/build-cards/item-01-child-table-consolidated-writer.md 'Schema' section's rowKey definition and rationale, and docs/design/build-cards/item-05-ipo-field-plan-table.md's identical rowKey definition]",
+      "fix_in": "Build card item-04 changes field_extraction_failures.row_key to NOT NULL DEFAULT '', matching items 1 and 5. NULL = '' is false in SQL, so the nullable version broke the join its own comment promised."
+    },
+    {
+      "id": "F-83",
+      "sev": "CRITICAL",
+      "area": "check-design-consistency.mjs / D15",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "D15 checks that a citation's FILE exists, never that the file is evidence — proven by mutation",
+      "detail": "D15's stated purpose: \"OD-25 makes a probe output, a saved fixture or a file:line the only acceptable basis for a rank ... it refuses an evidence reference that does not resolve to a file that exists (an unfollowable citation is an invented one, D11's lesson applied to sources)\". Its entire assertion is: var p = path.join(EV_DIR, String(ref).split('#')[0]); if (fs.existsSync(p)) evHave++;  MUTATION TEST RUN: I rewrote every one of the 105 refs in docs/design/evidence.json to 'fixtures/investorgain/gmp-live.json' — a 29-key InvestorGain GMP report that contains no registrar, no face value, no EPS, no NSE/BSE/Chittorgarh data at all — and re-ran the gate. Result, verbatim: '[PASS] D15  105 of 387 (field, source) pairs carry evidence that resolves (floor 105).' The file was restored from backup immediately (git status --porcelain docs/design/evidence.json clean). D15 does not check the label, does not check that the fixture even belongs to the cited SOURCE, and does not re-run the mapper. Every one of the wrong matches in F-84 through F-88 passes D15 today, and so would 105 refs pointing at a single unrelated file. The ratchet is a ratchet on path-existence, not on evidence. [verification review, 2026-09-09; where: docs/design/check-design-consistency.mjs:346-376 (D15); docs/design/evidence.json; docs/design/field-source-resolution.spec.mjs:344-357]",
+      "fix_in": "D15 now requires each reference to name the label it matched AND that label to appear in the file it points at, compared on an alphanumeric skeleton with markup stripped. Re-running the reviewer's own mutation — every reference repointed at the grey-market report — now fails 93 of 100."
+    },
+    {
+      "id": "F-84",
+      "sev": "CRITICAL",
+      "area": "probes/evidence-map.mjs — the token matcher",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The prefix rule reintroduces the exact \"PAT Margin\" class the mapper's own comment claims to have blocked: financial_statements.pat is evidenced by \"P/E (x)\"",
+      "detail": "The mapper's comment: \"A label may not carry a token that CHANGES what the number is. 'PAT Margin' contains every token of `pat` and is a different quantity ... Evidence for the wrong quantity is the most expensive kind of wrong, because it looks right.\" The committed output says: financial_statements.pat | CG | how='all tokens in label' | label='P/E (x)' | fixture=chittorgarh/vinod-texworld-ltd.html | label_extras=[]. ROOT CAUSE, re-derived from the code: hasToken accepts (a.startsWith(t) && a.length - t.length <= 2). The synonym 'pat' therefore matches the one-letter label token 'p' from \"P/E (x)\" (3-1=2). MEANING_CHANGERS blocks 'margin' but \"P/E (x)\" tokenises to ['p','e','x'] and carries no blocked word, so the guard never fires. The same rule makes 'eps'~'e' and 'pbv'~'p'. This is not a lone slip; the same matcher produced four more wrong-QUANTITY pairs I checked: ipo_valuation.price_cap | CG | 'Market Cap at Offer Price' (a Rs139 price cap evidenced by Rs4,516.07 Cr market cap); ipo_demand_graph.is_cut_off | NSE | 'Cut-off time for UPI Mandate Confirmation' and the identical BSE key (a boolean bid-at-cut-off flag evidenced by a clock time); subscriptions.retail_subscription | NSE | 'Maximum Subscription Amount for Retail Investor' sample \"Rs. 2,00,000\" (a subscription multiple evidenced by a static regulatory cap — and the SAME label is the correct evidence for ipo_details.max_retail_subscription, so one label backs two columns that are different things); ipos.segment | NSE | 'series' sample \"EQ\" (MAINBOARD/SME evidenced by a trading series). SECOND MECHANISM, same matcher: MEANING_CHANGERS includes 'peer', so a label containing \"peer\" is REJECTED as an extra token — which makes it structurally impossible for a peer_companies.* column to be evidenced by a peer-table label, and forces every peer column onto the ISSUER's own row instead: peer_companies.eps | CG | 'EPS (Rs)', peer_companies.ronw | CG | 'RoNW', peer_companies.eps | DOC | 'eps_basic_by_fy'. The guard is one-directional and inverts its own intent for that table. [verification review, 2026-09-09; where: docs/design/probes/evidence-map.mjs:214-219 (hasToken), :236-247 (MEANING_CHANGERS); docs/design/probes/evidence-map.out.json (pairs for financial_statements.pat, ipo_valuation.price_cap, ipo_demand_graph.is_cut_off, subscriptions.retail_subscription, ipos.segment, peer_companies.*)]",
+      "fix_in": "The token matcher no longer produces evidence at all. A (column, source) pair is evidenced only by a curated label a person confirmed against the payload, or by an exact name match. The token matcher survives as `suggest()`, whose output is labelled a candidate and is never written to evidence.json."
+    },
+    {
+      "id": "F-85",
+      "sev": "CRITICAL",
+      "area": "evidence-map — units",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "ipos.issue_size (a rupee amount) is evidenced by BSE's share COUNT — the named historical \"share counts stored as rupees\" defect, now inside the evidence layer",
+      "detail": "Committed pair: ipos.issue_size | BSE | how='all tokens in label' | label='Issue_Size_No_of_shares' | sample='36912363' | fixture=bse/GetMkt_ISSUE_BBS_IPO-7950.json. RE-DERIVED from the fixture: I enumerated every key of IPONO_0[0] matching /size|amount|price|issue/i. The complete list is Issue_Period, Post_Issue_Modification, Issue_Size_No_of_shares, Price_Band, Price_Band_Advertisement, Tick_Size, Registrar_issue_share_Transfer_Agents_Depository. There is NO rupee-denominated issue-size key in the BSE payload at all. So the evidence recorded for \"BSE carries ipos.issue_size\" is a count of 36,912,363 shares, and the label itself says _No_of_shares. This is precisely the defect class the brief names as the reason this review exists (share counts stored as rupees), reappearing one layer up: the rank is now backed by a citation that would licence writing a share count into an amount column. ipo_details.ofs_issue | BSE is evidenced by the SAME key, which is wrong twice — wrong unit and wrong entity (total issue size is not the offer-for-sale component). [verification review, 2026-09-09; where: docs/design/probes/evidence-map.out.json (ipos.issue_size/BSE, ipo_details.ofs_issue/BSE); docs/design/probes/fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json]",
+      "fix_in": "Same change: BSE is not curated as evidence for ipos.issue_size, and F-98 records why — Issue_Size_No_of_shares is a share count that also EXCLUDES the anchor portion, so it understates the issue by about a third."
+    },
+    {
+      "id": "F-86",
+      "sev": "CRITICAL",
+      "area": "evidence-map — first-match-wins",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "ipos.close_date is evidenced by the financial table's \"Period Ended\" header while the real \"Close date\" label sits in the same file",
+      "detail": "Committed pair: ipos.close_date | CG | label='Period Ended' | sample='31 Mar 2026 | 31 Mar 2025 | 31 Mar 2024' | fixture=chittorgarh/asset-reconstruction-company-india-ltd.html. RE-DERIVED: I grepped that label out of the fixture. \"Period Ended\" is the <th> of the financial summary table — the row set under it is Assets 4,460.85 / Total Income 785.08 / Profit After Tax 407.84 / EBITDA 588.93 / NET Worth 3,079.39 / Reserves and Surplus / Total Borrowing, with the footer \"Amount in Rs Crore\". Those three dates are fiscal year-ends, not the IPO's bidding close. The same fixture DOES contain the correct label — grep -o -i \"Close date\" returns two hits. The wrong one won because match() returns the FIRST row that satisfies the token test (for (const r of rows) { ... return {...r}; }) with no scoring and no preference for the closer label; \"Period Ended\" simply appears earlier in DOM row order. Every CARRIES verdict in the file is therefore first-match, not best-match, and the recorded label is the first plausible one rather than the right one. This is the same shape as the earlier round's \"live IPO dates match Chittorgarh exactly\" claim: a date cited against a date-shaped thing that is a different date. [verification review, 2026-09-09; where: docs/design/probes/evidence-map.mjs:249-256 (the return-on-first-hit loop); docs/design/probes/evidence-map.out.json (ipos.close_date/CG); docs/design/probes/fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html]",
+      "fix_in": "Same change: ipos.close_date is now evidenced only by NSE \"Issue Period\" and BSE \"Issue_Period\", both curated. The financial table header can no longer reach it."
+    },
+    {
+      "id": "F-87",
+      "sev": "CRITICAL",
+      "area": "evidence-map — Chittorgarh label indexing",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "One Chittorgarh cell labelled \"Name\" is the recorded evidence for three different entities, and its own sample shows it is a table header row",
+      "detail": "Three committed pairs share one label and one fixture: promoters.name | CG | label='Name', registrars.name | CG | label='Name', ipo_intermediaries.name | CG | label='Name' — all with sample='Category | No. of Shares Offered | Amount ( cr.)', all how='exact label', all from chittorgarh/asset-reconstruction-company-india-ltd.html. The sample is the mapper's own record of the cells that FOLLOW the label in that row; \"Category | No. of Shares Offered | Amount ( cr.)\" is a row of column headings from the reservation/quota table, not a person's or a firm's name. So the evidence says: a cell reading \"Name\" whose neighbours are three column captions proves that Chittorgarh carries the promoter name, the registrar name and the intermediary name. It proves none of them — a label that resolves to three mutually exclusive entities identifies zero. This survived the round-4 fix that removed nav-link matches because that fix only excluded short page-text lines; a bare <th>Name</th> inside a real table passes the current filter (label.length <= 45 && !label.includes('?')) untouched. [verification review, 2026-09-09; where: docs/design/probes/evidence-map.out.json (promoters.name/CG, registrars.name/CG, ipo_intermediaries.name/CG); docs/design/probes/evidence-map.mjs:88-104 (the CG indexer)]",
+      "fix_in": "Same change: a bare \"Name\" cell matches nothing, because nothing curates it and it is not an exact match for any column."
+    },
+    {
+      "id": "F-88",
+      "sev": "CRITICAL",
+      "area": "evidence-map — DOC wrong-entity matches",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The offer document's PROMOTER is cited as the registrar and as the intermediary; the issuer's compliance-officer email is cited as the registrar's email",
+      "detail": "Four committed pairs, all how='all tokens in label', all from extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json: registrars.name | DOC | label='promoter_name' | sample='Avenue India Resurgence Pte. Ltd'; ipo_intermediaries.name | DOC | label='promoter_name' (same value); registrars.email | DOC | label='compliance_officer_email' | sample='cs@arcil.co.in'; ipo_intermediaries.email | DOC | label='compliance_officer_email' (same value). Avenue India Resurgence Pte. Ltd is a private-equity promoter selling shares. The registrar for this IPO is MUFG Intime India Private Limited — a fact the SAME probe output records correctly two rows away (ipos.registrar | NSE | label='Name of the Registrar' | sample='MUFG Intime India Private Limited' and ipos.registrar | BSE | label='Registrar'). So the evidence file simultaneously holds the right registrar from NSE/BSE and asserts the offer document proves the registrar is the promoter. cs@arcil.co.in is the ISSUER's own company-secretary address; citing it as the registrar's contact would, if implemented, route investor allotment queries to the issuer. This is the identical class to the already-caught ipos.registrar -> plausibility-check match: the matcher has no concept of which ENTITY a column belongs to, only which words appear. [verification review, 2026-09-09; where: docs/design/probes/evidence-map.out.json (registrars.name/DOC, registrars.email/DOC, ipo_intermediaries.name/DOC, ipo_intermediaries.email/DOC); docs/design/probes/fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json]",
+      "fix_in": "Same change: the offer document's promoter can no longer be cited as the registrar."
+    },
+    {
+      "id": "F-89",
+      "sev": "MAJOR",
+      "area": "data-sourcing-pull-model.md A.0",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The A.0 table introduced as machine-generated disagrees with the machine on three of seven rows, and the headline total is stale by nine",
+      "detail": "The section says: \"This round did it mechanically, and the numbers below are generated by `probes/evidence-map.mjs` rather than counted by a person\", then \"**114 of 386 pairs are backed by a payload we hold.** Check **D15** enforces that number as a ratchet\", then \"**What the other 272 mean** ...\", and closes \"Tightening it to full-token matches ... cut the total to 114\". I re-ran node docs/design/probes/evidence-map.mjs; the output is byte-identical to the committed .out.json except the timestamp, and prints: pairs: {\"UNPROVEN\":272,\"CARRIES\":105,\"UNPROBED\":10} — DOC {48,115}, NSE {15,42}, BSE {12,43}, CG {29,72}, IG {1,0}. The prose table says NSE 19/38, BSE 15/40, CG 31/69 (DOC and IG do match). 105+272+10 = 387, not 386. The spec knows the truth and says so in its own comment: \"Lowered once, on purpose and on the record: 114 -> 105 on 2026-09-09\" — and D15 prints \"105 of 387\". So the prose was left at the pre-tightening numbers while the generator, the spec and the gate all moved to the post-tightening ones. Note the internal tell nobody caught: the prose's own \"the other 272\" is the CURRENT UNPROVEN count, which only adds up against 105, never against 114. [verification review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md:2536-2547 (per-source table), :2547 (phrase: 114 of 386 pairs are backed), :2572 (phrase: cut the total to 114) [line numbers as read 2026-09-09; the file is being edited concurrently in this worktree, so grep the quoted phrases]; docs/design/field-source-resolution.spec.mjs:348-357 (EVIDENCE_FLOOR = 105 and the 114 -> 105 note); docs/design/probes/evidence-map.out.json]",
+      "fix_in": "The A.0 evidence summary is a generated block, rewritten by `generate-appendix-a.mjs --write` from the probe output."
+    },
+    {
+      "id": "F-90",
+      "sev": "CRITICAL",
+      "area": "check-design-consistency.mjs / D2",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "D2 promises \"no generator-owned count is hand-typed into the prose\" and inspects exactly two phrase shapes — it passes on the stale numbers of F-89",
+      "detail": "D2's message on PASS is the unqualified sentence \"No generator-owned count is hand-typed into the prose.\" Its complete implementation is: const handTyped = [[/the (\\d+) sourced fields/g, 'plan-row count in prose'], [/\\bexactly (\\d+)\\b(?=[^|]*E-1)/g, 'E-1 count in prose']]; — two regexes for two specific sentences. It examines nothing else. Every generator-owned number in F-89 — \"114 of 386 pairs\", the per-source columns 19/38, 15/40, 31/69, and \"cut the total to 114\" — is hand-typed into the prose, is currently WRONG, and D2 reports [PASS] D2 No generator-owned count is hand-typed into the prose. The design's stated standard of proof rests on checks like this one; a check whose PASS line asserts a general property while its body tests two string patterns is the same failure shape as D10c (which the design records as having been decoration twice). It is not that D2 does nothing — it is that its PASS line certifies far more than it looked at, and the gap is where F-89 lived undetected through a round explicitly about verification. [verification review, 2026-09-09; where: docs/design/check-design-consistency.mjs (D2, the handTyped array and its two regexes)]",
+      "fix_in": "D2 now runs `generate-appendix-a.mjs --check` as a child process and fails on drift, so it gates every generated block rather than two phrasings. Mutation-tested: a hand-edited number in the A.0 block turns it red."
+    },
+    {
+      "id": "F-91",
+      "sev": "MAJOR",
+      "area": "data-sourcing-pull-model.md A.0 — SME document order",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "The SME document-type split that sets the rank-1 order for 173 IPOs has no probe behind it and does not reconcile with the one probe that counts documents",
+      "detail": "The claim, in the same section that declares its numbers machine-generated: \"Measured on production, SME IPOs have **zero PRICE_BAND_AD documents** (mainboard has 12) and one DRHP (mainboard has 18); their document set is dominated by the prospectus (64). So for SME the rank-1 document order is **PROSPECTUS > RHP > CORRIGENDUM > DRHP** ... For 173 SME IPOs — over half the site — the price band, share counts and market cap come from the prospectus.\" I checked every probe output for a segment x document-type breakdown: grep -o \"PRICE_BAND_AD\" docs/design/probes/*.out.json returns nothing, and old-document-availability.out.json (the only other document probe) carries keys probe/generated_at/question/method/per_age_target/attempted/obtainable/url_coverage/by_host_and_age/documents — no type counts by segment. The phrase \"Measured on production\" cites no query, no file:line and no .out.json. The one probe that does count by type, document-store-size.out.json, reports PRICE_BAND_AD: 13 documents across all IPOs — which the stated split (mainboard 12 + SME 0 = 12) does not reach; DRHP 19 reconciles (18+1) and PROSPECTUS 81 leaves mainboard 17 unstated. One of the two numbers is wrong or the populations differ, and nothing in the design says which. This drives a per-segment source-order decision for more than half the site. [verification review, 2026-09-09; where: docs/design/data-sourcing-pull-model.md:2516-2524 (grep for the phrase zero PRICE_BAND_AD); docs/design/probes/document-store-size.out.json (by_type); docs/design/probes/old-document-availability.out.json]",
+      "fix_in": "NOT fixed in this round. Add the query as a probe (probes/document-types-by-segment.mjs) that emits the segment x type matrix, cite its .out.json beside the claim, and reconcile the PRICE_BAND_AD count against document-store-size's 13 in the same output (state whether one counts active-only and the other all rows). Until it exists, mark the SME order PROVISIONAL — section 0.0.3's standard of proof does not admit \"measured on production\" with nothing to open."
+    },
+    {
+      "id": "F-92",
+      "sev": "MAJOR",
+      "area": "evidence-map — cross-source consistency",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "One number, 52,731,946, is the recorded evidence for four distinct columns, and the other source's evidence for the same IPO's share count is 43% smaller — nothing compares them",
+      "detail": "For the same IPO (ARCIL) the committed evidence records: ipo_valuation.shares_at_cap | DOC | label='total_offer_shares_at_cap' | sample='52731946'; ipo_valuation.total_shares_at_cap | DOC | 'total_offer_shares_at_cap' | '52731946'; ipo_valuation.ofs_shares | DOC | 'ofs_shares' | '52731946'; anchor_investors.total_shares_offered | DOC | 'total_offer_shares_at_cap' | '52731946'. Four columns that are four different quantities — the total offer, the OFS component, and the anchor allocation — all evidenced by the same figure. If ofs_shares == total_offer_shares_at_cap is truly what the extractor produced, then fresh issue = 0 for this IPO, which makes the design's A7 invariant (\"fresh + OFS = total at the same price point\", line 629) trivially satisfied and unable to detect anything on this fixture; and an anchor allocation equal to the entire offer is not possible under SEBI's anchor cap. Meanwhile the BSE payload for the same IPO gives Issue_Size_No_of_shares = 36912363 — 43% below the document figure — and that pair is separately recorded as CARRIES (F-85). The mapper records label and fixture per pair and never compares the VALUES two sources give for the same quantity on the same IPO, so a 43% cross-source disagreement and a physically impossible anchor figure both pass as evidence. [verification review, 2026-09-09; where: docs/design/probes/evidence-map.out.json (ipo_valuation.shares_at_cap, ipo_valuation.total_shares_at_cap, ipo_valuation.ofs_shares, anchor_investors.total_shares_offered, ipos.issue_size/BSE); docs/design/data-sourcing-pull-model.md:629-630 (A7); fixtures/extraction/asset-reconstruction-company-india-ltd-*.json]",
+      "fix_in": "Same change: a value is no longer evidence for anything. Only a LABEL is, and only a curated or exact one."
+    }
+  ],
+  "false_assertions": [
+    {
+      "id": "A-1",
+      "claim": "no website publishes a restated financial statement",
+      "reality": "chittorgarh-detail-fields.ts reads CG's restated table per fiscal year",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-2",
+      "claim": "EXTRACTIONS_PER_CYCLE = 1 is a hard limit the design must live inside",
+      "reality": "dead code - only its definition and a test asserting it equals 1",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-3",
+      "claim": "the consolidation service stays the only writer",
+      "reality": "true for the ipos table only - 32 of 194 fields",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-4",
+      "claim": "§2.8 writes null with a reason",
+      "reality": "a null cannot pass through consolidatedUpsertIPO",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-5",
+      "claim": "E-1's twelve fields move to NSE then BSE",
+      "reality": "six of them are written only by filing-persister.ts",
+      "status": "OPEN"
+    },
+    {
+      "id": "A-6",
+      "claim": "the state machine progresses WANTED -> NOT_YET_FILED -> FOUND -> EXTRACTED",
+      "reality": "nine states; NOT_FOUND is emphatically not NOT_YET_FILED, per a comment in the code",
+      "status": "FIXED"
+    },
+    {
+      "id": "A-7",
+      "claim": "document healing is inherited from 9db4529d",
+      "reality": "decideSupersession is specified, unit-tested and NOT CALLED BY THE RUNNER",
+      "status": "FIXED"
+    }
+  ]
+}

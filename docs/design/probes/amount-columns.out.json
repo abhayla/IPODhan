@@ -1,0 +1,1373 @@
+{
+  "probe": "amount-columns",
+  "generated_at": "2026-09-09T05:06:26.158Z",
+  "source": "packages/shared/src/db/schema.ts",
+  "total_numeric_bigint_columns": 160,
+  "by_class": {
+    "CRORE": 37,
+    "MULTIPLE": 25,
+    "PER_SHARE": 37,
+    "PERCENT": 14,
+    "SHARE_COUNT": 26,
+    "RUPEES_KEPT": 5,
+    "RATIO": 15,
+    "NON_MONEY": 1
+  },
+  "unclassified": [],
+  "columns": [
+    {
+      "table": "ipos",
+      "col": "issue_size",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "the headline issue size — the single most-read amount on the site",
+      "rule": "by-name",
+      "current_unit": "RUPEES",
+      "current_unit_why": "normalizeCurrency stores rupees; the column comment in schema.ts says so"
+    },
+    {
+      "table": "ipos",
+      "col": "subscription_retail",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "subscription_hni",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "subscription_qib",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "subscription_total",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "gmp_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "grey-market premium is quoted per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipos",
+      "col": "gmp_percentage_historical",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "listing_price_historical",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "listing_gain_percentage",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "listing_gain_amount",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "listing price minus issue price, per share, not an aggregate",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipos",
+      "col": "current_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "current_gain_percentage",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipos",
+      "col": "current_gain_amount",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "current price minus issue price, per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "subscriptions",
+      "col": "qib_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "nii_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "retail_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "total_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "employee_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "others_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "anchor_investor_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "retail_hni_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "retail_others_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "b_nii_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "s_nii_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "total_shares_bid",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "shares_offered",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "qib_fii_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "qib_domestic_fi_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "qib_mutual_fund_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "qib_others_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "nii_corporates_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "nii_individuals_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "nii_others_subscription",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "retail_cut_off_shares",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "retail_price_bid_shares",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "employee_cut_off_shares",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "employee_price_bid_shares",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "cut_off_bids_total",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "total_bids_nse",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "total_bids_bse",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "subscriptions",
+      "col": "total_bids_combined",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_demand_graph",
+      "col": "price_point",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a bid price per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_demand_graph",
+      "col": "cumulative_quantity",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a share quantity",
+      "rule": "by-name"
+    },
+    {
+      "table": "gmp_records",
+      "col": "gmp",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "grey-market premium, per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "gmp_records",
+      "col": "gmp_percentage",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "gmp_records",
+      "col": "expected_listing_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a price per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "gmp_records",
+      "col": "subject_rate",
+      "type": "numeric",
+      "cls": "RUPEES_KEPT",
+      "why": "a per-application grey-market rate, quoted in rupees",
+      "rule": "by-name"
+    },
+    {
+      "table": "gmp_records",
+      "col": "kostak_rate",
+      "type": "numeric",
+      "cls": "RUPEES_KEPT",
+      "why": "a per-APPLICATION grey-market rate, quoted in rupees (hundreds), never in crore",
+      "rule": "by-name"
+    },
+    {
+      "table": "financial_data",
+      "col": "revenue_fy2022",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "revenue_fy2023",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "revenue_fy2024",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "profit_fy2022",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "profit_fy2023",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "profit_fy2024",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "net_worth",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a balance-sheet aggregate",
+      "rule": "by-name",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "pe_ratio",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "eps",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "roe",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "debt_to_equity",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "reserves_and_surplus",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a balance-sheet aggregate",
+      "rule": "by-name",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "total_assets",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a balance-sheet aggregate",
+      "rule": "by-name",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "total_borrowing",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a balance-sheet aggregate",
+      "rule": "by-name",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "promoter_holding_pre_issue",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "promoter_holding_post_issue",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "market_cap",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "market capitalisation",
+      "rule": "by-name",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "pre_ipo_eps",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "post_ipo_eps",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "ronw",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "ebitda_fy2022",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "ebitda_fy2023",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "ebitda_fy2024",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "total_income_fy2022",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "total_income_fy2023",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "total_income_fy2024",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "total_borrowings",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a balance-sheet aggregate (the duplicate spelling of the column above)",
+      "rule": "by-name",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "financial_data",
+      "col": "current_ratio",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "quick_ratio",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "financial_data",
+      "col": "inventory_turnover",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a turnover ratio, not an amount",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "revenue_fy1",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "revenue_fy2",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "revenue_fy3",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "profit_fy1",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "profit_fy2",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "profit_fy3",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore at the writer level (financial-data-scraper.ts and the filing persister use toCrore)"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "pe_ratio",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "roe_percentage",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "debt_to_equity",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "pb_ratio",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "roce_percentage",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_financials",
+      "col": "industry_pe",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "an industry price-to-earnings ratio",
+      "rule": "by-name"
+    },
+    {
+      "table": "documents",
+      "col": "file_size",
+      "type": "bigint",
+      "cls": "NON_MONEY",
+      "why": "bytes",
+      "rule": "by-name"
+    },
+    {
+      "table": "documents",
+      "col": "extraction_confidence",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a 0-1 confidence score",
+      "rule": "by-name"
+    },
+    {
+      "table": "listing_performance",
+      "col": "listing_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "issue_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "listing_gain_percent",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "current_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "current_price_bse",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "current_price_nse",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "current_gain_percent",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "listing_open_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "listing_high_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "listing_low_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "listing_close_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "listing_performance",
+      "col": "last_traded_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "peer_companies",
+      "col": "pe_ratio",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "peer_companies",
+      "col": "eps",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "peer_companies",
+      "col": "diluted_eps",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a per-share rupee value by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "peer_companies",
+      "col": "ronw",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a percentage by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "peer_companies",
+      "col": "nav",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "net asset value per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "peer_companies",
+      "col": "pbv_ratio",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_details",
+      "col": "fresh_issue",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "the fresh-issue amount",
+      "rule": "by-name",
+      "current_unit": "RUPEES",
+      "current_unit_why": "written in rupees by the filing persister"
+    },
+    {
+      "table": "ipo_details",
+      "col": "ofs_issue",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "the offer-for-sale amount",
+      "rule": "by-name",
+      "current_unit": "RUPEES",
+      "current_unit_why": "written in rupees by the filing persister"
+    },
+    {
+      "table": "ipo_details",
+      "col": "cut_off_price",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a price per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_details",
+      "col": "min_investment",
+      "type": "numeric",
+      "cls": "RUPEES_KEPT",
+      "why": "a retail application amount (about 15,000 rupees). In crore it reads 0.0015 — see O-12",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_details",
+      "col": "face_value",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a price per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_details",
+      "col": "qib_shares_offered",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_details",
+      "col": "nii_shares_offered",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_details",
+      "col": "retail_shares_offered",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_details",
+      "col": "employee_shares_offered",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_details",
+      "col": "anchor_shares_offered",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_details",
+      "col": "max_retail_subscription",
+      "type": "numeric",
+      "cls": "RUPEES_KEPT",
+      "why": "the retail application ceiling in rupees (2 lakh), a regulatory threshold read in rupees",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_details",
+      "col": "max_employee_subscription",
+      "type": "numeric",
+      "cls": "RUPEES_KEPT",
+      "why": "the employee application ceiling in rupees (5 lakh), a regulatory threshold read in rupees",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_details",
+      "col": "employee_discount",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a discount per share, in rupees",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_details",
+      "col": "tick_size",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "the bid increment, in rupees per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_details",
+      "col": "promoter_shares_held",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "anchor_investors",
+      "col": "total_shares_offered",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "anchor_investors",
+      "col": "total_amount_raised",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "the anchor book total — already stored in crore, and the reference the rest converges on",
+      "rule": "by-name",
+      "current_unit": "CRORE",
+      "current_unit_why": "already crore - this is the reference the rest converge on"
+    },
+    {
+      "table": "financial_statements",
+      "col": "revenue",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "PER_ROW_UNIT",
+      "current_unit_why": "financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted"
+    },
+    {
+      "table": "financial_statements",
+      "col": "total_income",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "PER_ROW_UNIT",
+      "current_unit_why": "financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted"
+    },
+    {
+      "table": "financial_statements",
+      "col": "ebitda",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "PER_ROW_UNIT",
+      "current_unit_why": "financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted"
+    },
+    {
+      "table": "financial_statements",
+      "col": "pat",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "PER_ROW_UNIT",
+      "current_unit_why": "financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted"
+    },
+    {
+      "table": "financial_statements",
+      "col": "net_worth",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a financial-statement aggregate by name",
+      "rule": "by-shape",
+      "current_unit": "PER_ROW_UNIT",
+      "current_unit_why": "financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted"
+    },
+    {
+      "table": "financial_statements",
+      "col": "eps_basic",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "earnings per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "financial_statements",
+      "col": "eps_diluted",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "earnings per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "financial_statements",
+      "col": "op_cash_flow",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "a cash-flow line from the financial statements",
+      "rule": "by-name",
+      "current_unit": "PER_ROW_UNIT",
+      "current_unit_why": "financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted"
+    },
+    {
+      "table": "financial_statements",
+      "col": "dscr",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "debt service coverage ratio",
+      "rule": "by-name"
+    },
+    {
+      "table": "financial_statements",
+      "col": "rent_expense",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "an expense line from the financial statements",
+      "rule": "by-name",
+      "current_unit": "PER_ROW_UNIT",
+      "current_unit_why": "financial_statements carries its own unit column per row and never normalises; it is read correctly at derive time rather than converted"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "price_floor",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a price per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "price_cap",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a price per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "shares_at_floor",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "shares_at_cap",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "fresh_shares_at_floor",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "fresh_shares_at_cap",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "ofs_shares",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "total_shares_at_floor",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "total_shares_at_cap",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "mcap_at_floor",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "market capitalisation at the floor price",
+      "rule": "by-name",
+      "current_unit": "RUPEES",
+      "current_unit_why": "written in rupees by the filing persister"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "mcap_at_cap",
+      "type": "numeric",
+      "cls": "CRORE",
+      "why": "market capitalisation at the cap price",
+      "rule": "by-name",
+      "current_unit": "RUPEES",
+      "current_unit_why": "written in rupees by the filing persister"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "pe_at_floor",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "pe_at_cap",
+      "type": "numeric",
+      "cls": "RATIO",
+      "why": "a dimensionless ratio by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "ronw_weighted_3y",
+      "type": "numeric",
+      "cls": "PERCENT",
+      "why": "a weighted three-year return on net worth",
+      "rule": "by-name"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "face_value_multiple_floor",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "ipo_valuation",
+      "col": "face_value_multiple_cap",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "a times-covered multiple by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "promoters",
+      "col": "shares_held",
+      "type": "bigint",
+      "cls": "SHARE_COUNT",
+      "why": "a count of shares or bids by name",
+      "rule": "by-shape"
+    },
+    {
+      "table": "promoters",
+      "col": "waca",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "weighted average cost of ACQUISITION, per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "promoters",
+      "col": "waca_last_year",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "weighted average cost of acquisition, per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "promoter_acquisition_ranges",
+      "col": "waca",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "weighted average cost of acquisition, per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "promoter_acquisition_ranges",
+      "col": "cap_multiple",
+      "type": "numeric",
+      "cls": "MULTIPLE",
+      "why": "cap price divided by the acquisition cost",
+      "rule": "by-name"
+    },
+    {
+      "table": "promoter_acquisition_ranges",
+      "col": "price_low",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a price per share",
+      "rule": "by-name"
+    },
+    {
+      "table": "promoter_acquisition_ranges",
+      "col": "price_high",
+      "type": "numeric",
+      "cls": "PER_SHARE",
+      "why": "a price per share",
+      "rule": "by-name"
+    }
+  ]
+}

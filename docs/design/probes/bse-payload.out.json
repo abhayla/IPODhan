@@ -1,0 +1,68 @@
+{
+  "probe": "bse-payload",
+  "generated_at": "2026-09-09T04:31:52.875Z",
+  "note": "BSE answers without a cookie prime, but needs a bseindia.com Referer. IPO_NO comes from the board listing, never from a guess. Issue_Size_No_of_shares in these payloads is a SHARE COUNT.",
+  "wanted": [
+    "ASSET RECONSTRUCTION",
+    "VINOD"
+  ],
+  "board_rows": 39,
+  "found": [
+    {
+      "wanted": "ASSET RECONSTRUCTION",
+      "matched": true,
+      "ipo_no": 7950,
+      "scrip": null,
+      "name": null
+    },
+    {
+      "wanted": "VINOD",
+      "matched": false,
+      "ipo_no": null,
+      "scrip": null,
+      "name": null
+    }
+  ],
+  "attempts": [
+    {
+      "what": "IPO_HomePageDetail (current board)",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w",
+      "status": 200,
+      "ok": true,
+      "bytes": 8693,
+      "attempts": 1,
+      "fixture": "fixtures/bse/IPO_HomePageDetail.json",
+      "records": 39,
+      "keys": [
+        "Scrip_name",
+        "Start_Dt",
+        "End_Dt",
+        "Status",
+        "IR_flag",
+        "IR_FLAG_FULL",
+        "IPO_NO",
+        "flag",
+        "Scrip_cd",
+        "Is_retailertype"
+      ]
+    },
+    {
+      "what": "GetMkt_ISSUE_BBS_IPO IPO_NO=7950 (ASSET RECONSTRUCTION)",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7950",
+      "status": 200,
+      "ok": true,
+      "bytes": 4652,
+      "attempts": 1,
+      "fixture": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "records": 1,
+      "keys": [
+        "IPONO_0",
+        "IPONO_1",
+        "IPONO_2",
+        "IPONO_3",
+        "IPONO_4",
+        "status"
+      ]
+    }
+  ]
+}

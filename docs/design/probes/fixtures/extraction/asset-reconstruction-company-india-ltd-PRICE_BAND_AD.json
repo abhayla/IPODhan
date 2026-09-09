@@ -1,0 +1,1021 @@
+{
+  "doc_type": "PRICE_BAND_AD",
+  "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+  "pages": 5,
+  "extraction_status": "PARTIAL",
+  "unit": "millions",
+  "fiscal_years": [
+    2026,
+    2025,
+    2024
+  ],
+  "fields": {
+    "price_band_floor": {
+      "value": 132,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "price_band_ordering",
+        "passed": true,
+        "detail": "132.0 < 139.0 <= 1.2x floor"
+      }
+    },
+    "price_band_cap": {
+      "value": 139,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "price_band_ordering",
+        "passed": true,
+        "detail": "132.0 < 139.0 <= 1.2x floor"
+      }
+    },
+    "face_value": {
+      "value": 10,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "face_value_positive",
+        "passed": true,
+        "detail": "10.0"
+      }
+    },
+    "lot_size": {
+      "value": 107,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "lot_min_application_value",
+        "passed": true,
+        "detail": "lot value 14124.0"
+      }
+    },
+    "lot_multiple": {
+      "value": 107,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "lot_multiple_matches_lot",
+        "passed": true,
+        "detail": "107.0 == lot 107.0"
+      }
+    },
+    "floor_multiple_of_face": {
+      "value": 13.2,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "floor_multiple_recomputed",
+        "passed": true,
+        "detail": "132.0/10.0 = 13.2 == 13.2"
+      }
+    },
+    "cap_multiple_of_face": {
+      "value": 13.9,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "cap_multiple_recomputed",
+        "passed": true,
+        "detail": "139.0/10.0 = 13.9 == 13.9"
+      }
+    },
+    "shares_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "shares_x_price_equals_amount",
+        "passed": false,
+        "detail": "check_failed: shares, price or amount missing"
+      }
+    },
+    "shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "shares_x_price_equals_amount",
+        "passed": false,
+        "detail": "check_failed: shares, price or amount missing"
+      }
+    },
+    "fresh_issue_amount": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "fresh_issue_amount_consistent",
+        "passed": false,
+        "detail": "check_failed: None at both prices"
+      }
+    },
+    "ofs_shares": {
+      "value": 52731946,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "ofs_shares_x_price_equals_amount",
+        "passed": true,
+        "detail": "6960.62mn ~= 6960.62 (0.0000%); 7329.74mn ~= 7329.74 (0.0000%)"
+      }
+    },
+    "ofs_amount": {
+      "value": 6960.62,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "ofs_shares_x_price_equals_amount",
+        "passed": true,
+        "detail": "6960.62mn ~= 6960.62 (0.0000%); 7329.74mn ~= 7329.74 (0.0000%)"
+      }
+    },
+    "ofs_amount_at_cap": {
+      "value": 7329.74,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "ofs_shares_x_price_equals_amount",
+        "passed": true,
+        "detail": "6960.62mn ~= 6960.62 (0.0000%); 7329.74mn ~= 7329.74 (0.0000%)"
+      }
+    },
+    "total_offer_shares_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "total_offer_size_row_not_in_document"
+      }
+    },
+    "total_offer_amount_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "total_offer_size_row_not_in_document"
+      }
+    },
+    "total_offer_shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "total_offer_size_row_has_no_cap_share_count"
+      }
+    },
+    "shares_monotonic": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "more_shares_at_floor_than_cap",
+        "passed": false,
+        "detail": "check_failed: missing"
+      }
+    },
+    "market_cap_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "market_cap_ordering_and_consistency",
+        "passed": false,
+        "detail": "check_failed: missing inputs"
+      }
+    },
+    "market_cap_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "market_cap_ordering_and_consistency",
+        "passed": false,
+        "detail": "check_failed: missing inputs"
+      }
+    },
+    "post_offer_shares_at_floor": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "market_cap_row_has_no_share_count"
+      }
+    },
+    "post_offer_shares_at_cap": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "market_cap_row_has_no_share_count"
+      }
+    },
+    "issue_structure": {
+      "value": "FRESH_AND_OFS",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "issue_structure_from_ofs_row",
+        "passed": true,
+        "detail": "ofs=6960.62"
+      }
+    },
+    "weighted_average_ronw": {
+      "value": 12.94,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "ronw_within_plausible_range",
+        "passed": true,
+        "detail": "12.94"
+      }
+    },
+    "book_building_regulation": {
+      "value": "6(1)",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "regulation_cited",
+        "passed": true,
+        "detail": "6(1)"
+      }
+    },
+    "qib_pct": {
+      "value": 50,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "allocation_sums_and_qib_floor",
+        "passed": true,
+        "detail": "QIB 50.0 + NII 15.0 + Retail 35.0 = 100.0"
+      }
+    },
+    "nii_pct": {
+      "value": 15,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "allocation_sums_and_qib_floor",
+        "passed": true,
+        "detail": "QIB 50.0 + NII 15.0 + Retail 35.0 = 100.0"
+      }
+    },
+    "retail_pct": {
+      "value": 35,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "allocation_sums_and_qib_floor",
+        "passed": true,
+        "detail": "QIB 50.0 + NII 15.0 + Retail 35.0 = 100.0"
+      }
+    },
+    "designated_stock_exchange": {
+      "value": "NSE",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "designated_exchange_known",
+        "passed": true,
+        "detail": "NSE"
+      }
+    },
+    "issue_price": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "not_priced_yet"
+      }
+    },
+    "anchor_bid_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": false,
+        "detail": "check_failed: listing 2026-09-17 more than 3 working days after close 2026-09-11 (4 working days, Sat/Sun skipped, holidays ignored)"
+      }
+    },
+    "open_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": false,
+        "detail": "check_failed: listing 2026-09-17 more than 3 working days after close 2026-09-11 (4 working days, Sat/Sun skipped, holidays ignored)"
+      }
+    },
+    "close_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": false,
+        "detail": "check_failed: listing 2026-09-17 more than 3 working days after close 2026-09-11 (4 working days, Sat/Sun skipped, holidays ignored)"
+      }
+    },
+    "basis_of_allotment_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": false,
+        "detail": "check_failed: listing 2026-09-17 more than 3 working days after close 2026-09-11 (4 working days, Sat/Sun skipped, holidays ignored)"
+      }
+    },
+    "refund_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": false,
+        "detail": "check_failed: listing 2026-09-17 more than 3 working days after close 2026-09-11 (4 working days, Sat/Sun skipped, holidays ignored)"
+      }
+    },
+    "credit_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": false,
+        "detail": "check_failed: listing 2026-09-17 more than 3 working days after close 2026-09-11 (4 working days, Sat/Sun skipped, holidays ignored)"
+      }
+    },
+    "listing_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "timeline_ordering",
+        "passed": false,
+        "detail": "check_failed: listing 2026-09-17 more than 3 working days after close 2026-09-11 (4 working days, Sat/Sun skipped, holidays ignored)"
+      }
+    },
+    "upi_cutoff_time": {
+      "value": "17:00",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "upi_cutoff_parsed",
+        "passed": true,
+        "detail": "17:00"
+      }
+    },
+    "rhp_filing_date": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "rhp_filed_before_open",
+        "passed": false,
+        "detail": "check_failed: missing"
+      }
+    },
+    "fiscal_years": {
+      "value": [
+        2026,
+        2025,
+        2024
+      ],
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "fiscal_years_consecutive",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "unit": {
+      "value": "millions",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "unit_not_stated",
+        "passed": true,
+        "detail": "millions"
+      }
+    },
+    "pat_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "pat_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      }
+    },
+    "op_cash_flow_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "op_cash_flow_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      }
+    },
+    "dscr_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "row_not_in_document"
+      }
+    },
+    "rent_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "row_not_in_document"
+      }
+    },
+    "revenue_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "row_not_in_document"
+      }
+    },
+    "ebitda_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "row_not_in_document"
+      }
+    },
+    "financial_plausibility_pat_not_above_revenue": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "pat_not_above_revenue",
+        "passed": true,
+        "detail": "not applicable (revenue or PAT missing)"
+      }
+    },
+    "financial_plausibility_ebitda_at_least_pat": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "ebitda_at_least_pat",
+        "passed": true,
+        "detail": "not applicable (no profitable year with EBITDA)"
+      }
+    },
+    "financial_plausibility_yoy_ratio_within_bounds": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "yoy_ratio_within_bounds",
+        "passed": true,
+        "detail": "MAINBOARD band 0.2x..5.0x — 0 steps within band"
+      }
+    },
+    "eps_basic_by_fy": {
+      "value": {
+        "2024": 10.17,
+        "2025": 10.14,
+        "2026": 10.82
+      },
+      "page": 3,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "eps_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "eps_diluted_by_fy": {
+      "value": {
+        "2024": 10.17,
+        "2025": 10.14,
+        "2026": 10.82
+      },
+      "page": 3,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "eps_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "eps_sign_matches_pat": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "eps_sign_matches_pat",
+        "passed": false,
+        "detail": "check_failed: no shared years"
+      }
+    },
+    "eps_weighted_average": {
+      "value": 10.49,
+      "page": 3,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "weighted_eps_matches_year_series",
+        "passed": true,
+        "detail": "weighted EPS: 10.4850 ~= 10.49"
+      }
+    },
+    "ronw_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "ronw_year_table_not_in_document"
+      }
+    },
+    "pe_at_floor": {
+      "value": 12.2,
+      "page": 3,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "pe_equals_price_over_diluted_eps",
+        "passed": true,
+        "detail": "P/E at floor: 12.1996 ~= 12.2; P/E at cap: 12.8466 ~= 12.85"
+      }
+    },
+    "pe_at_cap": {
+      "value": 12.85,
+      "page": 3,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "pe_equals_price_over_diluted_eps",
+        "passed": true,
+        "detail": "P/E at floor: 12.1996 ~= 12.2; P/E at cap: 12.8466 ~= 12.85"
+      }
+    },
+    "financial_basis": {
+      "value": "restated_consolidated",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "financial_basis_stated",
+        "passed": true,
+        "detail": "restated_consolidated"
+      }
+    },
+    "promoter_name": {
+      "value": "Avenue India Resurgence Pte. Ltd",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "promoter_name_present",
+        "passed": true,
+        "detail": "Avenue India Resurgence Pte. Ltd"
+      }
+    },
+    "promoter_names": {
+      "value": [
+        "Avenue India Resurgence Pte. Ltd",
+        "State Bank Of India"
+      ],
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "promoter_names_present",
+        "passed": true,
+        "detail": "['Avenue India Resurgence Pte. Ltd', 'State Bank Of India']"
+      }
+    },
+    "promoter_selling_shareholders": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "selling_shareholder_shares_sum_equals_ofs",
+        "passed": false,
+        "detail": "check_failed: promoter selling shareholders vs offer for sale: parts sum 35786972.0 != printed total 52731946.0"
+      }
+    },
+    "promoter_shares_held": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "promoter_shares_positive",
+        "passed": false,
+        "detail": "check_failed: None"
+      }
+    },
+    "promoter_holding_pre_pct": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "fresh_issue_dilutes_promoter",
+        "passed": false,
+        "detail": "check_failed: missing"
+      }
+    },
+    "promoter_holding_post_pct_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "fresh_issue_dilutes_promoter",
+        "passed": false,
+        "detail": "check_failed: missing"
+      }
+    },
+    "promoter_waca": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "promoter_waca_positive",
+        "passed": false,
+        "detail": "check_failed: None"
+      }
+    },
+    "waca_last_3y": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "cap_over_waca_equals_printed_multiple",
+        "passed": false,
+        "detail": "check_failed: cap price, WACA or printed multiple missing"
+      }
+    },
+    "cap_multiple_last_3y": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "cap_over_waca_equals_printed_multiple",
+        "passed": false,
+        "detail": "check_failed: cap price, WACA or printed multiple missing"
+      }
+    },
+    "waca_secondary_transactions": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "secondary_transaction_waca_row_not_in_document"
+      }
+    },
+    "floor_multiple_of_waca_secondary": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "secondary_transaction_waca_row_not_in_document"
+      }
+    },
+    "cap_multiple_of_waca_secondary": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "secondary_transaction_waca_row_not_in_document"
+      }
+    },
+    "pre_ipo_placement": {
+      "value": false,
+      "page": 2,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "pre_ipo_placement_stated",
+        "passed": true,
+        "detail": "explicitly stated as none"
+      }
+    },
+    "brlm_sebi_regs": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "brlm_reg_numbers_found",
+        "passed": false,
+        "detail": "check_failed: []"
+      }
+    },
+    "registrar_sebi_reg": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "registrar_reg_number_found",
+        "passed": false,
+        "detail": "check_failed: None"
+      }
+    },
+    "brlm_track_record": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "brlm_rows_reconcile_with_total",
+        "passed": false,
+        "detail": "check_failed: parts sum 65 != printed total 88.0"
+      }
+    },
+    "brlm_issues_3y_total": {
+      "value": 88,
+      "page": 2,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "closed_below_le_total",
+        "passed": true,
+        "detail": "26.0 of 88.0"
+      }
+    },
+    "brlm_closed_below_total": {
+      "value": 26,
+      "page": 2,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "closed_below_le_total",
+        "passed": true,
+        "detail": "26.0 of 88.0"
+      }
+    },
+    "peer_companies": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "peer_comparison_table_not_in_document"
+      }
+    },
+    "industry_peer_pe_average": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "peer_comparison_table_not_in_document"
+      }
+    },
+    "compliance_officer": {
+      "value": "Ameet Ashok Kela",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "compliance_officer_present",
+        "passed": true,
+        "detail": "Ameet Ashok Kela"
+      }
+    },
+    "compliance_officer_phone": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "no_telephone_on_the_contact_person_line"
+      }
+    },
+    "compliance_officer_email": {
+      "value": "cs@arcil.co.in",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "email_fits_column_and_is_addressable",
+        "passed": true,
+        "detail": "cs@arcil.co.in"
+      }
+    },
+    "cin": {
+      "value": "U65999MH2002PLC134884",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "cin_matches_mca_pattern",
+        "passed": true,
+        "detail": "U65999MH2002PLC134884"
+      }
+    },
+    "business_description": {
+      "value": "Our Company is an asset reconstruction company (“ARC”) operating across India and are engaged in the business of acquiring stressed assets from banks and financial institutions and implementing resolution strategies through restructuring, enforcement of rights on underlying securities and settlement aimed at maximizing recovery and optimizing the value of such stressed assets in order to generate revenue streams.",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "description_within_length",
+        "passed": true,
+        "detail": "416 chars"
+      }
+    },
+    "objects_of_offer": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "objects_section_not_in_document"
+      }
+    },
+    "concentration_kpis": {
+      "value": [
+        {
+          "label": "participated_and_won_in_the_assets",
+          "value_pct": 68.75,
+          "fiscal_year": 2026
+        },
+        {
+          "label": "participated_and_won_in_the_assets",
+          "value_pct": 75.48,
+          "fiscal_year": 2025
+        }
+      ],
+      "page": 1,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "concentration_percentages_in_range",
+        "passed": true,
+        "detail": "2 entries"
+      }
+    },
+    "syndicate_members": {
+      "value": [
+        {
+          "name": "JM Financial Services Limited",
+          "role": "SYNDICATE"
+        },
+        {
+          "name": "Almondz Global Securities Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Ambit Capital Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Anand Rathi Share & Stock Brokers Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Asit C Mehta Financial Services Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Axis Capital Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Bajaj Financial Securities Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Centrum Capital Advisors Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Centrum Finverse Ltd",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Eurekha Stock & Share Broking Services Limited",
+          "role": "SUB_SYNDICATE"
+        },
+        {
+          "name": "Globe Capital Market",
+          "role": "SUB_SYNDICATE"
+        }
+      ],
+      "page": 4,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "syndicate_member_names_storable",
+        "passed": true,
+        "detail": "11 members"
+      }
+    },
+    "issue_banks": {
+      "value": [
+        {
+          "name": "HDFC Bank Limited",
+          "role": "SPONSOR_BANK"
+        },
+        {
+          "name": "Kotak Mahindra Bank Limited",
+          "role": "SPONSOR_BANK"
+        },
+        {
+          "name": "HDFC Bank Limited • Public Offer Account Bank",
+          "role": "ESCROW_BANK"
+        },
+        {
+          "name": "Refund Bank : Kotak Mahindra Bank Limited • Sponsor Banks : HDFC Bank Limited",
+          "role": "ESCROW_BANK"
+        },
+        {
+          "name": "Kotak Mahindra Bank Limited",
+          "role": "ESCROW_BANK"
+        }
+      ],
+      "page": 4,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "issue_bank_names_storable",
+        "passed": true,
+        "detail": "5 banks"
+      }
+    },
+    "bid_windows": {
+      "value": [
+        {
+          "activity": "Submission and revision in Bids",
+          "window": "Only between 10.00 a.m. and 5.00 p.m. (“IST"
+        },
+        {
+          "activity": "Submission of electronic applications (Online ASBA through 3-in-1 accounts) – For RIBs",
+          "window": "Only between 10.00 a.m. and up to 5.00 p.m. IST"
+        },
+        {
+          "activity": "banking and syndicate UPI ASBA applications where Bid Amount is up to Rs 0.50 million) For NIBs",
+          "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST"
+        },
+        {
+          "activity": "Submission of electronic applications (syndicate non-retail, non-individual applications of QIBs and NIBs)",
+          "window": "Only between 10.00 a.m. and up to 3.00 p.m. IST"
+        },
+        {
+          "activity": "Submission of Physical Applications (Bank ASBA)",
+          "window": "Only between 10.00 a.m. and up to 1.00 p.m. IST"
+        },
+        {
+          "activity": "where Bid Amount is more than Rs 0.50 million",
+          "window": "Only between 10.00 a.m. and up to 12.00 p.m. IST"
+        }
+      ],
+      "page": 3,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "bid_window_rows_bounded",
+        "passed": true,
+        "detail": "6 rows"
+      }
+    },
+    "promoter_group_transactions_since_drhp": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "statement_not_found"
+      }
+    },
+    "litigation_notices": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-PRICE_BAND_AD.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "section_not_found"
+      }
+    }
+  }
+}

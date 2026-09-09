@@ -1,0 +1,2657 @@
+{
+  "probe": "evidence-map",
+  "generated_at": "2026-09-09T05:21:01.881Z",
+  "method": "For every (field, source) pair Appendix A resolves, look for the field in the SAVED payload for that source. CARRIES records the label and the fixture. UNPROVEN means the payload was searched and nothing matched — it is a rank to re-examine, not a pass. UNPROBED means no probe was run for that source in this round.",
+  "caveat": "Matching is by token overlap with a synonym table, so a CARRIES verdict names the label it matched and that label is auditable. A reviewer disagreeing with one match should say so against the recorded label, not against the number.",
+  "index_sizes": {
+    "NSE": 94,
+    "BSE": 48,
+    "CG": 207,
+    "IG": 29,
+    "DOC": 172
+  },
+  "totals": {
+    "UNPROVEN": 305,
+    "CARRIES": 72,
+    "UNPROBED": 10
+  },
+  "by_source": {
+    "DOC": {
+      "UNPROVEN": 149,
+      "CARRIES": 14
+    },
+    "NSE": {
+      "CARRIES": 21,
+      "UNPROVEN": 36
+    },
+    "BSE": {
+      "CARRIES": 14,
+      "UNPROVEN": 41
+    },
+    "CG": {
+      "UNPROVEN": 79,
+      "CARRIES": 22
+    },
+    "ADMIN": {
+      "UNPROBED": 3
+    },
+    "IG": {
+      "CARRIES": 1
+    },
+    "REG": {
+      "UNPROBED": 7
+    }
+  },
+  "pairs": [
+    {
+      "field": "ipos.symbol",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"symbol\""
+    },
+    {
+      "field": "ipos.symbol",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Symbol",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "ARCIL",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.symbol",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Symbol",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "ARCIL",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.symbol",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"symbol\""
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_name\""
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "companyName",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "ARCIL",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "ScripName",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.company_name",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"company_name\""
+    },
+    {
+      "field": "ipos.issue_size",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"issue_size\""
+    },
+    {
+      "field": "ipos.issue_size",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"issue_size\"; nearest candidate seen was \"Issue_Size_No_of_shares\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipos.issue_size",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Issue Size",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "(column header)",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "lot_size",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "107",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"lot_size\""
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"lot_size\""
+    },
+    {
+      "field": "ipos.lot_size",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Lot Size",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "107 Shares",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipos.open_date",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Issue Period",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "09-Sep-2026 to 11-Sep-2026",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.open_date",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Issue_Period",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "09 Sep 2026 to 11 Sep 2026",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.open_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"open_date\""
+    },
+    {
+      "field": "ipos.close_date",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Issue Period",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "09-Sep-2026 to 11-Sep-2026",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.close_date",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Issue_Period",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "09 Sep 2026 to 11 Sep 2026",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.close_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"close_date\""
+    },
+    {
+      "field": "ipos.listing_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"listing_date\""
+    },
+    {
+      "field": "ipos.listing_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"listing_date\""
+    },
+    {
+      "field": "ipos.listing_date",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Listing Date",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Thu, Sep 17, 2026 T",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipos.status",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "status",
+      "fixture": "nse/ipo-current-issue.json",
+      "sample": "",
+      "multiRow": true,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipos.status",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"status\""
+    },
+    {
+      "field": "ipos.status",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"status\""
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"registrar\""
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Name of the Registrar",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "MUFG Intime India Private Limited",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Registrar",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "MUFG Intime India Private Limited^C-101, 247 Park,LBS Marg, Vikhroli (West) 400083||||||||",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.registrar",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"registrar\""
+    },
+    {
+      "field": "ipos.rating_override",
+      "source": "ADMIN",
+      "verdict": "UNPROBED",
+      "why": "an admin-only field has no external source to probe"
+    },
+    {
+      "field": "ipos.sector",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"sector\""
+    },
+    {
+      "field": "ipos.sector",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"sector\""
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"price_range_min\"; nearest candidate seen was \"price_band_floor\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Price Range",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Rs. 132 to Rs. 139 per Equity Share",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Price_Band",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "132.00-139.00",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.price_range_min",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"price_range_min\""
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"price_range_max\"; nearest candidate seen was \"price_band_cap\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Price Range",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Rs. 132 to Rs. 139 per Equity Share",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Price_Band",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "132.00-139.00",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.price_range_max",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"price_range_max\""
+    },
+    {
+      "field": "ipos.listing_exchanges",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"listing_exchanges\""
+    },
+    {
+      "field": "ipos.listing_exchanges",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"listing_exchanges\""
+    },
+    {
+      "field": "ipos.listing_exchanges",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"listing_exchanges\""
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "face_value",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "10",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Face_Value",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "10.00",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Face Value",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Rs. 10 per Equity Share",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.face_value",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Face Value",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "₹ 10 per share",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipos.allotment_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"allotment_date\""
+    },
+    {
+      "field": "ipos.allotment_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"allotment_date\""
+    },
+    {
+      "field": "ipos.allotment_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"allotment_date\""
+    },
+    {
+      "field": "ipos.company_description",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_description\""
+    },
+    {
+      "field": "ipos.company_description",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"company_description\""
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"lead_managers\""
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Book Running Lead Managers",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"IIFL Capital Services Limited, IDBI Capital Markets & Securities Limited and JM Financial",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Book_Running_Lead_Manager",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "IIFL Capital Services Limited^24th Floor, One Lodha Place, Senapati Bapat Marg,Lower Parel",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipos.lead_managers",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"lead_managers\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipos.isin",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipos.segment",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"segment\""
+    },
+    {
+      "field": "ipos.segment",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"segment\"; nearest candidate seen was \"series\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipos.segment",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"segment\""
+    },
+    {
+      "field": "ipos.segment",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"segment\""
+    },
+    {
+      "field": "ipos.offering_type",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"offering_type\""
+    },
+    {
+      "field": "ipos.offering_type",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"offering_type\""
+    },
+    {
+      "field": "ipos.offering_type",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"offering_type\""
+    },
+    {
+      "field": "ipos.scraper_locked",
+      "source": "ADMIN",
+      "verdict": "UNPROBED",
+      "why": "an admin-only field has no external source to probe"
+    },
+    {
+      "field": "ipos.objectives",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"objectives\""
+    },
+    {
+      "field": "ipos.objectives",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"objectives\"; nearest candidate seen was \"Issue Objects\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipos.bse_ipo_no",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"bse_ipo_no\""
+    },
+    {
+      "field": "ipos.bse_payload_lead_manager_count",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"bse_payload_lead_manager_count\""
+    },
+    {
+      "field": "ipos.company_website",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_website\""
+    },
+    {
+      "field": "ipos.company_website",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"company_website\""
+    },
+    {
+      "field": "ipos.cin",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "cin",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "U65999MH2002PLC134884",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.company_description",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_description\""
+    },
+    {
+      "field": "ipo_details.company_description",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"company_description\""
+    },
+    {
+      "field": "ipo_details.issue_type",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"issue_type\"; nearest candidate seen was \"issue_price_type\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_details.issue_type",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Issue Type",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Book Building",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.issue_type",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Issue Type",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Bookbuilding IPO",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.fresh_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"fresh_issue\""
+    },
+    {
+      "field": "ipo_details.fresh_issue",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"fresh_issue\""
+    },
+    {
+      "field": "ipo_details.fresh_issue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"fresh_issue\"; nearest candidate seen was \"Fresh Issue (Ex Market Maker)\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_details.ofs_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ofs_issue\""
+    },
+    {
+      "field": "ipo_details.ofs_issue",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"ofs_issue\""
+    },
+    {
+      "field": "ipo_details.ofs_issue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"ofs_issue\""
+    },
+    {
+      "field": "ipo_details.face_value",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "face_value",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "10",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.face_value",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Face_Value",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "10.00",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.face_value",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Face Value",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "₹ 10 per share",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.basis_of_allotment_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"basis_of_allotment_date\""
+    },
+    {
+      "field": "ipo_details.basis_of_allotment_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"basis_of_allotment_date\""
+    },
+    {
+      "field": "ipo_details.basis_of_allotment_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"basis_of_allotment_date\""
+    },
+    {
+      "field": "ipo_details.initiation_of_refunds_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"initiation_of_refunds_date\""
+    },
+    {
+      "field": "ipo_details.initiation_of_refunds_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"initiation_of_refunds_date\""
+    },
+    {
+      "field": "ipo_details.initiation_of_refunds_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"initiation_of_refunds_date\""
+    },
+    {
+      "field": "ipo_details.credit_of_shares_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"credit_of_shares_date\""
+    },
+    {
+      "field": "ipo_details.credit_of_shares_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"credit_of_shares_date\""
+    },
+    {
+      "field": "ipo_details.credit_of_shares_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"credit_of_shares_date\""
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"exchanges\"; nearest candidate seen was \"designated_stock_exchange\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"exchanges\""
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"exchanges\""
+    },
+    {
+      "field": "ipo_details.exchanges",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"exchanges\""
+    },
+    {
+      "field": "ipo_details.compliance_officer",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "compliance_officer",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "Ameet Ashok Kela",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.compliance_officer_phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"compliance_officer_phone\""
+    },
+    {
+      "field": "ipo_details.compliance_officer_email",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "compliance_officer_email",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "cs@arcil.co.in",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.upi_cutoff_time",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "upi_cutoff_time",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "17:00",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.upi_cutoff_time",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Cut-off time for UPI Mandate Confirmation",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"11-Sep-2026 (upto 5:00 PM) The new cut-off time for UPI mandate acceptance is 05:00 PM on",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.upi_cutoff_time",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"upi_cutoff_time\""
+    },
+    {
+      "field": "ipo_details.designated_exchange",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"designated_exchange\"; nearest candidate seen was \"designated_stock_exchange\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_details.lot_multiple",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "lot_multiple",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "107",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.lot_multiple",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Market_Lot",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "107",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.lot_multiple",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"lot_multiple\""
+    },
+    {
+      "field": "ipo_details.allocation_pct",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"allocation_pct\""
+    },
+    {
+      "field": "ipo_details.pre_ipo_placement",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "pre_ipo_placement",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "false",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.bid_windows",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "bid_windows",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "[6]",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_details.bid_windows",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"bid_windows\""
+    },
+    {
+      "field": "ipo_details.bid_windows",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"bid_windows\""
+    },
+    {
+      "field": "ipo_details.promoter_shares_held",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"promoter_shares_held\""
+    },
+    {
+      "field": "ipo_details.sebi_regulation_cited",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"sebi_regulation_cited\""
+    },
+    {
+      "field": "ipo_details.promoter_group_transactions_since_drhp",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"promoter_group_transactions_since_drhp\""
+    },
+    {
+      "field": "ipo_details.cut_off_price",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"cut_off_price\""
+    },
+    {
+      "field": "ipo_details.min_investment",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"min_investment\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipo_details.isin",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"isin\""
+    },
+    {
+      "field": "ipo_details.registrar_link",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"registrar_link\""
+    },
+    {
+      "field": "ipo_details.lead_managers",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"lead_managers\""
+    },
+    {
+      "field": "ipo_details.lead_managers",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"lead_managers\"; nearest candidate seen was \"Book_Running_Lead_Manager\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_details.lead_managers",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"lead_managers\""
+    },
+    {
+      "field": "ipo_details.company_address",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_address\""
+    },
+    {
+      "field": "ipo_details.company_phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_phone\""
+    },
+    {
+      "field": "ipo_details.company_email",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_email\""
+    },
+    {
+      "field": "ipo_details.company_city",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_city\""
+    },
+    {
+      "field": "ipo_details.company_state",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_state\""
+    },
+    {
+      "field": "ipo_details.company_pincode",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_pincode\""
+    },
+    {
+      "field": "ipo_details.qib_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"qib_shares_offered\""
+    },
+    {
+      "field": "ipo_details.qib_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"qib_shares_offered\""
+    },
+    {
+      "field": "ipo_details.nii_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"nii_shares_offered\""
+    },
+    {
+      "field": "ipo_details.nii_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"nii_shares_offered\""
+    },
+    {
+      "field": "ipo_details.retail_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"retail_shares_offered\""
+    },
+    {
+      "field": "ipo_details.retail_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"retail_shares_offered\""
+    },
+    {
+      "field": "ipo_details.retail_max_allottees",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"retail_max_allottees\""
+    },
+    {
+      "field": "ipo_details.retail_max_allottees",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"retail_max_allottees\""
+    },
+    {
+      "field": "ipo_details.employee_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"employee_shares_offered\""
+    },
+    {
+      "field": "ipo_details.employee_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"employee_shares_offered\""
+    },
+    {
+      "field": "ipo_details.anchor_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"anchor_shares_offered\""
+    },
+    {
+      "field": "ipo_details.anchor_shares_offered",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"anchor_shares_offered\""
+    },
+    {
+      "field": "ipo_details.max_retail_subscription",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"max_retail_subscription\""
+    },
+    {
+      "field": "ipo_details.max_retail_subscription",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Maximum Subscription Amount for Retail Investor",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"Rs. 2,00,000\"",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.max_employee_subscription",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"max_employee_subscription\""
+    },
+    {
+      "field": "ipo_details.max_employee_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"max_employee_subscription\""
+    },
+    {
+      "field": "ipo_details.employee_discount",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"employee_discount\""
+    },
+    {
+      "field": "ipo_details.employee_discount",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"employee_discount\""
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"sponsor_banks\""
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Sponsor Bank",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Kotak Mahindra Bank Limited and HDFC Bank Limited ",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Sponsor_Bank",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "HDFC BANK^FIG-OPS Department –Lodha, I Think Techno Campus, O-3 Level,Next to Kanjurmarg R",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.sponsor_banks",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"sponsor_banks\""
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"tick_size\""
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Tick Size",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Re. 1",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "Tick_Size",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "1.00",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.tick_size",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"tick_size\""
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ipo_market_timings\""
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "IPO Market Timings",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "10.00 a.m. to 5.00 p.m.",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "BSE",
+      "verdict": "CARRIES",
+      "label": "IPO_Market_Timings",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.ipo_market_timings",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"ipo_market_timings\""
+    },
+    {
+      "field": "ipo_details.category_details",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"category_details\""
+    },
+    {
+      "field": "ipo_details.category_details",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Categories",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "\"FI, IC, MF, FII, OTH, CO, IND, and NOH\"",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "ipo_details.sub_categories_upi",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"sub_categories_upi\""
+    },
+    {
+      "field": "ipo_details.sub_categories_upi",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "Sub-Categories applicable for UPI",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "IND (upto 5 Lakhs)",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "financial_data.revenue_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"revenue_fy2022\""
+    },
+    {
+      "field": "financial_data.revenue_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"revenue_fy2022\""
+    },
+    {
+      "field": "financial_data.revenue_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"revenue_fy2023\""
+    },
+    {
+      "field": "financial_data.revenue_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"revenue_fy2023\""
+    },
+    {
+      "field": "financial_data.revenue_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"revenue_fy2024\""
+    },
+    {
+      "field": "financial_data.revenue_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"revenue_fy2024\""
+    },
+    {
+      "field": "financial_data.profit_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"profit_fy2022\""
+    },
+    {
+      "field": "financial_data.profit_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"profit_fy2022\""
+    },
+    {
+      "field": "financial_data.profit_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"profit_fy2023\""
+    },
+    {
+      "field": "financial_data.profit_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"profit_fy2023\""
+    },
+    {
+      "field": "financial_data.profit_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"profit_fy2024\""
+    },
+    {
+      "field": "financial_data.profit_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"profit_fy2024\""
+    },
+    {
+      "field": "financial_data.net_worth",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"net_worth\"; nearest candidate seen was \"net_worth_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_data.net_worth",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "NET Worth",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "3,079.39 | 2,767.80 | 2,462.51",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_data.eps",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"eps\"; nearest candidate seen was \"eps_basic_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_data.eps",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "EPS (₹)",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "12.55 | 12.55",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_data.roe",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"roe\""
+    },
+    {
+      "field": "financial_data.roe",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "ROE",
+      "fixture": "chittorgarh/vinod-texworld-ltd.html",
+      "sample": "24.31% | 28.50%",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_data.debt_to_equity",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"debt_to_equity\""
+    },
+    {
+      "field": "financial_data.debt_to_equity",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"debt_to_equity\""
+    },
+    {
+      "field": "financial_data.reserves_and_surplus",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"reserves_and_surplus\""
+    },
+    {
+      "field": "financial_data.reserves_and_surplus",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Reserves and Surplus",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "2,751.18 | 2,439.19 | 2,135.20",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_data.total_assets",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_assets\""
+    },
+    {
+      "field": "financial_data.total_assets",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"total_assets\""
+    },
+    {
+      "field": "financial_data.total_borrowing",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_borrowing\""
+    },
+    {
+      "field": "financial_data.total_borrowing",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Total Borrowing",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "1,205.50 | 305.93 | 149.95",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_data.promoter_holding_pre_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"promoter_holding_pre_issue\""
+    },
+    {
+      "field": "financial_data.promoter_holding_pre_issue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"promoter_holding_pre_issue\""
+    },
+    {
+      "field": "financial_data.promoter_holding_post_issue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"promoter_holding_post_issue\""
+    },
+    {
+      "field": "financial_data.promoter_holding_post_issue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"promoter_holding_post_issue\""
+    },
+    {
+      "field": "financial_data.market_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"market_cap\""
+    },
+    {
+      "field": "financial_data.market_cap",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"market_cap\"; nearest candidate seen was \"Market Cap at Offer Price\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_data.pre_ipo_eps",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"pre_ipo_eps\""
+    },
+    {
+      "field": "financial_data.pre_ipo_eps",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"pre_ipo_eps\""
+    },
+    {
+      "field": "financial_data.post_ipo_eps",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"post_ipo_eps\""
+    },
+    {
+      "field": "financial_data.post_ipo_eps",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"post_ipo_eps\""
+    },
+    {
+      "field": "financial_data.ronw",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ronw\"; nearest candidate seen was \"weighted_average_ronw\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_data.ronw",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "RoNW",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "13.95% | 13.59%",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_data.pe_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"pe_ratio\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ebitda_fy2022\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"ebitda_fy2022\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ebitda_fy2023\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"ebitda_fy2023\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ebitda_fy2024\""
+    },
+    {
+      "field": "financial_data.ebitda_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"ebitda_fy2024\""
+    },
+    {
+      "field": "financial_data.total_income_fy2022",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_income_fy2022\""
+    },
+    {
+      "field": "financial_data.total_income_fy2022",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"total_income_fy2022\""
+    },
+    {
+      "field": "financial_data.total_income_fy2023",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_income_fy2023\""
+    },
+    {
+      "field": "financial_data.total_income_fy2023",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"total_income_fy2023\""
+    },
+    {
+      "field": "financial_data.total_income_fy2024",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_income_fy2024\""
+    },
+    {
+      "field": "financial_data.total_income_fy2024",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"total_income_fy2024\""
+    },
+    {
+      "field": "financial_data.current_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"current_ratio\""
+    },
+    {
+      "field": "financial_data.quick_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"quick_ratio\""
+    },
+    {
+      "field": "financial_data.inventory_turnover",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"inventory_turnover\""
+    },
+    {
+      "field": "financial_statements.fiscal_year",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"fiscal_year\"; nearest candidate seen was \"fiscal_years\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.fiscal_year",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"fiscal_year\""
+    },
+    {
+      "field": "financial_statements.revenue",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"revenue\"; nearest candidate seen was \"revenue_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.revenue",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"revenue\""
+    },
+    {
+      "field": "financial_statements.total_income",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_income\"; nearest candidate seen was \"total_income_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.total_income",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Total Income",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "785.08 | 623.40 | 574.11",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_statements.ebitda",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ebitda\"; nearest candidate seen was \"ebitda_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.ebitda",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "EBITDA",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "588.93 | 491.88 | 416.36",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_statements.pat",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"pat\"; nearest candidate seen was \"pat_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.pat",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"pat\"; nearest candidate seen was \"PAT Margin\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.net_worth",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"net_worth\"; nearest candidate seen was \"net_worth_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.net_worth",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "NET Worth",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "3,079.39 | 2,767.80 | 2,462.51",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_statements.basis",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"basis\"; nearest candidate seen was \"financial_basis\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.basis",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"basis\""
+    },
+    {
+      "field": "financial_statements.unit",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "unit",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-DRHP.json",
+      "sample": "millions",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "financial_statements.unit",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"unit\""
+    },
+    {
+      "field": "financial_statements.eps_basic",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"eps_basic\"; nearest candidate seen was \"eps_basic_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.eps_diluted",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"eps_diluted\"; nearest candidate seen was \"eps_diluted_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "financial_statements.op_cash_flow",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"op_cash_flow\""
+    },
+    {
+      "field": "financial_statements.dscr",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"dscr\""
+    },
+    {
+      "field": "financial_statements.rent_expense",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"rent_expense\""
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"price_floor\"; nearest candidate seen was \"price_band_floor\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"price_floor\""
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"price_floor\""
+    },
+    {
+      "field": "ipo_valuation.price_floor",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"price_floor\""
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"price_cap\"; nearest candidate seen was \"price_band_cap\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"price_cap\""
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"price_cap\""
+    },
+    {
+      "field": "ipo_valuation.price_cap",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"price_cap\"; nearest candidate seen was \"Market Cap at Offer Price\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_valuation.mcap_at_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"mcap_at_cap\""
+    },
+    {
+      "field": "ipo_valuation.mcap_at_cap",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"mcap_at_cap\""
+    },
+    {
+      "field": "ipo_valuation.pe_at_cap",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "pe_at_cap",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "12.85",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_valuation.pe_at_cap",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"pe_at_cap\""
+    },
+    {
+      "field": "ipo_valuation.mcap_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"mcap_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.pe_at_floor",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "pe_at_floor",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "12.2",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_valuation.ronw_weighted_3y",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ronw_weighted_3y\""
+    },
+    {
+      "field": "ipo_valuation.pricing_event",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"pricing_event\""
+    },
+    {
+      "field": "ipo_valuation.shares_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"shares_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.shares_at_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"shares_at_cap\"; nearest candidate seen was \"total_offer_shares_at_cap\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_valuation.fresh_shares_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"fresh_shares_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.fresh_shares_at_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"fresh_shares_at_cap\""
+    },
+    {
+      "field": "ipo_valuation.ofs_shares",
+      "source": "DOC",
+      "verdict": "CARRIES",
+      "label": "ofs_shares",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
+      "sample": "52731946",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_valuation.total_shares_at_floor",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_shares_at_floor\""
+    },
+    {
+      "field": "ipo_valuation.total_shares_at_cap",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_shares_at_cap\"; nearest candidate seen was \"total_offer_shares_at_cap\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_valuation.pe_not_ascertainable_reason",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"pe_not_ascertainable_reason\""
+    },
+    {
+      "field": "promoters.name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"name\"; nearest candidate seen was \"promoter_name\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "promoters.name",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Name",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Category | No. of Shares Offered | Amount ( cr.)",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "promoters.waca",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"waca\""
+    },
+    {
+      "field": "promoters.is_promoter_group",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"is_promoter_group\""
+    },
+    {
+      "field": "ipo_intermediaries.role",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"role\""
+    },
+    {
+      "field": "ipo_intermediaries.role",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"role\""
+    },
+    {
+      "field": "ipo_intermediaries.role",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"role\""
+    },
+    {
+      "field": "ipo_intermediaries.name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"name\"; nearest candidate seen was \"promoter_name\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_intermediaries.name",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"name\""
+    },
+    {
+      "field": "ipo_intermediaries.name",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Name",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Category | No. of Shares Offered | Amount ( cr.)",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "ipo_risk_factors.seq",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"seq\""
+    },
+    {
+      "field": "ipo_risk_factors.heading",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"heading\""
+    },
+    {
+      "field": "brlm_track_record.brlm_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"brlm_name\""
+    },
+    {
+      "field": "brlm_track_record.as_of_date",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"as_of_date\""
+    },
+    {
+      "field": "brlm_track_record.issues_3y",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"issues_3y\"; nearest candidate seen was \"brlm_issues_3y_total\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "brlm_track_record.closed_below_issue_price",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"closed_below_issue_price\""
+    },
+    {
+      "field": "promoters.shares_held",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"shares_held\""
+    },
+    {
+      "field": "promoters.waca_last_year",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"waca_last_year\""
+    },
+    {
+      "field": "ipo_intermediaries.sebi_reg_no",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"sebi_reg_no\""
+    },
+    {
+      "field": "ipo_intermediaries.contact_person",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"contact_person\""
+    },
+    {
+      "field": "ipo_intermediaries.phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"phone\""
+    },
+    {
+      "field": "ipo_intermediaries.email",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"email\"; nearest candidate seen was \"compliance_officer_email\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_intermediaries.grievance_email",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"grievance_email\""
+    },
+    {
+      "field": "ipo_risk_factors.body",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"body\""
+    },
+    {
+      "field": "ipo_risk_factors.kpis",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"kpis\"; nearest candidate seen was \"concentration_kpis\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "promoter_acquisition_ranges.period",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"period\""
+    },
+    {
+      "field": "promoter_acquisition_ranges.waca",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"waca\""
+    },
+    {
+      "field": "promoter_acquisition_ranges.cap_multiple",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"cap_multiple\"; nearest candidate seen was \"cap_multiple_of_face\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "promoter_acquisition_ranges.price_low",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"price_low\""
+    },
+    {
+      "field": "promoter_acquisition_ranges.price_high",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"price_high\""
+    },
+    {
+      "field": "peer_companies.company_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"company_name\""
+    },
+    {
+      "field": "peer_companies.company_name",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"company_name\""
+    },
+    {
+      "field": "peer_companies.is_listed",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"is_listed\""
+    },
+    {
+      "field": "peer_companies.is_listed",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"is_listed\""
+    },
+    {
+      "field": "peer_companies.pe_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"pe_ratio\""
+    },
+    {
+      "field": "peer_companies.pe_ratio",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "PE Ratio",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "(column header)",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "peer_companies.eps",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"eps\"; nearest candidate seen was \"eps_basic_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "peer_companies.eps",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "EPS (₹)",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "12.55 | 12.55",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "peer_companies.diluted_eps",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"diluted_eps\"; nearest candidate seen was \"eps_diluted_by_fy\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "peer_companies.diluted_eps",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"diluted_eps\""
+    },
+    {
+      "field": "peer_companies.ronw",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"ronw\"; nearest candidate seen was \"weighted_average_ronw\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "peer_companies.ronw",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "RoNW",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "13.95% | 13.59%",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "peer_companies.nav",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"nav\""
+    },
+    {
+      "field": "peer_companies.nav",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "NAV",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "94.78 | 81.97",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "peer_companies.pbv_ratio",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"pbv_ratio\""
+    },
+    {
+      "field": "peer_companies.pbv_ratio",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"pbv_ratio\""
+    },
+    {
+      "field": "peer_companies.financial_statement_type",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"financial_statement_type\""
+    },
+    {
+      "field": "anchor_investors.bid_date",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"bid_date\""
+    },
+    {
+      "field": "anchor_investors.bid_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"bid_date\""
+    },
+    {
+      "field": "anchor_investors.bid_date",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"bid_date\""
+    },
+    {
+      "field": "anchor_investors.total_shares_offered",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_shares_offered\"; nearest candidate seen was \"total_offer_shares_at_cap\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "anchor_investors.total_amount_raised",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"total_amount_raised\""
+    },
+    {
+      "field": "anchor_investors.anchor_investors_count",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"anchor_investors_count\""
+    },
+    {
+      "field": "anchor_investors.investor_list",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"investor_list\""
+    },
+    {
+      "field": "documents.filing_date",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"filing_date\"; nearest candidate seen was \"rhp_filing_date\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "documents.filing_date",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"filing_date\""
+    },
+    {
+      "field": "subscriptions.qib_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"qib_subscription\""
+    },
+    {
+      "field": "subscriptions.qib_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"qib_subscription\""
+    },
+    {
+      "field": "subscriptions.qib_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"qib_subscription\""
+    },
+    {
+      "field": "subscriptions.nii_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"nii_subscription\""
+    },
+    {
+      "field": "subscriptions.nii_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"nii_subscription\""
+    },
+    {
+      "field": "subscriptions.nii_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"nii_subscription\""
+    },
+    {
+      "field": "subscriptions.retail_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"retail_subscription\"; nearest candidate seen was \"Maximum Subscription Amount for Retail Investor\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "subscriptions.retail_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"retail_subscription\""
+    },
+    {
+      "field": "subscriptions.retail_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"retail_subscription\""
+    },
+    {
+      "field": "subscriptions.total_subscription",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "noOfTime",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "subscriptions.total_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"total_subscription\""
+    },
+    {
+      "field": "subscriptions.total_subscription",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"total_subscription\""
+    },
+    {
+      "field": "subscriptions.employee_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"employee_subscription\""
+    },
+    {
+      "field": "subscriptions.employee_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"employee_subscription\""
+    },
+    {
+      "field": "subscriptions.b_nii_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"b_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.b_nii_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"b_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.s_nii_subscription",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"s_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.s_nii_subscription",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"s_nii_subscription\""
+    },
+    {
+      "field": "subscriptions.total_shares_bid",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "noOfsharesBid",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "subscriptions.total_shares_bid",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"total_shares_bid\""
+    },
+    {
+      "field": "subscriptions.shares_offered",
+      "source": "NSE",
+      "verdict": "CARRIES",
+      "label": "noOfSharesOffered",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "",
+      "multiRow": false,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "subscriptions.shares_offered",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"shares_offered\""
+    },
+    {
+      "field": "gmp_records.gmp",
+      "source": "IG",
+      "verdict": "CARRIES",
+      "label": "GMP",
+      "fixture": "investorgain/gmp-live.json",
+      "sample": "",
+      "multiRow": true,
+      "how": "curated: label confirmed against the payload"
+    },
+    {
+      "field": "gmp_records.gmp",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"gmp\""
+    },
+    {
+      "field": "listing_performance.listing_price",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"listing_price\""
+    },
+    {
+      "field": "listing_performance.listing_price",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"listing_price\""
+    },
+    {
+      "field": "listing_performance.listing_price",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"listing_price\""
+    },
+    {
+      "field": "listing_performance.current_price",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"current_price\""
+    },
+    {
+      "field": "listing_performance.current_price",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"current_price\""
+    },
+    {
+      "field": "listing_performance.current_price",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"current_price\""
+    },
+    {
+      "field": "listing_performance.current_price_bse",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"current_price_bse\""
+    },
+    {
+      "field": "listing_performance.current_price_nse",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"current_price_nse\""
+    },
+    {
+      "field": "ipo_demand_graph.price_point",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"price_point\""
+    },
+    {
+      "field": "ipo_demand_graph.price_point",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"price_point\""
+    },
+    {
+      "field": "ipo_demand_graph.is_cut_off",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"is_cut_off\"; nearest candidate seen was \"Cut-off time for UPI Mandate Confirmation\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_demand_graph.is_cut_off",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"is_cut_off\"; nearest candidate seen was \"Cut_off_time_for_UPI_Mandate_Confirmation\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "ipo_demand_graph.cumulative_quantity",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"cumulative_quantity\""
+    },
+    {
+      "field": "ipo_demand_graph.cumulative_quantity",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"cumulative_quantity\""
+    },
+    {
+      "field": "ipo_demand_graph.exchange",
+      "source": "NSE",
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no curated or exact label for \"exchange\""
+    },
+    {
+      "field": "ipo_demand_graph.exchange",
+      "source": "BSE",
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no curated or exact label for \"exchange\""
+    },
+    {
+      "field": "registrars.name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"name\"; nearest candidate seen was \"promoter_name\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "registrars.name",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.name",
+      "source": "CG",
+      "verdict": "CARRIES",
+      "label": "Name",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "Category | No. of Shares Offered | Amount ( cr.)",
+      "multiRow": false,
+      "how": "exact name match"
+    },
+    {
+      "field": "registrars.short_name",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"short_name\""
+    },
+    {
+      "field": "registrars.short_name",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.short_name",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"short_name\""
+    },
+    {
+      "field": "registrars.email",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"email\"; nearest candidate seen was \"compliance_officer_email\" — a CANDIDATE, not evidence, and it needs a person to confirm what it names"
+    },
+    {
+      "field": "registrars.email",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.email",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"email\""
+    },
+    {
+      "field": "registrars.phone",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"phone\""
+    },
+    {
+      "field": "registrars.phone",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.phone",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"phone\""
+    },
+    {
+      "field": "registrars.website",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.website",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"website\""
+    },
+    {
+      "field": "registrars.website",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"website\""
+    },
+    {
+      "field": "registrars.allotment_check_url",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.address",
+      "source": "DOC",
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no curated or exact label for \"address\""
+    },
+    {
+      "field": "registrars.address",
+      "source": "REG",
+      "verdict": "UNPROBED",
+      "why": "no registrar-site probe was run in this round"
+    },
+    {
+      "field": "registrars.address",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no curated or exact label for \"address\""
+    },
+    {
+      "field": "registrars.active",
+      "source": "ADMIN",
+      "verdict": "UNPROBED",
+      "why": "an admin-only field has no external source to probe"
+    }
+  ]
+}

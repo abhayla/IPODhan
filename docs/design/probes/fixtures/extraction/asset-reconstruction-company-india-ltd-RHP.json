@@ -1,0 +1,663 @@
+{
+  "doc_type": "RHP",
+  "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+  "pages": 573,
+  "extraction_status": "PARTIAL",
+  "unit": "millions",
+  "fiscal_years": [
+    2026,
+    2025,
+    2024
+  ],
+  "fields": {
+    "fiscal_years": {
+      "value": [
+        2026,
+        2025,
+        2024
+      ],
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "fiscal_years_consecutive",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "unit": {
+      "value": "millions",
+      "page": 22,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "unit_not_stated",
+        "passed": true,
+        "detail": "millions"
+      }
+    },
+    "headline_source": {
+      "value": "PROSPECTUS_COVER",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "headline_read_from_cover",
+        "passed": true,
+        "detail": "cover pages 0-2"
+      }
+    },
+    "issue_price_type": {
+      "value": "BOOK_BUILDING",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "issue_process_named_on_cover",
+        "passed": true,
+        "detail": "BOOK_BUILDING"
+      }
+    },
+    "price_band_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cover_price_within_bounds",
+        "passed": false,
+        "detail": "check_failed: price not printed on the cover"
+      }
+    },
+    "price_band_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cover_price_within_bounds",
+        "passed": false,
+        "detail": "check_failed: price not printed on the cover"
+      }
+    },
+    "face_value": {
+      "value": 10,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cover_face_value_plausible",
+        "passed": true,
+        "detail": "10.0"
+      }
+    },
+    "lot_size": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cover_lot_within_bounds",
+        "passed": false,
+        "detail": "check_failed: lot size not printed on the cover"
+      }
+    },
+    "fresh_issue_amount": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "cover does not state the offer is entirely a fresh issue"
+      }
+    },
+    "ofs_amount": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "cover does not state the offer is entirely a fresh issue"
+      }
+    },
+    "ofs_amount_at_cap": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "cover does not state the offer is entirely a fresh issue"
+      }
+    },
+    "total_offer_amount_at_cap": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "cover does not state the offer is entirely a fresh issue"
+      }
+    },
+    "ofs_shares": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "cover does not state the offer is entirely a fresh issue"
+      }
+    },
+    "issue_structure": {
+      "value": null,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "fresh/OFS split not readable from the cover"
+      }
+    },
+    "shares_at_floor": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cover_share_count_plausible",
+        "passed": false,
+        "detail": "check_failed: cover does not state the offer is entirely a fresh issue"
+      }
+    },
+    "shares_at_cap": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cover_share_count_plausible",
+        "passed": false,
+        "detail": "check_failed: cover does not state the offer is entirely a fresh issue"
+      }
+    },
+    "total_offer_shares_at_cap": {
+      "value": 52731946,
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cover_share_count_plausible",
+        "passed": true,
+        "detail": "52731946.0"
+      }
+    },
+    "revenue_by_fy": {
+      "value": {
+        "2024": 5701.41,
+        "2025": 5964.23,
+        "2026": 7530.42
+      },
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "revenue_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "total_income_by_fy": {
+      "value": {
+        "2024": 5741.06,
+        "2025": 6233.99,
+        "2026": 7850.77
+      },
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "total_income_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "pat_by_fy": {
+      "value": {
+        "2024": 3053.41,
+        "2025": 3553.19,
+        "2026": 4078.44
+      },
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "pat_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "eps_basic_by_fy": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "eps_basic_by_fy_year_series",
+        "passed": false,
+        "detail": "check_failed: no values"
+      }
+    },
+    "ebitda_by_fy": {
+      "value": {
+        "2024": 4436.18,
+        "2025": 4660.72,
+        "2026": 5327.77
+      },
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "ebitda_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "net_worth_by_fy": {
+      "value": {
+        "2024": 23511.27,
+        "2025": 26151.55,
+        "2026": 29235.95
+      },
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "net_worth_by_fy_year_series",
+        "passed": true,
+        "detail": "3 years [2024, 2025, 2026]"
+      }
+    },
+    "rhp_filing_date": {
+      "value": "2026-09-01",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "rhp_filing_date_on_cover",
+        "passed": true,
+        "detail": "2026-09-01"
+      }
+    },
+    "financial_plausibility_pat_not_above_revenue": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "pat_not_above_revenue",
+        "passed": true,
+        "detail": "PAT <= revenue for 3 years"
+      }
+    },
+    "financial_plausibility_ebitda_at_least_pat": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "ebitda_at_least_pat",
+        "passed": true,
+        "detail": "EBITDA >= PAT for 3 profitable years"
+      }
+    },
+    "financial_plausibility_yoy_ratio_within_bounds": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "yoy_ratio_within_bounds",
+        "passed": true,
+        "detail": "MAINBOARD band 0.2x..5.0x — 10 steps within band"
+      }
+    },
+    "financial_plausibility_eps_times_shares_matches_pat": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "eps_times_shares_matches_pat",
+        "passed": true,
+        "detail": "skipped: weighted share count unavailable"
+      }
+    },
+    "financial_plausibility_min_two_fiscal_years": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "min_two_fiscal_years",
+        "passed": true,
+        "detail": "3 fiscal years found for P&L metrics"
+      }
+    },
+    "financial_plausibility_years_from_header_only": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "years_from_header_only",
+        "passed": true,
+        "detail": "every metric year is in the parsed header [2024, 2025, 2026]"
+      }
+    },
+    "financial_plausibility_unit_matches_magnitude": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "unit_matches_magnitude",
+        "passed": true,
+        "detail": "not applicable (issue size unavailable or below Rs 10 Cr)"
+      }
+    },
+    "financial_plausibility_unit_stated_near_table": {
+      "value": true,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "unit_stated_near_table",
+        "passed": true,
+        "detail": "read 'in   million' from page 66"
+      }
+    },
+    "objects_of_offer": {
+      "value": null,
+      "page": null,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "not_extractable",
+        "passed": true,
+        "detail": "no 'Utilisation of Net Proceeds' table found"
+      }
+    },
+    "risk_factor_count": {
+      "value": 66,
+      "page": 27,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "risk_factor_minimum_count",
+        "passed": true,
+        "detail": "66"
+      }
+    },
+    "risk_factors": {
+      "value": [
+        {
+          "n": 1,
+          "heading": "Our revenue and profits are largely dependent on the value and composition of our AUM and any adverse change in our AUM may impact our revenue and profit."
+        },
+        {
+          "n": 2,
+          "heading": "Non-compliance with RBI’s observations made during any inspection could expose us to penalties and restrictions."
+        },
+        {
+          "n": 3,
+          "heading": "We bid for stressed assets through a competitive bidding process including the Swiss challenge and anchor process."
+        },
+        {
+          "n": 4,
+          "heading": "Our inability to recover outstanding amounts from the stressed assets we acquire and manage in a timely manner, or at all, could adversely affect our business, results of operations, financial condition or cash flows."
+        },
+        {
+          "n": 5,
+          "heading": "A significant portion of our stressed assets are under our corporate loans business vertical (representing 68.75%, 75.48% and 78.51% of our AUM as of March 31, 2026, March 31, 2025, March 31, 2024, respectively)."
+        },
+        {
+          "n": 6,
+          "heading": "An inability to make accurate stressed asset acquisition decisions could adversely impact our business, financial condition and cash flows."
+        },
+        {
+          "n": 7,
+          "heading": "We rely significantly on our information technology systems for our business and operations."
+        },
+        {
+          "n": 8,
+          "heading": "We may have to comply with stricter regulations and guidelines issued by regulatory authorities in India, including the RBI, which may increase our compliance costs, divert the attention of our management and subject us to penalties."
+        },
+        {
+          "n": 9,
+          "heading": "Our business is subject to seasonality, which may contribute to fluctuations in our results of operations and financial condition."
+        },
+        {
+          "n": 10,
+          "heading": "Our Restated Consolidated Financial Information comprises the financial statements of our Company consolidated with those trusts which have been identified as subsidiaries and associates, in accordance with applicable accounting policies."
+        },
+        {
+          "n": 11,
+          "heading": "If we fail to identify, monitor and manage risks and effectively implement our risk management policies, it could have an adverse effect on our business, financial condition, results of operations and cash flows."
+        },
+        {
+          "n": 12,
+          "heading": "We rely on third party service providers for certain aspects of our business, who may not perform their obligations satisfactorily or in compliance with law."
+        },
+        {
+          "n": 13,
+          "heading": "We require substantial capital for our business and any disruption in our sources of capital could have an adverse effect on our business, results of operations, cash flows and financial condition."
+        },
+        {
+          "n": 14,
+          "heading": "If the collaterals or guarantees securing the stressed assets which we have acquired are not sufficient, or if we are not able to recover the full value of the collateral or guarantee in a timely manner or at all, it will adversely affect our business, financial condition, results of operations and cash flows."
+        },
+        {
+          "n": 15,
+          "heading": "Any non-compliance with mandatory anti-money laundering (“AML”), know your client (“KYC”) and anti- terrorist financing (“ATF”) rules, regulations and guidelines applicable to us issued by regulatory and government authorities could result in criminal and regulatory fines and reputational damage."
+        },
+        {
+          "n": 16,
+          "heading": "We have in the past received observations from our internal auditors on certain matters."
+        },
+        {
+          "n": 17,
+          "heading": "Our Company, Subsidiaries, Promoters, Directors, Key Managerial Personnel and Senior Management are involved in certain legal and regulatory proceedings."
+        },
+        {
+          "n": 18,
+          "heading": "Our operations are dependent on our ability to attract and retain qualified personnel, including our Key Managerial Personnel and Senior Management and any inability on our part to do so, could adversely affect our business, results of operations, financial condition and cash flows."
+        },
+        {
+          "n": 19,
+          "heading": "The bankruptcy code in India and other related laws may affect our right to recover amounts from stressed assets."
+        },
+        {
+          "n": 20,
+          "heading": "Our branch offices are not located on land owned by us and we have only leasehold rights."
+        },
+        {
+          "n": 21,
+          "heading": "Any downgrade in our credit ratings may increase interest rates for raising new debt, refinancing our outstanding debt, which would increase our financing costs, and adversely affect our future ability to borrow on a competitive basis."
+        },
+        {
+          "n": 22,
+          "heading": "The asset reconstruction industry in India faces various challenges."
+        },
+        {
+          "n": 23,
+          "heading": "We have incurred indebtedness and an inability to obtain further financing or to comply with repayment and other covenants in our financing agreements could adversely affect our business, results of operations, financial condition and cash flows."
+        },
+        {
+          "n": 24,
+          "heading": "As part of our resolution strategies we can act as a resolution applicant under the Insolvency and Bankruptcy Code, 2016 and are subject to various risks in our capacity as resolution applicant which may adversely affect our business, financial condition and results of operations."
+        },
+        {
+          "n": 25,
+          "heading": "Our inability to effectively manage our growth or implement our growth strategies may have an adverse effect on our business, results of operations, financial condition and cash flows."
+        },
+        {
+          "n": 26,
+          "heading": "The asset reconstruction industry is highly competitive and if we are not able to compete effectively, it could adversely affect our business and results of operations."
+        },
+        {
+          "n": 27,
+          "heading": "Failure to obtain or renew approvals, licenses, registrations and permits to operate our business in a timely manner, or at all, may adversely affect our business, financial condition, results of operations and cash flows."
+        },
+        {
+          "n": 28,
+          "heading": "Internal or external fraud or misconduct by our employees could adversely affect our reputation and our results of operations."
+        },
+        {
+          "n": 29,
+          "heading": "If we fail to protect or incur significant costs in defending our intellectual property or if we infringe the intellectual property rights of others, our business, results of operation, financial condition and cash flows could be adversely affected."
+        },
+        {
+          "n": 30,
+          "heading": "Negative publicity of us or the asset reconstruction services sector could damage our reputation and may adversely impact our reputation, business and financial results."
+        },
+        {
+          "n": 31,
+          "heading": "We have not been able to obtain records of the educational qualification for one of our Senior Management and have relied on a reply from the University to the email written by the respective Senior Management to their university for details of their profile included in this Red Herring Prospectus."
+        },
+        {
+          "n": 32,
+          "heading": "We are unable to trace certain of our historical records."
+        },
+        {
+          "n": 33,
+          "heading": "There have been certain instances of delays in payment of statutory dues by us in the past."
+        },
+        {
+          "n": 34,
+          "heading": "Bombay Rayon Fashions Limited and SKS Ispat and Power Limited have been exempted from being identified as members of the Promoter Group of SBI, one of our Promoters, for the purposes of the Offer pursuant to the letter received by our Company from SEBI dated August 5, 2026 and bearing reference number HO/49/11/11(247)2026- CFD-RAC-DIL2."
+        },
+        {
+          "n": 35,
+          "heading": "One of our business strategies is to increase the proportion of our Retail loans in our AUM."
+        },
+        {
+          "n": 36,
+          "heading": "We have in the past entered into related party transactions and may continue to do so in the future, which may potentially involve conflicts of interest with the equity shareholders."
+        },
+        {
+          "n": 37,
+          "heading": "Some of our Directors are or were not directors of listed companies and hence lack of adequate experience to address complexities associated with listed companies, could have an adverse impact on our business and operations."
+        },
+        {
+          "n": 38,
+          "heading": "After the completion of the Offer, our Promoters will continue to collectively hold majority of the shareholding in our Company, which will allow them to influence the outcome of matters requiring shareholder approval."
+        },
+        {
+          "n": 39,
+          "heading": "We have certain contingent liabilities that have been disclosed in the Restated Consolidated Financial Information (₹ 20.00 million as of March 31, 2026), which if they materialize, may adversely affect our business, results of operations, financial condition and cash flows."
+        },
+        {
+          "n": 40,
+          "heading": "Certain sections of this Red Herring Prospectus disclose information from the CRISIL Report which is a paid report and commissioned and paid for by us exclusively in connection with the Offer and any reliance on such information for making an investment decision in the Offer is subject to inherent risks."
+        },
+        {
+          "n": 41,
+          "heading": "Failures or significant weakness in internal control systems could cause operational errors which may have an adverse effect on our reputation, business, results of operations, financial condition and cash flows."
+        },
+        {
+          "n": 42,
+          "heading": "Grant of stock options under our ESOP 2025 may result in a charge to our statement of profit and loss, and to that extent, affect our financial condition."
+        },
+        {
+          "n": 43,
+          "heading": "We have included in this Red Herring Prospectus certain non-GAAP financial measures and certain other industry measures related to our operations and financial performance."
+        },
+        {
+          "n": 44,
+          "heading": "Our insurance coverage may not be adequate or we may incur uninsured losses or losses in excess of our insurance coverage which could have an adverse impact on our business, results of operations, financial condition and cash flows."
+        },
+        {
+          "n": 45,
+          "heading": "Any future issuance of Equity Shares, or convertible securities or other equity linked instruments by us may dilute your shareholding and sale of Equity Shares by shareholders with significant shareholding may adversely affect the trading price of the Equity Shares."
+        },
+        {
+          "n": 46,
+          "heading": "Our Company may not be able to pay dividends in the future."
+        },
+        {
+          "n": 47,
+          "heading": "QIBs and Non-Institutional Bidders are not permitted to withdraw or lower their Bids (in terms of quantity of Equity Shares or the Bid Amount) at any stage after the submission of their Bid, and Retail Individual Bidders are not permitted to withdraw their Bids after closure of the Bid/ Offer Closing Date."
+        },
+        {
+          "n": 48,
+          "heading": "Investors may be restricted in their ability to exercise pre-emptive rights under Indian law and thereby may suffer future dilution of their ownership position."
+        },
+        {
+          "n": 49,
+          "heading": "We expect to be classified as a passive foreign investment company (“PFIC”), which could result in adverse U.S."
+        },
+        {
+          "n": 50,
+          "heading": "Our Company is not, and does not intend to become, regulated as an investment company under the U.S."
+        },
+        {
+          "n": 51,
+          "heading": "Rights of shareholders of companies under Indian law may be more limited than under the laws of other jurisdictions."
+        },
+        {
+          "n": 52,
+          "heading": "Our Company will not receive any proceeds from the Offer."
+        },
+        {
+          "n": 53,
+          "heading": "Changing laws, rules and regulations and legal uncertainties, including adverse application of tax laws, may adversely affect our business, prospects and results of operations."
+        },
+        {
+          "n": 54,
+          "heading": "Natural or man-made disasters, fires, epidemics, pandemics, acts of war, terrorist attacks, civil unrest and other events could adversely affect our business."
+        },
+        {
+          "n": 55,
+          "heading": "A downgrade in ratings of India and other jurisdictions we operate in may affect the trading price of the Equity Shares."
+        },
+        {
+          "n": 56,
+          "heading": "Political, economic or other factors that are beyond our control may have an adverse effect on our business and results of operations."
+        },
+        {
+          "n": 57,
+          "heading": "Significant differences exist between Ind AS and other accounting principles, such as U.S."
+        },
+        {
+          "n": 58,
+          "heading": "We may be affected by competition laws in India, the adverse application or interpretation of which could adversely affect our business."
+        },
+        {
+          "n": 59,
+          "heading": "The Indian tax regime has undergone substantial changes which could adversely affect our business and the trading price of the Equity Shares."
+        },
+        {
+          "n": 60,
+          "heading": "The determination of the Price Band is based on various factors and assumptions and the Offer Price, price to earnings ratio and market capitalization to revenue multiple based on the Offer Price of our Company, may not be indicative of the market price of the Company on listing or thereafter."
+        },
+        {
+          "n": 61,
+          "heading": "Pursuant to listing of the Equity Shares, we may be subject to pre-emptive surveillance measures like Additional Surveillance Measure (“ASM”) and Graded Surveillance Measures (“GSM”) by the Stock Exchanges in order to enhance market integrity and safeguard the interest of investors."
+        },
+        {
+          "n": 62,
+          "heading": "The Equity Shares have never been publicly traded and the Offer may not result in an active or liquid market for the Equity Shares."
+        },
+        {
+          "n": 63,
+          "heading": "Investors may be subject to Indian taxes arising out of income arising on the sale of the Equity Shares."
+        },
+        {
+          "n": 64,
+          "heading": "Investors will not be able to sell immediately on an Indian stock exchange any of the Equity Shares they purchase in the Offer."
+        },
+        {
+          "n": 65,
+          "heading": "Under Indian law, foreign investors are subject to investment restrictions that limit our ability to attract foreign investors, which may adversely affect the trading price of the Equity Shares."
+        },
+        {
+          "n": 66,
+          "heading": "Fluctuations in the exchange rate between the Indian Rupee and foreign currencies may have an adverse effect on the value of the Equity Shares, independent of our operating results."
+        }
+      ],
+      "page": 27,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "risk_factor_headings_complete",
+        "passed": true,
+        "detail": "66"
+      }
+    },
+    "cin": {
+      "value": "U65999MH2002PLC134884",
+      "page": 0,
+      "source_doc": "asset-reconstruction-company-india-ltd-RHP.pdf",
+      "check": {
+        "name": "cin_matches_mca_pattern",
+        "passed": true,
+        "detail": "U65999MH2002PLC134884"
+      }
+    }
+  }
+}
