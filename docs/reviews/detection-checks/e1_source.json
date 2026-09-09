@@ -10,5 +10,6 @@
   "consumerReason": "a snapshot assertion over the whole ipos/field_sources table, the same shape as the existing nightly floor checks (e.g. c_issue_size_floor) — not a per-cycle write-path fact but a standing invariant read once a night",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "E1-SOURCE (pull-model verification check E1-SOURCE: for the ten E-1 fields, field_sources.source is never DRHP) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('e1_source' call lands in the audit script."
 }

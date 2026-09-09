@@ -27,7 +27,11 @@ the PR gate, naming the touched files.
 aggregate. `node scripts/build-detection-registry.mjs --check` (wired into
 `scripts/tests/build-detection-registry.test.mjs` and the `detection-change-gate` CI job) fails the
 PR if the committed aggregate has drifted from the per-entry sources. This is what stops parallel
-PRs that each add one check from conflicting on the same two files.
+PRs that each add one check from conflicting on the same two files. A design-time check specified
+before the audit script implements it goes in `"section": "notCoveredByThisManifest"` (never
+`"checks"`) until a `record('<id>'` call lands in `scripts/audit-detection-floor.mjs` — otherwise it
+is a paper check that fails `scripts/tests/audit-detection-floor.test.mjs` case 79 and reads as wider
+coverage than the floor actually has.
 
 Why: the "share count stored as issue size" class was fixed on one write path in August
 (`w177-detection-rca.md`) and recurred on a different write path in September because nothing

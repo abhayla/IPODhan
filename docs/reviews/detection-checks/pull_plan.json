@@ -10,5 +10,6 @@
   "consumerReason": "the plan is rebuilt every pull cycle (§2.1) — a manifest drift is a per-cycle structural fact, read by identity (IPO, plan row) each slot, not a trend accumulated overnight",
   "status": "designed, not yet built — specified by docs/design/data-sourcing-pull-model.md; build item 10 (owner decision OD-42: \"a check nobody reads is no detection\")",
   "sourceDesign": "docs/design/data-sourcing-pull-model.md §4 (\"How we would know it worked\")",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "note": "PULL-PLAN (pull-model verification check PULL-PLAN: plan rows per IPO = the committed manifest, and the manifest hash is unchanged) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_plan' call lands in the audit script."
 }

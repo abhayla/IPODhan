@@ -5,6 +5,9 @@
 // (round-1 defect: g_reverse_sweep + g_repair_held landed on main between
 // the split and the PR, and --check stayed green because it never looked at
 // origin/main). Ignores key order; asserts id-set equality both directions.
+// A check id that moves from `checks` to `notCoveredByThisManifest` (design-time
+// parking, docs/reviews/detection-checks/<id>.json with a non-empty `note`) counts
+// as present, not missing — that is a deliberate move, not a drop.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,9 +58,23 @@ test('regenerated detection-checks.json has the same check/notCovered ids as ori
 
   const localIds = new Set(local.checks.map((c) => c.id));
   const mainIds = new Set(main.checks.map((c) => c.id));
-  const missingFromLocal = [...mainIds].filter((id) => !localIds.has(id));
+
+  // A check parked in notCoveredByThisManifest with a non-empty note is a deliberate
+  // move (design-time check, not yet built), not a drop — read the per-entry source
+  // files (the aggregate's notCoveredByThisManifest is free-text `note`s, no `id`).
+  const localParkedIds = new Set(
+    readdirSync(join(REPO_ROOT, 'docs/reviews/detection-checks'))
+      .filter((f) => f.endsWith('.json') && f !== '_meta.json')
+      .map((f) => JSON.parse(readFileSync(join(REPO_ROOT, 'docs/reviews/detection-checks', f), 'utf8')))
+      .filter((entry) => entry.section === 'notCoveredByThisManifest' && typeof entry.note === 'string' && entry.note.trim().length > 0)
+      .map((entry) => entry.id)
+  );
+
+  const missingFromLocal = [...mainIds].filter((id) => !localIds.has(id) && !localParkedIds.has(id));
+  const movedToParked = [...mainIds].filter((id) => !localIds.has(id) && localParkedIds.has(id));
+  if (movedToParked.length > 0) console.log(`parity: check id(s) moved from checks to notCoveredByThisManifest (parked with a note): ${movedToParked.join(', ')}`);
   const extraInLocal = [...localIds].filter((id) => !mainIds.has(id));
-  assert.deepEqual(missingFromLocal, [], `local aggregate is missing check id(s) present on ${ref}: ${missingFromLocal.join(', ')}`);
+  assert.deepEqual(missingFromLocal, [], `local aggregate is missing check id(s) present on ${ref}, or left \`checks\` without a note in notCoveredByThisManifest: ${missingFromLocal.join(', ')}`);
   // Additions are what PRs do; only DROPS are a parity failure (2026-09-07: this
   // assertion blocked #377, the first PR to add a check after the split).
   if (extraInLocal.length > 0) console.log(`parity: check id(s) added vs ${ref}: ${extraInLocal.join(', ')}`);
