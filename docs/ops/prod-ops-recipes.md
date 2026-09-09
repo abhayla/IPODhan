@@ -123,6 +123,66 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 
 ## 8. Data repair tools (productized; never hand SQL)
 
+### 8a. Migration journal date repair (GitHub #442) — supersedes the T-403 round-3 exemption
+
+**What T-403 round 3 chose, and why.** `web/drizzle/migrations/meta/_journal.json` idx 32-34
+(`0049_ipo_details_ad_fields`, `20260906090638_icy_firelord`, `20260908004955_left_loners`) carried
+hand-typed `when` values dated into the future (up to 2026-09-10T09:20:00.500Z), because drizzle's
+migrator only applies a journal entry whose `when` is STRICTLY GREATER than the last-applied
+`created_at` — idx 33's real authoring `when` (~1788685598881, 2026-09-06) sorted BELOW idx 32's
+future-dated `when`, so idx 33 would be silently skipped by `db:migrate` on any slot that hadn't
+already applied it. Round 3 (T-403) fixed the ordering by pushing idx 33's `when` to just above idx
+32's — restoring monotonic order — and then set `MONOTONIC_CHECK_FROM_IDX` / `FUTURE_CHECK_AFTER_IDX`
+in `scripts/lib/migration-journal-lint.mjs` to 33, so CI would not fail on the still-future-dated
+result.
+
+**Why that was not enough.** The exemption hid the mistake instead of fixing it: idx 32-34 stayed
+future-dated, and any slot that had already applied a migration with `created_at` in that future range
+silently skipped every migration generated before 2026-09-10T09:20:00.500Z — demonstrated on
+`ipodhan_test`, where `db:migrate` exited 0 while three rows in `drizzle.__drizzle_migrations` still
+carried the future `created_at`.
+
+**What this change does instead.** `web/drizzle/migrations/meta/_journal.json` idx 32-34 now carry
+their honest, real-authoring `when` values (2026-09-06T09:06:30.000Z / :38.000Z, 2026-09-08T00:49:55.000Z).
+`FUTURE_CHECK_AFTER_IDX` is lowered to `-1` (no idx-based exemption at all — every entry, at any idx,
+is checked for a future-dated `when` from here on). `MONOTONIC_CHECK_FROM_IDX` stays at 33: the real
+journal has a second, unrelated hand-typed anomaly at idx 31 (`0048_ipo_valuation_share_legs`, dated
+above idx 32's honest value) that is out of this change's scope to correct, and lowering the boundary
+below 33 would fail CI on that entry — see the comment above `MONOTONIC_CHECK_FROM_IDX` in
+`scripts/lib/migration-journal-lint.mjs` for the exact pair and how the boundary was verified.
+
+**Residue an operator should know about.** Idx 25-31 still carry a fabricated one-per-day ladder
+(`when` hand-typed to an exact `09:20:00.000Z`, one day apart) rather than real authoring times, and
+correcting idx 32 pulled it below idx 31, leaving exactly one known monotonic drop (idx 31 -> idx 32,
+pinned by a regression test in `scripts/tests/check-migration-journal.test.mjs` so a second one fails
+CI). This is harmless only because idx 32-34 are already applied on every slot; it would stop being
+harmless for a database whose recorded state sits precisely between idx 31 and idx 32 (0048 applied,
+0049 not yet run), which no known slot is in today but a partial restore could create.
+
+**What an operator must do on staging and production.** Fixing the journal file alone does nothing for
+a database that already applied idx 32-34 with their future `created_at` — the DB rows need the same
+correction, per slot:
+```bash
+cd scraper
+# Durable backup location — the tool's default (OS temp dir) can be cleared by the OS before anyone
+# reads it, and this backup is the only record of the pre-change rows for a production --apply.
+export MIGRATION_JOURNAL_REPAIR_EVIDENCE_DIR=/root/evidence/migration-journal-dates-442
+# 1. staging (tunnel env — see section 4/5 for the PW= line): dry run, then apply
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging \
+  npx tsx scripts/repair-migration-journal-dates.ts            # dry-run, prints the plan + backup path
+  ... --apply                                                  # writes staging
+# 2. production — ONLY on the owner's word, after the staging run is read and clean:
+DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan \
+  npx tsx scripts/repair-migration-journal-dates.ts --allow-prod          # dry-run
+  ... --apply --allow-prod                                                # prod write (owner word only)
+```
+Idempotent (a second run against an already-corrected slot finds 0 rows to repair) and scoped to
+exactly the three rows named in #442, matched by `sha256(<migration .sql file content>)` — the same
+hash drizzle-orm's own migrator computes — never by a slot's possibly-drifted `created_at`. Backup of
+the pre-change rows defaults to the OS temp directory (`MIGRATION_JOURNAL_REPAIR_EVIDENCE_DIR` to
+override); it must never default to a path outside this repo — set the override above before any
+production `--apply` so the backup survives on durable storage, not somewhere the OS may sweep it.
+
 **Shared guards (T-490):** every repair/backfill tool imports `scraper/scripts/lib/repair-tool.ts` - `openRepairDb()`
 (prints `current_database(): <name>` from the WRITING pool and refuses a prod `--apply` without `--allow-prod`),
 `upsertFieldSource()` (keeps `previous_source`, takes `previous_value` from the caller's ledger),
