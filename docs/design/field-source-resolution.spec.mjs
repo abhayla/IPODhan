@@ -348,7 +348,13 @@ for (const f of F) { const e = EV[f.t + '.' + f.c]; if (e) f.o.ev = e; }
 // EVIDENCE_FLOOR is D15's ratchet: the number of (field, source) pairs that MUST carry a resolving
 // evidence reference. It is raised as probes land and is never lowered - dropping it is how a row
 // quietly stops being evidenced.
-export const EVIDENCE_FLOOR = 114;
+// Lowered once, on purpose and on the record: 114 -> 105 on 2026-09-09. The ratchet exists to stop
+// evidence eroding silently, not to lock in false positives. Nine of the 114 were matches the token
+// matcher made by substring - "scrip" inside "de-scrip-tion" gave `ipos.symbol` the offer document's
+// business_description as its evidence. Tightening the matcher to whole tokens removed them. A floor
+// that forbids ever correcting a bad match would make the check protect the errors it was built to
+// prevent. Any FUTURE reduction needs the same thing this one has: a stated reason for each pair.
+export const EVIDENCE_FLOOR = 105;
 
 export function RESOLVE(f, type) { return resolve(f, type); }
 

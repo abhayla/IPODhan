@@ -102,6 +102,7 @@ nothing", fails the gate.
 |---|---|---|---|
 | O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in the phase-1 build uses a language model, so there is nothing to approve yet. |
 | O-12 | Five rupee columns are amounts, but converting them to crore would make the site worse: `ipo_details.min_investment` (about 15,000 rupees, `0.0015` crore), `max_retail_subscription` and `max_employee_subscription` (the 2-lakh and 5-lakh ceilings people read in lakh), and `gmp_records.kostak_rate` / `subject_rate` (per-application rates in hundreds of rupees). Does "crore is the default for every amount column" admit these five as named exceptions? | **RECOMMENDED: yes, keep these five in rupees** — a default with five reasoned exceptions, not a rule with silent ones. §5.2 and build item 11 are written on the recommendation. · 2026-09-09 | It changes what a reader sees on the page, which is the owner's call, not an implementation detail |
+| O-13 | On 2026-09-08 you approved taking the grey-market premium OUT of the market-hours gate (finding F-41): it was going stale for up to 65 hours over a weekend because the grey market is most active in the evening and trades at weekends. OD-19 the next day says *"live figures only during bidding"* and groups GMP with subscription. Read literally that re-freezes GMP overnight and at weekends. Which did you mean? | **RECOMMENDED: subscription and the demand graph only during bidding hours (they do not exist outside them), but GMP additionally fetched once by each data job at 00:00, 08:00 and 14:00 and by the 22:00 job.** That honours "live figures only during bidding" for the two figures it is really about, and keeps GMP from going stale overnight, which is what F-41 fixed. §2.1 is written on this recommendation. · 2026-09-09 | It changes the most-read number on an IPO page outside market hours, which is a product call, not an implementation detail |
 
 ### 0.0.3 The standard of proof this document is held to (OD-25)
 
@@ -839,7 +840,7 @@ D-13's *principle* survives — work runs on named occasions, not on a drumbeat.
 | Job | When (IST) | What it touches | What it must never do |
 |---|---|---|---|
 | **Data job** | **00:00, 08:00, 14:00** | discovery; document download and extraction; the per-field pull walk; verification reads | never re-read a document because time passed |
-| **Live-figures job** | **every 30 minutes, 10:00–18:30**, only on a day when at least one IPO is OPEN | subscription, demand graph, grey-market premium | never touch a document, a field plan row, or any static field |
+| **Live-figures job** | **every 30 minutes, 10:00–18:30**, only on a day when at least one IPO is OPEN | subscription, demand graph, and grey-market premium (**PROVISIONAL on O-13** — GMP is additionally fetched by each data job and the 22:00 job, so it does not go stale overnight; see §2.1.1 and F-41) | never touch a document, a field plan row, or any static field |
 | **Closed-IPO job** | **22:00** | at most **10** IPOs a night, status LISTED or CLOSED, close date before today, ordered by close date **descending**, each marked done so it is never picked twice | never start while the data job's cycle lock is held |
 
 Three jobs, and one rule that binds all of them: **no job ever kills a running cycle.**

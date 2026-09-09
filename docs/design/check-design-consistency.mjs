@@ -200,13 +200,19 @@ try {
   if (!openIds.length) {
     fail('D10c', 'The open-comment table in 0.0.2 has no rows at all. Either it was gutted, or a decided comment was deleted instead of being moved to 0.0.1.');
   }
-  openIds.forEach(function (id) {
-    // Stay on the row (no \n) but DO cross pipes: this lives in a markdown table, so the word
-    // that would betray a false approval is always on the far side of a "|". The first version
-    // used [^|\n] and was pure decoration - a mutation that wrote "| O-2 | APPROVED by owner."
-    // passed it clean.
-    var re = new RegExp(id + '[^\n]{0,120}(APPROVED|RESOLVED|DECIDED|SETTLED|owner (approved|decided))', 'i');
-    if (re.test(openOwner)) wrongly.push(id);
+  // The claim "this is settled" lives in the STATUS cell, which is column 3. Scanning the whole row
+  // was too blunt in both directions: the first version used [^|\n] and never crossed a pipe, so
+  // "| O-2 | APPROVED by owner." passed clean; the second scanned 120 characters across pipes and
+  // then failed O-13, whose QUESTION cell quotes an approval the owner gave on a different day to a
+  // different thing. A row is allowed to describe history. Its status cell is not allowed to lie.
+  var SETTLED = /\b(APPROVED|RESOLVED|DECIDED|SETTLED)\b|owner (approved|decided)/i;
+  openOwner.split(String.fromCharCode(10)).forEach(function (line) {
+    var m = line.match(/^\| (O-\d+) \|/);
+    if (!m) return;
+    var cells = line.split('|').map(function (c) { return c.trim(); });
+    // cells: ['', id, question, status/recommendation, why, '']
+    var status = cells[3] || '';
+    if (SETTLED.test(status)) wrongly.push(m[1]);
   });
   if (wrongly.length) fail('D10c', 'Owner comments marked settled that the owner has not settled: ' + wrongly.join(', '));
   else ok('D10c', 'No undecided owner comment is written up as settled.');

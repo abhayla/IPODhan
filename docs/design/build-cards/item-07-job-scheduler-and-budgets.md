@@ -138,7 +138,7 @@ market-hours block). `--job=live` runs subscription/demand-graph/GMP only, still
 `--job` preserves today's single-cycle behavior for any caller that has not been updated (fail-open,
 not fail-closed, for local dev and existing tests).
 
-## PM2 ecosystem change (the lock-skip rule, concretely)
+### PM2 ecosystem change (the lock-skip rule, concretely) — part of Interfaces
 
 `scripts/deploy-linux.sh` lines 681-683 / 1376 drop `--cron-restart="${SCRAPER_CRON}"` entirely — the
 scraper's PM2 app becomes `pm2 start ... --no-autorestart -- src/index.ts --source=all --job=<job>`

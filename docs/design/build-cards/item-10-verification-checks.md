@@ -74,7 +74,7 @@ cron and CI, both of which are themselves gated on nothing beyond the scripts ex
 executable (per the existing `j_cron_executable` detection check, which already guards this exact class
 of defect — a cron script committed without the execute bit).
 
-## The fourteen checks, concretely
+### The fourteen checks, concretely — part of Interfaces
 
 | Check id | Asserts | Healthy | Runs | Alarm route |
 |---|---|---|---|---|

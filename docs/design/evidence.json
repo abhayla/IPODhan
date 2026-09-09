@@ -1,8 +1,11 @@
 {
   "generated_by": "docs/design/probes/evidence-map.mjs --apply",
-  "generated_at": "2026-09-09T04:55:46.635Z",
+  "generated_at": "2026-09-09T05:00:20.391Z",
   "note": "Per (field, source) evidence references. Paths are relative to docs/design/probes/. Never hand-edit: re-run the mapper.",
   "fields": {
+    "anchor_investors.total_shares_offered": {
+      "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-RHP.json"
+    },
     "brlm_track_record.issues_3y": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
     },
@@ -55,11 +58,10 @@
     },
     "financial_statements.pat": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-DRHP.json",
-      "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
+      "CG": "fixtures/chittorgarh/vinod-texworld-ltd.html"
     },
     "financial_statements.revenue": {
-      "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-DRHP.json",
-      "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
+      "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-DRHP.json"
     },
     "financial_statements.total_income": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-DRHP.json",
@@ -77,9 +79,6 @@
     },
     "ipo_details.bid_windows": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
-    },
-    "ipo_details.category_details": {
-      "NSE": "fixtures/nse/ipo-detail-ARCIL.json"
     },
     "ipo_details.compliance_officer": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
@@ -123,6 +122,10 @@
     "ipo_details.pre_ipo_placement": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
     },
+    "ipo_details.sponsor_banks": {
+      "NSE": "fixtures/nse/ipo-detail-ARCIL.json",
+      "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json"
+    },
     "ipo_details.sub_categories_upi": {
       "NSE": "fixtures/nse/ipo-detail-ARCIL.json"
     },
@@ -131,22 +134,17 @@
       "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json"
     },
     "ipo_details.upi_cutoff_time": {
-      "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
-      "NSE": "fixtures/nse/ipo-detail-ARCIL.json"
+      "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
     },
     "ipo_intermediaries.email": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
     },
     "ipo_intermediaries.name": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
-      "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json",
       "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
     },
     "ipo_risk_factors.kpis": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
-    },
-    "ipo_valuation.mcap_at_cap": {
-      "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
     },
     "ipo_valuation.ofs_shares": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
@@ -174,13 +172,10 @@
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-DRHP.json"
     },
     "ipos.close_date": {
-      "NSE": "fixtures/nse/ipo-detail-ARCIL.json",
-      "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json",
       "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
     },
     "ipos.company_name": {
-      "NSE": "fixtures/nse/ipo-detail-ARCIL.json",
-      "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json"
+      "NSE": "fixtures/nse/ipo-detail-ARCIL.json"
     },
     "ipos.face_value": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-DRHP.json",
@@ -206,10 +201,6 @@
     "ipos.objectives": {
       "CG": "fixtures/chittorgarh/vinod-texworld-ltd.html"
     },
-    "ipos.open_date": {
-      "NSE": "fixtures/nse/ipo-detail-ARCIL.json",
-      "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json"
-    },
     "ipos.price_range_max": {
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json"
     },
@@ -218,8 +209,7 @@
     },
     "ipos.registrar": {
       "NSE": "fixtures/nse/ipo-detail-ARCIL.json",
-      "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json",
-      "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
+      "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json"
     },
     "ipos.segment": {
       "NSE": "fixtures/nse/ipo-current-issue.json"
@@ -228,7 +218,6 @@
       "NSE": "fixtures/nse/ipo-current-issue.json"
     },
     "ipos.symbol": {
-      "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
       "NSE": "fixtures/nse/ipo-detail-ARCIL.json",
       "BSE": "fixtures/bse/GetMkt_ISSUE_BBS_IPO-7950.json"
     },
@@ -263,10 +252,10 @@
       "DOC": "fixtures/extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
       "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
     },
-    "subscriptions.retail_subscription": {
-      "NSE": "fixtures/nse/ipo-detail-ARCIL.json"
+    "subscriptions.nii_subscription": {
+      "CG": "fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html"
     },
-    "subscriptions.shares_offered": {
+    "subscriptions.retail_subscription": {
       "NSE": "fixtures/nse/ipo-detail-ARCIL.json"
     }
   }

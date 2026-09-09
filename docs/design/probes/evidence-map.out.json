@@ -1,6 +1,6 @@
 {
   "probe": "evidence-map",
-  "generated_at": "2026-09-09T04:55:46.630Z",
+  "generated_at": "2026-09-09T05:00:20.387Z",
   "method": "For every (field, source) pair Appendix A resolves, look for the field in the SAVED payload for that source. CARRIES records the label and the fixture. UNPROVEN means the payload was searched and nothing matched — it is a rank to re-examine, not a pass. UNPROBED means no probe was run for that source in this round.",
   "caveat": "Matching is by token overlap with a synonym table, so a CARRIES verdict names the label it matched and that label is auditable. A reviewer disagreeing with one match should say so against the recorded label, not against the number.",
   "index_sizes": {
@@ -11,26 +11,26 @@
     "DOC": 172
   },
   "totals": {
-    "CARRIES": 114,
-    "UNPROVEN": 262,
+    "UNPROVEN": 272,
+    "CARRIES": 105,
     "UNPROBED": 10
   },
   "by_source": {
     "DOC": {
-      "CARRIES": 48,
-      "UNPROVEN": 115
+      "UNPROVEN": 115,
+      "CARRIES": 48
     },
     "NSE": {
-      "CARRIES": 19,
-      "UNPROVEN": 38
+      "CARRIES": 15,
+      "UNPROVEN": 42
     },
     "BSE": {
-      "CARRIES": 15,
-      "UNPROVEN": 40
+      "CARRIES": 12,
+      "UNPROVEN": 43
     },
     "CG": {
-      "UNPROVEN": 69,
-      "CARRIES": 31
+      "UNPROVEN": 72,
+      "CARRIES": 29
     },
     "ADMIN": {
       "UNPROBED": 3
@@ -46,11 +46,8 @@
     {
       "field": "ipos.symbol",
       "source": "DOC",
-      "verdict": "CARRIES",
-      "label": "business_description",
-      "fixture": "extraction/asset-reconstruction-company-india-ltd-PRICE_BAND_AD.json",
-      "sample": "Our Company is an asset reconstruction company (“ARC”) opera",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed DOC: no label in the saved payload matches \"symbol\""
     },
     {
       "field": "ipos.symbol",
@@ -94,11 +91,8 @@
     {
       "field": "ipos.company_name",
       "source": "BSE",
-      "verdict": "CARRIES",
-      "label": "ScripName",
-      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
-      "sample": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"company_name\""
     },
     {
       "field": "ipos.company_name",
@@ -163,20 +157,14 @@
     {
       "field": "ipos.open_date",
       "source": "NSE",
-      "verdict": "CARRIES",
-      "label": "Issue Period",
-      "fixture": "nse/ipo-detail-ARCIL.json",
-      "sample": "09-Sep-2026 to 11-Sep-2026",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"open_date\""
     },
     {
       "field": "ipos.open_date",
       "source": "BSE",
-      "verdict": "CARRIES",
-      "label": "Issue_Period",
-      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
-      "sample": "09 Sep 2026 to 11 Sep 2026",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"open_date\""
     },
     {
       "field": "ipos.open_date",
@@ -187,20 +175,14 @@
     {
       "field": "ipos.close_date",
       "source": "NSE",
-      "verdict": "CARRIES",
-      "label": "Issue Period",
-      "fixture": "nse/ipo-detail-ARCIL.json",
-      "sample": "09-Sep-2026 to 11-Sep-2026",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"close_date\""
     },
     {
       "field": "ipos.close_date",
       "source": "BSE",
-      "verdict": "CARRIES",
-      "label": "Issue_Period",
-      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
-      "sample": "09 Sep 2026 to 11 Sep 2026",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"close_date\""
     },
     {
       "field": "ipos.close_date",
@@ -280,11 +262,8 @@
     {
       "field": "ipos.registrar",
       "source": "CG",
-      "verdict": "CARRIES",
-      "label": "Profit After Tax",
-      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
-      "sample": "407.84 | 355.32 | 305.34",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"registrar\""
     },
     {
       "field": "ipos.rating_override",
@@ -671,9 +650,9 @@
       "field": "ipo_details.ofs_issue",
       "source": "CG",
       "verdict": "CARRIES",
-      "label": "Offer for Sale",
+      "label": "No. of Shares Offered",
       "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
-      "sample": "5,27,31,946 shares of ₹ 10 (agg. up to ₹ 733 Cr)",
+      "sample": "(column header)",
       "how": "all tokens in label"
     },
     {
@@ -820,11 +799,8 @@
     {
       "field": "ipo_details.upi_cutoff_time",
       "source": "NSE",
-      "verdict": "CARRIES",
-      "label": "Cut-off time for UPI Mandate Confirmation",
-      "fixture": "nse/ipo-detail-ARCIL.json",
-      "sample": "\"11-Sep-2026 (upto 5:00 PM) The new cut-off time for UPI mandate acceptance is 05:00 PM on",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"upi_cutoff_time\""
     },
     {
       "field": "ipo_details.upi_cutoff_time",
@@ -1135,14 +1111,20 @@
     {
       "field": "ipo_details.sponsor_banks",
       "source": "NSE",
-      "verdict": "UNPROVEN",
-      "why": "probed NSE: no label in the saved payload matches \"sponsor_banks\""
+      "verdict": "CARRIES",
+      "label": "Sponsor Bank",
+      "fixture": "nse/ipo-detail-ARCIL.json",
+      "sample": "Kotak Mahindra Bank Limited and HDFC Bank Limited ",
+      "how": "all tokens in label"
     },
     {
       "field": "ipo_details.sponsor_banks",
       "source": "BSE",
-      "verdict": "UNPROVEN",
-      "why": "probed BSE: no label in the saved payload matches \"sponsor_banks\""
+      "verdict": "CARRIES",
+      "label": "Sponsor_Bank",
+      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
+      "sample": "HDFC BANK^FIG-OPS Department –Lodha, I Think Techno Campus, O-3 Level,Next to Kanjurmarg R",
+      "how": "all tokens in label"
     },
     {
       "field": "ipo_details.sponsor_banks",
@@ -1219,11 +1201,8 @@
     {
       "field": "ipo_details.category_details",
       "source": "NSE",
-      "verdict": "CARRIES",
-      "label": "bidDetails.category",
-      "fixture": "nse/ipo-detail-ARCIL.json",
-      "sample": "",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"category_details\""
     },
     {
       "field": "ipo_details.sub_categories_upi",
@@ -1621,11 +1600,8 @@
     {
       "field": "financial_statements.revenue",
       "source": "CG",
-      "verdict": "CARRIES",
-      "label": "Total Income",
-      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
-      "sample": "785.08 | 623.40 | 574.11",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"revenue\""
     },
     {
       "field": "financial_statements.total_income",
@@ -1676,9 +1652,9 @@
       "field": "financial_statements.pat",
       "source": "CG",
       "verdict": "CARRIES",
-      "label": "Market Cap at Offer Price",
-      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
-      "sample": "- | ₹4,516.07 Cr",
+      "label": "P/E (x)",
+      "fixture": "chittorgarh/vinod-texworld-ltd.html",
+      "sample": "10.48 | 14.6",
       "how": "all tokens in label"
     },
     {
@@ -1831,11 +1807,8 @@
     {
       "field": "ipo_valuation.mcap_at_cap",
       "source": "CG",
-      "verdict": "CARRIES",
-      "label": "Market Cap at Offer Price",
-      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
-      "sample": "- | ₹4,516.07 Cr",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"mcap_at_cap\""
     },
     {
       "field": "ipo_valuation.pe_at_cap",
@@ -1996,11 +1969,8 @@
     {
       "field": "ipo_intermediaries.name",
       "source": "BSE",
-      "verdict": "CARRIES",
-      "label": "ScripName",
-      "fixture": "bse/GetMkt_ISSUE_BBS_IPO-7950.json",
-      "sample": "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed BSE: no label in the saved payload matches \"name\""
     },
     {
       "field": "ipo_intermediaries.name",
@@ -2255,6 +2225,12 @@
       "why": "probed DOC: no label in the saved payload matches \"pbv_ratio\""
     },
     {
+      "field": "peer_companies.pbv_ratio",
+      "source": "CG",
+      "verdict": "UNPROVEN",
+      "why": "probed CG: no label in the saved payload matches \"pbv_ratio\""
+    },
+    {
       "field": "peer_companies.financial_statement_type",
       "source": "DOC",
       "verdict": "UNPROVEN",
@@ -2281,8 +2257,11 @@
     {
       "field": "anchor_investors.total_shares_offered",
       "source": "DOC",
-      "verdict": "UNPROVEN",
-      "why": "probed DOC: no label in the saved payload matches \"total_shares_offered\""
+      "verdict": "CARRIES",
+      "label": "total_offer_shares_at_cap",
+      "fixture": "extraction/asset-reconstruction-company-india-ltd-RHP.json",
+      "sample": "52731946",
+      "how": "all tokens in label"
     },
     {
       "field": "anchor_investors.total_amount_raised",
@@ -2350,8 +2329,11 @@
     {
       "field": "subscriptions.nii_subscription",
       "source": "CG",
-      "verdict": "UNPROVEN",
-      "why": "probed CG: no label in the saved payload matches \"nii_subscription\""
+      "verdict": "CARRIES",
+      "label": "S-HNI (Min)",
+      "fixture": "chittorgarh/asset-reconstruction-company-india-ltd.html",
+      "sample": "14 | 1,498 | 2,08,222",
+      "how": "all tokens in label"
     },
     {
       "field": "subscriptions.retail_subscription",
@@ -2443,11 +2425,8 @@
     {
       "field": "subscriptions.shares_offered",
       "source": "NSE",
-      "verdict": "CARRIES",
-      "label": "bidDetails.noOfSharesOffered",
-      "fixture": "nse/ipo-detail-ARCIL.json",
-      "sample": "",
-      "how": "all tokens in label"
+      "verdict": "UNPROVEN",
+      "why": "probed NSE: no label in the saved payload matches \"shares_offered\""
     },
     {
       "field": "subscriptions.shares_offered",

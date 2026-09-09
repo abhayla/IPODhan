@@ -649,6 +649,36 @@
       "title": "Chittorgarh coverage differs per PAGE, and a per-page absence was recorded as a capability limit",
       "detail": "The spec excluded peer_companies.pbv_ratio from Chittorgarh on one observation of one mainboard page on 2026-09-08. The Vinod Texworld page saved 2026-09-09 prints a company-level 'Price to Book Value 2.55 3.37' row and a peer table whose column header is 'P/BV Ratio'. The Asset Reconstruction page, three days into its issue, carries no peer table at all. So the source CAN serve the field and had simply not filled that page yet - which is NOT_AVAILABLE_YET on the plan row, not a missing capability.",
       "fix_in": "field-source-resolution.spec.mjs: peer_companies.pbv_ratio removed from CG_CANNOT with the evidence cited inline. financial_data.pe_ratio stays excluded - the mainboard page's 'PE Ratio' column belongs to other recently listed IPOs, which is a different and still-live defect."
+    },
+    {
+      "id": "F-60",
+      "sev": "MAJOR",
+      "area": "finding accuracy",
+      "phase1": true,
+      "status": "OPEN",
+      "title": "F-46/F-55's stated root cause is wrong: the name normaliser already folds the corporate-form words",
+      "detail": "Verified live in Node against scraper/src/utils/company-name-normalizer.ts during the build-card round on 2026-09-09. 'ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED' normalises to 'asset reconstruction company india' and 'Asset Reconstruction Co.(India) Ltd.' to 'asset reconstruction co india' - so the two still fail to collide, but NOT because company/co are missing from the suffix list. T-293 already added them. The real cause is pipeline ORDER: the parenthetical '(India)' is never made trailing before the company/co suffix regex runs, so the suffix is not in suffix position when the regex looks. The fix is a whole-word strip, matching the foldName already shipped in scripts/lib/repair-invariants/duplicate-ipo-rows.mjs - not adding words to a list that already contains them.",
+      "fix_in": "Build card item-12. The design section that names the fix as 'fold corporate-form words into the normaliser' must be corrected, or an implementer will add words that are already there, see no change, and conclude the finding was wrong."
+    },
+    {
+      "id": "F-61",
+      "sev": "MINOR",
+      "area": "finding accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "F-49 is narrower than 'valueActuallyChanged has no caller'",
+      "detail": "data-consolidation-service.ts:930 defines it and :932 uses it on the next line. It is a local const read exactly once, not a dead function. The real defect is the expression: valueChanged = !existingValueFromMap || (choseIncoming && (hadDifferentSource || valueActuallyChanged)) - the flag only decides the outcome when hadDifferentSource is false, and W-106's walk found that condition never held on any path it tested. A test that greps for callers would pass and prove nothing.",
+      "fix_in": "Build card item-15 replaces the caller test with a three-way counter split (writtenNoExisting / writtenDifferentSource / writtenSameSourceChanged) so the branch is observable."
+    },
+    {
+      "id": "F-62",
+      "sev": "MINOR",
+      "area": "design accuracy",
+      "phase1": true,
+      "status": "FIXED",
+      "title": "The ratios document is a ROUTING gap, not a zip gap - and this round's own brief got that wrong",
+      "detail": "The old-document-availability probe showed NSE serving offer documents as ZIP, and the build-card brief for item 8 concluded that unzipping was missing work. It is not: zip unwrapping already happens at download time (document-download-verifier.ts:307-325; document-store.ts always writes .pdf) and there is an NSE-ratios-specific override (isNseRatiosArchiveUrl, document-classifier.ts:181) that stops the bytes-win rule mislabelling the archive. The extract-real-pdf output shows the stored sha256 present and the document SKIPPED because the python filing extractor does not handle the type - a routing gap. Also found: financial_data.current_ratio, quick_ratio and inventory_turnover have no extraction or write-path code anywhere today, so they are genuinely new work rather than a wiring change.",
+      "fix_in": "Build card item-08 states the routing gap. Recorded here because the error was mine: a probe result read one step too literally became a brief that would have sent an implementer to build something that already exists."
     }
   ],
   "false_assertions": [

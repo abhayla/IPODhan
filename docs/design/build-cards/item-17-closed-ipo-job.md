@@ -202,9 +202,10 @@ job code then skips a `FAILED`/`PARTIAL` row in-process if a fresh attempt would
 `cause_class` it failed with last time **and** the `resourced_at_version` has not changed (§6.2:
 "Same cause, same outcome, no retry" is conditioned on nothing having changed — a version bump is
 what licenses a retry even with an unchanged cause class). Note: **`upper(i.status::text)`, not
-`upper(i.status)`** — `PURGE_CANDIDATES_SQL` in `scraper/src/services/document-cycle.ts:1419-1424`
-already hit Postgres error 42883 doing this against the `ipo_status` enum and the fix (cast to
-`text` first) is documented at `document-cycle.ts:1408`; this new query must not repeat that bug.
+`upper(i.status)`** — `PURGE_CANDIDATES_SQL` (`scraper/src/services/document-cycle.ts:1410-1425`,
+enum cast at line 1423) already hit Postgres error 42883 doing this against the `ipo_status` enum,
+per the fix note at lines 1404-1407 ("Found live 2026-09-03: `upper(i.status)` failed with Postgres
+42883... `upper(i.status::text)` fixes it"); this new query must not repeat that bug.
 
 **`documents.filing_date` backfill** (§6.4, §6.5 — "populated on a minority of rows... backfilling
 it is part of build item 17, not a separate errand"):

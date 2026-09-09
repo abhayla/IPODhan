@@ -17,7 +17,7 @@ document+NSE+BSE or document+Chittorgarh, so this item is pure removal, not a fi
 
 | Path | State | Change |
 |---|---|---|
-| `scraper/src/index.ts` | exists | Line 389: delete the `aggregator:MONEYCONTROL` step — `const mcOk = await runCycleStep('aggregator:MONEYCONTROL', () => runMoneycontrolScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));` — from the due-step cycle's 24h aggregator-refresh branch (the branch itself, guarded by `AGGREGATOR_INTERVAL_MINUTES` at line 185, still runs for Chittorgarh; only the Moneycontrol call inside it goes). This is the call site that actually fires in production, because prod runs the due-step scheduler. |
+| `scraper/src/index.ts` | exists | Line 389: delete the `aggregator:MONEYCONTROL` step — `const mcOk = await runCycleStep('aggregator:MONEYCONTROL', () => runMoneycontrolScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));` — from the due-step cycle's 24h aggregator-refresh branch (the branch itself, guarded by `AGGREGATOR_INTERVAL_MINUTES` at line 186, still runs for Chittorgarh; only the Moneycontrol call inside it goes). This is the call site that actually fires in production, because prod runs the due-step scheduler. |
 | `scraper/src/index.ts` | exists | Lines 702–725: the legacy `--source=all` fallback block `if (source === 'moneycontrol' \|\| runsLegacyAllPath) { ... }` (guarded by `runsLegacyAllPath = source === 'all' && !FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER`, line 628) — remove the `moneycontrolResult` call and its four `combinedResult` accumulations. This path only fires when `ENABLE_DUE_STEP_SCHEDULER` is false, which is not how prod runs today, but it is still reachable from a local `--source=all` run and must stop reaching Moneycontrol too. |
 | `scraper/src/index.ts` | exists | Line 15: delete `import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator-v2.js';` once both call sites above are gone. |
 | `scraper/src/index.ts` | exists | Lines 535–536: `--source=moneycontrol` stops being a valid CLI value — remove `'moneycontrol'` from the allow-list `['nse', 'bse', 'moneycontrol', 'chittorgarh', 'gmp', 'fallback', 'api', 'all']` and from the error message that lists them. |
@@ -104,7 +104,7 @@ nothing needs updating there either.
 ## Staging proof
 
 Deploy to staging, then over one full 24-hour aggregator cadence (`AGGREGATOR_INTERVAL_MINUTES =
-24 * 60`, `scraper/src/index.ts:185`) confirm the scraper log carries **zero** occurrences of
+24 * 60`, `scraper/src/index.ts:186`) confirm the scraper log carries **zero** occurrences of
 `aggregator:MONEYCONTROL` or `Running Moneycontrol scraper`, where before the change one
 `aggregator:MONEYCONTROL` line appeared once per 24h cycle. Grep the staging scraper log for
 `grep -c "MONEYCONTROL" <staging-scraper-log>` before and after — the healthy value after is `0`

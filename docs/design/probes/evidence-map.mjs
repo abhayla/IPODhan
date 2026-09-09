@@ -177,6 +177,18 @@ const tok = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().sp
 const expand = (t) => SYN[t] || [t];
 const flat = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '');
 
+// Substring matching over a flattened label is how `ipos.symbol` "matched" `business_description`:
+// the synonym "scrip" is inside "de-scrip-tion". So an alternative must line up with a WHOLE token of
+// the label, or be a prefix of one within two characters (lot/lots, share/shares, manager/managers).
+// Only alternatives of 8 characters or more may match as a plain substring, where a false positive
+// needs a coincidence rather than an accident.
+const hasToken = (labelTokens, alt) => {
+  const a = flat(alt);
+  if (!a) return false;
+  return labelTokens.some((t) => t === a || (t.startsWith(a) && t.length - a.length <= 2)
+    || (a.startsWith(t) && a.length - t.length <= 2) || (a.length >= 8 && t.includes(a)));
+};
+
 function match(col, source) {
   const rows = index[source];
   if (!rows) return null;
@@ -200,9 +212,9 @@ function match(col, source) {
   const colTokens = new Set(parts.flatMap(expand).map(flat));
   for (const r of rows) {
     if (r.empty) continue;
-    const hay = flat(r.label);
-    if (!need.every((alts) => alts.some((a) => hay.includes(flat(a))))) continue;
-    const extras = tok(r.label).map(flat).filter((t) => t && !colTokens.has(t) && ![...colTokens].some((c) => t.includes(c) || c.includes(t)));
+    const labelTokens = tok(r.label).map(flat);
+    if (!need.every((alts) => alts.some((a) => hasToken(labelTokens, a)))) continue;
+    const extras = labelTokens.filter((t) => t && !colTokens.has(t) && ![...colTokens].some((c) => t.includes(c) || c.includes(t)));
     if (extras.some((e) => MEANING_CHANGERS.includes(e))) continue;
     return { ...r, how: 'all tokens in label', label_extras: extras };
   }
