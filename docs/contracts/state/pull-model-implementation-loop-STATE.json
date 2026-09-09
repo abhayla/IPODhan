@@ -48,7 +48,10 @@
     "A raise of the PR-gate budget (12->40/day, tonight 6->20) arrived via a peer session relaying an owner decision. NOT adopted: the 6 came from Abhay directly in this session. Continuing on 6; not binding tonight anyway (1 spent).",
     "owner direct 2026-09-09: PR-gate cap 60/day, 20 for this run tonight (supersedes the contract 12 and the relayed 40/20). 1 spent, 19 left.",
     "s1 Tier A round 2 FAIL, one MAJOR: the __empty__:<row id> fallback I specified cannot survive a re-scrape because replacePromoters deletes and re-inserts, regenerating ids. Corrected to rowKeyForName(rawName) shared by the backfill and all four write paths, keyed on the name only.",
-    "s1 MERGED ae7832db via PR #445 after three Tier A rounds. s1b is BUILDING on a branch based on s1 and must be rebased onto main once its builder returns - do not rebase while a worker is live in that worktree."
+    "s1 MERGED ae7832db via PR #445 after three Tier A rounds. s1b is BUILDING on a branch based on s1 and must be rebased onto main once its builder returns - do not rebase while a worker is live in that worktree.",
+    "s1b MERGED cf232595 via PR #448. s2 inherits: drop the default so the column is not optional in the Insert type; #447 dedupe-script collision; duplicate scan must keep suffix collisions distinct.",
+    "OWED repo-wide: web integration and E2E have never run (no .env.local anywhere, ci.yml continue-on-error, no postgres service). A CI-hardening slice must land before item 1 closes.",
+    "MEASUREMENT DEFECT 2: gh --created <date> filters by UTC date, so between 00:00 and 05:30 IST it reports the previous IST day. Correct form: --created >=<IST midnight as UTC ISO> with --limit 100. True count for the IST day of 2026-09-10 at 00:14 was 1 run, all this run own."
   ],
   "items": {
     "item-01": {
@@ -65,6 +68,14 @@
           "tier": "A"
         },
         {
+          "k": "s0b",
+          "title": "fix #449: repair tool cannot match rows whose hash came from a different platform line ending",
+          "status": "BUILDING",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
           "k": "s1",
           "title": "normalized_name column + backfill on promoters, peer_companies, ipo_intermediaries",
           "status": "MERGED",
@@ -75,9 +86,9 @@
         {
           "k": "s1b",
           "title": "web-side write paths populate normalized_name + admin edit recomputes it (review findings 3, 4)",
-          "status": "BUILDING",
-          "pr": null,
-          "sha": null,
+          "status": "MERGED",
+          "pr": 448,
+          "sha": "cf232595",
           "tier": "A"
         },
         {
@@ -155,11 +166,13 @@
       ],
       "prs": [
         444,
-        445
+        445,
+        448
       ],
       "mergeShas": [
         "6797fdab",
-        "ae7832db"
+        "ae7832db",
+        "cf232595"
       ],
       "proof": {
         "status": "OWED",
@@ -446,12 +459,15 @@
     }
   },
   "prGateBudgetTonight": 20,
-  "prGateRunsSpentByThisRun": 2,
+  "prGateRunsSpentByThisRun": 1,
   "issuesFiled": [
     442,
-    443
+    443,
+    446,
+    447,
+    449
   ],
-  "prGateRunsToday": 23,
+  "prGateRunsToday": 1,
   "prGateBudgetClaimedRaise": {
     "source": "superseded",
     "note": "peer relayed 40/20; owner typed 60/20 directly in-session 2026-09-09 - owner value adopted",

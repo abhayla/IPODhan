@@ -361,3 +361,49 @@ the anchor did not match".
 `Co-Authored-By`, a `Class:`/`Proof:` line in an agent brief — goes in as a BARE line at the start of
 its own line. Never inside backticks, a blockquote, a list item, or a table cell. Before pushing, check
 it the way the gate does: `gh pr view <n> --json body --jq .body | grep -cE '^<the exact regex>$'`.
+
+## 2026-09-09 — running full test suites concurrently manufactures failures
+
+**What happened.** Several agents ran full test suites at the same time on this laptop. One reported
+`web test:unit` exit 1 with two failures and called them resource-contention flakes. Verifying that
+cost a fresh worktree at `origin/main` plus two more full-suite runs; both trees came back exit 0 with
+those tests green. The failure never reproduced. Filed as issue #446 — the tests are timeout-bounded
+with small margins (471 ms against a 5 s limit, 1006 ms against 20 s) and only fail when the machine
+is loaded.
+
+**Why it matters.** The red run was not information, it was noise I created, and it cost about twenty
+minutes to prove it was noise. Worse, a green run under those conditions proves less than it looks
+like it does. This machine has prior incidents of hook timeouts and stalled commits traced to memory
+pressure, so contention is a known local hazard, not a surprise.
+
+**Rule.** Serialise full-suite runs: at most ONE agent running a full suite at a time. Give concurrent
+workers targeted test files instead, and let the last gate before a push be the only full run. When a
+worker reports a failure in a file its own diff does not touch, do not accept "flake" and do not
+re-run for green — run the same suite on an untouched checkout of the base branch and compare the
+failing sets. That comparison is the only thing that distinguishes pre-existing, newly broken, and
+non-deterministic.
+
+## 2026-09-09 — three guards this session were untestable in the same way
+
+**What happened.** Three separate times tonight, a guard was written correctly and shipped with a test
+that could not fail:
+1. A hash-identity test compared `crypto.createHash(x)` with itself and never called the function it
+   named. Mutating the hash left it green.
+2. A key-equality test asserted `rowKeyForName(x) === rowKeyForName(x)` — a pure function against
+   itself, trivially true.
+3. The exit-code contract of a repair tool: flipping "could not find the rows" from exit 1 back to
+   exit 0 — restoring the exact bug the slice existed to fix — left all 13 tests passing, because the
+   decision lived inside an unexported `main()` that no test executed.
+
+Each was found by a reviewer told to BREAK the guard, never by reading the diff. In every case the
+code was right and the test was theatre.
+
+**Why it matters.** A guard with no failing-capable test is worse than no guard: it reads as covered,
+so the next person edits freely and the pipeline stays green. Case 3 is the sharpest — the tool would
+have gone back to reporting success while doing nothing, which is how the original defect hid.
+
+**Rule.** A test earns its place only by being shown RED. When a brief asks for a guard, it must also
+ask for the mutation that breaks it and the red output pasted. Two shapes to refuse on sight: an
+assertion comparing a pure function's output to itself, and a behaviour that lives only inside an
+unexported `main()`. Extract the decision into an exported pure function and test that; a side effect
+buried in a CLI entry point is unguardable by construction.

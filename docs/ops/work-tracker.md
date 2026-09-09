@@ -597,3 +597,27 @@ What went wrong, named not counted. The second slice failed its strict review a 
 Open items, all with numbers: **#442** (fixed on main; staging's own records still need the repair run, which is owed) and **#443** (peer rows deleted before rewrite, filed, untouched). No new failures.
 
 What is needed from you: nothing. Budget after your raise: **1 of 20 spent tonight**, cap 60/day.
+
+**2026-09-09 23:43 IST — tick.** Item 1: previous 8%, now **17%** — two of twelve slices merged. The second one (PR #445) is on main.
+
+What a reader of ipodhan.com would notice: still nothing. Both merged slices are foundations — one stops database changes being skipped in silence, the other gives promoters, peers and intermediaries a stable identity so the site can eventually show which document each number came from.
+
+What went wrong, named not counted. Nothing new failed. The second slice needed **three strict review rounds** and failed twice before passing: once because a write path had no test at all (deleting its safeguard left all 3,304 tests passing), and once because the key I specified could not survive a re-scrape — the code deletes and re-inserts these rows, so a key built from the row's id can never be recreated. Neither would have been caught by the automated checks. One CI run was wasted on my own formatting: the required declaration was in the pull request but wrapped in backticks, so the checker's line match never fired.
+
+The third slice is built and under verification. One claim in it is being checked rather than believed: two unrelated web tests failed and the builder called them timing flakes. The rule here is that a test failing once and passing on a re-run is itself a defect, so the full suite is being run on an untouched copy of the current code to establish whether those two are already broken, broken by this slice, or genuinely unreliable. That answer decides whether it merges.
+
+Open items with numbers: **#442** (fixed on main; the staging repair is still owed) and **#443** (peer rows deleted before rewrite, filed, untouched).
+
+What is needed from you: nothing. **2 of 20 CI runs spent tonight**, cap 60/day.
+
+**2026-09-10 00:15 IST — tick.** Item 1: previous 17%, now **23%** — three of thirteen slices merged (a thirteenth was added tonight for a newly found defect).
+
+What a reader of ipodhan.com would notice: still nothing. All three merged slices are foundations.
+
+What went wrong, named not counted. The cleanup of staging that was meant to finish tonight **did not happen, and stopping was the right outcome.** The tool that fixes those records identifies them by a checksum of the migration file. Staging's checksums were written by the Linux server; this laptop stores the same files with different line endings, so the checksums differ and the tool found nothing — while reporting success and exiting cleanly. A repair that silently does nothing looks exactly like a repair that was not needed, which is how this would have been logged as "staging clean". Filed as **#449**; the fix is building now and makes an unmatched row a loud failure instead of a quiet success. The three bad records are still on staging.
+
+I also corrected my own reporting twice tonight. The command the contract uses to count CI runs caps at 20 results by default, and separately filters by UTC date rather than Indian time — so just after midnight it reports the previous day. I told you "25 runs today" an hour ago; the true figure for today is **1**, which is this run's own. Both are fixed in the half-hourly check.
+
+Open items, all with numbers: **#442** (fixed in the code, staging records still to correct, blocked by #449), **#443**, **#446**, **#447**, **#449**.
+
+What is needed from you: nothing. **1 CI run used today**, cap 60.
