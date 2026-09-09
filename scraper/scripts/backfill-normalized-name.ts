@@ -57,13 +57,39 @@ export interface RowToRepair {
   recomputedNormalizedName: string;
 }
 
-/** Pure decision: does this row need writing? Extracted for unit testing without a DB. */
-export function needsRepair(row: { currentNormalizedName: string | null; nameValue: string }): {
+/**
+ * Prefix for the fallback key minted when a row's own name normalises to the
+ * empty string (junk/null/whitespace-only source name). This can never
+ * collide with a real `normalizeCompanyNameForMatching` output — that
+ * function only ever emits lowercase letters/digits/spaces — so it is safe
+ * under the future `UNIQUE (ipo_id, normalized_name)` constraint (slice s2)
+ * even when two such junk rows share one IPO.
+ */
+export const EMPTY_NORMALIZATION_PREFIX = '__empty__:';
+
+/** Pure decision: does this row need writing? Extracted for unit testing without a DB.
+ *
+ * Finding 6 (Tier A fix round): a row whose name normalises to the empty
+ * string used to keep the `''` column-default sentinel forever — `write`
+ * came back `false` because the stored value already equalled the
+ * recomputed value. Two such rows under one IPO would then collide on the
+ * slice-s2 `UNIQUE (ipo_id, normalized_name)` constraint. Decision: derive a
+ * stable, per-row, non-empty fallback key (`__empty__:<id>`) instead of
+ * silently leaving `''` — the row's own id is already unique, so the
+ * fallback key is guaranteed unique too, and it is loudly distinguishable
+ * from a real match key (`emptyNormalization: true` on the result, counted
+ * and printed as its own category — see `main()`).
+ */
+export function needsRepair(row: { currentNormalizedName: string | null; nameValue: string; id: string }): {
   write: boolean;
   recomputed: string;
+  emptyNormalization: boolean;
 } {
-  const recomputed = normalizeCompanyNameForMatching(row.nameValue);
-  return { write: (row.currentNormalizedName ?? '') !== recomputed, recomputed };
+  const rawRecomputed = normalizeCompanyNameForMatching(row.nameValue);
+  const emptyNormalization = rawRecomputed === '';
+  const recomputed = emptyNormalization ? `${EMPTY_NORMALIZATION_PREFIX}${row.id}` : rawRecomputed;
+  const current = row.currentNormalizedName ?? '';
+  return { write: current !== recomputed, recomputed, emptyNormalization };
 }
 
 interface TableResult {
@@ -71,44 +97,84 @@ interface TableResult {
   totalRows: number;
   changed: number;
   changedIds: string[];
+  emptyNormalizationCount: number;
 }
 
-async function backfillTable(spec: TableSpec, apply: boolean): Promise<TableResult> {
+interface TablePlan {
+  spec: TableSpec;
+  toWrite: RowToRepair[];
+  totalRows: number;
+  emptyNormalizationCount: number;
+}
+
+async function planTable(spec: TableSpec): Promise<TablePlan> {
   const rows = (await db
     .select()
     .from(spec.table as never)) as unknown as Array<Record<string, unknown>>;
 
   const toWrite: RowToRepair[] = [];
+  let emptyNormalizationCount = 0;
   for (const row of rows) {
     const nameValue = String(row[spec.nameColumn] ?? '');
     const currentNormalizedName = (row.normalizedName as string | null) ?? '';
-    const { write, recomputed } = needsRepair({ currentNormalizedName, nameValue });
+    const id = row.id as string;
+    const { write, recomputed, emptyNormalization } = needsRepair({
+      currentNormalizedName,
+      nameValue,
+      id,
+    });
+    if (emptyNormalization) emptyNormalizationCount += 1;
     if (write) {
       toWrite.push({
-        id: row.id as string,
+        id,
         currentNormalizedName,
         recomputedNormalizedName: recomputed,
       });
     }
   }
 
-  if (apply && toWrite.length > 0) {
-    await db.transaction(async (tx) => {
-      for (const r of toWrite) {
-        await tx
-          .update(spec.table as never)
-          .set({ normalizedName: r.recomputedNormalizedName } as never)
-          .where(eq((spec.table as never as { id: unknown }).id as never, r.id as never));
-      }
-    });
+  return { spec, toWrite, totalRows: rows.length, emptyNormalizationCount };
+}
+
+function toResult(plan: TablePlan): TableResult {
+  return {
+    tableName: plan.spec.tableName,
+    totalRows: plan.totalRows,
+    changed: plan.toWrite.length,
+    changedIds: plan.toWrite.map((r) => r.id),
+    emptyNormalizationCount: plan.emptyNormalizationCount,
+  };
+}
+
+/**
+ * Finding 6 (Tier A fix round): the backfill previously ran one transaction
+ * PER TABLE, so a failure on `ipo_intermediaries` could leave `promoters`
+ * and `peer_companies` repaired and the third table not — a partial
+ * backfill. All three tables now write inside ONE transaction: either every
+ * table's rows are repaired or none are.
+ */
+async function backfillAllTables(specs: TableSpec[], apply: boolean): Promise<TableResult[]> {
+  const plans = await Promise.all(specs.map((spec) => planTable(spec)));
+
+  if (apply) {
+    const plansToWrite = plans.filter((p) => p.toWrite.length > 0);
+    if (plansToWrite.length > 0) {
+      await db.transaction(async (tx) => {
+        for (const plan of plansToWrite) {
+          for (const r of plan.toWrite) {
+            await tx
+              .update(plan.spec.table as never)
+              .set({ normalizedName: r.recomputedNormalizedName } as never)
+              .where(
+                eq((plan.spec.table as never as { id: unknown }).id as never, r.id as never)
+              );
+          }
+        }
+      });
+    }
   }
 
-  return {
-    tableName: spec.tableName,
-    totalRows: rows.length,
-    changed: toWrite.length,
-    changedIds: toWrite.map((r) => r.id),
-  };
+  return plans.map(toResult);
 }
 
 async function main(): Promise<void> {
@@ -118,17 +184,20 @@ async function main(): Promise<void> {
     toolName: 'backfill-normalized-name',
   });
 
-  const results: TableResult[] = [];
-  for (const spec of TABLE_SPECS) {
-    const result = await backfillTable(spec, APPLY);
-    results.push(result);
-  }
+  const results = await backfillAllTables(TABLE_SPECS, APPLY);
 
-  console.log(`\nbackfill-normalized-name — ${APPLY ? 'APPLY' : 'DRY RUN'}\n`);
-  console.log('table               total_rows  would_change');
+  console.log(`\nbackfill-normalized-name — ${APPLY ? 'APPLY' : 'DRY RUN'} (single transaction)\n`);
+  console.log('table               total_rows  would_change  empty_normalization');
   for (const r of results) {
     console.log(
-      `${r.tableName.padEnd(19)} ${String(r.totalRows).padEnd(11)} ${r.changed}`
+      `${r.tableName.padEnd(19)} ${String(r.totalRows).padEnd(11)} ${String(r.changed).padEnd(13)} ${r.emptyNormalizationCount}`
+    );
+  }
+  const totalEmpty = results.reduce((sum, r) => sum + r.emptyNormalizationCount, 0);
+  if (totalEmpty > 0) {
+    console.log(
+      `\n${totalEmpty} row(s) whose name normalises to '' were assigned a stable fallback key ` +
+        `(${EMPTY_NORMALIZATION_PREFIX}<id>) instead of the '' sentinel — see emptyNormalizationCount per table above.`
     );
   }
   console.log('');
@@ -144,6 +213,7 @@ async function main(): Promise<void> {
         totalRows: r.totalRows,
         changed: r.changed,
         changedIds: r.changedIds,
+        emptyNormalizationCount: r.emptyNormalizationCount,
       })),
     }
   );
