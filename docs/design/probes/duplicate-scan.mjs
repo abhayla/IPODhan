@@ -18,7 +18,7 @@
 //
 // Read-only against production. Nothing runs on the VPS.
 
-import { openReadOnlyPool, saveOutput, nowStamp } from './_lib.mjs';
+import { openReadOnlyPool, saveOutput, nowStamp , causeOf } from './_lib.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,9 +49,9 @@ try {
 } catch (err) {
   saveOutput('duplicate-scan', {
     probe: 'duplicate-scan', generated_at: nowStamp(), finding: 'F-74',
-    unreachable: `unreachable on 2026-09-09 — ${err.message}`,
+    unreachable: `unreachable on 2026-09-09 — ${causeOf(err)}`,
   });
-  console.error('duplicate-scan: tunnel unreachable after retries —', err.message);
+  console.error('duplicate-scan: tunnel unreachable after retries —', causeOf(err));
   process.exit(2);
 }
 
@@ -183,7 +183,7 @@ try {
   console.log('VERDICT: ' + verdict);
   console.log('written: duplicate-scan.out.json');
 } catch (err) {
-  console.error('duplicate-scan: the probe itself failed —', err.message);
+  console.error('duplicate-scan: the probe itself failed —', causeOf(err));
   process.exitCode = 2;
 } finally {
   await pool.end();
