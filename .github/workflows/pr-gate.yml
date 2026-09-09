@@ -17,9 +17,19 @@ on:
     # path. Only hit was a code COMMENT (not a runtime read) in
     # scraper/tests/unit/index-listing-performance-wiring.test.ts referencing
     # docs/monitoring/scrape-cadence-measurement.md — no negation entry needed.
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
+    #
+    # GitHub only honors "!" negation on `paths` (never `paths-ignore`), and forbids
+    # mixing `paths` with `paths-ignore` on one event - so the docs-only skip and its
+    # registry exceptions are expressed as one `paths` list instead.
+    # Order matters, later patterns win; registry directories are code contracts
+    # read by scripts/tests/audit-detection-floor.test.mjs case 79.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - 'docs/reviews/detection-checks/**'
+      - 'docs/reviews/detection-checks.json'
+      - 'docs/reviews/failure-classes/**'
 
 # No main-branch guard needed here (T-190 review): this workflow only triggers
 # on `pull_request`, never on `push` to main, and the group is scoped per PR
