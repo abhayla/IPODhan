@@ -192,7 +192,7 @@ out.push(`| before ${open}, at 00:00 / 08:00 / 14:00 | Data job | discovers the 
 out.push(`| ${open} to ${close}, every 30 min 10:00–18:30 | Live-figures job | subscription, demand graph and grey-market premium only. It touches no document, no plan row and no static field. |`);
 out.push(`| ${open} to ${close}, at 00:00 / 08:00 / 14:00 | Data job | re-walks only fields whose plan row is still PENDING or due for verification; a newly filed corrigendum or price band advertisement is a new reason to read, and is read on the next data job rather than within the hour. |`);
 out.push(`| ${close} to ${list} | Data job | the timetable family (E-1) is re-read from NSE then BSE, because a printed advertisement is never reissued when a window moves. |`);
-out.push(`| after ${list} | Data job | listing performance; the documents stay on disk for the life of this row (OD-23), so this IPO never joins the closed backlog document-less. |`);
+out.push(`| after ${list} | Data job | listing performance; the extracted text stays on disk for the life of this row (OD-32), so this IPO never joins the closed backlog document-less. |`);
 out.push(`| from the first night after ${close}, 22:00 | Closed-IPO job | eligible once \`close_date\` is in the past. Ten IPOs a night, newest close date first, this one marked done in \`closed_ipo_resourcing\` so it is never picked twice. |`);
 out.push('');
 
