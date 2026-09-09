@@ -23,6 +23,26 @@
  * unambiguous identity, immune to a slot's `created_at` having drifted from
  * what this tool expects.
  *
+ * LINE ENDINGS (GitHub #449): the hash is taken over the file bytes as
+ * `readMigrationFiles()` sees them, and those bytes depend on which
+ * platform wrote or checked out the file. A migration applied by the Linux
+ * deploy runner (LF) hashes differently from the SAME logical file read
+ * from a Windows checkout where git's `core.autocrlf` converted it to CRLF
+ * — so a row this tool is looking for can exist and still not match, in
+ * EITHER direction. This tool computes all three of {raw (file as read),
+ * LF-normalized, CRLF} for every target, and accepts a row matching ANY of
+ * them — never normalizes only one direction, which would leave the
+ * opposite platform's rows unreachable (a Windows checkout could not see a
+ * Linux-written row on the first round; a Linux checkout could not see a
+ * Windows-written row until this round). The CRLF variant is built by
+ * normalizing to LF first and then expanding — never by blindly replacing
+ * `\n` with `\r\n` on as-read content, which would turn an already-CRLF
+ * file's `\r\n` into `\r\r\n`. When two or three variants collapse to the
+ * same value (the common case — a file already LF, or already CRLF),
+ * `matchTargetsToRows()` de-duplicates before looking up: it checks each
+ * DISTINCT hash at most once, so a row is never looked up twice or counted
+ * as two matches.
+ *
  * SCOPE: exactly the three rows named in #442. Every other row in
  * `drizzle.__drizzle_migrations` is left untouched.
  *
@@ -77,17 +97,158 @@ const TARGET_ENTRIES: ReadonlyArray<{ tag: string; correctedWhen: number }> = [
   { tag: '20260908004955_left_loners', correctedWhen: 1788828595000 }, // 2026-09-08T00:49:55.000Z (its own tag)
 ];
 
+function sha256(content: string): string {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * All three hashes a target might match on drizzle.__drizzle_migrations
+ * (#449): `raw` is sha256 of the content exactly as read (whatever line
+ * endings the current checkout produced); `normalized` collapses CRLF to LF
+ * first; `crlf` expands that LF-normalized form back out to CRLF — always
+ * derived from the already-normalized (LF) content, never from `content`
+ * directly, so an as-read CRLF file is never double-converted into CRCRLF.
+ * Any two (or all three) of these commonly collapse to the same value —
+ * callers must not treat that as independent matches (see
+ * `matchTargetsToRows`, which de-dupes before looking up).
+ */
+export function hashContentVariants(content: string): { raw: string; normalized: string; crlf: string } {
+  const raw = sha256(content);
+  const lf = content.replace(/\r\n/g, '\n');
+  const normalized = sha256(lf);
+  const crlf = sha256(lf.replace(/\n/g, '\r\n'));
+  return { raw, normalized, crlf };
+}
+
 /** sha256(sql file content) — identical to drizzle-orm's readMigrationFiles(). Exported so the unit test can drive the real function instead of re-deriving the algorithm. */
 export function hashMigrationFile(tag: string): string {
   const sqlPath = path.join(MIGRATIONS_DIR, `${tag}.sql`);
   const content = fs.readFileSync(sqlPath, 'utf8');
-  return crypto.createHash('sha256').update(content).digest('hex');
+  return sha256(content);
+}
+
+/** All three candidate hashes (raw, LF-normalized, CRLF) for the migration file `tag` as it exists in this checkout. */
+export function hashMigrationFileVariants(tag: string): { raw: string; normalized: string; crlf: string } {
+  const sqlPath = path.join(MIGRATIONS_DIR, `${tag}.sql`);
+  const content = fs.readFileSync(sqlPath, 'utf8');
+  return hashContentVariants(content);
 }
 
 interface MigrationRow {
   id: number;
   hash: string;
   created_at: string; // bigint comes back as string from node-postgres
+}
+
+interface HashedTarget {
+  tag: string;
+  correctedWhen: number;
+  raw: string;
+  normalized: string;
+  crlf: string;
+}
+
+interface MatchedTarget {
+  tag: string;
+  correctedWhen: number;
+  row: MigrationRow;
+  matchedVia: 'raw' | 'normalized' | 'crlf';
+}
+
+interface UnmatchedTarget {
+  tag: string;
+  raw: string;
+  normalized: string;
+  crlf: string;
+}
+
+interface RepairPlanItem {
+  tag: string;
+  hash: string;
+  rowId: number;
+  before: string;
+  after: number;
+}
+
+/**
+ * The outcome + exit code this tool commits to (#449's fix): a target that
+ * cannot be matched to a row is a LOUD failure (exit 1), never
+ * indistinguishable from "nothing needed repairing" (exit 0). Every other
+ * path — all rows already correct, a non-empty dry-run plan, or a completed
+ * --apply — is a success (exit 0). `main()` is the only caller; this
+ * function does no I/O so a test can assert both directions without a
+ * database or process.exit.
+ */
+export type RepairDecision =
+  | { outcome: 'unmatched'; exitCode: 1; unmatched: readonly UnmatchedTarget[] }
+  | { outcome: 'already-correct'; exitCode: 0; targetCount: number }
+  | { outcome: 'dry-run'; exitCode: 0; plan: readonly RepairPlanItem[] }
+  | { outcome: 'apply'; exitCode: 0; plan: readonly RepairPlanItem[] };
+
+/**
+ * Pure decision (#449): given the matched/unmatched split from
+ * `matchTargetsToRows()` and whether this is an --apply run, decides the
+ * outcome and exit code. Mirrors `main()`'s prior inline logic exactly —
+ * this is a restructuring, not a behavior change: any target left unmatched
+ * (partial or zero matches) is exit 1; every target resolved to a row is
+ * exit 0, whether that means nothing to change, a dry-run plan, or an apply.
+ */
+export function decideRepairOutcome(
+  matched: readonly MatchedTarget[],
+  unmatched: readonly UnmatchedTarget[],
+  apply: boolean
+): RepairDecision {
+  if (unmatched.length > 0) {
+    return { outcome: 'unmatched', exitCode: 1, unmatched };
+  }
+
+  const plan: RepairPlanItem[] = [];
+  for (const m of matched) {
+    const beforeMs = Number(m.row.created_at);
+    if (beforeMs === m.correctedWhen) continue;
+    plan.push({ tag: m.tag, hash: m.row.hash, rowId: m.row.id, before: m.row.created_at, after: m.correctedWhen });
+  }
+
+  if (plan.length === 0) {
+    return { outcome: 'already-correct', exitCode: 0, targetCount: matched.length };
+  }
+
+  return { outcome: apply ? 'apply' : 'dry-run', exitCode: 0, plan };
+}
+
+/**
+ * Pure matching decision (#449): resolves each target to a
+ * drizzle.__drizzle_migrations row by ANY of its raw, LF-normalized, or
+ * CRLF hash, so a row written by a platform whose line endings differ from
+ * this checkout's is still found — in either direction (Windows checkout
+ * reading a Linux-written row, or Linux checkout reading a Windows-written
+ * row). Variants are de-duplicated before lookup: raw is checked first,
+ * then normalized only if it differs from raw, then crlf only if it
+ * differs from BOTH raw and normalized — so a variant is never looked up
+ * (or counted as a match) more than once, even when all three collapse to
+ * the same value. Exported so tests drive the real matching logic without
+ * a database.
+ */
+export function matchTargetsToRows(
+  targets: readonly HashedTarget[],
+  rows: readonly MigrationRow[]
+): { matched: MatchedTarget[]; unmatched: UnmatchedTarget[] } {
+  const byHash = new Map(rows.map((r) => [r.hash, r]));
+  const matched: MatchedTarget[] = [];
+  const unmatched: UnmatchedTarget[] = [];
+  for (const t of targets) {
+    const candidates: Array<{ hash: string; via: MatchedTarget['matchedVia'] }> = [{ hash: t.raw, via: 'raw' }];
+    if (t.normalized !== t.raw) candidates.push({ hash: t.normalized, via: 'normalized' });
+    if (t.crlf !== t.raw && t.crlf !== t.normalized) candidates.push({ hash: t.crlf, via: 'crlf' });
+
+    const hit = candidates.map((c) => ({ ...c, row: byHash.get(c.hash) })).find((c) => c.row);
+    if (hit && hit.row) {
+      matched.push({ tag: t.tag, correctedWhen: t.correctedWhen, row: hit.row, matchedVia: hit.via });
+    } else {
+      unmatched.push({ tag: t.tag, raw: t.raw, normalized: t.normalized, crlf: t.crlf });
+    }
+  }
+  return { matched, unmatched };
 }
 
 interface JournalEntryLike {
@@ -157,55 +318,63 @@ async function main() {
     toolName: 'repair-migration-journal-dates',
   });
 
-  const targets = TARGET_ENTRIES.map((t) => ({ ...t, hash: hashMigrationFile(t.tag) }));
+  const targets = TARGET_ENTRIES.map((t) => ({ ...t, ...hashMigrationFileVariants(t.tag) }));
 
   const allRowsResult = await db.execute(
     sql`SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at`
   );
   const allRows = (Array.isArray(allRowsResult) ? allRowsResult : (allRowsResult as any).rows) as MigrationRow[];
-  const byHash = new Map(allRows.map((r) => [r.hash, r]));
 
-  const plan: Array<{ tag: string; hash: string; rowId: number; before: string; after: number }> = [];
-  const notFound: string[] = [];
+  const { matched, unmatched } = matchTargetsToRows(targets, allRows);
 
-  for (const t of targets) {
-    const row = byHash.get(t.hash);
-    if (!row) {
-      notFound.push(
-        `${t.tag} (hash ${t.hash.slice(0, 12)}...) — no matching row in drizzle.__drizzle_migrations on "${dbName}" (migration not yet applied on this slot; nothing to repair here).`
-      );
-      continue;
-    }
-    const beforeMs = Number(row.created_at);
+  for (const m of matched) {
+    const beforeMs = Number(m.row.created_at);
     console.log(
-      `  ${t.tag}: row id=${row.id} created_at ${beforeMs} (${new Date(beforeMs).toISOString()}) -> ${t.correctedWhen} (${new Date(t.correctedWhen).toISOString()})`
+      `  ${m.tag}: row id=${m.row.id} (matched via ${m.matchedVia} hash) created_at ${beforeMs} (${new Date(beforeMs).toISOString()}) -> ${m.correctedWhen} (${new Date(m.correctedWhen).toISOString()})`
     );
-    if (beforeMs === t.correctedWhen) {
+    if (beforeMs === m.correctedWhen) {
       console.log(`    already correct — skipping (idempotent).`);
-      continue;
     }
-    plan.push({ tag: t.tag, hash: t.hash, rowId: row.id, before: row.created_at, after: t.correctedWhen });
   }
 
-  if (notFound.length > 0) {
-    console.log(`\nNot found on "${dbName}" (${notFound.length}):`);
-    notFound.forEach((n) => console.log(`  - ${n}`));
-  }
+  // The decision (#449, restructured so it is a value a test can inspect,
+  // not a side effect buried in here): a zero or partial match is a LOUD
+  // failure (exit 1) — "expected N, matched M" must never be
+  // indistinguishable from "nothing needed repairing".
+  const decision = decideRepairOutcome(matched, unmatched, APPLY);
 
-  if (plan.length === 0) {
-    console.log(`\nNothing to repair on "${dbName}" — 0 rows need a created_at correction.`);
+  if (decision.outcome === 'unmatched') {
+    console.log(
+      `\nFAILED to match ${decision.unmatched.length} of ${targets.length} target(s) on "${dbName}" — this is NOT the ` +
+        `same thing as "nothing to repair":`
+    );
+    decision.unmatched.forEach((u) => {
+      console.log(`  - ${u.tag}: tried raw hash ${u.raw}, LF-normalized hash ${u.normalized}, and CRLF hash ${u.crlf} — none is present in drizzle.__drizzle_migrations on "${dbName}".`);
+    });
+    console.log(
+      `\nEither the migration truly has not been applied on this slot yet, or the matching logic still cannot ` +
+        `see the row that applied it. Do not treat this exit as "healthy" — investigate before assuming the ` +
+        `slot needs no repair.`
+    );
     console.log('='.repeat(80));
-    process.exit(0);
+    process.exit(decision.exitCode);
   }
 
+  if (decision.outcome === 'already-correct') {
+    console.log(`\nAll ${targets.length} target row(s) found on "${dbName}" and already at their corrected created_at — 0 rows need a change.`);
+    console.log('='.repeat(80));
+    process.exit(decision.exitCode);
+  }
+
+  const plan = decision.plan;
   const backupPath = path.join(EVIDENCE_DIR, `migration-journal-dates-backup-${dbName}.json`);
   writeLedgerFile(backupPath, { dbName, capturedAt: new Date().toISOString(), rows: plan });
   console.log(`\nbackup written: ${backupPath} (${plan.length} row(s))`);
 
-  if (!APPLY) {
+  if (decision.outcome === 'dry-run') {
     console.log(`\nDRY-RUN: ${plan.length} row(s) on "${dbName}" WOULD be corrected. Re-run with --apply.`);
     console.log('='.repeat(80));
-    process.exit(0);
+    process.exit(decision.exitCode);
   }
 
   await db.transaction(async (tx) => {
@@ -225,7 +394,7 @@ async function main() {
 
   console.log(`\nAPPLY complete on "${dbName}": ${plan.length} row(s) corrected.`);
   console.log('='.repeat(80));
-  process.exit(0);
+  process.exit(decision.exitCode);
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

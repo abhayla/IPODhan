@@ -190,6 +190,28 @@ production `--apply` so the backup survives on durable storage, not somewhere th
 `scripts/ci/require-repair-tool-module.mjs` fails a PR whose new `scraper/scripts/{repair,backfill}-*.ts` neither
 imports the module nor carries `// repair-tool-exempt: <YYYY-MM-DD> <reason>`.
 
+**8a-i. Line-ending-safe matching (GitHub #449).** The row-matching hash above is taken over the
+migration `.sql` file exactly as `readMigrationFiles()` (drizzle-orm) and this tool both read it — and
+that byte content depends on which platform wrote/checked it out. A migration applied by the Linux
+deploy runner writes an LF hash into `drizzle.__drizzle_migrations`; the same logical file read from a
+Windows checkout (git `core.autocrlf` converting to CRLF) hashes differently, so the tool matched zero
+of the three named rows and printed "nothing to repair" — indistinguishable from the healthy case, in
+EITHER direction (a Windows checkout could not see a Linux-written row; a Linux checkout could not see
+a Windows-written row). The tool now computes all THREE of {raw (file as this checkout reads it),
+LF-normalized, CRLF} for every target, and accepts a `drizzle.__drizzle_migrations` row matching **any**
+of them — normalizing only one direction was rejected because a slot whose migrations were applied from
+a Windows checkout would then fail the same way in the opposite direction. The CRLF variant is always
+built by normalizing to LF first and then expanding, never by converting as-read content directly,
+so an already-CRLF file is never turned into CRCRLF. When two or three variants collapse to the same
+value (the common case), a row is matched (and counted) once, never twice.
+**A zero — or partial — match is now a loud failure**, not a quiet "0 rows to repair": if the tool
+matches fewer of `TARGET_ENTRIES` than it was asked to find, it prints every unmatched tag with all three
+hashes it tried and exits **1**; only when every target resolves to a row (whether or not that row still
+needs a `created_at` correction) does it exit 0. Re-run the dry run in section 8a above from a Windows
+checkout against `ipodhan_staging`/`ipodhan` any time the previous run reported "nothing to repair" from
+this checkout — that message is no longer trustworthy from before this fix, and any future zero-match
+run now fails loudly instead of looking healthy.
+
 ```bash
 # issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
 cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
