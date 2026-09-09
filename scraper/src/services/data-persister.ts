@@ -691,7 +691,7 @@ export function buildNonDestructiveUpdate(
 // JS path (here) and the SQL path (ipo-repository) share ONE definition and stay
 // in lock-step (A3 / #6 #8 #16). Imported for local use in upsertIPO AND
 // re-exported for existing callers (e.g. the GMP orchestrator).
-import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
+import { normalizeCompanyNameForMatching, rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 import {
   toListingExchangesForSource,
   violatesSmeSingleExchange,
@@ -1920,22 +1920,43 @@ export async function createPeerCompanies(
         logger.debug({ ipoId, deletedCount }, 'Deleted existing peer companies');
       }
 
-      // Step 2: Prepare peer company data
-      const peerCompanyData = scrapedPeers.map((peer) => ({
-        ipoId,
-        companyName: peer.companyName,
-        sector: peer.sector || null,
-        isListed: peer.isListed,
-        peRatio: peer.peRatio?.toString() || null,
-        eps: peer.eps?.toString() || null,
-        dilutedEps: peer.dilutedEps?.toString() || null,
-        ronw: peer.ronw?.toString() || null,
-        nav: peer.nav?.toString() || null,
-        pbvRatio: peer.pbvRatio?.toString() || null,
-        financialStatementType: null, // Not available from Moneycontrol
-        dataSource: peer.dataSource || 'MONEYCONTROL',
-        lastUpdated: new Date(),
-      }));
+      // Step 2: Prepare peer company data. A peer whose name has no
+      // identity (empty/whitespace-only, or pure junk under the shared
+      // `rowKeyForName`) is skipped rather than written with an invented
+      // key — logged so the skip is countable, never silent.
+      const peerCompanyData = scrapedPeers
+        .map((peer) => ({ peer, key: rowKeyForName(peer.companyName) }))
+        .filter(({ peer, key }) => {
+          if (key === null) {
+            logger.warn(
+              { ipoId, table: 'peer_companies', name: peer.companyName },
+              'skipping peer_companies row: name has no identity (empty/whitespace-only)'
+            );
+            return false;
+          }
+          return true;
+        })
+        .map(({ peer, key }) => ({
+          ipoId,
+          companyName: peer.companyName,
+          // Item 1 slice s1 (row-key prep, F-74): the future row key.
+          normalizedName: key as string,
+          sector: peer.sector || null,
+          isListed: peer.isListed,
+          peRatio: peer.peRatio?.toString() || null,
+          eps: peer.eps?.toString() || null,
+          dilutedEps: peer.dilutedEps?.toString() || null,
+          ronw: peer.ronw?.toString() || null,
+          nav: peer.nav?.toString() || null,
+          pbvRatio: peer.pbvRatio?.toString() || null,
+          financialStatementType: null, // Not available from Moneycontrol
+          dataSource: peer.dataSource || 'MONEYCONTROL',
+          lastUpdated: new Date(),
+        }));
+
+      if (peerCompanyData.length === 0) {
+        return 0;
+      }
 
       // Step 3: Batch insert peer companies
       const createdPeers = await peerCompanyRepository.batchCreate(peerCompanyData);

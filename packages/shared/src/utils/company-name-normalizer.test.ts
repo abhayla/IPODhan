@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeCompanyNameForMatching, compactCompanyNameKey } from './company-name-normalizer';
+import {
+  normalizeCompanyNameForMatching,
+  compactCompanyNameKey,
+  rowKeyForName,
+  JUNK_NAME_KEY_PREFIX,
+} from './company-name-normalizer';
 
 /**
  * P2-1 (round-2 review, T-277): 11 duplicate IPO pairs existed in prod because
@@ -146,5 +151,57 @@ describe('compactCompanyNameKey — word-break fold (P2-1, T-277F)', () => {
     expect(compactCompanyNameKey('Sun Pharmaceutical Industries Ltd')).not.toBe(
       compactCompanyNameKey('Sunrise Pharmaceutical Industries Ltd')
     );
+  });
+});
+
+describe('rowKeyForName — the ONE row-key function shared by the backfill and every write path (Tier A round-2, F-74)', () => {
+  it('normal path: byte-identical to normalizeCompanyNameForMatching for a name that normalizes non-empty', () => {
+    const names = ['ABC (India) Ltd', 'Sunil Sharma', 'Caliber Mining & Logistics Ltd.', 'INDO MIM Limited'];
+    for (const name of names) {
+      expect(rowKeyForName(name)).toBe(normalizeCompanyNameForMatching(name));
+    }
+  });
+
+  it('no-identity path: null, undefined, empty, and whitespace-only (including a tab) all return null', () => {
+    expect(rowKeyForName(null)).toBeNull();
+    expect(rowKeyForName(undefined)).toBeNull();
+    expect(rowKeyForName('')).toBeNull();
+    expect(rowKeyForName('   ')).toBeNull();
+    expect(rowKeyForName('\t')).toBeNull();
+  });
+
+  it('junk path: pure-punctuation names that normalize to "" get a stable, non-empty, prefixed key', () => {
+    const dashes = rowKeyForName('----');
+    const parens = rowKeyForName('(())');
+    expect(dashes).not.toBeNull();
+    expect(parens).not.toBeNull();
+    expect(dashes).not.toBe('');
+    expect(parens).not.toBe('');
+    expect(dashes?.startsWith(JUNK_NAME_KEY_PREFIX)).toBe(true);
+    expect(parens?.startsWith(JUNK_NAME_KEY_PREFIX)).toBe(true);
+  });
+
+  it('junk path is STABLE and depends ONLY on the name: two calls with the same junk name agree', () => {
+    expect(rowKeyForName('----')).toBe(rowKeyForName('----'));
+    expect(rowKeyForName('(())')).toBe(rowKeyForName('(())'));
+  });
+
+  it('junk path: different junk names get different keys (no accidental collision)', () => {
+    expect(rowKeyForName('----')).not.toBe(rowKeyForName('(())'));
+  });
+
+  // The backfill-vs-rescrape cross-path guarantee (a write-path row's
+  // `normalizedName` equals `rowKeyForName`/`normalizeCompanyNameForMatching`
+  // computed from the same name) is covered on the actual write path in
+  // `scraper/tests/unit/services/filing-persister-normalized-name.test.ts`
+  // (promoters/intermediaries/peer_companies assertions, plus the junk-key
+  // assertion at the end of that file) — removed here because calling this
+  // same pure function twice with the same input is trivially true and
+  // proves nothing beyond referential transparency.
+
+  it('the junk-key prefix can never collide with a real normalized key (real output is only lowercase/digits/spaces)', () => {
+    const realKey = rowKeyForName('ABC (India) Ltd') as string;
+    expect(realKey.startsWith(JUNK_NAME_KEY_PREFIX)).toBe(false);
+    expect(/^[a-z0-9 ]*$/.test(realKey)).toBe(true);
   });
 });

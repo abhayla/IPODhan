@@ -27,6 +27,10 @@ export interface PromoterRow {
   id: string;
   ipoId: string;
   name: string;
+  // Item 1 slice s1 (row-key prep, F-74): the future row key. Never null —
+  // '' is the not-yet-backfilled sentinel (schema default), never used by a
+  // write path after this slice (see filing-persister.ts).
+  normalizedName: string;
   sharesHeld: number | null;
   waca: string | null;
   wacaLastYear: string | null;

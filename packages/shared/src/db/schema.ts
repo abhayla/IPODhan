@@ -843,29 +843,44 @@ export const registrars = pgTable('registrars', {
 
 // ==================== TABLE 9: PEER_COMPANIES (One-to-Many) ====================
 
-export const peerCompanies = pgTable('peer_companies', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  ipoId: uuid('ipo_id')
-    .notNull()
-    .references(() => ipos.id, { onDelete: 'cascade' }),
-  companyName: varchar('company_name', { length: 255 }).notNull(),
-  sector: varchar('sector', { length: 100 }),
-  isListed: boolean('is_listed').notNull(),
+export const peerCompanies = pgTable(
+  'peer_companies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    companyName: varchar('company_name', { length: 255 }).notNull(),
+    // Item 1 slice s1 (row-key prep, F-74): the normalised identity key this
+    // table's future `(ipoId, normalizedName)` unique constraint will use
+    // (slice s2, after the duplicate scan). Written by every insert path via
+    // `normalizeCompanyNameForMatching`; '' default only for rows written
+    // before this slice, backfilled by scraper/scripts/backfill-normalized-name.ts.
+    normalizedName: varchar('normalized_name', { length: 255 }).notNull().default(''),
+    sector: varchar('sector', { length: 100 }),
+    isListed: boolean('is_listed').notNull(),
 
-  // Financial metrics
-  peRatio: numeric('pe_ratio', { precision: 10, scale: 2 }),
-  eps: numeric('eps', { precision: 10, scale: 2 }),
-  dilutedEps: numeric('diluted_eps', { precision: 10, scale: 2 }),
-  ronw: numeric('ronw', { precision: 5, scale: 2 }), // return on net worth %
-  nav: numeric('nav', { precision: 10, scale: 2 }), // net asset value
-  pbvRatio: numeric('pbv_ratio', { precision: 10, scale: 2 }), // price-to-book value
-  financialStatementType: financialStatementTypeEnum('financial_statement_type'),
+    // Financial metrics
+    peRatio: numeric('pe_ratio', { precision: 10, scale: 2 }),
+    eps: numeric('eps', { precision: 10, scale: 2 }),
+    dilutedEps: numeric('diluted_eps', { precision: 10, scale: 2 }),
+    ronw: numeric('ronw', { precision: 5, scale: 2 }), // return on net worth %
+    nav: numeric('nav', { precision: 10, scale: 2 }), // net asset value
+    pbvRatio: numeric('pbv_ratio', { precision: 10, scale: 2 }), // price-to-book value
+    financialStatementType: financialStatementTypeEnum('financial_statement_type'),
 
-  // Metadata
-  dataSource: varchar('data_source', { length: 100 }),
-  lastUpdated: timestamp('last_updated'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+    // Metadata
+    dataSource: varchar('data_source', { length: 100 }),
+    lastUpdated: timestamp('last_updated'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdNormalizedNameIdx: index('idx_peer_companies_ipo_id_normalized_name').on(
+      table.ipoId,
+      table.normalizedName
+    ),
+  })
+);
 
 // ==================== TABLE 10: BROKER_AFFILIATES (One-to-Many) ====================
 
@@ -1775,6 +1790,10 @@ export const promoters = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     name: varchar('name', { length: 255 }).notNull(),
+    // Item 1 slice s1 (row-key prep, F-74): see peerCompanies.normalizedName
+    // for the rationale — the future `(ipoId, normalizedName)` unique
+    // constraint lands in slice s2.
+    normalizedName: varchar('normalized_name', { length: 255 }).notNull().default(''),
     sharesHeld: bigint('shares_held', { mode: 'number' }),
     waca: numeric('waca', { precision: 18, scale: 2 }),
     wacaLastYear: numeric('waca_last_year', { precision: 18, scale: 2 }),
@@ -1784,6 +1803,10 @@ export const promoters = pgTable(
   },
   (table) => ({
     ipoIdIdx: index('idx_promoters_ipo_id').on(table.ipoId),
+    ipoIdNormalizedNameIdx: index('idx_promoters_ipo_id_normalized_name').on(
+      table.ipoId,
+      table.normalizedName
+    ),
   })
 );
 
@@ -1833,6 +1856,10 @@ export const ipoIntermediaries = pgTable(
       .references(() => ipos.id, { onDelete: 'cascade' }),
     role: intermediaryRoleEnum('role').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
+    // Item 1 slice s1 (row-key prep, F-74): the normalised NAME only — the
+    // future row key is `role:normalizedName` (build card), a composite this
+    // slice does not compute; it stores the name half, per peerCompanies.
+    normalizedName: varchar('normalized_name', { length: 255 }).notNull().default(''),
     sebiRegNo: varchar('sebi_reg_no', { length: 50 }),
     contactPerson: varchar('contact_person', { length: 255 }),
     phone: varchar('phone', { length: 50 }),
@@ -1843,6 +1870,10 @@ export const ipoIntermediaries = pgTable(
   },
   (table) => ({
     ipoIdIdx: index('idx_ipo_intermediaries_ipo_id').on(table.ipoId),
+    ipoIdNormalizedNameIdx: index('idx_ipo_intermediaries_ipo_id_normalized_name').on(
+      table.ipoId,
+      table.normalizedName
+    ),
     ipoIdRoleIdx: index('idx_ipo_intermediaries_ipo_id_role').on(table.ipoId, table.role),
   })
 );

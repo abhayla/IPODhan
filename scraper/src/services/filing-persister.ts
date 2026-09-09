@@ -39,6 +39,7 @@ import type {
 } from '@ipodhan/shared';
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { upsertIPO } from './data-persister.js';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 import {
   checkCrossDocumentAgreement,
   expandWithheldMetrics,
@@ -1373,10 +1374,26 @@ export async function persistFilingExtraction(
       ? promoterNames
       : ([str(extraction, 'promoter_name')].filter(Boolean) as string[]);
 
-  if (names.length > 0) {
-    const rows: PromoterInsert[] = names.map((name) => ({
+  const namesWithKeys = names
+    .map((name) => ({ name, key: rowKeyForName(name) }))
+    .filter(({ name, key }) => {
+      if (key === null) {
+        logger.warn(
+          { ipoId, table: 'promoters', name },
+          'skipping promoter row: name has no identity (empty/whitespace-only)'
+        );
+        return false;
+      }
+      return true;
+    });
+
+  if (namesWithKeys.length > 0) {
+    const rows: PromoterInsert[] = namesWithKeys.map(({ name, key }) => ({
       ipoId,
       name,
+      // Item 1 slice s1 (row-key prep, F-74): the future row key
+      // (docs/design/build-cards/item-01-child-table-consolidated-writer.md).
+      normalizedName: key as string,
       // promoter_shares_held is the AGGREGATE promoter holding; assigning it to
       // one named promoter would invent a per-person figure the ad never
       // printed. Left null; the aggregate goes to ipo_details.promoter_shares_held
@@ -1568,7 +1585,12 @@ export async function persistFilingExtraction(
     'brlm_track_record'
   );
   const brlmNames = (existing.leadManagers || []).filter((n): n is string => !!n);
-  const intermediaries: IpoIntermediaryInsert[] = brlmNames.map((name) => ({
+  // Item 1 slice s1 (row-key prep, F-74): built without `normalizedName`
+  // here — every entry (the initial map, and each subsequent push below)
+  // carries only a bare `name`; `normalizedName` is derived once, uniformly,
+  // right before the write (see the map() at the replaceForIpo call site
+  // below) so a future push site can never forget to set it by hand.
+  const intermediaries: Omit<IpoIntermediaryInsert, 'normalizedName'>[] = brlmNames.map((name) => ({
     ipoId,
     role: 'BRLM',
     name,
@@ -1639,15 +1661,34 @@ export async function persistFilingExtraction(
     });
   }
 
-  if (intermediaries.length > 0) {
+  const intermediariesWithKeys = intermediaries
+    .map((row) => ({ row, key: rowKeyForName(row.name) }))
+    .filter(({ row, key }) => {
+      if (key === null) {
+        logger.warn(
+          { ipoId, table: 'ipo_intermediaries', role: row.role, name: row.name },
+          'skipping ipo_intermediaries row: name has no identity (empty/whitespace-only)'
+        );
+        return false;
+      }
+      return true;
+    });
+
+  if (intermediariesWithKeys.length > 0) {
     if (
       await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })
     ) {
       if (apply) {
-        await deps.intermediaries.replaceForIpo(ipoId, intermediaries);
+        const intermediariesWithKey: IpoIntermediaryInsert[] = intermediariesWithKeys.map(
+          ({ row, key }) => ({
+            ...row,
+            normalizedName: key as string,
+          })
+        );
+        await deps.intermediaries.replaceForIpo(ipoId, intermediariesWithKey);
         await trackField('ipo_intermediaries', 'rows');
       }
-      bump(written, 'ipo_intermediaries', intermediaries.length);
+      bump(written, 'ipo_intermediaries', intermediariesWithKeys.length);
     }
   }
 
@@ -1683,9 +1724,22 @@ export async function persistFilingExtraction(
   if (peers.length > 0) {
     const peerRows = peers
       .filter((p) => typeof p.name === 'string' && (p.name as string).trim() !== '')
+      .map((p) => ({ ...p, companyName: (p.name as string).trim(), key: rowKeyForName((p.name as string).trim()) }))
+      .filter((p) => {
+        if (p.key === null) {
+          logger.warn(
+            { ipoId, table: 'peer_companies', name: p.companyName },
+            'skipping peer_companies row: name has no identity (empty/whitespace-only)'
+          );
+          return false;
+        }
+        return true;
+      })
       .map((p) => ({
         ipoId,
-        companyName: (p.name as string).trim(),
+        companyName: p.companyName,
+        // Item 1 slice s1 (row-key prep, F-74): the future row key.
+        normalizedName: p.key as string,
         isListed: true, // the ad's peer table lists only listed comparables
         peRatio: numOrNull(p.pe),
         eps: numOrNull(p.eps_basic),
