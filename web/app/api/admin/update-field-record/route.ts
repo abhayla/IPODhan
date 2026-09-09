@@ -53,12 +53,18 @@ const NON_EDITABLE_FIELDS = new Set([
 // must recompute the derived field in the SAME update, never leave it
 // stale. Kept a denylist (not converted to an allowlist) because
 // `NON_EDITABLE_FIELDS` covers three tables with different editable-field
-// shapes — an allowlist rewrite is out of scope here. This registry is the
-// guard against the denylist's blind spot: `web/tests/unit/api/admin/
-// update-field-record-derived-key-registry.test.ts` fails if a NEW
-// row-key-bearing column is added to any of the three tables in
-// `packages/shared/src/db/schema.ts` without an entry here — a future
-// editable field cannot silently reintroduce this bug.
+// shapes — an allowlist rewrite is out of scope here. `web/tests/unit/api/
+// admin/update-field-record-derived-key-registry.test.ts` guards this
+// registry two ways: (1) it fails if a NEW `normalized_name` DB column
+// (any Drizzle helper) is added to any of the three tables in
+// `packages/shared/src/db/schema.ts` with no matching entry here, and
+// (2) it fails if an entry here has no matching `...derivedFieldUpdate`
+// spread in that table's branch below. What it still does NOT cover: a
+// table added to `RECORD_TABLE_MAP` without also being added to
+// `ADMIN_WRITABLE_TABLES` in the test file, and any derived-key bug in a
+// table this route cannot write at all. This is a registry-vs-wiring
+// guard, not a proof that every future editable field is safe by
+// construction.
 const DERIVED_KEY_FIELDS: Record<
   string,
   { sourceField: string; derivedField: string; derive: (value: unknown) => string | null }
