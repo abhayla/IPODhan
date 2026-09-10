@@ -69,7 +69,13 @@ jobs:
         working-directory: ./web
 
       - name: Run unit tests
-        run: npx vitest run --reporter=basic --no-isolate
+        # 2026-09-10: run EXACTLY what pr-gate runs. This step previously used a raw
+        # `npx vitest run --no-isolate`, which shares one worker across every test file;
+        # something in the suite tears `window` down for its successors, so 90 of 187
+        # files failed. Measured on the same files minutes apart: with --no-isolate
+        # 664 failed / 483 passed; without it 4 failed / 1143 passed. continue-on-error
+        # hid this until #464 removed it. One suite, one command.
+        run: npm run test:unit
         working-directory: ./web
         env:
           NODE_OPTIONS: '--max-old-space-size=6144'
