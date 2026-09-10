@@ -73,7 +73,8 @@ jobs:
         # `npx vitest run --no-isolate`, which shares one worker across every test file;
         # something in the suite tears `window` down for its successors, so 90 of 187
         # files failed. Measured on the same files minutes apart: with --no-isolate
-        # 664 failed / 483 passed; without it 4 failed / 1143 passed. continue-on-error
+        # 664 failed / 483 passed; without it 4 failed / 1143 passed (those 4 did NOT
+        # reproduce on a re-run - unstable, see #446). continue-on-error
         # hid this until #464 removed it. One suite, one command.
         run: npm run test:unit
         working-directory: ./web
