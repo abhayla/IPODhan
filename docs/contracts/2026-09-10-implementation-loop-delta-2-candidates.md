@@ -269,3 +269,47 @@ constraint keyed on the stored hash, so it inherits this rule from day one.
 `normalized_name` values under the current function and asserts they match. Cheap, and it fails the
 moment a normaliser change lands without a re-backfill. Being built as item 1 slice **s8b** rather
 than left as a recommendation.
+
+---
+
+## 12. A `/goal` condition is never a file path; it names the terminal ledger line
+
+Not a contract defect — a defect in how the contract is *invoked*, which is worse, because it can
+end the run while the contract is still unsatisfied.
+
+**What happened.** This run was started as `/goal docs/contracts/2026-09-09-pull-model-implementation-loop.md`.
+The goal condition was therefore the bare file path. Claude Code's goal evaluator read that as
+"read and follow this file", judged it met at 12:52Z (18:22 IST), and cleared the goal. Nobody
+decided that — not the owner, not this session. A second session reports the same thing happened to
+three earlier runs on 2026-09-09 that also used path-shaped goals.
+
+**First-hand corroboration, not just a relay.** Twice this session the Stop hook returned
+`[docs/contracts/2026-09-09-pull-model-implementation-loop.md]: insufficient evidence in transcript`
+— a message that only makes sense if the goal condition *is* that path and the evaluator is looking
+for evidence the path was honoured. That is consistent with the report and was observed directly.
+
+**Why it matters more than it looks.** The contract's own Definition of Done is eight checkboxes
+ending in "22 items DONE or BLOCKED, zero PENDING". A path-shaped goal replaces all of it with
+"did the agent read the file". The run can be declared complete with 21 of 22 items untouched, and
+the completion is *plausible* — the file really was read and really was followed. It fails in the
+direction that looks like success, which is the same class as the three CI failures found today
+(#489, #500, #507): the artifact exists, is configured, and reports green.
+
+**Proposed rule:** a `/goal` condition MUST be a terminal, checkable state, never a document to
+read. It names the exact final ledger line and the file it lands in, so "met" is a string that
+either exists or does not.
+
+For this run the natural form is:
+
+> Append `LANE A COMPLETE` as the final line of the ledger when, and only when, every lane A item
+> (1, 15, 13, 4, 5, 6, 7, 9, 10, 11, 17) carries its DONE line with a recorded staging proof.
+
+And the corresponding negative, which is the half that actually does the work:
+
+> A freeze, a `BLOCKED-OWNER`, or waiting on anything is neither completion nor impossibility. The
+> line is never written early for any reason.
+
+**Status: proposed, not adopted.** A second session relayed this wording and it is sound, but a
+peer session cannot set this run's completion condition — only the owner can. It is recorded here
+as the recommended re-set. Until the owner re-sets `/goal`, this run continues under the contract
+exactly as written, and no terminal line is written by anyone.
