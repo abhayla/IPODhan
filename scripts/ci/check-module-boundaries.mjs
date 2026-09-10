@@ -216,9 +216,14 @@ function posixJoin(...parts) {
     .join('/');
 }
 
+// SAMPLE_CAP: how many identities to print per ignore-category so a reader
+// can see WHAT was skipped, not just a bare count (signal-ownership.md R1).
+const SAMPLE_CAP = 10;
+
 function buildGraph(files, root, fileSet) {
   const edges = []; // { fromRel, toRel }
   const unresolved = { relative: 0, aliasNoMap: 0, bareIgnored: 0 };
+  const samples = { relative: [], bareIgnored: [] };
   for (const f of files) {
     let source;
     try {
@@ -237,18 +242,50 @@ function buildGraph(files, root, fileSet) {
         if (aliasTarget) candidate = aliasTarget;
         else {
           unresolved.bareIgnored++;
+          if (samples.bareIgnored.length < SAMPLE_CAP) {
+            samples.bareIgnored.push(`${f.rel} -> "${spec}"`);
+          }
           continue;
         }
       }
       const resolved = resolveToFile(candidate, fileSet);
       if (!resolved) {
         unresolved.relative++;
+        if (samples.relative.length < SAMPLE_CAP) {
+          samples.relative.push(`${f.rel} -> "${spec}"`);
+        }
         continue;
       }
       edges.push({ fromRel: f.rel, toRel: resolved });
     }
   }
-  return { edges, unresolved };
+  return { edges, unresolved, samples };
+}
+
+function printSampleList(label, total, sample) {
+  console.log(`  ${label}: ${total}`);
+  for (const line of sample) {
+    console.log(`    - ${line}`);
+  }
+  if (total > sample.length) {
+    console.log(`    ... and ${total - sample.length} more`);
+  }
+}
+
+function loadBaseline(baselinePath) {
+  try {
+    const raw = readFileSync(baselinePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.edges)) return { edges: [] };
+    return parsed;
+  } catch (e) {
+    if (e.code === 'ENOENT') return { edges: [] };
+    throw new Error(`module-boundary-baseline.json is not valid JSON: ${e.message}`);
+  }
+}
+
+function edgeKey(fromRel, toRel) {
+  return `${fromRel} ${toRel}`;
 }
 
 function main() {
@@ -292,13 +329,20 @@ function main() {
     process.exit(2);
   }
 
-  const { edges, unresolved } = buildGraph(files, root, fileSet);
+  const { edges, unresolved, samples } = buildGraph(files, root, fileSet);
 
+  // The edges the check actually EVALUATES — both endpoints mapped. Every
+  // other edge (either endpoint unmapped) is silently ignored per contract,
+  // which is exactly what let this check pass on the maximal possible
+  // violation before this guard existed (see the CRITICAL finding this
+  // guard fixes). A map that evaluates nothing is a FAILURE, never a PASS.
+  const bothMappedEdges = [];
   const violations = [];
   for (const { fromRel, toRel } of edges) {
     const fromMod = mapped.get(fromRel);
     const toMod = mapped.get(toRel);
     if (!fromMod || !toMod) continue; // unmapped endpoint — ignored per contract
+    bothMappedEdges.push({ fromRel, toRel, fromMod, toMod });
     const fromIdx = map.layerIndex.get(fromMod);
     const toIdx = map.layerIndex.get(toMod);
     if (toIdx > fromIdx) {
@@ -306,32 +350,106 @@ function main() {
     }
   }
 
+  const unmappedFiles = files.map((f) => f.rel).filter((rel) => !mapped.has(rel));
+
   console.log('check-module-boundaries: coverage summary');
   console.log(`  scanned:  ${files.length} source files under ${SCAN_ROOTS.join(', ')}`);
   console.log(`  mapped:   ${mapped.size}`);
-  console.log(`  unmapped: ${files.length - mapped.size}`);
+  printSampleList('unmapped', unmappedFiles.length, unmappedFiles.slice(0, SAMPLE_CAP));
   console.log(`  coverageFloor: ${map.coverageFloor}`);
   console.log('  per-module counts:');
   for (const mod of map.layerOrder) {
     console.log(`    ${mod}: ${perModule.get(mod) || 0}`);
   }
+  console.log(`  import edges resolved: ${edges.length}`);
+  printSampleList('bare/unaliased specifiers ignored', unresolved.bareIgnored, samples.bareIgnored);
+  printSampleList(
+    'unresolved relative/alias specifiers ignored',
+    unresolved.relative,
+    samples.relative
+  );
   console.log(
-    `  import edges resolved: ${edges.length} (bare/unaliased specifiers ignored: ${unresolved.bareIgnored}, unresolved relative/alias specifiers ignored: ${unresolved.relative})`
+    `  BOTH-ENDPOINTS-MAPPED edges (what this check actually evaluates): ${bothMappedEdges.length}`
   );
 
-  if (violations.length > 0) {
+  // Guard: a map that evaluates zero edges can never fail, regardless of
+  // what the layer order says — that IS the vacuous-gate defect. Treat it
+  // the same as the existing zero-source-files / coverage-floor guards:
+  // exit 2, the check itself failed, never a silent PASS.
+  if (bothMappedEdges.length === 0) {
     console.error('');
-    console.error(`check-module-boundaries: FAIL (exit 1) — ${violations.length} upward import edge(s)`);
-    for (const v of violations) {
+    console.error(
+      'check-module-boundaries: FAIL (exit 2) — zero import edges have BOTH endpoints mapped'
+    );
+    console.error(
+      `  ${mapped.size} files are mapped but none of them import each other in a way this check can see.`
+    );
+    console.error(
+      '  This check would PASS on any violation, however severe, while this is true — widen scripts/ci/module-map.json.'
+    );
+    process.exit(2);
+  }
+
+  const baselinePath = join(root, 'config', 'module-boundary-baseline.json');
+  let baseline;
+  try {
+    baseline = loadBaseline(baselinePath);
+  } catch (e) {
+    console.error(`check-module-boundaries: FAIL (exit 2) — ${e.message}`);
+    process.exit(2);
+  }
+  const baselineByKey = new Map(baseline.edges.map((e) => [edgeKey(e.from, e.to), e]));
+  const violationKeys = new Set(violations.map((v) => edgeKey(v.fromRel, v.toRel)));
+
+  const newViolations = violations.filter((v) => !baselineByKey.has(edgeKey(v.fromRel, v.toRel)));
+  const baselinedViolations = violations.filter((v) => baselineByKey.has(edgeKey(v.fromRel, v.toRel)));
+  const staleBaselineEntries = baseline.edges.filter((e) => !violationKeys.has(edgeKey(e.from, e.to)));
+
+  if (baselinedViolations.length > 0) {
+    console.log('');
+    console.log(
+      `  baselined upward edge(s) (debt, tracked in config/module-boundary-baseline.json): ${baselinedViolations.length}`
+    );
+    for (const v of baselinedViolations) {
+      const entry = baselineByKey.get(edgeKey(v.fromRel, v.toRel));
+      console.log(`    ${v.fromRel} (${v.fromMod}) -> ${v.toRel} (${v.toMod}) — why: ${entry.why}`);
+    }
+  }
+
+  if (newViolations.length > 0) {
+    console.error('');
+    console.error(
+      `check-module-boundaries: FAIL (exit 1) — ${newViolations.length} upward import edge(s) not in the baseline`
+    );
+    for (const v of newViolations) {
       console.error(
         `  ${v.fromRel} (${v.fromMod}) imports ${v.toRel} (${v.toMod}) — ${v.fromMod} is below ${v.toMod} in the layer order`
       );
     }
+    console.error(
+      '\n  Fix the import, or if this is a reviewed pre-existing violation, add it to ' +
+        'config/module-boundary-baseline.json with a `why` line (the baseline may only shrink).'
+    );
     process.exit(1);
   }
 
+  if (staleBaselineEntries.length > 0) {
+    console.error('');
+    console.error(
+      'check-module-boundaries: FAIL (exit 2) — baseline entry no longer found in the import graph ' +
+        '(the baseline may only shrink, and the shrink must be committed):'
+    );
+    for (const e of staleBaselineEntries) {
+      console.error(`  STALE: ${e.from} -> ${e.to}`);
+    }
+    console.error(
+      '\n  Remove the stale entry from config/module-boundary-baseline.json and commit the shrink.'
+    );
+    process.exit(2);
+  }
+
   console.log('');
-  console.log('check-module-boundaries: PASS (exit 0) — no upward-pointing import edge found');
+  console.log('check-module-boundaries: PASS (exit 0) — no unbaselined upward-pointing import edge found');
   process.exit(0);
 }
 

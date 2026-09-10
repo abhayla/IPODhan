@@ -1,0 +1,4 @@
+{
+  "_comment": "Shrink-only baseline of pre-existing upward import edges under scripts/ci/module-map.json's layer order (see docs/design/data-sourcing-pull-model.md §7.6). An edge here is DEBT: it may only be removed once the real import is fixed, never added to grandfather a new violation. Each entry names why it exists today. Regenerated entries are hand-authored, not tool-generated (unlike config/write-ratchet-baseline.json) because each needs its own `why`.",
+  "edges": []
+}
