@@ -111,15 +111,82 @@
     "item-22": {
       "item": 22,
       "card": "docs/design/build-cards/item-22-document-handling-and-download-limits.md",
-      "status": "PENDING",
-      "slices": [],
+      "status": "IN-PROGRESS",
+      "slices": [
+        {
+          "k": "s0",
+          "title": "#468 rotating discovery slot for UPCOMING IPOs (fix)",
+          "status": "MERGED",
+          "pr": 484,
+          "sha": "82842b92",
+          "tier": "A"
+        },
+        {
+          "k": "22-1",
+          "title": "resolved-address refusal + allow-list as config (imports lane C loader)",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A",
+          "lines": 400,
+          "note": "AT the cap - splits rather than merging large if it grows"
+        },
+        {
+          "k": "22-2",
+          "title": "streaming byte cap + its own flag ENABLE_DOWNLOAD_STREAMING_CAP",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A",
+          "lines": 320
+        },
+        {
+          "k": "22-3",
+          "title": "structured refusal log + document-download-refusals detection entry",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "B",
+          "lines": 180,
+          "note": "tier corrected DOWNWARD per delta 1.2"
+        },
+        {
+          "k": "22-4",
+          "title": "migration: part_number, exchange_document_id",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A",
+          "lines": 110,
+          "note": "under 150 but migration-only, which delta 1.1 exempts"
+        },
+        {
+          "k": "22-5",
+          "title": "multi-volume classifier + per-part store loop",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A",
+          "lines": 300
+        },
+        {
+          "k": "22-6",
+          "title": "blank-password attempt behind ENABLE_DOCUMENT_PASSWORD_CHECK",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A",
+          "lines": 150
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
         "status": "OWED",
         "cycle": null,
         "line": null
-      }
+      },
+      "ownerOwedAtClose": "Tier A rollback rehearsal (flag off for one cycle) - a real owner-facing item, unlike the two wrongly claimed earlier today"
     },
     "item-18": {
       "item": 18,
@@ -484,5 +551,11 @@
   ],
   "infrastructureFacts": [
     "ssh.exe PIDs owning LISTEN on 15432 and 5432 are the auto-reconnecting VPS database tunnels every lane depends on - never kill; verified 2026-09-10 14:24 IST (PID 20120 on 15432, PID 2952 on 5432, 15432 open)"
-  ]
+  ],
+  "deltaAdopted": {
+    "delta": 1,
+    "at": "2026-09-10 15:05 IST",
+    "atItem": 22,
+    "deviation": "the 3.10 Notifier channel assertion is satisfied by the real info post that returned HTTP 202 at 14:2x today (see notifierPosts); a no-op repost would add owner-visible noise for no new information"
+  }
 }
