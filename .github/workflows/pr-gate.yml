@@ -330,6 +330,22 @@ jobs:
         run: npx vitest run --config vitest.config.ts tests/unit/pipeline-stages
         working-directory: ./scraper
 
+      - name: Run TZ-explicit case driver (issue #478)
+        # The TZ-explicit case file (tests/tz-cases/*.tzcase.test.ts) is
+        # deliberately excluded from vitest.config.ts's own include glob
+        # (vitest.tzcase.config.ts) and only ever meaningful when spawned by
+        # this driver, which runs it once per timezone with TZ and
+        # TZCASE_EXPECT_TZ set in the CHILD env (T-327F fix round 5 — see
+        # the driver file's header for why an in-process TZ mutation cannot
+        # work). The driver file is already inside the full scraper unit
+        # suite above (same pattern as the pipeline-stage-harness step just
+        # above); this named step exists so a TZ-skew regression is
+        # identifiable at a glance in the gate, and so `npm run test:tzcase`
+        # names one command a contract can point at instead of the
+        # unspawnable `vitest run -c vitest.tzcase.config.ts` directly.
+        run: npm run test:tzcase
+        working-directory: ./scraper
+
   python-tests:
     name: Scraper Python Extractor Tests (W-159)
     runs-on: ubuntu-latest
