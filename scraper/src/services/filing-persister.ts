@@ -194,6 +194,18 @@ export interface PersistFilingSummary {
   skipped_lower_priority_source?: string[];
   /** Statement rows refused because a stored row is in a different unit. */
   skipped_unit_mismatch: string[];
+  /**
+   * F-51: this run's fresh/OFS reconciliation outcome. Carried on the summary
+   * (not only in a log line) so the CALLER can name the IPOs behind any count -
+   * `signal-ownership.md` R1: a number is not a reading.
+   */
+  fresh_ofs_reconciliation?: {
+    ok: boolean;
+    kind: ReconciliationKind;
+    uncheckedReasons: ReconciliationUncheckedReason[];
+    deltaPct: number | null;
+    reason: string | null;
+  };
   /** What actually went to `ipos` via upsertIPO (issueSize et al). */
   ipos_fields: string[];
   applied: boolean;
@@ -308,6 +320,208 @@ export function convertUnit(value: number, from: FilingUnit, to: FilingUnit): nu
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+// ------------------------------------------------- F-51 fresh/OFS reconciliation
+
+/**
+ * F-51: the relative tolerance a fresh + OFS pair must reconcile within.
+ *
+ * 0.5%. Wide enough for the rounding a filing itself prints (a cover states
+ * "Rs 1,055.74 crore" for a leg pair that multiplies out to 1,055.740228), far
+ * narrower than any of the failures this gate exists to catch (a digit-wrong
+ * fresh leg is out by tens of percent, never by half a percent).
+ */
+export const FRESH_OFS_TOLERANCE = 0.005;
+
+export type ReconciliationKind =
+  /** Checked and agreed, or nothing to check against. */
+  | 'ok'
+  /** No comparison base existed: see `uncheckedReasons` for WHICH of them. */
+  | 'unchecked'
+  /** The rupee OFS figure and ofs_shares x priceCap disagree. */
+  | 'ofs_form_disagreement'
+  /** fresh + OFS does not equal a comparison total. */
+  | 'total_mismatch';
+
+/**
+ * Why a pair could not be reconciled. Counted SEPARATELY, never as one
+ * "unchecked" bucket, because they call for different actions:
+ *
+ *  - `stored_null` - this IPO has no issue size on file at all. Nothing is
+ *    wrong; the filing is simply the first source to state one.
+ *  - `stored_zero` - `ipos.issue_size` is 0 (or negative). In this project a
+ *    stored zero is a known CORRUPTION MARKER, not a legitimate total (36 rows
+ *    were repaired from 0 to a real value earlier this year), which is why it
+ *    is no base: reconciling against known-bad data would withhold figures
+ *    that are correct. A row counted here is a row worth REPAIRING.
+ *  - `no_printed_total` - the document itself printed no total either, so the
+ *    only other base was unavailable too.
+ */
+export type ReconciliationUncheckedReason = 'stored_null' | 'stored_zero' | 'no_printed_total';
+
+export interface ReconciliationInput {
+  /** extraction.fresh_issue_amount, converted to rupees. */
+  freshRupees: number | null;
+  /** extraction.ofs_amount_at_cap / ofs_amount, converted to rupees. */
+  ofsRupeesDirect: number | null;
+  /** extraction.ofs_shares - a SHARE COUNT, never unit-converted. */
+  ofsSharesAtCap: number | null;
+  /** ipo_valuation.priceCap, in rupees per share. */
+  priceCap: number | null;
+  /**
+   * The STORED ipos.issue_size (rupees) AS STORED - pass 0 as 0, never
+   * pre-normalised to null, so `stored_zero` can be told from `stored_null`.
+   */
+  storedTotalRupees: number | null;
+  /** The total this document itself PRINTS (total_offer_amount_at_cap), rupees. */
+  statedTotalRupees: number | null;
+}
+
+export interface ReconciliationResult {
+  ok: boolean;
+  kind: ReconciliationKind;
+  /** The OFS rupee value that may be written, or null when withheld/absent. */
+  ofsRupeesResolved: number | null;
+  /** Human-readable failure (or "unchecked") explanation; null when it agreed. */
+  reason: string | null;
+  /** Worst relative delta observed, in PERCENT; null when nothing was compared. */
+  deltaPct: number | null;
+  /** Which bases were actually compared against ('stated_total', 'stored_issue_size'). */
+  basesChecked: string[];
+  /** Non-empty ONLY for kind 'unchecked': which base was missing, and why. */
+  uncheckedReasons: ReconciliationUncheckedReason[];
+}
+
+function crore(v: number): string {
+  return `Rs ${(v / 10_000_000).toFixed(2)}cr`;
+}
+
+/**
+ * F-51: a fresh/OFS pair is written only when it reconciles.
+ *
+ * Two independent checks, both of which must hold:
+ *
+ *  1. THE TWO FORMS OF OFS AGREE. The rupee figure the document states and
+ *     `ofs_shares x priceCap` are two independent reads of the same quantity;
+ *     when they disagree the OFS table was mis-parsed and neither is trusted.
+ *     When only one form is present it is used as-is.
+ *  2. FRESH + OFS EQUALS THE TOTAL, against every base available: the total
+ *     this document prints, AND the total already stored on `ipos.issue_size`.
+ *     The stored base is the point of F-51 - it may have come from an exchange
+ *     on an earlier cycle, so it is the only base that can catch a document
+ *     whose own numbers are internally consistent and wrong. The derived sum
+ *     `fresh + OFS` is NEVER a base: comparing the sum against itself always
+ *     passes and is what the code did before this gate existed.
+ *
+ * A failure withholds BOTH legs, never one: a mismatched sum cannot attribute
+ * the error to fresh or to OFS, and one leg written beside a withheld partner
+ * is a worse published record than neither.
+ *
+ * `ipos.issue_size` null or zero (a brand-new IPO whose first data IS this
+ * filing, or one of the known issue_size = 0 rows) is treated as NO BASE, not
+ * as a zero total: the check falls back to the document's stated total, and if
+ * there is none either the pair is written with `kind: 'unchecked'` and a
+ * reason. Failing closed there would permanently withhold the money fields for
+ * exactly the IPOs whose only source is the filing.
+ */
+export function reconcileFreshAndOfs(input: ReconciliationInput): ReconciliationResult {
+  const { freshRupees, ofsRupeesDirect, ofsSharesAtCap, priceCap } = input;
+
+  // ---- 1. the two forms of OFS
+  const ofsFromShares =
+    ofsSharesAtCap !== null && priceCap !== null && priceCap > 0 ? ofsSharesAtCap * priceCap : null;
+
+  if (ofsRupeesDirect !== null && ofsFromShares !== null) {
+    // Relative to the LARGER magnitude, so "0 vs 755cr" is a 100% disagreement
+    // rather than a division by zero.
+    const scale = Math.max(Math.abs(ofsRupeesDirect), Math.abs(ofsFromShares));
+    const delta = scale === 0 ? 0 : Math.abs(ofsRupeesDirect - ofsFromShares) / scale;
+    if (delta > FRESH_OFS_TOLERANCE) {
+      return {
+        ok: false,
+        kind: 'ofs_form_disagreement',
+        ofsRupeesResolved: null,
+        reason:
+          `ofs_amount_at_cap (${crore(ofsRupeesDirect)}) vs ofs_shares x priceCap ` +
+          `(${crore(ofsFromShares)}): ${(delta * 100).toFixed(2)}% apart`,
+        deltaPct: delta * 100,
+        basesChecked: [],
+        uncheckedReasons: [],
+      };
+    }
+  }
+
+  const ofsResolved = ofsRupeesDirect ?? ofsFromShares;
+
+  // ---- 2. fresh + OFS against every total available
+  if (freshRupees === null || ofsResolved === null) {
+    return {
+      ok: true,
+      kind: 'ok',
+      ofsRupeesResolved: ofsResolved,
+      reason: null,
+      deltaPct: null,
+      basesChecked: [],
+      uncheckedReasons: [],
+    };
+  }
+
+  const sum = freshRupees + ofsResolved;
+  const bases: Array<{ name: string; value: number }> = [];
+  if (input.statedTotalRupees !== null && input.statedTotalRupees > 0) {
+    bases.push({ name: 'stated_total', value: input.statedTotalRupees });
+  }
+  if (input.storedTotalRupees !== null && input.storedTotalRupees > 0) {
+    bases.push({ name: 'stored_issue_size', value: input.storedTotalRupees });
+  }
+
+  if (bases.length === 0) {
+    const uncheckedReasons: ReconciliationUncheckedReason[] = [
+      input.storedTotalRupees === null || !Number.isFinite(input.storedTotalRupees)
+        ? 'stored_null'
+        : 'stored_zero',
+      'no_printed_total',
+    ];
+    return {
+      ok: true,
+      kind: 'unchecked',
+      ofsRupeesResolved: ofsResolved,
+      reason: `fresh + OFS not reconciled: ${uncheckedReasons.join(' + ')}`,
+      deltaPct: null,
+      basesChecked: [],
+      uncheckedReasons,
+    };
+  }
+
+  let worst = 0;
+  for (const base of bases) {
+    const delta = Math.abs(sum - base.value) / base.value;
+    if (delta > worst) worst = delta;
+    if (delta > FRESH_OFS_TOLERANCE) {
+      return {
+        ok: false,
+        kind: 'total_mismatch',
+        ofsRupeesResolved: null,
+        reason:
+          `fresh (${crore(freshRupees)}) + OFS (${crore(ofsResolved)}) = ${crore(sum)} vs ` +
+          `${base.name} (${crore(base.value)}): ${(delta * 100).toFixed(2)}% apart`,
+        deltaPct: delta * 100,
+        basesChecked: bases.map((b) => b.name),
+        uncheckedReasons: [],
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    kind: 'ok',
+    ofsRupeesResolved: ofsResolved,
+    reason: null,
+    deltaPct: worst * 100,
+    basesChecked: bases.map((b) => b.name),
+    uncheckedReasons: [],
+  };
 }
 
 /**
@@ -765,6 +979,67 @@ export async function persistFilingExtraction(
     skippedFailedCheck.push(`ipos.cin: '${cin}' is not a 21-character CIN`);
   }
 
+  // ------------------------------------------------- F-51 fresh/OFS gate
+  //
+  // Until this gate existed, `freshIssue` and `ofsIssue` were both written the
+  // moment a unit was available, and `offerTotalMn` was `statedTotal ?? (fresh
+  // + ofs)` - a sum that reconciles against itself by construction. Nothing
+  // ever compared the pair with the total ALREADY STORED on `ipos.issue_size`,
+  // which is where a digit-wrong fresh leg shows up (the stored total came from
+  // an exchange on an earlier cycle; the filing's own numbers can be internally
+  // consistent and still wrong).
+  const ofsSharesCount = num(extraction, 'ofs_shares');
+  const inRupees = (v: number | null): number | null =>
+    v === null || unit === null ? null : toRupees(v, unit);
+  // AS STORED, including a 0: `reconcileFreshAndOfs` needs to tell a missing
+  // issue size (`stored_null`) from the corruption marker (`stored_zero`).
+  const storedIssueSizeRupees = ((): number | null => {
+    const raw = (existing as { issueSize?: string | number | null }).issueSize;
+    const n = raw === null || raw === undefined ? Number.NaN : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  })();
+  const reconciliation = reconcileFreshAndOfs({
+    freshRupees: inRupees(freshMn),
+    ofsRupeesDirect: inRupees(ofsAtCapMn),
+    ofsSharesAtCap: ofsSharesCount,
+    priceCap: cap,
+    storedTotalRupees: storedIssueSizeRupees,
+    statedTotalRupees: inRupees(statedTotalMn),
+  });
+  const reconLog = {
+    ipoId,
+    docType: options.docType,
+    freshIssue: inRupees(freshMn),
+    ofsIssue: reconciliation.ofsRupeesResolved,
+    storedIssueSize: storedIssueSizeRupees,
+    reconciled: reconciliation.ok,
+    kind: reconciliation.kind,
+    uncheckedReasons: reconciliation.uncheckedReasons,
+    deltaPct: reconciliation.deltaPct,
+    reason: reconciliation.reason,
+  };
+  if (!reconciliation.ok) {
+    skippedFailedCheck.push(
+      `ipo_details.freshIssue + ipo_details.ofsIssue: withheld TOGETHER (F-51) - ${reconciliation.reason}`
+    );
+    logger.warn(
+      reconLog,
+      '[FilingPersister] fresh/OFS reconciliation FAILED - both legs withheld (F-51)'
+    );
+  } else {
+    logger.info(reconLog, '[FilingPersister] fresh/OFS reconciliation');
+  }
+  // The derived total IS the pair that just failed. Writing it would launder
+  // the same wrong arithmetic into `ipos.issue_size` as source DRHP, over a
+  // stored value that may well be right. A total the document PRINTS is an
+  // independent read and is left alone.
+  const withholdDerivedTotal = !reconciliation.ok && statedTotalMn === null;
+  if (withholdDerivedTotal) {
+    skippedFailedCheck.push(
+      'ipos.issueSize: derived from the fresh+OFS pair that failed reconciliation - not written'
+    );
+  }
+
   const scraped: Record<string, unknown> = {
     companyName: existing.companyName,
     segment: existing.segment ?? undefined,
@@ -791,7 +1066,7 @@ export async function persistFilingExtraction(
   // field_protection_metadata (the orchestrators filter before calling it), so a
   // hand-corrected ipos.issue_size was overwritten by the next filing run.
   const iposCandidate: Record<string, unknown> = {};
-  if (issueSizeRupees !== null) iposCandidate.issueSize = issueSizeRupees;
+  if (issueSizeRupees !== null && !withholdDerivedTotal) iposCandidate.issueSize = issueSizeRupees;
   if (floor !== null) iposCandidate.priceRangeMin = floor;
   if (cap !== null) iposCandidate.priceRangeMax = cap;
   if (lotSize !== null) iposCandidate.lotSize = Math.round(lotSize);
@@ -913,11 +1188,22 @@ export async function persistFilingExtraction(
   // fresh + ofs must SUM to ipos.issue_size (both in rupees) - GitHub #8.
   // ipo_details.fresh_issue / ofs_issue are in RUPEES (they must sum to
   // ipos.issue_size, also rupees). Both are skipped when the unit is unusable.
-  if (freshMn !== null) {
+  // F-51: both legs, or neither. `reconciliation.ofsRupeesResolved` is the
+  // rupee OFS the gate accepted - the directly-extracted figure when there is
+  // one, otherwise `ofs_shares x priceCap`, which is why an OFS stated only as
+  // a share count now reaches `ipo_details.ofsIssue` at all.
+  if (reconciliation.ok && freshMn !== null) {
     mark('freshIssue', withUnit('ipo_details.freshIssue', (u) => round2(toRupees(freshMn, u)).toString()));
   }
-  if (ofsAtCapMn !== null) {
-    mark('ofsIssue', withUnit('ipo_details.ofsIssue', (u) => round2(toRupees(ofsAtCapMn, u)).toString()));
+  if (reconciliation.ok && reconciliation.ofsRupeesResolved !== null) {
+    // Unit-gated like its partner: a filing with no usable unit cannot write
+    // the fresh leg, and one leg alone is exactly what this gate forbids.
+    mark(
+      'ofsIssue',
+      withUnit('ipo_details.ofsIssue', () =>
+        round2(reconciliation.ofsRupeesResolved as number).toString()
+      )
+    );
   }
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
@@ -1390,7 +1676,15 @@ export async function persistFilingExtraction(
   vset('sharesAtCap', freshCap);
   vset('freshSharesAtFloor', freshFloor);
   vset('freshSharesAtCap', freshCap);
-  vset('ofsShares', num(extraction, 'ofs_shares'));
+  // F-51: when the rupee OFS and `ofs_shares x priceCap` disagree, the share
+  // count is one of the two numbers under suspicion - it is not written either.
+  if (reconciliation.kind === 'ofs_form_disagreement') {
+    skippedFailedCheck.push(
+      `ipo_valuation.ofsShares: withheld with the OFS rupee leg - ${reconciliation.reason}`
+    );
+  } else {
+    vset('ofsShares', ofsSharesCount);
+  }
   vset('totalSharesAtFloor', num(extraction, 'total_offer_shares_at_floor'));
   vset('totalSharesAtCap', num(extraction, 'total_offer_shares_at_cap'));
   // F7 UNIT CONTRACT: ipo_valuation.mcap_at_floor / mcap_at_cap are stored in
@@ -1985,6 +2279,13 @@ export async function persistFilingExtraction(
     skipped_protected: [...new Set(skippedProtected)].sort(),
     skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
     ipos_fields: iposFields,
+    fresh_ofs_reconciliation: {
+      ok: reconciliation.ok,
+      kind: reconciliation.kind,
+      uncheckedReasons: reconciliation.uncheckedReasons,
+      deltaPct: reconciliation.deltaPct,
+      reason: reconciliation.reason,
+    },
     applied: apply,
   };
 }

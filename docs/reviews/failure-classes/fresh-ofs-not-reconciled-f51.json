@@ -1,0 +1,9 @@
+{
+  "class_id": "fresh/OFS split published without reconciling against the stored issue size (F-51)",
+  "feature": "scraper/src/services/filing-persister.ts (ipo_details.fresh_issue / ofs_issue, ipos.issue_size)",
+  "symptom": "the persister computed offerTotal = statedTotal ?? (fresh + ofs) and wrote both legs the moment a unit was available; a sum compared against itself always agrees, so a digit-wrong fresh leg (the card's Kanohar shape: 60 where the filing says 300) was published beside a correct OFS leg and neither was ever compared with the ipos.issue_size an exchange had already stored on an earlier cycle",
+  "first_seen": "design doc data-sourcing-pull-model.md S2.5.4, diagnosed 2026-09-09 (the '6 of 9 live IPOs' population count in that section is UNVERIFIED - no saved query output exists; what is independently confirmed is that no gate existed)",
+  "fix_prs": "item 13 (this PR): reconcileFreshAndOfs() in filing-persister.ts - both legs withheld together when fresh + OFS misses the stored issue_size (or the document's own stated total) by more than 0.5%, or when the rupee OFS figure and ofs_shares x priceCap disagree",
+  "detection_check": "c_fresh_ofs_reconciliation (docs/reviews/detection-checks/c_fresh_ofs_reconciliation.json) - specified, NOT implemented: no record() call in audit-detection-floor.mjs yet, so it is registered under notCoveredByThisManifest. The write path is guarded by scraper/tests/unit/services/filing-persister-fresh-ofs-reconciliation.test.ts (12 tests)",
+  "status": "write path guarded; read-side audit check owed, owner UNASSIGNED"
+}
