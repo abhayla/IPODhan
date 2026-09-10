@@ -2862,3 +2862,27 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   which is the only reason it cost nothing. But the doubt came from a glob that did not match the
   directory name, and a confidently-raised doubt is as capable of misdirecting an incident as a
   confidently-wrong fact.
+
+- 2026-09-10 19:21 IST **[lane B] The security check merged this morning had never been called by anything.**
+  `isResolvedAddressPrivate` shipped in #487 with zero callers, so for the whole day the DNS-rebinding
+  hole it was written to close stayed open on every fetch the scraper makes. `PRIVATE_HOST_PATTERNS`
+  only ever looked at the hostname STRING, and only on the company-website rung — a name that looks
+  public and resolves to 127.0.0.1, or to the cloud metadata address, went straight through. Slice 22-3
+  wires it into the one `request()` method every rung passes through. The red proof is the runner
+  itself: six live fetches to bseindia and nseindia while the injected resolver called every host
+  private.
+  The refusal is now legible, which was the actual gap the card names. It has its own status, is never
+  retried, and logs its cause — a rebinding attempt and a DNS outage are counted separately, because
+  collapsing them would let the first hide inside the second. Built under the freeze, held unpushed.
+- 2026-09-10 19:21 IST **[lane B] DEFECT-B24 and B25, both mine, both caught by things other than me.**
+  B24: fixing the refusal classification, I collapsed six call sites onto one shared classifier — and
+  in doing so turned a timeout into `timeout` at three sites that had always emitted `http_error`. The
+  F3/F6 coverage logic matches those strings exactly, so that was a live regression, not a cosmetic
+  one. **An existing test caught it; I did not.** The lesson is narrow and useful: over-generalising a
+  fix is itself a defect. The helper now ADDS the refusal case and preserves every site's original
+  string, which is all that was ever asked for.
+  B25: the feature-flag gate was written as a class FIELD initializer reading `this.deps`. Class fields
+  are evaluated before the constructor assigns them, so it threw on construction — 35 tests failed
+  across three unrelated files, and not one of them named the cause. A getter fixes it. Worth pairing
+  with signal-ownership R6: 35 red tests that cannot be classified from their own output are a defect
+  of the diagnostics as much as of the code.
