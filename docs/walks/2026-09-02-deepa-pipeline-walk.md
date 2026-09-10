@@ -2967,3 +2967,19 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   like a clean run. I nearly recorded a mutation as "caught" on the strength of no output at all.
   Fixed by writing the run to a file and reading the specific line. It is the same shape as every other
   finding this run has produced, and this time the instrument was mine.
+
+- 2026-09-10 20:22 IST **[lane B] An audit that could have invalidated five slices, and the one fact that decided
+  it.** Lane A found (#514) that a worktree whose `node_modules` is a junction resolves
+  `@ipodhan/shared` to the MAIN checkout, so any local test importing through the alias exercises
+  main's code rather than the branch's. I confirmed the junction in my own tree before answering.
+  Two of my five slices have no alias reference anywhere; a third touches only `feature-flags.ts`,
+  which has none. Two do have alias-importing modules under test. What settles it is not that —
+  it is that **none of the five modifies `packages/shared`**, measured as zero changed files in all
+  five. Branch and main shared are therefore byte-identical, so which copy the alias resolved to
+  cannot change any result. Had one slice touched shared, the honest answer would have been the
+  opposite, and I would have had to withdraw the proofs.
+  The method note matters as much as the answer: my first pass diffed against `origin/main` and
+  "found" four `packages/shared` files I never touched, because main had moved. That is DEFECT-B08's
+  comparison artifact resurfacing in an audit whose entire purpose was to detect shared changes — the
+  wrong baseline would have produced a false alarm about the exact thing being audited. Merge-base,
+  every time.
