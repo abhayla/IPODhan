@@ -11,3 +11,7 @@
 # "#!/usr/bin/env node" and every test importing the module dies with
 # "Invalid or unexpected token" while node itself and the Linux gate pass.
 *.mjs text eol=lf
+
+# 2026-09-10: contract docs stay LF too, same class as the .sh/.mjs rules above —
+# reviewed cross-platform (Windows authors, Linux CI) and a CRLF diff noise defeats review.
+docs/contracts/*.md text eol=lf

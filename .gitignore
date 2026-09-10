@@ -107,6 +107,7 @@ check-db.js
 list-ipos.js
 test-scrapers.bat
 test-*.mjs
+!scripts/ops/test-db-lifecycle.mjs
 test-*.js
 test-*.bat
 test-*.json
