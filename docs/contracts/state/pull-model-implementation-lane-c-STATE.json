@@ -215,7 +215,7 @@
         {
           "id": "2-S3c",
           "tier": "A",
-          "status": "BUILT",
+          "status": "IN_CI",
           "issue": 482,
           "title": "floor check treats NULL segment as unknown - declared detection change",
           "decision": {
@@ -228,7 +228,8 @@
           },
           "commit": "5f8ead03",
           "finding": "Both halves already existed. The skip is checkIssueSizeSegmentFloor returning null when no floor is defined for the segment; the visibility finding is checkSegmentPopulatedForIpo, live as check id j_segment_not_null and correctly registered in section checks. The real gap was TEST COVERAGE - nothing proved the skip was deliberate rather than incidental. Three tests added, both halves mutation-proven.",
-          "predictedConsequence": "j_segment_not_null fires on any offering_type=IPO row with a NULL segment and SKIPS non-IPO types. It passes today only because segment is MAINBOARD everywhere by default. As 3a-honest writes and the 2-S3b repair produce real NULLs, this check will go PASS -> FAIL for genuine IPO rows. That is the check WORKING, not a regression."
+          "predictedConsequence": "j_segment_not_null fires on any offering_type=IPO row with a NULL segment and SKIPS non-IPO types. It passes today only because segment is MAINBOARD everywhere by default. As 3a-honest writes and the 2-S3b repair produce real NULLs, this check will go PASS -> FAIL for genuine IPO rows. That is the check WORKING, not a regression.",
+          "pr": 499
         },
         {
           "id": "2-S4",
@@ -306,7 +307,7 @@
     }
   },
   "prGate": {
-    "laneCRunsToday": 6,
+    "laneCRunsToday": 7,
     "repoRunsTodayAtPreflight": 17,
     "laneCDailyCap": 15,
     "repoStopAt": 50
@@ -435,7 +436,10 @@
     "2026-09-10 17:27 IST DEPLOY DIAGNOSIS RECORDED (lane A owns it): the staging failures are the drift assert reporting four real missing objects on the staging DB - lane A #455 constraints and the slug index. So it is a genuine schema drift, not a broken assert. My correlation earlier (first failure is #464 own merge) was right about the trigger and silent about the cause; the cause is that #464 TAUGHT the assert to see index and constraint drift, and staging genuinely has some. The check is correct and the data is wrong - the opposite of what a red gate usually means. Proofs stay OWED until staging serves a post-#464 sha.",
     "2026-09-10 17:31 IST 2-S3c: BOTH HALVES ALREADY EXISTED and the builder said so instead of manufacturing work - exactly what I asked for. The skip is checkIssueSizeSegmentFloor returning null when no floor is defined; the visibility finding is checkSegmentPopulatedForIpo, already live as j_segment_not_null and correctly in section checks because its record() call is wired. The genuine gap was test coverage: nothing proved the skip was DELIBERATE rather than incidental, so deleting it would have gone unnoticed. Three tests added, both halves mutation-proven (114/1 and 113/2 red under mutation, 115/115 green after revert).",
     "2026-09-10 17:31 IST PREDICTABLE NEW NIGHTLY FAILURE, and it must be announced BEFORE it appears rather than discovered. j_segment_not_null fires on any offering_type=IPO row with a NULL segment, and skips non-IPO types entirely. It reads PASS today ONLY because segment is MAINBOARD everywhere by default - it was in this morning delta GONE list. My merged 3a stops the write paths asserting MAINBOARD, and 2-S3b will null the rest, so this check WILL go PASS -> FAIL for genuine IPO rows whose board nobody can source. That is the check working correctly: it says we do not know this real IPO board, go find out.",
-    "2026-09-10 17:31 IST WHY THE SYSTEM IS ALREADY COHERENT ON THIS, which I checked rather than assumed I had created a conflict: design line 812 (do not let unknowns fail every check) is about INVITS/REITS - NON-IPO types - and j_segment_not_null already excludes those with if (row.offeringType !== IPO) return null. So non-IPO rows get an honest NULL and are skipped; genuine IPOs get an honest NULL and are REPORTED. Both are right. The 30 non-IPO rows of #482 will go quiet and the 11 real IPOs will surface - which is the correct split."
+    "2026-09-10 17:31 IST WHY THE SYSTEM IS ALREADY COHERENT ON THIS, which I checked rather than assumed I had created a conflict: design line 812 (do not let unknowns fail every check) is about INVITS/REITS - NON-IPO types - and j_segment_not_null already excludes those with if (row.offeringType !== IPO) return null. So non-IPO rows get an honest NULL and are skipped; genuine IPOs get an honest NULL and are REPORTED. Both are right. The 30 non-IPO rows of #482 will go quiet and the 11 real IPOs will surface - which is the correct split.",
+    "2026-09-10 17:33 IST 2-S3c PR #499 OPENED. Test-only, one file, +20/-0, three tests. No source change was needed because both halves already existed - which the PR body states plainly rather than dressing the slice up as an implementation.",
+    "2026-09-10 17:33 IST NO ORGANIC RED, AND I SAID SO RATHER THAN FAKING ONE. The behaviour already worked, so the baseline was green at 115/115 before the tests were written. Manufacturing a failing test to satisfy a test-first ritual would have been dishonest; the tests are proven load-bearing by mutation instead - 114/1 and 113/2 red under two separate mutations, 115/115 after revert, each mutation grep-confirmed as applied before its result was read.",
+    "2026-09-10 17:33 IST STAGING MAY BE RECOVERING: lane A merged #495 \"honour the gated-drift registry in the deploy schema-drift assert\" and #489 \"restore working-directory and env dropped from the integration step\". Both landed while 2-S3c was building, and my rebase picked them up. If deploys resume, the OWED proofs for #471, #473, #483, #490 become obtainable. NOT claiming they are fixed - I have not seen a green deploy yet, and today has produced enough premature claims."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
