@@ -10,8 +10,8 @@
     12,
     3
   ],
-  "currentItem": null,
-  "runState": "HALTED-OWNER",
+  "currentItem": 14,
+  "runState": "RUNNING",
   "haltPrecondition": "0.2.3(h)",
   "haltNote": "lane A has not released 14, 12, 2, 3; type the split in lane A's session",
   "haltEvidence": {
@@ -60,7 +60,8 @@
     ],
     "ownerTypedReleaseLineInLaneALedger": false,
     "laneANote90": "LANE C relayed 2026-09-10 12:45 IST ... NOT ADOPTED - the peer itself says to wait for the owner to type it here",
-    "collisionSoFar": "none - all four items are PENDING in lane A with zero slices and zero PRs"
+    "collisionSoFar": "none - all four items are PENDING in lane A with zero slices and zero PRs",
+    "clearedBy": "lane A STATE.json releasedToLaneC {items:[14,12,2,3], releasedAt:\"2026-09-10 13:15 IST\", by:\"owner typed in lane A session\"}; laneAItems now the remaining 11 [1,4,5,6,7,9,10,11,13,15,17]; measured at 13:15:46 against origin/ops/impl-loop-ledger @ 90c3a12e, not taken on the peer's word"
   },
   "testDb": {
     "name": "ipodhan_test3",
@@ -71,8 +72,16 @@
     "item-14": {
       "item": 14,
       "card": "docs/design/build-cards/item-14-bse-share-count-conversion.md",
-      "status": "PENDING",
-      "slices": [],
+      "status": "BUILDING",
+      "slices": [
+        {
+          "id": "14-S1",
+          "tier": "B",
+          "status": "BUILDING",
+          "branch": "feat/pm-c-item14-s1-floor-check-alignment",
+          "sourceChange": false
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
@@ -135,6 +144,63 @@
     "2026-09-10 13:12 IST Filed #468 from the session-start floor delta: m_live_ipo_has_state NEW - Manika Plastech Limited is UPCOMING with zero document_fetch_state rows. Distinct from #453 (same company, null price band) and from #356 (row never created). Deferred: belongs to no lane's queue.",
     "2026-09-10 13:12 IST Supervisor session ipodhan-62 messaged confirming the (h) halt is the correct outcome. Recorded as information per decision 22, not as an owner decision; it loosens nothing.",
     "2026-09-10 13:12 IST Notifier line skipped cleanly: no NOTIFIER_URL/NOTIFIER_KEY in the local GLOBAL.env. The owner is in this session, which is the stronger channel.",
-    "2026-09-10 13:15 IST LESSON, my own error caught before commit: I staged docs/ops/work-tracker.md with `git -c core.autocrlf=false add` and produced a 546/537 whole-file churn hiding a 9-line change - the exact class lane A has caught three times today. Root cause: I generalised the contract's CRLF instruction, which names docs/ops/prod-ops-recipes.md specifically, to the whole docs/ops directory. work-tracker.md is stored LF in the repo (origin/main blob: 0 CR bytes); the CRLF I measured was only my working tree under core.autocrlf=true. RULE: decide line-ending handling from the BLOB, never the working tree - `git show origin/main:<path> | tr -cd \"\r\" | wc -c`. Zero means LF-tracked, stage normally. Non-zero means CRLF-tracked, stage with -c core.autocrlf=false. Then ALWAYS compare raw `--numstat` against `-w --numstat`; if they differ the stage is churn and must be redone."
-  ]
+    "2026-09-10 13:15 IST LESSON, my own error caught before commit: I staged docs/ops/work-tracker.md with `git -c core.autocrlf=false add` and produced a 546/537 whole-file churn hiding a 9-line change - the exact class lane A has caught three times today. Root cause: I generalised the contract's CRLF instruction, which names docs/ops/prod-ops-recipes.md specifically, to the whole docs/ops directory. work-tracker.md is stored LF in the repo (origin/main blob: 0 CR bytes); the CRLF I measured was only my working tree under core.autocrlf=true. RULE: decide line-ending handling from the BLOB, never the working tree - `git show origin/main:<path> | tr -cd \"\r\" | wc -c`. Zero means LF-tracked, stage normally. Non-zero means CRLF-tracked, stage with -c core.autocrlf=false. Then ALWAYS compare raw `--numstat` against `-w --numstat`; if they differ the stage is churn and must be redone.",
+    "2026-09-10 13:20 IST HALT CLEARED. Precondition (h) re-measured and PASSES on branch 1: lane A's pushed STATE.json carries releasedToLaneC naming 14, 12, 2, 3 and laneAItems is the remaining 11. Branch 2 (typed line in lane A's ledger) does NOT hold - grep returns 0 - but (h) needs only one branch.",
+    "2026-09-10 13:20 IST Coverage verified INDEPENDENTLY, not accepted from the peer: lane A 11 + lane B 6 + lane C 4 + item 19 done = 22 assignments, zero duplicates, zero gaps across 1..22.",
+    "2026-09-10 13:20 IST Precondition (g) reproduced rather than trusted: test-db-lifecycle.mjs --create --apply exits 0, ipodhan_test3 present and owned by ipodhan_app. The supervisor had asserted this; I did not take the assertion as measurement.",
+    "2026-09-10 13:20 IST DEVIATION from decisions 24/27, recorded not silently adopted. The supervisor points out that a pre-create rebase is usually wasted work and that each force-push cancels an in-flight check run against the shared 60. His factual correction is right: git merges from the merge-base, so a stale branch does not delete files main gained; the earlier \"would have deleted four files\" claim described git diff output, not merge behaviour. I am NOT loosening the gate: the hard stop before merge (rebase with the --onto form, then git log --oneline origin/main ^HEAD empty) stays, because a green CI run on a stale base does not describe the current gate set. What changes is only frequency: I cut each slice branch from current origin/main immediately before opening its PR, so no pre-create rebase is needed at all.",
+    "2026-09-10 13:29 IST STAGE 0 COMPLETE. (b) proved by measurement not exit code: the first db:migrate reported exit 0 while npm output said \"command failed\" and the database had 0 tables. Decision 25 exactly - a zero from a command that may have failed is not a measurement. Verified by counting: 35 tables == 35 pgTable( declarations, 36 journal rows == 36 _journal.json entries.",
+    "2026-09-10 13:29 IST MY MIS-DIAGNOSIS, recorded because the reasoning was wrong even though the outcome was fine: I saw zero output for four minutes and a server session in \"idle in transaction / Client:ClientRead\", and concluded drizzle-kit was blocked waiting on stdin. It was not. The log turned out to be 78KB of spinner frames buffered by the wrapper, and ClientRead is simply the gap between statements - the client was slow over the tunnel, not stuck. I killed the first run for no reason. Lesson: \"server is waiting on client\" means the client is BUSY OR STUCK; it does not distinguish them. The discriminator is whether the client process is burning CPU, which I never checked.",
+    "2026-09-10 13:29 IST DESIGN DECISION on 14-S1, mine under decision 16 rather than a worker's. The slice plan says the test must read the SME threshold \"from the JSON at test time, not a copied literal\". But c_issue_size_floor.json states failThreshold as PROSE, while the nightly audit actually runs the JS constant ISSUE_SIZE_FLOOR_RUPEES in scripts/lib/detection-floor-checks.mjs. A test parsing only the prose would pass while the executable constant drifted - a paper guard. Corrected design: the test imports the REAL predicate checkIssueSizeSegmentFloor and the REAL constant and feeds them the REAL computeBSEIssueSize output, closing extractor->detector; PLUS it asserts the JSON prose and the JS constant agree, so registry drift is caught too. Import direction is established precedent: scraper/tests/unit/scripts/backfill-allotment-date-chittorgarh.test.ts already imports scripts/lib/repair-tool.js.",
+    "2026-09-10 13:29 IST 14-S1 has NO pre-existing red, because the alignment currently holds. Rather than manufacture a fake failing test, the red line is mutation-based and stated as such in the PR body: mutate the SME constant, mutate the JSON prose, and switch the extractor to the cap price - each must turn a named test red, then revert to green."
+  ],
+  "haltClearedAt": "2026-09-10T07:50:05.000Z",
+  "coverageCheck": {
+    "verifiedAt": "2026-09-10T07:50:05.000Z",
+    "laneA": [
+      1,
+      4,
+      5,
+      6,
+      7,
+      9,
+      10,
+      11,
+      13,
+      15,
+      17
+    ],
+    "laneB": [
+      8,
+      16,
+      18,
+      20,
+      21,
+      22
+    ],
+    "laneC": [
+      2,
+      3,
+      12,
+      14
+    ],
+    "done": [
+      19
+    ],
+    "totalAssignments": 22,
+    "duplicates": [],
+    "missing": [],
+    "ok": true,
+    "method": "set union over 1..22 computed in-session from lane A's pushed STATE.json, not copied from the peer's message"
+  },
+  "stage0": {
+    "completedAt": "2026-09-10 13:29 IST",
+    "preconditions": {
+      "a_main_green": true,
+      "b_testdb_reset_migrated": "35 public tables == 35 pgTable( declarations; 36 drizzle journal rows == 36 _journal.json entries",
+      "f_repo_prgate_runs_today": 14,
+      "g_lifecycle_tool_and_db": "exit 0, ipodhan_test3 owned by ipodhan_app",
+      "h_lane_a_released": "PASSED on branch 1 at 13:15:46"
+    }
+  }
 }
