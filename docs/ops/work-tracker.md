@@ -813,3 +813,21 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   three parallel workstreams read. Fixed and merged after.
   **What is needed from you: nothing.** One item still owed for later: a practice run of undoing a
   release, when the download-safety item closes.
+
+- 2026-09-10 21:58 IST — **Item 20 still 83% (5 of 6). Item 16 is now built. Item 8 stopped, on purpose.**
+  **A reader of ipodhan.com would notice nothing new.** Everything tonight is machinery.
+  **The useful thing I did was refuse to build something.** Item 8 is meant to fill three financial
+  ratios plus a peer list and a promoter cost figure, by reading them out of the filings. The plan
+  was to read them from the newspaper advertisement. I downloaded the two real advertisements the
+  plan named and they are photographs of newspaper pages — the numbers are pixels, so nothing could
+  ever have read them. We then switched to the full prospectus, which IS readable text, and I
+  downloaded four live ones (about 2,400 pages) to check.
+  Result: the peer list and the promoter cost figure are there in all four, reliably. But the three
+  ratios are not: one of the four prints "current ratio", three print "inventory turnover", and
+  **none of the four prints "quick ratio" at all** — I also checked every other name it goes by.
+  So the honest position is that this item is really two: one half we can build, and one half where
+  the numbers may simply not be published in the document we planned to read. That is a decision
+  about where those three numbers should come from, and it is not mine to make — it is written up
+  for whoever does.
+  **What is needed from you: nothing tonight.** Still owed for later: a practice run of undoing a
+  release. Work resumes at midnight when the shared daily pipeline allowance resets.
