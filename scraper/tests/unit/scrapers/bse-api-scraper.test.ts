@@ -19,6 +19,7 @@ import {
   type BSESubscriptionRow,
 } from '../../../src/scrapers/bse-api-scraper.js';
 import { validateIPOData, validateSubscriptionData } from '../../../src/utils/validators.js';
+import { checkIssueSizeSegmentFloor, ISSUE_SIZE_FLOOR_RUPEES } from '../../../../scripts/lib/detection-floor-checks.mjs';
 
 /** Real-shaped fixtures from the live BSE JSON API (Susan Electricals, IPO_NO 7770). */
 const LIST_ROW: BSEListRow = {
@@ -351,7 +352,6 @@ describe('scrapeBSEViaAPI — fetch list + detail, map only IR_flag=IPO', () => 
 // detection constant/registry doc) trips a red test instead of sailing
 // through unnoticed. Item 1 is about to add more write paths that call
 // computeBSEIssueSize-shaped math; this is the guard rail for all of them.
-import { checkIssueSizeSegmentFloor, ISSUE_SIZE_FLOOR_RUPEES } from '../../../../scripts/lib/detection-floor-checks.mjs';
 
 describe('item 14 slice 1 — BSE issue_size vs the independent floor check (recurrence guard)', () => {
   it('a genuine small SME issue clears the SME floor (no false positive)', () => {
@@ -388,6 +388,26 @@ describe('item 14 slice 1 — BSE issue_size vs the independent floor check (rec
     const rawShareCount = 4_019_000;
     expect(checkIssueSizeSegmentFloor({ issueSize: rawShareCount, segment: 'SME' })).not.toBeNull();
     expect(checkIssueSizeSegmentFloor({ issueSize: rawShareCount, segment: 'MAINBOARD' })).not.toBeNull();
+  });
+
+  it('the REAL mapper output (not a recomputed value) clears the floor check — the recurrence was in a caller, not the helper', () => {
+    // W-177 recurred in a caller that failed to invoke computeBSEIssueSize —
+    // the helper itself was never broken. Proving helper output alone (the
+    // three tests above) would have missed that recurrence entirely. This
+    // test feeds mapBSEToScrapedIPO's OWN returned issueSize straight into
+    // the detector, so a future caller that drops/bypasses the conversion
+    // trips this test even if computeBSEIssueSize stays perfectly correct.
+    //
+    // mapBSEToScrapedIPO deliberately leaves `segment` undefined (BSE's JSON
+    // API can't tell SME from MAINBOARD — see the assertion a few tests up),
+    // so there is no ipo.segment to read here. Susan Electricals' real lot
+    // economics (Rs127 price x 1000-share market lot = Rs1,27,000/lot, far
+    // above the ~Rs14-15k mainboard retail-lot norm) match a real SME issue,
+    // so this asserts against the SME floor — the STRICTER of the two
+    // (Rs1 Cr vs Rs10 Cr) — as the segment this fixture actually represents.
+    const ipo = mapBSEToScrapedIPO(LIST_ROW, DETAIL_ROW);
+    const violation = checkIssueSizeSegmentFloor({ issueSize: ipo.issueSize, segment: 'SME' });
+    expect(violation).toBeNull();
   });
 
   it('the detection-checks registry prose agrees with the ISSUE_SIZE_FLOOR_RUPEES constants', async () => {
