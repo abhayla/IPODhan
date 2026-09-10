@@ -440,11 +440,11 @@
         },
         {
           "id": "12-B",
-          "status": "WIP_PUSHED",
+          "status": "BUILT_PUSHED",
           "tier": "A",
           "title": "identity re-keyed - function, SQL twin, 544-row recompute, duplicate re-scan, TS-vs-SQL agreement test, delete the tunnel test, ONE PR",
-          "note": "now unblocked: its proof tool (normalized-name-current) is on main as of 8047231e",
-          "commit": "fcce0734",
+          "note": "includes 12-E closing fix: trailing country-token strip",
+          "commit": "a865e840",
           "branch": "feat/pm-c-item12-sB-identity-rekey (pushed, NO PR - SQL twin still owed)"
         },
         {
@@ -752,6 +752,17 @@
           "verdict": "The new normaliser introduces ZERO new row-key collisions on any of the three tables. Nothing blocks lane A E1.",
           "the0_0_5Clarified": "The 0/0/5 baseline everyone has been quoting is the TWO-column key (ipo_id, normalized_name). Under the THREE-column key E1 actually uses for ipo_intermediaries, it is 0 - the five two-role banks hold DIFFERENT roles, so they never collided under the real constraint at all.",
           "myNearMiss": "I almost filed a contradiction that does not exist. The E1 file first line reads \"ipo_intermediaries: UNIQUE (ipo_id, role, normalized_name) -- 5 collisions\" and I stopped there, ready to report that its stated key disagrees with its stated count. The very NEXT line says \"on the 2-column (ipo_id, normalized_name) key, 0 on this 3-column key.\" The document was exactly right and my scan confirms its numbers. Same class as citing a file without reading its own header - which I also did tonight with the tunnel test."
+        },
+        "closingFixFolded": {
+          "at": "2026-09-10 22:04 IST",
+          "commit": "a865e840",
+          "whyHere": "It changes the same function in the same file 12-B already changes; shipping it separately would re-key the same 544 rows twice.",
+          "narrowedOnPurpose": "TRAILING country token only, not anywhere. A leading or medial India is part of the identity - INDIAN RAILWAY FINANCE, INDIAN OVERSEAS BANK, EAST INDIA DRUMS, STALLION INDIA FLUOROCHEMICALS and Sampark India Logistics all exist in production and keep it. The anywhere-rule measures IDENTICALLY on today data and would merge the first X-India / X pair that ever appears. Measured-today is not safe-forever, and the peer was right to demand the narrowing be measured rather than assumed.",
+          "knownLimit": "A name whose LAST word is genuinely part of the identity - Bank of India - is also trailing and would be stripped to bank of. No such name exists in either database today, and it only does harm if the stripped form collides. Stated in the code rather than left to be discovered.",
+          "measured": "Production 333 names, identities 333 to 333, NEWLY merged ZERO. Staging 376 names, 350 to 349, NEWLY merged ONE - the ARCIL pair, same company, the intended merge. Zero false merges across 709 real names.",
+          "threeFaultsCaughtByRunning": "1) The strip sat BEFORE the whitespace collapse, so the string still ended in a space and the dollar-anchored match silently never fired - the code read correctly and did nothing. 2) The SQL twin pattern went in with a SINGLE backslash inside a template literal, which JS eats; THIRD time tonight for that trap, and the agreement test caught it in seconds, which is exactly what it was built RED for. 3) An existing test broke.",
+          "testExpectationUpdatedCarefully": "The Gulf Lloyds row asserted BOTH the convergence AND the literal key. The PROPERTY it exists to test - two spellings reach ONE key - still passes untouched; only the literal shortened. Updating a test to match new behaviour is how a regression gets papered over, so the convergence assertion was not weakened and negative cases pin what must NOT change.",
+          "proof": "Normaliser suite 28 of 28; TS-vs-SQL agreement 5 of 5 green - it went RED the moment the twin drifted and green when the twin was fixed; tsc exit 0."
         }
       },
       "slice12DSizing": {
@@ -1188,7 +1199,12 @@
     "2026-09-10 21:55 IST ALL FOUR HAVE ONE CAUSE: the country word. The GMP source omits India and we store it - Jindal Supreme versus Jindal Supreme (India) Ltd., Steamhouse versus Steamhouse India Ltd., and so on. Nothing else differs in any of the four.",
     "2026-09-10 21:55 IST THE CLOSING FIX MEASURES CLEAN: dropping the country word from the BINDING key gives production 333 identities to 333 with ZERO newly merged groups, and staging 349 to 349 with ONE - the ARCIL pair, the same company, the merge 12-B exists to make. Zero false merges across 709 real names.",
     "2026-09-10 21:55 IST AND THAT DOES NOT WALK BACK MY WARNING. I said do not fix it with foldCompanyIdentity, and that stands: the FOLD strips india AND and/the/of/company AND compacts away every space, and it is the key a row-DELETING repair uses. Dropping only the country word is far narrower. The distinction is the whole point.",
-    "2026-09-10 21:55 IST CHAIN, with the count that moves: 12-E as-is 4 unbound, plus the country-word drop 1, plus 12-C duplicate repair 0. The last one is Asset Reconstruction, AMBIGUOUS rather than unmatched because staging holds a genuine duplicate pair - already 12-C job, so no new slice is needed."
+    "2026-09-10 21:55 IST CHAIN, with the count that moves: 12-E as-is 4 unbound, plus the country-word drop 1, plus 12-C duplicate repair 0. The last one is Asset Reconstruction, AMBIGUOUS rather than unmatched because staging holds a genuine duplicate pair - already 12-C job, so no new slice is needed.",
+    "2026-09-10 22:04 IST 12-E CLOSING FIX FOLDED INTO 12-B at a865e840 - a TRAILING country-token strip. Zero false merges across 709 real names: production 333 identities to 333 with ZERO newly merged, staging 350 to 349 with ONE, the ARCIL pair.",
+    "2026-09-10 22:04 IST THE PEER NARROWING WAS RIGHT AND I MEASURED IT RATHER THAN ASSUMING. Trailing-only measures IDENTICALLY to anywhere on today data, and correctly leaves INDIAN OVERSEAS BANK, INDIAN RAILWAY FINANCE, EAST INDIA DRUMS, STALLION INDIA FLUOROCHEMICALS and Sampark India Logistics untouched. The anywhere-rule would merge the first X-India / X pair that ever appears - measured-today is not safe-forever, which is the same trap I have flagged twice tonight.",
+    "2026-09-10 22:04 IST THREE FAULTS, ALL CAUGHT BY RUNNING RATHER THAN READING. The strip sat before the whitespace collapse so the dollar-anchored match silently never fired - the code read perfectly correctly and did nothing. The SQL twin got a SINGLE backslash in a template literal, the THIRD time tonight for that exact trap, caught in seconds by the agreement test that was built RED for precisely this. And an existing test broke.",
+    "2026-09-10 22:04 IST I UPDATED ONE TEST EXPECTATION AND CHECKED IT CAREFULLY RATHER THAN JUST MAKING IT PASS. The Gulf Lloyds row asserted both the convergence AND a literal key. The property it exists to test - two spellings reaching ONE key - still passes untouched; only the literal shortened. Updating a test to match new behaviour is how a regression gets buried, so the convergence assertion was left alone and the negative cases pin what must not change.",
+    "2026-09-10 22:04 IST KNOWN LIMIT STATED IN THE CODE rather than left to be discovered: a name whose LAST word is genuinely identity - Bank of India - is also trailing and would be stripped to bank of. No such name exists in either database today, and it only harms if the stripped form collides."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
