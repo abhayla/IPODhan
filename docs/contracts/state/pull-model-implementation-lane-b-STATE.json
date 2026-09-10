@@ -124,6 +124,22 @@
     {
       "at": "2026-09-10T21:16:31.369Z",
       "what": "8a constraint opened as PR #579 (card) - header-mapped never positional, three heading wordings, four-issuer column table, six universal columns, column-swap test. Fourth trap found while writing it: Kanohar p.160 prints a SEPARATE Comparison of KPIs with our peers table which is peer-shaped and must be rejected by heading."
+    },
+    {
+      "at": "2026-09-10T21:31:54.927Z",
+      "what": "CORRECTION AGAINST MYSELF on #578: I claimed the prod-write hazard was live on this machine because port 15432 was open. WRONG, withdrawn publicly. web/.env.local exists in NONE of the 14 worktrees here - gitignored, untracked. The old code would have thrown ENOENT before any connection. I checked one precondition and inferred the other. What remains true: severity is MACHINE-DEPENDENT - wherever that gitignored file exists (the documented local setup) the old code wrote to production, and nothing in the repo tells you which machine you are on."
+    },
+    {
+      "at": "2026-09-10T21:31:54.927Z",
+      "what": "Round 1 adversarial review of #578 returned FAIL and earned it: it wrote FOUR bypasses and watched them pass. Real holes: a Pool from DISCRETE fields at the prod host (no postgres:// to find), and a file one directory DOWN because my scan was flat while the config includes everything below tests/integration. Both now caught by name, markers IMPORTED not copied. Also right: my sanity case asserted only >5 files (any wrong-but-populated folder passes while the real cases measure nothing), and my comment stripping was prefix-only so a trailing comment would turn the gate RED on prose - three innocent files already import readFileSync."
+    },
+    {
+      "at": "2026-09-10T21:31:54.927Z",
+      "what": "#578 BOTH PROOFS PAID. Proof 1: guard refuses a prod URL with socket connect attempts ZERO (patched net.Socket.prototype.connect before importing). Proof 2: green against ipodhan_test (1 passed 6952ms), then the SAME suite and tunnel with only the db name changed to ipodhan REFUSED - impossible before this PR because the test never consulted process.env. Zero fixture rows in both DBs. Limit stated: zero-after-cleanup does not prove which DB was written; the refusal proves the target is governed. Detail: the guard first refused over an unconfirmable REDIS target though this test never touches Redis - fail-closed on an unrelated dependency."
+    },
+    {
+      "at": "2026-09-10T21:31:54.927Z",
+      "what": "Second review round dispatched rather than self-certifying: R9 makes a MAJOR finding trigger round 2, and my rewrite is itself unreviewed - I replaced a naive line filter with a hand-written character scanner that does NOT model regex literals, and the file under test contains them."
     }
   ],
   "items": {
@@ -568,7 +584,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T21:16:31.369Z",
+  "lastStateWriteAt": "2026-09-10T21:31:54.927Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 0,
