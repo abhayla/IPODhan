@@ -506,6 +506,26 @@
         "crossLaneConditionsNotMine": {
           "s6": "The s8b guard covers normalized_name ONLY. The heading_hash deriving module lives on the unmerged s6 branch, so s6 must register heading_hash in its own PR. That is now a merge condition on s6 and belongs to lane A, not lane C. Recorded so it is not silently dropped.",
           "testDbDrift": "Lane A reports the laptop ipodhan_test is AHEAD of main with a stray heading_hash column from s6 testing. Lane C uses ipodhan_test3 and this run has never connected to it, so lane C is not exposed. The general rule stands and I am adopting it: no lane test database is a mirror of main, and migration-state drift produces a green that means nothing."
+        },
+        "sqlAgreementRequirement": {
+          "at": "2026-09-10 19:11 IST",
+          "source": "lane A #507, verified here before acceptance",
+          "status": "ACCEPTED - 12-B carries it",
+          "verified": {
+            "counts": "CONFIRMED, and my own earlier count was the wrong one. Files matching *.integration.test.ts on main: 16 present, 5 on the pr-gate:497 allow-list, 11 never run. With s8b that is 17 present, 6 listed, still 11 never run - exactly the numbers lane A gave. I had said 18/5/13 because I globbed *.test.ts, which swept in two non-integration files. Correcting myself, not them.",
+            "tunnelFile": "CONFIRMED and worse than unlisted. company-name-normalizer-agreement.integration.test.ts is the only TS-vs-SQL test and it resolves web/.env.local at :27, reads DATABASE_URL at :29, and opens a pool at :105 through the tunnel on localhost:15432 - i.e. it reaches PRODUCTION. It cannot run in CI, and running it locally points a test at the production database. That is a second problem on top of it being unlisted.",
+            "parityIsNotSql": "CONFIRMED. scripts/tests/normalize-company-name-parity.test.mjs contains ZERO occurrences of the string sql. Its own header says it compares the hand copy scripts/lib/normalize-company-name.mjs against the TypeScript SSOT. So it proves JS-copy agrees with TypeScript. It says nothing about the SQL twin."
+          },
+          "consequence": "Nothing in CI checks that the SQL normaliser agrees with the TypeScript one. 12-B changes BOTH in one commit. So 12-B must ship that check itself - there is no existing guard to lean on, and the junk vs empty-string divergence was caught by hand today precisely because none was running.",
+          "whatTwelveBOwes": [
+            "A TS-vs-SQL agreement test running against the pr-gate job Postgres service - the same service s8b uses - never the tunnel, never web/.env.local, never production.",
+            "Fixture: the 30-or-more name set from the broken tunnel file, plus a junk-only name and a blank name.",
+            "Assert rowKeyForName(name) equals the SQL twin output for every non-junk, non-blank name; document that junk and blank are wrapper-only behaviour that the SQL twin cannot express.",
+            "Wire it onto the pr-gate.yml:497 allow-list, and say so in the PR body - an integration test not on that list runs on no PR.",
+            "Do NOT cite the parity run or the tunnel file as coverage. Neither is."
+          ],
+          "tier": "A confirmed - 12-B writes rows and now also touches CI.",
+          "notMine": "Lane A owns #507 - the coverage test, the triage of the other unrun files, and the list itself. Lane C touches none of the other 10."
         }
       }
     },
@@ -752,7 +772,11 @@
     "2026-09-10 19:07 IST s8b VERIFIED MYSELF rather than cited on trust. Every line lane A gave checks out exactly: line 12 imports rowKeyForName, lines 88/95/102 use it as derive for all three registry entries, lines 35-38 encode the stored-empty vs recomputed-null no-identity rule, line 65 is the junk fixture.",
     "2026-09-10 19:07 IST THE CHECK NOBODY ASKED FOR, and it was the one that mattered to me. The cited lines being right does not make the guard useful - the risk to my declaration was whether it EXECUTES. It is an integration test, and pr-gate runs integration by an EXPLICIT FIVE-FILE ALLOW-LIST at line 497, not a directory glob. A guard in tests/integration that is not on that list runs nowhere. Checked the branch diff: s8b edits pr-gate.yml and appends its own filename to that run command, in a job with a real Postgres service. It runs. Had they written the test and not touched pr-gate.yml, my declaration would have pointed at a guard that executes on no PR at all.",
     "2026-09-10 19:07 IST NOT MINE BUT RECORDED so it is not dropped: s8b covers normalized_name only. heading_hash deriving lives on the unmerged s6 branch, so s6 must register it in its own PR - a merge condition on lane A s6.",
-    "2026-09-10 19:07 IST ADOPTED as a standing caution: no lane test database is a mirror of main. Lane A reports the laptop ipodhan_test is ahead of main with a stray heading_hash column from s6 testing. Lane C uses ipodhan_test3 and has never connected to it this run, so lane C is not exposed - but migration-state drift produces a green that means nothing, and that applies to my proofs too."
+    "2026-09-10 19:07 IST ADOPTED as a standing caution: no lane test database is a mirror of main. Lane A reports the laptop ipodhan_test is ahead of main with a stray heading_hash column from s6 testing. Lane C uses ipodhan_test3 and has never connected to it this run, so lane C is not exposed - but migration-state drift produces a green that means nothing, and that applies to my proofs too.",
+    "2026-09-10 19:11 IST NEW REQUIREMENT ACCEPTED for 12-B after verifying all three claims: nothing in CI checks that the SQL normaliser agrees with the TypeScript one, and 12-B changes both in one commit, so 12-B ships that check itself.",
+    "2026-09-10 19:11 IST CORRECTING MY OWN COUNT, not theirs. Files matching *.integration.test.ts: 16 on main, 5 listed, 11 never run; with s8b, 17 present, 6 listed, 11 never run - exactly lane A numbers. I had said 18/5/13 because I globbed *.test.ts and swept in two non-integration files. Their arithmetic was right and mine was not.",
+    "2026-09-10 19:11 IST The only TS-vs-SQL test is worse than unlisted. company-name-normalizer-agreement.integration.test.ts resolves web/.env.local at :27 and opens a pool at :105 through the tunnel - it reaches PRODUCTION. It cannot run in CI, and running it locally points a test at the production database. Flagged to lane A as a second problem on top of it being unrun.",
+    "2026-09-10 19:11 IST PARITY PROVES NOTHING ABOUT SQL, now measured rather than argued: normalize-company-name-parity.test.mjs contains ZERO occurrences of the string sql, and its header says it compares the hand copy against the TypeScript SSOT. It shows JS-copy agrees with TypeScript. That is all. I said earlier that a green parity run is not evidence for the junk path; it is not evidence for SQL agreement at all."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
