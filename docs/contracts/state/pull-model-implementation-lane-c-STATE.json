@@ -1697,7 +1697,8 @@
     "2026-09-11 01:32 IST MEASURED THE DRAFT STALENESS, because it decides the build-vs-rebase question I had left open. Branch feat/t475-issue-type-writer is 286 COMMITS behind main, and FIVE of the ten files it changes have also been changed on main since: field-priority-matrix.ts, data-persister.ts, audit-ipo-coverage.mjs and BOTH generated registry aggregates.",
     "2026-09-11 01:32 IST THE GENERATED FILES ARE THE SHARP EDGE: per T-487 detection-checks.json and failure-classes.md are never hand-merged, they are regenerated from per-entry sources. So a rebase here is not conflict resolution, it is a rebuild of two files plus real merges in the matrix and the persister - both edited by multiple lanes today.",
     "2026-09-11 01:32 IST THAT TIPS THE RECOMMENDATION I had deliberately left open. Rebasing 286 commits across five contested files is substantial and error-prone; tonight report-82 route is ONE HTTP call for 231 rows carrying Pricing Method directly, against the draft one-call-per-IPO detail page. The cheaper path is probably to lift the draft TESTS and failure-class row - the expensive, thought-through parts - and re-point them at the list source on a fresh branch.",
-    "2026-09-11 01:32 IST NOT ATTEMPTED AT 01:30. A 286-commit rebase touching data-persister and the field-priority matrix, done tired, is exactly the shape of silent breakage this session has spent the whole night catching. Recording the measurement so the decision is cheap tomorrow rather than doing the work badly now."
+    "2026-09-11 01:32 IST NOT ATTEMPTED AT 01:30. A 286-commit rebase touching data-persister and the field-priority matrix, done tired, is exactly the shape of silent breakage this session has spent the whole night catching. Recording the measurement so the decision is cheap tomorrow rather than doing the work badly now.",
+    "2026-09-11 01:33 IST WROTE A SINGLE START_HERE ENTRY in the state file, because tonight findings are spread over about forty ledger notes and the next session should not re-derive what was already measured. It names the two habits that would have saved the most time (check the served staging sha before any proof read; grep your own open PRs before scoping a slice), the one outstanding owner decision, the three buildable-when-unblocked items with their recommendations, the two genuinely walled ones with the sources already tested, and the owed test-database drop."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -1942,5 +1943,25 @@
     "remaining": "ONE - IPODhan-IPODhan-impl-loop-c, the coordination worktree that holds the ledger. That is correct and it stays until close-out.",
     "preservedBeforeDeleting": "Two artifacts copied to the scratchpad rather than lost with their trees: the 99-name matrix resolution snapshot from 3-D, and the matrix-manifest-drift analyzer written for 3-S5 (6,540 bytes, with its deliberate do-not-report decisions documented in the header). Both would have been recreated from scratch by whoever picks those up.",
     "stillOwed": "ipodhan_test3 must be dropped at Stage 7 close-out via scripts/ops/test-db-lifecycle.mjs --name ipodhan_test3 --drop --apply. NOT done tonight because close-out has not been reached - the goal condition is unmet, so dropping the test database early would break a later stage."
+  },
+  "START_HERE": {
+    "writtenAt": "2026-09-11 01:33 IST",
+    "why": "Tonight findings are spread over ~40 ledger notes. This is the single entry point so the next session does not re-derive what was measured.",
+    "beforeAnythingElse": [
+      "Check the served staging sha FIRST on any proof read. Staging serves ecccc4bd; deploys have been failing since #548. A proof read against a stale slot is how STALLION was mis-classified.",
+      "Grep your own open PRs before scoping any slice. #367 cost most of an hour tonight because I did not."
+    ],
+    "ownerDecisionOutstanding": "ITEM 3 - drop it from the lane C completion condition, or have it re-specified against the measured system. Three of its five slices are disproved by measurement (3-S1, 3-S2/3-D, 3-S4). Nothing else in lane C needs the owner.",
+    "buildableWhenUnblocked": [
+      "2-S7 (ipo_details.issue_type): NOT greenfield. Draft PR #367 exists, 286 commits stale, 5 contested files including 2 generated aggregates. RECOMMENDATION: lift its tests and failure-class row onto a fresh branch pointed at Chittorgarh report 82 (one call, 231 rows, Pricing Method direct) rather than rebase the per-IPO detail-page route. Fixture already captured at docs/design/probes/fixtures/chittorgarh/report-82-pricing-method.json.",
+      "12-C ARCIL repair on staging: dry run done, refusal path proven, no owner word needed. Keep 0ef10ead, drop 5677e1e9. Deletes only regenerable scraper output; repoints zero person-created rows.",
+      "nse-past-issue-matcher (#562): retire rule 1 (exact symbol) or gate it behind name agreement. Rule 2 is sound. Then use it as a nightly segment-disagreement check - it found #561 on its first run."
+    ],
+    "blockedNotWaiting": [
+      "2-S3b2 and 14-S3: BSE-walled. A BSE-ONLY, CLOSED row with no stored bse_ipo_no has no reachable source. Tested against BSE current board, Chittorgarh report 82 over 4 financial years, and NSE public-past-issues (1,431 rows). Do not re-test; extend only if a NEW archive is proposed.",
+      "12-B write-path proof: needs a PRICE_BAND_AD extraction on staging, which cannot be forced. Re-assert when promoters/peer_companies/ipo_intermediaries gain a row with updated_at after the repair."
+    ],
+    "openIssuesFiledTonight": "#561 AAA TECHNOLOGIES segment disagreement (verified, not a collision). #562 matcher symbol-collision (latent, unwired).",
+    "owed": "ipodhan_test3 drop at Stage 7 close-out, via scripts/ops/test-db-lifecycle.mjs. Not before close-out."
   }
 }
