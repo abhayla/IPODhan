@@ -193,6 +193,24 @@ describe('verifyDownload — matrix §3', () => {
     if (!r.ok) expect(r.reason).toBe('too_large');
   });
 
+  it('T33b the exact-cap boundary: body.length === maxBytes is ACCEPTED — the single input where too_large and acceptable meet', () => {
+    // The cap is derived from getMaxDocumentBytes() (the same source
+    // verifyDownload's default path reads), never a hard-coded literal — so
+    // this pins verifyDownload's `body.length > maxBytes` comparison
+    // specifically: a `>` -> `>=` mutation here flips this from accepted to
+    // too_large.
+    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '0.2' } as NodeJS.ProcessEnv);
+    const r = verifyDownload(fakePdf(maxBytes), PDF_META, { maxBytes });
+    expect(r.ok).toBe(true);
+  });
+
+  it('T33c one byte over the exact-cap boundary: body.length === maxBytes + 1 is REFUSED as too_large', () => {
+    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '0.2' } as NodeJS.ProcessEnv);
+    const r = verifyDownload(fakePdf(maxBytes + 1), PDF_META, { maxBytes });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('too_large');
+  });
+
   it('implements: R-160 — a body sized like the old 100-150 MB accept window now fails too_large under the default cap', () => {
     // No real 100+ MB allocation: exercises the SAME comparison
     // verifyDownload's default path runs (maxBytes falls back to

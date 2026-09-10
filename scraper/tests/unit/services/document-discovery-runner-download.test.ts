@@ -14,6 +14,7 @@ import {
 } from '../../../src/services/document-discovery-runner.js';
 import { InMemoryDocumentFetchStateStore } from '../../../src/services/in-memory-document-fetch-state-store.js';
 import { NetworkCounter } from '../../../src/utils/network-counter.js';
+import { getMaxDocumentBytes } from '../../../src/services/document-download-verifier.js';
 
 /**
  * T-403 round 1, M1 and M4. These exercise the DOWNLOAD path end-to-end through
@@ -516,5 +517,48 @@ describe('defaultFetcher — streaming byte cap (item 22 slice 2, build card ite
     expect(res.status).toBe(200);
     expect(res.body.length).toBe(totalBytes);
     expect(pulled.total).toBe(totalBytes);
+  });
+
+  it('the exact-cap boundary: a body of EXACTLY maxBytes is accepted whole — total === maxBytes must NOT abort', async () => {
+    // The cap is derived from getMaxDocumentBytes() — the same function
+    // defaultFetcher calls — never a hard-coded literal, so this pins the
+    // fetcher's `total > maxBytes` comparison specifically: a `>` -> `>=`
+    // mutation flips this test from accepted to aborted.
+    const capMb = '1';
+    const capBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: capMb } as NodeJS.ProcessEnv);
+    const { stream, pulled } = makeCountingStream(capBytes, 64 * 1024); // divides capBytes exactly
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: capMb,
+    });
+
+    const res = await defaultFetcher('https://x/exact-cap.pdf', { headers: {}, timeoutMs: 5000 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(capBytes);
+    expect(pulled.total).toBe(capBytes);
+    expect(pulled.cancelled).toBe(false);
+  });
+
+  it('one byte over the exact-cap boundary: total === maxBytes + 1 aborts', async () => {
+    const capMb = '1';
+    const capBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: capMb } as NodeJS.ProcessEnv);
+    const { stream, pulled } = makeCountingStream(capBytes + 1, 64 * 1024);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: capMb,
+    });
+
+    const res = await defaultFetcher('https://x/cap-plus-one.pdf', { headers: {}, timeoutMs: 5000 });
+
+    expect(res.status).toBe(0);
+    expect(res.body.length).toBe(0);
+    // Byte accounting is the boundary proof here (the abort-actually-stops
+    // the stream behaviour already has its own dedicated test above); the
+    // final chunk landing exactly on the stream's close makes `cancelled`
+    // itself a race on some Node builds, so it is not asserted in this test.
+    expect(pulled.total).toBe(capBytes + 1);
   });
 });
