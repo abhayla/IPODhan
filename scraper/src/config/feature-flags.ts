@@ -347,6 +347,23 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_DOWNLOAD_STREAMING_CAP: process.env.ENABLE_DOWNLOAD_STREAMING_CAP === 'true',
 
+  /**
+   * OD-37 item 22 slice 3: refuse a host whose RESOLVED address is private,
+   * loopback, link-local or the cloud metadata address, on EVERY fetch rung.
+   *
+   * Gated because it changes behaviour at the network boundary in a way that
+   * can stop discovery: the check fails CLOSED, so a DNS failure REFUSES the
+   * host rather than letting the fetch attempt and fail normally. That is the
+   * right posture for a security boundary and the wrong thing to switch on
+   * everywhere untested — a resolver blip would read as "every source failed".
+   *
+   * Uses `slotAwareFlagDefault` (item 01 slice s5a) rather than `=== 'true'`:
+   * this flag has never been deployed, so it is exactly what that helper is
+   * for. It defaults ON in staging, where the refusal log can be READ, and OFF
+   * everywhere else until that reading exists.
+   */
+  ENABLE_RESOLVED_ADDRESS_REFUSAL: slotAwareFlagDefault('ENABLE_RESOLVED_ADDRESS_REFUSAL'),
+
   // ==================== ROLLOUT CONTROLS ====================
   // T-297 D9 / #193: this file is the SSOT for which flags gate live logic
   // in prod. `// LIVE-GATE` on a *_PERCENTAGE field and `// PROD-REQUIRED-TRUE`
