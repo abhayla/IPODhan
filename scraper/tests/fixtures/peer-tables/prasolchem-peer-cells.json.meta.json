@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_PRASOLCHEM.zip",
+  "capturedAt": "2026-09-11",
+  "ipoId": "prasol-chemicals",
+  "company": "Prasol Chemicals Limited",
+  "note": "pdfplumber extract_tables on RHP p.207 (0-based 206), UPRIGHT. 11 tables; the peer table is index 1, 13x20 - about half those columns are empty filler from whitespace gutters, so the reported column count is not the real one."
+}

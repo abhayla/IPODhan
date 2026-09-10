@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_KANOHAR.zip",
+  "capturedAt": "2026-09-11",
+  "ipoId": "kanohar-electricals",
+  "company": "Kanohar Electricals Limited",
+  "note": "ROTATED 90 degrees. Recovered with the measured recipe: group extract_words by x0, order by top, reverse each word's characters, reverse the token sequence. Stored as ROWS of tokens, not tables. Every numeric column verified against the pypdf text layer read independently; company names are TRUNCATED by the fixed x bucket and that is a known limitation, not a capture error."
+}

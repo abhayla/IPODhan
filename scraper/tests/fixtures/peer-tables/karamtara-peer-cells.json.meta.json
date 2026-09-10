@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1788514905936.pdf",
+  "capturedAt": "2026-09-11",
+  "ipoId": "karamtara-engineering",
+  "company": "Karamtara Engineering Limited",
+  "note": "pdfplumber extract_tables on RHP p.136 (0-based 135), UPRIGHT. 2 tables; the peer table is index 1, 16x10. Stored whole so the parser must choose by header row, never by index."
+}
