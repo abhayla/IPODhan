@@ -653,6 +653,13 @@ export const documents = pgTable(
     extractionError: text('extraction_error'), // Error message if extraction failed
     retryCount: integer('retry_count').default(0).notNull(), // Number of extraction attempts
 
+    // OD-32 (item 18): this document's PDF was purged while its text had never
+    // been extracted, so the bytes are gone and nothing was kept. Recorded
+    // rather than inferred, because the alternative is a document row that
+    // simply has no text and no way to tell "never extracted" from "extracted
+    // and empty" from "purged before we got to it".
+    purgedUnread: boolean('purged_unread').default(false).notNull(),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -674,6 +681,43 @@ export const documents = pgTable(
 
     // Keep URL unique globally to prevent exact duplicates
     uniqueUrl: unique('unique_url').on(table.url),
+  })
+);
+
+// ==================== TABLE 5a: DOCUMENT_PAGES (OD-32, item 18) ====================
+
+/**
+ * Extracted text, one row per PAGE of a stored document.
+ *
+ * Why this table exists: OD-32 deletes a stored PDF on a new schedule. That is
+ * only safe if the text taken out of it outlives it — otherwise the purge
+ * destroys the only copy, and OD-32's own answer to the counter-case ("re-run
+ * on the stored text") has nothing to run on. So this lands BEFORE any change
+ * to the purge schedule, never alongside it.
+ *
+ * Why per page rather than one JSON blob on `documents`: a page-numbered
+ * citation is what the re-read loop cites, and a partial re-extraction can
+ * replace only the pages that changed instead of rewriting one large column.
+ *
+ * No backfill for documents purged under the OLD rule: their bytes are already
+ * gone, so there is nothing to extract. Those rows read as "PDF unavailable,
+ * never extracted" rather than being guessed into existence.
+ */
+export const documentPages = pgTable(
+  'document_pages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    pageNumber: integer('page_number').notNull(),
+    text: text('text').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // One row per page of a document; a re-extraction upserts, never duplicates.
+    uniquePagePerDocument: unique('unique_page_per_document').on(table.documentId, table.pageNumber),
+    documentIdIdx: index('idx_document_pages_document_id').on(table.documentId),
   })
 );
 
