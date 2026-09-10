@@ -258,6 +258,15 @@ jobs:
         # other cheap gates rather than after the suites.
         run: node scripts/ci/check-security-boundary-wired.mjs
 
+      - name: Docs-gate coverage self-test
+        # A change to the documentation must reach a gate that reads the
+        # documentation. Runs in BOTH workflows on purpose: editing pr-gate.yml
+        # is a CODE change, so it triggers pr-gate and not docs-gate - and that
+        # is exactly the edit most likely to put the documentation gates back
+        # behind a skip. A self-test that only runs on the PRs it is about is
+        # the same blind spot one level up.
+        run: node --test scripts/ci/tests/check-docs-gate-coverage.test.mjs
+
       - name: Migration snapshot-chain self-test
         # 14 cases, all mutations: a fork, a duplicate id, a dangling head, a
         # cycle, a parent with a higher journal idx, and the two shapes that must
