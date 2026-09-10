@@ -1,0 +1,31 @@
+{
+  "contract": "docs/contracts/2026-09-10-pull-model-implementation-lane-b.md",
+  "slug": "pull-model-implementation-lane-b",
+  "lane": "B",
+  "startedAt": "2026-09-10T11:15:40+05:30",
+  "order": [20, 22, 18, 16, 8, 21],
+  "currentItem": 20,
+  "testDb": { "name": "ipodhan_test2", "drop": "OWED" },
+  "prGateRunsSpentByThisLane": 0,
+  "laneCapPerDay": 25,
+  "repoCeilingPerDay": 60,
+  "repoStopAt": 50,
+  "lastAuditAt": null,
+  "auditFindingsOpen": 0,
+  "itemsSinceAudit": 0,
+  "issuesFiled": [],
+  "notes": [
+    "Stage 0 preconditions verified 2026-09-10T11:15:40+05:30: (a) main-gate.yml on main conclusion=success (2026-09-10T05:28:21Z); (b) ipodhan_test2 reset on ONE connection then migrated, public tables 35 = grep -c pgTable schema.ts 35; (c) check-design-consistency --gate exit 0 (23/23), check-build-cards exit 0 (22 cards, 0 missing paths); (d) 180G free on D:; (e) gh authed as abhayla, repo visibility public; (f) lane A alive, ops/impl-loop-ledger last commit 2026-09-10T11:00:25+05:30; (g) test-db-lifecycle.mjs on main, ipodhan_test2 already existed (tool printed 'already exists', exit 0).",
+    "DEFECT-B01 (mine, same class lane A hit twice): the first reset attempt ran node on a $HOME-expanded /c/... scratchpad path while MSYS_NO_PATHCONV=1 was set; Git Bash left the path unconverted and node resolved it under D: and exited 1. The migrate in the SAME compound command then ran anyway (no && between them) against a NOT-reset database and printed exit 0. A gate that ran on the wrong state is not a gate: the reset+migrate was redone from inside the worktree with a relative script path, and only that second run counts. Rule adopted: never chain a gate after a step whose exit code is not checked.",
+    "Board read 2026-09-10T11:15:40+05:30: all six lane B items carry lane:'B', status PENDING, zero slices - no lane A claim on item 20. Lane A's own STATE.json order no longer contains 20, 22, 18, 16, 8 or 21.",
+    "Peer relays received 11:14 IST (information, adopted, loosen nothing): rebase immediately before BOTH pr create and pr merge; both lanes squash so use base=$(git merge-base HEAD origin/main) then 'git -c core.autocrlf=false rebase --onto origin/main $base'; stage docs/ops/prod-ops-recipes.md only with 'git -c core.autocrlf=false add'; every brief that mutates shared state ends by re-asserting it and pasting the proof; after any db:generate confirm the new _journal.json entry is not future-dated (5 min skew tolerance) - applies to items 18 and 22."
+  ],
+  "items": {
+    "item-20": { "item": 20, "card": "docs/design/build-cards/item-20-design-traceability-check.md", "status": "IN-PROGRESS", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-22": { "item": 22, "card": "docs/design/build-cards/item-22-document-handling-and-download-limits.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-18": { "item": 18, "card": "docs/design/build-cards/item-18-document-retention.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-16": { "item": 16, "card": "docs/design/build-cards/item-16-retire-moneycontrol.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-08": { "item": 8, "card": "docs/design/build-cards/item-08-ratios-basis-for-offer-price-extractor.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-21": { "item": 21, "card": "docs/design/build-cards/item-21-read-side.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } }
+  }
+}
