@@ -23,7 +23,16 @@
   "lastAuditAt": null,
   "auditFindingsOpen": 0,
   "itemsSinceAudit": 0,
-  "issuesFiled": [],
+  "issuesFiled": [
+    {
+      "number": 461,
+      "at": "2026-09-10 12:03 IST",
+      "title": "node --test exits 0 on a glob that matches nothing - hollow-gate route",
+      "exposure": "none today: 16/16 pr-gate sites literal and present, 0 glob-shaped",
+      "class": "CI steps that report success when they executed no tests",
+      "owner": "unassigned - outside item 20's card; lane A said it will assign in the next contract delta"
+    }
+  ],
   "notes": [
     "Stage 0 preconditions verified 2026-09-10T11:15:40+05:30: (a) main-gate.yml on main conclusion=success (2026-09-10T05:28:21Z); (b) ipodhan_test2 reset on ONE connection then migrated, public tables 35 = grep -c pgTable schema.ts 35; (c) check-design-consistency --gate exit 0 (23/23), check-build-cards exit 0 (22 cards, 0 missing paths); (d) 180G free on D:; (e) gh authed as abhayla, repo visibility public; (f) lane A alive, ops/impl-loop-ledger last commit 2026-09-10T11:00:25+05:30; (g) test-db-lifecycle.mjs on main, ipodhan_test2 already existed (tool printed 'already exists', exit 0).",
     "DEFECT-B01 (mine, same class lane A hit twice): the first reset attempt ran node on a $HOME-expanded /c/... scratchpad path while MSYS_NO_PATHCONV=1 was set; Git Bash left the path unconverted and node resolved it under D: and exited 1. The migrate in the SAME compound command then ran anyway (no && between them) against a NOT-reset database and printed exit 0. A gate that ran on the wrong state is not a gate: the reset+migrate was redone from inside the worktree with a relative script path, and only that second run counts. Rule adopted: never chain a gate after a step whose exit code is not checked.",
@@ -157,7 +166,8 @@
       "takenBy": "lane A",
       "branch": "feat/pm-item01-s5a-slot-aware-flags",
       "verifiedAt": "2026-09-10 11:22 IST",
-      "evidence": "branch present in the repo branch list, not yet on origin; origin/main feature-flags.ts 477 lines with 0 DEPLOY_SLOT"
+      "evidence": "branch present in the repo branch list, not yet on origin; origin/main feature-flags.ts 477 lines with 0 DEPLOY_SLOT",
+      "supersededText": "parent decision 11's 'DEPLOY_SLOT in both required-key lists of scripts/assert-env-keys.sh' is WRONG - that script validates static env files under shared/env/<slot>/ while DEPLOY_SLOT is injected at pm2 start; requiring it would refuse every deploy. Lane A owns and is fixing the approach; lane B carries this into no brief."
     },
     "firstWebTouchingSlice": {
       "taken": true,
