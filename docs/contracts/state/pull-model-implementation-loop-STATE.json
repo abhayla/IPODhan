@@ -196,7 +196,8 @@
     "CORRECTED A RELAYED DIAGNOSIS: I was told 'the gated-registry flag is NOT the cause: those four are not in the allowlist'. Three of the four ARE - KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT names all three constraints and isKnownGatedUniqueConstraintDrift matches the deploy log's detail string verbatim. Accepting that would have produced a fix aimed at the wrong thing; correcting it means two fixes, one mine and one the owner's.",
     "2026-09-10: the owner's '26 failing web integration files' figure is WITHDRAWN as a measurement. It came from a ci.yml run whose integration step was crashing at repo root with no DATABASE_URL/REDIS_URL (my s3d regression, fixed by #489/d8ad025d). The shrink-only baseline mechanism itself stands unchanged and still ships files: [] \u2014 it populates only from a report produced after d8ad025d. Confirmed with lane C, which is telling the owner the number is withdrawn.",
     "2026-09-10: pr-gate budget is counted on the IST day, not the UTC day \u2014 `startsWith(\"2026-09-10\")` drops runs between 00:00 and 05:30 IST and under-counted by two at 4-remaining. Codified as scripts/ops/pr-gate-count.mjs on the ledger branch; no tick retypes the filter. pr-gate is `on: pull_request` only, so a push to a branch with no open PR costs zero runs \u2014 build-and-hold is free.",
-    "2026-09-10: item 1 slice s6 (ipo_risk_factors re-key seq -> heading_hash) stopped at its measurement gate. Staging has 7 collision groups / 14 surplus rows, all byte-duplicates with empty bodies (distinct_bodies=1, max_body_len=0) on prasol-chemicals, hy-tech-engineers, sumax-engineering, pranav-constructions, ss-retail, vinod-texworld x2. Card line 720's 'headings unique per IPO' is false as a measurement. Decision taken: collapse them (lowest seq wins) AND de-duplicate in the write path inside one transaction, because the extractor keeps emitting duplicates and the new constraint would otherwise throw on the next extraction of a live OPEN IPO."
+    "2026-09-10: item 1 slice s6 (ipo_risk_factors re-key seq -> heading_hash) stopped at its measurement gate. Staging has 7 collision groups / 14 surplus rows, all byte-duplicates with empty bodies (distinct_bodies=1, max_body_len=0) on prasol-chemicals, hy-tech-engineers, sumax-engineering, pranav-constructions, ss-retail, vinod-texworld x2. Card line 720's 'headings unique per IPO' is false as a measurement. Decision taken: collapse them (lowest seq wins) AND de-duplicate in the write path inside one transaction, because the extractor keeps emitting duplicates and the new constraint would otherwise throw on the next extraction of a live OPEN IPO.",
+    "2026-09-10 delta-2 material, agreed across lanes: (a) an alias-importing local result in a worktree is UNVERIFIED until #514's preflight lands; (b) CI has been the only trustworthy gate for alias-importing code all along and nobody knew why - which is the more useful half, because it means every past 'green locally' on such a script proved nothing."
   ],
   "items": {
     "item-01": {
@@ -435,6 +436,21 @@
             ],
             "ciPlacement": "must sit inside pr-gate Node 22 window - it imports the deriving TS via type-stripping"
           }
+        },
+        {
+          "k": "s14",
+          "status": "PLANNED",
+          "tier": "B",
+          "pr": null,
+          "sha": null,
+          "title": "preflight: refuse to run when @ipodhan/shared resolves outside this checkout (#514, repo side)",
+          "order": "tomorrow; repo side of #514. The laptop side (wt-new.ps1 creating the junction) is lane C, Tier A, with the junction-deletion history in the brief - NOT tonight.",
+          "plan": [
+            "a preflight used by every test script (unit, integration, tzcase) AND the drift assert",
+            "resolve @ipodhan/shared with require.resolve, PRINT the resolved path always, and exit non-zero when it lies outside the current checkout root",
+            "the failure message names the rule, so the reader does not have to rediscover why"
+          ],
+          "whyPrintAlways": "Printing only on failure means a passing run still cannot be audited later. The two wrong results tonight both LOOKED like ordinary output; what was missing was the one line saying which tree was read."
         }
       ],
       "prs": [

@@ -313,3 +313,41 @@ And the corresponding negative, which is the half that actually does the work:
 peer session cannot set this run's completion condition — only the owner can. It is recorded here
 as the recommended re-set. Until the owner re-sets `/goal`, this run continues under the contract
 exactly as written, and no terminal line is written by anyone.
+
+---
+
+## 13. A local result from an alias-importing script in a worktree is unverified
+
+Not a contract contradiction — a fact about the environment the contract's gates run in, which invalidates a
+class of evidence the contract accepts.
+
+A slice worktree's `node_modules` is a junction to the main checkout's, so `@ipodhan/shared` resolves to the
+**main checkout's** `packages/shared`. Any local run that imports through the alias exercises `main`, not the
+branch, and says nothing about the change under test. Rebuilding `packages/shared` does not help, because the
+wrong one is being rebuilt.
+
+Two wrong answers in one evening, both pointing toward believing a broken branch was fine:
+
+- a Tier A reviewer's schema-drift run **printed OK** on a branch CI then failed with
+  `FATAL: schema drift detected (1 finding(s))`
+- `known-gated-registry-invalidation.test.ts` reported `stale ... entry — remove the entry`, advising the exact
+  opposite of the correct action
+
+**The more useful half of this finding is the second-order one: CI has been the only trustworthy gate for
+alias-importing code all along, and nobody knew why.** Every past "green locally" on such a script proved
+nothing. That is not a new risk arriving; it is an old one becoming visible.
+
+Relative-path imports are unaffected — `derived-key-recompute-guard.integration.test.ts` uses one and reads the
+branch correctly. That is luck, not design, and it should not be mistaken for a pattern that was chosen.
+
+**Proposed contract wording**, two sentences because both halves are load-bearing:
+
+> A local gate result from a script that imports `@ipodhan/shared` inside a worktree is UNVERIFIED and must be
+> reported as such; CI is the gate for that code. A slice may not cite such a run as evidence in a PR body.
+
+**Mechanism, not convention:** issue #514, repo side, is item 1 slice **s14** — a preflight every test script and
+the drift assert calls, which resolves the alias with `require.resolve`, **prints the resolved path on every
+run** (not only on failure — the two wrong results looked like ordinary output, and what was missing was the one
+line naming the tree), and exits non-zero when it points outside the current checkout. The laptop side —
+`wt-new.ps1`, which creates the junction — is a separate Tier A change that carries the August
+junction-deletion history in its brief and is deliberately not being done at night.
