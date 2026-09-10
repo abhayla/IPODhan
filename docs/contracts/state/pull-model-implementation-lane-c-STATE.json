@@ -156,14 +156,22 @@
           "tier": "A",
           "status": "PLANNED",
           "issue": 482,
-          "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD"
+          "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD",
+          "definitionOfDone": "Reader audit is INSIDE the DoD, not optional: every reader of segment (bse-api-scraper.ts:338 count, web filters, audit predicates) handles NULL explicitly, or the slice is not mergeable. If that pushes past 400 lines, the readers become 2-S3a-prime and the WRITE-PATH change waits for it - surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change.",
+          "classSites": [
+            "scraper/src/services/historical-ipo-assembler.ts:84",
+            "scraper/src/scrapers/chittorgarh-scraper.ts:187",
+            "scraper/src/scrapers/moneycontrol-scraper.ts:278",
+            "scraper/src/scrapers/bse-scraper.ts:258"
+          ]
         },
         {
           "id": "2-S3b",
           "tier": "A",
           "status": "PLANNED",
           "issue": 482,
-          "title": "repair-segment-provenance.ts re-sources the 41 unprovenanced rows, leaves unsourceable ones NULL with the reason in provenance"
+          "title": "repair-segment-provenance.ts re-sources the 41 unprovenanced rows, leaves unsourceable ones NULL with the reason in provenance",
+          "firstStep": "SOURCE PROOF with a real fixture showing a field that STATES segment, BEFORE any repair code. \"No source states it\" is a SUCCESSFUL outcome and ends 2-S3b as NULL-with-reason for the 41 rows."
         },
         {
           "id": "2-S3c",
@@ -298,7 +306,10 @@
     "2026-09-10 14:40 IST 14-S2 HELD pending #482, not re-scoped. A repair that cannot source its value writes nothing. BSE has no segment field at all, so the segment repair the supervisor approved cannot be sourced from the source that wrote these rows. Item 14 stays MERGED-UNPROVEN with #472 and #482 named. The supervisor acknowledged his fact 2 was wrong and that the code comment at bse-api-scraper.ts:287-292 is the truth.",
     "2026-09-10 14:40 IST #482 ROUTED to lane C as item 2 slices 2-S3a/b/c, and the placement is right rather than convenient: which source wins for segment IS a manifest entry (OD-5/OD-51), so it belongs to item 2, after the loader and the manifest exist.",
     "2026-09-10 14:40 IST ITEM 2 PLAN RE-CUT under delta-1 section 1.1 (250-400 line slices): 2-S1 MERGED (loader); 2-S2 IN_REVIEW (manifest, schema, cross-check); 2-S3a Tier A (segment manifest entry + assembler returns NULL for unknown instead of asserting MAINBOARD); 2-S3b Tier A (repair-segment-provenance.ts re-sources the 41 rows, unsourceable ones stay NULL with the reason in provenance); 2-S3c Tier A (floor check treats NULL segment as unknown, declared detection change); 2-S4 Tier A (validate at process start, before main()); 2-S5 Tier B (seed the 16 Group-C fields + config-diff test). The old 2-S3/2-S4 shift down; nothing is dropped.",
-    "2026-09-10 14:40 IST OPEN DECISION for 2-S3c, deliberately NOT taken on convenience per the supervisor instruction: how c_issue_size_floor should treat a NULL segment - judge it against the stricter floor, or raise a separate segment_unknown finding. To be decided from the design per-field validation text when 2-S3c is briefed, not from whichever is easier to implement. Note the interaction: bse-api-scraper.ts:338 currently counts a null/blank segment AS MAINBOARD, so making writes honest will surface NULLs that readers have never seen."
+    "2026-09-10 14:40 IST OPEN DECISION for 2-S3c, deliberately NOT taken on convenience per the supervisor instruction: how c_issue_size_floor should treat a NULL segment - judge it against the stricter floor, or raise a separate segment_unknown finding. To be decided from the design per-field validation text when 2-S3c is briefed, not from whichever is easier to implement. Note the interaction: bse-api-scraper.ts:338 currently counts a null/blank segment AS MAINBOARD, so making writes honest will surface NULLs that readers have never seen.",
+    "2026-09-10 14:43 IST #482 IS FOUR WRITE PATHS, not one, and I found the other three by looking rather than assuming my first instance was the whole class. All four use the same binary test where \"not detected as SME\" is ASSERTED as MAINBOARD: historical-ipo-assembler.ts:84, chittorgarh-scraper.ts:187, moneycontrol-scraper.ts:278, bse-scraper.ts:258. None can express \"the source did not say\". The single path that gets it right is bse-api-scraper.ts:292 (segment: undefined, with the comment explaining why).",
+    "2026-09-10 14:43 IST THE FIX IS AN EXISTING DOCUMENTED PRINCIPLE, not a new design decision - which shrinks the risk of 2-S3a considerably. moneycontrol-scraper.ts carries W-145 ONE LINE ABOVE its segment line: listingExchange was hard-coded to BOTH, asserted a fact the page never carries, stomped correct single-board values and wrongly marked 5 SME rows in prod; it was fixed by omitting unknown, with the comment \"a source that cannot determine a field must not overwrite it\". segment on the very next line still does exactly what W-145 fixed. So 2-S3a applies a rule this repo already states twice, at the four sites that do not follow it.",
+    "2026-09-10 14:43 IST CHITTORGARH IS A PLAUSIBLE re-sourcing source but NOT a proven one: it derives segment from a listingAt string (\"BSE SME\", \"NSE, BSE\"), so when that field is POPULATED, SME in it is a genuine source assertion - its defect is narrower, only the empty/unparseable case. Whether listingAt is actually populated for the 41 historical rows is UNCHECKED and I am not assuming it. 2-S3b proves it against a real fixture first."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
