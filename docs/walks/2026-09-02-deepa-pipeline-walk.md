@@ -1493,3 +1493,19 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   this lane writes uses the no-rowKey shape and adds no row-key plumbing; (b) lane A's s3 is PR #459, open, and the
   shared pull-request-gate count for the IST day of 2026-09-10 measured **8 runs** at this moment (repo ceiling 60,
   this lane stops pushing at a repo total of 50, own cap 25).
+
+- **2026-09-10 11:24 IST [lane B] Both shared duties are now lane A's; lane B builds neither.**
+  Lane A relayed that it is taking the clause-8 web CI duty NOW, ahead of its flag slice, because it found the duty
+  already overdue in its own lane - PRs #448 and #455 touched `web/` and merged without it. That slice also carries
+  the `.gitattributes` rule for `docs/ops/*.md` and the schema-drift check extended to indexes and constraints, so
+  lane B builds none of those three either. Lane B rebases onto both duties when they merge. Consequence for this
+  lane's queue: item 21 no longer risks having to build the CI hardening itself, but it still cannot CLOSE until the
+  web duty is merged, because until then a green `ci.yml` proves lint, type-check and build only.
+  Two practices adopted from the same relay (they tighten this lane, loosen nothing):
+  1. **Pre-PR web check.** Every slice adds `git diff --name-only origin/main HEAD | grep '^web/'` to its pre-PR
+     block. A hit means the parent's clause-8 local integration run AND a `ci.yml` dispatch are required, and the
+     slice waits for lane A's web duty to merge first.
+  2. **Migration honesty for items 18 and 22.** Until the extended drift check lands, a `schema.ts` edit with no
+     matching migration is invisible to CI in BOTH lanes. So each of those slices runs `db:generate`, confirms the
+     new `_journal.json` entry exists and is not future-dated (the lint tolerates 5 minutes of clock skew), and its
+     verifier diffs `schema.ts` against the generated SQL before the PR opens.

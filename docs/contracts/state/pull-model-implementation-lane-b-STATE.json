@@ -119,10 +119,15 @@
       "evidence": "branch present in the repo branch list, not yet on origin; origin/main feature-flags.ts 477 lines with 0 DEPLOY_SLOT"
     },
     "firstWebTouchingSlice": {
-      "taken": false,
-      "verifiedAt": "2026-09-10 11:22 IST",
-      "evidence": "origin/main .github/workflows/ci.yml 107 lines, 5 matches of continue-on-error|postgres|test:integration",
-      "note": "likely falls to lane B via item 21, which is last in this lane's queue"
+      "taken": true,
+      "takenBy": "lane A",
+      "verifiedAt": "2026-09-10 11:24 IST",
+      "evidence": "relayed 2026-09-10 ~11:40 IST; lane A found it overdue in its own lane (#448 and #455 touched web/ and merged without it). Branch not yet visible; re-verify on origin/main before item 21.",
+      "carries": [
+        ".gitattributes rule docs/ops/*.md text eol=crlf",
+        "schema-drift check extended to indexes and constraints"
+      ],
+      "consequence": "item 21 cannot CLOSE until this merges; a green ci.yml proves lint/type/build only until then"
     }
   },
   "carriedFromLaneA": [
@@ -132,5 +137,9 @@
   "prGateRunsRepoTodayAtLastRead": {
     "count": 8,
     "at": "2026-09-10 11:22 IST"
-  }
+  },
+  "adoptedPractices": [
+    "pre-PR: git diff --name-only origin/main HEAD | grep '^web/' - a hit requires the clause-8 local integration run and a ci.yml dispatch, and the slice waits for lane A's web duty to merge",
+    "items 18 and 22: run db:generate, confirm the new _journal.json entry exists and is not future-dated (5 min skew tolerance), and have the verifier diff schema.ts against the generated SQL before the PR opens"
+  ]
 }
