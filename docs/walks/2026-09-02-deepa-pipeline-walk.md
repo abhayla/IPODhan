@@ -2145,3 +2145,39 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
      shell twice). A `find` rooted at `/` is banned in every lane; search under the repository root only.
   The honest summary: this run wrote up a defect, prescribed a mechanism for it, and did not check that its own
   remedy worked. The mechanism was right; the verification was missing.
+
+- **2026-09-10 13:51 IST [lane B] ITEM 20 IS DONE. Slice s4 MERGED as `daeb3ad3` via PR #470; all four checks are wired and RUNNING
+  on every pull request in all three lanes.** Verified on `origin/main` rather than assumed: `pr-gate.yml` is 524
+  lines and carries 4 references to `check-design-traceability`, 4 to `check-module-boundaries` and 2 to
+  `check-design-consistency` - each self-test as its own step BEFORE its gate.
+  **The one thing that could not be settled locally is settled: the base ref resolves on the runner.** The reviewer
+  said only a real Actions run could prove it. The run printed `MODE 4 - 166` rule ids compared, not
+  `MODE 4 - SKIPPED`, alongside `check-design-traceability: PASS` and `23/23 consistent`. The gate this item exists
+  to build is live and it is not hollow.
+  **What this slice found on its FIRST CI run, which is the best argument for the item existing at all:**
+  `check-build-cards.mjs` had been giving a false pass on every Windows machine in every lane. `git check-ignore -q`
+  answers 0 ("ignored") for a trailing-slash query it cannot resolve, and `-q` gives no way to see it. Four cards -
+  item-02, item-04, item-10 and item-19 - carried a `(LOCAL)` marker for a path `.gitignore` never mentions, and no
+  local run could see it. The strings `scripts/state`, `scraper/config` and `invented-xyz` appear ZERO times in
+  `.gitignore`, and the line git cites for all three (349) actually contains `/scripts/ops/state/`.
+  **The obvious fix was wrong and a worker's comment was right against it.** Three sessions - lane A, lane C and this
+  supervisor - independently proposed stripping the trailing slash. Measured in an isolated repository whose
+  `.gitignore` held only `realdir/` with `realdir` absent from disk: querying WITH the slash is correct, querying
+  WITHOUT it MISSES a genuine directory-only pattern. `docs/design/probes/fixtures/pdf/` is exactly that case here,
+  so stripping would have converted a false pass into a false FAILURE on a correct marker. The builder had written a
+  comment resisting the strip fix before anyone measured it. It was right against two measurements and a relay, and
+  the supervisor was one step from overruling it.
+  The real fix: `isIgnored()` uses `check-ignore -v` and trusts a match only when the PATTERN field is non-empty - a
+  fabricated match names no pattern, a real one names it. Three constructed fixtures, including the one lane C
+  insisted on (a directory that EXISTS with zero tracked files), because the obvious fixture `scripts/state` is
+  absent from every worktree and would have passed on the BROKEN code. Mutation: the naive version turns 4 of 8
+  tests red.
+  A FOURTH bad card (item-19) surfaced only after the first three were fixed, because the gate stops at its first
+  failures. Fixed by the supervisor - item 19 is closed work, so it is a records correction.
+  Merge hygiene: rebased once onto `c6a4c9c4` because lane A's CI hardening is a NEW GATE (the one case the corrected
+  rule treats as material); both lanes' `pr-gate.yml` steps survived and all ten gates were re-run green. Lane C's
+  #471 landed before the merge and was correctly NOT rebased onto - it touches no workflow, no `scripts/`, and no
+  file this slice touches. Its file then showed as a 90-line DELETION in `git diff origin/main HEAD`, which is
+  precisely the artifact proved false earlier today; the merge-base diff showed the truth and both sides are present
+  on main. `state=MERGED` confirmed before the branch was deleted separately; worktree removed on the three-way
+  proof; main checkout 4595 tracked, `packages/shared` intact; zero slice worktrees left.
