@@ -2613,3 +2613,24 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   conditional bodies are now blocked (previously a named gap), and backticks no longer count as substitution.
   One edge carried into briefs: a heredoc whose body contains another heredoc start marker with no terminator
   can false-block -- use distinct delimiters.
+
+- **2026-09-10 16:44 IST [lane B] 22-2 built `cd05b35d`; Tier A dispatched with one question ahead of all others.**
+  The red evidence is the right SHAPE: with the flag off -- which is what production runs today -- the fetcher
+  pulled **2,097,152 bytes**, the entire 2 MB body, against a 1 MB cap. With the flag on it pulled between
+  1,048,576 and 1,310,720 and never reached the full body. Five mutations all RED, including the one that
+  matters most: a chunk-COUNT implementation instead of a byte-count is caught by the many-small-chunks case
+  (1,654,784 bytes pulled against a 655,360 cap). 398 lines, under the cap, no split needed.
+  **But the review is told to answer one thing first: does that byte count measure the FETCHER or the MOCK?**
+  A mock stream that enqueues everything up front produces a `pulled` total that says nothing about what the
+  consumer actually took. If the mock is push-driven rather than pull-driven, the headline evidence is
+  worthless and the slice is unproven no matter how green the suite is. This run has spent the day finding
+  observables that look like proof and are not -- a CI step that passed having run nothing, a boundary check
+  evaluating zero edges, a verdict that reads the same before and after the fix. A byte counter that counts
+  the wrong side of the pipe is the same family.
+  Also under review: whether the abort genuinely cancels the reader or merely stops looping while the body
+  keeps arriving; whether the flag-OFF path is truly byte-identical, since OFF is what production runs; and a
+  declared deviation -- the builder pointed the fetcher cap at the same `getMaxDocumentBytes()` the verifier
+  uses, so the two can never disagree. Good instinct, but it creates an import the layering rules may forbid,
+  so the module-boundary check decides it rather than taste.
+  One risk named for the reviewer that neither the card nor the plan raises: a server sending one byte a
+  minute stays under the cap forever. Streaming fixes the memory class and may open a slow-drip hang class.
