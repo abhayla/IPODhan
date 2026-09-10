@@ -1828,7 +1828,7 @@ describe('filing-persister — W-73 risk factors / acquisition ranges / filing d
     upsertIPOMock.mockClear();
   });
 
-  it('(1) writes the risk factors with seq, heading, body and kpis from the extraction', async () => {
+  it('(1) writes the risk factors with heading, body and kpis from the extraction, in document order', async () => {
     const s = makeDeps();
     const w = withW73Writers(s);
     const summary = await persistFilingExtraction(
@@ -1846,16 +1846,18 @@ describe('filing-persister — W-73 risk factors / acquisition ranges / filing d
     expect(ipoIdArg).toBe(IPO_ID);
     // The blank-heading item is dropped, not written as an empty risk factor.
     expect(rows).toHaveLength(2);
+    // Item 1 slice s6: this path no longer supplies `seq` or `headingHash`.
+    // Identity and display order are derived at the ONE choke point,
+    // `IpoRiskFactorsRepository.replaceForIpo` — the persister passes the
+    // extractor's ORDER and nothing else.
     expect(rows[0]).toEqual({
       ipoId: IPO_ID,
-      seq: 1,
       heading: RISK_FACTORS_FIXTURE[0].heading,
       body: RISK_FACTORS_FIXTURE[0].body,
       kpis: { southern_india_revenue_pct_fy2026: 98.12 },
     });
     expect(rows[1]).toEqual({
       ipoId: IPO_ID,
-      seq: 2,
       heading: RISK_FACTORS_FIXTURE[1].heading,
       body: null,
       kpis: null,
