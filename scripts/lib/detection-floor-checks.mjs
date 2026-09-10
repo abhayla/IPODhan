@@ -436,6 +436,19 @@ export function checkSegmentPopulatedForIpo(row) {
   return null;
 }
 
+// ---- (d, segment provenance): a non-NULL segment with no field_sources row
+// for it — the "asserted, not sourced" shape the binary-test write bug (lane
+// C item 2 slice 3b) produced. Distinct from checkSegmentPopulatedForIpo
+// above (which measures SHARE — is segment populated at all); this measures
+// PRESENCE OF PROVENANCE for whatever value is stored, on every offering
+// type, not just IPO — a sourced value has a field_sources row, a guessed
+// one does not, and that absence is exactly what this predicate flags.
+export function checkSegmentHasProvenance(row) {
+  if (row.segment === null || row.segment === undefined) return null;
+  if (row.hasSegmentProvenance) return null;
+  return `"${row.companyName}" [${row.offeringType}] carries segment=${row.segment} with no field_sources row for segment — a value with no record of who said it`;
+}
+
 // ---- T-335 fix round 1 (checker T-335C blockers) ------------------------------
 // Everything below is still PURE (no DB/IO/clock/network beyond an injected
 // `now`) so each behaviour has a fixture in
