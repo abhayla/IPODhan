@@ -498,10 +498,30 @@ So the rule for 8a-2 is:
 | text layer (pypdf) | impossible - headers unsegmentable | correct |
 | cells (pdfplumber) | works - column-aligned | correct on 3 of 4; **mirrored on Kanohar** |
 
-**8a-2 must read cells AND detect reversal.** Detection is cheap and certain: the divider row reads
-`Listed peers` or `Peer Group:` in every issuer, so if the reversed spelling appears instead, reverse
-every cell before parsing. A parser that skips this does not fail loudly on Kanohar - it finds a
-table, maps no headers, and returns nothing, which reads as "this issuer has no peer table".
+**Detection is cheap and certain**: the divider row reads `Listed peers` or `Peer Group:` in every
+issuer, so the reversed spelling is an unambiguous signal. A parser that skips the check does not fail
+loudly on Kanohar - it finds a table, maps no headers, and returns nothing, which reads as "this
+issuer has no peer table".
+
+**CORRECTION AGAIN, and this one stops short of prescribing a fix.** Reversal is not the whole of it.
+Measured on the full table rather than a preview:
+
+- The table is **TRANSPOSED**: metrics are the ROWS (`NAV`, `EV / Operating EBITDA`, `RoNW`, `EPS`)
+  and the companies are the COLUMNS. Row 10 is `Name of the company`, reversed.
+- **Whole-cell reversal recovers the words but SCRAMBLES THEIR ORDER.** The raw cell
+  `yvaeH detimiL slacirtcelE tarahB` reverses to `Bharat Electricals Limited Heavy`; the company is
+  **Bharat Heavy Electricals Limited**. `Kanohar Electricals Limited` comes back as
+  `Limited Kanohar Electricals`. Reversing each token instead does not fix it either - the token
+  ORDER is genuinely scrambled, not merely inverted.
+
+So for this issuer the `extract_tables()` output is **not recoverable by any string transformation**.
+Recovery needs word-level COORDINATES (`extract_words()`, which carries x/y per word) to rebuild
+reading order - or that issuer takes the pypdf text path, which reads the same page correctly.
+
+**Which of those two 8a-2 uses is a decision to be made from a spike, not from this note.** I am
+deliberately not prescribing it: I have measured that the simple fix does not work, and I have not
+measured that either alternative does. Writing down a mechanism I have not validated is exactly how
+the three earlier wrong rules on this card got written.
 
 ### What this means for the fixtures
 
