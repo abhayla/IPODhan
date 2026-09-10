@@ -1,6 +1,32 @@
 {
-  "_comment": "Web integration-suite baseline (item 1 slice s3d, owner decision 2026-09-10). Shrink-only allowlist of test FILES (under web/tests/integration/**) that are known to fail in CI (github-hosted Ubuntu runner, postgres:16 + redis:7-alpine services, journal replay via `drizzle-kit migrate`) — never derived from a local run: through the SSH tunnel locally 40/44 files fail, in CI 26/44 fail, and only the CI result is the baseline the gate runs against. A file's mere presence here does NOT mean it is expected to fail forever — the release cut (owner decision 2026-09-10) requires this list EMPTY. NEVER add a new entry to grandfather a newly-broken file — fix it instead, or if it is a genuinely pre-existing known failure being formally captured for the first time, add it only with the CI run URL that proved it failing. Regenerate ONLY when REMOVING entries: `node scripts/check-web-integration-baseline.mjs --report=<vitest-json-report> --update`, run against a report from the file(s) actually removed no longer failing, and commit the shrink. This gate runs ONLY inside .github/workflows/ci.yml, which is workflow_dispatch-only (billing reasons) - it does NOT run automatically on a PR and does NOT block a merge by itself; enforcement before a web-touching merge is procedural (contract clause 8: dispatch ci.yml on the branch and wait for success). Do not read a green PR as proof this gate ran.",
-  "generated_from": "TODO: populate from the first CI run of .github/workflows/ci.yml after this gate merges (dispatch the workflow, download the `web-integration-report` artifact, run --update against it, commit). No CI report was obtainable within this task's budget — an empty-but-honest baseline was shipped instead of a guessed list of file names (the CI console log carries no FAIL/PASS markers per-file, so a grep cannot distinguish the 26 failing files from the 18 passing ones).",
-  "count": 0,
-  "files": []
+  "_comment": "Web integration-suite baseline (item 1 slice s3d, owner decision 2026-09-10). Shrink-only allowlist of test FILES (under web/tests/integration/**) that fail in CI (github-hosted Ubuntu runner, postgres:16 + redis:7-alpine services, journal replay via `drizzle-kit migrate`) \u2014 never derived from a local run. The earlier figures in this comment ('in CI 26/44 fail') are WITHDRAWN: they came from a ci.yml run whose integration step was crashing at the repo root with no DATABASE_URL/REDIS_URL, so it never executed a single test, and continue-on-error reported that crash as success (fixed by PR #489, d8ad025d). The numbers below are the first real measurement: 232 suites, 467 tests, 96 failing tests across 25 files. A file's presence here does NOT mean it is expected to fail forever \u2014 the release cut (owner decision 2026-09-10) requires this list EMPTY. NEVER add a new entry to grandfather a newly-broken file \u2014 fix it instead; if it is a genuinely pre-existing failure being captured for the first time, add it only with the CI run URL that proved it failing. Regenerate ONLY when REMOVING entries: `node scripts/check-web-integration-baseline.mjs --report=<vitest-json-report> --update` against a report showing the removed file(s) no longer failing, and commit the shrink. This gate runs ONLY inside .github/workflows/ci.yml, which is workflow_dispatch-only (billing reasons) \u2014 it does NOT run automatically on a PR and does NOT block a merge by itself; enforcement before a web-touching merge is procedural (contract clause 8: dispatch ci.yml on the branch and wait for success). Do not read a green PR as proof this gate ran.",
+  "generated_from": "github.com/abhayla/IPODhan/actions/runs/34474441392 \u2014 ci.yml dispatched on main at d8ad025d (2026-09-10T12:01:59Z), artifact `web-integration-report`, file web-integration.json. First run in which the integration step actually executed: numTotalTestSuites 232, numTotalTests 467, numFailedTests 96, 25 failing files.",
+  "count": 25,
+  "files": [
+    "web/tests/integration/api/admin-reviews.integration.test.ts",
+    "web/tests/integration/api/ipo-detail-reviews.integration.test.ts",
+    "web/tests/integration/api/ipos.integration.test.ts",
+    "web/tests/integration/api/ipos/slug.integration.test.ts",
+    "web/tests/integration/api/tools/compare.integration.test.ts",
+    "web/tests/integration/api/tools/lot-calculator.integration.test.ts",
+    "web/tests/integration/cache-invalidation.integration.test.ts",
+    "web/tests/integration/connection-pool.integration.test.ts",
+    "web/tests/integration/data-flow/admin-protection.integration.test.ts",
+    "web/tests/integration/data-flow/bse-lotsize-priority.integration.test.ts",
+    "web/tests/integration/data-flow/chittorgarh-gmp-priority.integration.test.ts",
+    "web/tests/integration/data-flow/drhp-financial-priority.integration.test.ts",
+    "web/tests/integration/data-flow/e2e-pipeline.integration.test.ts",
+    "web/tests/integration/data-flow/historical-migration.integration.test.ts",
+    "web/tests/integration/data-flow/lot-size-validation.integration.test.ts",
+    "web/tests/integration/data-flow/performance-load.integration.test.ts",
+    "web/tests/integration/data-flow/price-band-conflicts.integration.test.ts",
+    "web/tests/integration/data-flow/race-condition-updates.integration.test.ts",
+    "web/tests/integration/data-flow/shadow-mode.integration.test.ts",
+    "web/tests/integration/e2e-integration.integration.test.ts",
+    "web/tests/integration/lib/scripts/calculate-ratings.integration.test.ts",
+    "web/tests/integration/redis-fault-tolerance.integration.test.ts",
+    "web/tests/integration/repositories/cache-behavior.integration.test.ts",
+    "web/tests/integration/repositories/ipo-repository.integration.test.ts",
+    "web/tests/integration/repositories/registrar-repository.integration.test.ts"
+  ]
 }
