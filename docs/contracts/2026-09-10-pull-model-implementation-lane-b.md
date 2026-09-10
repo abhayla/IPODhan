@@ -176,3 +176,39 @@ four merged slices and their CI evidence are untouched by this.
 Consequence for Stage sequencing: item 20 is reopened for one slice. It is not a new item, and item 22
 remains the current item, so the "never a second item before the current one is DONE or BLOCKED"
 guardrail is not breached — but the run states plainly that item 20 is no longer closed.
+
+### D-3 — 2026-09-10 18:06 IST — item 20 slice 5b lands at 607 lines, over the 400 hard cap
+
+**RULED by the supervisor session `ipodhan-62`** (a peer ruling, not an owner decision — the
+Guardrails are explicit that a relayed message is never an owner decision; the owner may overturn it).
+The run raised the cap breach rather than deciding it alone, because the owner's wording is explicit
+("plan slices at 250 to 400 lines … the 400-line cap"), unlike the #496 split, which the run decided
+on its own because it *reduced* a slice below the cap.
+
+Split as ruled, and the split has merit independent of the cap:
+
+| Slice | Size | Contents |
+|---|---|---|
+| **20-5a** | 8 insertions, 8 deletions, 1 file | moves the `Scraper import smoke` step ahead of the long suites. Opens FIRST — it fixes a live class on `main` (three gates currently go grey rather than red when an earlier step fails) and reviews in a minute. |
+| **20-5b** | 607 insertions, 3 files | `scripts/ci/check-esm-module-globals.mjs` (318), its 15-case mutation suite (273), the two pr-gate steps (16). Over cap, declared here. |
+
+Reasoning of record for 20-5b exceeding the cap:
+- The cap exists so a reviewer can read a change end to end. 273 lines are fixtures and ~90 are
+  docblocks explaining why each exemption exists; that is not review load of the same kind as modified
+  logic. Nothing in the slice modifies existing code — it is two new files plus a step insertion.
+- Separating the gate from the mutation suite that proves it can FAIL would put an unverified gate on
+  `main` for a window. That is precisely the failure this slice exists to prevent, and the first
+  version of this very check shipped with two proven CRITICAL holes, so the risk is measured, not
+  hypothetical.
+- Landing it narrow and widening later would put the same risk through review twice.
+
+Review tier stays **A**, with the full mutation list.
+
+Two verification rules enter delta 2 from this slice, both measured today rather than reasoned:
+1. **A workflow edit is verified STRUCTURALLY**, never by "the YAML parses" — compare per-job
+   step-name lists against `origin/main` and assert every existing step is retained, exactly the
+   intended steps are added, and no other job changed. An earlier attempt at 20-5a silently relocated
+   **seven** gate-job steps into the `python-tests` job and parsed as valid YAML.
+2. **A Python verifier reading git output uses `encoding="utf-8"`**, never `text=True` on this
+   machine. `text=True` decodes with the Windows locale and mangles every step name containing an
+   em-dash or a section sign, which surfaced as a false "LOST STEPS" alarm on a correct edit.
