@@ -61,7 +61,13 @@
     "#453 production repair is a null-only fill from offer terms; per the owner rule of 2026-09-10 that is run by the supervisor session with dry-run evidence rather than held. Not this run. The CLASS fix is recorded against items 9, 10 and 4 where the cards place it, and is not started out of order.",
     "Peer proposed folding a provenance floor for ipos.issue_size into item 1 acceptance. Declined as a scope expansion on a running item; taking the alternative the peer offered - the card records why not, so the gap is visible rather than either silently absorbed or silently dropped.",
     "PREMISE VERIFIED: item 1 card's claim that ENABLE_SOURCE_TRACKING / ENABLE_DATA_CONSOLIDATION / ENABLE_CONFLICT_DETECTION are on in prod is TRUE - code defaults false but both slot env files set them true and are correctly symlinked. No stop-the-line; item 1 proceeds.",
-    "SELF-CORRECTION x2 on #454: reported 39 rows and 'ongoing, created today'; actual is 10 rows, all 2025-12 to 2026-03, none recent. My probe treated non-null as published, so 28 seed rows with issue_size=0 inflated both the count and the recency. The tell (Sarda Proteins, known corporate-action pollution) was in my own output and I did not read it."
+    "SELF-CORRECTION x2 on #454: reported 39 rows and 'ongoing, created today'; actual is 10 rows, all 2025-12 to 2026-03, none recent. My probe treated non-null as published, so 28 seed rows with issue_size=0 inflated both the count and the recency. The tell (Sarda Proteins, known corporate-action pollution) was in my own output and I did not read it.",
+    "s2 MERGED bd94e536 via PR #455 after the repair-held gate returned HELD across 2 real staging cycles. Five slices merged; item 1 at 5 of 13.",
+    "INC-01 RECURRENCE 2026-09-10: the s3 fix-round worker wrote the real ipodhan_app password in plaintext to scraper/.env.test to run the integration suite. Gitignored, never committed, file deleted by the supervisor. Second occurrence of the class -> mechanism owed: the repo's own vitest.integration.config.ts comment says .env.test is for THROWAWAY/local targets, and dotenv.config() does not override process env, so briefs must export the password from GLOBAL.env in the same command instead of writing any file. Add that line to every brief that runs an integration suite.",
+    "s3 FIX ROUND VERIFIED 137828e5 + doc repair: schema.ts reverted to the 3-column unique_field_source_per_ipo, migration regenerated as 20260910043758_salty_shen (row_key columns + two indexes, zero ADD/DROP CONSTRAINT), snapshot records the 3-column constraint, journal adds exactly idx 36, stage-0 fixture corrected.",
+    "SUPERVISOR MEASUREMENT DEFECT 2026-09-10: I measured the s3 diff against the stale LOCAL main ref, not origin/main, and reported wrong numbers for both the journal timestamps and the docs churn. Always fetch and compare against origin/<branch> in a worktree; a linked worktree's local main can lag by days.",
+    "prod-ops-recipes.md: origin/main carries THREE shell commands split across two lines by earlier line-ending churn (the literal \r inside tr -d arguments became a real newline). s3 repairs them and restores the file to CRLF. Root cause of the churn: git add under core.autocrlf=true rewrites this CRLF-blob file to LF; any slice editing it must stage with -c core.autocrlf=false, or the repo needs a .gitattributes entry.",
+    "MEASUREMENT DEFECT 3: `date -d 'today 00:00' -u` returns 00:00Z, not IST midnight (18:30Z the previous day), undercounting the CI window by 5.5 hours. Third distinct way this count has been wrong in two days - it should be a checked-in script, not a retyped one-liner."
   ],
   "items": {
     "item-01": {
@@ -104,9 +110,9 @@
         {
           "k": "s2",
           "title": "real-normaliser duplicate scan + repair, then the three child-table unique constraints",
-          "status": "PR-OPEN",
+          "status": "MERGED",
           "pr": 455,
-          "sha": null,
+          "sha": "bd94e536",
           "tier": "A"
         },
         {
@@ -178,13 +184,15 @@
         444,
         445,
         448,
-        450
+        450,
+        455
       ],
       "mergeShas": [
         "6797fdab",
         "ae7832db",
         "cf232595",
-        "6c225917"
+        "6c225917",
+        "bd94e536"
       ],
       "proof": {
         "status": "OWED",
@@ -507,7 +515,7 @@
       "rows": 528,
       "tool": "scraper/scripts/backfill-normalized-name.ts@6c225917",
       "result": "24+321+183 rows populated, 0 null-key, idempotent re-run clean, 0 rows still empty",
-      "proofOwed": "assert-repair-held.mjs --cycles 2 (two real staging cycles) before s2 constraint can merge"
+      "proofOwed": "CLEARED 2026-09-10: assert-repair-held HELD, violation count 0 across 2 distinct scraper cycles, invariant row-key-populated"
     }
   ],
   "productionRepairsAwaitingOwner": [
