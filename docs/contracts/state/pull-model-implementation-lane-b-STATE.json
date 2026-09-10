@@ -290,7 +290,8 @@
     "a fix slice that belongs to no contracted item is attached as board slice s0 of the item whose family it is in, with the issue number in its title",
     "under MSYS_NO_PATHCONV=1, pass Windows-form paths (D:/...) to git, node and gh - never MSYS form (/d/...); the variable is still needed for refspecs like origin/main:path",
     "mutation restore is by file copy and verified with diff; git checkout -- is never used in a worktree holding uncommitted work",
-    "the PROGRESS log is written in the same turn as every ledger commit - never deferred"
+    "the PROGRESS log is written in the same turn as every ledger commit - never deferred",
+    "when a guard is loosened to fix a false positive, re-measure the BLOCKING direction too - a false-negative created by a false-positive fix is how a guard quietly dies"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -487,7 +488,8 @@
   ],
   "carriedInputs": [
     "Items 22 and 18: the four architect decisions land as an 'Architect correction 2026-09-10' block AMENDING the build cards themselves (Tier C docs PR), with the plans under docs/contracts/plans/. Binding via 'the card is the slice source' rather than via a relay. Plan nothing for 22 or 18 until that PR merges; the peer sends the number.",
-    "lane A measured 26 of 44 web integration tests failing WITHOUT the tunnel (14:59 tick) - the tunnel-exhaustion hypothesis is partly falsified and the failures are substantially real"
+    "lane A measured 26 of 44 web integration tests failing WITHOUT the tunnel (14:59 tick) - the tunnel-exhaustion hypothesis is partly falsified and the failures are substantially real",
+    "find-guard edge: a heredoc whose body contains another heredoc start marker with no terminator can false-block; use distinct delimiters"
   ],
   "cardDefectsUnderReview": [
     {
