@@ -91,7 +91,13 @@ describe.skipIf(!DATABASE_URL)(`normalized_name lands on a real insert (${SKIP_R
         isListed: true,
       } as never)
       .returning();
-    expect((row as { normalizedName: string }).normalizedName).toBe('abc india');
+    // Item 12 slice B: the key SHORTENED from 'abc india' because a TRAILING
+    // country token is now dropped - 'ABC (India) Ltd' -> 'abc'. The PROPERTY
+    // this test exists to prove is unchanged and still asserted: the column
+    // lands POPULATED on a real insert, which an in-memory mock cannot show.
+    // Only the literal moved. A leading or medial country word is still kept -
+    // pinned by the negative cases in company-name-normalizer.test.ts.
+    expect((row as { normalizedName: string }).normalizedName).toBe('abc');
   });
 
   it('ipo_intermediaries: inserted row carries a populated normalized_name', async () => {

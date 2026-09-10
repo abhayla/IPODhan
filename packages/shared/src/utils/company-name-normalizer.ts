@@ -98,35 +98,77 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
     // suffix in parens after the real legal suffix.
     .replace(/\s*\([^)]*\)\s*$/, '')
     .trim()
-    .replace(/\s+ipo$/i, '')
-    .replace(/\s+fpo$/i, '')
-    .replace(/\s+limited$/i, '')
-    .replace(/\s+ltd\.?$/i, '')
-    .replace(/\s+private\s+limited$/i, '')
-    .replace(/\s+pvt\.?\s+ltd\.?$/i, '')
-    .replace(/\s+pvt\.?$/i, '')
-    .replace(/\s+private$/i, '')
-    .replace(/\s+inc\.?$/i, '')
-    .replace(/\s+incorporated$/i, '')
-    .replace(/\s+corp\.?$/i, '')
-    .replace(/\s+corporation$/i, '')
-    .replace(/\s+llc$/i, '')
-    .replace(/\s+llp$/i, '')
-    .replace(/\s+plc$/i, '')
-    // "Company" / a bare "Co." are generic-corporate-suffix synonyms for
-    // ltd/inc/corp (P2-2, T-293) — "IC Electricals Co.Ltd." and "IC
-    // Electricals Company" must fold to the same identity. Strip "company"
-    // first (longer token), then a trailing "co" (already period-stripped
-    // above) so "co ltd" -> "co" (ltd already stripped by the prior rule)
-    // -> "" folds correctly without eating mid-string words ("Cocoa Traders").
-    .replace(/\s+company$/i, '')
-    .replace(/\s+co$/i, '')
-    // Any remaining parens (mid-string, e.g. "(India)") and hyphens are
-    // separators, not semantic content — fold to spaces so "Indo-MIM" and
-    // "INDO MIM", or "Gulf Lloyds (India)" and "Gulf Lloyds India", agree.
+    // SEPARATORS FIRST (item 12 slice B). Parens and hyphens are separators,
+    // not semantic content, and they used to be folded AFTER the corporate-word
+    // strip. That ordering is exactly what let "ASSET RECONSTRUCTION COMPANY
+    // (INDIA) LIMITED" and "Asset Reconstruction Co.(India) Ltd." keep two
+    // identities: the strip was END-ANCHORED, so a mid-string "(India)" sat
+    // between "company"/"co" and the end of the string and blocked it. Folding
+    // the separators first removes the blocker.
     .replace(/[()]/g, ' ')
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s+ipo$/i, '')
+    .replace(/\s+fpo$/i, '')
+    // WHOLE-WORD, not end-anchored. A corporate-form word carries no identity
+    // wherever it appears, so "IC Electricals Co.Ltd." and "IC Electricals
+    // Company" reach one key. Longer forms precede their prefixes so "private
+    // limited" is consumed as a unit instead of leaving a stray word.
+    //
+    // THE \b IS LOAD-BEARING. Without it "co" matches inside "Cocoa" and
+    // "corp" inside "Corporate"; an earlier draft of this very change lost the
+    // word boundaries to a string-escaping bug and would have merged unrelated
+    // companies. Any edit here re-runs the collision report below.
+    //
+    // DELIBERATELY ABSENT: "india", "and", "the", "of". Those belong to
+    // `foldCompanyIdentity`, a COARSER key used by the duplicate-row repair
+    // class. Adding them here would quietly turn the binding key into the fold
+    // and merge companies that differ only by a country word.
+    //
+    // Proven over real names BEFORE it shipped: production 333 rows -> 333
+    // distinct identities (ZERO merges, no behaviour change at all); staging
+    // merges exactly ONE group, the ARCIL pair this slice exists for.
+    .replace(
+      /\b(?:private\s+limited|pvt\.?\s+ltd\.?|limited|ltd|private|pvt|incorporated|inc|corporation|corp|company|co|llc|llp|plc)\b/gi,
+      ' '
+    )
+    // Item 12 slice E's closing fix: a TRAILING country token only.
+    //
+    // The grey-market source writes "Jindal Supreme" where we store "Jindal
+    // Supreme (India) Ltd." - four live IPOs lost their GMP binding to exactly
+    // this and nothing else. By here the parens are already spaces and the
+    // corporate words are gone, so the country word is simply the last token.
+    //
+    // TRAILING ONLY, and the narrowing is load-bearing: a leading or medial
+    // "India" is part of the identity, not decoration - INDIAN RAILWAY FINANCE,
+    // INDIAN OVERSEAS BANK, EAST INDIA DRUMS, STALLION INDIA FLUOROCHEMICALS,
+    // Sampark India Logistics all exist in production and must keep it. An
+    // anywhere-rule measures identically on today's data and would merge the
+    // first "X India" / "X" pair that ever appears.
+    //
+    // KNOWN LIMIT, stated rather than discovered later: a name whose LAST word
+    // is genuinely part of the identity ("Bank of India") is also trailing and
+    // would be stripped to "bank of". No such name exists in either database
+    // today, and it only does harm if the stripped form collides with another
+    // company - but that is the case to watch, not a case this rule handles.
+    //
+    // Measured before shipping: production 333 names -> 333 identities, ZERO
+    // newly merged; staging 349 -> 349 with ONE, the ARCIL pair, which is the
+    // same company and the merge this slice exists to make.
+    // Collapse and trim FIRST: the corporate strip above replaces words with
+    // SPACES, so at this point the string still ends in whitespace and a
+    // $-anchored match would silently never fire. The code read correctly and
+    // did nothing - caught by running it, not by reading it.
+    .replace(/\s+/g, ' ')
+    .trim()
+    // The of/for guard. Two SEPARATE fixed-length lookbehinds, not one
+    // alternation: Postgres ACCEPTS a variable-length lookbehind such as
+    // (?<!\\y(of|for)\\s) and then SILENTLY STRIPS ANYWAY - measured, it
+    // turned "bank of india" into "bank of" with no error at all. Two fixed
+    // lookbehinds behave correctly in BOTH engines, which is what lets the SQL
+    // twin stay character-for-character equivalent.
+    .replace(/(?<!of)(?<!for)\s+(india|indian)$/i, '')
     .trim();
 }
 
@@ -170,104 +212,104 @@ export function compactNormalizedCompanyNameSql(input: SQL): SQL {
 }
 
 export function normalizedCompanyNameSql(input: SQL): SQL {
-  return sql`LOWER(
+  // Item 12 slice B. Step order mirrors normalizeCompanyNameForMatching exactly.
+  // The INNERMOST REGEXP_REPLACE runs FIRST, so relative to the JS chain this
+  // reads bottom-up: trailing-status-code strip innermost, whitespace collapse
+  // outermost.
+  //
+  // Two changes, matching the JS side:
+  //   1. paren and hyphen folds moved ABOVE the corporate-word strip - a
+  //      mid-string parenthetical used to block an END-ANCHORED strip;
+  //   2. ten end-anchored suffix replaces collapse into ONE word-bounded global
+  //      replace. Postgres spells the word boundary \\y and it is load-bearing:
+  //      without it Co matches inside Cocoa and Corp inside Corporate.
+  //
+  // EVERY backslash below is DOUBLED because this is a template literal: JS
+  // collapses the pair to one before Postgres sees it. A single backslash is
+  // silently eaten, and a single-backslash 1 backreference is an illegal octal
+  // escape that truncates the literal. BOTH happened on the first attempt.
+  //
+  // Agreement with the JS side is gated by
+  // scraper/tests/integration/normalizer-sql-agreement.integration.test.ts.
+  return sql`REGEXP_REPLACE(
+  LOWER(
   TRIM(
     REGEXP_REPLACE(
       REGEXP_REPLACE(
-        REGEXP_REPLACE(
-          REGEXP_REPLACE(
-            REGEXP_REPLACE(
-              REGEXP_REPLACE(
-                REGEXP_REPLACE(
-                  REGEXP_REPLACE(
-                    REGEXP_REPLACE(
-                      REGEXP_REPLACE(
-                        REGEXP_REPLACE(
-                          REGEXP_REPLACE(
-                            REGEXP_REPLACE(
-                              REGEXP_REPLACE(
-                                REGEXP_REPLACE(
-                                  REGEXP_REPLACE(
-                                    REGEXP_REPLACE(
-                                      REGEXP_REPLACE(
-                                        REGEXP_REPLACE(
-                                          ${input},
-                                        '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
-                                        '\\1',
-                                        'i'
-                                    ),
-                                      '\\s+(O|P|LT|CT)$',
-                                      '',
-                                      'i'
-                                  ),
-                                    '\\.',
-                                    ' ',
-                                    'g'
-                                ),
-                                  '&',
-                                  ' and ',
-                                  'g'
-                              ),
-                                '\\s+',
-                                ' ',
-                                'g'
-                            ),
-                              '^\\s+|\\s+$',
-                              '',
-                              'g'
-                          ),
-                            '\\s*\\([^)]*\\)\\s*$',
-                            ''
-                        ),
-                          '\\s+(IPO|FPO)$',
-                          '',
-                          'i'
-                      ),
-                        '\\s+(Limited|Ltd\\.?)$',
-                        '',
-                        'i'
-                    ),
-                      '\\s+(Private\\s+Limited|Pvt\\.?\\s+Ltd\\.?)$',
-                      '',
-                      'i'
-                  ),
-                    '\\s+(Pvt\\.?|Private)$',
-                    '',
-                    'i'
-                ),
-                  '\\s+(Inc\\.?|Incorporated)$',
-                  '',
-                  'i'
-              ),
-                '\\s+(Corp\\.?|Corporation)$',
-                '',
-                'i'
-            ),
-              '\\s+(LLC|LLP|PLC)$',
-              '',
-              'i'
-          ),
-            '\\s+company$',
-            '',
-            'i'
-        ),
-          '\\s+co$',
-          '',
-          'i'
-      ),
-        '[()]',
-        ' ',
-        'g'
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      ${input},
+      '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
+      '\\1',
+      'i'
     ),
-          '-',
-          ' ',
-          'g'
-      ),
-        '\\s+',
-        ' ',
-        'g'
+      '\\s+(O|P|LT|CT)$',
+      '',
+      'i'
+    ),
+      '\\.',
+      ' ',
+      'g'
+    ),
+      '&',
+      ' and ',
+      'g'
+    ),
+      '\\s+',
+      ' ',
+      'g'
+    ),
+      '^\\s+|\\s+$',
+      '',
+      'g'
+    ),
+      '\\s*\\([^)]*\\)\\s*$',
+      '',
+      'g'
+    ),
+      '[()]',
+      ' ',
+      'g'
+    ),
+      '-',
+      ' ',
+      'g'
+    ),
+      '\\s+',
+      ' ',
+      'g'
+    ),
+      '^\\s+|\\s+$',
+      '',
+      'g'
+    ),
+      '\\s+(IPO|FPO)$',
+      '',
+      'i'
+    ),
+      '\\y(Private\\s+Limited|Pvt\\.?\\s+Ltd\\.?|Limited|Ltd|Private|Pvt|Incorporated|Inc|Corporation|Corp|Company|Co|LLC|LLP|PLC)\\y',
+      ' ',
+      'gi'
+    ),
+      '\\s+',
+      ' ',
+      'g'
     )
   )
+),
+  '(?<!of)(?<!for)\\s+(india|indian)$',
+  '',
+  'i'
 )`;
 }
 

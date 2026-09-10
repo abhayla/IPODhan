@@ -20,7 +20,7 @@ import {
 describe('normalizeCompanyNameForMatching — P2-1 duplicate-prevention pairs', () => {
   const convergingPairs: Array<[string, string, string]> = [
     ['Caliber Mining & Logistics Ltd.', 'Caliber Mining and Logistics', 'caliber mining and logistics'],
-    ['Gulf Lloyds India', 'Gulf Lloyds (India) Ltd.', 'gulf lloyds india'],
+    ['Gulf Lloyds India', 'Gulf Lloyds (India) Ltd.', 'gulf lloyds'],
     ['G V Electricals', 'G.V.Electricals Ltd. (G.V. Electricals IPO)', 'g v electricals'],
     ['H R Hygiene Products', 'H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)', 'h r hygiene products'],
     ['INDO MIM Limited', 'Indo-MIM Ltd.', 'indo mim'],
@@ -203,5 +203,49 @@ describe('rowKeyForName — the ONE row-key function shared by the backfill and 
     const realKey = rowKeyForName('ABC (India) Ltd') as string;
     expect(realKey.startsWith(JUNK_NAME_KEY_PREFIX)).toBe(false);
     expect(/^[a-z0-9 ]*$/.test(realKey)).toBe(true);
+  });
+});
+
+describe('trailing country token (item 12 slice E closing fix)', () => {
+  // WHY: four live IPOs lost their GMP binding to exactly this and nothing
+  // else - the grey-market source writes the short form, we store the long one.
+  // Measured before shipping: production 333 names -> 333 identities with ZERO
+  // newly merged; staging 350 -> 349 with ONE, the ARCIL pair (same company).
+  const positives: Array<[string, string]> = [
+    ['Jindal Supreme', 'Jindal Supreme (India) Ltd.'],
+    ['Steamhouse', 'Steamhouse India Ltd.'],
+    ['Glass Wall Systems', 'Glass Wall Systems (India) Limited'],
+    ['Asset Reconstruction', 'ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED'],
+  ];
+  it.each(positives)('the source form "%s" reaches the same key as "%s"', (short, stored) => {
+    expect(normalizeCompanyNameForMatching(short)).toBe(normalizeCompanyNameForMatching(stored));
+  });
+
+  // REAL negatives, all present in production: a LEADING or MEDIAL country word
+  // is part of the identity, not decoration. An anywhere-rule measures the same
+  // on today's data and would merge the first 'X India' / 'X' pair that appears.
+  const realNegatives = [
+    'INDIAN RAILWAY FINANCE CORPORATION LTD',
+    'INDIAN OVERSEAS BANK',
+    'EAST INDIA DRUMS AND BARRELS MANUFACTURING LTD',
+    'STALLION INDIA FLUOROCHEMICALS LTD',
+    'Sampark India Logistics Ltd.',
+  ];
+  it.each(realNegatives)('%s keeps its country word', (name) => {
+    expect(normalizeCompanyNameForMatching(name)).toMatch(/\bindia|\bindian/);
+  });
+
+  // SYNTHETIC negatives: the shape the trailing rule alone does NOT handle - a
+  // last word that is genuinely part of the identity. Guarded by two SEPARATE
+  // fixed-length lookbehinds, because Postgres ACCEPTS a variable-length one
+  // and then silently strips anyway (measured: it turned 'bank of india' into
+  // 'bank of' with no error). Neither name exists in either database today.
+  it.each([['Bank of India'], ['Fund for India']])('%s is protected by the of/for guard', (name) => {
+    expect(normalizeCompanyNameForMatching(name as string)).toMatch(/india$/);
+  });
+
+  it('the ARCIL pair is the ONE intended merge', () => {
+    expect(normalizeCompanyNameForMatching('ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED'))
+      .toBe(normalizeCompanyNameForMatching('Asset Reconstruction Co.(India) Ltd.'));
   });
 });
