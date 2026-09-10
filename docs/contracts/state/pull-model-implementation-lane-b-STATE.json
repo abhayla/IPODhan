@@ -216,12 +216,20 @@
     {
       "at": "2026-09-10T23:09:33.295Z",
       "what": "FIFTH hollow check of the night, mine, caught in seconds: my first fixture verification reported Kanohar missing GE Vernova and Listed peers. The data was right; I had stored token ARRAYS and searched for the joined phrase as a substring, so it could never match. Same shape as the mutation harness that silently no-opped earlier. Caught by listing the rows rather than trusting the count."
+    },
+    {
+      "at": "2026-09-10T23:21:06.057Z",
+      "what": "#593 MERGED (a70fa84a) Python locator replacing the TS orphan; #594 MERGED (a2f07fb0) cell fixtures; #596 OPENED the column mapper. Both issuers map ten columns each at DIFFERENT indices - face value 1 vs 2, market cap only in one, total income only in the other, P/E single vs split. Four rules the fixtures forced: derive the header row count (a fixed count pulled the issuer DATA row into the header), a merged parent holds no values, a bare P/E is a parent on one issuer and a data column on the other (lookahead required), and RoNW rebuilds as RON W."
+    },
+    {
+      "at": "2026-09-10T23:21:06.057Z",
+      "what": "THIRD occurrence tonight of my own recorded heredoc-backslash trap, and it cost half an hour: a regex written as \\bEPS\\b reached the file with escapes already interpreted, so the source held literal BACKSPACE bytes and could never match. Editors, diffs and the Read tool all render them invisibly, so the code READ correctly and the mapper looked not-smart-enough while the file was corrupt. Chased logic, bytecode caching and module identity before printing the compiled constant. A control-character test now guards this slice; injecting one real backspace turns it red. Also reported a SURVIVING mutation rather than hiding it: the empty-header skip is redundant and now says so in a comment instead of posing as a guard - second time tonight I wrote a line that looked load-bearing and was not."
     }
   ],
   "items": {
     "8": {
       "status": "PREMISE_SETTLED_FIXTURES_MERGED",
-      "slices": "8-pre MERGED (#580). 8a-1 MERGED (#587) then RETIRED and ported by #593 (open). Input constraints merged (#590); rotation recipe open (#592). 8a-2 parser next.",
+      "slices": "8-pre MERGED (#580), locator MERGED in Python (#593) after the TS version (#587) was retired, cell fixtures MERGED (#594), constraints and rotation recipe MERGED (#590, #592). Column mapper OPEN (#596). Row extraction next.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -661,10 +669,10 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T23:09:33.295Z",
+  "lastStateWriteAt": "2026-09-10T23:21:06.057Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
-    "8": 2,
+    "8": 5,
     "16": 1,
     "18": 4,
     "20": 8,
