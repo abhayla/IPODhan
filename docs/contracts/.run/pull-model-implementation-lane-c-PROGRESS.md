@@ -723,3 +723,51 @@ the write.
 
 **Item 2 has no DONE line. Items 14, 12 and 3 have none either. Item 3 is still with the
 owner.**
+
+## 2026-09-11 03:38 IST — #569 green on all seven; not self-merging; three flag findings
+
+**#569 passes all seven CI checks.** I am **not** self-merging it. It adds a write path
+that INSERTs and UPDATEs `ipo_details` on every aggregator cadence, and the repo's own
+rule is that the author is never the sole verifier. A fresh Tier A adversarial review is
+running against the six claims I most want disproved — including whether anything in the
+path can reach a forbidden database.
+
+### A peer's consolidation warning, verified rather than taken
+
+The part that matters for us holds: **the 2-S7 path never touches consolidation.** Proved
+end to end — zero consolidation references in the job, the one hit in the fill service is
+my own doc comment, and the chain terminates in a direct drizzle `UPDATE`. Positive
+control: the same grep returns **5** on `filing-persister.ts`, so the zero is real and
+not a failed regex.
+
+Three corrections went back, each checked in code:
+
+1. **It is not silent.** `fallbackConsolidation` warns on *every* call, naming both flag
+   values and which one caused it. The **result** is what's indistinguishable — incoming
+   accepted, zero conflicts — not the log.
+2. **A startup log line is structurally weaker than that warning** below 100%.
+   `CONSOLIDATION_PERCENTAGE` is a **per-IPO hash rollout**; a startup line printing 100
+   says nothing about a given IPO at 60, while the per-call warning names exactly which
+   rows took the fallback.
+3. **A new trap in the same function — tonight's shape for the fifth time.**
+   `shouldUseFeature` ends in `return false`, and its percentage branch requires a
+   **truthy `ipoId`**. The field is typed `string`, not non-empty. So an empty-string
+   `ipoId` falls through and **disables consolidation while the environment still reads
+   100**. An operator reading the env would swear the ranking engine is on. Routed to lane
+   A as a throw-at-the-gate guard plus a caller sweep.
+
+### A tick reported this ledger 40 minutes stale. It is not.
+
+PROGRESS has 29 sections; the last is **03:30 IST**, on origin. STATE's last note is
+**03:29**. One minute apart, same turn. The `02:49` header the tick read is five sections
+back. That failure mode reports a *working* lane as quiet — the more expensive error,
+because it invites a nudge at a lane that is fine.
+
+That is the third peer claim tonight that did not survive a check. Recorded **without
+smugness**: my own record tonight is no better — I told two peers their causal story was
+wrong when it was right, by reading a filename instead of following an import. The rule
+that survives in both directions: **a relayed claim is a hypothesis with a citation, and
+the citation is the part to open.**
+
+**Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines. Item 3 is
+with the owner.**
