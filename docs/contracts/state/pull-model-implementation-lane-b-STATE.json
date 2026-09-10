@@ -308,6 +308,14 @@
       "foundBy": "the OWNER asking why lane B showed no in-progress item",
       "class": "a complete internal record (STATE.json interItemFixes) mistaken for an honest external view; the owner-facing artefact was never asked whether it could express the work",
       "mechanism": "a fix slice belonging to no contracted item is attached as slice s0 of the item whose family it is in, with the issue number in its title, so a working lane can never render as idle"
+    },
+    {
+      "id": "DEFECT-B12",
+      "at": "2026-09-10 14:56 IST",
+      "what": "PR #484 failed the recurrence-detection gate: the body stated the detection reasoning in prose instead of the required `No detection change: <reason>` line",
+      "foundBy": "the gate itself, on the first CI run",
+      "class": "a machine-checked convention followed correctly four times while the content was boilerplate, and dropped the first time the content required original reasoning",
+      "mechanism": "verify a required declaration line against the gate's own regex before opening the PR, not after; the gate does not read prose"
     }
   ],
   "contractCorrectionsDue": [],

@@ -2357,3 +2357,20 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Standing rule adopted: **a fix slice that belongs to no contracted item is attached as slice `s0` of the item whose
   family it is in, with the issue number in its title**, so the board can never show a working lane as idle. Recorded
   alongside the existing rule that every board write reads its timestamp from `date` in the same step.
+
+- **2026-09-10 14:56 IST [lane B] DEFECT-B12: the detection gate failed PR #484, and the gate was right.** The recurrence-detection
+  gate requires a PR touching `scraper/src/services/**` to either change a detection check or carry a line matching
+  exactly `/^No detection change: (.+)$/m`. #484's body said *"Detection: `m_live_ipo_has_state` (existing) - no new
+  check."* - the correct MEANING in the wrong FORM, so the gate could not parse it and failed.
+  **The interesting part is when the form was lost.** This lane wrote the exact declaration line correctly in FOUR
+  earlier pull request bodies today (#460, #462, #465, #470) - every time the content was the same boilerplate:
+  *this slice adds no scraper write path*. Here the content was genuinely different for the first time - a detection
+  already exists and is what CAUGHT the defect - and in reformulating the reasoning the required form was dropped.
+  **The convention survived while it was thoughtless and broke the moment it required thought.** That is the opposite
+  of how conventions are usually assumed to fail, and it is why a machine-checked form beats a remembered one: the
+  gate does not care how good the prose reasoning is.
+  Fixed by adding the exact line to the body (verified against the gate's own regex before pushing: 1 match, 75-word
+  reason). No code change; the declaration is honest either way - `m_live_ipo_has_state` is the only check in the
+  manifest that notices the pipeline wrote NOTHING, which is precisely this class, so a new check would duplicate it.
+  Cost: one gate job re-run, no new full CI run. The failed job could not be re-run immediately because the workflow
+  was still executing its other jobs - noted so the next occurrence does not read as a second failure.
