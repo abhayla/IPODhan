@@ -204,12 +204,16 @@
     {
       "at": "2026-09-10T22:57:43.433Z",
       "what": "SPIKE ANSWERED (#592). ONE fact explains every symptom: the page is ROTATED 90 DEGREES. extract_tables rows are printed COLUMNS (the transposed symptom); word characters are stored reversed (the mirrored symptom). One rotation seen twice, not two defects. page.rotation is 0 and no /Rotate entry - baked into the text matrix, no metadata reveals it. VALIDATED RECIPE: group words by x0, order by top, reverse each word characters, reverse the token sequence. Recovers all six peers plus the issuer row and the divider, and every figure matches the pypdf text layer read independently - that cross-check is what makes it proof rather than plausible output. LIMITATION stated on the card: company names truncated (Bharat Heavy, not Bharat Heavy Electricals Limited) because the fixed x bucket splits the name column; every NUMERIC column is complete. Discriminator is the divider row, not the issuer name."
+    },
+    {
+      "at": "2026-09-10T23:03:23.661Z",
+      "what": "#593 UNDOES #587: I merged the peer-section locator in TypeScript, but the peer extraction lives in Python (extract_filing.py, listed-peer block at :1714, over page_texts) and nothing on the TS side reads prospectus text to locate sections. #587 shipped a correct, tested function nothing would ever call - the correct-but-uncalled-helper class item 20 exists to surface, and I built item 20. Retired and ported to scraper/scripts/peer_table_section.py. Why the gate missed it: i_wire_or_retire covers scraper/src/scheduler/*.ts only; gap RECORDED not widened, since widening is item 20 scope and item 20 is closed. 20 tests, three mutations each asserting it applied, full python suite 199 passed 3 skipped. Failure-class entry re-homed so the registry does not cite a deleted path."
     }
   ],
   "items": {
     "8": {
       "status": "PREMISE_SETTLED_FIXTURES_MERGED",
-      "slices": "8-pre MERGED (#580), 8a-1 MERGED (#587). Input constraints merged (#590); rotation recipe open (#592). 8a-1b fixtures then 8a-2 parser next.",
+      "slices": "8-pre MERGED (#580). 8a-1 MERGED (#587) then RETIRED and ported by #593 (open). Input constraints merged (#590); rotation recipe open (#592). 8a-2 parser next.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -649,7 +653,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T22:57:43.433Z",
+  "lastStateWriteAt": "2026-09-10T23:03:23.661Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 2,
