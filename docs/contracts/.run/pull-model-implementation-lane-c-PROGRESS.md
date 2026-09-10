@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 02:44 IST** — written in the SAME turn as the board, the state file and the ledger commit. All four or none. — written in the SAME command as the ledger commit below it. Local only
+**Last refreshed: 2026-09-11 02:49 IST** — written in the SAME turn as the board, the state file and the ledger commit. All four or none. — written in the SAME command as the ledger commit below it. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -529,3 +529,24 @@ defect instead of merely being wrong. Two mutations prove it.
 **Correction to my own commit message** on `e7a45c88`: it says 538 tests; the real number
 is 528. Recorded rather than amended - a number in a commit message is exactly what nobody
 re-checks, which is how the 3-versus-13 error survived six hours.
+
+## 2026-09-11 02:49 IST - 2-S7 fourth commit; only the wiring left
+
+`6c9ef574` **fillIssueTypesFromReport**, dependencies injected - testable without a
+database, and the CALLER owns the matching rule, which is the part most likely to be got
+wrong. 163 files / 2184 tests green.
+
+Three properties carry the safety argument, each with a mutation:
+
+1. **Provenance only after a real fill** - a row for a no-op would claim this run set a
+   value it did not, making a 60-confidence aggregator look like the source of a
+   filing-derived number.
+2. **Confidence READ from the canonical table**, never typed as 60 - a literal drifts
+   silently when the table changes.
+3. **A resolve failure counts as failed, not unmatched** - conflating "the lookup broke"
+   with "no such IPO" hides a broken matcher behind a plausible count.
+
+That third one is tonight in miniature: a count that quietly includes failures is an
+artifact answering a different question than the one asked - the same shape as the LEFT
+JOIN, the re-export, the stale draft header and the cached version endpoint. I built the
+guard because that shape has caught me five times.
