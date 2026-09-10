@@ -199,6 +199,17 @@
       "foundBy": "lane A supervisor tick",
       "class": "a contract artefact skipped because acceptance was checked from recollection",
       "mechanism": "Stage 0 acceptance enumerates all four artefacts and confirms each by ls"
+    },
+    {
+      "id": "DEFECT-B04",
+      "at": "2026-09-10 11:37 IST",
+      "what": "the contract's lane-B PR counter (gh pr list --search \"[lane B]\") returned lane A's PR #459; GitHub tokenises the bracketed string rather than matching it literally",
+      "foundBy": "lane B's own supervision tick",
+      "class": "a command believed without a sanity check that it measured what it claimed",
+      "mechanism": "count lane B PRs by branch prefix feat/pm-b-item / fix/pm-b-item, which is deterministic; contract text to be corrected at the next docs PR"
     }
+  ],
+  "contractCorrectionsDue": [
+    "decision 9: replace the `--search \"[lane B]\"` PR counter with a branch-prefix count (DEFECT-B04)"
   ]
 }
