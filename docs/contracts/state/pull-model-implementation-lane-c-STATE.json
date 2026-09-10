@@ -101,6 +101,15 @@
         "status": "OWED",
         "cycle": null,
         "line": null
+      },
+      "loaderOwnership": {
+        "decidedAt": "2026-09-10 13:31 IST",
+        "owner": "lane C",
+        "slice": "2-S1",
+        "file": "scraper/src/config/validated-config-loader.ts",
+        "skipIfExists": false,
+        "validator": "zod",
+        "note": "Arbitrated by the supervisor after lane C flagged the race; VERIFIED against the card, not accepted on relay."
       }
     },
     "item-12": {
@@ -152,7 +161,9 @@
     "2026-09-10 13:29 IST STAGE 0 COMPLETE. (b) proved by measurement not exit code: the first db:migrate reported exit 0 while npm output said \"command failed\" and the database had 0 tables. Decision 25 exactly - a zero from a command that may have failed is not a measurement. Verified by counting: 35 tables == 35 pgTable( declarations, 36 journal rows == 36 _journal.json entries.",
     "2026-09-10 13:29 IST MY MIS-DIAGNOSIS, recorded because the reasoning was wrong even though the outcome was fine: I saw zero output for four minutes and a server session in \"idle in transaction / Client:ClientRead\", and concluded drizzle-kit was blocked waiting on stdin. It was not. The log turned out to be 78KB of spinner frames buffered by the wrapper, and ClientRead is simply the gap between statements - the client was slow over the tunnel, not stuck. I killed the first run for no reason. Lesson: \"server is waiting on client\" means the client is BUSY OR STUCK; it does not distinguish them. The discriminator is whether the client process is burning CPU, which I never checked.",
     "2026-09-10 13:29 IST DESIGN DECISION on 14-S1, mine under decision 16 rather than a worker's. The slice plan says the test must read the SME threshold \"from the JSON at test time, not a copied literal\". But c_issue_size_floor.json states failThreshold as PROSE, while the nightly audit actually runs the JS constant ISSUE_SIZE_FLOOR_RUPEES in scripts/lib/detection-floor-checks.mjs. A test parsing only the prose would pass while the executable constant drifted - a paper guard. Corrected design: the test imports the REAL predicate checkIssueSizeSegmentFloor and the REAL constant and feeds them the REAL computeBSEIssueSize output, closing extractor->detector; PLUS it asserts the JSON prose and the JS constant agree, so registry drift is caught too. Import direction is established precedent: scraper/tests/unit/scripts/backfill-allotment-date-chittorgarh.test.ts already imports scripts/lib/repair-tool.js.",
-    "2026-09-10 13:29 IST 14-S1 has NO pre-existing red, because the alignment currently holds. Rather than manufacture a fake failing test, the red line is mutation-based and stated as such in the PR body: mutate the SME constant, mutate the JSON prose, and switch the extractor to the cap price - each must turn a named test red, then revert to green."
+    "2026-09-10 13:29 IST 14-S1 has NO pre-existing red, because the alignment currently holds. Rather than manufacture a fake failing test, the red line is mutation-based and stated as such in the PR body: mutate the SME constant, mutate the JSON prose, and switch the extractor to the cap price - each must turn a named test red, then revert to green.",
+    "2026-09-10 13:31 IST LOADER RACE RESOLVED, and I verified the ruling instead of taking it. Lane C flagged that scraper/config/ and loadValidatedConfig exist nowhere on origin/main @ 78fb228b while lane B item 22 and lane C item 2 were both about to create them. Supervisor arbitrated: lane C owns scraper/src/config/validated-config-loader.ts via 2-S1, which is therefore NOT skip-if-exists; lane B 22-2 imports it. Lane C never instructed lane B (decision 22 forbids it) - it asked for arbitration.",
+    "2026-09-10 13:31 IST PLAN SUPERSEDED and confirmed at source: the relay said zod, not ajv. Checked the card rather than trusting - item-02 line 3 carries an \"Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ)\" reading \"Format is JSON, not YAML; validation uses zod (already a workspace dependency), not ajv; neither yaml nor ajv is added.\" The card BODY still says YAML+ajv at lines 39, 102, 117 and 220 - that is the superseded text. zod ^4.1.11 confirmed present in root and scraper package.json, so 2-S1 adds NO dependency. My pre-made plan's \"ajv draft-07 strict, ~160 lines\" is dead; 2-S1 is a zod loader over JSON."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
