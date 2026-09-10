@@ -409,7 +409,14 @@ describe('checkLotEconomicsRetailRange (W-171: Kanohar-shape lot/cap misread)', 
 
 describe('SUBSTANCE_CHECKS registry', () => {
   it('exposes one entry per predicate with key/name/predicate', () => {
-    expect(SUBSTANCE_CHECKS).toHaveLength(12);
+    // 12 -> 13 on 2026-09-11, deliberately: `company_website_characters` (#582).
+    // The count is pinned so a check cannot be added OR removed silently, which
+    // is exactly what it did here — this test failed the PR that added one, and
+    // that is the behaviour working.
+    expect(SUBSTANCE_CHECKS).toHaveLength(13);
+    // The count alone would be satisfied by adding one check while deleting
+    // another, so the new key is named too.
+    expect(SUBSTANCE_CHECKS.map((c) => c.key)).toContain('company_website_characters');
     for (const c of SUBSTANCE_CHECKS) {
       expect(typeof c.key).toBe('string');
       expect(typeof c.name).toBe('string');
