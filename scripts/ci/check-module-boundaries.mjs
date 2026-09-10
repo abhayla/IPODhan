@@ -200,6 +200,19 @@ function resolveToFile(candidateRelPath, fileSet) {
     const idx = `${normalized}/index${ext}`;
     if (fileSet.has(idx)) return idx;
   }
+  // ESM source (scraper/src) writes relative specifiers with the compiled
+  // `.js` extension while the file on disk is `.ts`/`.tsx` (Node's
+  // "NodeNext"-style resolution) — e.g. `from '../services/data-persister.js'`
+  // resolving to `data-persister.ts`. Strip a written source extension and
+  // retry every other resolvable extension against the same stem.
+  const writtenExt = RESOLVE_EXTENSIONS.find((ext) => normalized.endsWith(ext));
+  if (writtenExt) {
+    const stem = normalized.slice(0, -writtenExt.length);
+    for (const ext of RESOLVE_EXTENSIONS) {
+      if (ext === writtenExt) continue;
+      if (fileSet.has(stem + ext)) return stem + ext;
+    }
+  }
   return null;
 }
 
@@ -350,6 +363,14 @@ function main() {
     }
   }
 
+  // A same-module edge (a file importing another file mapped to the SAME
+  // module) can never be a boundary violation — fromIdx === toIdx always.
+  // bothMappedEdges therefore overstates what this check can ever catch;
+  // crossModuleEdges is the number that actually reflects the guard's real
+  // load (see the MAJOR finding this fixes — 47 same-module
+  // web/lib/repositories/* edges inflated 2 real cross-module edges to 49).
+  const crossModuleEdges = bothMappedEdges.filter((e) => e.fromMod !== e.toMod);
+
   const unmappedFiles = files.map((f) => f.rel).filter((rel) => !mapped.has(rel));
 
   console.log('check-module-boundaries: coverage summary');
@@ -369,20 +390,27 @@ function main() {
     samples.relative
   );
   console.log(
-    `  BOTH-ENDPOINTS-MAPPED edges (what this check actually evaluates): ${bothMappedEdges.length}`
+    `  BOTH-ENDPOINTS-MAPPED edges (both files mapped; includes same-module edges that can never violate): ${bothMappedEdges.length}`
+  );
+  console.log(
+    `  CROSS-MODULE edges (what this check can actually FAIL on): ${crossModuleEdges.length}`
   );
 
-  // Guard: a map that evaluates zero edges can never fail, regardless of
-  // what the layer order says — that IS the vacuous-gate defect. Treat it
-  // the same as the existing zero-source-files / coverage-floor guards:
-  // exit 2, the check itself failed, never a silent PASS.
-  if (bothMappedEdges.length === 0) {
+  // Guard: a map that evaluates zero CROSS-MODULE edges can never fail,
+  // regardless of what the layer order says — that IS the vacuous-gate
+  // defect. bothMappedEdges is the wrong number to guard on: same-module
+  // edges (a file importing a sibling in its own module) inflate it while
+  // being structurally unable to violate the layer order (fromIdx===toIdx
+  // always). Treat a zero CROSS-MODULE count the same as the existing
+  // zero-source-files / coverage-floor guards: exit 2, the check itself
+  // failed, never a silent PASS.
+  if (crossModuleEdges.length === 0) {
     console.error('');
     console.error(
-      'check-module-boundaries: FAIL (exit 2) — zero import edges have BOTH endpoints mapped'
+      'check-module-boundaries: FAIL (exit 2) — zero cross-module import edges (both endpoints mapped, different modules)'
     );
     console.error(
-      `  ${mapped.size} files are mapped but none of them import each other in a way this check can see.`
+      `  ${mapped.size} files are mapped and ${bothMappedEdges.length} both-endpoints-mapped edge(s) exist, but none of them cross a module boundary — every one is a file importing a sibling in its own module, which can never violate the layer order.`
     );
     console.error(
       '  This check would PASS on any violation, however severe, while this is true — widen scripts/ci/module-map.json.'

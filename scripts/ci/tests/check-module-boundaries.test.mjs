@@ -103,7 +103,7 @@ test('clean tree (only downward/same-layer imports) -> exit 0', () => {
   }
 });
 
-test('same-module import -> exit 0 (not an upward edge)', () => {
+test('same-module import -> exit 0 (not an upward edge), and does not count as cross-module', () => {
   const root = makeFixtureRoot();
   try {
     writeFile(
@@ -112,12 +112,27 @@ test('same-module import -> exit 0 (not an upward edge)', () => {
       "import { b } from './b';\nexport const a = () => b();\n"
     );
     writeFile(root, 'scraper/src/extraction/b.ts', 'export const b = () => 1;\n');
+    // A real cross-module edge alongside the same-module one — same-module
+    // edges can never violate (fromIdx === toIdx always) and no longer feed
+    // the vacuous-gate floor, so a fixture with ONLY a same-module edge
+    // would now legitimately trip the CROSS-MODULE floor below and no
+    // longer exercise "same-module import is not a violation" at all.
+    writeFile(
+      root,
+      'scraper/src/consolidation/writer.ts',
+      "import { validate } from '../validation/check';\nexport const write = () => validate();\n"
+    );
+    writeFile(root, 'scraper/src/validation/check.ts', 'export const validate = () => true;\n');
     const mapPath = writeMap(root, [
       { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/consolidation/**/*.ts', module: 'consolidation' },
+      { glob: 'scraper/src/validation/**/*.ts', module: 'validation' },
     ]);
     const res = run(root, mapPath);
     assert.equal(res.status, 0, res.stdout + res.stderr);
     assert.match(res.stdout, /PASS/);
+    assert.match(res.stdout, /BOTH-ENDPOINTS-MAPPED edges[^:]*: 2/);
+    assert.match(res.stdout, /CROSS-MODULE edges[^:]*: 1/);
   } finally {
     cleanup(root);
   }
@@ -129,16 +144,19 @@ test('import of an unmapped file -> ignored, exit 0', () => {
     writeFile(
       root,
       'scraper/src/extraction/a.ts',
-      "import { helper } from '../unmapped/helper';\nimport { b } from './b';\nexport const a = () => helper() + b();\n"
+      "import { helper } from '../unmapped/helper';\nimport { fetchOne } from '../download/fetch';\nexport const a = () => helper() + fetchOne();\n"
     );
-    // A second, mapped-to-mapped edge so this fixture also has a non-zero
-    // BOTH-ENDPOINTS-MAPPED count (otherwise the vacuous-gate guard would
-    // fire first and this test would no longer exercise the "unmapped
-    // endpoint is ignored" behavior at all).
-    writeFile(root, 'scraper/src/extraction/b.ts', 'export const b = () => 1;\n');
+    // A real cross-module DOWNWARD edge (extraction -> download, lower in
+    // the default layerOrder) so this fixture also has a non-zero
+    // CROSS-MODULE count (otherwise the vacuous-gate guard would fire first
+    // and this test would no longer exercise the "unmapped endpoint is
+    // ignored" behavior at all — a same-module edge no longer suffices
+    // here since it wouldn't count toward the CROSS-MODULE floor either).
+    writeFile(root, 'scraper/src/download/fetch.ts', 'export const fetchOne = () => 1;\n');
     writeFile(root, 'scraper/src/unmapped/helper.ts', 'export const helper = () => 1;\n');
     const mapPath = writeMap(root, [
       { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/download/**/*.ts', module: 'download' },
     ]);
     const res = run(root, mapPath);
     assert.equal(res.status, 0, res.stdout + res.stderr);
@@ -256,18 +274,23 @@ test('real repository -> exits 0 or 1, never 2 (proves it can parse the real tre
   assert.match(res.stdout, /coverage summary/);
 });
 
-test('real repository -> evaluates more than zero both-endpoints-mapped edges (the vacuous-gate regression guard)', () => {
+test('real repository -> evaluates dozens of CROSS-MODULE edges, not just a couple (the resolver + vacuous-gate regression guard)', () => {
   const res = spawnSync('node', [SCRIPT], { cwd: REPO_ROOT, encoding: 'utf8' });
-  const m = res.stdout.match(/BOTH-ENDPOINTS-MAPPED edges \(what this check actually evaluates\): (\d+)/);
-  assert.ok(m, `expected a BOTH-ENDPOINTS-MAPPED line in stdout, got:\n${res.stdout}`);
+  const m = res.stdout.match(/CROSS-MODULE edges \(what this check can actually FAIL on\): (\d+)/);
+  assert.ok(m, `expected a CROSS-MODULE line in stdout, got:\n${res.stdout}`);
   const count = Number(m[1]);
+  // Threshold of 50 (real count is ~83) is deliberately below the true
+  // value but far above what a broken resolver evaluates: with the `.js`
+  // extension unresolved, scraper/src (437 `.js`-suffixed relative
+  // specifiers) drops out of the graph almost entirely and this number
+  // collapses to 2 — the exact CRITICAL finding this test guards against.
   assert.ok(
-    count > 0,
-    `real-repository run evaluated ${count} both-endpoints-mapped edges — the check can never fail while this is 0 (2660 resolved edges with 0 real coverage was the CRITICAL finding this test guards against)`
+    count > 50,
+    `real-repository run evaluated only ${count} cross-module edges (expected > 50, real count is ~83) — this collapses to 2 if the resolver stops following a '.js' specifier to its '.ts' source file (the CRITICAL finding), and 2 of 83 real cross-module edges evaluated (49 both-mapped edges, mostly same-module) was the MAJOR finding this also guards against.`
   );
 });
 
-test('a map whose entries evaluate zero both-endpoints-mapped edges -> exit 2, never a silent PASS', () => {
+test('a map whose entries evaluate zero cross-module edges -> exit 2, never a silent PASS', () => {
   const root = makeFixtureRoot();
   try {
     // Two disjoint islands that never import each other — the exact shape
@@ -286,7 +309,37 @@ test('a map whose entries evaluate zero both-endpoints-mapped edges -> exit 2, n
     const res = run(root, mapPath);
     assert.equal(res.status, 2, res.stdout + res.stderr);
     assert.match(res.stderr, /FAIL \(exit 2\)/);
-    assert.match(res.stderr, /zero import edges have BOTH endpoints mapped/);
+    assert.match(res.stderr, /zero cross-module import edges/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('a map with only SAME-MODULE edges -> exit 2 (the MAJOR fix: both-mapped > 0 no longer masks a zero cross-module load)', () => {
+  const root = makeFixtureRoot();
+  try {
+    // Exactly the shape of the MAJOR finding: files import each other, so
+    // BOTH-ENDPOINTS-MAPPED is non-zero (looks like coverage), but every
+    // such edge stays inside one module, so the check can still never fail
+    // on a real upward import. Old code guarded on bothMappedEdges.length
+    // and would have PASSED here (47 same-module repositories/* edges did
+    // exactly this in the real repo).
+    writeFile(
+      root,
+      'scraper/src/extraction/a.ts',
+      "import { b } from './b';\nexport const a = () => b();\n"
+    );
+    writeFile(root, 'scraper/src/extraction/b.ts', 'export const b = () => 1;\n');
+    const mapPath = writeMap(
+      root,
+      [{ glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' }],
+      { coverageFloor: 2 }
+    );
+    const res = run(root, mapPath);
+    assert.equal(res.status, 2, res.stdout + res.stderr);
+    assert.match(res.stderr, /FAIL \(exit 2\)/);
+    assert.match(res.stderr, /zero cross-module import edges/);
+    assert.match(res.stderr, /1 both-endpoints-mapped edge\(s\) exist/);
   } finally {
     cleanup(root);
   }
@@ -388,17 +441,20 @@ test('baseline: an entry that no longer exists in the graph -> exit 2 (shrink mu
   try {
     // The graph is now CLEAN (no upward edge at all) but the baseline still
     // lists one — this must fail loud, not silently accept the stale entry.
-    // A second, clean mapped-to-mapped edge keeps BOTH-ENDPOINTS-MAPPED > 0
-    // so the vacuous-gate guard doesn't mask the staleness check below.
+    // A second, clean, CROSS-MODULE mapped-to-mapped edge keeps CROSS-MODULE
+    // edges > 0 so the vacuous-gate guard doesn't mask the staleness check
+    // below (a same-module edge no longer suffices for this since it never
+    // counts toward the CROSS-MODULE floor).
     writeFile(
       root,
       'scraper/src/extraction/foo.ts',
-      "import { bar } from './bar';\nexport const x = () => bar();\n"
+      "import { fetchOne } from '../download/fetch';\nexport const x = () => fetchOne();\n"
     );
-    writeFile(root, 'scraper/src/extraction/bar.ts', 'export const bar = () => 1;\n');
+    writeFile(root, 'scraper/src/download/fetch.ts', 'export const fetchOne = () => 1;\n');
     writeFile(root, 'scraper/src/read-side/ipo-reader.ts', 'export const getIpo = () => null;\n');
     const mapPath = writeMap(root, [
       { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/download/**/*.ts', module: 'download' },
       { glob: 'scraper/src/read-side/**/*.ts', module: 'read-side' },
     ]);
     writeBaseline(root, [
@@ -422,16 +478,18 @@ test('baseline: a fabricated entry that never existed in the graph -> exit 2 (ba
   try {
     // Clean tree, no real violation anywhere, yet the baseline claims one —
     // this must be refused exactly like a stale entry: it can only mean the
-    // baseline grew without the graph backing it. A real clean edge keeps
-    // BOTH-ENDPOINTS-MAPPED > 0 so the vacuous-gate guard doesn't fire first.
+    // baseline grew without the graph backing it. A real clean CROSS-MODULE
+    // edge keeps CROSS-MODULE edges > 0 so the vacuous-gate guard doesn't
+    // fire first (a same-module edge no longer suffices for this).
     writeFile(
       root,
       'scraper/src/extraction/foo.ts',
-      "import { bar } from './bar';\nexport const x = () => bar();\n"
+      "import { fetchOne } from '../download/fetch';\nexport const x = () => fetchOne();\n"
     );
-    writeFile(root, 'scraper/src/extraction/bar.ts', 'export const bar = () => 1;\n');
+    writeFile(root, 'scraper/src/download/fetch.ts', 'export const fetchOne = () => 1;\n');
     const mapPath = writeMap(root, [
       { glob: 'scraper/src/extraction/**/*.ts', module: 'extraction' },
+      { glob: 'scraper/src/download/**/*.ts', module: 'download' },
     ]);
     writeBaseline(root, [
       {
