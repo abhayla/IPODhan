@@ -228,7 +228,10 @@
   "[2026-09-10T19:47:51+00:00] s17 REPLACEMENT - peer proposes an external timer on the VPS cron calling `gh workflow run` with the runner's token. I DISAGREE and want it settled at the verdict, not assumed: that puts a credential and a scheduling duty back on the very box we are trying to unload, and it is new machinery to maintain. The card's own logic argues the other way - once item 23 lands, a deploy is unpack-and-flip rather than install-and-build, so its cost collapses and the cadence matters much less. If the schedule genuinely does not fire, the cheaper honest answer is to RESTORE THE PUSH TRIGGER, accept tonight's load for the few days until item 23 removes it properly, and record s17 as a mechanism that did not work rather than build a second mechanism to prop up the first. Owner's call if the two lanes disagree.",
   "[2026-09-10T20:06:08+00:00] s17 VERDICT: MECHANISM DID NOT WORK. Recorded as such rather than left looking active, because a scheduled job that silently never fires is indistinguishable from one that works until someone reads a served sha. Evidence and eliminated causes are on the slice.",
   "[2026-09-10T20:06:08+00:00] s12 AND s16 PROVEN ON THE REAL BOX, from the peer's FAILED deploy (run 34521965457) rather than from a successful one. s12: 'cleanup: removed the release dir this failed deploy created ... freed 1689 MB', two staging releases remaining, current untouched - a genuinely failed deploy is better evidence for an orphan-cleanup slice than any green one. s16: the release measured 1,689 MB against the old ~3.1 GB. That closes the size claim I recorded two hours ago as owed and refused to assert. The du -sh print in 23-S1 still lands: one reading from one incident is a measurement, not a mechanism.",
-  "[2026-09-10T20:09:39+00:00] s19 is PR #564, open. Sequencing held: #564 merges FIRST, then the push-trigger restore, then one green push deploy proves both. The trigger slice is not opened until #564 is in, because a push deploy landing before it would fail on the same preflight and teach us nothing."
+  "[2026-09-10T20:09:39+00:00] s19 is PR #564, open. Sequencing held: #564 merges FIRST, then the push-trigger restore, then one green push deploy proves both. The trigger slice is not opened until #564 is in, because a push deploy landing before it would fail on the same preflight and teach us nothing.",
+  "[2026-09-10T20:15:06+00:00] s19 MERGED d1c4189c. Staging deploy dispatched on that exact sha (run 34525050492) - the owed proof, to be quoted either way including if it fails for a new reason.",
+  "[2026-09-10T20:15:06+00:00] MY STALE NUMBER, CORRECTED: I have been quoting the deploy suite baseline as '110 PASS / 13 FAIL on origin/main' in briefs and PR bodies. It is now 154 PASS / 13 FAIL - main has added cases since I first measured it. The 13 FAIL names are unchanged (the grep -P MSYS class). Two workers independently failed to reproduce 110 and both said so rather than quietly matching my figure, which is the behaviour I want. Stop quoting 110.",
+  "[2026-09-10T20:15:06+00:00] 23-S1's most valuable finding is one the card did not predict: @next/bundle-analyzer had to move to web dependencies because web/next.config.mjs imports it at module scope and `next start` loads that config at RUNTIME. An artifact built with npm prune --omit=dev would have shipped a web server that cannot start. The card only anticipated tsx. This is exactly why the brief demanded the full set be found by a real failing resolve under a pruned tree rather than by reasoning about which packages 'look' runtime."
  ],
  "items": {
   "item-01": {
@@ -542,14 +545,25 @@
     {
      "k": "s19",
      "title": "P0: alias-preflight demands a .git the release extract never has",
-     "status": "PR-OPEN",
+     "status": "MERGED",
      "pr": 564,
-     "sha": "566f4325",
+     "sha": "d1c4189c",
      "tier": "A",
      "rca": "scripts/lib/alias-preflight.mjs:47-66 finds the checkout root as the nearest ancestor holding BOTH package.json and .git, and throws otherwise. deploy-linux.sh:727-733 builds every release with `git archive \"$SHA\" | tar -x`, which never produces a .git. Deterministic and total: every staging and production deploy from #548's merge until this lands.",
      "myMiss": "I merged #548. I reproduced its gates and read its diff and never asked what shape the deploy runs the preflight in. s14 was the slice built to stop a test resolving to the wrong source tree, and it shipped a wrong-shape assumption inside the guard itself - the same class, committed in the thing meant to catch the class.",
      "failsSafe": "The deploy aborts before the flip: 'current' was NOT touched, nothing broken is served, and s12's cleanup removed the half-built release.",
      "fix": "Nearest ancestor whose package.json identifies the repo ROOT (the root declares `workspaces`, the members do not), never .git. Deliberately NOT 'any package.json' - that stops at web/package.json and reintroduces the wrong-tree resolution s14 exists to prevent. Must still throw loudly outside any checkout: no cwd fallback, no default."
+    },
+    {
+     "k": "s20",
+     "title": "restore the push trigger (s17's mechanism never fired), and fix the concurrency group it broke",
+     "status": "BUILT-PUSHED-HELD",
+     "pr": null,
+     "sha": "2c88cbbc",
+     "tier": "A",
+     "heldBecause": "must merge only AFTER the staging deploy on d1c4189c proves the preflight fix. If that deploy fails, restoring the trigger would make every merge fail automatically instead of manually - worse, not better.",
+     "notAOneLiner": "s17 had rewritten the concurrency group to `github.event_name == 'schedule' && 'staging' || inputs.slot`. Restoring push naively leaves a push event matching neither branch, so inputs.slot is EMPTY, the group collapses to the bare string 'deploy-linux-', and a push deploy serialises against NOTHING - including a manual slot=staging dispatch on the same box, two deploys writing one slot. Now `(push || schedule) && 'staging' || inputs.slot`: push -> deploy-linux-staging, schedule -> deploy-linux-staging, dispatch -> deploy-linux-<slot>.",
+     "scheduleBlockKept": "deliberately not deleted; a late scheduled tick finds served == head and skips"
     }
    ],
    "prs": [
@@ -902,12 +916,21 @@
     {
      "k": "23-S1",
      "title": "pin and measure: engines/.nvmrc, deploy asserts the major, tsx to scraper dependencies, measure the pruned tree",
-     "status": "BUILDING",
+     "status": "BUILT",
      "tier": "A",
      "pr": null,
-     "sha": null,
+     "sha": "ada01aba",
      "rulingToProve": "The card rules that tsx (and anything else the scraper's start path imports at runtime) MOVES to scraper/package.json dependencies, keeping the runtime identical to today's tsx-from-source. Rejected: compiling via the never-invoked build script (changes runtime resolution), and a prune keep-list (rots silently). The builder is told to find the FULL set by npm ci --omit=dev into a scratch dir and running the real ESM import smoke under it - and that overturning the ruling with evidence is a legitimate outcome, far cheaper now than in 23-S3.",
-     "standaloneIsConditional": "output: 'standalone' goes into web/next.config.mjs ONLY if a local build with it actually serves /api/version from web/.next/standalone/server.js. Otherwise it is recorded as not-done with the reason. Either outcome passes the slice as long as it is measured."
+     "standaloneIsConditional": "output: 'standalone' goes into web/next.config.mjs ONLY if a local build with it actually serves /api/version from web/.next/standalone/server.js. Otherwise it is recorded as not-done with the reason. Either outcome passes the slice as long as it is measured.",
+     "result": {
+      "nodePin": ">=22.3.0 <23.0.0 plus .nvmrc 22. Lower bound MEASURED, not chosen: of 556 production packages declaring engines.node, the highest floor is pdf-parse and pdfjs-dist at '>=20.16.0 <21 || >=22.3.0'. Nothing pins the upper bound - the install ran ZERO node-gyp compiles, every native package is a prebuilt N-API binary - so the upper bound is 'match the box's major', and the reason is the artifact, not a package.",
+      "rulingHeld": "yes, and the set was BIGGER than tsx. Two packages, each found by a real failing resolve under npm ci --omit=dev in a scratch tree, not by reasoning: (1) tsx -> scraper deps, because production pm2 literally starts tsx/dist/cli.mjs; (2) @next/bundle-analyzer -> web deps, because web/next.config.mjs imports it at module scope and `next start` loads that config at RUNTIME. The second one would have shipped a web server that cannot start, and nothing in the card predicted it.",
+      "thirdBlocker": "root `prepare: husky` made npm ci --omit=dev fail outright ('husky' is not recognized). Now `husky || true`.",
+      "proof": "clean npm ci --omit=dev, 1047 packages: 'smoke-import: OK - production import graph loaded under ESM'; require.resolve tsx resolves; next.config loaded OK. packages/shared/dist absent throughout, confirming shared is consumed as SOURCE at runtime.",
+      "measurements": "production node_modules 801,003,729 bytes = 763.9 MiB, 76,295 files (win32 tree; Linux swaps the platform variants). Native: sharp, @img/sharp-win32-x64, @napi-rs/canvas-win32-x64-msvc, @next/swc-win32-x64-msvc, @rollup/rollup-win32-x64-gnu, @rollup/rollup-win32-x64-msvc.",
+      "standalone": "NOT set, with evidence rather than a shrug. The build with it SUCCEEDS (exit 0) and the served /api/version returns 200, but it emits web/.next/standalone/**web**/server.js - nested, not the card's path - and adopting it needs both that nested path and a pm2 command change (today: next/dist/bin/next start). 23-S2 owns it.",
+      "duPrint": "added, with a broken-du case proven: '==> Release size: size unavailable: du exited 1 (timeout 60s)' and the deploy still flips."
+     }
     },
     {
      "k": "23-S2",
