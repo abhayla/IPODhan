@@ -443,10 +443,10 @@
         },
         {
           "k": "s14",
-          "status": "PLANNED",
+          "status": "BUILDING-ROUND-2",
           "tier": "B",
           "pr": null,
-          "sha": null,
+          "sha": "cd263f65",
           "title": "preflight: refuse to run when @ipodhan/shared resolves outside this checkout (#514, repo side)",
           "order": "tomorrow; repo side of #514. The laptop side (wt-new.ps1 creating the junction) is lane C, Tier A, with the junction-deletion history in the brief - NOT tonight.",
           "plan": [
@@ -989,5 +989,7 @@
     "note": "The three E1 gated constraints are ABSENT, as designed - they are applied by hand per slot and staging has not had them. idx_ipos_slug present. So s1 and s3's columns are live on staging and today's deploys carried them; the gated DDL has not been applied anywhere. Do NOT read staging row counts as coverage: staging has 11 duplicate IPO rows prod does not (376 vs 333), pending lane C 12-C's repair."
   },
   "worktreeAliasResolutionDefect": "#514: a worktree whose node_modules is a junction to the main checkout resolves @ipodhan/shared to MAIN's packages/shared. Any local test importing through the alias exercises main, silently. It produced a drift run that printed OK on a broken branch and a registry test that failed advising the opposite of the correct action. Relative-path imports are unaffected. INTERIM RULE: a local result from an alias-importing script in a worktree is UNVERIFIED - say so and let CI be the gate.",
-  "ciBudgetRule": "OWNER, typed in lane A's window 2026-09-10 ~22:2x IST: \"CI-run cap lifted from 60; merge on green with no daily run limit. Deploy load is handled by lane A's s12, s16, s17.\" This SUPERSEDES the 2026-09-09 \"cap 60 per day, 20 tonight\" and every self-imposed reserve (50/55/58). Recorded here because an hour earlier I refused to act on a PEER saying the same thing - correctly: a limit the owner typed changes only on owner-typed text. The rule did not change when the evidence changed or when a sibling asserted it; it changed when the owner typed it."
+  "ciBudgetRule": "OWNER, typed in lane A's window 2026-09-10 ~22:2x IST: \"CI-run cap lifted from 60; merge on green with no daily run limit. Deploy load is handled by lane A's s12, s16, s17.\" This SUPERSEDES the 2026-09-09 \"cap 60 per day, 20 tonight\" and every self-imposed reserve (50/55/58). Recorded here because an hour earlier I refused to act on a PEER saying the same thing - correctly: a limit the owner typed changes only on owner-typed text. The rule did not change when the evidence changed or when a sibling asserted it; it changed when the owner typed it.",
+  "mainRed": "2026-09-10 ~22:5x IST: origin/main is RED on scraper/tests/unit/scrapers/investorgain-list-binding.test.ts ('expected BOUND to be AMBIGUOUS'). Arrived with da8cad5a (#522, lane C item 12 slice E) and FAILS AT ITS OWN MERGE COMMIT. #522's checks were ALL GREEN at merge - nothing was overridden; the PR was green and the MERGE RESULT was red. Verified: normalizeCompanyNameForMatching folds 'Asset Reconstruction' and 'ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED' to the same string, so exactly one candidate matches and BOUND is CORRECT - the test is stale, the code is right. Lane C owns the fix. Lane A merges nothing onto a red main; s12/s16/s17 hold regardless of the migration freeze.",
+  "noBranchProtection": "Measured: GET repos/abhayla/IPODhan/branches/main/protection -> 404 Branch not protected. No required checks, no strict up-to-date, no force-push protection. So every merge-on-green tonight was DISCIPLINE, not enforcement. And the load-bearing correction: required checks alone would NOT have prevented #522, because its checks were green - only the STRICT 'branch must be up to date' flag would, by forcing a re-run against the current head. Enabling protection without strict would look like a fix and not be one."
 }
