@@ -398,9 +398,16 @@
           {
             "id": "12-B",
             "tier": "A",
-            "lines": "~200",
-            "was": "12-S2 alone",
-            "why": "Deliberately BELOW the band. It changes what binds to what, and the TS normaliser and its SQL twin must move in the same commit. Combining identity-critical work with anything else to hit a line target would raise blast radius to save a PR."
+            "lines": "~300 (was ~200)",
+            "was": "12-S2 alone, grown by the lane A finding",
+            "title": "identity keyed on the registration number - function, SQL twin, key recompute and duplicate re-scan as ONE unit, one PR",
+            "mustContainInOrder": [
+              "Change normalizeCompanyNameForMatching AND normalizedCompanyNameSql/compactNormalizedCompanyNameSql together. Same file, so one commit, no cross-file rebase.",
+              "Re-run scraper/scripts/backfill-normalized-name.ts over all three tables (531 rows) so every stored key is recomputed by the new function. Staging --apply, then scripts/assert-repair-held.mjs --cycles 2 per the defect-fix contract. Prod command LISTED for the owner, never run here.",
+              "Re-run docs/design/probes/duplicate-scan.mjs under the new function BEFORE lane A applies E1 anywhere. Baseline 0 / 0 / 5 = promoters / peer_companies / ipo_intermediaries. Those 5 are CORRECT rows - one bank holding two roles on one issue (ICICI sponsor + public-issue bank, Kotak sponsor + escrow, Axis sponsor + public-issue, Centrum BRLM + syndicate). The three-column key exists to KEEP them. They are never to be merged away. If the count rises above 5, E1 cannot be applied until each new one is resolved, and I report identities, not a count (signal-ownership R1).",
+              "Only then lane A s5b / s7a / s7b."
+            ],
+            "why": "Still in band at ~300 because steps 2 and 3 RUN existing tools - they are evidence, not new lines. The only new code is the function and its SQL twin."
           },
           {
             "id": "12-C",
@@ -425,7 +432,17 @@
           }
         ],
         "crossLaneObligation": "12-B and 12-C must land BEFORE lane A item 1 writer slices, or lane A rebases onto them - item 1 READS company-name-normalizer as its row-key function while item 12 CHANGES it. The merge must be announced in the ledger so lane A re-runs its row-key tests.",
-        "notDone": "Item 3 re-cut still owed at its own Stage 1a."
+        "notDone": "Item 3 re-cut still owed at its own Stage 1a.",
+        "revisedAt": "2026-09-10 18:51 IST",
+        "revisionTrigger": "Lane A analysis relayed by the peer session (now issue #506), independently reproduced here before acceptance per supervisor-verification.md. Three of four points hold and change the plan; the fourth does not survive checking.",
+        "verifiedIndependently": {
+          "persistedKeys": "CONFIRMED. schema.ts:862 peer_companies, :1832 promoters, :1906 ipo_intermediaries - each normalized_name varchar notNull default empty, each with a UNIQUE on (ipoId, normalizedName). A persisted key computed by a function that then changes is a stale key.",
+          "backfillCoversThem": "CONFIRMED. scraper/scripts/backfill-normalized-name.ts, TABLES at :58-60 is exactly those three; header records 27 + 326 + 178 = 531 rows, matching the relayed count.",
+          "iposColumnClaim": "REJECTED ON EVIDENCE. The ipos pgTable has no normalized_name column. The 22 references in ipo-repository.ts are a query-time SQL expression over the live companyName (normalizedCompanyNameSql, :424). Nothing is stored there, so nothing can go stale and there is nothing to backfill. The genuine ipos-side risk is the SQL twin drifting from the TS function - which 12-B already required in the same commit, and which costs nothing because both live in packages/shared/src/utils/company-name-normalizer.ts (TS at :76, SQL at :168 and :172)."
+        },
+        "overridingMyOwnPrinciple": "My re-cut said a data write stays its own slice with its own dry-run evidence. I am overriding that here, deliberately. That principle exists to stop an INDEPENDENT data write being buried inside a code review. This write is not independent: it completes the very commit that invalidates the keys. Split across two merges, there is a window in which every stored key is stale and the UNIQUE constraint guards nothing - and a live extraction in that window writes the duplicate the constraint exists to stop. One PR, never a follow-up commit.",
+        "detectionOwnership": "The detection guard for this class - re-computing a sample of stored normalized_name values under the current function and asserting they still match, same shape for the risk-factor heading_hash - is LANE A item 1 slice s8b under #506. Lane C does NOT build a second one. CONSEQUENCE for my PR gate: 12-B touches scraper write paths, so recurrence-detection-gate.md requires either a detection change or a declaration line. Since the guard is lane A s8b, 12-B carries the declaration - No detection change: guard owned by lane A item 1 slice s8b under issue #506 - and the reviewer checks that s8b is real, not merely promised. A declaration pointing at a guard that never lands is a paper check.",
+        "hazardFound": "Not raised by anyone: this repo has FIVE functions named normalizeCompanyName (slug.ts:250, normalization-engine.ts:301, nse-past-issue-matcher.ts:53, scraper-utils.ts:150) plus normalizeCompanyNameForMatching. Change the normaliser is ambiguous across five call graphs. 12-B touches company-name-normalizer.ts ONLY, and its PR body must say which one moved or a reviewer cannot tell."
       }
     },
     "item-03": {
@@ -651,7 +668,13 @@
     "2026-09-10 18:49 IST CORRECTION to what I wrote 20 minutes ago. I announced 2-S3b2 UNBLOCKED. That headline was wrong and I am withdrawing it. A read-only coverage probe against production shows ZERO of the 17 unprovenanced IPO rows carry a stored verifier_url. Chittorgarh does publish issue_category - that part stands and is proven by two real fixtures - but there is no reachable page for any of these 17 rows, and building a url from the slug is the precise failure mode design section 2.3.1 exists to stop.",
     "2026-09-10 18:49 IST The blocker is not removed, it is RENAMED, and that is still worth the hour. Before: \"no source publishes segment\" - which was false, and false in a way that would have kept the slice parked forever. Now: \"these 17 rows have no reachable page\". That is a discovery problem with a known sanctioned answer (rediscover from a listing page), not a sourcing problem with no answer.",
     "2026-09-10 18:49 IST I also corrected my own arithmetic: production carries 48 unprovenanced rows, 17 of them IPOs - not the 41/11 recorded in the repair tool header, and not the 33 from the test-copy dry run. The 33 was the test copy, a different population. Three different numbers were circulating in my own notes for one quantity; the probe output is the one to trust because it names its query.",
-    "2026-09-10 18:49 IST UNTESTED HYPOTHESIS, explicitly not a finding: Chittorgarh report rows come back as anchors with real hrefs, so a report query may yield both a rediscovered url and issue_category in one call. Not probed. Must not be repeated as fact."
+    "2026-09-10 18:49 IST UNTESTED HYPOTHESIS, explicitly not a finding: Chittorgarh report rows come back as anchors with real hrefs, so a report query may yield both a rediscovered url and issue_category in one call. Not probed. Must not be repeated as fact.",
+    "2026-09-10 18:51 IST ITEM 12 REVISED after independently reproducing lane A analysis relayed by the peer (issue #506). I did not take the ruling on trust, I checked it. Three points hold: normalized_name is persisted on all three child tables with UNIQUE constraints on it, the backfill covers exactly those three at 531 rows, and the re-run must sit in the SAME slice and the SAME PR as the function change. 12-B grows ~200 to ~300 and absorbs the recompute and the re-scan.",
+    "2026-09-10 18:51 IST I REJECTED the fourth point on evidence. It asked me to add an ipos normalized_name column to the re-backfill. There is no such column. The 22 references in ipo-repository.ts are a query-time SQL expression over the live companyName, so nothing is stored and nothing can go stale. The real ipos-side risk is the SQL twin drifting from the TS function, which my card already required in one commit.",
+    "2026-09-10 18:51 IST I am overriding my OWN principle and saying so plainly. I had said a data write gets its own slice. That rule stops an INDEPENDENT write being buried in a code review. This write restores the invariant its own commit breaks. Split across two merges it leaves a window where every stored key is stale, the UNIQUE constraint guards nothing, and a live extraction writes the duplicate it exists to prevent.",
+    "2026-09-10 18:51 IST The 5 in the duplicate baseline are CORRECT rows and must never be merged away: one bank holding two roles on one issue - ICICI sponsor plus public-issue bank, Kotak sponsor plus escrow, Axis sponsor plus public-issue, Centrum BRLM plus syndicate. The three-column key exists precisely to keep them. A repair that tidied these to 0 would be destroying real data and calling it cleanup.",
+    "2026-09-10 18:51 IST DETECTION OWNERSHIP settled: the re-compute guard is lane A item 1 slice s8b under #506, and lane C does not build a second one. Consequence I have to honour: 12-B touches scraper write paths, so the recurrence gate demands a detection change or a declaration. 12-B carries the declaration naming s8b - and the reviewer must confirm s8b actually landed, because a declaration pointing at a guard that never ships is a paper check.",
+    "2026-09-10 18:51 IST HAZARD nobody raised: five functions in this repo are named normalizeCompanyName, plus normalizeCompanyNameForMatching. 12-B touches company-name-normalizer.ts only and its PR body must say which one moved."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
