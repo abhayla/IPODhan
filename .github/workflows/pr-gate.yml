@@ -529,7 +529,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
           REDIS_URL: redis://localhost:6379
-        run: npx vitest run -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts tests/integration/child-table-normalized-name.integration.test.ts tests/integration/child-table-row-key-unique-constraint.integration.test.ts tests/integration/peer-company-replace-atomicity.integration.test.ts tests/integration/field-sources-row-key-provenance.integration.test.ts tests/integration/derived-key-recompute-guard.integration.test.ts
+        run: npx vitest run -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts tests/integration/child-table-normalized-name.integration.test.ts tests/integration/child-table-row-key-unique-constraint.integration.test.ts tests/integration/peer-company-replace-atomicity.integration.test.ts tests/integration/field-sources-row-key-provenance.integration.test.ts tests/integration/normalizer-sql-agreement.integration.test.ts tests/integration/derived-key-recompute-guard.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
