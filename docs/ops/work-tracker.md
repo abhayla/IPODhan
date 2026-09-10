@@ -1005,3 +1005,24 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   reporting that as unmoved rather than quietly waiting. What is needed from Abhay: nothing tonight.
   Two decisions whenever you have time - whether the shared branch should refuse changes that have not
   passed their checks, and whether to approve the new PDF library.
+
+- **2026-09-11 03:43 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  A reader of ipodhan.com would notice nothing today; everything in this stretch is underneath. The
+  real gain: a defect in our own downloader is fixed and waiting on checks. When it refused a
+  company's website for safety, it gave the SAME reason for five different situations - a genuinely
+  unsafe address, a web address that does not exist, a lookup that timed out, an empty answer and a
+  garbled one. What that hid is worth knowing: one company, Hy-Tech Engineers, has its website
+  stored with a single wrong character, a brace where a "t" belongs. That address does not exist;
+  the real one works and is perfectly safe. So a typo in our own data was being reported as a
+  security refusal, and nothing in the record could tell the two apart. Now each refusal says which
+  of the five it actually was and records what it saw, so the decision can be checked afterwards.
+  Nothing that was refused before is allowed now. What went wrong, and it is mine twice over: while
+  writing the new detection for this, one of our own existing checks caught me making the same class
+  of mistake the fix is about - my check read a piece of data the query never fetched, so it would
+  have reported "all clean" while looking at nothing. Caught by a guard, not by luck. And a minute
+  ago I nearly raised a false alarm that our pipeline had skipped the code checks on this change;
+  I looked before writing it and they were simply still running. What is needed from Abhay: one
+  small thing has moved onto your list - the corrupted web address is a data correction, one row of
+  thirty-six, and I have written the recipe but not run it, because data corrections wait for your
+  word. Otherwise the same two decisions: whether the shared branch should refuse changes that have
+  not passed their checks, and whether to approve the new PDF library.
