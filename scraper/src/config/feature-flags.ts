@@ -125,6 +125,26 @@ export const FEATURE_FLAGS = {
   ENABLE_DISCOVERY_DUPLICATE_CHECK: process.env.ENABLE_DISCOVERY_DUPLICATE_CHECK === 'true',
 
   /**
+   * Item 12 slice E: bind a GMP list row to an IPO by EXACT normalized name
+   * when several IPOs share the same open+close dates, instead of accepting
+   * the best character-similarity guess above 0.6.
+   *
+   * Measured before it was built: the similarity path is not a rare fallback
+   * - 194 of 333 production rows (58%) sit in a shared date window. Against
+   * the 29 real records in the captured fixture, exact name binds 24 to ONE
+   * row with ZERO ambiguities, so exact name is already unique wherever it
+   * matches and the 0.6 threshold can only add wrong answers.
+   *
+   * Cost while OFF-to-ON: four records (Jindal Supreme, Steamhouse, Asset
+   * Reconstruction, Glass Wall Systems) stop binding until their stored names
+   * align with the source's shorter form.
+   *
+   * Plain `=== 'true'`, NOT slotAwareFlagDefault(): this changes what gets
+   * WRITTEN, so it must be off in every slot until someone turns it on.
+   */
+  ENABLE_STRICT_LIST_BINDING: process.env.ENABLE_STRICT_LIST_BINDING === 'true',
+
+  /**
    * Enable data consolidation service
    * When enabled, uses smart merging with priority matrix
    * Default: false (Phase 1)

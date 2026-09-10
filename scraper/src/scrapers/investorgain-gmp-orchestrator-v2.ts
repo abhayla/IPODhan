@@ -103,6 +103,81 @@ function calculateSimilarity(str1: string, str2: string): number {
  * Enhancement (ISS-001 fix): Use company name similarity when multiple date matches exist
  * Fallback: Match on open_date within ±1 day tolerance
  */
+/** A date-matched candidate row, reduced to what the binding decision needs. */
+export interface ListBindingCandidate {
+  id: string;
+  companyName: string;
+}
+
+export type ListBindingOutcome =
+  | { outcome: 'BOUND'; ipoId: string; via: 'single-candidate' | 'exact-name' | 'similarity' }
+  | { outcome: 'AMBIGUOUS'; candidates: ListBindingCandidate[] }
+  | { outcome: 'UNBOUND' };
+
+/**
+ * Item 12 slice E — decide which IPO a GMP list row belongs to, given the rows
+ * that already matched on dates. PURE: no database, no logging, no I/O, so the
+ * decision can be tested exhaustively without a connection (same shape as
+ * `computeGMPRunOutcome` above).
+ *
+ * WHY THIS EXISTS, measured on real data before it was written:
+ *   - The similarity path is not a rare fallback. It fires whenever two IPOs
+ *     share BOTH dates, and that is the norm — 194 of 333 production rows (58%)
+ *     sit in a shared open+close window, because SME issues run the same dates.
+ *   - Against the 29 real records in the captured fixture, exact name binds 24
+ *     to exactly ONE row and produces ZERO ambiguities. Exact name is already
+ *     unique wherever it matches, so the 0.6 similarity threshold is doing worse
+ *     work than a strict key: it can only add wrong answers, never right ones.
+ *
+ * THE COST, and it is real: four records — Jindal Supreme, Steamhouse, Asset
+ * Reconstruction, Glass Wall Systems — stop binding until their stored names
+ * align with the source's shorter form. Under `strict` they are AMBIGUOUS and
+ * NOTHING is written, which is the point: a refused write is recoverable, a
+ * wrong GMP printed against the wrong company is not.
+ *
+ * DO NOT "fix" those four by binding on `foldCompanyIdentity`. That key
+ * deliberately strips "india" and belongs to a repair that DELETES rows;
+ * widening the binding key to it would merge companies differing only by a
+ * country word.
+ */
+export function chooseListBinding(
+  candidates: ListBindingCandidate[],
+  sourceCompanyName: string,
+  strict: boolean
+): ListBindingOutcome {
+  if (candidates.length === 0) {
+    return { outcome: 'UNBOUND' };
+  }
+  if (candidates.length === 1) {
+    // One row on these dates: the name cannot make it more or less true.
+    return { outcome: 'BOUND', ipoId: candidates[0].id, via: 'single-candidate' };
+  }
+
+  if (strict) {
+    const wanted = normalizeCompanyNameForMatching(sourceCompanyName);
+    const exact = wanted
+      ? candidates.filter((c) => normalizeCompanyNameForMatching(c.companyName) === wanted)
+      : [];
+    // Exactly one exact-name hit binds. Zero means the source name does not
+    // match anything here; two or more means the name cannot separate them.
+    // Both are AMBIGUOUS — never a guess, and the candidates are named so a
+    // reader can act without running another query (signal-ownership R1).
+    if (exact.length === 1) {
+      return { outcome: 'BOUND', ipoId: exact[0].id, via: 'exact-name' };
+    }
+    return { outcome: 'AMBIGUOUS', candidates };
+  }
+
+  // Legacy path, preserved byte-for-byte in behaviour while the flag is off.
+  const scored = candidates
+    .map((c) => ({ c, similarity: calculateSimilarity(sourceCompanyName, c.companyName) }))
+    .sort((a, b) => b.similarity - a.similarity);
+  if (scored[0].similarity > 0.6) {
+    return { outcome: 'BOUND', ipoId: scored[0].c.id, via: 'similarity' };
+  }
+  return { outcome: 'AMBIGUOUS', candidates };
+}
+
 async function matchIPOByDates(
   ipoRepository: IPORepository,
   openDate: string,
@@ -122,50 +197,53 @@ async function matchIPOByDates(
     }
 
     if (exactMatches.length > 1) {
-      // ISS-001 Fix: Multiple matches - use company name similarity
-      const matchesWithSimilarity = exactMatches.map(ipo => ({
-        ...ipo,
-        similarity: calculateSimilarity(companyName, ipo.companyName)
-      }));
+      // Item 12 slice E. The decision itself is pure and lives in
+      // chooseListBinding (tested exhaustively without a database); this block
+      // only turns that decision into a log line and a return.
+      const strict = process.env.ENABLE_STRICT_LIST_BINDING === 'true';
+      const decision = chooseListBinding(
+        exactMatches.map((ipo) => ({ id: ipo.id, companyName: ipo.companyName })),
+        companyName,
+        strict
+      );
 
-      // Sort by similarity (highest first)
-      matchesWithSimilarity.sort((a, b) => b.similarity - a.similarity);
-
-      const bestMatch = matchesWithSimilarity[0];
-
-      // Accept match if similarity > 0.6 (60%)
-      if (bestMatch.similarity > 0.6) {
+      if (decision.outcome === 'BOUND') {
         logger.info(
           {
             gmpCompanyName: companyName,
-            matchedCompanyName: bestMatch.companyName,
-            similarity: bestMatch.similarity.toFixed(2),
+            matchedId: decision.ipoId,
+            via: decision.via,
+            strict,
             openDate,
             closeDate,
-            matchedId: bestMatch.id,
-            totalCandidates: exactMatches.length
+            totalCandidates: exactMatches.length,
           },
-          'Found best match using company name similarity'
+          'list_binding BOUND: GMP row bound to an IPO row'
         );
-        return bestMatch.id;
+        return decision.ipoId;
       }
 
-      // Similarity too low - skip
-      logger.warn(
-        {
-          companyName,
-          openDate,
-          closeDate,
-          matchCount: exactMatches.length,
-          bestSimilarity: bestMatch.similarity.toFixed(2),
-          matches: matchesWithSimilarity.slice(0, 3).map(ipo => ({
-            id: ipo.id,
-            companyName: ipo.companyName,
-            similarity: ipo.similarity.toFixed(2)
-          }))
-        },
-        'Multiple IPOs found but no good similarity match - skipping GMP'
-      );
+      // AMBIGUOUS: nothing is written. Every candidate is named so a reader can
+      // act without a second query (signal-ownership R1: identities, never a
+      // bare count). Under the flag this is where a 0.61-similar guess used to
+      // be written instead.
+      //
+      // UNBOUND is unreachable here — chooseListBinding only returns it for an
+      // EMPTY candidate list and this branch has more than one. It is handled
+      // explicitly anyway rather than asserted away: an invariant the compiler
+      // cannot see is exactly the kind that stops being true after an edit.
+      if (decision.outcome === 'AMBIGUOUS') {
+        logger.warn(
+          {
+            gmpCompanyName: companyName,
+            strict,
+            openDate,
+            closeDate,
+            candidates: decision.candidates.map((c) => ({ id: c.id, companyName: c.companyName })),
+          },
+          'list_binding AMBIGUOUS: several live IPOs share these dates and the name cannot separate them - no GMP row written'
+        );
+      }
       return null;
     }
 
