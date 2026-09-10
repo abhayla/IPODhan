@@ -240,7 +240,7 @@
         {
           "id": "2-S5",
           "tier": "B",
-          "status": "PLANNED",
+          "status": "BUILDING",
           "title": "seed the 16 live Group-C fields + config-diff test against field-source-resolution.spec.mjs"
         },
         {
@@ -439,7 +439,10 @@
     "2026-09-10 17:31 IST WHY THE SYSTEM IS ALREADY COHERENT ON THIS, which I checked rather than assumed I had created a conflict: design line 812 (do not let unknowns fail every check) is about INVITS/REITS - NON-IPO types - and j_segment_not_null already excludes those with if (row.offeringType !== IPO) return null. So non-IPO rows get an honest NULL and are skipped; genuine IPOs get an honest NULL and are REPORTED. Both are right. The 30 non-IPO rows of #482 will go quiet and the 11 real IPOs will surface - which is the correct split.",
     "2026-09-10 17:33 IST 2-S3c PR #499 OPENED. Test-only, one file, +20/-0, three tests. No source change was needed because both halves already existed - which the PR body states plainly rather than dressing the slice up as an implementation.",
     "2026-09-10 17:33 IST NO ORGANIC RED, AND I SAID SO RATHER THAN FAKING ONE. The behaviour already worked, so the baseline was green at 115/115 before the tests were written. Manufacturing a failing test to satisfy a test-first ritual would have been dishonest; the tests are proven load-bearing by mutation instead - 114/1 and 113/2 red under two separate mutations, 115/115 after revert, each mutation grep-confirmed as applied before its result was read.",
-    "2026-09-10 17:33 IST STAGING MAY BE RECOVERING: lane A merged #495 \"honour the gated-drift registry in the deploy schema-drift assert\" and #489 \"restore working-directory and env dropped from the integration step\". Both landed while 2-S3c was building, and my rebase picked them up. If deploys resume, the OWED proofs for #471, #473, #483, #490 become obtainable. NOT claiming they are fixed - I have not seen a green deploy yet, and today has produced enough premature claims."
+    "2026-09-10 17:33 IST STAGING MAY BE RECOVERING: lane A merged #495 \"honour the gated-drift registry in the deploy schema-drift assert\" and #489 \"restore working-directory and env dropped from the integration step\". Both landed while 2-S3c was building, and my rebase picked them up. If deploys resume, the OWED proofs for #471, #473, #483, #490 become obtainable. NOT claiming they are fixed - I have not seen a green deploy yet, and today has produced enough premature claims.",
+    "2026-09-10 17:38 IST 2-S5 DISPATCHED (seed the manifest for item 3 16 Group-C fields). 2-S4 stays BLOCKED: it imports field-manifest-loader at process start and lane B #496, which fixes that loader ESM defect, is still OPEN - importing a still-broken loader is exactly the crash 2-S4 would cause.",
+    "2026-09-10 17:38 IST PLAN CORRECTION I CAUGHT BY RUNNING IT, and it would have burned a worker budget: the pre-made plan says to run node docs/design/field-source-resolution.spec.mjs and diff its OUTPUT. I ran it - exit 0, ZERO bytes printed. It is a MODULE exporting F, RESOLVE(f,type), renderA1/A2 and STATS, not a script, and docs/design/check-design-consistency.mjs already consumes it. An exit 0 on no output is precisely the #461 trap. The brief now points the builder at the real exports and at the existing consumer to copy, instead of at stdout that does not exist.",
+    "2026-09-10 17:38 IST STRAY PROCESS OF MY OWN, stopped and confirmed: a repo-wide grep I ran timed out into the background and left two grep.exe processes. Killed by PID, re-checked, zero remaining. My own standing rule caught my own violation - and the deeper fix is the one already in the briefs: scope greps to a directory rather than the repo root, which is why that rule exists."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
