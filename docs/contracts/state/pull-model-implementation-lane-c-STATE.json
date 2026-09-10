@@ -207,10 +207,21 @@
         {
           "id": "2-S3b",
           "tier": "A",
-          "status": "BUILDING",
+          "status": "BUILT_HELD_DESIGN_CORRECTED",
           "issue": 482,
           "title": "repair-segment-provenance.ts re-sources the 41 unprovenanced rows, leaves unsourceable ones NULL with the reason in provenance",
-          "firstStep": "SOURCE PROOF with a real fixture showing a field that STATES segment, BEFORE any repair code. \"No source states it\" is a SUCCESSFUL outcome and ends 2-S3b as NULL-with-reason for the 41 rows."
+          "firstStep": "SOURCE PROOF with a real fixture showing a field that STATES segment, BEFORE any repair code. \"No source states it\" is a SUCCESSFUL outcome and ends 2-S3b as NULL-with-reason for the 41 rows.",
+          "commit": "4a3d8a5b",
+          "dryRun": {
+            "db": "ipodhan_staging",
+            "totalWithSegment": 370,
+            "alreadyProvenanced": 308,
+            "candidates": 62,
+            "clearNonIpo": 29,
+            "noSourceNoGuess": 33,
+            "applied": false
+          },
+          "designCorrection": "Do NOT clear the 33 IPO rows. Clear only the 29 non-IPO rows where segment is meaningless. Add a detection check counting a non-null segment with NO field_sources row."
         },
         {
           "id": "2-S3c",
@@ -483,7 +494,12 @@
     "2026-09-10 18:13 IST THE ORDERING ASSERTION IS THE RIGHT SHAPE and worth keeping as a pattern: the slice proves a malformed manifest stops the process BEFORE any cycle work, using two complementary checks - a behavioural test with a logger spy asserting the throw happens first and the cycle-start line is never emitted, plus a source-order test reading index.ts and asserting the validation call appears before main() inside the real guard. A test that only checked a non-zero exit code would pass even if validation ran after the first cycle had begun.",
     "2026-09-10 18:14 IST 2-S3b DISPATCHED, the last unbuilt item-2 slice. Scoped by the investigation I did rather than by the original plan: the population splits into 30 NON-IPO rows (OFS 18, TENDER 5, NCD 3, RIGHTS 3, BUYBACK 1) where segment is MEANINGLESS and NULL needs no external source - the schema own comment names RIGHTS as carrying no segment - and 11 genuine IPO rows where a real source is required and NULL-with-reason is an acceptable outcome. That reframing turned an unbounded re-sourcing problem into 30 rows needing no source and 11 needing one.",
     "2026-09-10 18:14 IST TOLD THE BUILDER TO RE-DERIVE MY OWN NUMBERS rather than trust them, and to report what IT gets: my counts came from PRODUCTION, its dry run reads STAGING, and the two can legitimately differ. Also told it to re-check offering_type PER ROW rather than trusting my aggregate, because offering_type is itself a stored field that could be wrong on some rows - the same class of trap as trusting segment, which is what started this.",
-    "2026-09-10 18:14 IST EXPLICITLY RULED OUT THE TEMPTING WRONG SOURCE in the brief: listing_exchanges is populated on all 41 rows and says BSE or NSE, which is the EXCHANGE not the BOARD. BSE runs both a main board and BSE SME, so it cannot answer the segment question. A repair keyed on it would look sourced and reproduce exactly the class this item exists to remove. Naming the wrong answer in the brief is cheaper than reviewing it out afterwards."
+    "2026-09-10 18:14 IST EXPLICITLY RULED OUT THE TEMPTING WRONG SOURCE in the brief: listing_exchanges is populated on all 41 rows and says BSE or NSE, which is the EXCHANGE not the BOARD. BSE runs both a main board and BSE SME, so it cannot answer the segment question. A repair keyed on it would look sourced and reproduce exactly the class this item exists to remove. Naming the wrong answer in the brief is cheaper than reviewing it out afterwards.",
+    "2026-09-10 18:24 IST 2-S3b BUILT (4a3d8a5b) and dry-run on staging: 370 rows carry a segment, 308 already have provenance, 62 do not - 29 non-IPO and 33 IPO. The tool STOPPED before writing and handed me the decision, as briefed. I am NOT applying it as built.",
+    "2026-09-10 18:24 IST I CHANGED MY MIND ABOUT MY OWN DESIGN, and the reasoning matters more than the outcome. #482 premise was that a guessed value and a sourced one are indistinguishable. THEY ARE NOT. A sourced value has a field_sources row; a guessed one has none - and I proved that myself this afternoon with the very query that found the 41 rows. So the database ALREADY distinguishes them. What was missing is anything that READS that absence. Clearing 33 probably-correct MAINBOARD labels to NULL would destroy real information in order to express something the missing provenance row already expresses.",
+    "2026-09-10 18:24 IST AND THE ALTERNATIVE I FIRST REACHED FOR WAS WORSE, which is why I checked before proposing it. My instinct was to keep the value but write a provenance row marking it inferred. Checked the column: field_sources.source holds real source names - CHITTORGARH 5838, BSE 908, DRHP 726, NSE 238, MONEYCONTROL 221, ADMIN 32. Inventing an INFERRED_LEGACY source would put a fake source in a column that means WHICH SOURCE SAID THIS - precisely the dishonesty this item removes. The ABSENCE of a row is already the correct representation of no source said this.",
+    "2026-09-10 18:24 IST REVISED 2-S3b DESIGN: (1) clear ONLY the 29 non-IPO rows, where segment is meaningless rather than merely unsourced - the schema own comment names RIGHTS as carrying no segment; (2) leave the 33 IPO labels alone; (3) add a NEW detection check counting rows with a non-null segment and NO field_sources row for it, so the gap is visible and shrink-only. Verified no such check exists - the provenance checks that do exist (p_document_provenance_share, fixture_provenance, the lineage one) all measure share or lineage, never PRESENCE.",
+    "2026-09-10 18:24 IST COUNTS DIFFER BETWEEN SLOTS AND NEITHER IS WRONG: staging shows 62 candidates and 33 IPOs; production showed 41 and 11. Different snapshots, exactly why the brief told the builder to re-derive rather than echo my numbers. Any repair must therefore be re-measured against the slot it is about to write, never planned from the other slot figures."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
