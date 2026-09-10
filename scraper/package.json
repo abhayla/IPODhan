@@ -5,7 +5,6 @@
   "scripts": {
     "start": "tsx --tsconfig tsx.tsconfig.json src/index.ts",
     "start:bse": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=bse",
-    "start:moneycontrol": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=moneycontrol",
     "start:chittorgarh": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=chittorgarh",
     "start:gmp": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=gmp",
     "start:fallback": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=fallback",

@@ -12,7 +12,6 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator-v2.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator-v2.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator-v2.js';
-import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
@@ -182,7 +181,7 @@ const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 /** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */
 const DISCOVERY_LAST_RUN_KEY = 'due-step:last-discovery';
 
-/** Aggregator refresh (Moneycontrol/Chittorgarh) cadence: at most once per day. */
+/** Aggregator refresh (Chittorgarh) cadence: at most once per day. */
 const AGGREGATOR_INTERVAL_MINUTES = 24 * 60;
 
 /**
@@ -234,7 +233,7 @@ async function countIposByStatus(statuses: readonly ('UPCOMING' | 'OPEN' | 'CLOS
  *       so it is NOT duplicated here
  *   (c) live data (subscription refresh + GMP + demand graph) only during
  *       market hours, and only for OPEN IPOs
- *   (d) aggregator refresh (Moneycontrol, Chittorgarh) only for
+ *   (d) aggregator refresh (Chittorgarh) only for
  *       UPCOMING/OPEN IPOs, at most once/day
  * Only called when `source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER`.
  * The caller (`main()`) owns the whole-cycle lock (`CYCLE_LOCK_RESOURCE`) and
@@ -370,7 +369,7 @@ async function runDueStepCycle(
   // throw between the two skipped aggregators for the next 24 hours.
   const aggregatorsDue = await isCatchUpCadenceDue(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
   if (!aggregatorsDue) {
-    logger.info('Due-step cycle: aggregator refresh (Moneycontrol/Chittorgarh) not due yet (< 24h since last run) — skipped');
+    logger.info('Due-step cycle: aggregator refresh (Chittorgarh) not due yet (< 24h since last run) — skipped');
   } else {
     let candidateCount = 0;
     try {
@@ -385,10 +384,13 @@ async function runDueStepCycle(
     if (candidateCount === 0) {
       logger.info('Due-step cycle: aggregator cadence due, but zero UPCOMING/OPEN IPOs — skipped (zero network calls)');
     } else {
-      logger.info({ candidateCount }, 'Due-step cycle: aggregator cadence due — running Moneycontrol + Chittorgarh for UPCOMING/OPEN IPOs');
-      const mcOk = await runCycleStep('aggregator:MONEYCONTROL', () => runMoneycontrolScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));
+      // Item 16: Moneycontrol is retired. The aggregator branch itself stays —
+      // it still runs Chittorgarh on the same cadence; only the Moneycontrol
+      // call inside it goes. This is the call site that actually fires in
+      // production, because prod runs the due-step scheduler.
+      logger.info({ candidateCount }, 'Due-step cycle: aggregator cadence due — running Chittorgarh for UPCOMING/OPEN IPOs');
       const cgOk = await runCycleStep('aggregator:CHITTORGARH', () => runChittorgarhScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));
-      if (mcOk && cgOk) {
+      if (cgOk) {
         await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
       } else {
         logger.warn('Due-step cycle: aggregator refresh did not fully succeed — cadence key NOT stamped, it will retry next cycle');
@@ -449,16 +451,15 @@ export function assertRequiredEnvForCycle(source: string, env: NodeJS.ProcessEnv
 
 /**
  * CLI entry point for IPO scrapers
- * Supports NSE, BSE, Moneycontrol, Chittorgarh, GMP, API fallback, and combined scraping via --source flag
+ * Supports NSE, BSE, Chittorgarh, GMP, API fallback, and combined scraping via --source flag
  * Usage:
  *   npm start                         (defaults to NSE)
  *   npm run start:bse                 (BSE only)
- *   npm run start:moneycontrol        (Moneycontrol only)
  *   npm run start:chittorgarh         (Chittorgarh only)
  *   npm run start:gmp                 (Investorgain GMP only)
  *   npm run start:fallback            (IPO Alerts API fallback)
  *   npm run start:api                 (alias for fallback)
- *   npm run start:all                 (NSE + BSE + Moneycontrol + Chittorgarh + API fallback + GMP sequentially)
+ *   npm run start:all                 (NSE + BSE + Chittorgarh + API fallback + GMP sequentially)
  */
 export async function main() {
   // S-02 §5: declared OUTSIDE the try block so the outer catch (unhandled
@@ -546,8 +547,11 @@ export async function main() {
     logger.info(getFeatureStatus(), 'Feature flag status at scraper startup');
 
     // Validate source
-    if (!['nse', 'bse', 'moneycontrol', 'chittorgarh', 'gmp', 'fallback', 'api', 'all'].includes(source)) {
-      logger.error({ source }, 'Invalid source. Must be: nse, bse, moneycontrol, chittorgarh, gmp, fallback, api, or all');
+    // Item 16: 'moneycontrol' is no longer a valid source. Left OUT of the
+    // allow-list rather than special-cased, so it fails through the same
+    // unrecognised-value path as any other bad string.
+    if (!['nse', 'bse', 'chittorgarh', 'gmp', 'fallback', 'api', 'all'].includes(source)) {
+      logger.error({ source }, 'Invalid source. Must be: nse, bse, chittorgarh, gmp, fallback, api, or all');
       process.exit(1);
     }
 
@@ -710,33 +714,6 @@ export async function main() {
           iposFailed: bseResult.iposFailed
         },
         'BSE scraper completed'
-      );
-    }
-
-    // Run Moneycontrol scraper
-    if (source === 'moneycontrol' || runsLegacyAllPath) {
-      logger.info('Running Moneycontrol scraper');
-      const moneycontrolResult = await runMoneycontrolScraper();
-
-      combinedResult.success = combinedResult.success && moneycontrolResult.success;
-      combinedResult.iposProcessed += moneycontrolResult.iposProcessed;
-      combinedResult.iposInserted += moneycontrolResult.iposInserted;
-      combinedResult.iposUpdated += moneycontrolResult.iposUpdated;
-      combinedResult.iposFailed += moneycontrolResult.iposFailed;
-      // T-309: Moneycontrol now reports segment counts too — was previously BSE-only.
-      combinedResult.smeCount += moneycontrolResult.smeCount;
-      combinedResult.mainboardCount += moneycontrolResult.mainboardCount;
-      combinedResult.errors.push(...moneycontrolResult.errors);
-
-      logger.info(
-        {
-          success: moneycontrolResult.success,
-          iposProcessed: moneycontrolResult.iposProcessed,
-          iposInserted: moneycontrolResult.iposInserted,
-          iposUpdated: moneycontrolResult.iposUpdated,
-          iposFailed: moneycontrolResult.iposFailed
-        },
-        'Moneycontrol scraper completed'
       );
     }
 

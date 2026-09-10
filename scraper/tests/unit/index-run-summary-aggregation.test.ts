@@ -4,7 +4,7 @@ import logger from '../../src/utils/logger.js';
 /**
  * T-309 checker finding (T-309C, item 3 half-untested): the run-summary
  * aggregation in `main()` (`scraper/src/index.ts`) folds `smeCount`/
- * `mainboardCount` from NSE/BSE/Moneycontrol/Chittorgarh into
+ * `mainboardCount` from NSE/BSE/Chittorgarh into (Moneycontrol retired, item 16)
  * `combinedResult`, but had NO test exercising the real aggregation path —
  * `base-scraper-orchestrator*.test.ts` (cited in SUMMARY.md as covering it)
  * never touches `index.ts` at all. This test drives `main()` with typed,
@@ -183,18 +183,24 @@ describe('scraper/src/index.ts run-summary aggregation (smeCount/mainboardCount)
     return call[0] as { smeCount: number; mainboardCount: number };
   }
 
-  it('sums smeCount/mainboardCount across NSE + BSE + Moneycontrol + Chittorgarh, not BSE-only', async () => {
+  it('sums smeCount/mainboardCount across NSE + BSE + Chittorgarh, not BSE-only', async () => {
+    // Item 16: Moneycontrol is retired and no longer contributes to the run
+    // summary. Its mock is still primed below with a NON-ZERO count on purpose:
+    // if the retirement were incomplete and something still called it, those
+    // counts would land in the totals and this test would fail — so the numbers
+    // below double as proof the source is really gone, not merely unasserted.
     runNSEScraperMock.mockResolvedValueOnce({ ...baseScraperResult, smeCount: 3, mainboardCount: 2 });
     runBSEScraperMock.mockResolvedValueOnce({ ...baseScraperResult, iposMerged: 0, smeCount: 1, mainboardCount: 5 });
-    runMoneycontrolScraperMock.mockResolvedValueOnce({ ...baseScraperResult, smeCount: 2, mainboardCount: 0 });
+    runMoneycontrolScraperMock.mockResolvedValueOnce({ ...baseScraperResult, smeCount: 2, mainboardCount: 7 });
     runChittorgarhScraperMock.mockResolvedValueOnce({ ...baseScraperResult, smeCount: 4, mainboardCount: 1 });
 
     const { main } = await import('../../src/index.js');
     await main();
 
     const summary = finalSummary();
-    expect(summary.smeCount).toBe(3 + 1 + 2 + 4);
-    expect(summary.mainboardCount).toBe(2 + 5 + 0 + 1);
+    expect(summary.smeCount).toBe(3 + 1 + 4);
+    expect(summary.mainboardCount).toBe(2 + 5 + 1);
+    expect(runMoneycontrolScraperMock).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
