@@ -2,9 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 /**
  * Regression for the recurring-duplicate-rows defect (2026-06-15):
@@ -16,17 +13,24 @@ import { fileURLToPath } from 'url';
  *
  * The fix made the consolidation path match by normalized name first (lock-step
  * with upsertIPO). This test seeds a throwaway IPO, upserts a name VARIANT through
- * the consolidation orchestrator, and asserts NO duplicate is created. It uses the
- * prod DB via the SSH tunnel (web/.env.local) and a uniquely-named row it deletes.
+ * the consolidation orchestrator, and asserts NO duplicate is created. It takes its
+ * database from process.env.DATABASE_URL, which vitest.integration.setup.ts vets
+ * before any test runs, and uses a uniquely-named row it deletes.
+ *
+ * FIXED 2026-09-11. This file used to read the tunnel URL out of an env file itself
+ * and build a Pool from it. The safety guard only inspects process.env, so it never
+ * saw the target: running the scraper integration suite with the tunnel up INSERTed
+ * a test row into PRODUCTION `ipos`. The paired DELETE is scoped to this fixture's
+ * own name, so real IPOs were never at risk - the defect is the write reaching prod
+ * at all, and that the scoping was a convention rather than an enforced property.
+ *
+ * This was the SECOND file to do it; normalizer-sql-agreement's header records the
+ * first. A per-file fix stopped the first and did not stop this one, so the class is
+ * now guarded by tests/unit/tests-connection-source.test.ts, which reads every
+ * integration file on every PR.
  */
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-function tunnelDatabaseUrl(): string {
-  const txt = fs.readFileSync(path.resolve(__dirname, '../../../web/.env.local'), 'utf8');
-  const m = txt.match(/^DATABASE_URL=(.+)$/m);
-  if (!m) throw new Error('DATABASE_URL not found in web/.env.local');
-  return m[1].trim();
-}
+const DATABASE_URL = process.env.DATABASE_URL;
 
 const BASE = 'Regression Dedup Testco Limited';
 const VARIANT = 'Regression Dedup Testco Ltd. CT'; // same normalized name, different slug
@@ -42,7 +46,8 @@ async function countRows(): Promise<number> {
 
 describe('consolidation path dedup — variant name must match, not duplicate', () => {
   beforeAll(() => {
-    pool = new pg.Pool({ connectionString: tunnelDatabaseUrl(), max: 2 });
+    if (!DATABASE_URL) throw new Error('DATABASE_URL not set - run this suite against ipodhan_test');
+    pool = new pg.Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' });
     db = drizzle(pool);
   });
   afterAll(async () => {
