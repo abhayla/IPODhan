@@ -537,3 +537,63 @@ Nothing had been built on the wrong assumption yet. The text fixtures were commi
 earlier and would have looked adequate right up until the mapper failed to find a stable header — at
 which point the natural conclusion would have been "the header mapping approach is wrong", rather
 than "the input is wrong". That is the same shape as the two errors already recorded on this card.
+
+---
+
+## The spike answered: the rotated issuer IS recoverable, and here is the measured recipe
+
+The section above deliberately refused to prescribe a fix, because the obvious one failed and no
+alternative had been measured. It has now been measured, and it works.
+
+**The page is rotated 90 degrees.** That is the single fact that explains every earlier symptom.
+What `extract_tables()` reports as a row is a printed COLUMN, which is why the output looked
+"transposed"; and each word's characters are stored in reverse, which is why it looked "mirrored".
+Neither is a separate defect - they are one rotation seen twice.
+
+`page.rotation` is **0** and there is no `/Rotate` entry, so the rotation is baked into the text
+matrix rather than declared. Nothing in the page metadata will tell you. The signal is the content.
+
+### The recipe, validated end to end
+
+```python
+words = page.extract_words()
+cols = {}
+for w in words:
+    cols.setdefault(round(w["x0"] / 3), []).append(w)   # a printed ROW shares an x position
+rows = []
+for key in sorted(cols):
+    ws = sorted(cols[key], key=lambda w: w["top"])      # read down the page
+    rows.append(" ".join(w["text"][::-1] for w in ws)[::-1].split())
+```
+
+In words: group by x, order by top, reverse each word's characters, then reverse the token sequence.
+
+**Output, against the real page:**
+
+```
+Kanohar Electricals      6,538.39      2 N.A.       17.43  17.43 34.80  [.]*   50.09
+Listed peers
+Hitachi Energy India    81,477.10      2 35,360.00 159.55  30.44 221.63 221.63 19.08 106.34 1,161.56
+Bharat Heavy          3,37,821.80      2    420.00  91.30   5.60   4.60   4.60  6.13  47.58    74.99
+Schneider Electric      28,906.30      2  1,379.00 155.12  44.96   8.89   8.89 28.98  88.25    30.67
+CG Power and Industrial 1,24,179.50    2    886.00 114.77  18.42   7.72   7.71 15.82  75.92    48.11
+Transformers &          25,088.00      1    292.00  32.19   5.68   9.07   9.07 17.64  20.75    51.39
+GE Vernova T&D India    62,063.10      2  4,304.00  89.37 100.40  48.16  48.16 45.85 156.96    42.87
+```
+
+Every figure matches the text layer read independently with pypdf, the issuer's own row is present
+above the `Listed peers` divider, and all six peers are recovered.
+
+### One limitation, stated rather than left to be discovered
+
+**Company names are truncated** - `Bharat Heavy`, not `Bharat Heavy Electricals Limited`; the rest of
+the name sits in an adjacent x-group and the fixed `x0 / 3` bucket splits it. That is a refinement
+(widen the bucket for the name column, or merge adjacent groups when the leading token is
+non-numeric), not a blocker: every NUMERIC column is complete and correctly ordered, which is what the
+peer table is for. Do not assume the name column is finished.
+
+### How the parser should decide which path to take
+
+Not by issuer name, and not by trying rotation first. The divider row is the discriminator: if
+`Listed peers` / `Peer Group:` appears normally the page is upright; if its reversed spelling appears,
+apply the recipe above. Both checks are cheap and neither guesses.
