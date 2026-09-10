@@ -170,6 +170,13 @@
         "result": "FAILED, and usefully. c_issue_size_consistency PASSES with 0 violations. c_issue_size_floor FAILS with THREE, named per signal-ownership R1: NIRBHAY COLOURS INDIA LTD (Rs1,47,97,000), STALLION INDIA FLUOROCHEMICALS LTD (Rs4,33,20,000), PIYUSH LIMITED (Rs70,07,320), each below the MAINBOARD floor of Rs10,00,00,000.",
         "classification": "All three resolve to KNOWN classes with numbers, per R2. NIRBHAY and STALLION are the #515 face-value class - the stored price band carries the face value, not the real band, so computeBSEIssueSize(shares, band.min) multiplies by the wrong price. PIYUSH is 14-S3 own named class (the 10,490-share row). Zero unexplained violations.",
         "verdict": "Item 14 stays MERGED-UNPROVEN. Its proof is now OBTAINABLE (it was not, for most of today) and it FAILS. That is better than owed: the debt is now three named rows in two tracked classes rather than an unknown."
+      },
+      "failureDecomposition": {
+        "at": "2026-09-11 00:00 IST",
+        "STALLION": "segment HAS provenance (skip-has-provenance) so its MAINBOARD label is sourced and correct - the defect is the price band. #515 face-value class, confirmed rather than assumed.",
+        "NIRBHAY": "segment unprovenanced AND price band Rs10 equals its face value. #515 face-value class.",
+        "PIYUSH": "NOT the #515 class. Its band is Rs668 while face_value is Rs10, and issue_size Rs70,07,320 = 10,490 shares x Rs668 is internally CONSISTENT. The open question is whether MAINBOARD is right at all - segment is unprovenanced (#482 class). Note it would fail even the SME floor of Rs1 crore, so re-segmenting alone does not clear it.",
+        "predictionIMadeAndDisproved": "I predicted 2-S3b repair would clear PIYUSH by nulling its guessed segment. The DRY RUN disproved it: 2-S3b deliberately leaves unprovenanced IPO labels as-is and only reports them, because clearing would destroy a probably-correct label. Caught by dry-running instead of asserting."
       }
     },
     "item-02": {
@@ -430,6 +437,13 @@
         "merged": "SEVEN slices merged: 2-S1 b0c42202, 2-S2 4e188187, 2-S3a 2fd8a43b, 2-S3c 4d28b4db, 2-S3b de647f80, 2-S4 d8779c20, 2-S5 b612ff25. Every slice the item was PLANNED with is now on main.",
         "notDone": "Item 2 is NOT done. 2-S3b2 is BLOCKED - zero of the 17 unprovenanced IPO rows carry a reachable page, and slug-building is the failure mode design section 2.3.1 exists to stop. 2-S6 is NEW work from tonight #515 finding and was not in the original item. And the merged repair owes its staging read.",
         "whyIAmNotCallingItDone": "The planned slices being merged is not the same as the item being proven. Saying DONE here would be the exact move the goal condition forbids - a waiting state dressed as completion."
+      },
+      "s3bRepair": {
+        "at": "2026-09-11 00:00 IST",
+        "db": "ipodhan_staging",
+        "dryRun": "29 of 373 candidates would be written, all clear-non-ipo; 31 rows report-only",
+        "applied": "29 rows written, ledger evidence/2026-09-10-lane-c-item-02-s3b/applied.json, exit clean",
+        "idempotent": "re-run dry reports 0 rows would be written"
       }
     },
     "item-12": {
@@ -904,7 +918,9 @@
         "caveat": "THE ASSERTION IS WEAKER THAN ITS EXIT CODE READS, and I am recording that rather than banking it. The two cycles it observed advanced the scraper_logs marker only. The repaired tables were NOT written by them: promoters and ipo_intermediaries last changed 2026-09-09T16:48Z, peer_companies 2026-06-17. A cycle that never touches the repaired rows cannot refute the repair.",
         "toolBehaviourUnderstood": "Two false alarms of my own, both checked and withdrawn. (1) The marker timestamps looked 5h30m in the future; they are the known stored-timestamp skew - staging labels rows ~5.5h behind real time - not a tool bug. (2) I nearly called the whole proof invalid on that basis. Watching the marker for 90s settled it: logs_marker moved 12:46:30 -> 12:48:28 within 50 seconds of real time, so the advances the tool counted were REAL.",
         "whatWouldMakeItStrong": "A cycle that actually writes a promoter, peer or intermediary row - those come from document/filing extraction, not from every wake. Until one lands, the honest state is: repair applied, invariant independently clean, survived two cycles that did not exercise the write path at risk.",
-        "status": "APPLIED AND CLEAN; assertion passed but does not yet cover the write path that could re-introduce a stale key."
+        "status": "UNVERIFIABLE (write path not exercised) - never PASS",
+        "writePathNamed": "PRICE_BAND_AD extraction, measured by lane B (#545): on staging RHP/DRHP extraction has NEVER written a promoter or peer; only PBA extraction writes promoters (7 of 14 completed PBAs). peer_companies 321 rows are one 2026-06-17 backfill. The last promoter row (2026-09-09 16:48:00.138Z) IS the last PBA extraction instant. So no repair was at fault and NO cycle count would ever have exercised those tables.",
+        "reassertWhen": "The next PRICE_BAND_AD extraction on staging - it arrives when a new IPO price-band ad is ingested and cannot be forced. Re-assert then, asserting the table gained a row with updated_at AFTER the repair."
       }
     },
     "item-03": {
@@ -1368,7 +1384,11 @@
     "2026-09-10 23:55 IST ITEM 14 STAGING PROOF RAN AND FAILED - and that is progress, because for most of today it could not run at all. Staging deploys resumed (0164e707 at 17:51 UTC), so the read-only detection floor is obtainable again.",
     "2026-09-10 23:55 IST RESULT: c_issue_size_consistency PASSES with 0 violations. c_issue_size_floor FAILS with THREE, named rather than counted (R1): NIRBHAY COLOURS INDIA LTD Rs1,47,97,000, STALLION INDIA FLUOROCHEMICALS LTD Rs4,33,20,000, PIYUSH LIMITED Rs70,07,320 - each below the MAINBOARD floor of Rs10,00,00,000.",
     "2026-09-10 23:55 IST ALL THREE CARRY A CLASS AND A NUMBER (R2), none is unexplained. NIRBHAY and STALLION are the #515 face-value class: the stored price band holds the face value rather than the real band, so the issue-size computation multiplies by the wrong price. PIYUSH is 14-S3 own named class. So item 14 debt is no longer an unknown - it is three named rows in two tracked classes.",
-    "2026-09-10 23:55 IST ITEM 14 STAYS MERGED-UNPROVEN, honestly. The proof exists, runs, and says no."
+    "2026-09-10 23:55 IST ITEM 14 STAYS MERGED-UNPROVEN, honestly. The proof exists, runs, and says no.",
+    "2026-09-11 00:00 IST 2-S3b REPAIR APPLIED ON STAGING - merged earlier tonight and never actually run, so this was owed. Dry run first: 29 of 373 candidates, all clear-non-ipo. Applied: 29 rows written with a ledger at evidence/2026-09-10-lane-c-item-02-s3b/applied.json. Re-run dry reports 0, so idempotent.",
+    "2026-09-11 00:00 IST A PREDICTION OF MINE, DISPROVED BY THE DRY RUN. I expected the 2-S3b repair to clear PIYUSH by nulling its guessed segment, which would have cleared one of item 14 three failures. It does not: 2-S3b deliberately leaves unprovenanced IPO labels AS-IS and only reports them, on the reasoning that clearing destroys a probably-correct label to express something the missing provenance row already expresses. Caught by dry-running rather than asserting.",
+    "2026-09-11 00:00 IST ITEM 14 THREE FAILURES NOW HAVE DIFFERENTIATED DIAGNOSES, not one bucket. STALLION has segment provenance, so its MAINBOARD label is sourced and correct and the defect is the price band - #515, confirmed not assumed. NIRBHAY is unprovenanced AND its band Rs10 equals its face value - #515. PIYUSH is NOT #515: band Rs668 against face value Rs10, and issue_size Rs70,07,320 = 10,490 x Rs668 is internally consistent. Its open question is whether MAINBOARD is right at all, and it would fail even the SME floor of Rs1 crore, so re-segmenting alone will not clear it.",
+    "2026-09-11 00:00 IST 12-B PROOF LABEL CORRECTED TO UNVERIFIABLE (write path not exercised), never PASS. Lane B measured why (#545): on staging only PRICE_BAND_AD extraction writes promoters, RHP/DRHP never has, and peer_companies 321 rows are a single 2026-06-17 backfill. The last promoter row IS the last PBA extraction instant. So no cycle count would EVER have exercised those tables - the tool was not going to prove this no matter how long it ran."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
