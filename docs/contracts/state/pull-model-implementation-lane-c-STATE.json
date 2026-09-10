@@ -447,6 +447,15 @@
         "dryRun": "29 of 373 candidates would be written, all clear-non-ipo; 31 rows report-only",
         "applied": "29 rows written, ledger evidence/2026-09-10-lane-c-item-02-s3b/applied.json, exit clean",
         "idempotent": "re-run dry reports 0 rows would be written"
+      },
+      "s6Class": {
+        "at": "2026-09-11 00:05 IST",
+        "proposed": "band == face_value, 9 production rows (peer ruling)",
+        "measured": "The 9 split by offering_type and the class is NOT 9. RIGHTS (MINOLTA, SI CAPITAL) and TENDER (MIDLAND, SHARP INDIA) all carry issue_size = 0 and lot_size = null - they are not IPOs, the floor check never measures them (it requires issue_size > 0), and 2-S3b already established non-IPO rows get different treatment. That leaves FIVE IPO rows.",
+        "furtherSplit": "Of those five, TWO look like debt instruments mislabelled: MUTHOOT FINCOTP (face 1000, Rs200 crore, lot 100) and STANBIK AGRO (face 1000, Rs75 crore, lot 100). At a Rs1000 face value an NCD IS priced at face - so band == face is CORRECT for them and the real defect is offering_type, a different fix with a different owner. Muthoot Fincorp is a known NCD issuer.",
+        "floorImpact": "Of all nine, exactly ONE produces a c_issue_size_floor violation: NIRBHAY at Rs1,47,97,000. BANGANGA Rs13.3cr, MARUTI Rs45.3cr, MUTHOOT Rs200cr and STANBIK Rs75cr all pass the floor; the RIGHTS and TENDER rows are excluded at issue_size = 0.",
+        "realImpact": "The class bites d_lot_band_window, not the floor: MUTHOOT 100 x Rs1000 = Rs1,00,000 and NIRBHAY 100 x Rs10 = Rs1,000 both sit outside the retail window.",
+        "verdict": "2-S6 built against a 9-row class would touch four non-IPO rows the floor never measures and two probable NCDs where the value is right. The defensible class is at most three: NIRBHAY, BANGANGA, MARUTI INTERIOR - and each still needs its provenance state read before any write."
       }
     },
     "item-12": {
@@ -1395,7 +1404,11 @@
     "2026-09-11 00:04 IST CORRECTION, WITHDRAWING MY OWN CLASSIFICATION FROM AN HOUR AGO. I told the peer and wrote in this ledger and on the board that STALLION is the #515 face-value class. It is #515-SHAPED ON STAGING and NOT a live defect: production carries band 85..90 and issue_size Rs1,99,00,00,000 updated 2026-09-06, comfortably above the floor. Staging still holds band 10..10 and Rs4,33,20,000, untouched since 2026-07-01.",
     "2026-09-11 00:04 IST THE CONSEQUENCE IS BIGGER THAN THE CORRECTION. Item 14 proof of record is the detection floor read against STAGING, and staging rows for these companies are MONTHS behind production. A proof read against stale data proves little about the live system. NIRBHAY and PIYUSH are byte-identical across both databases so they are genuine; STALLION is precisely the one that differed, and it is the one I got wrong.",
     "2026-09-11 00:04 IST LIVE DEFECT COUNT ON PRODUCTION IS TWO, NOT THREE: NIRBHAY Rs1,47,97,000 and PIYUSH Rs70,07,320 sit below the MAINBOARD floor; STALLION at Rs199 crore passes. I found this only because I measured the face-value class across BOTH databases before building 2-S6 on top of my own classification.",
-    "2026-09-11 00:04 IST I WAS ALSO WRONG TO SAY NO SLICE WAS BUILDABLE. 2-S6 is lane C own work, ruled earlier tonight, and it is buildable now that 12-B waits on an event nobody can force. Correcting that in the same breath as the STALLION correction, because both came from the same habit: reporting a conclusion before measuring the thing it rests on."
+    "2026-09-11 00:04 IST I WAS ALSO WRONG TO SAY NO SLICE WAS BUILDABLE. 2-S6 is lane C own work, ruled earlier tonight, and it is buildable now that 12-B waits on an event nobody can force. Correcting that in the same breath as the STALLION correction, because both came from the same habit: reporting a conclusion before measuring the thing it rests on.",
+    "2026-09-11 00:05 IST 2-S6 CLASS RE-MEASURED AND THE PROPOSED 9-ROW VERSION IS TOO BROAD. Splitting the 9 by offering_type: RIGHTS (MINOLTA, SI CAPITAL) and TENDER (MIDLAND, SHARP INDIA) all carry issue_size = 0 and lot_size = null. The floor check never measures them - it requires issue_size > 0 - and 2-S3b already established non-IPO rows get different treatment. Four of the nine are out.",
+    "2026-09-11 00:05 IST TWO MORE OF THE FIVE REMAINING LOOK LIKE DEBT INSTRUMENTS, NOT DEFECTS: MUTHOOT FINCOTP (face 1000, Rs200 crore) and STANBIK AGRO (face 1000, Rs75 crore). At a Rs1000 face value an NCD IS priced at face, so band == face is CORRECT for them and the real defect is offering_type - a different fix with a different owner. Muthoot Fincorp is a known NCD issuer, so this is not a guess about an unfamiliar name.",
+    "2026-09-11 00:05 IST AND THE SHARPEST NUMBER: of all nine rows, exactly ONE produces a c_issue_size_floor violation - NIRBHAY at Rs1,47,97,000. BANGANGA Rs13.3cr, MARUTI Rs45.3cr, MUTHOOT Rs200cr and STANBIK Rs75cr all PASS the floor. The class actually bites d_lot_band_window instead: MUTHOOT 100 x Rs1000 = Rs1,00,000 and NIRBHAY 100 x Rs10 = Rs1,000 are outside the retail window. A 2-S6 built to drive the FLOOR check green would have been aimed at the wrong signal for eight of its nine rows.",
+    "2026-09-11 00:05 IST DEFENSIBLE 2-S6 CLASS IS AT MOST THREE ROWS - NIRBHAY, BANGANGA, MARUTI INTERIOR - each still needing its provenance state read before any write. Not built tonight: the class boundary is the part that matters and it just moved from 9 to 3."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
