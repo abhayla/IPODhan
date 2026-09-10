@@ -11,12 +11,12 @@
     8,
     21
   ],
-  "currentItem": 22,
+  "currentItem": 8,
   "testDb": {
     "name": "ipodhan_test2",
     "drop": "OWED"
   },
-  "prGateRunsSpentByThisLane": 7,
+  "prGateRunsSpentByThisLane": 29,
   "laneCapPerDay": 25,
   "repoCeilingPerDay": 60,
   "repoStopAt": 50,
@@ -47,199 +47,38 @@
     "Peer relays received 11:14 IST (information, adopted, loosen nothing): rebase immediately before BOTH pr create and pr merge; both lanes squash so use base=$(git merge-base HEAD origin/main) then 'git -c core.autocrlf=false rebase --onto origin/main $base'; stage docs/ops/prod-ops-recipes.md only with 'git -c core.autocrlf=false add'; every brief that mutates shared state ends by re-asserting it and pasting the proof; after any db:generate confirm the new _journal.json entry is not future-dated (5 min skew tolerance) - applies to items 18 and 22."
   ],
   "items": {
-    "item-20": {
-      "item": 20,
-      "card": "docs/design/build-cards/item-20-design-traceability-check.md",
+    "20": {
       "status": "DONE",
-      "slices": [
-        {
-          "k": "s1",
-          "title": "traceability check, failure modes 1-3",
-          "status": "MERGED",
-          "pr": 460,
-          "sha": "6c31d995",
-          "tier": "A",
-          "reviewRounds": 2,
-          "reviewVerdict": "round 2 MERGE YES; both MAJORs closed and mutation-proved; 2 MINOR reporting gaps being folded in before merge"
-        },
-        {
-          "k": "s2",
-          "title": "failure mode 4: rule hash changed, card and test untouched",
-          "status": "MERGED",
-          "pr": 465,
-          "sha": "78fb228b",
-          "tier": "A",
-          "reviewVerdict": "MERGE YES conditional on the silent-skip fix; card rationale proven false and amended; 10/10 mutations RED"
-        },
-        {
-          "k": "s3",
-          "title": "module-boundary import check (R-142..R-144)",
-          "status": "MERGED",
-          "pr": 462,
-          "sha": "40889f8a",
-          "tier": "A",
-          "reviewRounds": 3,
-          "reviewVerdict": "rounds 1-2 MERGE NO (vacuous gate, then blind resolver); round 3 fix hit targets exactly (471->14 unresolved, 2->83 cross-module) and surfaced 41 real violations, all baselined; FINAL review in flight"
-        },
-        {
-          "k": "s4",
-          "title": "pr-gate wiring + design_traceability registry entry",
-          "status": "MERGED",
-          "pr": 470,
-          "sha": "daeb3ad3",
-          "tier": "A"
-        }
-      ],
-      "prs": [
-        460,
-        462,
-        465,
-        470
-      ],
-      "mergeShas": [
-        "6c31d995",
-        "40889f8a",
-        "78fb228b",
-        "daeb3ad3"
-      ],
-      "proof": {
-        "status": "HELD",
-        "cycle": "pr-gate run 34453974929 on PR #470, 2026-09-10",
-        "line": "MODE 4 - 166 rule id(s) compared; check-design-traceability: PASS; 23/23 consistent - the base ref resolves on the runner and mode 4 runs rather than skipping"
-      }
+      "slices": "8 of 8 merged",
+      "proof": "PR #552 sha 0c01a1d2 last; every slice green in CI; the traceability check runs on every PR including lane A's"
     },
-    "item-22": {
-      "item": 22,
-      "card": "docs/design/build-cards/item-22-document-handling-and-download-limits.md",
-      "status": "IN-PROGRESS",
-      "slices": [
-        {
-          "k": "s0",
-          "title": "#468 rotating discovery slot for UPCOMING IPOs (fix)",
-          "status": "MERGED",
-          "pr": 484,
-          "sha": "82842b92",
-          "tier": "A"
-        },
-        {
-          "k": "22-1",
-          "title": "resolved-address refusal + allow-list as config (imports lane C loader)",
-          "status": "MERGED",
-          "pr": 487,
-          "sha": "c3a8071b",
-          "tier": "A",
-          "lines": 400,
-          "note": "AT the cap - splits rather than merging large if it grows",
-          "reviewRounds": 3
-        },
-        {
-          "k": "22-2",
-          "title": "streaming byte cap + its own flag ENABLE_DOWNLOAD_STREAMING_CAP",
-          "status": "PLANNED",
-          "pr": null,
-          "sha": null,
-          "tier": "A",
-          "lines": 320
-        },
-        {
-          "k": "22-3",
-          "title": "structured refusal log + document-download-refusals detection entry",
-          "status": "PLANNED",
-          "pr": null,
-          "sha": null,
-          "tier": "B",
-          "lines": 180,
-          "note": "tier corrected DOWNWARD per delta 1.2"
-        },
-        {
-          "k": "22-4",
-          "title": "migration: part_number, exchange_document_id",
-          "status": "PLANNED",
-          "pr": null,
-          "sha": null,
-          "tier": "A",
-          "lines": 110,
-          "note": "under 150 but migration-only, which delta 1.1 exempts"
-        },
-        {
-          "k": "22-5",
-          "title": "multi-volume classifier + per-part store loop",
-          "status": "PLANNED",
-          "pr": null,
-          "sha": null,
-          "tier": "A",
-          "lines": 300
-        },
-        {
-          "k": "22-6",
-          "title": "blank-password attempt behind ENABLE_DOCUMENT_PASSWORD_CHECK",
-          "status": "PLANNED",
-          "pr": null,
-          "sha": null,
-          "tier": "A",
-          "lines": 150
-        }
-      ],
-      "prs": [],
-      "mergeShas": [],
-      "proof": {
-        "status": "OWED",
-        "cycle": null,
-        "line": null
-      },
-      "ownerOwedAtClose": "Tier A rollback rehearsal (flag off for one cycle) - a real owner-facing item, unlike the two wrongly claimed earlier today"
+    "16": {
+      "status": "DONE",
+      "slices": "1 of 1 merged",
+      "proof": "PR #528 sha 9a958a53; all five checks green on CI run 34504887739; mutation-checked - restoring moneycontrol to the CLI allow-list turns the suite red"
     },
-    "item-18": {
-      "item": 18,
-      "card": "docs/design/build-cards/item-18-document-retention.md",
-      "status": "PENDING",
-      "slices": [],
-      "prs": [],
-      "mergeShas": [],
-      "proof": {
-        "status": "OWED",
-        "cycle": null,
-        "line": null
-      }
+    "18": {
+      "status": "BUILT_NOT_DONE",
+      "slices": "3 of 3 built and merged, 18-2b planned",
+      "why": "the contract defines item 18 as \"PDF deleted seven days after its LAST SUCCESSFUL EXTRACTION\". The anchor is still the IPO close date, so the item is not DONE by its own definition. 18-2b (per-document anchor) is unblocked and is the remaining work. The data-loss hole is closed: no PDF is deleted while its text is missing.",
+      "owed": "cycle proof - BLOCKED, staging deploys down at the drift assert"
     },
-    "item-16": {
-      "item": 16,
-      "card": "docs/design/build-cards/item-16-retire-moneycontrol.md",
-      "status": "PENDING",
-      "slices": [],
-      "prs": [],
-      "mergeShas": [],
-      "proof": {
-        "status": "OWED",
-        "cycle": null,
-        "line": null
-      }
+    "22": {
+      "status": "BLOCKED",
+      "slices": "6 of 8 merged",
+      "why": "22-5 needs pdf-lib, a NEW shared dependency and therefore an owner line, AND a real password-protected filing, which has not appeared on either slot. 22-6 depends on 22-5. Both re-checked tonight rather than assumed."
     },
-    "item-08": {
-      "item": 8,
-      "card": "docs/design/build-cards/item-08-ratios-basis-for-offer-price-extractor.md",
-      "status": "PENDING",
-      "slices": [],
-      "prs": [],
-      "mergeShas": [],
-      "proof": {
-        "status": "OWED",
-        "cycle": null,
-        "line": null
-      }
+    "21": {
+      "status": "BLOCKED-DEPENDENCY(lane A item 5)",
+      "slices": "5 of 6 merged",
+      "why": "the provenance line reads ipo_field_plan.verify_due_at. Contract test run at 01:43 on 2026-09-11: `git show origin/main:packages/shared/src/db/schema.ts | grep -c ipoFieldPlan` returns 0, and the contract's PR search shows no item 5 slice merged. The contract authorises this closure explicitly (decision 3).",
+      "trigger": "that grep returning non-zero"
     },
-    "item-21": {
-      "item": 21,
-      "card": "docs/design/build-cards/item-21-read-side.md",
-      "status": "PENDING",
-      "slices": [],
-      "prs": [],
-      "mergeShas": [],
-      "proof": {
-        "status": "OWED",
-        "cycle": null,
-        "line": null
-      }
+    "8": {
+      "status": "PREMISE_CORRECTED_NOT_STARTED",
+      "slices": "0 merged",
+      "why": "a real 529-page RHP fetched at 01:35 overturned the card premise: the prospectus carries a P/E SUMMARY (Highest/Lowest/Average naming two companies), not a peer table. Eight of the ten peer_companies columns are absent. Filed as #565. Building on the old premise would have written two malformed rows per issuer.",
+      "nextStep": "table-level check on a second issuer before the scope is settled"
     }
   },
   "sharedDuties": {
@@ -642,5 +481,24 @@
       "what": "ENABLE_DOWNLOAD_STREAMING_CAP must NOT be enabled in any slot before slice 22-4 lands the refusal log",
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
-  ]
+  ],
+  "lastStateWriteAt": "2026-09-11T01:45:00+05:30",
+  "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
+  "mergedSliceBranchesByItem": {
+    "20": 8,
+    "22": 6,
+    "18": 3,
+    "16": 1,
+    "8": 0,
+    "21": 5
+  },
+  "stagingProofsOwedAndBlocked": [
+    "18-1 migrate",
+    "18-1b page rows",
+    "18-2 cycle",
+    "21-3 revalidate line",
+    "22-4 migrate",
+    "item 22 #496 and #468"
+  ],
+  "stagingProofsBlockedReason": "staging deploys fail at the drift assert since lane A #548; lane A has the fix as first work"
 }
