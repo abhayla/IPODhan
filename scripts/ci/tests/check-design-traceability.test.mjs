@@ -399,6 +399,40 @@ test('mode 4 without --base prints an explicit skip line, never a silent no-op',
   }
 });
 
+test('--base given as an empty string -> exit 2, never the SKIPPED path', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-900')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-900'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-900\n');
+
+    const res = runCheck(root, ['--base', '']);
+    assert.equal(res.status, 2, res.stdout + res.stderr);
+    assert.match(res.stderr, /--base was given with no ref value/);
+    assert.doesNotMatch(res.stdout, /MODE 4 — SKIPPED/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('--base given as the final argument with no value -> exit 2, never the SKIPPED path', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-900')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-900'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-900\n');
+
+    const res = runCheck(root, ['--base']);
+    assert.equal(res.status, 2, res.stdout + res.stderr);
+    assert.match(res.stderr, /--base was given with no ref value/);
+    assert.doesNotMatch(res.stdout, /MODE 4 — SKIPPED/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('mode 4: hash changed at HEAD, neither card nor test in the diff -> exit 1, names the id + card', () => {
   const root = mkFixtureRoot();
   try {

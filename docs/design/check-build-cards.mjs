@@ -35,15 +35,47 @@ const HEADINGS = ['## Purpose', '## Serves', '## Files', '## Schema', '## Interf
 const ignoreCache = new Map();
 function isIgnored(p) {
   if (ignoreCache.has(p)) return ignoreCache.get(p);
-  const r = spawnSync('git', ['check-ignore', '-q', '--', p], { cwd: REPO });
-  // 0 = ignored, 1 = not ignored, anything else = git could not answer, and an unanswered
-  // question is not a pass.
-  const answer = r.status === 0;
+  // The exit code alone cannot be trusted here. On Windows (Git 2.53.0.windows.2), `git
+  // check-ignore -q --` for a path written with a trailing slash exits 0 ("ignored") whenever NO
+  // .gitignore pattern actually matches it — and this is NOT an existence quirk: it reproduces for
+  // `scraper/config/` and `scripts/state/` whether or not the directory exists on disk (confirmed
+  // both ways; an untracked `scripts/state/` created on disk still falsely reports ignored under
+  // `-q` with a trailing slash). Stripping the trailing slash is not a safe fix either — it breaks
+  // the opposite, genuine case: `docs/design/probes/fixtures/pdf/` IS a real directory-only
+  // .gitignore entry (line ends `/`), and for a path that doesn't exist on disk, git can only tell
+  // it's meant to be a directory from the trailing slash on the QUERY; asking without one makes
+  // even a real match report "not ignored".
+  //
+  // -v (not -q) resolves this without guessing: on a genuine match it prints the matching pattern
+  // before the tab (`.gitignore:356:docs/design/probes/fixtures/pdf/\t...`); on the false-positive
+  // exit-0 case it prints an EMPTY pattern field (`.gitignore:349:\t...` — line 349 is a blank line
+  // in .gitignore, not a pattern). So "ignored" is exit 0 AND a non-empty reported pattern — that
+  // reads the same regardless of whether the path exists.
+  const r = spawnSync('git', ['check-ignore', '-v', '--', p], { cwd: REPO, encoding: 'utf8' });
+  // 0 = a pattern matched (verify it below), 1 = no pattern matched, anything else = git could not
+  // answer, and an unanswered question is not a pass.
+  let answer = false;
+  if (r.status === 0) {
+    const firstLine = (r.stdout || '').split(/\r?\n/, 1)[0];
+    const beforeTab = firstLine.split('\t')[0];
+    const m = /^(.*):(\d+):(.*)$/.exec(beforeTab);
+    answer = Boolean(m && m[3].trim().length > 0);
+  }
   ignoreCache.set(p, answer);
   return answer;
 }
 
-try {
+// Exported so `scripts/tests/check-build-cards-isignored.test.mjs` can exercise the real function
+// (not a re-implementation of its git-parsing logic) without running the whole gate as a
+// subprocess for every case.
+export { isIgnored };
+
+const isMain = Boolean(process.argv[1]) && (
+  import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`
+  || import.meta.url === `file:///${process.argv[1].replace(/\\/g, '/')}`
+);
+
+if (isMain) try {
   const files = fs.readdirSync(CARDS).filter((f) => /^item-\d+-.*\.md$/.test(f)).sort();
   const problems = [];
   let pathsChecked = 0, pathsMissing = 0, excused = 0;
