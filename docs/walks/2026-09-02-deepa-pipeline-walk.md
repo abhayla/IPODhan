@@ -2035,3 +2035,37 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   cites the generator line and the measured before/after, names mode 1 as what actually catches a sentence edit, and
   records the retired-id gap with its owner. `check-build-cards.mjs` and `check-design-consistency.mjs --gate` both
   still exit 0 after the edit.
+
+- **2026-09-10 13:01 IST [lane B] The item 22 and 18 corrections are on main via PR #466 (`53cdbb85`) - and they are BINDING,
+  through the card, exactly as this lane asked.** Verified rather than accepted: `docs/contracts/plans/
+  lane-b-items-22-18.md` exists on `origin/main`, and both cards carry at line 3 a dated block reading
+  *"Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ)."* That is the
+  card mechanism this lane's contract already trusts, so no argument about relay authority is needed. Read in full
+  and adopted:
+  **Item 22** - (1) multi-part filings get ONE `documents` row per download (the container or zip URL), never one per
+  part; `unique_url` and `unique_doc_per_ipo` stay; each part's extraction record carries `partNumber` and the part's
+  own sha256, and the parent row is COMPLETED only when every part has extracted. (2) No new dependency - `pdf-lib`
+  is not in the tree and no decision names it; use the existing `pdf-parse`. (3) `scraper/config/` is lane C's item
+  2; if this lane's allow-list slice arrives first it adds the FILE only and reuses the loader when it lands, never a
+  second one. (4) The flag slice waits for lane A's slot-aware helper and rebases onto it; that helper applies to NEW
+  flags only.
+  **Item 18** - (1) **Tier A, not B**, and the reasoning is right: it adds a migration, DELETES bytes and rows, and
+  ships a `repair-*` tool, each of which independently triggers Tier A under parent decision 6. Dry-run default,
+  `openRepairDb`, staging-only `--apply` by this run, `assert-repair-held.mjs --cycles 2` as the proof, production
+  never. (2) The purge KEEPS the existing `withdrawn` and `no_close_date` arms in `document-store.ts` as explicit
+  cases with tests - a rewrite that silently drops a live arm is a MAJOR finding. (3) The migration slice bumps
+  `journalEntries` in the stage-0 fixture, confirms after `db:generate` that the journal entry is not future-dated,
+  and until lane A's drift hardening lands the verifier diffs `schema.ts` against the generated SQL.
+- **2026-09-10 13:01 IST [lane B] DEFECT-B07, mine: I recorded a claim about MY OWN item's card without reading the card.**
+  An earlier relay said item 16 edits `scraper/src/config/field-priority-matrix.ts` and that this lane should expect
+  one-hunk conflicts there with lane C. I wrote that into the ledger and STATE.json as a shared-file constraint. It
+  is **wrong**, and one command would have shown it: item 16's card says of that file, verbatim, *"**No change in
+  this item.** ... Removing it from the matrix is build item 3 ... touching it here would be scope creep into a
+  different, dependency-ordered item."* There is no shared hunk between lane B and lane C there at all.
+  What makes this worth recording rather than quietly fixing: this run has been careful all day to verify peer claims
+  about SHARED things - it re-measured both shared duties on `origin/main` before believing either, and it held the
+  `node --test` alarm until it had numbers. But it accepted a peer's claim about ITS OWN card without opening the
+  card. The blind spot is precise: **claims about my own scope felt like information rather than assertions.** They
+  are assertions, and they are the cheapest of all to check, because the card is right there.
+  Mechanism: any relayed claim about a lane B item's own card is checked against the card on `origin/main` in the
+  same turn it is recorded, not when the item starts. STATE.json's shared-file list is corrected now.
