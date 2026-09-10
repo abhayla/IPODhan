@@ -2621,6 +2621,23 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         "doc_type": doc_type,
         "source_doc": source_doc,
         "pages": len(page_texts),
+        # Item 18 slice 1b: the TEXT, not just the count.
+        #
+        # Item 18 deletes the stored PDF on a schedule to reclaim disk (255
+        # documents, ~1.05 GB on staging). That is only safe if the text taken
+        # OUT of the PDF outlives the file, and until now this envelope reported
+        # `len(page_texts)` and threw the text itself away.
+        #
+        # Pages with no extractable text are dropped HERE as well as on the
+        # persister side. A scanned document (NSE's ratios archives are
+        # newspaper photographs) then emits an EMPTY list, which is what tells
+        # the purge that this PDF has nothing stored and must not be deleted.
+        #
+        # Size, measured rather than assumed: about 3.4 KB of text per page, so
+        # roughly 2 MB for a 600-page prospectus against an 8.3 MB PDF. The
+        # caller reads this envelope with spawnSync at maxBuffer 64 MB
+        # (filing-auto-persist.ts), so it fits with a wide margin.
+        "page_texts": [[i, t] for i, t in page_texts if (t or "").strip()],
         "extraction_status": status,
         "unit": meta.get("unit"),
         "fiscal_years": meta.get("fiscal_years") or [],

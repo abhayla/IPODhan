@@ -1,0 +1,210 @@
+{
+  "_comment": "Shrink-only baseline of pre-existing upward import edges under scripts/ci/module-map.json's layer order (see docs/design/data-sourcing-pull-model.md §7.6). An edge here is DEBT: it may only be removed once the real import is fixed, never added to grandfather a new violation. Each entry names why it exists today. Regenerated entries are hand-authored, not tool-generated (unlike config/write-ratchet-baseline.json) because each needs its own `why`.",
+  "edges": [
+    {
+      "from": "scraper/src/scrapers/bse-api-scraper.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/bse-scraper.ts",
+      "to": "scraper/src/utils/detect-offering-type.ts",
+      "why": "the scraper calls this shared offering-type detector inline mid-extraction rather than as a separate post-extraction validation pass — same shape as the validators.ts edges above."
+    },
+    {
+      "from": "scraper/src/scrapers/bse-scraper.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/chittorgarh-scraper.ts",
+      "to": "scraper/src/utils/data-validation.ts",
+      "why": "chittorgarh-scraper calls this shared validation helper inline during extraction rather than as a separate post-extraction pass."
+    },
+    {
+      "from": "scraper/src/scrapers/chittorgarh-scraper.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/ipo-alerts-fallback.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/ipo-alerts-fallback.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/listing-performance-plan.ts",
+      "to": "scraper/src/services/listing-reconciliation.ts",
+      "why": "the listing-performance plan/updater scrapers call the consolidation-layer reconciliation service directly to merge freshly-scraped rows against existing state, instead of handing rows to a separate downstream consolidation step."
+    },
+    {
+      "from": "scraper/src/scrapers/listing-performance-updater.ts",
+      "to": "scraper/src/services/listing-reconciliation.ts",
+      "why": "the listing-performance plan/updater scrapers call the consolidation-layer reconciliation service directly to merge freshly-scraped rows against existing state, instead of handing rows to a separate downstream consolidation step."
+    },
+    {
+      "from": "scraper/src/scrapers/moneycontrol-scraper.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/nse-api-client.ts",
+      "to": "scraper/src/services/owner-notify.ts",
+      "why": "the scraper/discovery code pages the owner directly on a hard failure (nse-api-client, nse-scraper, document-discovery-runner) instead of routing through a separate verification-layer alerting step."
+    },
+    {
+      "from": "scraper/src/scrapers/nse-api-client.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/nse-scraper.ts",
+      "to": "scraper/src/services/owner-notify.ts",
+      "why": "the scraper/discovery code pages the owner directly on a hard failure (nse-api-client, nse-scraper, document-discovery-runner) instead of routing through a separate verification-layer alerting step."
+    },
+    {
+      "from": "scraper/src/scrapers/nse-scraper.ts",
+      "to": "scraper/src/utils/detect-offering-type.ts",
+      "why": "the scraper calls this shared offering-type detector inline mid-extraction rather than as a separate post-extraction validation pass — same shape as the validators.ts edges above."
+    },
+    {
+      "from": "scraper/src/scrapers/nse-scraper.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/nse-subscription-parser.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/scrapers/rights-debt-enrichment-scraper.ts",
+      "to": "scraper/src/utils/validators.ts",
+      "why": "the scraper calls this shared validator/normalizer function inline mid-extraction (parsing dates, amounts, offering type) rather than as a separate post-extraction validation pass the module map assumes — moving it would mean splitting each scraper into extract-then-validate stages, a real refactor out of scope for this slice."
+    },
+    {
+      "from": "scraper/src/services/anchor-persister.ts",
+      "to": "scraper/src/services/step-ledger-recorders.ts",
+      "why": "consolidation/download services record their own step-ledger entries inline as they persist, instead of a separate verification step recording them after the fact — same shape as the step-ledger.ts edges above."
+    },
+    {
+      "from": "scraper/src/services/company-host-source.ts",
+      "to": "scraper/src/services/document-classifier.ts",
+      "why": "discovery/download services classify a newly-found or newly-downloaded document (DRHP/RHP/other) inline as part of discovering or verifying it, instead of deferring classification to a separate extraction step."
+    },
+    {
+      "from": "scraper/src/services/data-consolidation-orchestrator.ts",
+      "to": "scraper/src/services/step-ledger-recorders.ts",
+      "why": "consolidation/download services record their own step-ledger entries inline as they persist, instead of a separate verification step recording them after the fact — same shape as the step-ledger.ts edges above."
+    },
+    {
+      "from": "scraper/src/services/data-consolidation-orchestrator.ts",
+      "to": "scraper/src/services/step-ledger.ts",
+      "why": "consolidation/download services record their own step-ledger entries (the per-IPO pipeline-progress audit trail) inline as they persist, instead of a separate verification step recording them after the fact."
+    },
+    {
+      "from": "scraper/src/services/data-persister.ts",
+      "to": "scraper/src/services/step-ledger-recorders.ts",
+      "why": "consolidation/download services record their own step-ledger entries inline as they persist, instead of a separate verification step recording them after the fact — same shape as the step-ledger.ts edges above."
+    },
+    {
+      "from": "scraper/src/services/data-persister.ts",
+      "to": "scraper/src/services/step-ledger.ts",
+      "why": "consolidation/download services record their own step-ledger entries (the per-IPO pipeline-progress audit trail) inline as they persist, instead of a separate verification step recording them after the fact."
+    },
+    {
+      "from": "scraper/src/services/document-cycle.ts",
+      "to": "scraper/src/services/data-persister.ts",
+      "why": "document-cycle persists consolidated data inline as part of the download-orchestration cycle, instead of handing off to a separate consolidation step."
+    },
+    {
+      "from": "scraper/src/services/document-cycle.ts",
+      "to": "scraper/src/services/filing-auto-persist.ts",
+      "why": "document-cycle auto-persists a filing inline as part of the download-orchestration cycle, instead of handing off to a separate consolidation step."
+    },
+    {
+      "from": "scraper/src/services/document-cycle.ts",
+      "to": "scraper/src/services/step-ledger-recorders.ts",
+      "why": "consolidation/download services record their own step-ledger entries inline as they persist, instead of a separate verification step recording them after the fact — same shape as the step-ledger.ts edges above."
+    },
+    {
+      "from": "scraper/src/services/document-cycle.ts",
+      "to": "scraper/src/services/step-ledger.ts",
+      "why": "consolidation/download services record their own step-ledger entries (the per-IPO pipeline-progress audit trail) inline as they persist, instead of a separate verification step recording them after the fact."
+    },
+    {
+      "from": "scraper/src/services/document-discovery-runner.ts",
+      "to": "scraper/src/services/bse-party-parser.ts",
+      "why": "document-discovery-runner parses BSE party/company names inline while deciding which IPO a discovered document belongs to, instead of deferring parsing to a separate extraction step."
+    },
+    {
+      "from": "scraper/src/services/document-discovery-runner.ts",
+      "to": "scraper/src/services/document-download-verifier.ts",
+      "why": "document-discovery-runner checks whether a discovered document was already downloaded inline, instead of treating download-verification as a separate later step."
+    },
+    {
+      "from": "scraper/src/services/document-discovery-runner.ts",
+      "to": "scraper/src/services/document-state-machine.ts",
+      "why": "document-discovery-runner drives the document download state machine inline while discovering documents, instead of treating it as a separate download-layer concern invoked later."
+    },
+    {
+      "from": "scraper/src/services/document-discovery-runner.ts",
+      "to": "scraper/src/services/document-store.ts",
+      "why": "document-discovery-runner reads/writes the document store inline while discovering documents, instead of treating storage as a separate download-layer concern invoked later."
+    },
+    {
+      "from": "scraper/src/services/document-discovery-runner.ts",
+      "to": "scraper/src/services/nse-party-parser.ts",
+      "why": "document-discovery-runner parses NSE party/company names inline while deciding which IPO a discovered document belongs to, instead of deferring parsing to a separate extraction step."
+    },
+    {
+      "from": "scraper/src/services/document-discovery-runner.ts",
+      "to": "scraper/src/services/owner-notify.ts",
+      "why": "the scraper/discovery code pages the owner directly on a hard failure (nse-api-client, nse-scraper, document-discovery-runner) instead of routing through a separate verification-layer alerting step."
+    },
+    {
+      "from": "scraper/src/services/document-discovery-runner.ts",
+      "to": "scraper/src/services/pdf-cover-text.ts",
+      "why": "document-discovery-runner reads a PDF cover page inline to disambiguate a discovered document, instead of deferring text extraction to a separate extraction step."
+    },
+    {
+      "from": "scraper/src/services/document-download-verifier.ts",
+      "to": "scraper/src/services/document-classifier.ts",
+      "why": "discovery/download services classify a newly-found or newly-downloaded document (DRHP/RHP/other) inline as part of discovering or verifying it, instead of deferring classification to a separate extraction step."
+    },
+    {
+      "from": "scraper/src/services/filing-auto-persist.ts",
+      "to": "scraper/src/services/cross-document-agreement.ts",
+      "why": "filing-auto-persist/filing-persister cross-check a new filing against other documents (the re-read layer's job) inline before persisting, instead of deferring agreement-checking to a later re-read pass."
+    },
+    {
+      "from": "scraper/src/services/filing-auto-persist.ts",
+      "to": "scraper/src/services/step-ledger-recorders.ts",
+      "why": "consolidation/download services record their own step-ledger entries inline as they persist, instead of a separate verification step recording them after the fact — same shape as the step-ledger.ts edges above."
+    },
+    {
+      "from": "scraper/src/services/filing-persister.ts",
+      "to": "scraper/src/services/cross-document-agreement.ts",
+      "why": "filing-auto-persist/filing-persister cross-check a new filing against other documents (the re-read layer's job) inline before persisting, instead of deferring agreement-checking to a later re-read pass."
+    },
+    {
+      "from": "scraper/src/services/primary-source-discovery.ts",
+      "to": "scraper/src/services/document-classifier.ts",
+      "why": "discovery/download services classify a newly-found or newly-downloaded document (DRHP/RHP/other) inline as part of discovering or verifying it, instead of deferring classification to a separate extraction step."
+    },
+    {
+      "from": "scraper/src/services/sebi-source.ts",
+      "to": "scraper/src/services/document-classifier.ts",
+      "why": "discovery/download services classify a newly-found or newly-downloaded document (DRHP/RHP/other) inline as part of discovering or verifying it, instead of deferring classification to a separate extraction step."
+    },
+    {
+      "from": "scraper/src/utils/match-ipo.ts",
+      "to": "scraper/src/utils/transform-past-ipo.ts",
+      "why": "match-ipo transforms a matched past-IPO record inline using an extraction-layer transformer, instead of treating transformation as a separate later step."
+    }
+  ]
+}

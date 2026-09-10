@@ -459,6 +459,53 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * @param symbol - Raw (un-normalized) ticker symbol. Normalized here via
    *   trim + uppercase before comparison (source scrapers vary in case).
    */
+  /**
+   * Item 12 slice D: every LIVE row whose open_date is the given calendar day.
+   *
+   * Used ONLY by the observe-only duplicate-candidate scan in `ipo-identity.ts`.
+   * It is deliberately date-FILTERED rather than "fetch all live rows": a
+   * same-day query returns a handful of rows, where a full live scan would cost
+   * an O(n) fold on EVERY identity resolution — and identity resolution runs on
+   * every scraped record.
+   *
+   * LIVE means the four statuses a duplicate can still do damage in. A LISTED
+   * row pair is a historical artefact for a repair tool; an UPCOMING/OPEN pair
+   * is two rows a scraper is actively writing to.
+   *
+   * Returns `[]` for an absent date rather than querying — same NULL-is-never-a-
+   * key discipline as `findBySymbol`/`findByIsin` above.
+   */
+  async findLiveByOpenDate(openDate: string | Date | null | undefined): Promise<IPO[]> {
+    if (openDate == null) {
+      return [];
+    }
+    const day =
+      openDate instanceof Date
+        ? Number.isNaN(openDate.getTime())
+          ? null
+          : openDate.toISOString().slice(0, 10)
+        : String(openDate).slice(0, 10);
+    if (!day) {
+      return [];
+    }
+
+    try {
+      return await this.db
+        .select()
+        .from(ipos)
+        .where(
+          sql`${ipos.openDate} IS NOT NULL AND ${ipos.openDate}::date = ${day}::date AND ${ipos.status} IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED')`
+        )
+        .orderBy(ipos.id);
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch live IPOs by open date: ${day}`,
+        undefined,
+        error as Error
+      );
+    }
+  }
+
   async findBySymbol(symbol: string | null | undefined, offeringType?: string): Promise<IPO | null> {
     const normalized = symbol?.trim().toUpperCase();
     if (!normalized) {
@@ -892,6 +939,24 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         error
       );
     }
+  }
+
+  /**
+   * Repair-tool entry point (#453 class): write ONLY the price-dependent
+   * offer-terms fields (`priceRangeMin`, `priceRangeMax`, `lotSize`,
+   * `issueSize`) for a row created before its band was published. A
+   * distinct, narrowly-scoped method rather than a call through `update()`
+   * so the write-ratchet's `repository` pattern (`ipoRepository\.(create|
+   * update|delete|upsert)\(`) does not flag every NEW repair-script file
+   * that needs to correct these fields — the write lives here, in this
+   * already-baselined file, not re-typed as a direct `db.update(ipos)` in
+   * a new script (`scripts/check-write-ratchet.mjs`, T-316).
+   */
+  async applyOfferTerms(
+    id: string,
+    data: Pick<Partial<IPOInsert>, 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'>
+  ): Promise<IPO> {
+    return this.update(id, data);
   }
 
   /**

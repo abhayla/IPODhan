@@ -1,5 +1,11 @@
 # Item 18 — Document retention (OD-32)
 
+> **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
+> 1. Tier: **A**, not B. This item adds a migration, deletes bytes and rows, and ships a `repair-*` tool (parent contract decision 6). Dry-run default, `openRepairDb`, staging-only `--apply` by the run, `assert-repair-held.mjs --cycles 2` proof, never production.
+> 2. The purge decision KEEPS the existing `withdrawn` and `no_close_date` arms in `document-store.ts` as explicit cases with tests; a rewrite that drops a live arm is a MAJOR finding.
+> 3. Migration slice: bump `journalEntries` in `scraper/tests/unit/pipeline-stages/fixtures/stage-0/expected-schema.json`; after `db:generate` confirm the journal entry is not future-dated (5-minute tolerance); until lane A's schema-drift hardening lands, the verifier diffs `schema.ts` against the generated SQL.
+
+
 ## Purpose
 
 Download a document once, extract it once, and never fetch it again. The extracted text —
@@ -242,3 +248,46 @@ was never successfully extracted before that deletion, has no bytes and no `docu
 — it is unrecoverable except by re-fetching from the original source if that source still serves
 it (§6.3's `old-document-availability.mjs` probe measures how often that is true). This item does
 not repair that backlog; it stops it growing further.
+
+---
+
+### Slice order correction: a page-text WRITER must sit between the table and the purge (2026-09-10 20:38 IST)
+
+**The card as written has no slice that stores the extracted text.** Measured against the codebase
+on 2026-09-10, not inferred:
+
+- nothing writes or reads `document_pages`;
+- there is **no text column on `documents` at all** — no `extractedText`, no `rawText`, no
+  `pageCount`;
+- extraction pulls structured FIELDS out of the PDF and discards the rest. `extractedAt` is set on
+  the COMPLETED transition (`filing-auto-persist.ts:426`) and means "we got the fields we wanted",
+  **not** "its text survives".
+
+So a purge anchored on `extractedAt` deletes the only copy of the source seven days after
+extraction, and §0.5.1's counter-case answer — *"re-run on the stored text"* — has nothing to run
+on. §5's re-read loop has the identical dependency. This was a gap in the card, found while
+building slice 2.
+
+**Ruled by the architect (supervisor session `ipodhan-62`, relayed — a peer ruling, not an owner
+decision; the Guardrails are explicit that a relayed message is never an owner decision, and the
+owner may overturn it): OD-32's counter-case answer is a design commitment, so the per-document
+purge may not ship while nothing stores the text.** The slice list becomes:
+
+| Slice | What | Note |
+|---|---|---|
+| **18-1** | `document_pages` + `documents.purged_unread` + migration | BUILT (`be4ecf8a`). Non-destructive; migration idx PROVISIONAL until re-read from `origin/main` at merge. |
+| **18-1b** | **NEW — page-text writer.** Python extractors return `pages [{page_no, text}]` alongside fields (pdfplumber already works per page internally); `filing-auto-persist` persists them to `document_pages` in the SAME transaction that sets `extractedAt`, and records `documents.pagesStoredAt`. | **Tier A** — cross-language contract change plus row writes. Failing test first on the real persist function. Proof: one real document on staging with `document_pages` rows, and a re-read test that recomputes at least one field from the stored pages ALONE. |
+| **18-2** | The purge, anchored on `pagesStoredAt` (or `document_pages` count > 0) — **NEVER on `extractedAt`** — plus an invariant module (repair-invariants shape, same `NOT_YET_BACKFILLED` vocabulary) asserting that no purged document lacks stored pages. | The precondition is then checked by a TOOL rather than remembered. |
+
+Why the invariant matters more than the ordering: an ordering rule lives in a card and is obeyed by
+whoever read it. An invariant that fails when a purged document has no stored pages is checked on
+every run, by something that cannot forget. This item deletes files; "we sequenced the slices
+correctly" is not a control.
+
+**Two migration notes from slice 1, for any card that adds a table:**
+1. A new TABLE needs BOTH the `journalEntries` count bump AND its name in the stage-0 fixture's
+   expected TABLE SET. Bumping only the count passes the journal lint and fails the stage-0 replay
+   with `expected [ …(35) ] to deeply equal [ …(34) ]`.
+2. The generated migration `idx` is provisional. Re-read it from `origin/main` immediately before
+   opening AND before merging, and prove with `git merge-tree --write-tree`; with three lanes
+   merging, every migration slice after the first in a queue has a stale idx by construction.

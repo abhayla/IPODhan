@@ -240,9 +240,62 @@ export function isPurgeDue(params: {
   return elapsed > (params.retentionDays ?? DEFAULT_RETENTION_DAYS);
 }
 
+/**
+ * Item 18 slice 2. The one refusal that outranks every other arm: a document was
+ * marked COMPLETED and stored NO text, so its bytes are the only copy we have.
+ */
+/**
+ * Item 18 slice 2b. Is EVERY document of this IPO past its OWN retention window?
+ *
+ * The contract defines item 18 as "PDF deleted seven days after its LAST
+ * SUCCESSFUL EXTRACTION". Until this, the clock was the IPO's close date - so
+ * two documents on one IPO shared a window that belonged to neither, and a
+ * prospectus extracted yesterday was deletable because the issue had closed a
+ * month ago.
+ *
+ * Used as an ADDITIONAL constraint on the existing per-IPO purge, never as a
+ * replacement for it: the directory is deleted only when the old rules say so
+ * AND this returns true. That makes the change a strict TIGHTENING - nothing
+ * protected before becomes deletable now - which is the only safe direction for
+ * a path that deletes files irreversibly. Per-file deletion would be the fuller
+ * shape and is deliberately not attempted here.
+ *
+ * `null` is NOT "infinitely old". A document with no successful extraction has
+ * no clock started, and reading null as old is exactly how an unread file gets
+ * deleted before anything ever read it. An unparseable timestamp fails closed
+ * for the same reason: a date we cannot read is not evidence that time passed.
+ *
+ * An EMPTY list is true - an IPO with no document rows has nothing to protect,
+ * and must not block the cleanup the old arms exist for.
+ */
+export function everyDocumentPastItsOwnWindow(
+  documents: Array<{ extractedAt: Date | string | null }>,
+  retentionDays: number,
+  now: Date = new Date()
+): boolean {
+  const windowMs = retentionDays * 24 * 60 * 60 * 1000;
+  for (const doc of documents) {
+    if (doc.extractedAt === null || doc.extractedAt === undefined) return false;
+    const at = doc.extractedAt instanceof Date ? doc.extractedAt : new Date(doc.extractedAt);
+    const ms = at.getTime();
+    if (!Number.isFinite(ms)) return false;
+    if (now.getTime() - ms <= windowMs) return false;
+  }
+  return true;
+}
+
+export const PURGE_TEXTLESS_REASON = 'extracted_but_no_stored_text' as const;
+
 export type PurgeDecision =
   | { purge: true; reason: 'withdrawn' | 'read_and_expired' | 'hard_cap' }
-  | { purge: false; reason: 'not_due' | 'unread_within_hard_cap' | 'no_close_date' };
+  | {
+      purge: false;
+      reason:
+        | 'not_due'
+        | 'unread_within_hard_cap'
+        | 'no_close_date'
+        | typeof PURGE_TEXTLESS_REASON;
+    };
 
 /**
  * Should the cycle delete this IPO's local PDFs? (T-403 M7.)
@@ -265,10 +318,35 @@ export function decidePurge(params: {
   closeDate: Date | string | null;
   withdrawn?: boolean;
   allDocumentsRead: boolean;
+  /**
+   * Item 18 slice 2. How many of this IPO's documents are COMPLETED and yet have
+   * NO rows in `document_pages`.
+   *
+   * OPTIONAL, and absent means "the caller did not measure it", never "there is
+   * none". Treating absence as a veto would stop every purge the instant this
+   * shipped, and a purge that never runs is a disk that fills up - a different
+   * failure, not a safer one. The SQL that feeds the real call site supplies it.
+   */
+  textlessCount?: number;
   retentionDays?: number;
   maxRetentionDays?: number;
   now?: Date;
 }): PurgeDecision {
+  // FIRST, and above `withdrawn` deliberately.
+  //
+  // Measured 2026-09-10: NSE's ratios archives are newspaper PHOTOGRAPHS.
+  // Extraction runs over them, reports COMPLETED, and stores nothing - so every
+  // arm below reads "extracted" as "safe to delete" and would delete the only
+  // copy of a filing whose text we never captured. The exchange has usually
+  // taken the file down by then.
+  //
+  // It outranks `withdrawn` too: a withdrawn issue's prospectus is still the
+  // only record of what was offered, and the issue dying is not a reason to
+  // lose it.
+  if ((params.textlessCount ?? 0) > 0) {
+    return { purge: false, reason: PURGE_TEXTLESS_REASON };
+  }
+
   if (params.withdrawn === true) return { purge: true, reason: 'withdrawn' };
 
   const elapsed = daysSinceClose(params.closeDate, params.now ?? new Date());

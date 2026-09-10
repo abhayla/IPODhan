@@ -45,7 +45,17 @@ jobs:
 
     steps:
       - name: Checkout code
+        # fetch-depth: 0 (full history) — the design-traceability gate below
+        # runs `git show <base>:docs/design/rules.json` and `git diff
+        # <base>...HEAD` against the pull request's base commit (item 20
+        # mode 4). actions/checkout defaults to a depth-1 shallow clone of
+        # only the PR merge commit, so the base commit is absent locally and
+        # both git calls fail with "unknown revision" — turning the gate
+        # into an unconditional exit 2 on every PR. Full history avoids that
+        # without hand-rolling a second fetch of just the base sha.
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -59,6 +69,17 @@ jobs:
         # pattern turns this red before the ratchet check below can silently
         # stop catching that pattern class. No deps needed (Node builtins only).
         run: node --test scripts/tests/check-write-ratchet.test.mjs
+
+      - name: Web integration baseline gate self-test (item 1 slice s3d, issue #461)
+        # Mutation-proof: scripts/tests/check-web-integration-baseline.test.mjs
+        # imports the actual exported functions (extractFailingFiles,
+        # normalizeFileName, diffAgainstBaseline) from the checker script, so a
+        # weakened guard (e.g. a bare glob that matches nothing, or a suite that
+        # registers zero tests) turns this red before ci.yml's gate can silently
+        # stop enforcing shrink-only on the web integration suite. Literal path,
+        # never a glob — a glob matching nothing exits 0 same as a real pass
+        # (issue #461). No deps needed (Node builtins only).
+        run: node --test scripts/tests/check-web-integration-baseline.test.mjs
 
       - name: Scripts type-check exclude shrink-only guard (issue #434)
         # config/scripts-typecheck-exclude-baseline.json is the only
@@ -82,6 +103,23 @@ jobs:
         # or deleted check turns this red. No deps needed (Node builtins +
         # bash, both present on ubuntu-latest).
         run: node --test scripts/tests/preflight-runtime.test.mjs
+
+      - name: Alias-resolution preflight self-tests (item 1 slice s14)
+        # Mutation-proof: drives the real scripts/lib/alias-preflight-auto.mjs
+        # as a subprocess against fabricated checkouts whose workspace link
+        # points inside / outside the tree, so deleting the outside-the-root
+        # check turns this red instead of silently letting a run exercise a
+        # different checkout than the one under test.
+        run: node --test scripts/tests/alias-preflight.test.mjs
+
+      - name: No --experimental-strip-types subprocess in scripts/tests (CI-portability guard)
+        # Mutation-proof: scans scripts/tests/*.{mjs,ts,mts} for that flag
+        # passed as a spawned-process argument, which needs Node >= 22.6 and
+        # is therefore red on every pr-gate run (this job pins Node 20 up to
+        # this point) while staying green on any laptop with a newer Node.
+        # No deps needed (Node builtins only), so it belongs here with the
+        # other pre-install gates rather than after npm ci.
+        run: node --test scripts/tests/no-experimental-strip-types-in-tests.test.mjs
 
       - name: Document-state check self-tests (T-403)
         # Mutation-proof: scripts/tests/document-state-checks.test.mjs imports
@@ -114,8 +152,9 @@ jobs:
         # strictly greater than the last applied created_at. Entries 0045-0049
         # carry hand-typed future dates (up to 2026-09-10); a real migration
         # authored after them could sort BELOW them and be silently skipped.
-        # This gate checks monotonic `when` (from idx 33 on), no new
-        # future-dated `when` (after idx 33), and that every entry has its
+        # This gate checks monotonic `when` (from idx 33 on), rejects any
+        # entry dated more than a small clock-skew tolerance into the future
+        # (no blanket future-dated exemption), and that every entry has its
         # .sql / snapshot artifacts. Mutation-proof: the self-test imports the
         # real predicates from scripts/lib/migration-journal-lint.mjs.
         run: |
@@ -168,6 +207,127 @@ jobs:
         # scraper/tests/fixtures/PROVENANCE.md.
         run: node scripts/ci/require-fixture-provenance.mjs
 
+      - name: Design traceability self-test (item 20 / OD-52)
+        # Mutation-proof: scripts/ci/tests/check-design-traceability.test.mjs
+        # drives the real check-design-traceability.mjs binary against fixture
+        # trees, red-then-green per failure mode, so a weakened or deleted
+        # failure mode turns this red before the gate below can silently stop
+        # catching that class. Runs before npm ci (Node builtins only), same
+        # idiom as the repair-tool module lint self-test above.
+        run: node --test scripts/ci/tests/check-design-traceability.test.mjs
+
+      - name: Design traceability (OD-52)
+        # A pull request fails when a design rule has no build item, a build
+        # item's rule has no test, a test names a rule that does not exist, or
+        # a rule's wording changes without its card and test being touched in
+        # the same change (docs/design/build-cards/item-20-design-traceability-check.md).
+        # --base resolves to the pull request's base commit so mode 4 (hash
+        # drift vs base) actually runs instead of printing its SKIPPED line;
+        # the checkout step above fetches full history so that base commit is
+        # present locally for the `git show`/`git diff` calls this makes.
+        run: node scripts/ci/check-design-traceability.mjs --base "${{ github.event.pull_request.base.sha }}"
+
+      - name: Module boundaries self-test (item 20 / §7.6)
+        # Mutation-proof: scripts/ci/tests/check-module-boundaries.test.mjs
+        # drives the real check-module-boundaries.mjs binary against fixture
+        # trees with a known upward import edge, so a weakened or deleted rule
+        # turns this red before the gate below can silently stop catching it.
+        run: node --test scripts/ci/tests/check-module-boundaries.test.mjs
+
+      - name: Module boundaries (§7.6)
+        # A lower layer (discovery -> download -> extraction -> validation ->
+        # consolidation -> plan -> walk -> verification -> re-read -> read-side)
+        # never imports a higher one. Baseline is shrink-only —
+        # config/module-boundary-baseline.json.
+        run: node scripts/ci/check-module-boundaries.mjs
+
+      - name: Drizzle where-chaining self-test (#488)
+        # Mutation-proof: scripts/ci/tests/check-drizzle-where-chaining.test.mjs
+        # drives the real check-drizzle-where-chaining.mjs binary against
+        # fixtures copied from the pre-fix shape of the known-defect files
+        # (registrar-repository.ts, market-holiday-repository.ts,
+        # backfill-ipo-reviews.ts), so a weakened or deleted rule turns this
+        # red before the gate below can silently stop catching it.
+        run: node --test scripts/ci/tests/check-drizzle-where-chaining.test.mjs
+
+      - name: Drizzle where-chaining (#488)
+        # Drizzle's .where() REPLACES the previous where clause rather than
+        # ANDing it — a variable re-assigned from .where() more than once on
+        # a path where both calls can run silently drops the earlier filter
+        # (a registrar search with activeOnly=true returning inactive rows;
+        # a holiday query filtered by year+exchange returning the wrong set).
+        # Fix: collect conditions into an array, apply ONE where(and(...)).
+        run: node scripts/ci/check-drizzle-where-chaining.mjs
+
+      - name: Security-boundary wiring self-test (item 20 / slice 6)
+        # 15 cases, most of them mutations: a name only in a comment, a second
+        # declaration of the same function in another module, a comma inside a
+        # string, an empty registry, a zero-file scan, and a baselined entry
+        # that is now wired and must be deleted.
+        run: node --test scripts/ci/tests/check-security-boundary-wired.test.mjs
+
+      - name: Security boundaries are actually wired (item 20 / slice 6)
+        # 2026-09-10: three security controls shipped in one week with nothing
+        # calling them — the DNS-rebinding refusal (#487), the slot-aware flag
+        # default (#476), and the registrar allow-list parameter. All three had
+        # unit tests and all three passed CI. The tests covered the FUNCTION;
+        # nothing covered its WIRING. Needs no install, so it runs here with the
+        # other cheap gates rather than after the suites.
+        run: node scripts/ci/check-security-boundary-wired.mjs
+
+      - name: Docs-gate coverage self-test
+        # A change to the documentation must reach a gate that reads the
+        # documentation. Runs in BOTH workflows on purpose: editing pr-gate.yml
+        # is a CODE change, so it triggers pr-gate and not docs-gate - and that
+        # is exactly the edit most likely to put the documentation gates back
+        # behind a skip. A self-test that only runs on the PRs it is about is
+        # the same blind spot one level up.
+        run: node --test scripts/ci/tests/check-docs-gate-coverage.test.mjs
+
+      - name: Migration snapshot-chain self-test
+        # 14 cases, all mutations: a fork, a duplicate id, a dangling head, a
+        # cycle, a parent with a higher journal idx, and the two shapes that must
+        # NOT fire (a snapshot with no journal entry, a journal entry with no
+        # snapshot - both are real and legitimate in this repository). The last
+        # two replay the 2026-09-10 collision with its real ids, broken and fixed.
+        run: node --test scripts/ci/tests/check-migration-snapshot-chain.test.mjs
+
+      - name: Migration snapshots form one straight chain
+        # 2026-09-10: 20260910043758_salty_shen (idx 36) and
+        # 20260910121813_cooing_manta (idx 37) both claimed parent 02d8a6d4 - the
+        # second was generated from a branch cut before the first landed. Both
+        # merged green. `npm run db:generate` then refused to run for EVERYONE,
+        # and the head snapshot had lost row_key, so a migration generated from
+        # that head would have tried to ADD a column every slot already has -
+        # a broken deploy everywhere. (First written up as DROP COLUMN; a
+        # reviewer corrected it. drizzle diffs schema.ts against the head.)
+        # Needs no install, so it runs here with the other cheap gates.
+        run: node scripts/ci/check-migration-snapshot-chain.mjs
+
+      - name: ESM module-scope globals self-test (item 20 / slice 5)
+        # Drives the real check against fixture trees: the mutations that prove
+        # it can FAIL and the zero-files floor that proves it cannot pass on an
+        # empty scan. Needs no install, so it belongs here with the other cheap
+        # gates rather than after the suites.
+        run: node --test scripts/ci/tests/check-esm-module-globals.test.mjs
+
+      - name: ESM module-scope globals (static)
+        # 2026-09-10: download-allowlist-loader.ts reached main with a bare
+        # __dirname at module scope and the production scraper could not start
+        # at all. vitest (CJS transform), tsx -e, and tsc --noEmit (@types/node
+        # declares __dirname globally) were ALL green on it. This static pass
+        # covers the half of the class nothing imports YET; the import smoke
+        # covers the reachable half.
+        run: node scripts/ci/check-esm-module-globals.mjs
+
+      - name: Design consistency gate (docs/design/check-design-consistency.mjs)
+        # The only check in the repository that catches a build card claiming
+        # a retired or unknown rule id (prints "N card(s) claim a retired or
+        # unknown rule id"); it ran in no workflow before this slice, so that
+        # class was caught by nothing. Assigned to this gate step by a review
+        # finding during item 20 slice 4 (design-traceability CI wiring).
+        run: node docs/design/check-design-consistency.mjs --gate
+
       - name: Install dependencies
         run: npm ci
 
@@ -193,6 +353,34 @@ jobs:
         # rest of this job is verified against.
         run: node --test scripts/tests/normalize-company-name-parity.test.mjs
 
+      - name: Company-identity fold parity self-test (item 12 slice A)
+        # scripts/lib/repair-invariants/duplicate-ipo-rows.mjs hand-copies the
+        # company-identity fold as `foldName` because a plain-node script cannot
+        # import TypeScript. This asserts that copy still agrees with the SSOT
+        # (packages/shared/src/utils/company-identity-fold.ts) over the shared
+        # fixture. MUST stay INSIDE the Node 22 window above and before the
+        # Node 20 restore below: it uses the same erasable-TS type stripping,
+        # so on Node 20 the SSOT import throws and this fails loud by design.
+        #
+        # Why it is a gate and not a nicety: two names folding equal are
+        # treated as the same company by the duplicate-row repair, which
+        # DELETES a row. Drift between the two implementations means the
+        # report and the repair disagree about what they are about to delete.
+        run: node --test scripts/tests/company-identity-fold-parity.test.mjs
+
+      - name: Row-key staleness invariant unit tests (item 12 slice C)
+        # scripts/lib/repair-invariants/normalized-name-current.mjs is the tool a
+        # 544-row re-key is proven with, so the SHAPE of its answer is gated here
+        # rather than left to a staging run that only exercises the happy path.
+        # MUST stay inside the Node 22 window: the invariant imports rowKeyForName
+        # from the TypeScript SSOT via erasable type stripping, so on Node 20 it
+        # cannot load and every test fails.
+        #
+        # What it pins: an un-backfilled table reports ONE finding, not one per
+        # row - and still FAILS. If it returned zero, a backfill that silently
+        # never ran would read as a clean gate.
+        run: node --test scripts/tests/normalized-name-current.test.mjs
+
       - name: Setup Node.js 20 (restore pinned version for the rest of the job)
         uses: actions/setup-node@v4
         with:
@@ -205,6 +393,29 @@ jobs:
           cd packages/shared && npx tsc
           test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
 
+      - name: Scraper import smoke (real ESM runtime)
+        # Loads the ENTIRE production import graph through the real entry
+        # point, the same way pm2 runs it, then exits before any DB, network
+        # or scrape work. Seconds of runtime. This is the only check in the
+        # gate that evaluates production modules under the real module system.
+        run: npx tsx src/index.ts --smoke-import
+        working-directory: ./scraper
+
+      - name: scraper vitest alias-table form (item 1 slice s14)
+        # Evaluates scraper/vitest.config.ts and asserts the bare
+        # @ipodhan/shared entry is an ANCHORED regex, not a string key. A
+        # string key also captures @ipodhan/shared/db/schema and rewrites it
+        # to <...>/index.ts/db/schema; reverting to the object form turns
+        # both cases red.
+        #
+        # Runs here, AFTER npm ci and the Node 20 restore above, not with
+        # the other dependency-free pre-install gates: it evaluates the
+        # config via tsx (a scraper devDependency, works on Node 20 — unlike
+        # node's --experimental-strip-types, which needs Node >= 22.6 and
+        # was this check's original, CI-red implementation), so it needs
+        # node_modules to exist first.
+        run: node --test scripts/tests/scraper-vitest-alias-table.test.mjs
+
       - name: Run lint
         run: npm run lint:ci
         working-directory: ./web
@@ -216,6 +427,12 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
         working-directory: ./web
+        env:
+          # Match ci.yml exactly. Same command with a different heap ceiling is
+          # the same class of bug as the --no-isolate divergence #474 fixes: one
+          # workflow could OOM on a suite the other passes. This repo has an OOM
+          # history (PR #104 fixed a Next build OOM), so match UPWARD.
+          NODE_OPTIONS: '--max-old-space-size=6144'
 
       - name: Type-check scraper scripts (T-433 MAJOR-4 - scraper/tsconfig.json only ever covered src/**)
         run: npm run type-check:scripts
@@ -224,6 +441,26 @@ jobs:
       - name: Run shared package unit tests (T-433 MAJOR-5 - packages/shared test files had no runner)
         run: npx vitest run
         working-directory: ./packages/shared
+
+      - name: Run TZ-explicit case driver (issue #478)
+        # The TZ-explicit case file (tests/tz-cases/*.tzcase.test.ts) is
+        # deliberately excluded from vitest.config.ts's own include glob
+        # (vitest.tzcase.config.ts) and only ever meaningful when spawned by
+        # this driver, which runs it once per timezone with TZ and
+        # TZCASE_EXPECT_TZ set in the CHILD env (T-327F fix round 5 — see
+        # the driver file's header for why an in-process TZ mutation cannot
+        # work). The driver file is ALSO inside the full scraper unit suite
+        # in the step below, and this step sits BEFORE it on purpose:
+        # GitHub skips every later step once one fails, so a TZ regression
+        # would redden the full suite first and leave this step grey - the
+        # exact opposite of "identifiable at a glance". Running it first
+        # costs ~5-10s and buys a named red step. It also gives a contract
+        # one command to point at: running `vitest -c vitest.tzcase.config.ts`
+        # directly does not merely fail, it self-spawns recursively (vitest
+        # mergeConfig CONCATENATES include globs, so the config collects the
+        # driver too) and never terminates.
+        run: npm run test:tzcase
+        working-directory: ./scraper
 
       - name: Run scraper unit test suite (full, T-301)
         # T-268C/T-268F originally added ONLY two targeted regression files
@@ -384,12 +621,21 @@ jobs:
           SCHEMA_DRIFT_IGNORE_GATED: '1'
         run: npm run audit:schema-drift
 
+      - name: Self-invalidate KNOWN_GATED_INDEX_DRIFT / KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT
+        # scripts/tests/known-gated-registry-invalidation.test.ts — tsx, not
+        # bare node --test, because it imports assert-schema-drift.ts through
+        # the @ipodhan/shared/db/schema path alias. Fails the moment
+        # schema.ts's declared columns for a gated entry stop matching that
+        # entry's expectedColumns, so a stale suppression cannot silently
+        # keep gating a drift that no longer exists.
+        run: npx tsx --test scripts/tests/known-gated-registry-invalidation.test.ts
+
       - name: Run the document-state integration tests
         working-directory: ./scraper
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
           REDIS_URL: redis://localhost:6379
-        run: npx vitest run -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts
+        run: npx vitest run -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts tests/integration/child-table-normalized-name.integration.test.ts tests/integration/child-table-row-key-unique-constraint.integration.test.ts tests/integration/peer-company-replace-atomicity.integration.test.ts tests/integration/field-sources-row-key-provenance.integration.test.ts tests/integration/normalizer-sql-agreement.integration.test.ts tests/integration/derived-key-recompute-guard.integration.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
@@ -418,6 +664,17 @@ jobs:
 
       - name: Run require-release-branch test suite
         run: bash scripts/deploy/tests/require-release-branch.test.sh
+
+      # Slice s17: deploy-linux.yml no longer triggers on push; staging is
+      # deployed by a 15-minute poll that fires only when main's head differs
+      # from the sha staging serves. Both ways that gate can break are silent
+      # - it never deploys again, or it deploys every tick - so its branches
+      # are pinned here. The suite extracts the gate's own `run:` body out of
+      # deploy-linux.yml and executes it, so an edit to the workflow is what
+      # it sees; it needs no npm install (no YAML library) and never contacts
+      # the real box (curl is stubbed, git history is a mktemp repo).
+      - name: Run staging-cadence gate test suite
+        run: bash scripts/tests/deploy-linux-schedule-gate.test.sh
 
   # Recurrence loop, part 1 (2026-09-06): the "share count stored as issue
   # size" class was fixed on one write path in August and recurred on

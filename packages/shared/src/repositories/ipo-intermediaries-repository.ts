@@ -33,6 +33,10 @@ export interface IpoIntermediaryRow {
   ipoId: string;
   role: IntermediaryRole;
   name: string;
+  // Item 1 slice s1 (row-key prep, F-74): the name half of the future row
+  // key (`role:normalizedName`). Never null — '' is the not-yet-backfilled
+  // sentinel (schema default), never used by a write path after this slice.
+  normalizedName: string;
   sebiRegNo: string | null;
   contactPerson: string | null;
   phone: string | null;

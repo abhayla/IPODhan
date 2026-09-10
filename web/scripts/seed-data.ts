@@ -59,6 +59,7 @@ import {
   brokerAffiliates,
 } from '@/lib/db';
 import { count } from 'drizzle-orm';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 // ==================== TYPES ====================
 
@@ -884,9 +885,21 @@ async function seedDatabase() {
       if (ipoData.category === 'MAINBOARD' && i % 3 === 0) {
         const peerCount = randomInRange(2, 4);
         for (let p = 0; p < peerCount; p++) {
+          const peerCompanyName = `${ipoData.sector} Peer ${p + 1} Ltd`;
+          // Item 01 slice s1b (R-158): the row key depends only on the
+          // name — the same function every scraper write path uses. A
+          // synthesized seed name is never blank, but a null/skip guard
+          // stays here for consistency and to catch a future template
+          // change that produces an empty name.
+          const normalizedName = rowKeyForName(peerCompanyName);
+          if (normalizedName === null) {
+            console.warn(`  ⚠ Skipping peer with no name identity for IPO ${ipoData.companyName}`);
+            continue;
+          }
           await db.insert(peerCompanies).values({
             ipoId: ipo.id,
-            companyName: `${ipoData.sector} Peer ${p + 1} Ltd`,
+            companyName: peerCompanyName,
+            normalizedName,
             isListed: true,
             peRatio: randomDecimal(10, 40),
             eps: randomDecimal(5, 50),

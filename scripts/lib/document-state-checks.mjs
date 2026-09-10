@@ -29,13 +29,30 @@ const hoursBetween = (later, earlier) =>
  * every 30 minutes has a fresh last-attempt forever, so measuring from it would
  * mean this check could never fire.
  */
+/**
+ * The name the nightly floor delta will diff on.
+ *
+ * `scripts/ops/floor-delta.mjs` pulls DOUBLE-QUOTED entities out of a check's
+ * detail line and reports which ones are new since last night. A check that
+ * names nothing - or names it unquoted - can only ever be reported as SAME, no
+ * matter which IPOs are in it. Every violation string in this file goes through
+ * here so that cannot happen again (#553).
+ *
+ * Falls back to the ipo id, then to a literal marker: an unnamed row is still
+ * worth diffing, and a quoted "(unnamed ipo)" at least changes when the set of
+ * unnamed rows changes.
+ */
+function entityOf(row) {
+  return row?.companyName || row?.ipoId || '(unnamed ipo)';
+}
+
 export function checkBlockedAllAge(row, now) {
   if (row.state !== 'BLOCKED_ALL') return null;
   const since = row.blockedSinceAt ?? row.lastAttemptAt ?? row.firstSeenAt;
-  if (!since) return `${row.docType} is BLOCKED_ALL with no timestamp to age it by`;
+  if (!since) return `"${entityOf(row)}": ${row.docType} is BLOCKED_ALL with no timestamp to age it by`;
   const hours = hoursBetween(now, since);
   if (hours <= BLOCKED_ALL_MAX_HOURS) return null;
-  return `${row.docType} BLOCKED_ALL for ${hours.toFixed(1)}h (limit ${BLOCKED_ALL_MAX_HOURS}h)`;
+  return `"${entityOf(row)}": ${row.docType} BLOCKED_ALL for ${hours.toFixed(1)}h (limit ${BLOCKED_ALL_MAX_HOURS}h)`;
 }
 
 /**
@@ -53,7 +70,7 @@ export function checkFoundNotExtracted(row, now, extractionWired = true) {
   if (!since) return null;
   const hours = hoursBetween(now, since);
   if (hours <= FOUND_UNREAD_MAX_HOURS) return null;
-  return `${row.docType} has been FOUND but unread for ${hours.toFixed(1)}h (limit ${FOUND_UNREAD_MAX_HOURS}h)`;
+  return `"${entityOf(row)}": ${row.docType} has been FOUND but unread for ${hours.toFixed(1)}h (limit ${FOUND_UNREAD_MAX_HOURS}h)`;
 }
 
 /**
@@ -69,7 +86,7 @@ export function checkLiveIpoHasStateRows(ipo) {
   const status = String(ipo.status ?? '').toUpperCase();
   if (!LIVE_STATUSES_REQUIRING_STATE.includes(status)) return null;
   if ((ipo.stateRowCount ?? 0) > 0) return null;
-  return `${ipo.companyName} is ${status} with 0 document_fetch_state rows — the job never looked at it`;
+  return `"${entityOf(ipo)}" is ${status} with 0 document_fetch_state rows — the job never looked at it`;
 }
 
 /**
@@ -153,7 +170,7 @@ export function checkListedRotationStall(ipo) {
 /** WARN — an extractor that failed 3x needs a human, but is not a data outage. */
 export function checkExtractFailed(row) {
   if (row.state !== 'EXTRACT_FAILED') return null;
-  return `${row.docType} EXTRACT_FAILED after repeated attempts (extractor_version ${row.extractorVersion ?? 'unset'})`;
+  return `"${entityOf(row)}": ${row.docType} EXTRACT_FAILED after repeated attempts (extractor_version ${row.extractorVersion ?? 'unset'})`;
 }
 
 /**
@@ -169,7 +186,7 @@ export function checkLeadManagerCount(row) {
   const payload = Number(row.bsePayloadLeadManagerCount ?? 0);
   if (!Number.isFinite(payload) || payload === 0) return null;
   if (stored >= payload) return null;
-  return `${row.companyName}: ${stored} lead manager(s) stored but the BSE payload lists ${payload}`;
+  return `"${entityOf(row)}": ${stored} lead manager(s) stored but the BSE payload lists ${payload}`;
 }
 
 /** Count BRLM + all '#'-separated co-BRLMs in a raw BSE payload pair. */
@@ -202,7 +219,7 @@ export function checkDocumentTypeMatchesClassifier(row, classifyUrlOrTitle, refi
   if (!suggested || suggested === row.type) return null;
   const allowed = (refinements ?? {})[row.type] ?? [];
   if (!allowed.includes(suggested)) return null; // unrelated — not a nightly FAIL
-  return `${row.title || row.url}: stored as ${row.type} but classifies as ${suggested}`;
+  return `"${row.title || row.url}": stored as ${row.type} but classifies as ${suggested}`;
 }
 // --- M-4: NOT_YET_FILED that has aged past the point of plausibility ---------
 //
@@ -266,7 +283,7 @@ export function checkNotYetFiledAge(row, now) {
   // Not yet past the milestone at all — nothing is late.
   if (age <= limit) return null;
 
-  return `${row.companyName}: ${row.docType} still NOT_YET_FILED ${age.toFixed(1)}d after ${label} (limit ${limit}d)`;
+  return `"${entityOf(row)}": ${row.docType} still NOT_YET_FILED ${age.toFixed(1)}d after ${label} (limit ${limit}d)`;
 }
 
 // --- M-6 (r6): NOT_YET_FILED written on a chain in which nobody answered -----
@@ -393,7 +410,7 @@ export function checkAbsenceWithoutEvidence(row) {
   if (inScopeRungs.length === 0) return null; // nothing to judge
   if (answeredRungsIn(chain).length > 0) return null;
   if (inScopeRungs.some((r) => r.verdict === EXCHANGES_SETTLED_SKIP_VERDICT)) return null;
-  return `${row.companyName}: ${row.docType} is NOT_YET_FILED but no rung answered — ${chain}`;
+  return `"${entityOf(row)}": ${row.docType} is NOT_YET_FILED but no rung answered — ${chain}`;
 }
 
 /**

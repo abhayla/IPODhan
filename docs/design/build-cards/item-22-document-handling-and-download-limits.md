@@ -1,5 +1,12 @@
 # Item 22 — Document handling and download limits (OD-36, OD-37)
 
+> **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
+> 1. Multi-part filings: ONE `documents` row per download (the container URL / zip), never one row per part. `unique_url` and `unique_doc_per_ipo` stay. Each part's extraction record carries `partNumber` and the part's own sha256 (OD-36's "part number in provenance"); the parent row is COMPLETED only when every part extracted. No product-shape change, so no O-nn.
+> 2. No new dependency: `pdf-lib` is not in the tree and no decision names it; use the present `pdf-parse`.
+> 3. `scraper/config/` (NEW) does not exist yet. Its JSON-schema loader (OD-51) is item 2's (lane C). If this item's allow-list slice arrives first, it adds the allow-list FILE only and reuses the loader when it lands; never a second loader.
+> 4. The flag slice waits for lane A's slot-aware helper PR and rebases onto it; the helper applies to NEW flags only.
+
+
 ## Purpose
 
 Every document download this system makes — from NSE, BSE, SEBI, the registrars, or an issuer's
@@ -346,3 +353,29 @@ find a gap in on the first pass).
   known format, because the design does not say NSE and BSE share one id shape (they likely do
   not) — a format-specific validator is a fork for whoever reads the two exchanges' actual HTML/
   JSON payloads for the field.
+
+### Slice 22-5 is BLOCKED, and on two things, not one (recorded 2026-09-10 19:47 IST by the lane B run)
+
+The card's Feature-flag section says `ENABLE_DOCUMENT_PASSWORD_CHECK` defaults false "until the
+dependency is added and the one real encrypted fixture is captured". Both halves are still open, and
+the first one is larger than the wording suggests:
+
+1. **`pdf-lib` would be a NEW DEPENDENCY.** Verified against this repo: `pdf-lib` appears in no
+   `package.json` — not the root, not `scraper/`, not `web/`. Adding it is not a slice-local decision.
+   `security-baseline.md` requires evaluating maintenance activity, licence compatibility and
+   transitive surface before adding any dependency, and it changes the lockfile every lane shares.
+   **This needs an owner line before the slice starts**, not a judgement call inside it.
+2. **The real encrypted fixture does not exist.** §2.2.1 requires "a real encrypted filing, captured
+   as a fixture with its error string", and Known gaps already records that none was captured. The
+   defect-fix contract forbids a format typed from memory, so a synthesised encrypted PDF does not
+   discharge this: the point is to pin `pdf-lib`'s ACTUAL error string for a real filing, and a
+   fixture we generated would pin our own generator's behaviour instead.
+
+Until both are settled, the honest state of 22-5 is BLOCKED_ON_FIXTURE — not "next up". It was
+listed as ready on the lane B board earlier today; that was wrong and is corrected.
+
+**What is genuinely ready instead is slice 22-7**: the registrar host set. `loadRegistrarDocumentHosts`
+and `resetRegistrarDocumentHostsCache` already exist and work, and `isTrustedDocumentHost` already
+takes the set — but both real call sites pass ONE argument, so the set is always the empty default
+and a document served by a legitimate registrar is still refused. No dependency, no fixture, no
+migration. It is tracked as the single entry in `config/security-boundary-wiring-baseline.json`.

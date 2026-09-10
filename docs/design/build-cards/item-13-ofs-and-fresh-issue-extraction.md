@@ -1,5 +1,9 @@
 # Item 13 — extract `ofs_issue` in both forms, fix `fresh_issue`, gate on reconciliation (F-51)
 
+> **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
+> Files row 1 is wrong about the code: `scraper/src/services/filing-persister.ts:691-695` COMPUTES `offerTotalMn = statedTotalMn ?? (freshMn + ofsMn)`; there is no same-document comparison today. The `offerTotalMn === freshMn + ofsAtCapMn` check is this item's work, with its failing test first. Do not slot-default `ENABLE_FILING_AUTO_PERSIST` (existing flag, ON in production); the slot helper applies to NEW flags only.
+
+
 ## Purpose
 
 `ipo_details.ofsIssue` is captured from both the document's rupee statement and its share-count

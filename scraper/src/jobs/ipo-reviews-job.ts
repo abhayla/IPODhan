@@ -12,7 +12,7 @@ import { aggregateIPOReviews } from '../scrapers/ipo-reviews-aggregator.js';
 import { createIPOReviews } from '../services/data-persister.js';
 import { ReviewRepository } from '../repositories/review-repository.js';
 import * as schema from '@ipodhan/shared/db/schema';
-import { inArray, or, eq } from 'drizzle-orm';
+import { inArray, or, eq, isNotNull, and } from 'drizzle-orm';
 
 export interface IPOReviewsJobOptions {
   limit?: number; // Limit number of IPOs to process (for testing)
@@ -134,25 +134,25 @@ export async function runIPOReviewsJob(options: IPOReviewsJobOptions = {}): Prom
  * Get IPOs that need reviews
  * Priority: OPEN > CLOSED > LISTED
  */
-async function getIPOsForReviewScraping(
+export async function getIPOsForReviewScraping(
   db: any,
   options: IPOReviewsJobOptions
 ): Promise<Array<{ id: string; companyName: string; slug: string; segment: 'MAINBOARD' | 'SME' }>> {
-  let query = db
-    .select({
-      id: schema.ipos.id,
-      companyName: schema.ipos.companyName,
-      slug: schema.ipos.slug,
-      segment: schema.ipos.segment,
-    })
-    .from(schema.ipos);
+  // MINOR 4 (item 2 slice 3a fix round): each filter used to be applied via
+  // its own `query = query.where(...)` call. Drizzle's `.where()` REPLACES
+  // the prior condition rather than AND-ing it, so stacking calls this way
+  // silently dropped the status/ipoIds filter whenever a later one ran.
+  // Collecting the conditions and applying them with a single `and(...)`
+  // call (needed anyway to combine the new NOT-NULL segment filter without
+  // that drop) fixes this as the minimal correct change.
+  const conditions = [];
 
   // Filter by status (default: OPEN, CLOSED, LISTED - exclude UPCOMING)
   if (options.status) {
-    query = query.where(eq(schema.ipos.status, options.status));
+    conditions.push(eq(schema.ipos.status, options.status));
   } else {
     // Default: Focus on OPEN and recently CLOSED IPOs (most relevant for reviews)
-    query = query.where(
+    conditions.push(
       or(
         eq(schema.ipos.status, 'OPEN'),
         eq(schema.ipos.status, 'CLOSED'),
@@ -163,8 +163,26 @@ async function getIPOsForReviewScraping(
 
   // Filter by specific IPO IDs if provided
   if (options.ipoIds && options.ipoIds.length > 0) {
-    query = query.where(inArray(schema.ipos.id, options.ipoIds));
+    conditions.push(inArray(schema.ipos.id, options.ipoIds));
   }
+
+  // `createIPOReviews()` requires a non-null 'MAINBOARD' | 'SME' segment.
+  // This slice increases NULL segment volume, so the previous unconditional
+  // cast at the end of this function was a type lie -- filter the rows here
+  // rather than widening the cast, so a NULL-segment IPO is skipped for
+  // reviews (no unknown-segment reviews written) instead of reaching
+  // createIPOReviews with a fabricated segment.
+  conditions.push(isNotNull(schema.ipos.segment));
+
+  let query = db
+    .select({
+      id: schema.ipos.id,
+      companyName: schema.ipos.companyName,
+      slug: schema.ipos.slug,
+      segment: schema.ipos.segment,
+    })
+    .from(schema.ipos)
+    .where(and(...conditions));
 
   // Limit results if specified
   if (options.limit) {

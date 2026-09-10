@@ -226,6 +226,62 @@ not discovered mid-review.
 |---|---|
 | §2.11 | R-081, R-082, R-083, R-085, R-086, R-087, R-162, R-163, R-164, R-165 |
 
+## Status of this card's corrections (2026-09-10, implementation session)
+
+This card was written against an earlier `§2.11` and flags three places as "the design is wrong".
+**All three have since been corrected in the design itself**, and the card's wording is now stale in
+the opposite direction. Verified by reading `docs/design/data-sourcing-pull-model.md` directly rather
+than through this card's quotation of it:
+
+| Card says | Design today |
+|---|---|
+| "§2.11 states *a canonical tag — DOES NOT EXIST*" | line 2141 already says **"already true"**, citing `metadata.ts:203`, and explicitly records that the first draft grepped the page file instead of the metadata helper |
+| "§2.11 says the provenance line lives under `getIPODetailKey`" | the design now names `getIPOBySlugKey` as the real key and calls `getIPODetailKey` the one that "looks like the obvious choice" but has only an admin-edit caller |
+| "sitemap filter cited at line 93, actually 99" | behaviour was always correct; only the citation was stale |
+
+**Reading a document through someone's quotation of it is not reading it.** Recorded here because the
+implementation session repeated exactly that mistake before checking, and it is the same class as two
+other corrections made the same evening.
+
+## Dependency, pinned by column name
+
+**Item 21's stale-marker slice is BLOCKED-DEPENDENCY on item 5.** Measured against `origin/main`
+today, not against item 5's card: `ipo_field_plan` does not exist in
+`packages/shared/src/db/schema.ts` at all, and no migration journal entry mentions it. The specific
+column this item reads is **`verify_due_at`** (item 5's card, line 103, with
+`idx_ipo_field_plan_verify_due` at line 133).
+
+**The column is not to be stubbed.** A stub would make the provenance line render a date it invented,
+which is worse than rendering nothing — the whole point of the line is that the reader can trust it.
+
+## The two open forks are now closed
+
+**1. The staleness threshold — no number is needed, and no config key should be created.**
+The card proposed `PROVENANCE_STALE_AFTER_DAYS` with "no default this card is authorized to invent".
+That fork dissolves: item 5 already carries `verify_due_at` per field, so **stale is
+`now > verify_due_at`** — per field and per status by construction, because whatever sets that column
+already knows a GMP is due in hours and a listed issue price is never due again.
+
+Reusing the nightly audit's numbers was considered and rejected. `g_freshness_per_type` uses "3 days
+(IPO/SME) or 21 days (OFS/NCD/RIGHTS)", but it measures whether a whole offering type's calendar has
+stopped updating — feed liveness, not per-field reconfirmation. At 3 days a LISTED IPO's issue price
+would read "being rechecked" forever, three days after listing, because nothing re-reads a final
+price and nothing should. That puts the marker under nearly every block on most pages and trains
+readers to ignore it. **A single global constant is wrong at every value it could take.**
+
+**2. Which list pages the endpoint revalidates — resolved by classifying all of them.**
+The design names four (`/`, `/mainboard-ipos`, `/sme-ipos`, the sitemap); the app has **29 page
+routes**, and far more than four are driven by IPO rows. Shipping the named four would leave a
+corrected IPO fixed on its own page and stale on the calendar that links to it.
+
+A longer guess fails the same way one release later, so the list is exhaustive by construction:
+`web/lib/services/page-revalidation-targets.ts` classifies **every** route as refreshed or excluded
+with a reason, and a test fails when a route is neither. That guard caught its own author within a
+minute of being written — it failed on `/tools/lot-calculator`, missed because the directory listing
+consulted was truncated, and checking that then revealed `/tools/compare` was wrongly in the
+refreshed list too (both are `'use client'` and fetch at request time, so `revalidatePath` on them is
+a no-op that reads like coverage).
+
 ## Known gaps
 
 - **The "confirmed on" date is provisional.** Item 5's schema (as currently written) has no column

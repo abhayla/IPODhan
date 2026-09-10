@@ -1,0 +1,15 @@
+-- Item 1 slice s6: give `ipo_risk_factors` a content-derived row key.
+--
+-- JOURNALED PART ONLY — the ADD COLUMN, which is safe unattended: the `''`
+-- DEFAULT means every one of the ~2130 pre-existing rows satisfies NOT NULL
+-- immediately, so this cannot die mid-deploy.
+--
+-- The two order-dependent statements drizzle-kit also generated for this
+-- change — DROP CONSTRAINT "unique_ipo_risk_factors_ipo_seq" and ADD
+-- CONSTRAINT "unique_ipo_risk_factors_ipo_heading_hash" — were hand-moved to
+-- web/drizzle/migrations/_gated/E2_risk_factor_heading_hash_key.sql and are
+-- deliberately NOT in this file. Adding the unique constraint here would fail
+-- on row two of any slot whose rows still share the '' default, taking the
+-- deploy down with it. See _gated/README.md entry 11 and
+-- docs/ops/prod-ops-recipes.md §8d for the apply order.
+ALTER TABLE "ipo_risk_factors" ADD COLUMN "heading_hash" varchar(32) DEFAULT '' NOT NULL;

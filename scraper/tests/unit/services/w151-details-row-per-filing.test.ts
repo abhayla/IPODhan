@@ -64,7 +64,7 @@ function makeDeps(
     promoters: { replacePromoters: vi.fn(async () => []), replaceAcquisitionRanges: vi.fn(async () => []) },
     intermediaries: { replaceForIpo: vi.fn(async () => []) },
     brlmTrackRecord: { upsert: vi.fn(async (r: unknown) => r) },
-    peerCompanies: { deleteByIPOId: vi.fn(async () => 0), batchCreate: vi.fn(async () => []) },
+    peerCompanies: { replaceForIpo: vi.fn(async () => []) },
     financialData: { upsert: vi.fn(async (r: unknown) => r) },
     fieldSources: { findByField: vi.fn(async () => null), trackFieldUpdate: vi.fn(async () => ({})) },
     ipoDetailsWriter: {

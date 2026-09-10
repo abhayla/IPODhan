@@ -1,0 +1,15 @@
+{
+  "id": "design_traceability",
+  "designId": "OD-52",
+  "findingClass": "a design rule has no build item, a build item's rule has no test, a test names a rule that does not exist, or a rule's wording changes without its card and test being touched in the same change",
+  "whatItAsks": "docs/design/build-cards/item-20-design-traceability-check.md's four failure modes, run per pull request against the diff introduced by that pull request",
+  "healthy": "every live rule id in docs/design/rules.json is claimed by a build card or declared unclaimed with a reason; every card-claimed id (once mode 2 flips out of reporting mode at build item 6) is declared by a test; every test-declared id is live; no rule's hash drifted at HEAD without its owning card or a declaring test also in the diff",
+  "alarmsWhen": "check-design-traceability.mjs exits 1 (a broken link in the chain, naming the offending rule/card/test id) or exits 2 (the check itself failed to run, including the self-guard for zero live rules read as a PASS)",
+  "scope": "every pull request into main touching docs/design/build-cards/**, docs/design/rules.json, docs/design/rules-unclaimed.json, or any test file under scraper/tests/**, web/tests/**, packages/*/tests/**, scripts/tests/** — enforced on ALL pull requests via the pr-gate.yml gate step, not a filtered subset",
+  "consumer": "the pr-gate.yml CI job itself (the 'Design traceability (OD-52)' step) — a pull-request gate, not a scheduled nightly consumer; it reports by identity (which rule, which card, which test), never as a bare count, per .claude/rules/signal-ownership.md R1",
+  "consumerReason": "item-20-design-traceability-check.md's Detection section: \"The check IS the detection for its own class\" — it runs synchronously in CI on every PR rather than as a nightly batch job",
+  "status": "built and wired — scripts/ci/check-design-traceability.mjs (mode 1/3/4 enforcing, mode 2 in reporting mode until build item 6 per the card's Feature flag section) plus its self-test scripts/ci/tests/check-design-traceability.test.mjs, both run as pr-gate.yml steps",
+  "sourceDesign": "docs/design/build-cards/item-20-design-traceability-check.md",
+  "section": "notCoveredByThisManifest",
+  "note": "design_traceability (a design rule with no build item / test / or drifted wording untouched by its card or test) - this is a pull-request gate (scripts/ci/check-design-traceability.mjs, wired into .github/workflows/pr-gate.yml), not a nightly audit check implemented in scripts/audit-detection-floor.mjs, so it carries no record('design_traceability' call and does not belong in the 'checks' section (which scripts/tests/audit-detection-floor.test.mjs case 79 cross-checks against record() calls in that script). The build card's own Detection section names its consumer as the CI step itself, not a nightly cron — this entry follows .claude/rules/recurrence-detection-gate.md over the card's literal 'Registered ... in docs/reviews/detection-checks/' wording, which does not specify a section."
+}

@@ -1,0 +1,484 @@
+#!/usr/bin/env node
+// §7.6 (OD-51) module-boundary import check: a lower layer never imports a
+// higher one. See docs/design/data-sourcing-pull-model.md §7.6 and
+// docs/design/build-cards/item-20-design-traceability-check.md.
+//
+// Usage:
+//   node scripts/ci/check-module-boundaries.mjs [--root <repoRoot>] [--map <mapPath>]
+// Exit codes:
+//   0  clean — no upward-pointing import edge found
+//   1  an import edge points up the layer order (a real finding)
+//   2  the check itself failed (bad/missing map, zero files scanned, coverage
+//      below the committed floor) — never a silent pass
+//
+// The module map is DATA (scripts/ci/module-map.json), never code — see that
+// file's `_why`. First glob to match a file wins.
+
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const SCAN_ROOTS = ['scraper/src', 'packages/shared/src', 'web'];
+const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+const EXCLUDED_DIR_NAMES = new Set([
+  'node_modules',
+  '.next',
+  'dist',
+  'build',
+  'coverage',
+  '.git',
+]);
+
+function parseArgs(argv) {
+  const args = { root: process.cwd(), map: null };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--root') args.root = argv[++i];
+    else if (argv[i] === '--map') args.map = argv[++i];
+  }
+  return args;
+}
+
+// --- glob matching -------------------------------------------------------
+// Minimal glob->regex: `**` matches any number of path segments (incl.
+// zero), `*` matches within one segment, everything else is literal.
+function globToRegExp(glob) {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*' && glob[i + 1] === '*') {
+      // `**/` -> zero-or-more segments; bare `**` -> anything
+      if (glob[i + 2] === '/') {
+        re += '(?:.*/)?';
+        i += 2;
+      } else {
+        re += '.*';
+        i += 1;
+      }
+    } else if (c === '*') {
+      re += '[^/]*';
+    } else if ('.+^${}()|[]\\'.includes(c)) {
+      re += '\\' + c;
+    } else {
+      re += c;
+    }
+  }
+  return new RegExp('^' + re + '$');
+}
+
+function loadModuleMap(mapPath) {
+  let raw;
+  try {
+    raw = readFileSync(mapPath, 'utf8');
+  } catch (e) {
+    return { error: `module map not found at ${mapPath} (${e.code || e.message})` };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return { error: `module map at ${mapPath} is not valid JSON: ${e.message}` };
+  }
+  if (!Array.isArray(parsed.layerOrder) || parsed.layerOrder.length === 0) {
+    return { error: `module map at ${mapPath} has no non-empty "layerOrder" array` };
+  }
+  if (!Array.isArray(parsed.entries) || parsed.entries.length === 0) {
+    return { error: `module map at ${mapPath} has zero glob entries (empty "entries" array)` };
+  }
+  if (!Number.isInteger(parsed.coverageFloor) || parsed.coverageFloor < 0) {
+    return { error: `module map at ${mapPath} has no valid integer "coverageFloor"` };
+  }
+  for (const entry of parsed.entries) {
+    if (typeof entry.glob !== 'string' || typeof entry.module !== 'string') {
+      return { error: `module map at ${mapPath} has a malformed entry: ${JSON.stringify(entry)}` };
+    }
+    if (!parsed.layerOrder.includes(entry.module)) {
+      return {
+        error: `module map at ${mapPath} maps glob "${entry.glob}" to unknown module "${entry.module}" (not in layerOrder)`,
+      };
+    }
+  }
+  const compiled = parsed.entries.map((e) => ({ ...e, re: globToRegExp(e.glob) }));
+  return {
+    layerOrder: parsed.layerOrder,
+    layerIndex: new Map(parsed.layerOrder.map((m, i) => [m, i])),
+    entries: compiled,
+    coverageFloor: parsed.coverageFloor,
+  };
+}
+
+function resolveModule(map, relPath) {
+  for (const entry of map.entries) {
+    if (entry.re.test(relPath)) return entry.module;
+  }
+  return null;
+}
+
+// --- filesystem walk -------------------------------------------------------
+function walk(root, absDir, out) {
+  let entries;
+  try {
+    entries = readdirSync(absDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (ent.isDirectory()) {
+      if (EXCLUDED_DIR_NAMES.has(ent.name)) continue;
+      walk(root, join(absDir, ent.name), out);
+    } else if (ent.isFile()) {
+      const ext = extname(ent.name);
+      if (!SOURCE_EXTENSIONS.has(ext)) continue;
+      if (ent.name.endsWith('.d.ts')) continue;
+      const abs = join(absDir, ent.name);
+      out.push({ abs, rel: relative(root, abs).split('\\').join('/') });
+    }
+  }
+}
+
+function collectSourceFiles(root) {
+  const files = [];
+  for (const scanRoot of SCAN_ROOTS) {
+    const abs = join(root, scanRoot);
+    try {
+      statSync(abs);
+    } catch {
+      continue;
+    }
+    walk(root, abs, files);
+  }
+  return files;
+}
+
+// --- import extraction -----------------------------------------------------
+// Static, regex-based (not a full parser) — matches:
+//   import ... from '<spec>'
+//   export ... from '<spec>'
+//   import '<spec>'
+//   require('<spec>')
+//   import('<spec>')
+const IMPORT_RE =
+  /(?:\bimport\b[^'"()]*?\bfrom\s*|\bexport\b[^'"()]*?\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g;
+
+function extractSpecifiers(source) {
+  const specs = [];
+  let m;
+  IMPORT_RE.lastIndex = 0;
+  while ((m = IMPORT_RE.exec(source)) !== null) {
+    specs.push(m[1]);
+  }
+  return specs;
+}
+
+const ALIASES = [
+  { prefix: '@ipodhan/shared/', target: 'packages/shared/src/' },
+  { prefix: '@shared/', target: 'packages/shared/src/' },
+  { prefix: '@web/', target: 'web/' },
+  { prefix: '@scraper/', target: 'scraper/src/' },
+  { prefix: '@/', target: 'web/' },
+];
+
+function resolveAlias(spec) {
+  if (spec === '@ipodhan/shared') return 'packages/shared/src/index';
+  for (const { prefix, target } of ALIASES) {
+    if (spec.startsWith(prefix)) return target + spec.slice(prefix.length);
+  }
+  return null;
+}
+
+// Try to resolve a (possibly extension-less / directory-index) candidate
+// path against the real files on disk (by relPath, using the fileSet index).
+function resolveToFile(candidateRelPath, fileSet) {
+  const normalized = candidateRelPath.split('\\').join('/');
+  if (fileSet.has(normalized)) return normalized;
+  for (const ext of RESOLVE_EXTENSIONS) {
+    if (fileSet.has(normalized + ext)) return normalized + ext;
+  }
+  for (const ext of RESOLVE_EXTENSIONS) {
+    const idx = `${normalized}/index${ext}`;
+    if (fileSet.has(idx)) return idx;
+  }
+  // ESM source (scraper/src) writes relative specifiers with the compiled
+  // `.js` extension while the file on disk is `.ts`/`.tsx` (Node's
+  // "NodeNext"-style resolution) — e.g. `from '../services/data-persister.js'`
+  // resolving to `data-persister.ts`. Strip a written source extension and
+  // retry every other resolvable extension against the same stem.
+  const writtenExt = RESOLVE_EXTENSIONS.find((ext) => normalized.endsWith(ext));
+  if (writtenExt) {
+    const stem = normalized.slice(0, -writtenExt.length);
+    for (const ext of RESOLVE_EXTENSIONS) {
+      if (ext === writtenExt) continue;
+      if (fileSet.has(stem + ext)) return stem + ext;
+    }
+  }
+  return null;
+}
+
+function posixJoin(...parts) {
+  return parts
+    .join('/')
+    .split('/')
+    .reduce((stack, seg) => {
+      if (seg === '' || seg === '.') return stack;
+      if (seg === '..') stack.pop();
+      else stack.push(seg);
+      return stack;
+    }, [])
+    .join('/');
+}
+
+// SAMPLE_CAP: how many identities to print per ignore-category so a reader
+// can see WHAT was skipped, not just a bare count (signal-ownership.md R1).
+const SAMPLE_CAP = 10;
+
+function buildGraph(files, root, fileSet) {
+  const edges = []; // { fromRel, toRel }
+  const unresolved = { relative: 0, aliasNoMap: 0, bareIgnored: 0 };
+  const samples = { relative: [], bareIgnored: [] };
+  for (const f of files) {
+    let source;
+    try {
+      source = readFileSync(f.abs, 'utf8');
+    } catch {
+      continue;
+    }
+    const specs = extractSpecifiers(source);
+    const fromDir = dirname(f.rel);
+    for (const spec of specs) {
+      let candidate = null;
+      if (spec.startsWith('.')) {
+        candidate = posixJoin(fromDir, spec);
+      } else {
+        const aliasTarget = resolveAlias(spec);
+        if (aliasTarget) candidate = aliasTarget;
+        else {
+          unresolved.bareIgnored++;
+          if (samples.bareIgnored.length < SAMPLE_CAP) {
+            samples.bareIgnored.push(`${f.rel} -> "${spec}"`);
+          }
+          continue;
+        }
+      }
+      const resolved = resolveToFile(candidate, fileSet);
+      if (!resolved) {
+        unresolved.relative++;
+        if (samples.relative.length < SAMPLE_CAP) {
+          samples.relative.push(`${f.rel} -> "${spec}"`);
+        }
+        continue;
+      }
+      edges.push({ fromRel: f.rel, toRel: resolved });
+    }
+  }
+  return { edges, unresolved, samples };
+}
+
+function printSampleList(label, total, sample) {
+  console.log(`  ${label}: ${total}`);
+  for (const line of sample) {
+    console.log(`    - ${line}`);
+  }
+  if (total > sample.length) {
+    console.log(`    ... and ${total - sample.length} more`);
+  }
+}
+
+function loadBaseline(baselinePath) {
+  try {
+    const raw = readFileSync(baselinePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.edges)) return { edges: [] };
+    return parsed;
+  } catch (e) {
+    if (e.code === 'ENOENT') return { edges: [] };
+    throw new Error(`module-boundary-baseline.json is not valid JSON: ${e.message}`);
+  }
+}
+
+function edgeKey(fromRel, toRel) {
+  return `${fromRel} ${toRel}`;
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const root = resolve(args.root);
+  const mapPath = args.map ? resolve(args.map) : join(root, 'scripts/ci/module-map.json');
+
+  const map = loadModuleMap(mapPath);
+  if (map.error) {
+    console.error('check-module-boundaries: FAIL (exit 2) — module map problem');
+    console.error(`  ${map.error}`);
+    process.exit(2);
+  }
+
+  const files = collectSourceFiles(root);
+  if (files.length === 0) {
+    console.error('check-module-boundaries: FAIL (exit 2) — zero source files scanned');
+    console.error(`  scan roots checked: ${SCAN_ROOTS.map((r) => join(root, r)).join(', ')}`);
+    process.exit(2);
+  }
+
+  const fileSet = new Set(files.map((f) => f.rel));
+  const mapped = new Map(); // rel -> module
+  const perModule = new Map(map.layerOrder.map((m) => [m, 0]));
+  for (const f of files) {
+    const mod = resolveModule(map, f.rel);
+    if (mod) {
+      mapped.set(f.rel, mod);
+      perModule.set(mod, (perModule.get(mod) || 0) + 1);
+    }
+  }
+
+  if (mapped.size < map.coverageFloor) {
+    console.error('check-module-boundaries: FAIL (exit 2) — coverage below the committed floor');
+    console.error(
+      `  mapped ${mapped.size} files, required at least coverageFloor=${map.coverageFloor} (from ${mapPath})`
+    );
+    console.error(
+      '  a path that used to match a glob no longer exists or moved — update scripts/ci/module-map.json'
+    );
+    process.exit(2);
+  }
+
+  const { edges, unresolved, samples } = buildGraph(files, root, fileSet);
+
+  // The edges the check actually EVALUATES — both endpoints mapped. Every
+  // other edge (either endpoint unmapped) is silently ignored per contract,
+  // which is exactly what let this check pass on the maximal possible
+  // violation before this guard existed (see the CRITICAL finding this
+  // guard fixes). A map that evaluates nothing is a FAILURE, never a PASS.
+  const bothMappedEdges = [];
+  const violations = [];
+  for (const { fromRel, toRel } of edges) {
+    const fromMod = mapped.get(fromRel);
+    const toMod = mapped.get(toRel);
+    if (!fromMod || !toMod) continue; // unmapped endpoint — ignored per contract
+    bothMappedEdges.push({ fromRel, toRel, fromMod, toMod });
+    const fromIdx = map.layerIndex.get(fromMod);
+    const toIdx = map.layerIndex.get(toMod);
+    if (toIdx > fromIdx) {
+      violations.push({ fromRel, toRel, fromMod, toMod });
+    }
+  }
+
+  // A same-module edge (a file importing another file mapped to the SAME
+  // module) can never be a boundary violation — fromIdx === toIdx always.
+  // bothMappedEdges therefore overstates what this check can ever catch;
+  // crossModuleEdges is the number that actually reflects the guard's real
+  // load (see the MAJOR finding this fixes — 47 same-module
+  // web/lib/repositories/* edges inflated 2 real cross-module edges to 49).
+  const crossModuleEdges = bothMappedEdges.filter((e) => e.fromMod !== e.toMod);
+
+  const unmappedFiles = files.map((f) => f.rel).filter((rel) => !mapped.has(rel));
+
+  console.log('check-module-boundaries: coverage summary');
+  console.log(`  scanned:  ${files.length} source files under ${SCAN_ROOTS.join(', ')}`);
+  console.log(`  mapped:   ${mapped.size}`);
+  printSampleList('unmapped', unmappedFiles.length, unmappedFiles.slice(0, SAMPLE_CAP));
+  console.log(`  coverageFloor: ${map.coverageFloor}`);
+  console.log('  per-module counts:');
+  for (const mod of map.layerOrder) {
+    console.log(`    ${mod}: ${perModule.get(mod) || 0}`);
+  }
+  console.log(`  import edges resolved: ${edges.length}`);
+  printSampleList('bare/unaliased specifiers ignored', unresolved.bareIgnored, samples.bareIgnored);
+  printSampleList(
+    'unresolved relative/alias specifiers ignored',
+    unresolved.relative,
+    samples.relative
+  );
+  console.log(
+    `  BOTH-ENDPOINTS-MAPPED edges (both files mapped; includes same-module edges that can never violate): ${bothMappedEdges.length}`
+  );
+  console.log(
+    `  CROSS-MODULE edges (what this check can actually FAIL on): ${crossModuleEdges.length}`
+  );
+
+  // Guard: a map that evaluates zero CROSS-MODULE edges can never fail,
+  // regardless of what the layer order says — that IS the vacuous-gate
+  // defect. bothMappedEdges is the wrong number to guard on: same-module
+  // edges (a file importing a sibling in its own module) inflate it while
+  // being structurally unable to violate the layer order (fromIdx===toIdx
+  // always). Treat a zero CROSS-MODULE count the same as the existing
+  // zero-source-files / coverage-floor guards: exit 2, the check itself
+  // failed, never a silent PASS.
+  if (crossModuleEdges.length === 0) {
+    console.error('');
+    console.error(
+      'check-module-boundaries: FAIL (exit 2) — zero cross-module import edges (both endpoints mapped, different modules)'
+    );
+    console.error(
+      `  ${mapped.size} files are mapped and ${bothMappedEdges.length} both-endpoints-mapped edge(s) exist, but none of them cross a module boundary — every one is a file importing a sibling in its own module, which can never violate the layer order.`
+    );
+    console.error(
+      '  This check would PASS on any violation, however severe, while this is true — widen scripts/ci/module-map.json.'
+    );
+    process.exit(2);
+  }
+
+  const baselinePath = join(root, 'config', 'module-boundary-baseline.json');
+  let baseline;
+  try {
+    baseline = loadBaseline(baselinePath);
+  } catch (e) {
+    console.error(`check-module-boundaries: FAIL (exit 2) — ${e.message}`);
+    process.exit(2);
+  }
+  const baselineByKey = new Map(baseline.edges.map((e) => [edgeKey(e.from, e.to), e]));
+  const violationKeys = new Set(violations.map((v) => edgeKey(v.fromRel, v.toRel)));
+
+  const newViolations = violations.filter((v) => !baselineByKey.has(edgeKey(v.fromRel, v.toRel)));
+  const baselinedViolations = violations.filter((v) => baselineByKey.has(edgeKey(v.fromRel, v.toRel)));
+  const staleBaselineEntries = baseline.edges.filter((e) => !violationKeys.has(edgeKey(e.from, e.to)));
+
+  if (baselinedViolations.length > 0) {
+    console.log('');
+    console.log(
+      `  baselined upward edge(s) (debt, tracked in config/module-boundary-baseline.json): ${baselinedViolations.length}`
+    );
+    for (const v of baselinedViolations) {
+      const entry = baselineByKey.get(edgeKey(v.fromRel, v.toRel));
+      console.log(`    ${v.fromRel} (${v.fromMod}) -> ${v.toRel} (${v.toMod}) — why: ${entry.why}`);
+    }
+  }
+
+  if (newViolations.length > 0) {
+    console.error('');
+    console.error(
+      `check-module-boundaries: FAIL (exit 1) — ${newViolations.length} upward import edge(s) not in the baseline`
+    );
+    for (const v of newViolations) {
+      console.error(
+        `  ${v.fromRel} (${v.fromMod}) imports ${v.toRel} (${v.toMod}) — ${v.fromMod} is below ${v.toMod} in the layer order`
+      );
+    }
+    console.error(
+      '\n  Fix the import, or if this is a reviewed pre-existing violation, add it to ' +
+        'config/module-boundary-baseline.json with a `why` line (the baseline may only shrink).'
+    );
+    process.exit(1);
+  }
+
+  if (staleBaselineEntries.length > 0) {
+    console.error('');
+    console.error(
+      'check-module-boundaries: FAIL (exit 2) — baseline entry no longer found in the import graph ' +
+        '(the baseline may only shrink, and the shrink must be committed):'
+    );
+    for (const e of staleBaselineEntries) {
+      console.error(`  STALE: ${e.from} -> ${e.to}`);
+    }
+    console.error(
+      '\n  Remove the stale entry from config/module-boundary-baseline.json and commit the shrink.'
+    );
+    process.exit(2);
+  }
+
+  console.log('');
+  console.log('check-module-boundaries: PASS (exit 0) — no unbaselined upward-pointing import edge found');
+  process.exit(0);
+}
+
+main();

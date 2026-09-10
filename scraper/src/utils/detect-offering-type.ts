@@ -56,23 +56,38 @@ export function detectOfferingTypeFromSymbol(symbol: string): string {
  * - NSE-SME or BSE-SME → SME
  * - NSE EMERGE platform → SME
  * - NSE or BSE (main) → MAINBOARD
+ * - No usable exchange text at all → unknown (null), never defaulted
+ *
+ * Item 2 slice 3a (RCA doc item 2, write site #4 — the BSE list-page caller
+ * feeds `[platform]` where `platform` can be a blank cell): an empty array,
+ * or an array whose entries are all blank/falsy, carries NO board signal.
+ * The old default of MAINBOARD here asserted a fact the caller never had. A
+ * non-blank exchange string naming an actual board (e.g. "NSE", "BSE-MAIN")
+ * IS a genuine positive MAINBOARD signal and still resolves to MAINBOARD.
  *
  * @param listingExchanges - Array of exchange codes (e.g., ["NSE", "BSE-MAIN"])
- * @returns Segment enum value ("MAINBOARD" or "SME")
+ * @returns Segment enum value ("MAINBOARD" or "SME"), or `null` when no
+ *          caller-supplied exchange text carries any signal at all.
  *
  * @example
  * detectSegmentFromExchange(["NSE", "BSE-MAIN"]) // returns "MAINBOARD"
  * detectSegmentFromExchange(["BSE-SME"]) // returns "SME"
  * detectSegmentFromExchange(["NSE-SME"]) // returns "SME"
  * detectSegmentFromExchange(["NSE EMERGE"]) // returns "SME"
+ * detectSegmentFromExchange([]) // returns null (unknown)
+ * detectSegmentFromExchange(['']) // returns null (unknown)
  */
-export function detectSegmentFromExchange(listingExchanges: string[]): string {
-  if (!listingExchanges || listingExchanges.length === 0) {
-    return 'MAINBOARD'; // Default to MAINBOARD
+export function detectSegmentFromExchange(listingExchanges: string[]): string | null {
+  const meaningful = (listingExchanges || [])
+    .map((exchange) => (exchange || '').trim())
+    .filter(Boolean);
+
+  if (meaningful.length === 0) {
+    return null; // no signal at all — never default to MAINBOARD
   }
 
   // Check each exchange for SME indicators
-  const hasSME = listingExchanges.some((exchange) => {
+  const hasSME = meaningful.some((exchange) => {
     const exchangeUpper = exchange.toUpperCase().trim();
     return (
       exchangeUpper.includes('SME') ||

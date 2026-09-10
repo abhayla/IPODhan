@@ -130,6 +130,12 @@
       ]
     },
     {
+      "file": "scraper/scripts/repair-segment-provenance.ts",
+      "patterns": [
+        "drizzle"
+      ]
+    },
+    {
       "file": "scraper/scripts/repair-source-trust-batch-t292.ts",
       "patterns": [
         "drizzle"

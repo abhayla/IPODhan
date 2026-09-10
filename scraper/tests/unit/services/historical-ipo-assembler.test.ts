@@ -83,3 +83,48 @@ describe('#71 historical ingestion — Ather consolidated record == oracle', () 
     expect(() => assembleHistoricalRecord({ reportRow: { Company: 'X Ltd' }, detailHtml: '' })).toThrow();
   });
 });
+
+describe('#71 item 2 slice 3a — segment yields unknown when Issue Type does not say', () => {
+  const minimalDetailHtml = '';
+
+  it('blank/missing Issue Type yields null segment, never a defaulted MAINBOARD', () => {
+    const { scraped } = assembleHistoricalRecord({
+      reportRow: { Company: 'Blank Issue Type Ltd', '~IPO_Listing_date': '2025-01-01' },
+      detailHtml: minimalDetailHtml,
+    });
+    expect(scraped.segment).toBeNull();
+  });
+
+  it('whitespace-only Issue Type yields null segment', () => {
+    const { scraped } = assembleHistoricalRecord({
+      reportRow: { Company: 'Whitespace Ltd', '~IPO_Listing_date': '2025-01-01', 'Issue Type': '   ' },
+      detailHtml: minimalDetailHtml,
+    });
+    expect(scraped.segment).toBeNull();
+  });
+
+  it('Issue Type mentioning SME still yields SME (positive signal preserved)', () => {
+    const { scraped } = assembleHistoricalRecord({
+      reportRow: { Company: 'SME Co Ltd', '~IPO_Listing_date': '2025-01-01', 'Issue Type': 'SME IPO' },
+      detailHtml: minimalDetailHtml,
+    });
+    expect(scraped.segment).toBe('SME');
+  });
+
+  it('a populated Issue Type without SME is a positive MAINBOARD signal', () => {
+    const { scraped } = assembleHistoricalRecord({
+      reportRow: { Company: 'Book Built Ltd', '~IPO_Listing_date': '2025-01-01', 'Issue Type': '100% Book Built Issue IPO' },
+      detailHtml: minimalDetailHtml,
+    });
+    expect(scraped.segment).toBe('MAINBOARD');
+  });
+
+  it('an explicit input.segment override wins over Issue Type inference', () => {
+    const { scraped } = assembleHistoricalRecord({
+      reportRow: { Company: 'Explicit Ltd', '~IPO_Listing_date': '2025-01-01', 'Issue Type': 'SME IPO' },
+      detailHtml: minimalDetailHtml,
+      segment: 'MAINBOARD',
+    });
+    expect(scraped.segment).toBe('MAINBOARD');
+  });
+});

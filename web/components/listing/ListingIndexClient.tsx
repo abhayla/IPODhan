@@ -84,7 +84,9 @@ function orDash(value: string) {
 // A always-present second line gives the mobile rows history's dense, uniform
 // 2-line rhythm (R28 #4): sector when known (it varies and adds real value),
 // otherwise the relevant date. Never empty → every row is the same height.
-function companySubline(ipo: IPO): string {
+// Exported for the item 2 slice 3a fix-round unit test (no full-component
+// render needed to cover the null-segment fallback branch).
+export function companySubline(ipo: IPO): string {
   if (ipo.sector) return ipo.sector;
   const d = ipo.listingDate ?? ipo.openDate ?? ipo.closeDate;
   if (d) {
@@ -98,7 +100,12 @@ function companySubline(ipo: IPO): string {
       /* fall through */
     }
   }
-  return ipo.segment === 'SME' ? 'SME' : 'Mainboard';
+  // Item 2 slice 3a fix round: this slice increases NULL segment volume --
+  // an unknown segment must never render as "Mainboard" (em dash is this
+  // codebase's convention for an unknown/missing value, see orDash() above).
+  if (ipo.segment === 'SME') return 'SME';
+  if (ipo.segment === 'MAINBOARD') return 'Mainboard';
+  return '—';
 }
 
 function companyCol(): ColumnDef<IPO> {

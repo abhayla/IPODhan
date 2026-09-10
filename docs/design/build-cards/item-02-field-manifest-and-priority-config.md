@@ -1,5 +1,11 @@
 # Item 2 — field manifest and priority configuration
 
+> **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
+> 1. Format is JSON, not YAML; validation uses `zod` (already a workspace dependency), not `ajv`; neither `yaml` nor `ajv` is added (no card names them).
+> 2. If `scraper/config/` (NEW) and its loader already exist on `origin/main` when this item starts (lane B's item 22 may create them first), slice 1 is SKIP-IF-EXISTS: reuse the loader, add the manifest file and its schema only. One loader for the whole config family (OD-51).
+> 3. The loader validates at process start and prints the loaded manifest hash in the cycle log; that printed line is this item's staging proof.
+
+
 **PROVISIONAL on nothing new.** Scoped entirely inside OD-5 (§2.3.5) and OD-1 (§1.1); no fork opened.
 
 ## Purpose
@@ -30,7 +36,7 @@ so changing a rank order is a config edit and a deploy, never a code change and 
 
 | Path | State | Change |
 |---|---|---|
-| `scraper/config/field-manifest.yaml` | **NEW** (`scraper/config/` (LOCAL) does not exist today — `ls scraper/config` fails; only `scraper/src/config/` exists) | The manifest: one entry per D/T/X/W/M field, keyed `"<table>.<column>"` |
+| `scraper/config/field-manifest.yaml` | **NEW** (`scraper/config/` (NEW) does not exist today — `ls scraper/config` fails; only `scraper/src/config/` exists) | The manifest: one entry per D/T/X/W/M field, keyed `"<table>.<column>"` |
 | `scraper/config/field-manifest.schema.json` | **NEW** | JSON Schema (draft-07) the loader validates the YAML against before anything reads it |
 | `scraper/src/config/field-manifest-loader.ts` | **NEW** | `loadFieldManifest()` — parse + schema-validate + cross-check (see Interfaces) |
 | `scraper/src/index.ts` | exists, 1390 lines | Add `loadFieldManifest()` at the top of the CLI guard (currently `if (import.meta.url === pathToFileURL(process.argv[1]).href) { main(); }` at lines 1388–1390) — call it **before** `main()` so a malformed file stops the process before any scraper runs, never mid-cycle |

@@ -21,33 +21,84 @@
  */
 
 /**
- * Monotonic-`when` is checked only for entries at/after this idx. Real repo
- * history has a pre-existing, already-DEPLOYED anomaly below this boundary
- * (idx 12 / 0021_add_promoter_holding_fields has a lower `when` than idx 11)
- * that predates this lint and is harmless now — every migration up to and
- * including 0049 (idx 32) is already applied in production, so a stale
- * ordering among them can no longer cause a skip. Round 3 (T-403) fixed the
- * live case that WOULD have caused a skip (idx 33 vs idx 32) by giving idx 33
- * a `when` above 0049's; this boundary keeps that pair (and every future
- * pair) covered while not resurrecting unrelated historical drift as a new
- * CI failure.
+ * Monotonic-`when` is checked only for entries at/after this idx.
+ *
+ * Two anomalies sit below this boundary, and idx 33 is the smaller value
+ * that clears BOTH of them (verified against the real journal, not assumed):
+ *
+ *   1. idx 12 / 0021_add_promoter_holding_fields has a lower `when` than
+ *      idx 11 — a pre-existing, already-DEPLOYED anomaly that predates this
+ *      lint. On its own this would only require the boundary to be >= 13.
+ *   2. idx 31 / 0048_ipo_valuation_share_legs carries a hand-typed `when`
+ *      (1788945600000, an exact "09:20:00" timestamp matching the same
+ *      hand-typed pattern as the entries GitHub #442 fixed) that is HIGHER
+ *      than idx 32's honest, corrected `when` (1788685590000) — because
+ *      0049 (idx 32) was actually authored two days before idx 31's synthetic
+ *      date. This is the pair that actually forces the boundary to 33; idx 12
+ *      alone would not. Fixing idx 31 is out of scope for this change (not
+ *      one of the three entries #442 named), so the boundary stays at 33.
+ *
+ * The real reason the boundary sits at 33, spelled out: idx 25-31 carry a
+ * fabricated one-per-day ladder (each hand-typed to an exact "09:20:00.000Z",
+ * one calendar day after the last — not real authoring times, just invented
+ * to look ascending). Correcting idx 32 to its true, honest date (this
+ * change round, GitHub #442) pulled it BELOW idx 31's fabricated date,
+ * creating exactly one monotonic drop: idx 31 -> idx 32. That drop is a KNOWN, PINNED exception — see the
+ * `findNonMonotonicWhen` regression test asserting it is the ONLY monotonic
+ * violation in the journal (scripts/tests/check-migration-journal.test.mjs).
+ * It does NOT get corrected here: idx 25-31's true authorship times are
+ * unknown, and hand-typing a second set of fabricated dates over the first
+ * would not be an improvement — every slot has already applied them, so no
+ * database anywhere needs their ordering to be right any more.
+ *
+ * The drop is harmless ONLY because (a) idx 32-34 are already applied on
+ * every existing slot (prod, staging, dev, ipodhan_test) — a database that
+ * already has 0049/icy_firelord/left_loners recorded never re-evaluates
+ * them — and (b) a genuinely FRESH database (nothing yet recorded in the
+ * drizzle migrations table) runs the whole journal in idx order against a
+ * migrations-table baseline of "nothing recorded", so every entry clears the
+ * "when > previously recorded max" test regardless of the 31/32 ordering.
+ *
+ * It would STOP being harmless for exactly one condition: a database whose
+ * recorded state sits precisely between idx 31 and idx 32 — i.e. 0048 (idx
+ * 31, `when`=1788945600000) has been applied and recorded as the migrations
+ * table's max `created_at`, but 0049 (idx 32, `when`=1788685590000) has not
+ * yet run. A `db:migrate` against such a database would compare idx 32's
+ * lower `when` against idx 31's higher recorded max, fail the strict-greater
+ * check, and silently skip 0049 forever — the exact class this whole file
+ * exists to catch. No such database is known to exist today (every real
+ * slot's rebuild/restore path applies the full journal from empty, case (b)
+ * above), but a partial restore, a manual migrations-table edit, or a new
+ * migration path that starts mid-journal would create it. If one is ever
+ * found, treat it as a live recurrence of GitHub #442's class, not a new bug.
  */
 export const MONOTONIC_CHECK_FROM_IDX = 33;
 
 /**
- * Future-dated `when` is checked only for entries strictly AFTER idx 33.
- * idx 33 itself (20260906090638_icy_firelord, when=1789032000000) is
- * deliberately excluded: to satisfy MONOTONIC_CHECK_FROM_IDX against idx 32
- * (0049_ipo_details_ad_fields, hand-typed when=1789031999000, ~2026-09-10),
- * idx 33's `when` had to be pushed to just above it — which makes idx 33
- * itself future-dated too, as an unavoidable side effect of the repair, not a
- * new instance of the mistake. Once real time passes 2026-09-10, this
- * boundary can be safely reused for new entries without further action
- * (their real `when` will naturally exceed 0049's inflated one on its own).
+ * Future-dated `when` is checked for every entry — no idx-based exemption.
+ *
+ * Round 3 (T-403) had grandfathered idx <= 33 here because idx 33's `when`
+ * had been pushed to just above idx 32's hand-typed future date to satisfy
+ * MONOTONIC_CHECK_FROM_IDX, which made idx 33 itself future-dated as a side
+ * effect. GitHub #442's fix corrects idx 32, 33 and 34 to their honest,
+ * real-time `when` values, so none of them are future-dated any more and the
+ * exemption that hid that class from CI is no longer needed for them — or for
+ * any earlier entry, since every entry in the real journal predates `now`.
+ * Removing the exemption (rather than just moving its boundary) is what
+ * makes a recurrence of GitHub #442's mistake — a new hand-typed future
+ * `when` at ANY idx, not only a fresh one above the old boundary — fail CI
+ * instead of silently passing.
  */
-export const FUTURE_CHECK_AFTER_IDX = 33;
+export const FUTURE_CHECK_AFTER_IDX = -1;
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+// A generous "future" tolerance IS the hole this fix closes: a 24h window let
+// an entry dated 16-17h ahead of real time (idx 32-34 pre-#442) pass this
+// check silently, even though any positive `when` ahead of the real authoring
+// time is exactly the class that causes drizzle's migrator to skip an entry
+// once real time catches up to it. The only legitimate slack here is clock
+// skew between the machine that generated the migration and the machine
+// running this check — not a day of cover for hand-typed future dates.
+const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000;
 
 /**
  * Entries at/after MONOTONIC_CHECK_FROM_IDX must have strictly increasing
@@ -76,21 +127,39 @@ export function findNonMonotonicWhen(entries) {
 }
 
 /**
- * Entries strictly after FUTURE_CHECK_AFTER_IDX must not be dated more than
- * ~24h into the future relative to `nowMs` — that class (hand-typed dates up
- * to 2026-09-10) is exactly what caused blocker 1.
+ * No entry — at any idx — may be dated more than a small clock-skew margin
+ * into the future relative to `nowMs`. A wide tolerance (this rule used to
+ * allow a full 24h) is itself the defect: idx 32-34 pre-#442 were only
+ * 16-17h ahead of real time and sailed through a 24h check without a single
+ * violation, even though a `when` ahead of the real authoring time is
+ * exactly the class that causes drizzle's migrator to skip an entry once
+ * real time catches up to it (T-403 round 3, blocker 1; GitHub #442). The
+ * tolerance is CLOCK_SKEW_TOLERANCE_MS (5 minutes) — enough to absorb clock
+ * drift between the machine that ran `drizzle-kit generate` and the machine
+ * running this check, not enough to hide a hand-typed future date.
  *
- * This rule and MONOTONIC_CHECK_FROM_IDX contradict each other until real
- * time passes 2026-09-10 (idx 33's when=1789032000000): a migration authored
- * THIS week must sort above idx 33 (monotonic rule) but idx 33 is already
- * >24h in the future, so "when > previous.when" and "when <= now+24h" cannot
- * both hold for a real, honestly-timestamped new entry. The allowed ceiling
- * is therefore the LARGER of the two floors an honest entry must clear:
- * `max(nowMs + 24h, previousEntry.when + 1ms)` — i.e. a migration may be
- * future-dated exactly as far as it MUST be to stay monotonic against a
- * future-dated predecessor, never further. Once real time passes 2026-09-10
- * this collapses back to the plain `nowMs + 24h` ceiling on its own, since
- * idx 33's `when` will no longer be ahead of `nowMs`.
+ * The one remaining wrinkle is idx 31 (0048_ipo_valuation_share_legs, a
+ * hand-typed `when` this change does not correct — see
+ * MONOTONIC_CHECK_FROM_IDX): it is NOT future-dated today (it fell into the
+ * past earlier today, real time having caught up to its 09:20 timestamp), so
+ * it passes this check without needing an exemption. If
+ * MONOTONIC_CHECK_FROM_IDX allowed the monotonic rule and this rule to
+ * require mutually-exclusive `when` values for some entry in the future, the
+ * allowed ceiling is the LARGER of the two floors an honest new entry must
+ * clear: `max(nowMs + CLOCK_SKEW_TOLERANCE_MS, previousEntry.when + 1ms)` —
+ * i.e. a migration may be future-dated exactly as far as it MUST be to stay
+ * monotonic past a future-dated predecessor, never further.
+ *
+ * That ceiling exemption is granted ONLY when the predecessor itself passed
+ * this same check. Once a predecessor is a violation (e.g. idx 32's
+ * hand-typed 2026-09-10 date pre-#442), its `when` is not an honest floor any
+ * more, and a successor that merely clears it (idx 33, 34 — each hand-typed
+ * exactly 1ms/500ms past its predecessor to satisfy the OLD monotonic rule)
+ * is riding the same defect, not obeying a legitimate constraint. Without
+ * this guard, a single bad future `when` would cascade into an unbounded
+ * chain of "monotonically excused" future entries — precisely how idx 33 and
+ * 34 slipped past the old 24h check even though they were, in absolute
+ * terms, exactly as future-dated as idx 32.
  * @param {JournalEntry[]} entries
  * @param {number} nowMs
  * @returns {string[]}
@@ -98,19 +167,28 @@ export function findNonMonotonicWhen(entries) {
 export function findFutureDatedWhen(entries, nowMs) {
   const violations = [];
   const sorted = [...entries].sort((a, b) => a.idx - b.idx);
+  let prevViolated = false;
   for (let i = 0; i < sorted.length; i++) {
     const e = sorted[i];
-    if (e.idx <= FUTURE_CHECK_AFTER_IDX) continue; // grandfathered, see doc above
+    if (e.idx <= FUTURE_CHECK_AFTER_IDX) {
+      // no-op today: FUTURE_CHECK_AFTER_IDX = -1, no real idx is <= -1
+      prevViolated = false;
+      continue;
+    }
     const prev = sorted[i - 1];
-    const minimumMonotonicCeiling = prev ? prev.when + 1000 : -Infinity;
-    const allowedMax = Math.max(nowMs + ONE_DAY_MS, minimumMonotonicCeiling);
-    if (e.when > allowedMax) {
+    const minimumMonotonicCeiling = prev && !prevViolated ? prev.when + 1000 : -Infinity;
+    const allowedMax = Math.max(nowMs + CLOCK_SKEW_TOLERANCE_MS, minimumMonotonicCeiling);
+    const violated = e.when > allowedMax;
+    if (violated) {
       violations.push(
-        `idx ${e.idx} (${e.tag}) has when=${e.when}, more than 24h in the future relative to now (${nowMs}) ` +
+        `idx ${e.idx} (${e.tag}) has when=${e.when}, more than ${CLOCK_SKEW_TOLERANCE_MS}ms in the future relative to now (${nowMs}) ` +
           `and beyond the minimum needed to stay monotonic past its predecessor (allowed max ${allowedMax}). ` +
-          `Hand-typed future dates are exactly the class that caused a migration to be silently skipped (T-403 round 3).`
+          `Hand-typed future dates are exactly the class that caused a migration to be silently skipped (T-403 round 3). ` +
+          `Fix the machine's clock and regenerate this migration (drizzle-kit generate) so its 'when' is stamped fresh — ` +
+          `do NOT hand-edit the 'when' value in meta/_journal.json; a hand-edit here is exactly the act that caused #442.`
       );
     }
+    prevViolated = violated;
   }
   return violations;
 }

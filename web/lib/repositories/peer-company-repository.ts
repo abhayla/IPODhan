@@ -12,7 +12,8 @@ import { BaseRepository } from './base-repository';
 import { peerCompanies } from '../db';
 import * as schema from '@ipodhan/shared/db/schema';
 import { CacheTTL } from '../cache/cache-keys';
-import { DatabaseError } from '../errors/repository-errors';
+import { DatabaseError, InvalidDataError } from '../errors/repository-errors';
+import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 export interface PeerCompany {
   id: string;
@@ -92,10 +93,24 @@ export class PeerCompanyRepository extends BaseRepository {
    * Create a new peer company record
    */
   async create(data: PeerCompanyInsert): Promise<PeerCompany> {
+    // Item 01 slice s1b (R-158): the row key depends only on the name, via
+    // the SAME `rowKeyForName` function every scraper write path uses. A
+    // name with no identity (empty/whitespace-only) is refused rather than
+    // written with the schema's blank default — slice s2's
+    // `UNIQUE (ipo_id, normalized_name)` constraint would otherwise collide
+    // silently on the next such row.
+    const normalizedName = rowKeyForName(data.companyName);
+    if (normalizedName === null) {
+      throw new InvalidDataError(
+        `Cannot create peer company: name has no identity (empty/whitespace-only): "${data.companyName}"`,
+        'companyName'
+      );
+    }
+
     try {
       const [peerCompany] = await this.db
         .insert(peerCompanies)
-        .values(data)
+        .values({ ...data, normalizedName })
         .returning();
 
       // Invalidate cache

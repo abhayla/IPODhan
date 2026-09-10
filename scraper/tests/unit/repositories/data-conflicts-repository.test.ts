@@ -260,12 +260,16 @@ describe('DataConflictsRepository (T-286F direct tests)', () => {
       expect(capturedSet?.resolvedAt).toBeInstanceOf(Date);
 
       // Only an OPEN (resolved_at IS NULL) conflict for this exact field can match.
+      // Item 1 slice s3: the query is now row_key-scoped too -- the 3-arg call shape
+      // (kept for the one caller not yet updated, data-consolidation-service.ts, slice
+      // s4's job) defaults row_key to '' (the singleton sentinel).
       const { sql, params } = renderCondition(capturedCond);
       expect(sql).toContain('"data_conflicts"."resolved_at" is null');
       expect(sql).toContain('"data_conflicts"."ipo_id" = $1');
       expect(sql).toContain('"data_conflicts"."table_name" = $2');
-      expect(sql).toContain('"data_conflicts"."field_name" = $3');
-      expect(params).toEqual(['ipo-1', 'ipos', 'openDate']);
+      expect(sql).toContain('"data_conflicts"."row_key" = $3');
+      expect(sql).toContain('"data_conflicts"."field_name" = $4');
+      expect(params).toEqual(['ipo-1', 'ipos', '', 'openDate']);
 
       // Cache invalidated only because a row genuinely converged.
       expect(mockRedis.keys).toHaveBeenCalledWith('conflicts:*');
