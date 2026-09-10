@@ -68,7 +68,8 @@
           "status": "IN-REVIEW",
           "pr": null,
           "sha": "486bf400",
-          "tier": "A"
+          "tier": "A",
+          "reviewVerdict": "MERGE YES conditional on the silent-skip fix; card rationale proven false and amended; 10/10 mutations RED"
         },
         {
           "k": "s3",
@@ -269,7 +270,8 @@
     }
   ],
   "carriedIntoLaterItems": [
-    "item 22: the traceability check reports R-160 claimed by the item-22 card with no test declaring it - fold into item 22's slice plan"
+    "item 22: the traceability check reports R-160 claimed by the item-22 card with no test declaring it - fold into item 22's slice plan",
+    "item 20 slice 4: wire docs/design/check-design-consistency.mjs --gate into pr-gate.yml - it is the ONLY thing that catches a card claiming a retired rule id, and it currently runs in no workflow"
   ],
   "findingsForOwner": [
     "The codebase has 41 real upward-import violations of the design's own layer order (section 7.6), found only once the check could resolve scraper imports. All baselined shrink-only with a why per entry, so they are visible and can only decrease - none is fixed by this slice, and fixing them is not item 20's job."
@@ -333,7 +335,7 @@
       "defect": "mode 4 triggers on same-id-different-hash, but generate-rule-index.mjs matches by hash so a design sentence edit retires the old id and mints a new one - the card's stated rationale may not be served by the mechanism it specifies",
       "supervisorReading": "intent likely served by mode 1 (new orphan id) instead; card wording is the defect, and mode 4 still guards manual/other drift",
       "namedGap": "a card claiming a now-RETIRED id may be caught by no mode at all - mode 1 covers live-but-unclaimed, mode 3 covers tests naming non-live ids",
-      "status": "with the Tier A reviewer to confirm or destroy; contract decision 16 forbids a worker resolving a card/code contradiction by choosing"
+      "status": "CONFIRMED and card amended 2026-09-10; mode 4 kept as a backstop; intent served by mode 1; retired-id gap real and caught by nothing that runs"
     }
   ],
   "risksToOwner": [
