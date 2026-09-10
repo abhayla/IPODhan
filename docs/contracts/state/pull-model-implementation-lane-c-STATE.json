@@ -871,7 +871,7 @@
     "item-03": {
       "item": 3,
       "card": "docs/design/build-cards/item-03-matrix-cleanup.md",
-      "status": "PENDING",
+      "status": "BUILDING",
       "slices": [],
       "prs": [],
       "mergeShas": [],
@@ -914,6 +914,15 @@
           "verdict": "Item 3 stays at ZERO. 3-S1 is not a deletions-only no-op slice for any subset of the 27. Even the five require relaxing an existing guard and moving a coverage baseline, which makes it a design change with a review, not a cleanup.",
           "myOwnNearMiss": "My first no-op comparison reported 5 differences and said NOT A NO-OP. That was FALSE - an artifact of my snapshot enumerating matrix keys, so after deletion the five names were simply absent and compared as undefined. I re-ran over a FIXED name list captured before the change and got a true zero. The same class I had just warned the peer about, in the opposite direction: the first version was a proof that could not have told me the truth either way."
         }
+      },
+      "measurement": {
+        "at": "2026-09-10 22:53 IST",
+        "method": "Read-only over field_sources on BOTH ipodhan and ipodhan_staging (default_transaction_read_only=on asserted per connection, zero writes), joined against getFieldRules() resolution run through tsx.",
+        "finding1": "CONSOLIDATION WRITES camelCase, measured: 74 of 75 distinct (table, field) pairs on production carry no underscore. The lone exception, ipo_valuation.PRICE_BAND_AD, is a document-extraction label, not a column.",
+        "finding2": "SEVEN of the 27 snake_case keys the card calls unreachable are the ONLY entry serving a REAL live write path: profit_fy1/fy2/fy3, revenue_fy1/fy2/fy3, roe_percentage, with 686 consolidated ipo_financials rows on staging. getFieldRules camel-normalises them to names the matrix does NOT have, so the snake entry is the one that answers. Deleting them - which 3-S1 as carded does - drops nine real financial fields to DEFAULT_RULES. This is a THIRD independent reason 3-S1 was wrong and the strongest: measured against real write traffic, not a snapshot.",
+        "finding3": "SEVEN of the 10 manifest fields have NEVER been consolidated on either database: minInvestment, totalSubscription, retailSubscription, qibSubscription, niiSubscription, listingPrice, revenue. The subscriptions and listing_performance tables do not appear among consolidated tables at all, though they hold 27,930 and 242 rows on production. They are written by their own writers, not through consolidation. Adding matrix entries for them would be dead config that READS AS COVERAGE - the exact class item 3 exists to remove.",
+        "finding4": "Only THREE Group-C fields have real consolidation traffic: issueSize (295 prod rows, HAS an entry), freshIssue (8 prod / 10 staging, DRHP-sourced, falls to DEFAULT_RULES) and ofsIssue (4 prod / 5 staging, DRHP-sourced, falls to DEFAULT_RULES).",
+        "consequence": "3-S2 shrinks from 16 fields to TWO with a provable defect on real traffic. The rest of its scope was premise, not measurement."
       }
     }
   },
@@ -1264,7 +1273,11 @@
     "2026-09-10 22:41 IST Delta 2 is on main at 13924d41 with all three of my corrections in it: the probe-marker location (index.ts would have been invisible to a subpath import), #515 as three provenance states rather than one ingestion path, and the string-function traps. Adoption line owed at the next Stage 1a.",
     "2026-09-10 22:45 IST MERGED: #520 12-B at 3ffc9e19, then #522 12-E at da8cad5a. Order was forced, not chosen - 12-E binds GMP list rows on the key 12-B defines. All six planned item 12 slices are now on main.",
     "2026-09-10 22:45 IST ITEM 12 IS MERGED-UNPROVEN, not done. 12-B owes `node scripts/assert-repair-held.mjs normalized-name-current --cycles 2` after deploy, plus the 544-row re-key through backfill-normalized-name.ts UNCHANGED - never a SQL UPDATE, because the SQL twin has no junk: branch and would collapse those rows to the empty string. Per the defect-fix contract the merge is HOW that proof is obtained; the gate that requires it is the release cut.",
-    "2026-09-10 22:45 IST 12-D2 stays deferred on purpose: CIN as an identity tier measures at ZERO effect on real data today and contradicts ipo-identity.ts:485, where an exact-name match deliberately beats a key match. Recorded on the card with its trigger query rather than dropped."
+    "2026-09-10 22:45 IST 12-D2 stays deferred on purpose: CIN as an identity tier measures at ZERO effect on real data today and contradicts ipo-identity.ts:485, where an exact-name match deliberately beats a key match. Recorded on the card with its trigger query rather than dropped.",
+    "2026-09-10 22:53 IST ITEM 3 MEASURED BEFORE BUILDING, and the card is falsified in BOTH directions. Read-only over field_sources on production and staging, read_only=on asserted per connection, zero writes.",
+    "2026-09-10 22:53 IST DIRECTION ONE - 3-S1 was even more wrong than I had already found. SEVEN of the 27 snake_case keys are the ONLY entry serving a REAL live write path: profit_fy1/fy2/fy3, revenue_fy1/fy2/fy3, roe_percentage, carrying 686 consolidated ipo_financials rows on staging. getFieldRules camel-normalises them to names the matrix does not have, so the SNAKE entry is the one that answers. Deleting them drops nine real financial fields to DEFAULT_RULES. That is a third independent reason 3-S1 was wrong, and the strongest one - measured against real write traffic, not against a snapshot.",
+    "2026-09-10 22:53 IST DIRECTION TWO - 3-S2 shrinks from 16 fields to TWO. Seven of the ten manifest fields have NEVER been consolidated on either database, and the subscriptions and listing_performance tables do not appear among consolidated tables at all despite holding 27,930 and 242 production rows. They are written by their own writers. Giving them matrix entries would be dead config that reads as coverage - the exact class item 3 exists to remove. Only freshIssue and ofsIssue have real traffic AND no entry.",
+    "2026-09-10 22:53 IST ALSO MEASURED: consolidation writes camelCase almost universally - 74 of 75 distinct (table, field) pairs on production carry no underscore, the lone exception being a document-extraction label rather than a column. That is the fact the whole snake-vs-camel argument needed and nobody had."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
