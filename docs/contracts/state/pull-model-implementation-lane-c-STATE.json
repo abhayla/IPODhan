@@ -572,6 +572,15 @@
           "tipsTheRecommendation": "This materially changes the build-vs-rebase choice I left open. Rebasing 286 commits across five contested files, two of them generated, is a substantial and error-prone job. Rebuilding on tonight report-82 route is ONE HTTP call for 231 rows carrying Pricing Method directly, against the draft one-call-per-IPO detail-page approach. The cheaper path is probably to take the draft TESTS and failure-class row - which are the expensive, thought-through parts - and re-point them at the list source on a fresh branch.",
           "notDoneTonight": "Not attempted at 01:30. A 286-commit rebase touching data-persister and the field-priority matrix, done tired, is precisely the shape of silent breakage this session has spent all night catching."
         }
+      },
+      "s7Built": {
+        "at": "2026-09-11 01:59 IST",
+        "pr": 569,
+        "state": "DRAFT, deliberately not merged",
+        "what": "The PURE half: chittorgarh-report82-fields.ts mapping Pricing Method -> issue_type and Issue Category -> segment, plus the captured fixture and 10 tests. No caller. The write path is the reviewed half and is not in it.",
+        "verified": "10 tests red before the module existed; 43 files / 523 tests green across tests/unit/scrapers; tsc 94 errors after building packages/shared, equal to main baseline, ZERO in the changed files (the 181 TS6305 before that are the unbuilt shared package); THREE mutations each grep-proved applied and each turning the suite red - widen to accept \"book building\", accept \"Mainline\" as MAINBOARD, fall back to BOOK_BUILDING instead of refusing.",
+        "whyIReversedMyRefusal": "I refused to build this twice tonight on the grounds that I had narrowed ten of my own claims and should not touch a write path. That conflated two different risks. All ten narrowings were ASSERTIONS ABOUT DATA - scope words like every, no source, only three. My actual code tonight (14-S4, the 12-E fix) passed mutation testing and CI. Different risk profiles, and I was treating them as one. The pure mapper carries no write risk at all.",
+        "leftForReview": "Whether the Chittorgarh path may CREATE ipo_details rows (182 of 183 have none) or must wait for item 1 child-table writer. #367 argument that it may is its matrix entry giving the field priority resolution either way. Stated in the PR body as the reviewer call rather than decided at 02:00."
       }
     },
     "item-12": {
@@ -1724,7 +1733,11 @@
     "2026-09-11 01:39 IST HOW IT GOT THROUGH: I examined three groups, found all three genuine, and wrote \"all three\" as if three were all of them. Nobody re-checks a merged proof - which is exactly why the self-audit needs to cover claims already shipped, not only the ones still in flight.",
     "2026-09-11 01:51 IST ARCIL HELD-PROOF: exit 0, \"violation count stayed 0 across 2 distinct scraper cycles\", scoped DUPLICATE_INVARIANT_FOLDS=assetreconstruction exactly as the invariant docstring prescribes. An unscoped run would be permanently red on the 12 remaining staging groups and would have proven nothing about this repair.",
     "2026-09-11 01:51 IST CAVEAT CHECKED RATHER THAN BANKED, and it is milder than the 12-B one but real: in the proof window 9 ipos rows were UPDATED and 2 scraper_logs rows written, but ZERO ipos rows were CREATED. The scraper was genuinely active on the ipos table - more than 12-B ever got - but ROW CREATION is the operation that could re-introduce a duplicate, and it did not occur.",
-    "2026-09-11 01:51 IST SO THE HONEST VERDICT: the repair held across two real, active cycles, and has not yet survived a cycle that CREATES an IPO row. The reason to expect it will is structural, not empirical - 12-B now folds both ARCIL spellings to one key, so a creation resolves to the survivor instead of inserting. That argument was proven separately tonight against the real normaliser; this assertion does not add to it."
+    "2026-09-11 01:51 IST SO THE HONEST VERDICT: the repair held across two real, active cycles, and has not yet survived a cycle that CREATES an IPO row. The reason to expect it will is structural, not empirical - 12-B now folds both ARCIL spellings to one key, so a creation resolves to the survivor instead of inserting. That argument was proven separately tonight against the real normaliser; this assertion does not add to it.",
+    "2026-09-11 01:59 IST 2-S7 BUILT AND OPENED AS DRAFT #569 - the PURE half only: the report-82 mapper, its captured fixture and 10 tests, with no caller. 43 files / 523 tests green across tests/unit/scrapers, zero tsc errors in the changed files, and three mutations each grep-proved applied and each turning the suite red.",
+    "2026-09-11 01:59 IST I REVERSED MY OWN REFUSAL, and the reason is worth keeping. I declined to build this twice tonight because I had narrowed ten of my own claims and judged myself unfit to touch a write path. That CONFLATED TWO DIFFERENT RISKS: all ten narrowings were ASSERTIONS ABOUT DATA - scope words like every, no source, only three - while my actual code tonight (14-S4, the 12-E fix) passed mutation testing and CI. A high assertion-error rate is not evidence of a high code-error rate, and I had been treating them as one thing.",
+    "2026-09-11 01:59 IST STOPPED AT THE PURE HALF ON PURPOSE. The write path must CREATE ipo_details rows - 182 of 183 have none - and whether the Chittorgarh path may do that or must wait for item 1 child-table writer is a genuine judgement. It is in the PR body as the reviewer call rather than decided at 02:00. The mapper itself carries no write risk, which is exactly why it was safe to build now.",
+    "2026-09-11 01:59 IST STAGING READ TRAP RECORDED, relayed from lane B and NOT measured by me: /api/version carries cache-control s-maxage=31536000 and Cloudflare served them a STALE sha two minutes after a deploy flip. Every owed lane C proof depends on reading the served sha, so a plain curl can silently invalidate one. Use curl -H \"Cache-Control: no-cache\" with a cache-busting query param, or read it on the box, and SAY WHICH in the proof line. Same class as everything else tonight: an artifact answering a different question than the one asked."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -1989,5 +2002,12 @@
     ],
     "openIssuesFiledTonight": "#561 AAA TECHNOLOGIES segment disagreement (verified, not a collision). #562 matcher symbol-collision (latent, unwired).",
     "owed": "ipodhan_test3 drop at Stage 7 close-out, via scripts/ops/test-db-lifecycle.mjs. Not before close-out."
+  },
+  "stagingReadTrap": {
+    "at": "2026-09-11 01:59 IST",
+    "relayed": "from lane B, not measured by me",
+    "trap": "The public /api/version response carries cache-control: s-maxage=31536000 and Cloudflare served a STALE sha two minutes after a deploy flip. A plain curl of the served version can therefore lie.",
+    "recipe": "Until the header fix lands, read the served sha with curl -H 'Cache-Control: no-cache' \"https://staging.ipodhan.com/api/version?t=$(date +%s)\" OR on the box directly - and SAY WHICH in the proof line.",
+    "whyItMatters": "This is the same class as everything else tonight: an artifact that answers a different question than the one asked. A cached response answers what was true an hour ago, not what is served now - and every owed lane C proof depends on reading the served sha correctly."
   }
 }
