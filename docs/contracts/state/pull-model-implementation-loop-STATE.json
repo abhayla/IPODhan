@@ -280,15 +280,16 @@
         {
           "k": "s6",
           "title": "ipo_risk_factors re-key from seq to heading_hash",
-          "status": "FIX-PUSHED-AWAITING-CI",
+          "status": "MERGED",
           "pr": 513,
-          "sha": "0e2a5142",
+          "sha": "8536ff51",
           "tier": "A",
           "branch": "feat/pm-item01-s6-risk-factor-heading-key",
           "mergeCondition": "s6's PR MUST add the ipo_risk_factors/heading_hash entry to the s8b registry in scraper/tests/integration/derived-key-recompute-guard.integration.test.ts, in the same change that adds the column. s8b could not register it: normalizeHeading lives in risk-factor-heading-key.ts, which exists only on s6's branch, so importing it from main would break the build. Without the entry, heading_hash ships with a gated UNIQUE constraint and no re-compute guard - the exact hole #506 closed for normalized_name.",
           "mergeAfter": "s8b",
           "registryShapeDecision": "Keep the SINGLE registry array in derived-key-recompute-guard.integration.test.ts. s6 adds ONE entry and takes the one-line conflict at its merge gate; do NOT restructure into per-entry files. Only s6 adds an entry in this loop, so per-entry files would be speculative generality (rule 21). Split only if a third derived key appears.",
-          "reviewVerdict": "FAIL. CRITICAL: KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT not extended, so the deploy-time drift assert sees one unignored MISSING_UNIQUE_CONSTRAINT and aborts the release on EVERY slot on day one - the #464 class again, caught by CI on #513 before merge. MAJOR: the repair tool keeps lowest seq regardless of content so it can delete the row carrying a body/kpis its survivor lacks (reviewer built the case; 0 lossy groups on either slot today, but rows change nightly); the row-deleting tool has ZERO tests while every sibling has one; droppedDuplicateKey/droppedNoHeading are computed and discarded so risk factors can vanish from a live page with no log line. MINOR: E2 evidence block is staging-only and stale (prod is 2440 rows / 17 surplus, not ~2130); the backfill-complete instruction loops forever on a whitespace-only heading; heading is slice(0,500) before hashing so two headings sharing 500 chars collapse."
+          "reviewVerdict": "FAIL. CRITICAL: KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT not extended, so the deploy-time drift assert sees one unignored MISSING_UNIQUE_CONSTRAINT and aborts the release on EVERY slot on day one - the #464 class again, caught by CI on #513 before merge. MAJOR: the repair tool keeps lowest seq regardless of content so it can delete the row carrying a body/kpis its survivor lacks (reviewer built the case; 0 lossy groups on either slot today, but rows change nightly); the row-deleting tool has ZERO tests while every sibling has one; droppedDuplicateKey/droppedNoHeading are computed and discarded so risk factors can vanish from a live page with no log line. MINOR: E2 evidence block is staging-only and stale (prod is 2440 rows / 17 surplus, not ~2130); the backfill-complete instruction loops forever on a whitespace-only heading; heading is slice(0,500) before hashing so two headings sharing 500 chars collapse.",
+          "reviewRounds": 2
         },
         {
           "k": "s7a",
@@ -388,7 +389,7 @@
         },
         {
           "k": "s12",
-          "status": "PLANNED",
+          "status": "BUILDING",
           "tier": "A",
           "pr": null,
           "sha": null,
@@ -479,7 +480,8 @@
         476,
         500,
         498,
-        508
+        508,
+        513
       ],
       "mergeShas": [
         "6797fdab",
@@ -493,7 +495,8 @@
         "667c1370",
         "c15c7eb3",
         "15a8378f",
-        "12fc2dbc"
+        "12fc2dbc",
+        "8536ff51"
       ],
       "proof": {
         "status": "OWED",
