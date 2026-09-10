@@ -193,15 +193,14 @@ assert_summary_mentions "an up-to-date skip explains itself" "no deploy this tic
 assert_summary_mentions "a docs-only skip explains itself" "Only documentation changed" \
   env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
 
-# --- the concurrency group. With `push` gone, the old expression
-# --- (github.event_name == 'push' && 'staging' || inputs.slot) is false on
-# --- every event, and inputs.slot is EMPTY on a schedule, so the group would
-# --- collapse to "deploy-linux-" and a scheduled staging deploy would not
-# --- serialise against a manual slot=staging dispatch on the same box.
-if grep -qF "group: deploy-linux-\${{ github.event_name == 'schedule' && 'staging' || inputs.slot }}" "$WF"; then
-  echo "PASS: concurrency group keys on the schedule event, not the removed push event"
+# --- the concurrency group (s20: push restored alongside schedule, since
+# --- the schedule trigger never fired). Both push and schedule must map to
+# --- the staging group, or a push deploy would not serialise against a
+# --- manual slot=staging dispatch on the same box.
+if grep -qF "group: deploy-linux-\${{ (github.event_name == 'push' || github.event_name == 'schedule') && 'staging' || inputs.slot }}" "$WF"; then
+  echo "PASS: concurrency group keys on both push and schedule events"
 else
-  echo "FAIL: concurrency group expression is not the expected schedule-keyed form:"
+  echo "FAIL: concurrency group expression is not the expected push+schedule-keyed form:"
   grep -n 'group: deploy-linux-' "$WF" | sed 's/^/    /'
   FAILED=1
 fi
@@ -213,11 +212,16 @@ else
   FAILED=1
 fi
 
+# --- s20: the schedule trigger from #549 never fired (measured twice, an
+# --- hour apart: 0 scheduled runs). push is restored as the primary
+# --- trigger; schedule is kept as a harmless backstop (the decide job's
+# --- served==head check no-ops a late scheduled tick after a push already
+# --- deployed).
 if grep -qE '^\s+push:' "$WF"; then
-  echo "FAIL: the push trigger is back - a burst of merges is a burst of deploys again"
-  FAILED=1
+  echo "PASS: push trigger restored (schedule never fired - see s20)"
 else
-  echo "PASS: no push trigger"
+  echo "FAIL: expected the push trigger to be present in $WF"
+  FAILED=1
 fi
 
 if [ "$FAILED" -eq 0 ]; then
