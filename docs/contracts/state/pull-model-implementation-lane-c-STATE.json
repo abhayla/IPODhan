@@ -871,7 +871,7 @@
     "item-03": {
       "item": 3,
       "card": "docs/design/build-cards/item-03-matrix-cleanup.md",
-      "status": "BUILDING",
+      "status": "RE-CUT-NEEDED",
       "slices": [],
       "prs": [],
       "mergeShas": [],
@@ -923,6 +923,15 @@
         "finding3": "SEVEN of the 10 manifest fields have NEVER been consolidated on either database: minInvestment, totalSubscription, retailSubscription, qibSubscription, niiSubscription, listingPrice, revenue. The subscriptions and listing_performance tables do not appear among consolidated tables at all, though they hold 27,930 and 242 rows on production. They are written by their own writers, not through consolidation. Adding matrix entries for them would be dead config that READS AS COVERAGE - the exact class item 3 exists to remove.",
         "finding4": "Only THREE Group-C fields have real consolidation traffic: issueSize (295 prod rows, HAS an entry), freshIssue (8 prod / 10 staging, DRHP-sourced, falls to DEFAULT_RULES) and ofsIssue (4 prod / 5 staging, DRHP-sourced, falls to DEFAULT_RULES).",
         "consequence": "3-S2 shrinks from 16 fields to TWO with a provable defect on real traffic. The rest of its scope was premise, not measurement."
+      },
+      "correction": {
+        "at": "2026-09-10 23:16 IST",
+        "withdrawn": "The item 3 measurement I recorded earlier tonight had REAL numbers and a WRONG LABEL. I read field_sources as a CONSOLIDATION ledger. It is a PROVENANCE ledger - filing-persister.trackField writes a row for any tracked write, whatever path produced it. Every number stands; the conclusions built on the label do not.",
+        "loadBearingFact": "FIELD_PRIORITY_MATRIX governs ipos writes ONLY. getFieldRules is consumed only by data-consolidation-service, and every real call site passes tableName ipos (data-consolidation-orchestrator.ts:187, data-persister.ts:1024; the third is bulkConsolidate looping the same input).",
+        "consequence": "3-S1, 3-S2 and 3-S3 are all aimed at a mechanism NARROWER than the card describes. The card treats the matrix as governing every consolidation write; it governs one table. Item 3 needs re-cutting before any of them is built.",
+        "s1Revised": "3-S1 deletion is runtime-SAFE, the opposite of what I concluded earlier tonight. profit_fy1..roe_percentage appear nowhere in scraper/src outside the matrix - only in schema.ts as column names. Nothing looks them up. 3-S1 still fails, but on the W-49 guard asserting explicit registration, which is a design question and not a data-loss one.",
+        "pr534": "CLOSED, not relabelled. The review offered relabelling it pre-emptive config. But this PR own argument for refusing entries for seven fields was that dead config READS AS COVERAGE - the class item 3 exists to remove. Adding two inert entries is that same defect at smaller size. The principle does not exempt my own two fields.",
+        "survives": "Consolidation writes camelCase almost universally - 74 of 75 distinct (table, field) pairs on production carry no underscore. That measurement is unaffected by the label error."
       }
     }
   },
@@ -1277,7 +1286,14 @@
     "2026-09-10 22:53 IST ITEM 3 MEASURED BEFORE BUILDING, and the card is falsified in BOTH directions. Read-only over field_sources on production and staging, read_only=on asserted per connection, zero writes.",
     "2026-09-10 22:53 IST DIRECTION ONE - 3-S1 was even more wrong than I had already found. SEVEN of the 27 snake_case keys are the ONLY entry serving a REAL live write path: profit_fy1/fy2/fy3, revenue_fy1/fy2/fy3, roe_percentage, carrying 686 consolidated ipo_financials rows on staging. getFieldRules camel-normalises them to names the matrix does not have, so the SNAKE entry is the one that answers. Deleting them drops nine real financial fields to DEFAULT_RULES. That is a third independent reason 3-S1 was wrong, and the strongest one - measured against real write traffic, not against a snapshot.",
     "2026-09-10 22:53 IST DIRECTION TWO - 3-S2 shrinks from 16 fields to TWO. Seven of the ten manifest fields have NEVER been consolidated on either database, and the subscriptions and listing_performance tables do not appear among consolidated tables at all despite holding 27,930 and 242 production rows. They are written by their own writers. Giving them matrix entries would be dead config that reads as coverage - the exact class item 3 exists to remove. Only freshIssue and ofsIssue have real traffic AND no entry.",
-    "2026-09-10 22:53 IST ALSO MEASURED: consolidation writes camelCase almost universally - 74 of 75 distinct (table, field) pairs on production carry no underscore, the lone exception being a document-extraction label rather than a column. That is the fact the whole snake-vs-camel argument needed and nobody had."
+    "2026-09-10 22:53 IST ALSO MEASURED: consolidation writes camelCase almost universally - 74 of 75 distinct (table, field) pairs on production carry no underscore, the lone exception being a document-extraction label rather than a column. That is the fact the whole snake-vs-camel argument needed and nobody had.",
+    "2026-09-10 23:16 IST CORRECTION, WITHDRAWING MY OWN ITEM 3 CONCLUSIONS FROM EARLIER TONIGHT. The numbers were real and the LABEL was wrong: I read field_sources as a CONSOLIDATION ledger when it is a PROVENANCE ledger - filing-persister.trackField writes a row for any tracked write, whatever path produced it. Found by the Tier A reviewer on #534; I reproduced every step myself rather than taking the verdict.",
+    "2026-09-10 23:16 IST THE LOAD-BEARING FACT NOBODY HAD: FIELD_PRIORITY_MATRIX governs ipos writes ONLY. getFieldRules is consumed only by data-consolidation-service and every real call site passes tableName ipos. fresh_issue and ofs_issue are written directly by filing-persister.ts:894,897 through ipoDetailsWriter.upsert, gated on document type, never by the matrix. So the defect #534 claimed does not exist, and its RCA was false.",
+    "2026-09-10 23:16 IST CONSEQUENCE FOR THE WHOLE ITEM: 3-S1, 3-S2 and 3-S3 are all aimed at a mechanism NARROWER than the card describes. Item 3 is RE-CUT-NEEDED, not merely in progress. Also reversing myself again on 3-S1: its deletion is runtime SAFE - profit_fy1..roe_percentage appear nowhere in scraper/src outside the matrix. It still fails, but on the W-49 explicit-registration guard, a design question rather than data loss.",
+    "2026-09-10 23:16 IST CLOSED #534 rather than relabelling it pre-emptive config, which the reviewer offered. Its own argument for refusing entries for seven fields was that dead config reads as coverage - the exact class item 3 exists to remove. Adding two inert entries is that defect at a smaller size, and the principle does not exempt my own two fields.",
+    "2026-09-10 23:16 IST MAIN WENT RED ON MY OWN #522 and that was the first work: PR #536. The gate was NOT lying - run 34506230714 genuinely ran the file and passed it, 9 tests, inside a 279-file suite. It passed because the branch was tested against a base WITHOUT 12-B: chooseListBinding calls normalizeCompanyNameForMatching, which data-persister only RE-EXPORTS from company-name-normalizer.ts, the file 12-B rewrites. 12-B merged, then 12-E, and the COMBINATION was never tested by anything.",
+    "2026-09-10 23:16 IST I GOT THAT DIAGNOSIS WRONG ONCE AND TOLD BOTH PEERS SO. I checked data-persister.ts own git history, saw 12-B had not touched that file, and told them their causal story was wrong. It was right. Following the filename instead of the import is what fooled me, and it is the second time tonight a re-export or an alias has hidden a real dependency.",
+    "2026-09-10 23:16 IST ALSO CORRECTED IN #536: 12-E test header claimed four companies would stop showing GMP until their names align, 4 of 28 records. Probing the real normaliser shows all four fold to equal strings and bind. That figure was reasoned, never measured."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
