@@ -77,12 +77,15 @@
         {
           "id": "14-S1",
           "tier": "B",
-          "status": "BUILDING",
+          "status": "IN_REVIEW",
           "branch": "feat/pm-c-item14-s1-floor-check-alignment",
-          "sourceChange": false
+          "sourceChange": false,
+          "pr": 471
         }
       ],
-      "prs": [],
+      "prs": [
+        471
+      ],
       "mergeShas": [],
       "proof": {
         "status": "OWED",
@@ -140,8 +143,8 @@
     }
   },
   "prGate": {
-    "laneCRunsToday": 0,
-    "repoRunsTodayAtPreflight": 14,
+    "laneCRunsToday": 1,
+    "repoRunsTodayAtPreflight": 17,
     "laneCDailyCap": 15,
     "repoStopAt": 50
   },
@@ -167,7 +170,11 @@
     "2026-09-10 13:35 IST CROSS-LANE TRAP, reproduced independently rather than filed on a peer's word. git 2.53.0.windows.2: `git check-ignore -q <path>/` returns IGNORED for ANY path with a trailing slash, including one that does not exist and matches no .gitignore rule (`totally-made-up-xyz/` -> IGNORED, `totally-made-up-xyz` -> not ignored). Lane B framed it as affecting non-existent paths; my reproduction shows the trailing slash ALONE is sufficient, so the local false-pass is total, not partial - an existing directory is equally mis-reported. Relevant to docs/design/check-build-cards.mjs isIgnored(), which only told the truth in CI. Lane B is fixing it in PR #470.",
     "2026-09-10 13:35 IST HOLD ADOPTED (tightening, costs nothing): no edits to docs/design/build-cards/item-02-*.md until lane B PR #470 merges, then rebase. Neither item 14 nor item 2 has that card in its file scope, so no work is blocked. CORRECTION sent to the supervisor: he described item-04 as lane C's; it is lane A's (laneAItems [1,4,5,6,7,9,10,11,13,15,17]). Lane C owns 14, 2, 12, 3 only.",
     "2026-09-10 13:35 IST SELF-CORRECTION, my error, committed to this ledger 20 minutes ago and now withdrawn. I claimed the check-ignore bug fires on ANY path with a trailing slash and said lane B had understated it. WRONG. Both my examples (scraper/config/, totally-made-up-xyz/) are NON-EXISTENT paths, so they could not distinguish the two hypotheses - I had no existing-directory case and drew the wider conclusion anyway. Measured properly now: web/ EXISTS -> not ignored, docs/ EXISTS -> not ignored, scraper/src/ EXISTS -> not ignored, node_modules/ EXISTS -> IGNORED (correctly, it is ignored). Existing directories behave correctly with a trailing slash. Lane B's original statement stands unchanged: a path that DOES NOT EXIST, written with a trailing slash, reports ignored. The supervisor caught this and was right. Lesson, and it is the same class as lane A's rebase overgeneralisation this morning: two confirming examples that share a hidden property (here, non-existence) test that property, not the one I named. Before widening someone else's finding, find the case that would FALSIFY the wider claim - I never looked for an existing directory, which took one command.",
-    "2026-09-10 13:38 IST CHECK-IGNORE, third and settled version, confirmed by my own falsifying probe. The discriminator is TRACKED CONTENT, not existence and not the slash alone. Decisive test I ran: created a directory that EXISTS with zero tracked files -> `git check-ignore -q <dir>/` reports IGNORED (bare path reports ok). That single case falsifies BOTH earlier claims: mine (any path with a slash - wrong, web/ and docs/ are fine) and lane B's (non-existent paths - wrong, this one existed). web/ (1194 tracked) and docs/ (1353 tracked) behave correctly; scraper/config, scripts/state and an invented path (all 0 tracked) do not. Note my first re-measurement could NOT have settled it: scripts/state is ABSENT in this worktree, and absent implies untracked, so it was consistent with both hypotheses - I needed a directory that exists AND has no tracked files, which I had to create. Method worth keeping, from lane A: when a check says yes, ask it something that must be no. Practical consequence for lane C: once 2-S1 lands tracked files under scraper/config/, the marker resolves by itself."
+    "2026-09-10 13:38 IST CHECK-IGNORE, third and settled version, confirmed by my own falsifying probe. The discriminator is TRACKED CONTENT, not existence and not the slash alone. Decisive test I ran: created a directory that EXISTS with zero tracked files -> `git check-ignore -q <dir>/` reports IGNORED (bare path reports ok). That single case falsifies BOTH earlier claims: mine (any path with a slash - wrong, web/ and docs/ are fine) and lane B's (non-existent paths - wrong, this one existed). web/ (1194 tracked) and docs/ (1353 tracked) behave correctly; scraper/config, scripts/state and an invented path (all 0 tracked) do not. Note my first re-measurement could NOT have settled it: scripts/state is ABSENT in this worktree, and absent implies untracked, so it was consistent with both hypotheses - I needed a directory that exists AND has no tracked files, which I had to create. Method worth keeping, from lane A: when a check says yes, ask it something that must be no. Practical consequence for lane C: once 2-S1 lands tracked files under scraper/config/, the marker resolves by itself.",
+    "2026-09-10 13:42 IST 14-S1 PR #471 OPENED. 37 tests (32 before), one file, +90/-0, no source change. Verifier PASS at Tier B, gate reproduced independently including the load-bearing mutation. Lane C PR-gate runs today: 1 of 15; repo total 17 of a 50 stop.",
+    "2026-09-10 13:42 IST REBASE WAS REQUIRED and this is the case the supervisor named: lane A merged #464 (\"make the CI gate able to fail, and teach schema drift about indexes\") while 14-S1 was in review. That changes the GATE SET, so a green on the old base would not have described the gate the PR actually faces. Rebased with the --onto form; afterwards level with origin/main, exactly one file, and the tests re-run green (exit 0, 37/37) on the new base per decision 20.",
+    "2026-09-10 13:42 IST GOTCHA: the first rebase attempt failed with \"cannot rebase: You have unstaged changes\" while git status --porcelain was EMPTY and git diff --numstat was empty. Stale index stat-cache - test runs and node_modules relinking had touched mtimes. Fix is `git update-index --refresh` before the rebase, never git stash (blocked in worktrees by a hook, and the standing rule).",
+    "2026-09-10 13:42 IST MY ERROR, caught by the independent verifier and corrected in the PR body rather than buried: I justified the new test import as following existing precedent. It does not. The precedent I cited (backfill-allotment-date-chittorgarh.test.ts importing ../../../scripts/lib/repair-tool.js) resolves to scraper/scripts/lib - scraper-LOCAL. The new import goes four levels up to the REPO-ROOT scripts/lib, outside the scraper workspace, and is measured to be the only such import anywhere under scraper/. Kept deliberately (test-only, and copying the constant into the test is exactly the paper guard this slice exists to avoid; check-module-boundaries passes at exit 0 because it scans scraper/src, not tests), but declared as a NEW pattern with its justification. I asserted precedent to the builder, to the supervisor and to this ledger without checking where the path resolved."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
