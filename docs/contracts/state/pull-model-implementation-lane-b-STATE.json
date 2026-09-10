@@ -140,12 +140,24 @@
     {
       "at": "2026-09-10T21:31:54.927Z",
       "what": "Second review round dispatched rather than self-certifying: R9 makes a MAJOR finding trigger round 2, and my rewrite is itself unreviewed - I replaced a naive line filter with a hand-written character scanner that does NOT model regex literals, and the file under test contains them."
+    },
+    {
+      "at": "2026-09-10T21:53:09.506Z",
+      "what": "#580 MERGED (97bc04a5): item 8 peer-table fixtures for all four issuers plus the KPI-table NEGATIVE, with provenance per fixture. The provenance gate failed the first push and was right - it demanded exactly what the 8a card already asked for. Skip ratchet 53->58, one line, no new violations. With #579 merged, 8a is READY_NEXT."
+    },
+    {
+      "at": "2026-09-10T21:53:09.506Z",
+      "what": "21-3b PROVEN ON REAL DATA: the line is firing on staging release 20260910-213930-30f7e019 four times, sent 0, reason no-IPO-written. Does not pay 21-3 own proof (needs a cycle that writes an IPO) but proves the step is REACHED every cycle, previously unknowable."
+    },
+    {
+      "at": "2026-09-10T21:53:09.506Z",
+      "what": "18-1b and 18-2 UNMOVED after 19 staging cycles: document_pages still 0, COMPLETED still 83, found 0, extractionBlocked 10, budgetExhausted true. Of 595 purge-held lines, ZERO carry a real timestamp - still the never-extracted arm, exactly as measured. The one named condition (a cycle that completes an extraction) has not occurred; the blocker is the discovery/download step, not this lane code."
     }
   ],
   "items": {
     "8": {
-      "status": "PREMISE_SETTLED_ON_TWO_ISSUERS",
-      "slices": "0 merged. 8a and 8b ready; a 3rd/4th-issuer column check recommended first.",
+      "status": "PREMISE_SETTLED_FIXTURES_MERGED",
+      "slices": "8-pre MERGED (#580, 97bc04a5). 8a READY_NEXT with constraint (#579) and fixtures both on main. 8b READY.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -584,14 +596,14 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T21:31:54.927Z",
+  "lastStateWriteAt": "2026-09-10T21:53:09.506Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
-    "8": 0,
+    "8": 1,
     "16": 1,
     "18": 4,
     "20": 8,
-    "21": 5,
+    "21": 6,
     "22": 6
   },
   "stagingProofsOwedAndBlocked": [
