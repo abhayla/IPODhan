@@ -1,6 +1,10 @@
-import { join } from 'path';
-import { loadValidatedConfig } from './validated-config-loader';
-import { fieldManifestSchema, type FieldManifest } from './field-manifest-schema';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { loadValidatedConfig } from './validated-config-loader.js';
+import { fieldManifestSchema, type FieldManifest } from './field-manifest-schema.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const DEFAULT_MANIFEST_PATH = join(__dirname, '..', '..', '..', 'scraper', 'config', 'field-manifest.json');
 
