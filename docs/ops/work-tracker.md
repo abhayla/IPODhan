@@ -1063,3 +1063,20 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   address has a single wrong character; the fix is written but not run, because data corrections wait
   for your word), whether the shared branch should refuse changes that have not passed their checks,
   and whether to approve the new PDF library.
+
+- **2026-09-11 05:07 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  The reader that pulls the rival-company comparison out of a prospectus is now complete and merged:
+  it finds the right table, works out which column is which, and reads the rows. A reader of
+  ipodhan.com would still notice nothing - none of this is connected to the page yet - but the hard
+  part is behind us, and what it will eventually give a reader is the comparison a prospectus prints
+  for each competitor, on the page rather than inside a PDF nobody opens. What went wrong is worth
+  telling you because the fix came from the document itself: I had recorded one prospectus as listing
+  five rival companies. It lists seven. My five came from a page dump I had cut short, and the two I
+  missed are the very two that document names elsewhere as its highest and lowest price-to-earnings.
+  The test now checks the parsed list against that summary, so the document proves our reading rather
+  than me counting. The same check turned up something else: that prospectus contradicts itself,
+  naming one rival "KP Green Energy" in one place and "KP Green Engineering" in another. The second is
+  the real company. What is needed from Abhay: nothing new - the same three, a one-row data
+  correction that is written but not run because data corrections wait for your word, whether the
+  shared branch should refuse changes that have not passed their checks, and whether to approve the
+  new PDF library.
