@@ -3098,3 +3098,17 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   THIS WORKTREE. Every local proof I have cited since that fix is on the corrected tree; the ones
   before it are the ones I already flagged, and none of my slices touches `packages/shared`, so none
   is affected either way. `IPODhan-IPODhan-impl-loop-b` is docs-only and cites no local proofs.
+
+- 2026-09-10 22:21 IST **[lane B] The owner asked why the board showed no progress, and he was right.** `run/meta-b`
+  was last written at 20:05 IST. In the two hours and fifty minutes since, #512 merged, #516 opened
+  and merged, the run cap was lifted, item 16 was built whole, item 18 was started and grew a slice,
+  and item 8 was measured twice. None of it reached the board. My own progress log and the walk ledger
+  were current throughout — **the artefact I read stayed current and the artefact he reads went stale.**
+  That is the fourth time today. DEFECT-B16 was this same shape at 16:19, and I responded by promising
+  to keep the board current; DEFECT-B11 was it in the morning. Three promises and a fourth recurrence
+  is not a memory problem, it is a design problem: the board write is a separate step, and separate
+  steps get dropped under load.
+  So it stops being a separate step. Delta 2 §3.15 is adopted as a hard rule here: **a turn that
+  appends a ledger line ends with the board write in the same turn, and a ledger line without its
+  board write is itself a defect line.** The two writes are one action or they drift, and the person
+  who pays for the drift is the one who cannot see the work.
