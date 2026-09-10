@@ -237,7 +237,11 @@
   "[2026-09-10T20:22:29+00:00] MY OWN FALSE FAILURE, recorded because it nearly cost a worker a wild goose chase. I reproduced s20's schedule-gate suite and got 'FAIL: could not extract the gate step', contradicting the worker's reported 19/19. Cause: I set MSYS_NO_PATHCONV=1 on my shell commands, which stops bash translating /d/Abhay/... into a Windows path, so node received a POSIX path and looked for D:\\d\\Abhay\\... Re-run without it: 19/19 PASS, worker was right. LESSON: that variable can manufacture a FALSE FAILURE in any test that hands an absolute path to a Windows binary, and I have been setting it on nearly every command tonight. The dangerous direction would be a false PASS; my reproductions have mostly been `node --test <relative path>`, which is unaffected, but I cannot claim that blanket-wise and will check the invocation shape before trusting a reproduction that disagrees with a worker.",
   "[2026-09-10T20:31:36+00:00] s20 MERGED 2ad49a4e, and the push trigger fired within TWENTY SECONDS: '2026-09-10T20:27:47Z push in_progress 2ad49a4e'. That is the contrast that settles s17 beyond argument - same workflow, same box, same self-hosted runner, and the only difference is which trigger GitHub honoured: push produces a run in seconds, schedule produced zero in an hour across four marks. Half the proof (the trigger fires) is in; the other half (the deploy completes) is still running as run 34526518484 and I am not claiming it.",
   "[2026-09-10T20:31:36+00:00] s18 round-2 Tier A review dispatched at 4c6b2094 (PR Gate 34525888400 all green). Round 1 FAILed on a real CRITICAL - two ON CONFLICT targets on field_sources still naming the retired 3-column key, either of which raises 42P10 on the FIRST write of every repair and backfill tool, and scripts/ci/require-repair-tool-module.mjs FORCES every new tool through one of them. Both now widened, each mutated alone, and the gate gap closed BOTH ways: a cheap-job unit guard driving the real mergeDuplicateInto, plus the integration file appended to the scraper-document-integration allow-list. The builder found its OWN s18 integration file was missing from that list too - two files added, not one, which is the #507 class found inside the fix for it.",
-  "[2026-09-10T20:31:36+00:00] Builder honesty worth recording twice tonight: (1) s18's first push went RED on stage-0-db-rebuild.test.ts ('expected 41 to be 40', the assertion that forces a new journaled migration to declare itself) because the full scraper unit suite had never been run locally in any earlier round - disclosed rather than quietly re-pushed; (2) 23-S1 retracted a late du -sh reading it could have led with, because the measurement was contaminated by a concurrent install."
+  "[2026-09-10T20:31:36+00:00] Builder honesty worth recording twice tonight: (1) s18's first push went RED on stage-0-db-rebuild.test.ts ('expected 41 to be 40', the assertion that forces a new journaled migration to declare itself) because the full scraper unit suite had never been run locally in any earlier round - disclosed rather than quietly re-pushed; (2) 23-S1 retracted a late du -sh reading it could have led with, because the measurement was contaminated by a concurrent install.",
+  "[2026-09-10T21:15:31+00:00] ITEM 15 BUILT (65bdd19b), the first item beyond item 1 to be started. Four counters split what was one fieldsUpdated number: writtenNoExisting, writtenDifferentSource, writtenSameSourceChanged (the new signal) and suppressedNoop. valueChanged's formula untouched - this is a counting change, not a behaviour change. 9/9 local, each counter's increment mutated ALONE and each red on exactly one named case.",
+  "[2026-09-10T21:15:31+00:00] s11 is PR #577 and it exposed four tests that are red on ANY machine and have been invisible: #572 (bse-document-scraper, FK 23503 - inserts documents for an ipo_id it never seeds), #573 (bse-scraper, three expectations drifted, fully mocked so red anywhere), #574 (ipo-alerts-fallback, expected undefined to be 'MAINBOARD'), #575 (phase-1-e2e, all five red, string ids into a uuid column). A hand-maintained list hides a broken test exactly as well as a missing one. Also: nse-scraper is VACUOUS - three expect(true).toBe(true) placeholders, green, proving nothing; kept in the RUN bucket because excluding it would misstate why, with the list now saying out loud that its green means nothing.",
+  "[2026-09-10T21:15:31+00:00] SAFETY, ESCALATED AND WORSE THAN I REPORTED IT. I found consolidation-dedup.integration.test.ts builds its own pool from web/.env.local - production through the tunnel, bypassing DATABASE_URL and therefore the db-safety-guard. The peer verified at the lines: it runs DELETE (:49, :55) and INSERT (:58) on `ipos`. It is a production WRITE path with no guard, one `npm run test:integration` away on any developer laptop. Routed to lane B as a Tier A class fix (a guarded-pool helper as the ONLY way a test gets a Pool, both offending files re-pointed, a mechanical check that no test under tests/integration constructs its own Pool). B and C told not to run that suite with the tunnel up until it lands. #577's CI exclusion is the interim.",
+  "[2026-09-10T21:15:31+00:00] MY OWN PATTERN, NAMED AND UNFIXED: caught FOUR times tonight writing records late - board 40 min behind, the ledger tick, the gitignored-file tick, and now 53 minutes and four events. The cause is not carelessness about any one record; it is that I write records at natural pauses and tonight the pauses stopped arriving. s15 (couple the board write to the ledger write) is the mechanism and I keep doing this by hand while it sits in the queue. It stays next after item 1's open PRs land."
  ],
  "items": {
   "item-01": {
@@ -417,10 +421,10 @@
     },
     {
      "k": "s11",
-     "status": "PLANNED",
+     "status": "PR-OPEN",
      "tier": "A",
-     "pr": null,
-     "sha": null,
+     "pr": 577,
+     "sha": "fb68d5a4",
      "title": "pr-gate integration allow-list: coverage test, triage of the 11, then add the runnable ones (#507)",
      "order": "AFTER s8b, s6 and s9 - it is an item 1 slice under the shared web/CI hardening duty (delta 1 section 15), not a new item",
      "plan": [
@@ -628,15 +632,18 @@
   "item-15": {
    "item": 15,
    "card": "docs/design/build-cards/item-15-value-actually-changed.md",
-   "status": "PENDING",
-   "slices": [],
-   "prs": [],
-   "mergeShas": [],
-   "proof": {
-    "status": "OWED",
-    "cycle": null,
-    "line": null
-   }
+   "status": "BUILT-PUSHED",
+   "tier": "B",
+   "sha": "65bdd19b",
+   "pr": null,
+   "why": "Design 7.1 row 15: 'small; PREREQUISITE of item 6, which cannot be verified without it'. Item 6 gates items 9, 10, 11 and 17 - so this is the only unblocked item on lane A's critical path, and it is why it was taken before the more interesting work.",
+   "namingTrap": "Item 1's SLICES are named s11, s13, s15, s17. Those are NOT items 11, 13, 15, 17. A ledger read at speed makes 's15 merged' look like item 15. Stated here so nobody scores the goal against the wrong artefact.",
+   "cardCorrectedItsOwnBrief": "The card was handed 'prove with grep that valueActuallyChanged is dead with no caller' and refused it: it is a local const read on the very next line. The real defect is narrower - its value only DECIDES the outcome when existingValueFromMap is truthy AND hadDifferentSource is false, and on every path walk item W-106 observed, some other term was already true. It is a computed value that has never been caught in the act of mattering.",
+   "finding": "CASE (d) NARROWED THE ITEM'S OWN PREMISE. The builder's first attempt at the never-exercised branch used revenue_fy1 and landed in suppressedNoop, NOT writtenSameSourceChanged - because resolveConflict's DEFAULT_KEEP_EXISTING branch DISCARDS a same-source re-supply unless the field opts in via sameSourceRefreshSources in the priority matrix. Only 12 fields carry that opt-in. So writtenSameSourceChanged can only ever fire for those 12, which is a large part of WHY F-49 found the branch never firing: for most fields it is unreachable by construction, not merely unobserved. The test now uses priceRangeMin (opt-in ['DRHP','NSE','BSE']), which is the real field and the real branch.",
+   "forksResolved": [
+    "Report location: NO per-cycle stats surface exists anywhere in the scraper (checked data-consolidation-orchestrator.ts and repo-wide for cycleStats/perCycle) - the card's 'not located' is confirmed, not a gap in its reading. Counters sit on the returned ConsolidationResult and NOTHING consumes them yet; that is item 10's territory and is stated rather than papered over.",
+    "Persistence: confirmed, no table added, item 10's territory."
+   ]
   },
   "item-13": {
    "item": 13,
