@@ -16,13 +16,16 @@
 
 import { execFileSync } from 'node:child_process';
 
-// CAP is the owner's, fixed: "cap 60 per day" (2026-09-09).
+// CAP: the owner LIFTED the 60/day cap on 2026-09-10 ("CI-run cap lifted from 60;
+// merge on green with no daily run limit"). So there is no cap unless PR_GATE_CAP is
+// set, and this script must NOT keep printing a 60 that nobody is holding to -- a
+// number presented as a limit that is not one is worse than no number.
 // STOP is the lanes' self-imposed nightly reserve and MOVES by agreement --
 // it was 50 for most of 2026-09-10 and 58 by 19:57 IST. Hardcoding it made
 // this script print "-3 to the 50 stop" while the agreed stop was 58, which
 // reads as "you are over" when you are not. Pass PR_GATE_STOP to set it.
-const CAP = Number(process.env.PR_GATE_CAP ?? 60);
-const STOP = Number(process.env.PR_GATE_STOP ?? CAP);
+const CAP = process.env.PR_GATE_CAP === undefined ? null : Number(process.env.PR_GATE_CAP);
+const STOP = process.env.PR_GATE_STOP === undefined ? CAP : Number(process.env.PR_GATE_STOP);
 const IST_OFFSET_MIN = 5 * 60 + 30;
 
 function istDayStartUtcIso(now = new Date()) {
@@ -63,7 +66,13 @@ if (process.argv.includes('--json')) {
       ? 'defaulted to CAP (PR_GATE_STOP unset)'
       : `PR_GATE_STOP=${process.env.PR_GATE_STOP}`;
   console.log(`pr-gate runs since IST midnight (${since}): ${used}`);
-  console.log(`  ${result.remainingToStop} to the ${STOP} stop [${stopSource}], ${result.remainingToCap} to the ${CAP} cap`);
+  if (STOP === null && CAP === null) {
+    console.log(`  no daily cap and no stop set (owner lifted the 60/day cap 2026-09-10); set PR_GATE_CAP / PR_GATE_STOP to reinstate one`);
+  } else {
+    const capPart = CAP === null ? 'no cap set' : `${result.remainingToCap} to the ${CAP} cap`;
+    const stopPart = STOP === null ? 'no stop set' : `${result.remainingToStop} to the ${STOP} stop [${stopSource}]`;
+    console.log(`  ${stopPart}, ${capPart}`);
+  }
   if (nonPr.length > 0) {
     console.log(`  NOTE: ${nonPr.length} run(s) with event != pull_request — the trigger set has changed, re-read pr-gate.yml`);
   }
