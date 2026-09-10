@@ -178,6 +178,36 @@ export const PURGE_RESERVE_MS = 2 * 60 * 1000;
  */
 export const RESERVATION_CEILING_MS = 3 * 60 * 1000;
 
+/**
+ * #468: guaranteed rank-2 (UPCOMING/PRE_OPEN) slots reserved when the
+ * discovery budget trips, mirroring the rank-4 purge reservation (W-124) and
+ * the rank-3 LISTED reservation (W-136) below. RCA: before this, only ranks
+ * 3 and 4 had a reservation — a full OPEN+CLOSED (rank 0/1) backlog alone
+ * could burn the whole `budgetMs` every cycle, and the loop would `break`
+ * before ever reaching rank 2, starving every UPCOMING row indefinitely
+ * (observed: Manika Plastech, ~48-96 production cycles with zero
+ * `document_fetch_state` rows).
+ *
+ * `1`, not a `listedCap`-style multi-row cap: UPCOMING/PRE_OPEN is a live,
+ * time-sensitive tier (an IPO opening tomorrow, not a backlog to work
+ * through like LISTED backfill) — same urgency class as the single purge
+ * slot, which also guarantees exactly one candidate per cycle regardless of
+ * how many rank-4 rows are queued. The candidates within this tier are
+ * already ordered soonest-`open_date`-first (`CANDIDATE_IPOS_SQL` /
+ * `orderAndCapCandidates`'s rank-2 tie-break), so the single slot always
+ * goes to the most urgent (soonest-opening) UPCOMING row — the one the
+ * defect argues matters most to never starve.
+ */
+export const UPCOMING_RESERVE_SLOTS = 1;
+
+/**
+ * MAJOR-1 (#468 round 2): the two `stage` values `lifecycleRank` maps to
+ * rank 2 (UPCOMING/PRE_OPEN) — shared by `enrichRotatingCandidates`'s rank-2
+ * call and `loadCandidateIpos`'s unenriched-drop, so the stage list lives in
+ * exactly one place rather than being re-typed at each call site.
+ */
+const RANK2_STAGES = new Set(['UPCOMING', 'PRE_OPEN']);
+
 /** `DOCUMENT_CYCLE_WAKE_BUDGET_MS` env override, default `DEFAULT_WAKE_BUDGET_MS`. */
 export function getWakeBudgetMs(): number {
   const raw = process.env.DOCUMENT_CYCLE_WAKE_BUDGET_MS;
@@ -259,6 +289,25 @@ export interface DocumentCycleSummary {
    */
   listedProcessedAfterBudget: number;
   /**
+   * #468: rank-2 (UPCOMING/PRE_OPEN) slots reserved this cycle when the
+   * budget tripped before rank 2 was reached — mirrors `purgeReserved` /
+   * `listedReserved`. `min(UPCOMING_RESERVE_SLOTS, unprocessed rank-2
+   * candidates at the trip point)`. Only non-zero when
+   * `ENABLE_UPCOMING_DISCOVERY_RESERVATION` is on.
+   */
+  upcomingReserved: number;
+  /**
+   * #468: rank-2 candidates that WOULD have been reserved but were skipped
+   * because the shared reservation deadline (same one W-136's LISTED
+   * reservation uses) was already reached.
+   */
+  upcomingReservedSkippedByDeadline: number;
+  /**
+   * #468: rank-2 candidates actually processed via the post-budget-trip
+   * reservation (a subset of `upcomingReserved`).
+   */
+  upcomingProcessedAfterBudget: number;
+  /**
    * Cadence D-13: CLOSED/LISTED/WITHDRAWN candidates skipped this cycle
    * because a calendar gate (Sunday/Saturday/NSE holiday) made only
    * UPCOMING/PRE_OPEN/OPEN candidates eligible for network work. 0 on an
@@ -295,7 +344,12 @@ export function summarize(
     processedAfterBudget?: number;
     reservedSkippedByDeadline?: number;
   } = { cap: 0, deferred: 0 },
-  calendarInfo: { skipped: number; reason: CalendarGateReason | null } = { skipped: 0, reason: null }
+  calendarInfo: { skipped: number; reason: CalendarGateReason | null } = { skipped: 0, reason: null },
+  upcomingInfo: {
+    reserved?: number;
+    processedAfterBudget?: number;
+    reservedSkippedByDeadline?: number;
+  } = {}
 ): DocumentCycleSummary {
   return {
     ipos: results.length,
@@ -316,6 +370,9 @@ export function summarize(
     listedReserved: listedInfo.reserved ?? 0,
     listedProcessedAfterBudget: listedInfo.processedAfterBudget ?? 0,
     listedReservedSkippedByDeadline: listedInfo.reservedSkippedByDeadline ?? 0,
+    upcomingReserved: upcomingInfo.reserved ?? 0,
+    upcomingProcessedAfterBudget: upcomingInfo.processedAfterBudget ?? 0,
+    upcomingReservedSkippedByDeadline: upcomingInfo.reservedSkippedByDeadline ?? 0,
     calendarSkipped: calendarInfo.skipped,
     calendarGateReason: calendarInfo.reason,
   };
@@ -526,6 +583,19 @@ export function orderAndCapCandidates(
       const rb = lifecycleRank(b.c);
       if (ra !== rb) return ra - rb;
       if (ra === 2) {
+        // MAJOR-1 (#468 round 2): mirror rank 3's rotation key so the single
+        // reserved slot (`UPCOMING_RESERVE_SLOTS`) advances across cycles
+        // instead of the same soonest-opening row winning it forever. A row
+        // the reservation actually processes bumps its `lastActivityAt`
+        // (`enrichRotatingCandidates`), so it rotates behind every other
+        // still-untouched rank-2 row on the next cycle — exactly the
+        // guarantee rank 3 already has (see `compareByActivity`'s comment).
+        const byActivity = compareByActivity(a.c.lastActivityAt, b.c.lastActivityAt);
+        if (byActivity !== 0) return byActivity;
+        // MINOR-2: now only a tie-break among equally-rotated (usually both
+        // never-touched) rows, not the primary key — see this function's
+        // MINOR-2 note below for why a NULLS-FIRST special case here is not
+        // needed on top of the rotation key.
         const byOpenDate = compareByDate(a.c.openDate, b.c.openDate, 'asc');
         if (byOpenDate !== 0) return byOpenDate;
       } else if (ra === 3) {
@@ -562,6 +632,19 @@ export function orderAndCapCandidates(
         listedSeen++;
       } else {
         listedDeferred++;
+      }
+    } else if (lifecycleRank(c) === 2) {
+      // MAJOR-1 (#468 round 2): mirror the LISTED alreadyComplete drop above
+      // — a rank-2 row with nothing left to do (FOUND/NOT_APPLICABLE/
+      // SUPERSEDED, or every open row still in retry backoff) costs zero
+      // network calls, so letting it hold the single reserved slot forever
+      // purely because it opens soonest would defeat the rotation fix above.
+      // Unlike LISTED there is NO cap here (rule 4: the cap never removes
+      // OPEN/CLOSED/UPCOMING/WITHDRAWN/POSTPONED candidates) — this is
+      // purely the "nothing to do" drop, not a capacity limit, so every
+      // rank-2 row with real work due still enters `candidates`.
+      if (c.alreadyComplete !== true) {
+        capped.push(c);
       }
     } else {
       capped.push(c);
@@ -622,19 +705,37 @@ export function orderAndCapCandidates(
  * Also stores the computed `CyclePlan` on `c.precomputedPlan` (MAJOR-2) so
  * `runIpo` does not run `planIpoCycle` a second time for the same rows.
  */
-async function enrichListedCandidates(
+/**
+ * MAJOR-1 (#468 round 2): generalized from the LISTED-only `enrichListedCandidates`
+ * so rank-2 (UPCOMING/PRE_OPEN) candidates can be given the SAME rotation
+ * timestamp + already-complete decision that rank-3 (LISTED) already has,
+ * rather than a parallel implementation. `stages` selects which candidates
+ * this call enriches; `maxToEnrich === Infinity` (rank 2's call, below)
+ * disables the incomplete-count bound entirely — rank 2 is the live,
+ * time-sensitive tier (never a backlog to ration like LISTED, per
+ * `lifecycleRank`'s doc comment), so every rank-2 row in the live window is
+ * enriched, not just the first N incomplete ones.
+ *
+ * LISTED's call site is unchanged in every observable way: `stages: {LISTED}`
+ * and the same `listedCap * 4` bound reproduce the exact behavior
+ * `enrichListedCandidates` had before this generalization.
+ */
+async function enrichRotatingCandidates(
   candidates: DiscoveryIpo[],
   deps: {
     store: Pick<DocumentFetchStateRepository, 'listForIpo'>;
     documents: Pick<DocumentRepository, 'findByIPO'>;
   },
+  stages: ReadonlySet<string>,
   maxToEnrich: number
 ): Promise<{ enriched: number }> {
   let enriched = 0; // total rows VISITED (complete + incomplete) — the return value
   let incompleteSeen = 0; // rows that actually consume the maxToEnrich bound
-  const visitCeiling = Math.max(maxToEnrich, LISTED_ENRICH_VISIT_CEILING);
+  const visitCeiling = Number.isFinite(maxToEnrich)
+    ? Math.max(maxToEnrich, LISTED_ENRICH_VISIT_CEILING)
+    : Infinity;
   for (const c of candidates) {
-    if (c.stage !== 'LISTED') continue;
+    if (!stages.has(c.stage)) continue;
     if (incompleteSeen >= maxToEnrich) break;
     if (enriched >= visitCeiling) break;
 
@@ -730,10 +831,11 @@ export const CANDIDATE_IPOS_SQL = `
        END,
        -- W-153: LISTED rotation order -- least-recently-touched first (NULL =
        -- never touched sorts first), listing_date DESC only breaks ties.
-       -- The app layer (enrichListedCandidates/orderAndCapCandidates)
-       -- remains the source of truth once a row's real fetch-state rows are
-       -- read; this ordering only decides which rows are reachable within
-       -- the W-135 enrichment bound.
+       -- The app layer (enrichRotatingCandidates/orderAndCapCandidates --
+       -- enrichRotatingCandidates now also drives rank 2's UPCOMING/PRE_OPEN
+       -- rotation, not just LISTED) remains the source of truth once a
+       -- row's real fetch-state rows are read; this ordering only decides
+       -- which rows are reachable within the W-135 enrichment bound.
        CASE WHEN upper(i.status::text) = 'LISTED' THEN dfs.last_activity END ASC NULLS FIRST,
        CASE WHEN upper(i.status::text) = 'LISTED' THEN i.listing_date END DESC NULLS LAST,
        CASE WHEN upper(i.status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
@@ -800,17 +902,43 @@ export async function loadCandidateIpos(deps: {
     }));
 
   // W-124: LISTED-only enrichment (rotation timestamp + already-complete),
-  // BEFORE ordering/capping — see `enrichListedCandidates`. W-124 round 2
+  // BEFORE ordering/capping — see `enrichRotatingCandidates`. W-124 round 2
   // (MAJOR-2): bounded to `listedCap * 4` LISTED rows so the N+1 enrichment
   // loop cannot outgrow the backlog before the discovery budget even starts.
   const listedCap = getListedCap();
-  const { enriched: listedEnriched } = await enrichListedCandidates(candidates, deps, listedCap * 4);
+  const { enriched: listedEnriched } = await enrichRotatingCandidates(
+    candidates,
+    deps,
+    new Set(['LISTED']),
+    listedCap * 4
+  );
+
+  // MAJOR-1 (#468 round 2): the SAME enrichment for rank 2 (UPCOMING/PRE_OPEN)
+  // — mirrors the LISTED call directly above rather than a parallel
+  // implementation. `Infinity` here is LOAD-BEARING FOR CORRECTNESS, not a
+  // rationing choice like the LISTED cap above. `CANDIDATE_IPOS_SQL` orders
+  // rank 2 by `open_date ASC` only (`dfs.last_activity` is applied to LISTED
+  // alone) — it does NOT know about the rotation key the app layer computes
+  // to pick which starved row goes first (see the rank-2 sort near the top
+  // of this file). SQL order and app-layer rotation order therefore
+  // disagree, and that disagreement is harmless ONLY because every rank-2
+  // row gets enriched and re-sorted in memory regardless of where SQL put
+  // it. A finite bound would silently reintroduce the #468 starvation: rows
+  // SQL happens to sort late would never reach the in-memory rotation at
+  // all, no matter how starved they are. This is guarded, not just
+  // documented — bounding this call to `1` turns two tests in
+  // document-cycle-passes.test.ts / document-cycle-listed-order.test.ts red,
+  // so do not "optimise" this to a finite number without reading why first.
+  await enrichRotatingCandidates(candidates, deps, RANK2_STAGES, Infinity);
 
   // MAJOR-2: a LISTED row past the enrichment bound has no rotation
   // timestamp and no `alreadyComplete`/`precomputedPlan` decision — offering
   // it to `orderAndCapCandidates` un-enriched would either wrongly consume a
   // cap slot or wrongly skip it, so it is dropped from `candidates` entirely
-  // (deferred whole, same as a capped-out row) and counted separately.
+  // (deferred whole, same as a capped-out row) and counted separately. Rank 2
+  // has no such bound (enriched with `Infinity` above), so every rank-2 row
+  // reaching here already has an `alreadyComplete` decision and this filter
+  // is a no-op for it.
   let listedSkippedUnenriched = 0;
   const boundedCandidates = candidates.filter((c) => {
     if (c.stage !== 'LISTED') return true;
@@ -1140,6 +1268,9 @@ export async function runDocumentCycle(
     let listedReserved = 0;
     let listedProcessedAfterBudget = 0;
     let listedReservedSkippedByDeadline = 0;
+    let upcomingReserved = 0;
+    let upcomingProcessedAfterBudget = 0;
+    let upcomingReservedSkippedByDeadline = 0;
 
     for (let i = 0; i < candidates.length; i++) {
       const ipo = candidates[i];
@@ -1194,6 +1325,37 @@ export async function runDocumentCycle(
           listedProcessedAfterBudget++;
         }
 
+        // #468: mirror the purge/LISTED reservations for rank-2
+        // (UPCOMING/PRE_OPEN) candidates. Without this, a full OPEN+CLOSED
+        // (rank 0/1) backlog burns the whole budget every cycle, rank 2
+        // never gets a `runIpo` call, and `document_fetch_state` never gets
+        // a row for it — the Manika Plastech starvation this fixes. Reserve
+        // up to `UPCOMING_RESERVE_SLOTS` rank-2 candidates — from the trip
+        // point onward, in walk order (already soonest-`open_date`-first,
+        // per `CANDIDATE_IPOS_SQL` / `orderAndCapCandidates`) — that have
+        // not already been processed this cycle; independent of, and can
+        // fire alongside, the purge and LISTED reservations. Gated behind
+        // `ENABLE_UPCOMING_DISCOVERY_RESERVATION` (default off in prod) —
+        // this changes scheduler work-selection behaviour, per the parent
+        // contract's default.
+        // `lifecycleRank(c) === 2` is the UPCOMING/PRE_OPEN rank (see
+        // `lifecycleRank`'s switch above).
+        if (FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION) {
+          const remainingUpcoming = candidates
+            .slice(i)
+            .filter((c) => lifecycleRank(c) === 2 && !processedIds.has(c.id));
+          upcomingReserved = Math.min(UPCOMING_RESERVE_SLOTS, remainingUpcoming.length);
+          for (const upcomingCandidate of remainingUpcoming.slice(0, UPCOMING_RESERVE_SLOTS)) {
+            if (now() >= reservationDeadline) {
+              upcomingReservedSkippedByDeadline++;
+              continue;
+            }
+            await processCandidate(upcomingCandidate);
+            processedIds.add(upcomingCandidate.id);
+            upcomingProcessedAfterBudget++;
+          }
+        }
+
         budgetExhausted = true;
         logger.warn(
           {
@@ -1205,8 +1367,11 @@ export async function runDocumentCycle(
             listedReserved,
             listedProcessedAfterBudget,
             listedReservedSkippedByDeadline,
+            upcomingReserved,
+            upcomingProcessedAfterBudget,
+            upcomingReservedSkippedByDeadline,
           },
-          'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot and up to listedCap LISTED slots are reserved regardless of budget'
+          'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot, up to listedCap LISTED slots, and (when ENABLE_UPCOMING_DISCOVERY_RESERVATION is on) an UPCOMING slot are reserved regardless of budget'
         );
         break;
       }
@@ -1336,7 +1501,12 @@ export async function runDocumentCycle(
         processedAfterBudget: listedProcessedAfterBudget,
         reservedSkippedByDeadline: listedReservedSkippedByDeadline,
       },
-      { skipped: calendarSkipped, reason: calendarGate.reason }
+      { skipped: calendarSkipped, reason: calendarGate.reason },
+      {
+        reserved: upcomingReserved,
+        processedAfterBudget: upcomingProcessedAfterBudget,
+        reservedSkippedByDeadline: upcomingReservedSkippedByDeadline,
+      }
     );
 
     // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics

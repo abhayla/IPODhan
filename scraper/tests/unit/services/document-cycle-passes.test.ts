@@ -108,7 +108,10 @@ vi.mock('../../../src/services/document-store.js', () => ({
   getMaxRetentionDays: () => 30,
 }));
 
-const FEATURE_FLAGS: { ENABLE_FILING_AUTO_PERSIST: boolean } = { ENABLE_FILING_AUTO_PERSIST: true };
+const FEATURE_FLAGS: { ENABLE_FILING_AUTO_PERSIST: boolean; ENABLE_UPCOMING_DISCOVERY_RESERVATION: boolean } = {
+  ENABLE_FILING_AUTO_PERSIST: true,
+  ENABLE_UPCOMING_DISCOVERY_RESERVATION: false,
+};
 vi.mock('../../../src/config/feature-flags.js', () => ({ FEATURE_FLAGS }));
 
 vi.mock('../../../src/services/step-ledger.js', () => ({
@@ -510,6 +513,242 @@ describe('W-136 — up to listedCap LISTED slots are reserved when the budget tr
 function daysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 }
+
+/**
+ * #468 — a rank-2 UPCOMING/PRE_OPEN slot is reserved when the budget trips,
+ * mirroring the W-124 purge reservation and the W-136 LISTED reservation.
+ *
+ * RCA: `runDocumentCycle` reserves a guaranteed slot for the rank-4 purge
+ * candidate (W-124) and up to `listedCap` rank-3 LISTED candidates (W-136)
+ * when `CYCLE_BUDGET.DISCOVERY_MS` trips mid-walk, but reserves nothing for
+ * rank-2 UPCOMING/PRE_OPEN — so a full OPEN+CLOSED backlog that alone
+ * consumes the budget starves every UPCOMING row indefinitely (observed:
+ * Manika Plastech, ~48-96 production cycles with zero
+ * `document_fetch_state` rows).
+ *
+ * These tests fail on the pre-fix code (red) with the flag on: budgetMs=0
+ * means the live backlog (OPEN candidates) gets zero slots, and with no
+ * rank-2 reservation, runIpo is never called for the UPCOMING candidate.
+ */
+describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips, mirroring the purge/LISTED reservations', () => {
+  beforeEach(() => {
+    FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION = true;
+    // Map each candidate row's own status straight to its stage (identity),
+    // so OPEN/UPCOMING rows fed by `candidateRow(id, status)` reach the real
+    // rank-0/rank-2 branches instead of the file's default fixed 'PRE_OPEN'
+    // stage (see the W-136 block above for the same pattern).
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+  });
+
+  it('with budgetMs=0 (the OPEN backlog alone exhausts the budget), the UPCOMING candidate is still processed (ensureRow reached)', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('open-1', 'OPEN'), candidateRow('open-2', 'OPEN'), candidateRow('upcoming-1', 'UPCOMING')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toContain('upcoming-1');
+    expect(summary.upcomingReserved).toBe(1);
+    expect(summary.upcomingProcessedAfterBudget).toBe(1);
+  });
+
+  it('with no UPCOMING candidate present, the reservation makes no extra call (no regression to the purge/LISTED reservations)', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('open-1', 'OPEN'), candidateRow('open-2', 'OPEN')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    expect(runIpoMock).not.toHaveBeenCalled();
+    expect(summary.upcomingReserved).toBe(0);
+    expect(summary.upcomingProcessedAfterBudget).toBe(0);
+  });
+
+  it('an UPCOMING candidate reached BEFORE the budget trips is processed normally, with no double-processing', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('upcoming-1', 'UPCOMING'), candidateRow('open-1', 'OPEN')],
+    });
+
+    // rank order puts open-1 (rank 0) before upcoming-1 (rank 2) in the real
+    // walk, so drive budgetMs high enough that both are reached in the
+    // normal walk before any trip.
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed.filter((id) => id === 'upcoming-1')).toHaveLength(1);
+    expect(idsProcessed).toContain('open-1');
+  });
+
+  it('budget does not trip -> upcomingReserved/upcomingProcessedAfterBudget stay 0, behavior unchanged', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('upcoming-1', 'UPCOMING')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(summary.budgetExhausted).toBe(false);
+    expect(summary.upcomingReserved).toBe(0);
+    expect(summary.upcomingProcessedAfterBudget).toBe(0);
+  });
+
+  it('flag OFF — the UPCOMING candidate is NOT reserved (regression guard: a flag left off does not fix the class)', async () => {
+    FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION = false;
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('open-1', 'OPEN'), candidateRow('upcoming-1', 'UPCOMING')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).not.toContain('upcoming-1');
+    expect(summary.upcomingReserved).toBe(0);
+  });
+
+  /**
+   * MAJOR-1 (#468 round 2, Tier A review): this test USED TO assert
+   * `upcoming-far` is never processed — that assertion described the bug
+   * (the same soonest-opening row wins the single reserved slot on EVERY
+   * cycle, forever, because rank 2 had no rotation key). It now asserts the
+   * fix: the soonest-opening row wins cycle 1 (unchanged — walk order still
+   * favors urgency when nothing has rotated yet), but once that row has been
+   * touched (`document_fetch_state` gets a real `last_attempt_at` for it),
+   * cycle 2 rotates the reserved slot to the row that has NEVER been
+   * touched, even though it opens later. `upcoming-far` is no longer starved
+   * indefinitely — it gets its turn on the very next cycle its rival is busy.
+   */
+  it('multiple UPCOMING candidates present -> the soonest-opening one wins cycle 1, then rotates behind its rival on cycle 2 (not starved forever)', async () => {
+    const touched = new Set<string>();
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn((ipoId: string) =>
+            touched.has(ipoId)
+              ? [{ id: `${ipoId}-r1`, docType: 'DRHP', state: 'WANTED', lastAttemptAt: new Date('2026-09-01') }]
+              : []
+          ),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+    const rows = [
+      candidateRow('open-1', 'OPEN'),
+      { ...candidateRow('upcoming-far', 'UPCOMING'), open_date: daysAgo(-30) },
+      { ...candidateRow('upcoming-soon', 'UPCOMING'), open_date: daysAgo(-2) },
+    ];
+    dbExecuteMock.mockResolvedValue({ rows });
+
+    // Cycle 1: neither UPCOMING row has ever been touched -> tie on rotation,
+    // the open_date tie-break picks the soonest-opening one.
+    const summary1 = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+    const ids1 = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(ids1).toContain('upcoming-soon');
+    expect(ids1).not.toContain('upcoming-far');
+    expect(summary1.upcomingReserved).toBe(1);
+
+    // Simulate what cycle 1 actually did: `upcoming-soon` now has a real
+    // fetch-state attempt row; `upcoming-far` still has none.
+    touched.add('upcoming-soon');
+    runIpoMock.mockClear();
+
+    // Cycle 2: `upcoming-far` (never touched) now sorts ahead of
+    // `upcoming-soon` (touched) in the rank-2 rotation, so it wins the slot.
+    const summary2 = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+    const ids2 = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(ids2).toContain('upcoming-far');
+    expect(ids2).not.toContain('upcoming-soon');
+    expect(summary2.upcomingReserved).toBe(1);
+  });
+
+  /**
+   * MAJOR-1 core class proof: N >= 3 starved UPCOMING rows, all permanently
+   * behind an OPEN+CLOSED backlog that exhausts the discovery budget every
+   * cycle (budgetMs: 0). Across N cycles, EVERY one of the N rows must be
+   * reached exactly once — not the same soonest-opening row N times (the
+   * pre-fix defect). RED before the rotation key (MAJOR-1) is added to
+   * `orderAndCapCandidates`'s rank-2 tie-break; GREEN after.
+   */
+  it('N=4 starved UPCOMING rows behind a full OPEN+CLOSED backlog -> across 4 cycles every one is reached, none twice', async () => {
+    const touched = new Map<string, Date>();
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn((ipoId: string) => {
+            const at = touched.get(ipoId);
+            return at ? [{ id: `${ipoId}-r1`, docType: 'DRHP', state: 'WANTED', lastAttemptAt: at }] : [];
+          }),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+
+    const N = 4;
+    const upcomingIds = Array.from({ length: N }, (_, i) => `upcoming-${i}`);
+    const rows = [
+      candidateRow('open-1', 'OPEN'),
+      candidateRow('closed-1', 'CLOSED'),
+      // Soonest-opening first (walk order), same as the Manika Plastech
+      // production shape — the pre-fix code always picked index 0.
+      ...upcomingIds.map((id, i) => ({ ...candidateRow(id, 'UPCOMING'), open_date: daysAgo(-(i + 1)) })),
+    ];
+    dbExecuteMock.mockResolvedValue({ rows });
+
+    const reachedPerCycle: string[] = [];
+    for (let cycle = 0; cycle < N; cycle++) {
+      runIpoMock.mockClear();
+      const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+      const upcomingReached = runIpoMock.mock.calls
+        .map((c) => (c[0] as { id: string }).id)
+        .filter((id) => id.startsWith('upcoming-'));
+      expect(upcomingReached).toHaveLength(1); // exactly one rank-2 row per cycle (UPCOMING_RESERVE_SLOTS)
+      expect(summary.upcomingReserved).toBe(1);
+      reachedPerCycle.push(upcomingReached[0]);
+      touched.set(upcomingReached[0], new Date(2026, 8, 1 + cycle));
+    }
+
+    // The class proof: every one of the N rows was reached across N cycles —
+    // not the same row N times.
+    expect(new Set(reachedPerCycle).size).toBe(N);
+    expect(new Set(reachedPerCycle)).toEqual(new Set(upcomingIds));
+  });
+
+  /**
+   * MAJOR-1: mirrors the LISTED alreadyComplete drop (W-124 round 2) for
+   * rank 2 — a row with nothing left to do (its due doc type already FOUND)
+   * must not hold the single reserved slot forever just because it opens
+   * soonest. RED before the alreadyComplete drop is added to
+   * `orderAndCapCandidates`'s rank-2 branch; GREEN after.
+   */
+  it('a rank-2 row with nothing left to do (alreadyComplete) does not hold the reserved slot — the next row gets it instead', async () => {
+    // `lastAttemptAt: null` deliberately — this isolates the alreadyComplete
+    // drop from the rotation key (MAJOR-1): both rows are "never touched"
+    // (lastActivityAt null, a tie), so without the alreadyComplete drop the
+    // openDate tie-break alone would still hand `upcoming-done` the slot
+    // (it opens soonest). Only the alreadyComplete drop removes it.
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn((ipoId: string) =>
+            ipoId === 'upcoming-done' ? [{ id: 'r1', docType: 'DRHP', state: 'FOUND', lastAttemptAt: null }] : []
+          ),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+    dbExecuteMock.mockResolvedValue({
+      rows: [
+        candidateRow('open-1', 'OPEN'),
+        // Soonest-opening but its only due doc type (DRHP) is already FOUND.
+        { ...candidateRow('upcoming-done', 'UPCOMING'), open_date: daysAgo(-1) },
+        { ...candidateRow('upcoming-due', 'UPCOMING'), open_date: daysAgo(-5) },
+      ],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).not.toContain('upcoming-done');
+    expect(idsProcessed).toContain('upcoming-due');
+    expect(summary.upcomingReserved).toBe(1);
+  });
+});
 
 describe('W-124 round 2 — MAJOR-1: a complete LISTED row is excluded from every pass', () => {
   function listedRow(id: string, listingDate: string) {
