@@ -87,8 +87,10 @@ field**, not the matrix.
 
 **And a correction to the ruling, which does not change it.** The ruling repeats the comment
 at `filing-persist-deps.ts:40`, "ipo_details has no repository".
-`web/lib/repositories/ipo-details-repository.ts` **exists** and both INSERTS (`:66`) and
-DELETES (`:96`). Nothing calls it — only an export in `index.ts` and an interface in
+`web/lib/repositories/ipo-details-repository.ts` **exists**. It is not a bare insert:
+`upsert()` at `:63-70` is `INSERT … ON CONFLICT DO UPDATE` on `ipo_id` — the same
+operation `makeIpoDetailsWriter` performs — plus a `delete()` at `:93-100`. It is exported
+at `web/lib/repositories/index.ts:13` with an interface at `types.ts:252`. Nothing calls it — only an export in `index.ts` and an interface in
 `types.ts` — so the claim is right in **effect** and wrong in **fact**. Do not trust that
 comment: a future caller wakes that path up and the one-writer-per-table rule is silently
 already broken. Same latent shape as #562.
