@@ -313,6 +313,26 @@ jobs:
         run: npx vitest run
         working-directory: ./packages/shared
 
+      - name: Run TZ-explicit case driver (issue #478)
+        # The TZ-explicit case file (tests/tz-cases/*.tzcase.test.ts) is
+        # deliberately excluded from vitest.config.ts's own include glob
+        # (vitest.tzcase.config.ts) and only ever meaningful when spawned by
+        # this driver, which runs it once per timezone with TZ and
+        # TZCASE_EXPECT_TZ set in the CHILD env (T-327F fix round 5 — see
+        # the driver file's header for why an in-process TZ mutation cannot
+        # work). The driver file is ALSO inside the full scraper unit suite
+        # in the step below, and this step sits BEFORE it on purpose:
+        # GitHub skips every later step once one fails, so a TZ regression
+        # would redden the full suite first and leave this step grey - the
+        # exact opposite of "identifiable at a glance". Running it first
+        # costs ~5-10s and buys a named red step. It also gives a contract
+        # one command to point at: running `vitest -c vitest.tzcase.config.ts`
+        # directly does not merely fail, it self-spawns recursively (vitest
+        # mergeConfig CONCATENATES include globs, so the config collects the
+        # driver too) and never terminates.
+        run: npm run test:tzcase
+        working-directory: ./scraper
+
       - name: Run scraper unit test suite (full, T-301)
         # T-268C/T-268F originally added ONLY two targeted regression files
         # here because the scraper workspace carried a baseline of 44
