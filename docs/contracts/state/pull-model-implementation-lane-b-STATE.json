@@ -16,7 +16,7 @@
     "name": "ipodhan_test2",
     "drop": "OWED"
   },
-  "prGateRunsSpentByThisLane": 0,
+  "prGateRunsSpentByThisLane": 1,
   "laneCapPerDay": 25,
   "repoCeilingPerDay": 60,
   "repoStopAt": 50,
@@ -39,9 +39,9 @@
         {
           "k": "s1",
           "title": "traceability check, failure modes 1-3",
-          "status": "IN-REVIEW",
-          "pr": null,
-          "sha": "b8bf7202",
+          "status": "MERGED",
+          "pr": 460,
+          "sha": "6c31d995",
           "tier": "A",
           "reviewRounds": 2,
           "reviewVerdict": "round 2 MERGE YES; both MAJORs closed and mutation-proved; 2 MINOR reporting gaps being folded in before merge"
@@ -71,8 +71,12 @@
           "tier": "A"
         }
       ],
-      "prs": [],
-      "mergeShas": [],
+      "prs": [
+        460
+      ],
+      "mergeShas": [
+        "6c31d995"
+      ],
       "proof": {
         "status": "OWED",
         "cycle": null,
@@ -208,6 +212,14 @@
       "foundBy": "lane B's own supervision tick",
       "class": "a command believed without a sanity check that it measured what it claimed",
       "mechanism": "count lane B PRs by branch prefix feat/pm-b-item / fix/pm-b-item, which is deterministic; contract text to be corrected at the next docs PR"
+    },
+    {
+      "id": "DEFECT-B05",
+      "at": "2026-09-10 11:48 IST",
+      "what": "two `git -C` calls errored to stderr while the directory existed; the piped `wc -l` printed 0 and was briefly read as 'worktree fully merged, safe to delete'",
+      "foundBy": "lane B supervisor, within a minute",
+      "class": "a zero from a command that errored is not a measurement (4th instance in two days across both lanes)",
+      "mechanism": "any measurement gating a destructive action captures stdout and stderr separately and asserts the exit code; a zero is believed only with empty stderr and exit 0"
     }
   ],
   "contractCorrectionsDue": [
