@@ -122,7 +122,10 @@
     "s5a MINOR UPGRADED TO MAJOR and the running fix round re-briefed mid-flight: the helper must not silently fall through on an unrecognised value in EITHER direction. It must recognise realistic truthy spellings (true/TRUE/True/1/yes/on) and falsy ones (false/FALSE/0/no/off), and for anything it does not recognise it must LOG a line naming the flag and the raw value before falling back to the safe value. Silence is the defect: a prod env spelling a value '1' would otherwise return FALSE on prod and disable a deliberately-on flag with no signal that it happened. Tests must cover both directions plus the unrecognised case. Explicitly out of scope: widening the parsing of any OTHER flag - the helper is opt-in per flag, so widening it is safe while widening the rest is not.",
     "WEB DUTY PR #464 OPENED 2026-09-10 12:52 IST after a third rebase - lane B merged #462 (module-boundary check) during the fix round, showing four of its files as deletions on my branch. Three occurrences now: #460 during the review round, #462 during the fix round. The exposure window is the length of a review, which currently exceeds lane B's merge cadence, so the check runs as the LAST action before create AND before merge, with non-empty output as a hard stop. Verified after rebase: level with origin/main, 5 legitimate files, zero deletions, and .gitattributes and pr-gate.yml each show identical raw and whitespace-ignoring diffs (8/0 and 9/0).",
     "ADOPTED classification discipline for the 193/292 web integration failures: if the dispatched ci.yml run is GREEN on the local postgres service, record the tunnel hypothesis as LIKELY and move on; if RED, stop, send lane B the failing test names first, and only then take it to the owner. PRECISION I am keeping in the record rather than overclaiming: a green run proves the tests pass on a local service and is CONSISTENT WITH the tunnel hypothesis - it does not PROVE the tunnel was the cause. Two 'measurement is not proof' corrections have already been needed today, so this one is written down as consistent-with, not as established.",
-    "s3b fix round self-caught a regression worth recording as a pattern: its editor silently rewrote .github/workflows/pr-gate.yml to CRLF (472 CR bytes against 0 on main) while adding one line - the same churn class it was fixing. Caught by the raw-versus-whitespace-ignoring diff comparison and normalised back. That two-command check has now caught line-ending damage three times today and belongs in the standard pre-commit sequence for any slice touching a workflow or a docs/ops file."
+    "s3b fix round self-caught a regression worth recording as a pattern: its editor silently rewrote .github/workflows/pr-gate.yml to CRLF (472 CR bytes against 0 on main) while adding one line - the same churn class it was fixing. Caught by the raw-versus-whitespace-ignoring diff comparison and normalised back. That two-command check has now caught line-ending damage three times today and belongs in the standard pre-commit sequence for any slice touching a workflow or a docs/ops file.",
+    "s5a CRITICAL FIXED 2026-09-10 12:55 IST, verified by me not taken on report: assert-env-keys.test.sh goes 21 FAIL/14 PASS to 35 PASS/0 FAIL, and neither required-key list names DEPLOY_SLOT any more. The helper now routes unset or empty to the slot default, recognises truthy true/1/yes/on and falsy false/0/no/off case-insensitively and trimmed, and for anything else console.warns naming the flag AND the raw value before returning false fail-closed - explicitly not the slot default, which was the silent-disable-on-prod path. Widening did NOT leak: 18 other flags still read exactly `process.env.X === 'true'` and only the opt-in helper is permissive.",
+    "PROCESS MISS to note, worker not defective but budget rule broken: the s5a fix round used 167 tool calls against a briefed 60 (wall clock 18 min against 30, so time was fine). R10 says a worker STOPS at budget and reports done/not-done/next-command; this one ran to completion instead. Its explanation is honest - deploy-linux.test.sh is genuinely slow and it verified counts before and after rather than trusting reported numbers, which is exactly the discipline I want - but the rule exists so I keep control of spend. Briefs should state which single gate is expected to dominate the call count so the worker can budget around it rather than blow through.",
+    "OPEN QUESTION for the s5a round-2 reviewer, deliberately not decided by me: the helper routes an explicitly EMPTY value (FLAG=) to the slot default, so on staging `FLAG=` yields TRUE. Defensible as 'empty means unset', but an operator who writes FLAG= may well mean off. Asked for a reasoned view rather than pre-judging it."
   ],
   "items": {
     "item-01": {
@@ -189,7 +192,7 @@
         {
           "k": "s5a",
           "title": "slot-aware feature-flag helper + DEPLOY_SLOT plumbing",
-          "status": "TIER-A-FAIL-FIXING",
+          "status": "TIER-A-ROUND-2",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -236,9 +239,10 @@
         },
         {
           "k": "s3b",
-          "status": "BUILDING",
+          "status": "IN-CI",
           "tier": "A",
-          "title": "clause-8 CI hardening: real ci.yml gate, .gitattributes for docs/ops, schema-drift index and constraint coverage"
+          "title": "clause-8 CI hardening: real ci.yml gate, .gitattributes for docs/ops, schema-drift index and constraint coverage",
+          "pr": 464
         }
       ],
       "prs": [
