@@ -696,3 +696,22 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   has never run, so it has never failed — it would have failed the day someone first used it. Fixed both.
   Fix is in review now. **Nothing needs you.** The one thing still owed is proof on the test server, which
   has to wait until that server accepts deployments again.
+
+- 2026-09-10 17:48 IST — **Item 20: 4 of 4 pieces merged and running in CI, unchanged at 100% since 16:19.**
+  Item 22 moved from 2 of 7 to 3 of 7 (the crash fix landed as #496).
+  **What a reader of ipodhan.com would notice: nothing, today.** Every piece so far is plumbing —
+  safety checks on what the scraper is allowed to download, and checks that run when we change code.
+  None of it changes a page. The thing that would have been very visible is the mistake I fixed: the
+  scraper would not have started at all, so prices, dates and subscription numbers would simply have
+  stopped updating. Nobody saw that, because the test server has been refusing new code since 07:40
+  this morning for a separate reason, so my broken version never reached it.
+  **What went wrong, and it is worth saying plainly: three of the four problems today were mine.**
+  The scraper-won't-start bug was mine. The safety check I wrote to catch that class of bug had a hole
+  in it — the review proved my own check would have let the same bug through if it were written a
+  slightly different way, so I fixed the check rather than filing a ticket about it. And I deleted
+  about 200 lines of my own unfinished work with a careless command, for the second time today; that
+  one is now blocked by an automatic guard rather than by me remembering.
+  **What is needed from you: nothing right now.** Two things later: a practice run of undoing a
+  release, and a decision on whether the download size limit should stay at 150MB rather than the
+  100MB I set. Everything else is waiting on the test server accepting new code again, which another
+  lane is fixing.

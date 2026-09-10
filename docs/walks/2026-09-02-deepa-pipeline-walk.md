@@ -2751,3 +2751,17 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   times and looked like a working block. It was python failing to open an MSYS-mangled path. A red that
   measured nothing reads exactly like a red that measured something — the same shape as every hollow
   observable this run has hit. Re-ran with a Windows path before believing any of it.
+
+- 2026-09-10 17:48 IST **[lane B] CORRECTION, appended not rewritten (this ledger is append-only).** The
+  "26 of 44 web integration files fail" figure recorded above at 14:59 and again later is **WITHDRAWN**
+  by lane A: it came from a broken CI step, so the number measured nothing. The owner's typed decision
+  quoted above uses "the 26 failing files"; the decision stands, the number in it does not — the real
+  baseline is 25 files from the first working report. I relayed 26 of 44 twice without ever seeing the
+  step that produced it, which is the same relay failure as DEFECT-B07 and DEFECT-B17.
+- 2026-09-10 17:48 IST **[lane B] DEBT, and a reversal of my own judgement.** Lane A's #498 review establishes that
+  a named gate step placed LAST in a CI job is SKIPPED when any earlier step fails, so a real regression
+  turns it grey rather than red. My Tier A reviewer raised exactly this about my new smoke-import step
+  (MINOR-5) and I accepted it without change, arguing the PR is blocked anyway. That was wrong: a grey
+  gate is unreadable, and #461 was the same class. The step is now merged at the END of the gate job in
+  #496. It must move ahead of the long suites. The repo CI budget is at 49 of 50, so this rides with the
+  parked static-gate slice at 00:00 IST rather than spending the reserved run.
