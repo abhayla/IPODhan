@@ -91,11 +91,43 @@ jobs:
         run: npx drizzle-kit migrate
 
       - name: Run integration tests
-        run: npm run test:integration
-        working-directory: ./web
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
-          REDIS_URL: redis://localhost:6379
+        # Item 1 slice s3d (web-integration shrink-only baseline gate, owner decision
+        # 2026-09-10): emit BOTH the default reporter (readable log, for diagnosis) and
+        # a machine-readable JSON report, which the baseline checker below consumes.
+        #
+        # THE DECISION MOVED. This step's own exit code is no longer the gate; the
+        # checker is. That is why continue-on-error is set here - without it the step
+        # fails on the 26 known failures, the run stops, and the checker is SKIPPED,
+        # so the gate could only ever run on an already-green suite: dead on arrival.
+        #
+        # This is NOT a rollback of #464. #464 removed continue-on-error from steps
+        # where NOTHING else judged the result. Here something does, and it fails the
+        # run on a NEW failure. If you remove this line, move the decision back here
+        # too, or the gate stops working silently.
+        run: npx vitest run --config vitest.integration.config.ts --reporter=default --reporter=json --outputFile=$RUNNER_TEMP/web-integration.json
+        continue-on-error: true
+
+      - name: Upload web integration JSON report
+        # Uploaded even when the suite fails (if: always()) — that is precisely when the
+        # report is most needed, to derive/update config/web-integration-baseline.json.
+        # continue-on-error so an artifact-upload hiccup never fails the run — same
+        # reasoning as the other three upload-artifact steps in this workflow.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-integration-report
+          path: ${{ runner.temp }}/web-integration.json
+          retention-days: 14
+        continue-on-error: true
+
+      - name: Check web integration baseline (shrink-only gate)
+        if: always()
+        # Item 1 slice s3d. No continue-on-error — this IS the gate: a NEW failing file
+        # not in config/web-integration-baseline.json fails the run; a baseline entry
+        # that is no longer failing also fails the run (stale-entry guard, matches
+        # scripts/check-write-ratchet.mjs's model) until deliberately regenerated with
+        # --update. See config/web-integration-baseline.json's _comment for the full rule.
+        run: node scripts/check-web-integration-baseline.mjs --report=$RUNNER_TEMP/web-integration.json
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
