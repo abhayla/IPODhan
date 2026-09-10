@@ -41,7 +41,12 @@ import { FieldSourcesRepository as WebFieldSourcesRepository } from '../../../we
  */
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const SKIP_REASON = 'item-1-slice-s18: DATABASE_URL not set';
+// The describe-name label. It MUST tell the truth about whether these tests
+// actually ran: this is the place CI logs are scanned for coverage evidence,
+// and a constant skip reason interpolated unconditionally made 24 green tests
+// announce "DATABASE_URL not set" while running against a real Postgres
+// (round-2 review). Reports `live` when a database IS configured.
+const RUN_LABEL = DATABASE_URL ? 'live' : 'item-1-slice-s18: SKIPPED — DATABASE_URL not set';
 
 const noRedis = {
   get: async () => null,
@@ -106,7 +111,7 @@ describe.each(VARIANTS)(
       await pool.end();
     }, 30000);
 
-    describe.skipIf(!DATABASE_URL)(`(${SKIP_REASON})`, () => {
+    describe.skipIf(!DATABASE_URL)(`(${RUN_LABEL})`, () => {
       it('THE CLASS: two rows of one child table, different row keys, SAME field — both keep their own source, confidence and lineage', async () => {
         const fy24 = await repo!.trackFieldUpdate({
           ipoId: IPO_ID,
@@ -215,7 +220,7 @@ describe.each(VARIANTS)(
   }
 );
 
-describe.skipIf(!DATABASE_URL)(`field_sources LIVE constraint shape (${SKIP_REASON})`, () => {
+describe.skipIf(!DATABASE_URL)(`field_sources LIVE constraint shape (${RUN_LABEL})`, () => {
   let pool: Pool | null = null;
 
   beforeAll(async () => {

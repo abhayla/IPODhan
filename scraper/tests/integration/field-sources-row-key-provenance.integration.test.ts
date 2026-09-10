@@ -82,7 +82,10 @@ import { FieldSourcesRepository as WebFieldSourcesRepository } from '../../../we
  */
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const SKIP_REASON = 'item-1-slice-s3: DATABASE_URL not set';
+// See the same note in field-sources-row-key-unique.integration.test.ts: this
+// label is read out of CI logs as coverage evidence, so it must not claim a
+// skip while the test is running against a real database.
+const RUN_LABEL = DATABASE_URL ? 'live' : 'item-1-slice-s3: SKIPPED — DATABASE_URL not set';
 
 /** A Redis-shaped no-op — every getFromCache call misses, so behavior can
  *  also be proven against the real query alone when a test wants that. */
@@ -193,7 +196,7 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
     await pool.end();
   }, 30000);
 
-  describe.skipIf(!DATABASE_URL)(`(${SKIP_REASON})`, () => {
+  describe.skipIf(!DATABASE_URL)(`(${RUN_LABEL})`, () => {
     it('the row_key column exists and defaults to \'\' when omitted', async () => {
       const row = await repo!.trackFieldUpdate({
         ipoId: IPO_ID,
@@ -429,7 +432,7 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
   });
 });
 
-describe.skipIf(!DATABASE_URL)(`field_sources / data_conflicts index shape (${SKIP_REASON})`, () => {
+describe.skipIf(!DATABASE_URL)(`field_sources / data_conflicts index shape (${RUN_LABEL})`, () => {
   let pool: Pool | null = null;
 
   beforeAll(async () => {
