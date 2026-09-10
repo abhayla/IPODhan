@@ -287,6 +287,14 @@ jobs:
           cd packages/shared && npx tsc
           test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
 
+      - name: Scraper import smoke (real ESM runtime)
+        # Loads the ENTIRE production import graph through the real entry
+        # point, the same way pm2 runs it, then exits before any DB, network
+        # or scrape work. Seconds of runtime. This is the only check in the
+        # gate that evaluates production modules under the real module system.
+        run: npx tsx src/index.ts --smoke-import
+        working-directory: ./scraper
+
       - name: Run lint
         run: npm run lint:ci
         working-directory: ./web
@@ -346,14 +354,6 @@ jobs:
         # gated on STAGE0_DATABASE_URL, which CI never sets, so it skips
         # rather than fails. Seconds of runtime for two files.
         run: npx vitest run --config vitest.config.ts tests/unit/pipeline-stages
-        working-directory: ./scraper
-
-      - name: Scraper import smoke (real ESM runtime)
-        # Loads the ENTIRE production import graph through the real entry
-        # point, the same way pm2 runs it, then exits before any DB, network
-        # or scrape work. Seconds of runtime. This is the only check in the
-        # gate that evaluates production modules under the real module system.
-        run: npx tsx src/index.ts --smoke-import
         working-directory: ./scraper
 
   python-tests:
