@@ -290,6 +290,19 @@ jobs:
         # report and the repair disagree about what they are about to delete.
         run: node --test scripts/tests/company-identity-fold-parity.test.mjs
 
+      - name: Row-key staleness invariant unit tests (item 12 slice C)
+        # scripts/lib/repair-invariants/normalized-name-current.mjs is the tool a
+        # 544-row re-key is proven with, so the SHAPE of its answer is gated here
+        # rather than left to a staging run that only exercises the happy path.
+        # MUST stay inside the Node 22 window: the invariant imports rowKeyForName
+        # from the TypeScript SSOT via erasable type stripping, so on Node 20 it
+        # cannot load and every test fails.
+        #
+        # What it pins: an un-backfilled table reports ONE finding, not one per
+        # row - and still FAILS. If it returned zero, a backfill that silently
+        # never ran would read as a clean gate.
+        run: node --test scripts/tests/normalized-name-current.test.mjs
+
       - name: Setup Node.js 20 (restore pinned version for the rest of the job)
         uses: actions/setup-node@v4
         with:
