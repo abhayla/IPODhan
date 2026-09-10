@@ -79,6 +79,26 @@ test('(c) PASSES a genuine MAINBOARD issue_size above the floor', () => {
   assert.equal(checkIssueSizeSegmentFloor(row), null);
 });
 
+// T-slice-3c: `segment` is increasingly NULL now that write paths are honest
+// about what a source actually stated (slice 3a). A NULL segment must be
+// EXCLUDED from the segment-floor comparison — it must not be silently
+// judged by the MAINBOARD floor (design doc line 812) — while still being
+// visible via the separate j_segment_not_null finding (checked below).
+test('(c) T-slice-3c PASSES (excluded, not judged) a NULL-segment row even far below the MAINBOARD floor', () => {
+  const row = { segment: null, issueSize: 17683000 }; // Rs1.77 Cr — below MAINBOARD floor, but segment unknown
+  assert.equal(checkIssueSizeSegmentFloor(row), null);
+});
+
+test('(c) T-slice-3c FAILS (no regression) on an SME issue_size below the SME floor', () => {
+  const row = { segment: 'SME', issueSize: 50_00_000 }; // Rs50 lakh < Rs1 Cr SME floor
+  assert.ok(checkIssueSizeSegmentFloor(row) !== null);
+});
+
+test('(c) T-slice-3c PASSES a genuine SME issue_size above the SME floor', () => {
+  const row = { segment: 'SME', issueSize: 3_00_00_000 }; // Rs3 Cr > Rs1 Cr SME floor
+  assert.equal(checkIssueSizeSegmentFloor(row), null);
+});
+
 test('(c) FAILS on Annu-shaped shares x price inconsistency (issue_size == sharesOffered)', () => {
   const row = { issueSize: 17683000, sharesOffered: 17683000, priceRangeMax: 99 };
   assert.ok(checkIssueSizeSharesConsistency(row) !== null);
