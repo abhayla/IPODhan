@@ -595,3 +595,62 @@ draft with the three staging numbers — `ipo_details` rows before/after, non-nu
 CHITTORGARH held unchanged. That last number is the overwrite refutation.
 
 **Item 2 is not done. Items 14, 12 and 3 are not done. Zero of four have a DONE line.**
+
+## 2026-09-11 03:16 IST — 2-S7 commits 6 and 7, plus a merge
+
+**Commit 6 (`6e03114e`) corrects my own commit 4.** `fillIssueTypeIfNull` is an
+`UPDATE ... WHERE issue_type IS NULL`. The build card measured that **182 of the 183**
+fillable IPOs have no `ipo_details` row at all — so the service as built could reach
+exactly **one** of them, and would have reported "1 filled, 182 unmatched" as though the
+*matching* were at fault. The matching was fine. The rows did not exist. A summary that
+blames the wrong component is worse than no summary.
+
+Added `ensureDetailsRow` (`INSERT ... ON CONFLICT DO NOTHING`) before the write, with
+`rowsCreated` as its own counter. A row that comes into existence with a NULL
+`issue_type` has had nothing written to it; counting that as a fill claims a value this
+run did not set. Three mutations, all red.
+
+**Commit 7 (`733aa43f`) is the best find of the slice, and it is in code I did not write.**
+
+Report 82 accepts exactly one page size. Measured read-only against the live endpoint:
+
+| perPage | result |
+|---|---|
+| 10 | HTTP 200, **all 231 rows** (the report ignores the page size) |
+| 20 / 50 / 100 / 300 | HTTP 200, **zero rows**, `error: "Invalid API Call<year>-<perPage>-01"` |
+
+`fetchChittorgarhAPI`'s **default was 100** — a call that fetches nothing while returning
+a success status. It has never fired only because its single caller passes 10 by hand.
+And the comment beside that caller read *"API accepts perPage: 10, 20, 30..."*, which is
+false and invites exactly the change that breaks it.
+
+The failure is silent in the worst way: an empty list under a 200 reads as "no IPOs
+today", not "this call is malformed". That is the fourth appearance tonight of
+absence-that-looks-like-a-value — after the LEFT JOIN, the re-export and the `LIKE`.
+Named `REPORT82_PAGE_SIZE` with the measurement in its comment, made it the default,
+corrected the comment, filed the failure class, guarded by a mutation-checked test.
+
+**The merge conflict was a mechanism working.** Merging `origin/main` conflicted on
+exactly one file: `docs/reviews/failure-classes.md`, the **generated** aggregate — the
+file T-487's per-entry layout exists to stop parallel PRs conflicting on. Resolved by
+regenerating from source, never by hand-merging. Checked by arithmetic, not by eye: main
+29 rows, my branch 29, merged **30** = 28 shared + the other lane's class + mine.
+
+**Two near-misses.** My post-merge grep counted 78 "FAIL" lines against an exit code of 0;
+rather than assume benign I checked — all 78 are log noise from mocked DB calls inside
+passing tests, and vitest's own FAIL marker count is zero. And I grepped the aggregate for
+my failure class by *filename*, got 0, and nearly reported it missing; the table keys on
+`class_id` text. A positive control caught it.
+
+**Peer relay handled as information, not approval.** A peer asked for merge-tree against
+lane A's writer PR heads. Those heads do not exist — s5b/s7a/s7b are PLANNED with no
+branches, and none of the 11 open PRs is one of them. The check is *untestable* today, not
+clean. Replied with the correction.
+
+**Board defect, surfaced not fixed.** The renderer reads `s.k`/`s.status`; ten of the
+items use `id`/`state`. Item 16 is DONE with its slice merged and renders as an
+unlabelled grey chip counting 0. Every lane reads low. One-line fix, but I will not retype
+~250 lines of shared board HTML onto a page all three lanes write to at 03:00.
+
+**Nothing has written a database row. Items 14, 2, 12 and 3 have zero DONE lines between
+them.**
