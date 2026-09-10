@@ -613,5 +613,8 @@
       "checkedAt": "2026-09-10T10:45+05:30",
       "check": "origin/main .github/workflows/ci.yml is 107 lines, 5 continue-on-error, 0 postgres, 0 test:integration"
     }
-  }
+  },
+  "owedToLaneB": [
+    "Tell lane B (session ipodhan-62 relay) the web-duty PR number as soon as it opens - it changes ci.yml for both lanes and lane B's tick will watch it. Also tell them when it MERGES, since any web-touching lane B slice is waiting on it."
+  ]
 }
