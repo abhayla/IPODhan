@@ -68,4 +68,106 @@ describe('slotAwareFlagDefault (item 01 slice s5a)', () => {
     });
     expect(stagingOverride.slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(false);
   });
+
+  it.each(['0', 'FALSE', 'false', 'False', 'no', 'off', 'OFF'])(
+    "explicit falsy spelling '%s' on staging means false, not the ON slot default, and emits NO warning",
+    async (value) => {
+      const { slotAwareFlagDefault } = await loadWithEnv({
+        DEPLOY_SLOT: 'staging',
+        ENABLE_SLOT_AWARE_TEST_FLAG: value,
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      expect(slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(false);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    }
+  );
+
+  it.each(['true', 'TRUE', 'True', '1', 'yes', 'YES', 'on', 'On'])(
+    "explicit truthy spelling '%s' on prod means true, not the OFF slot default, and emits NO warning",
+    async (value) => {
+      const { slotAwareFlagDefault } = await loadWithEnv({
+        DEPLOY_SLOT: 'prod',
+        ENABLE_SLOT_AWARE_TEST_FLAG: value,
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      expect(slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    }
+  );
+
+  it('explicit empty string on staging is treated as unrecognised — false, not the ON slot default, and it warns', async () => {
+    const { slotAwareFlagDefault } = await loadWithEnv({
+      DEPLOY_SLOT: 'staging',
+      ENABLE_SLOT_AWARE_TEST_FLAG: '',
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [message] = warnSpy.mock.calls[0];
+    expect(message).toContain('ENABLE_SLOT_AWARE_TEST_FLAG');
+
+    warnSpy.mockRestore();
+  });
+
+  it('explicit whitespace-only value on staging behaves identically to explicit empty — false, and it warns', async () => {
+    const { slotAwareFlagDefault } = await loadWithEnv({
+      DEPLOY_SLOT: 'staging',
+      ENABLE_SLOT_AWARE_TEST_FLAG: '   ',
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
+  });
+
+  it('DEPLOY_SLOT=staging, flag env genuinely unset (undefined) still falls through to the slot default (true) — the distinction from empty', async () => {
+    const { slotAwareFlagDefault } = await loadWithEnv({
+      DEPLOY_SLOT: 'staging',
+      ENABLE_SLOT_AWARE_TEST_FLAG: undefined,
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(true);
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it('unrecognised value on staging logs the flag+raw value and resolves to false — NEVER the ON slot default', async () => {
+    const { slotAwareFlagDefault } = await loadWithEnv({
+      DEPLOY_SLOT: 'staging',
+      ENABLE_SLOT_AWARE_TEST_FLAG: 'maybe',
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [message] = warnSpy.mock.calls[0];
+    expect(message).toContain('ENABLE_SLOT_AWARE_TEST_FLAG');
+    expect(message).toContain('maybe');
+
+    warnSpy.mockRestore();
+  });
+
+  it('unrecognised value on prod also logs and resolves to false (both directions covered)', async () => {
+    const { slotAwareFlagDefault } = await loadWithEnv({
+      DEPLOY_SLOT: 'prod',
+      ENABLE_SLOT_AWARE_TEST_FLAG: 'maybe',
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(slotAwareFlagDefault('ENABLE_SLOT_AWARE_TEST_FLAG')).toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
+  });
 });

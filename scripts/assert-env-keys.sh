@@ -59,17 +59,14 @@ WEB_REQUIRED_KEYS=(
   # human reading shared/env/<SLOT>/web.env.local sees the TZ contract
   # explicitly instead of it living only inside deploy-linux.sh.
   TZ
-  # item 01 slice s5a: same belt-and-braces contract as TZ above.
-  # DEPLOY_SLOT is what actually reaches the running pm2 process
-  # (`DEPLOY_SLOT="$SLOT" pm2 start ...` in deploy-linux.sh's restart_pm2/
-  # resume_scraper/rollback paths) — required here too so a human reading
-  # shared/env/<SLOT>/web.env.local sees the slot contract explicitly, and
-  # so this script fails loudly if a slot's hand-provisioned env file is
-  # ever missing it. VALUE is not enforced by this check (only presence);
-  # slotAwareFlagDefault() in web/lib/config/feature-flags.ts and
-  # scraper/src/config/feature-flags.ts is what actually branches on the
-  # VALUE at runtime.
-  DEPLOY_SLOT
+  # item 01 slice s5a fix round: DEPLOY_SLOT was added here and then removed.
+  # DEPLOY_SLOT is injected by deploy-linux.sh at pm2-start time
+  # (`DEPLOY_SLOT="$SLOT" pm2 start ...`) — it is NOT written to
+  # shared/env/<SLOT>/web.env.local, the static file this script reads, so
+  # requiring it here fails every deploy on both slots. Do not re-add it to
+  # this list; it is verified where it actually lands, in
+  # scripts/tests/deploy-linux.test.sh cases 9b/9c/9d (the pm2-start
+  # command strings), not here.
 )
 
 SCRAPER_REQUIRED_KEYS=(
@@ -109,11 +106,10 @@ SCRAPER_REQUIRED_KEYS=(
   # date-parse fix no longer DEPENDS on this value (belt-and-braces, not the
   # only guard).
   TZ
-  # item 01 slice s5a: same belt-and-braces contract as TZ above and as
-  # WEB_REQUIRED_KEYS' DEPLOY_SLOT entry — required here too so this script
-  # fails loudly if the scraper slot's env file is ever missing it. VALUE is
-  # not enforced by this check.
-  DEPLOY_SLOT
+  # item 01 slice s5a fix round: same as WEB_REQUIRED_KEYS above — DEPLOY_SLOT
+  # is deploy-injected (deploy-linux.sh `DEPLOY_SLOT="$SLOT" pm2 start ...`),
+  # not file-configured, so it does NOT belong in this list. Verified in
+  # scripts/tests/deploy-linux.test.sh cases 9b/9c/9d.
 )
 
 MISSING=()
