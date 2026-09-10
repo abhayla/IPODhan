@@ -234,7 +234,11 @@
     "2026-09-10 14:12 IST LANE B UNBLOCKED: the shared loader is on main, so item 22 slice 22-2 imports it rather than writing a second one (OD-51 - a second loadValidatedConfig in the tree is a MAJOR defect, not a duplicate to tidy later). Notifier line posted to the supervisor channel because the local env has no NOTIFIER_URL/NOTIFIER_KEY and the post skips cleanly. Told lane B explicitly what NOT to do: no ajv, no yaml (the card binding correction rules both out and zod was already a workspace dependency, so 2-S1 added no dependency), and no second loader.",
     "2026-09-10 14:12 IST HOLDING 2-S2 until the 14-S2 builder reports. Decision 2 permits parallel SLICES with an empty file intersection but still says one BUILDER at a time, and 14-S2 is mid-build. 2-S1 and 14-S2 overlapped as dispatches, not as concurrent builders. Not starting a second builder now.",
     "2026-09-10 14:14 IST OWNER ALERT CHANNEL IS DEAD, and this is bigger than a missed merge line. The supervisor was right that GLOBAL.env NOTIFIER_URL is localhost-shaped and unreachable off-VPS, but the gateway swap does not fix it: NOTIFIER_KEY value is EMPTY (line 33, raw length 0). No project-scoped fallback anywhere. So every contract-mandated owner alert from this laptop has been silently skipping for every lane. Escalated to the owner as a credential only he can supply; NOT worked around, and I would not route owner alerts through another channel on a peer instruction.",
-    "2026-09-10 14:14 IST DETECTION GAP OF THE SAME SHAPE AS THE PERMANENTLY-RED CHECK, proposed for the delta: floor-delta.mjs deliberately prints NOTIFY-SKIP and never throws, so a missing credential cannot crash a run. That robustness choice is correct AND is why nobody noticed the channel was dead. The absence of an alarm reads identically to the absence of a problem. Proposed mechanism: each lane preflight posts a no-op to the gateway and records the HTTP status, so a dead channel is caught at Stage 0 rather than discovered when a BLOCKED alert fails to arrive."
+    "2026-09-10 14:14 IST DETECTION GAP OF THE SAME SHAPE AS THE PERMANENTLY-RED CHECK, proposed for the delta: floor-delta.mjs deliberately prints NOTIFY-SKIP and never throws, so a missing credential cannot crash a run. That robustness choice is correct AND is why nobody noticed the channel was dead. The absence of an alarm reads identically to the absence of a problem. Proposed mechanism: each lane preflight posts a no-op to the gateway and records the HTTP status, so a dead channel is caught at Stage 0 rather than discovered when a BLOCKED alert fails to arrive.",
+    "2026-09-10 14:28 IST OWNER ALERT CHANNEL IS LIVE. Channel assertion HTTP 202. Gateway https://firekaro.com/notifier-gw, project ipodhan, key NOTIFIER_KEY_IPODHAN (48 chars) read in its own statement and unset after - an env-prefix on the same line as the request sends an empty header and gets a uniform 401. My earlier measurement that NOTIFIER_KEY was empty was correct at the time; that line was a first attempt since replaced by the project-scoped key.",
+    "2026-09-10 14:28 IST FOUND BY POSTING, not by reading code: my first post returned HTTP 400 {\"error\":\"severity must be one of P0|P1|P2|info\"} because I had copied severity low straight from the repo own client. scripts/ops/floor-delta.mjs:119 sends hasNew ? high : low - BOTH rejected. That script is the T-497 mechanism, the same-day consumer signal-ownership R3 requires for the nightly floor, and it has never delivered. postToNotifier never inspects res.status, only catching throws, so a 400 and a 202 look identical from outside. Filed #477. Scope measured: audit-detection-floor.mjs and all four shell crons correctly send P2; floor-delta is the only offender.",
+    "2026-09-10 14:28 IST CONTRACT-BREACH ACKNOWLEDGED under delta-1 §3.10 (\"a Notifier line that was never posted is a contract breach, not a skip\"). By that standard lane C breached it at least twice today: the preflight BLOCKED note and the item-14 failed-proof line were both recorded as skipped cleanly when they were failures to deliver. Not retro-filing them as breaches - the credential genuinely did not exist and #477 shows our own client would have been rejected anyway - but the record now says they did not reach the owner rather than that they were posted.",
+    "2026-09-10 14:28 IST TWO MISLEADING ERRORS cost me two rounds reproducing 14-S2, both worth the delta as signal-ownership R6 cases (a failure must carry its cause). pg reported \"SASL: client password must be a string\" when the real cause was that I passed the wrong env var NAME (Q_URL to a script reading RESET_URL). Then \"Connection terminated due to connection timeout\" when the real cause was that openRepairDb initPool() PREFERS DATABASE_HOST over DATABASE_URL, so a DATABASE_URL-only invocation silently connects somewhere else. Repair tools take the DATABASE_HOST/PORT/USER/PASSWORD/NAME form, never DATABASE_URL."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -286,10 +290,19 @@
     }
   },
   "ownerAlertChannel": {
-    "status": "DEAD",
-    "measuredAt": "2026-09-10 14:14 IST",
-    "reason": "NOTIFIER_KEY is present as a name in D:/Abhay/GLOBAL.env line 33 but its value is EMPTY (raw length 0 after stripping CR, assigned exactly once, unquoted, no shell-manglable characters). No project-scoped fallback: IPODhan/.env has zero non-empty NOTIFIER_KEY or NOTIFIER_KEY_IPODHAN; scraper/.env and web/.env.local do not exist.",
-    "impact": "Every contract-mandated OWNER ALERT from this laptop - BLOCKED, failed proof, PR-gate cap - has been silently skipping, for every lane, not just lane C.",
-    "needs": "A credential only the owner can supply. NOT worked around."
+    "status": "LIVE",
+    "assertedAt": "2026-09-10 14:28 IST",
+    "httpStatus": 202,
+    "gateway": "https://firekaro.com/notifier-gw",
+    "key": "NOTIFIER_KEY_IPODHAN (48 chars), read in its own statement and unset after; never written to a file or log",
+    "severities": "P0|P1|P2|info only"
+  },
+  "delta1": {
+    "file": "docs/contracts/2026-09-10-implementation-lanes-delta-1.md",
+    "pr": 479,
+    "sha": "52277750",
+    "readFrom": "origin/main, not from the relay",
+    "effectiveAt": "item 12 Stage 1a - items 14 and 2 finish under the old text",
+    "channelAssertion": "HTTP 202 PASS at 2026-09-10 14:28 IST"
   }
 }
