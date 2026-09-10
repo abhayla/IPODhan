@@ -107,12 +107,38 @@ describe('collectIssueTypesFromReport — pure, and it drops what it cannot read
     );
   });
 
+  it('reads the open date WITHOUT reparsing it, so IST never shifts the day', () => {
+    // `new Date('2026-09-18T00:00:00.000Z').toISOString().slice(0,10)` happens to
+    // be right; `new Date('2026-09-18')` on a +05:30 machine is not. The first
+    // version of openDateFromRecord used that chain and the repo's
+    // date-tz-parse-ratchet test caught it. This reads the string, never a Date.
+    const got = collectIssueTypesFromReport(
+      [{
+        Company: '<a href="/ipo/x/1/">Axiom Gas Engineering Ltd.</a>',
+        'Pricing Method': 'Bookbuilding',
+        '~Issue_Open_Date': '2026-09-18T00:00:00.000Z',
+      }],
+      strip
+    );
+    expect(got[0].openDate).toBe('2026-09-18');
+  });
+
+  it('refuses a date it cannot read literally, rather than guessing one', () => {
+    const got = collectIssueTypesFromReport(
+      [{ Company: 'A Ltd', 'Pricing Method': 'Bookbuilding', '~Issue_Open_Date': '18-Sep-2026' }],
+      strip
+    );
+    expect(got[0].openDate).toBeNull();
+  });
+
   it('strips the anchor markup the report wraps company names in', () => {
     const got = collectIssueTypesFromReport(
       [{ Company: '<a href="/ipo/x/1/">Axiom Gas Engineering Ltd.</a> ', 'Pricing Method': 'Bookbuilding' }],
       strip
     );
-    expect(got).toEqual([{ companyName: 'Axiom Gas Engineering Ltd.', issueType: 'BOOK_BUILDING' }]);
+    expect(got).toEqual([
+      { companyName: 'Axiom Gas Engineering Ltd.', issueType: 'BOOK_BUILDING', openDate: null },
+    ]);
   });
 
   it('DROPS a row whose Pricing Method it cannot read — never defaults it', () => {

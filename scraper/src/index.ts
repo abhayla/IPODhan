@@ -18,7 +18,7 @@ import {
   makeIssueTypeJobDeps,
 } from './services/chittorgarh-issue-type-job.js';
 import { makeIpoDetailsWriter } from './services/filing-persist-deps.js';
-import { FieldSourcesRepository } from '@ipodhan/shared';
+import { FieldSourcesRepository, filterProtectedFields } from '@ipodhan/shared';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
 import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performance-cadence.js';
@@ -407,23 +407,44 @@ async function runDueStepCycle(
       // priority engine), and it runs regardless of `cgOk`: the scrape writing
       // `ipos` and the report publishing an issue type are independent, so a
       // partial scrape is no reason to drop a field the same response carried.
-      await runCycleStep('aggregator:CHITTORGARH_ISSUE_TYPE', async () => {
+      const fillOk = await runCycleStep('aggregator:CHITTORGARH_ISSUE_TYPE', async () => {
         const result = await runIssueTypeFillJob(
           makeIssueTypeJobDeps(
             db,
             makeIpoDetailsWriter(),
             new FieldSourcesRepository(db, redis),
+            (id, table, data, scraperName) =>
+              filterProtectedFields(id, table, data, scraperName, db, redis),
             logger
           )
         );
-        // A refusal is a FAILED step, never a quiet success - otherwise a
-        // permanently broken call reads as a clean cycle forever.
-        return result.abortedReason
-          ? { success: false, errors: [`issue-type fill aborted: ${result.abortedReason}`] }
-          : { success: true };
+        // THE STEP VERDICT MUST BE ABLE TO FAIL FOR THE CLAIM IT SUPPORTS.
+        //
+        // I originally failed the step only on `abortedReason`, which meant a
+        // cycle where EVERY write threw - say ipodhan_app lacking UPDATE on
+        // ipo_details - returned failed=231, filled=0 and success:true. A cycle
+        // that wrote nothing and a cycle that wrote 180 rows produced the same
+        // verdict, so the staging proof this step exists to support could not
+        // have failed. Caught in Tier A review.
+        //
+        // Counts are resolved to a reason, never reported bare (signal-ownership R1).
+        const reasons: string[] = [];
+        if (result.abortedReason) reasons.push(`aborted: ${result.abortedReason}`);
+        if (result.failed > 0) reasons.push(`${result.failed} row(s) threw during the write`);
+        // Nothing matching at all means the source's name format moved or the
+        // fold changed - never a legitimate quiet day for a whole-year report.
+        if (!result.abortedReason && result.candidates > 0 && result.matched === 0) {
+          reasons.push(`0 of ${result.candidates} report rows matched any stored IPO`);
+        }
+        if (reasons.length === 0) return { success: true };
+        logger.warn({ ...result }, 'Due-step cycle: issue-type fill did not fully succeed');
+        return { success: false, errors: reasons.map((r) => `issue-type fill: ${r}`) };
       });
 
-      if (cgOk) {
+      // The cadence key covers BOTH aggregator steps. Stamping it when the fill
+      // failed would suppress its retry for a full day - the opposite of the
+      // discipline the other branches follow.
+      if (cgOk && fillOk) {
         await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
       } else {
         logger.warn('Due-step cycle: aggregator refresh did not fully succeed — cadence key NOT stamped, it will retry next cycle');

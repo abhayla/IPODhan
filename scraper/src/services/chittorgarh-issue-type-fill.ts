@@ -6,7 +6,14 @@
  * the same-name matching is the part most likely to be got wrong, and it stays
  * outside this function where it can be tested on its own.
  *
- * THE SAFETY ARGUMENT IS THE NULL GUARD, NOT A RANKING. `ipo_details` has no
+ * THE SAFETY ARGUMENT IS THE NULL GUARD **PLUS ADMIN PROTECTION**, NOT A RANKING.
+ *
+ * CORRECTION: the first version of this comment said the null guard was the
+ * WHOLE protection, on the grounds that `ipo_details` has no priority engine.
+ * That was wrong. ADMIN's analogue for this table is `filterProtectedFields`,
+ * which every other `ipo_details` write door passes through and this one did
+ * not - and an admin lock CLEARS the field to NULL, which makes the null guard
+ * fire in the attacker's favour. `isWriteAllowed` is now required in the deps. `ipo_details` has no
  * source-priority mechanism — measured 2026-09-11: the field-priority matrix
  * governs `ipos` writes only, and `dropOutranked` is cover-versus-price-band-ad
  * arbitration that no-ops unless the incoming write IS a prospectus cover. So a
@@ -16,7 +23,7 @@
  */
 
 import { BASE_SOURCE_CONFIDENCE } from '../config/source-confidence.js';
-import type { Report82IssueType } from '../scrapers/chittorgarh-report82-fields.js';
+import type { Report82IssueType, IssueType } from '../scrapers/chittorgarh-report82-fields.js';
 
 /** Written from the canonical table, never typed as a literal — a hardcoded 60 drifts. */
 export const REPORT82_CONFIDENCE = BASE_SOURCE_CONFIDENCE.CHITTORGARH;
@@ -24,6 +31,10 @@ export const REPORT82_CONFIDENCE = BASE_SOURCE_CONFIDENCE.CHITTORGARH;
 export interface IssueTypeFillDeps {
   /** Resolve a report name to a stored IPO id. Returns null when it matches none. */
   resolveIpoId(companyName: string): Promise<string | null>;
+  /** The SAME fold the index was built with - used to detect report-side collisions. */
+  foldKey(companyName: string): string;
+  /** The stored row's open date as ISO yyyy-mm-dd, or null when we hold none. */
+  storedOpenDate?(ipoId: string): Promise<string | null>;
   /**
    * Create the `ipo_details` identity row when the IPO has none. True when it
    * created one. REQUIRED in practice, not optional decoration: 182 of the 183
@@ -31,6 +42,19 @@ export interface IssueTypeFillDeps {
    * reaches exactly ONE of them. Must be INSERT .. ON CONFLICT DO NOTHING, so a
    * repeat cycle never touches an existing row's data_source.
    */
+  /**
+   * ADMIN PROTECTION. False when an admin has locked this IPO or protected this
+   * field. REQUIRED, not optional decoration.
+   *
+   * `ipo_details` has no source-priority engine, so I originally argued the NULL
+   * guard was the whole protection. THAT WAS WRONG, and a Tier A review caught
+   * it: ADMIN's analogue for this table is `filterProtectedFields`, which every
+   * other `ipo_details` write door passes through and this one did not. Without
+   * it: an admin finds a wrong issue_type, clears it to NULL and locks the IPO -
+   * which makes `issue_type IS NULL` TRUE - and the next cycle writes the value
+   * straight back with sourced provenance and no signal to the admin.
+   */
+  isWriteAllowed(ipoId: string): Promise<boolean>;
   ensureDetailsRow(ipoId: string): Promise<boolean>;
   /** The guarded writer: fills only when issue_type IS NULL; true when it filled. */
   fillIssueTypeIfNull(ipoId: string, issueType: string): Promise<boolean>;
@@ -63,6 +87,12 @@ export interface IssueTypeFillSummary {
    * would report a successful fill for a row that only came into existence.
    */
   rowsCreated: number;
+  /** Refused because an admin locked the IPO or protected the field. */
+  blockedByAdmin: number;
+  /** Refused because two REPORT rows fold together and disagree. */
+  reportAmbiguous: number;
+  /** Refused because the report's open date disagrees with the stored row. */
+  dateMismatch: number;
   /** Rows whose write threw; counted, never swallowed silently. */
   failed: number;
 }
@@ -73,10 +103,41 @@ export async function fillIssueTypesFromReport(
 ): Promise<IssueTypeFillSummary> {
   const summary: IssueTypeFillSummary = {
     candidates: pairs.length, matched: 0, filled: 0, alreadySet: 0, unmatched: 0,
-    rowsCreated: 0, failed: 0,
+    rowsCreated: 0, blockedByAdmin: 0, reportAmbiguous: 0, dateMismatch: 0, failed: 0,
   };
 
+  // REPORT-SIDE AMBIGUITY, refused before anything is resolved.
+  //
+  // buildFoldedIndex refuses when two STORED rows share a key. Nothing refused
+  // when two REPORT rows share one - a Tier A review caught that the guard was
+  // one-sided, and it is not theoretical: on the live 231-row report today, 196
+  // matches resolve to only 195 distinct IPOs. Without this, both report rows
+  // resolve to the same stored id, the first wins, and the second is silently
+  // counted as `alreadySet` - so a disagreement between two report rows is
+  // recorded as agreement.
+  const byKey = new Map<string, Set<IssueType>>();
+  for (const pair of pairs ?? []) {
+    const k = deps.foldKey(pair.companyName);
+    if (!k) continue;
+    const s = byKey.get(k);
+    if (s) s.add(pair.issueType);
+    else byKey.set(k, new Set([pair.issueType]));
+  }
+  const conflictedKeys = new Set(
+    [...byKey.entries()].filter(([, v]) => v.size > 1).map(([k]) => k)
+  );
+
+  const writtenIds = new Set<string>();
+
   for (const pair of pairs) {
+    if (conflictedKeys.has(deps.foldKey(pair.companyName))) {
+      summary.reportAmbiguous++;
+      deps.logger?.warn(
+        { companyName: pair.companyName },
+        'issue-type fill: two report rows fold together and disagree - refusing both'
+      );
+      continue;
+    }
     let ipoId: string | null = null;
     try {
       ipoId = await deps.resolveIpoId(pair.companyName);
@@ -87,6 +148,38 @@ export async function fillIssueTypesFromReport(
     }
     if (!ipoId) { summary.unmatched++; continue; }
     summary.matched++;
+
+    // Two DIFFERENT report rows resolving to one stored IPO: the first already
+    // wrote it. Counting the second as `alreadySet` would report agreement.
+    if (writtenIds.has(ipoId)) { summary.reportAmbiguous++; continue; }
+    writtenIds.add(ipoId);
+
+    // A name match is not an identity match. When BOTH sides carry an open date
+    // and they disagree, this is a different issue of the same company - a
+    // refile, or an older issue whose name folds identically. Refuse rather than
+    // write this year's pricing method onto a previous issue's row. When either
+    // side has no date the check cannot run and is not invented.
+    const storedOpen = deps.storedOpenDate ? await deps.storedOpenDate(ipoId) : null;
+    if (pair.openDate && storedOpen && pair.openDate !== storedOpen) {
+      summary.dateMismatch++;
+      deps.logger?.warn(
+        { ipoId, companyName: pair.companyName, reportOpenDate: pair.openDate, storedOpenDate: storedOpen },
+        'issue-type fill: open dates disagree - refusing, this is a different issue'
+      );
+      continue;
+    }
+
+    // ADMIN PROTECTION, checked before any write. An admin lock makes
+    // issue_type NULL and therefore makes the NULL guard USELESS as a defence.
+    let allowed = false;
+    try {
+      allowed = await deps.isWriteAllowed(ipoId);
+    } catch (err) {
+      summary.failed++;
+      deps.logger?.warn({ ipoId, err }, 'issue-type fill: protection check failed - refusing the write');
+      continue;
+    }
+    if (!allowed) { summary.blockedByAdmin++; continue; }
 
     try {
       // Create the identity row FIRST when it is missing, or the UPDATE below

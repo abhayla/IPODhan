@@ -34,12 +34,28 @@ describe('issue-type fill is wired into the due-step cycle', () => {
     expect(src).toContain("runCycleStep('aggregator:CHITTORGARH_ISSUE_TYPE'");
   });
 
-  it('treats a refusal as a FAILED step, not a quiet success', () => {
-    // If the job aborts (a zero-row report), the step must report success:false.
-    // Reporting success would let a permanently broken call read as a clean
-    // cycle forever - the same silent-zero class as the page size itself.
+  it('the step verdict can FAIL for the claim it supports', () => {
+    // The original version failed the step ONLY on abortedReason, so a cycle
+    // where every write threw returned failed=231, filled=0, success:true. A
+    // cycle that wrote nothing and one that wrote 180 rows had the SAME verdict,
+    // which means the staging proof this step supports could not have failed.
+    // Caught in Tier A review. All three conditions must be consulted.
     expect(src).toContain('result.abortedReason');
-    expect(src).toMatch(/abortedReason[\s\S]{0,120}success:\s*false/);
+    expect(src).toContain('result.failed > 0');
+    expect(src).toContain('result.matched === 0');
+    expect(src).toMatch(/success:\s*false/);
+  });
+
+  it('the cadence key is not stamped when the fill failed', () => {
+    // Stamping on the scrape alone suppressed the fill's retry for a full day -
+    // the opposite of the discipline every other branch follows.
+    expect(src).toContain('cgOk && fillOk');
+  });
+
+  it('passes the admin protection filter into the job', () => {
+    // Every other ipo_details write door goes through filterProtectedFields.
+    // This one did not, so an admin lock could not stop it.
+    expect(src).toContain('filterProtectedFields');
   });
 
   it('sits in the aggregator branch, next to the Chittorgarh scrape', () => {

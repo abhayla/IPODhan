@@ -17,12 +17,18 @@ import { BASE_SOURCE_CONFIDENCE } from '../../../src/config/source-confidence.js
  * written only when it reports a fill.
  */
 
-const pair = (companyName: string, issueType: 'BOOK_BUILDING' | 'FIXED_PRICE' = 'FIXED_PRICE') =>
-  ({ companyName, issueType }) as const;
+const pair = (
+  companyName: string,
+  issueType: 'BOOK_BUILDING' | 'FIXED_PRICE' = 'FIXED_PRICE',
+  openDate: string | null = null
+) => ({ companyName, issueType, openDate }) as const;
 
 function deps(over: Partial<Parameters<typeof fillIssueTypesFromReport>[1]> = {}) {
   return {
     resolveIpoId: vi.fn(async () => 'ipo-1'),
+    foldKey: (n: string) => foldCompanyIdentity(n),
+    storedOpenDate: vi.fn(async () => null),
+    isWriteAllowed: vi.fn(async () => true),
     ensureDetailsRow: vi.fn(async () => false),
     fillIssueTypeIfNull: vi.fn(async () => true),
     trackFieldUpdate: vi.fn(async () => {}),
@@ -64,6 +70,10 @@ describe('fillIssueTypesFromReport — provenance follows a real write', () => {
 
   it('counts a failed write instead of swallowing it, and keeps going', async () => {
     const d = deps({
+      // TWO DISTINCT IPOs. The mock used to return one id for both, which the
+      // resolved-id dedupe now (correctly) refuses as a report-side collision -
+      // so the mock, not the guard, was what needed fixing.
+      resolveIpoId: vi.fn().mockResolvedValueOnce('ipo-1').mockResolvedValueOnce('ipo-2'),
       fillIssueTypeIfNull: vi
         .fn()
         .mockRejectedValueOnce(new Error('deadlock'))
@@ -96,6 +106,80 @@ describe('fillIssueTypesFromReport — provenance follows a real write', () => {
     const s = await fillIssueTypesFromReport([], d as never);
     expect(s).toMatchObject({ candidates: 0, matched: 0, filled: 0 });
     expect(d.resolveIpoId).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('guards a Tier A review found missing', () => {
+  it('ADMIN LOCK: refuses when protection says no, and writes no provenance', async () => {
+    // The null guard is USELESS here by construction: an admin who clears a bad
+    // issue_type to NULL and locks the IPO makes `issue_type IS NULL` TRUE. If
+    // this refusal is absent, the next cycle writes the value straight back and
+    // the admin gets no signal. I argued the null guard was the whole
+    // protection; it was not.
+    const d = deps({ isWriteAllowed: vi.fn(async () => false) });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd')], d);
+    expect(s.blockedByAdmin).toBe(1);
+    expect(s.filled).toBe(0);
+    expect(s.rowsCreated).toBe(0);
+    expect(d.ensureDetailsRow).not.toHaveBeenCalled();
+    expect(d.fillIssueTypeIfNull).not.toHaveBeenCalled();
+    expect(d.trackFieldUpdate).not.toHaveBeenCalled();
+  });
+
+  it('a protection-check failure REFUSES the write rather than assuming allowed', async () => {
+    const d = deps({ isWriteAllowed: vi.fn(async () => { throw new Error('redis down'); }) });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd')], d);
+    expect(s.failed).toBe(1);
+    expect(d.fillIssueTypeIfNull).not.toHaveBeenCalled();
+  });
+
+  it('REPORT-SIDE collision: two report rows folding together that DISAGREE are both refused', async () => {
+    // buildFoldedIndex only refused STORED-side collisions. On the live 231-row
+    // report today, 196 matches resolve to 195 distinct IPOs - so this is real.
+    const d = deps();
+    const s = await fillIssueTypesFromReport(
+      [pair('Vikram Solar Limited', 'BOOK_BUILDING'), pair('Vikram Solar India Private Limited', 'FIXED_PRICE')],
+      d
+    );
+    expect(foldCompanyIdentity('Vikram Solar Limited'))
+      .toBe(foldCompanyIdentity('Vikram Solar India Private Limited'));
+    expect(s.reportAmbiguous).toBe(2);
+    expect(s.filled).toBe(0);
+    expect(d.fillIssueTypeIfNull).not.toHaveBeenCalled();
+  });
+
+  it('two report rows that AGREE write once, and the second is not counted as alreadySet', async () => {
+    const d = deps();
+    const s = await fillIssueTypesFromReport(
+      [pair('Vikram Solar Limited', 'BOOK_BUILDING'), pair('Vikram Solar India Private Limited', 'BOOK_BUILDING')],
+      d
+    );
+    expect(s.filled).toBe(1);
+    expect(s.alreadySet).toBe(0);
+    expect(s.reportAmbiguous).toBe(1);
+  });
+
+  it('OPEN DATE disagreement refuses - a name match is not an identity match', async () => {
+    // A refile, or an old SME issue whose name folds onto a newer mainboard one.
+    const d = deps({ storedOpenDate: vi.fn(async () => '2023-04-11') });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd', 'BOOK_BUILDING', '2026-09-18')], d);
+    expect(s.dateMismatch).toBe(1);
+    expect(s.filled).toBe(0);
+    expect(d.fillIssueTypeIfNull).not.toHaveBeenCalled();
+  });
+
+  it('matching open dates still write', async () => {
+    const d = deps({ storedOpenDate: vi.fn(async () => '2026-09-18') });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd', 'BOOK_BUILDING', '2026-09-18')], d);
+    expect(s.filled).toBe(1);
+  });
+
+  it('a MISSING date on either side does not invent a check', async () => {
+    const noStored = deps({ storedOpenDate: vi.fn(async () => null) });
+    expect((await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd', 'BOOK_BUILDING', '2026-09-18')], noStored)).filled).toBe(1);
+    const noReport = deps({ storedOpenDate: vi.fn(async () => '2023-04-11') });
+    expect((await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd', 'BOOK_BUILDING', null)], noReport)).filled).toBe(1);
   });
 });
 
