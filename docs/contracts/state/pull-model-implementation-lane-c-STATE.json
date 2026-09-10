@@ -1,0 +1,40 @@
+{
+  "contract": "docs/contracts/2026-09-10-pull-model-implementation-lane-c.md",
+  "slug": "pull-model-implementation-lane-c",
+  "lane": "C",
+  "startedAt": "2026-09-10T07:42:36.000Z",
+  "timestampSource": "date(1) read in the same command that wrote this file",
+  "order": [14, 2, 12, 3],
+  "currentItem": null,
+  "runState": "HALTED-OWNER",
+  "haltPrecondition": "0.2.3(h)",
+  "haltNote": "lane A has not released 14, 12, 2, 3; type the split in lane A's session",
+  "haltEvidence": {
+    "measuredAt": "2026-09-10T07:42:36.000Z",
+    "laneALedgerRef": "origin/ops/impl-loop-ledger",
+    "laneALedgerHead": "32b34e1c 2026-09-10T13:06:11+05:30",
+    "laneAItems": [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 17],
+    "laneAOrder": [1, 15, 13, 14, 12, 4, 2, 3, 5, 6, 7, 9, 10, 17, 11],
+    "fourItemsStillInLaneAQueue": [14, 12, 2, 3],
+    "ownerTypedReleaseLineInLaneALedger": false,
+    "laneANote90": "LANE C relayed 2026-09-10 12:45 IST ... NOT ADOPTED - the peer itself says to wait for the owner to type it here",
+    "collisionSoFar": "none - all four items are PENDING in lane A with zero slices and zero PRs"
+  },
+  "testDb": { "name": "ipodhan_test3", "drop": "OWED", "note": "database reported to exist and be migrated by the supervisor session that authored the contract; this run has NOT reproduced that claim and has never connected to it. The OWED marker is written here at halt time precisely because decision 21's debt was otherwise invisible: the database exists with no state file naming it." },
+  "items": {
+    "item-14": { "item": 14, "card": "docs/design/build-cards/item-14-bse-share-count-conversion.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-02": { "item": 2, "card": "docs/design/build-cards/item-02-field-manifest-and-priority-config.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-12": { "item": 12, "card": "docs/design/build-cards/item-12-name-normaliser-and-duplicate-detection.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
+    "item-03": { "item": 3, "card": "docs/design/build-cards/item-03-matrix-cleanup.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } }
+  },
+  "prGate": { "laneCRunsToday": 0, "repoRunsTodayAtPreflight": 14, "laneCDailyCap": 15, "repoStopAt": 50 },
+  "notes": [
+    "2026-09-10 13:12 IST preflight: 7 of 8 preconditions pass. (a) origin/main green. (f) repo pr-gate runs this IST day = 14, well under the 50 stop. (g) scripts/ops/test-db-lifecycle.mjs confirmed on origin/main.",
+    "2026-09-10 13:12 IST HALT on (h), re-measured twice (13:02 and 13:11 after a forced re-fetch). Both reads agree: 14, 12, 2, 3 are still lane A's. The contract pre-empts the loophole: 'a lane A plan file that names item 14 is not a release.'",
+    "2026-09-10 13:12 IST Deviation to record when the run starts: the pre-made plan says item 14 waits for item 13's last slice. Item 13 is LANE A's. 14-S1 is test-only and touches no lane A file, so lane C does NOT wait for item 13.",
+    "2026-09-10 13:12 IST Item 14 is smaller than the design implies. computeBSEIssueSize already exists, is floor-priced and guarded, with three passing tests. 14-S1 is one test-only slice: assert the smallest plausible SME payload clears c_issue_size_floor's threshold READ FROM THE JSON at test time, not copied as a literal.",
+    "2026-09-10 13:12 IST Filed #468 from the session-start floor delta: m_live_ipo_has_state NEW - Manika Plastech Limited is UPCOMING with zero document_fetch_state rows. Distinct from #453 (same company, null price band) and from #356 (row never created). Deferred: belongs to no lane's queue.",
+    "2026-09-10 13:12 IST Supervisor session ipodhan-62 messaged confirming the (h) halt is the correct outcome. Recorded as information per decision 22, not as an owner decision; it loosens nothing.",
+    "2026-09-10 13:12 IST Notifier line skipped cleanly: no NOTIFIER_URL/NOTIFIER_KEY in the local GLOBAL.env. The owner is in this session, which is the stronger channel."
+  ]
+}
