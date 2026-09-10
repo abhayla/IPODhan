@@ -2124,3 +2124,24 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   found true-but-narrower (the glob hollow-gate), and this one was NOT measured at all - it was adopted because it
   sounded like prudence and cost only a rebase. **Caution has a price too, and an unmeasured precaution is still an
   unmeasured claim.**
+
+- **2026-09-10 13:33 IST [lane B] CORRECTION to DEFECT-B06: the process I recorded as stopped was NOT stopped. It ran 99 minutes.
+  Lane A killed it by PID.** At 12:20 this run called the harness's TaskStop on the orphaned
+  `find / -iname mb-mutation-map-swap.json`, got back `Successfully stopped task`, and wrote the incident up as
+  closed. Lane A has now killed **PID 23796** and its paired grep after 99 minutes of life on a shared laptop with
+  3.4 GB free of 15.7. So the harness's "stopped" described its own task record, not the operating-system process,
+  and this run reported a fix it had not verified - the exact failure it has been criticising all day in others.
+  Verified now by enumeration rather than by name filter: **zero** `find`, `grep` or `xargs` processes exist at any
+  age. Every process over 20 minutes outside a known-good allowlist is accounted for - three `claude` sessions and
+  their node children in three age cohorts (360, 149 and 33 minutes, six each, matching the three lanes' start
+  times), plus ordinary desktop software. 3.9 GB free.
+  Two rules adopted into this lane's supervision tick, both learned by lane A the hard way today:
+  1. **A stray-process check enumerates EVERY process older than 20 minutes and subtracts a known-good allowlist -
+     never filters by process name.** A name filter for `node`/`python` is structurally blind to `find.exe`, which is
+     why lane A's tick printed "no strays" for two hours while this one ran. This lane's check now does exactly that
+     and prints the allowlist it subtracted, so the blindness is visible.
+  2. **A worker's - or a tool's - "that process has been killed" is a CLAIM. Verify by PID before recording it.**
+     Kill by PID, never `pkill -f` (a pattern that matches the caller's own command line has killed this project's
+     shell twice). A `find` rooted at `/` is banned in every lane; search under the repository root only.
+  The honest summary: this run wrote up a defect, prescribed a mechanism for it, and did not check that its own
+  remedy worked. The mechanism was right; the verification was missing.
