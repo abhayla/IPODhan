@@ -240,12 +240,16 @@
     {
       "at": "2026-09-10T23:37:26.193Z",
       "what": "#596 MERGED (fd09b244), all seven checks green, count verified by hand before merging because my own monitor produced a hollow pass an hour earlier. Branch deleted separately. The item 8a PARSE PATH is complete on main: section locator, header-based column mapper, row extractor - 36 tests across the three, every rule mutation-checked with the mutation asserted to have applied. Remaining for item 8: wire the parse path into extract_filing.py so it actually runs and persists, then 8b (derive the three ratios)."
+    },
+    {
+      "at": "2026-09-10T23:43:45.795Z",
+      "what": "#602 opened: end-to-end peer read. THE ORDER IS THE DESIGN - extract_filing reads text only and closes each page because pdfplumber caching pins gigabytes on a 400-page prospectus under a hard RLIMIT_AS ceiling, so tables are extracted for ONE page, the one the locator names. Memory rule asserted by two tests and proved by a mutation that asks every page with the exception path neutralised. Four distinct miss reasons where the old block could only say no-peers, including section-found-but-no-table (Glasswall, where reporting not-in-document would be false). The table-extraction-failed reason came from a test I wrote expecting to pass: a raising provider took down the whole document extraction. 10 tests, 256 passed 3 skipped. NOT yet called by extract_filing - next slice."
     }
   ],
   "items": {
     "8": {
       "status": "PREMISE_SETTLED_FIXTURES_MERGED",
-      "slices": "8-pre, locator (py), cell fixtures, constraints, rotation recipe, column mapper + row extractor (#596, fd09b244) all MERGED. PARSE PATH COMPLETE. Remaining: wire into extract_filing.py and persist; then 8b.",
+      "slices": "8-pre, locator, cell fixtures, constraints, rotation recipe, mapper+rows all MERGED. #602 open: end-to-end reader with the one-page memory rule. Next: call it from extract_filing and persist.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -685,7 +689,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T23:37:26.193Z",
+  "lastStateWriteAt": "2026-09-10T23:43:45.795Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
