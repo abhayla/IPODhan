@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   issueTypeFromPricingMethod,
   issueCategoryToSegment,
+  collectIssueTypesFromReport,
 } from '../../../src/scrapers/chittorgarh-report82-fields.js';
 import fixture from '../../../../docs/design/probes/fixtures/chittorgarh/report-82-pricing-method.json' with { type: 'json' };
 
@@ -90,5 +91,54 @@ describe('issueCategoryToSegment — the same field carries the segment', () => 
     // "Mainboard". Accepting both here would silently paper over a source change.
     expect(issueCategoryToSegment('Mainline')).toBeNull();
     expect(issueCategoryToSegment('')).toBeNull();
+  });
+});
+
+describe('collectIssueTypesFromReport — pure, and it drops what it cannot read', () => {
+  const strip = (h: string) => String(h).replace(/<[^>]*>/g, '').trim();
+
+  it('collects the readable rows from a real fixture payload', () => {
+    const rows = (fixture as any).sampleRows as Array<Record<string, unknown>>;
+    const got = collectIssueTypesFromReport(rows, strip);
+    expect(got.length).toBe(rows.length);
+    expect(got.every((r) => r.companyName.length > 0)).toBe(true);
+    expect(new Set(got.map((r) => r.issueType))).toEqual(
+      new Set(['BOOK_BUILDING', 'FIXED_PRICE'])
+    );
+  });
+
+  it('strips the anchor markup the report wraps company names in', () => {
+    const got = collectIssueTypesFromReport(
+      [{ Company: '<a href="/ipo/x/1/">Axiom Gas Engineering Ltd.</a> ', 'Pricing Method': 'Bookbuilding' }],
+      strip
+    );
+    expect(got).toEqual([{ companyName: 'Axiom Gas Engineering Ltd.', issueType: 'BOOK_BUILDING' }]);
+  });
+
+  it('DROPS a row whose Pricing Method it cannot read — never defaults it', () => {
+    // issue_type feeds a check that EXEMPTS FIXED_PRICE. Guessing here would
+    // silence a real defect, so an unreadable row is skipped instead.
+    const got = collectIssueTypesFromReport(
+      [
+        { Company: 'Readable Ltd', 'Pricing Method': 'Fixed Price' },
+        { Company: 'Unreadable Ltd', 'Pricing Method': 'Something New' },
+        { Company: 'Empty Ltd', 'Pricing Method': '' },
+      ],
+      strip
+    );
+    expect(got.map((r) => r.companyName)).toEqual(['Readable Ltd']);
+  });
+
+  it('drops a row with no company name rather than emitting a nameless pair', () => {
+    const got = collectIssueTypesFromReport(
+      [{ Company: '', 'Pricing Method': 'Bookbuilding' }, { 'Pricing Method': 'Bookbuilding' }],
+      strip
+    );
+    expect(got).toEqual([]);
+  });
+
+  it('tolerates an empty or absent payload', () => {
+    expect(collectIssueTypesFromReport([], strip)).toEqual([]);
+    expect(collectIssueTypesFromReport(undefined as never, strip)).toEqual([]);
   });
 });

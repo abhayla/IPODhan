@@ -72,3 +72,35 @@ export function issueTypeFromPricingMethod(raw: string | null | undefined): Issu
 export function issueCategoryToSegment(raw: string | null | undefined): Segment | null {
   return ISSUE_CATEGORY[normaliseCell(raw)] ?? null;
 }
+
+/** One IPO's sourced issue type, ready to match against a stored row. */
+export interface Report82IssueType {
+  /** The company name as the report prints it, anchor markup stripped. */
+  companyName: string;
+  issueType: IssueType;
+}
+
+/**
+ * Collect the issue types a report-82 payload carries, from records the
+ * Chittorgarh scraper has ALREADY parsed. Pure: no fetch, no database, no
+ * matching — so the mapping is testable without either, and the caller decides
+ * how to match and whether to write.
+ *
+ * Rows whose `Pricing Method` is unrecognised are DROPPED, not defaulted. A row
+ * we cannot read is not a row we may guess at: `issue_type` feeds a check that
+ * exempts FIXED_PRICE, so a wrong value there silences a real defect.
+ */
+export function collectIssueTypesFromReport(
+  records: ReadonlyArray<Record<string, unknown>>,
+  stripAnchor: (html: string) => string
+): Report82IssueType[] {
+  const out: Report82IssueType[] = [];
+  for (const record of records ?? []) {
+    const companyName = stripAnchor(String(record['Company'] ?? '')).trim();
+    if (!companyName) continue;
+    const issueType = issueTypeFromPricingMethod(record['Pricing Method'] as string);
+    if (!issueType) continue;
+    out.push({ companyName, issueType });
+  }
+  return out;
+}
