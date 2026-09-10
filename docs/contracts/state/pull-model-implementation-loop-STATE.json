@@ -207,7 +207,11 @@
   "s8 PR #556 OPENED at 3591339f after I reproduced every gate: 27/27 unit, 6/6 parity, 118/0 floor, registry --check 0, and two per-guard mutations run individually on a clean tree (3 and 8 failures). Endorsed the builder's UNVERIFIABLE third state after confirming detection-floor-checks.mjs:775-778 maps it to EXIT_UNVERIFIABLE. TWO defects found in review that the builder did not report: the wrong derivation function, and a drift in the plain-JS normalizer copy that hits ORDINARY names - 'Hy-Tech Engineers Limited' (a real IPO in this database) folds hyphens in the TS SSOT and not in the JS copy. Three SSOT rules were missing. Re-ported rule by rule; all 11 rules now mutated individually and red.",
   "NINTH instance of the class tonight: normalize-company-name-parity.test.mjs is wired into CI at pr-gate.yml:308, runs in a deliberate Node-22 window, imports both copies, and is green - its twelve-name REAL_NAMES fixture simply contains no hyphenated name, no (India) suffix and no punctuation-only name. Every diverging shape was outside the sample. A sample is not a guard.",
   "s18 OPENED as a new slice and dispatched Tier A. It is the HARD ORDERING BLOCKER for s5b/s7a/s7b and it was not in the slice list at all - the row-key-scoped unique constraint on field_sources exists nowhere on main. Found while seeding s8's test database.",
-  "MY MISS, recorded because the rule is mine and I broke it: I hand-typed '2026-09-11T02:05:00+05:30' into the board payload instead of reading `date -Iseconds -u`. It was ~85 minutes ahead of the real clock, so the board's freshness strip would have read lane A as fresh no matter what happened - a freshness indicator fed by a typed timestamp cannot ever report stale, which is the same 'runs and measures nothing' class I spent the night finding in other people's checks. A peer session caught it. Corrected to 2026-09-10T19:11:04Z, read from the clock in the same command. Slice s15 is the mechanism; a rule I remember is not a mechanism."
+  "MY MISS, recorded because the rule is mine and I broke it: I hand-typed '2026-09-11T02:05:00+05:30' into the board payload instead of reading `date -Iseconds -u`. It was ~85 minutes ahead of the real clock, so the board's freshness strip would have read lane A as fresh no matter what happened - a freshness indicator fed by a typed timestamp cannot ever report stale, which is the same 'runs and measures nothing' class I spent the night finding in other people's checks. A peer session caught it. Corrected to 2026-09-10T19:11:04Z, read from the clock in the same command. Slice s15 is the mechanism; a rule I remember is not a mechanism.",
+  "[2026-09-10T19:18:57+00:00] VPS NODE VERSION MEASURED: v22.22.2, read from the self-hosted runner's own deploy log ('OK node >= 20 - found v22.22.2', run 34517604059 at 19:06:46Z) - no VPS contact needed. pr-gate pins node-version 20 in BOTH the unit job and scraper-document-integration. CI therefore tests a version production does not run. That gap is the direct cause of #548's red (a flag that exists only on Node 22.6+) and the reverse failure - green on 20, broken on 22 - is equally available and would only be found on the box.",
+  "[2026-09-10T19:18:57+00:00] Item 23 opened in the ledger with five slices; 23-S1 dispatched Tier A. 23-S0 (the CI Node bump) split out of 23-S1 against the peer's proposal to bundle them, on blast-radius grounds.",
+  "[2026-09-10T19:18:57+00:00] #548 did NOT merge on its green. Applied the cross-lane re-run rule: checked base 15c9b17d, main ecccc4bd, and `git diff --name-only 15c9b17d..origin/main` returned .github/workflows/deploy-linux.yml, docs-gate.yml, pr-gate.yml and scripts/ci/tests/check-docs-gate-coverage.test.mjs. Clause (1) - a gate the branch never ran - AND the branch itself edits pr-gate.yml. Rebased to db971bb4, CI re-running. Contrast: #547 merged with no re-run on a proven overlap=[none]. The rule spent one run and it was the right one.",
+  "[2026-09-10T19:18:57+00:00] I proposed one gap in the re-run rule to the peer: clause (2) is one-directional. It catches 'main changed a file my branch changes or imports'. It does not catch main gaining a NEW CALLER of something my branch changes the behaviour of - the branch's own file list and imports are unchanged, so the rule says merge and the merge is red. Suggested widening to include any file main gained that imports a file the branch changed, first level."
  ],
  "items": {
   "item-01": {
@@ -840,6 +844,60 @@
    "noCardYet": "Items 1-22 have build cards under docs/design/build-cards/. Item 23 has none - it needs one written before its slice plan, per Stage 1a. That card is the first unit of work, not the build.",
    "overlapToStateHonestly": "This partly supersedes s16. s16 moves web/.next/cache (1.5G of a 3.1G release) out of the release: it wins BOTH a smaller release AND faster incremental builds on the box. Once item 23 lands, the box does not build at all, so the build-speed half of s16 becomes moot and only the size half survives - and an artifact would not carry the cache anyway. s16 is still worth doing now: it is a small change that helps tonight, and item 23 is a much larger piece of work. But it should be built as an interim measure, not as permanent architecture, and its PR body should say so.",
    "alsoAffects": "s17 becomes less load-bearing under item 23: if a deploy is unpack-and-flip rather than npm ci + next build, its CPU cost collapses and the cadence matters much less. s17 still lands first and is still right for the box as it is today."
+  },
+  "item-23": {
+   "item": 23,
+   "card": "docs/contracts/plans/item-23-artifact-deploy.md",
+   "status": "IN-PROGRESS",
+   "ownerApproval": "typed 2026-09-10 ~22:3x IST: 'Approved: item 23, build in CI and deploy an artifact so the production server never runs npm ci or next build; lane A, after s17.' s17 merged e7ef5357, so the gate is open.",
+   "note": "NOT part of the /goal condition's item list (1,15,13,4,5,6,7,9,10,11,17) - it is owner-approved additional work, sequenced by the owner into lane A after s17. It does not substitute for any goal item.",
+   "slices": [
+    {
+     "k": "23-S0",
+     "title": "pr-gate node-version 20 -> 22 so CI runs the version the box runs",
+     "status": "PLANNED",
+     "tier": "A",
+     "pr": null,
+     "sha": null,
+     "why": "The VPS runs v22.22.2 (read from the self-hosted runner's own deploy log line 'OK node >= 20 - found v22.22.2', run 34517604059 at 2026-09-10T19:06:46Z). pr-gate's unit job pins node-version '20', as does scraper-document-integration. So CI tests a version production does not run, in both directions: #548 was red because a test used a flag that exists only on 22.6+, and the reverse (green on 20, broken on 22) is equally possible and would only be found on the box.",
+     "splitReason": "Peer session proposed bundling this into 23-S1. Split, deliberately: bumping CI from 20 to 22 has an UNKNOWN blast radius - it will surface latent failures in every suite that has only ever run on 20, which is the point of doing it, but bundled it would hold a green artifact pin hostage to whatever the bump shakes loose, and the two would be reviewed as one thing. Node bump FIRST, its own slice, blast radius stated as unknown, landed when the lanes are quiet with one line of warning, because it is clause (1) of the re-run rule for every open PR.",
+     "measurementsUnaffected": "23-S1 can proceed before this lands: the laptop is on v22.20.0 and the box on v22.22.2, so its measurements are already taken on the major we keep. Only what CI RUNS is at stake here, not what the artifact IS."
+    },
+    {
+     "k": "23-S1",
+     "title": "pin and measure: engines/.nvmrc, deploy asserts the major, tsx to scraper dependencies, measure the pruned tree",
+     "status": "BUILDING",
+     "tier": "A",
+     "pr": null,
+     "sha": null,
+     "rulingToProve": "The card rules that tsx (and anything else the scraper's start path imports at runtime) MOVES to scraper/package.json dependencies, keeping the runtime identical to today's tsx-from-source. Rejected: compiling via the never-invoked build script (changes runtime resolution), and a prune keep-list (rots silently). The builder is told to find the FULL set by npm ci --omit=dev into a scratch dir and running the real ESM import smoke under it - and that overturning the ruling with evidence is a legitimate outcome, far cheaper now than in 23-S3.",
+     "standaloneIsConditional": "output: 'standalone' goes into web/next.config.mjs ONLY if a local build with it actually serves /api/version from web/.next/standalone/server.js. Otherwise it is recorded as not-done with the reason. Either outcome passes the slice as long as it is measured."
+    },
+    {
+     "k": "23-S2",
+     "title": "build-artifact.yml on a GitHub-hosted runner, tarball + manifest, secret/cache exclusion check",
+     "status": "PLANNED",
+     "tier": "A",
+     "pr": null,
+     "sha": null
+    },
+    {
+     "k": "23-S3",
+     "title": "DEPLOY_MODE=artifact in deploy-linux.sh, checksum/node-major/native-module gates, build mode kept permanently",
+     "status": "PLANNED",
+     "tier": "A",
+     "pr": null,
+     "sha": null
+    },
+    {
+     "k": "23-S4",
+     "title": "one staging soak day, then default to artifact mode",
+     "status": "PLANNED",
+     "tier": "A",
+     "pr": null,
+     "sha": null
+    }
+   ]
   }
  },
  "prGateBudgetTonight": 20,
