@@ -3080,3 +3080,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   sufficient — it also has to be a fixture that can FAIL.** Two genuinely captured, genuinely real
   documents proved nothing here, because neither issuer publishes the numbers under test. A green
   extractor test against ARCIL would have meant only that empty input produced empty output.
+
+- 2026-09-10 21:15 IST **[lane B] delta-2 adopted at item 16** (read at `81a7e8f5`,
+  `docs/contracts/2026-09-10-implementation-lanes-delta-2.md`, 54 lines). Rulings 22 and 23 match my
+  ledger; 19's `NOT_YET_BACKFILLED` vocabulary is what item 18's invariant will copy.
+  **One factual correction to ruling 22**, sent to the supervisor: it says *"Lane B proves text
+  presence on the two matching RHPs first."* Only ONE is obtainable — `RHP_VINOD.zip` returns 404,
+  because VINOD has listed and NSE drops a company's detail links once it does. And the deeper point
+  the ruling could not have known: proving text presence on ARCIL does not unblock item 8, because
+  ARCIL publishes none of the values under test — no inventory ratios (it is an Asset Reconstruction
+  Company with no inventory) and no peer table (section 6 says the issuer declined to provide one).
+  So the "if absent, the owner decides" branch is not the live question; the live question is fixture
+  SELECTION, and the fixtures must be captured while an IPO is still open or the URL dies with it.
+  **§2.8 per-tree alias verdict for lane B:** `IPODhan-b22-esm` was junction-linked to the main
+  checkout and its bare-alias imports resolved to MAIN under vitest — marker-probed, confirmed, then
+  fixed with `wt-link-modules.ps1` (937 entries, 3 workspace packages re-pointed) and re-probed to
+  THIS WORKTREE. Every local proof I have cited since that fix is on the corrected tree; the ones
+  before it are the ones I already flagged, and none of my slices touches `packages/shared`, so none
+  is affected either way. `IPODhan-IPODhan-impl-loop-b` is docs-only and cites no local proofs.
