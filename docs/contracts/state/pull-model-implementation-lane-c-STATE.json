@@ -730,6 +730,18 @@
             "the duplicate re-scan under the new function, baseline 0/0/5, the five two-role bank rows kept",
             "open the PR after 00:00 IST with the s8b declaration re-checked"
           ]
+        },
+        "duplicateRescan": {
+          "at": "2026-09-10 21:24 IST",
+          "how": "Read-only against ipodhan_staging, zero writes. Grouped every row of all three child tables under BOTH the old and the new rowKeyForName, using each table ACTUAL E1 key.",
+          "result": {
+            "promoters": "29 rows - OLD 0 collisions, NEW 0, newly introduced NONE",
+            "peer_companies": "321 rows - OLD 0, NEW 0, newly introduced NONE",
+            "ipo_intermediaries": "194 rows - OLD 0, NEW 0, newly introduced NONE (keyed on ipo_id + role + normalized_name, which is the real constraint)"
+          },
+          "verdict": "The new normaliser introduces ZERO new row-key collisions on any of the three tables. Nothing blocks lane A E1.",
+          "the0_0_5Clarified": "The 0/0/5 baseline everyone has been quoting is the TWO-column key (ipo_id, normalized_name). Under the THREE-column key E1 actually uses for ipo_intermediaries, it is 0 - the five two-role banks hold DIFFERENT roles, so they never collided under the real constraint at all.",
+          "myNearMiss": "I almost filed a contradiction that does not exist. The E1 file first line reads \"ipo_intermediaries: UNIQUE (ipo_id, role, normalized_name) -- 5 collisions\" and I stopped there, ready to report that its stated key disagrees with its stated count. The very NEXT line says \"on the 2-column (ipo_id, normalized_name) key, 0 on this 3-column key.\" The document was exactly right and my scan confirms its numbers. Same class as citing a file without reading its own header - which I also did tonight with the tunnel test."
         }
       }
     },
@@ -1064,7 +1076,10 @@
     "2026-09-10 21:22 IST 12-B SQL TWIN RESOLVED. Agreement test 5 of 5 GREEN at defded4d, tunnel test deleted at fb5fe295. The rewrite was judged in SECONDS because the test had been built and committed RED first - that ordering has now paid three times tonight.",
     "2026-09-10 21:22 IST BOTH FAULTS HAD ONE ROOT CAUSE, and it was in my tooling, not the design: the SHELL collapses doubled backslashes inside heredocs, so the generated file carried SINGLE backslashes where a template literal needs DOUBLE. JS silently eats a lone backslash, so every pattern was quietly wrong; and a single-backslash backreference is an ILLEGAL OCTAL ESCAPE in a template literal, which truncated the emitted SQL and caused the syntax-error-at-AS I could not explain. The inverted nesting was a genuine second bug and is also fixed.",
     "2026-09-10 21:22 IST AND I CAUGHT IT BY ASSERTING BEFORE RUNNING. The generator now writes no literal backslash at all (chr(92) throughout) and the script checks the written file - 14 doubled-s, 3 doubled-y, 1 doubled-1, ZERO lone backslashes - before anything touches a database. That check could have failed, which is the only reason it was worth having. Same lesson as the whole evening.",
-    "2026-09-10 21:22 IST I ALSO CAUGHT MYSELF AVOIDING THIS. I said three times that 12-B was too delicate to rush, and by the third time that had stopped being discipline and started being avoidance of a frustrating debugging task. The disciplined version of do-not-rush is do-it-carefully, not do-not-do-it. Once I sat down with the diagnosis the whole thing took one attempt."
+    "2026-09-10 21:22 IST I ALSO CAUGHT MYSELF AVOIDING THIS. I said three times that 12-B was too delicate to rush, and by the third time that had stopped being discipline and started being avoidance of a frustrating debugging task. The disciplined version of do-not-rush is do-it-carefully, not do-not-do-it. Once I sat down with the diagnosis the whole thing took one attempt.",
+    "2026-09-10 21:24 IST 12-B DUPLICATE RE-SCAN DONE AND CLEAN. Read-only against staging, zero writes: promoters 29 rows, peer_companies 321, ipo_intermediaries 194 - OLD 0 collisions, NEW 0, NEWLY INTRODUCED NONE on all three, each under its ACTUAL E1 key. The new normaliser blocks nothing.",
+    "2026-09-10 21:24 IST AND IT CLARIFIES THE 0/0/5 EVERYONE HAS BEEN QUOTING: that 5 is the TWO-column key. Under the THREE-column key E1 actually uses for ipo_intermediaries it is 0, because the five two-role banks hold DIFFERENT roles and never collided under the real constraint at all.",
+    "2026-09-10 21:24 IST NEAR MISS I CAUGHT BY READING ONE MORE LINE. The E1 file first line says \"UNIQUE (ipo_id, role, normalized_name) -- 5 collisions\" and I was ready to report that its key contradicts its count. The NEXT line says \"on the 2-column key, 0 on this 3-column key\". The document was right; I had read a fragment. Exactly the same error I made earlier tonight citing the tunnel test without reading its own header, which is twice in one session that reading one line further would have saved a false claim."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
