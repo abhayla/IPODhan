@@ -32,7 +32,7 @@ current rule set was never written to judge is recorded and kept, not silently b
 
 | Path | State | Change |
 |---|---|---|
-| `scraper/config/validation-rules.yaml` | **NEW** (`scraper/config/` (LOCAL) created by item 2; this is the second file in that "family") | One entry per validation rule: id, `appliesTo` (table/column), `offeringTypes`, `segments`, `validFrom`/`validTo`, `assertion` |
+| `scraper/config/validation-rules.yaml` | **NEW** (`scraper/config/` (NEW) created by item 2; this is the second file in that "family") | One entry per validation rule: id, `appliesTo` (table/column), `offeringTypes`, `segments`, `validFrom`/`validTo`, `assertion` |
 | `scraper/config/validation-rules.schema.json` | **NEW** | JSON Schema (draft-07) for the file above |
 | `scraper/src/config/validation-rules-loader.ts` | **NEW** | `loadValidationRules()` — same parse-validate-throw contract as item 2's `loadFieldManifest()`, called from the same `scraper/src/index.ts` call site, right after it |
 | `scraper/src/services/field-extraction-validation.ts` | **NEW** | `validateFieldValue(params): FieldValidationOutcome` — the actual rule evaluator; pure function, no DB access, so it is unit-testable without a database |

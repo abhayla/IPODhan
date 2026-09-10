@@ -40,7 +40,7 @@ No schema change. Every check reads `ipo_field_plan` (item 5/6), `field_sources`
 State needed to compute NEW/GONE/SAME per check-run (the `signal-ownership.md` R3 requirement, and the
 same pattern `audit-detection-floor.mjs` already uses per its `"audit's own state dir on the box"`
 comment at line 158 of that script) is a JSON state file per script under the audit's existing state
-directory (`scripts/state/` (LOCAL), already present in this worktree per `git status` — not a DB table). (NEW)
+directory (`scripts/state/` (NEW), not a DB table).
 
 ## Interfaces
 
