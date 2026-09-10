@@ -89,6 +89,7 @@ async function main() {
     `SELECT i.id, i.company_name, i.isin, i.segment,
             i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
+            i.company_website,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
             d.issue_type

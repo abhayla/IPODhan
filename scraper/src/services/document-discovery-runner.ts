@@ -67,6 +67,9 @@ import {
   isStorableFromCompanyPage,
   isVerifierUrl,
   isResolvedAddressPrivate,
+  resolveHostVerdict,
+  type HostResolutionVerdict,
+  type HostResolutionReason,
 } from './company-host-source.js';
 import {
   planIpoCycle,
@@ -756,6 +759,22 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
 // Runner
 // ---------------------------------------------------------------------------
 
+/**
+ * One message per reason, so the log line SAYS what was established rather than
+ * asserting the same sentence for five different findings (#582).
+ */
+const REFUSAL_MESSAGE: Record<HostResolutionReason, string> = {
+  private_address:
+    'OD-37 download refusal: host REFUSED because it resolves to a private, loopback, link-local or metadata address',
+  dns_unresolvable:
+    'OD-37 download refusal: host REFUSED because it does not resolve at all - check the stored URL before suspecting the network',
+  dns_timeout: 'OD-37 download refusal: host REFUSED because the DNS lookup timed out (fail-closed)',
+  no_addresses: 'OD-37 download refusal: host REFUSED because DNS returned no addresses',
+  malformed_dns_answer:
+    'OD-37 download refusal: host REFUSED because DNS returned a malformed entry (fail-closed)',
+  public_address: 'OD-37: host allowed (public addresses only)',
+};
+
 export class DocumentDiscoveryRunner {
   private boardCache: BseBoardRow[] | null = null;
   /**
@@ -916,16 +935,24 @@ export class DocumentDiscoveryRunner {
     const cached = this.resolvedPrivateHosts.get(host);
     if (cached !== undefined) return cached;
 
-    const check = this.deps.resolveIsPrivate ?? isResolvedAddressPrivate;
-    let refused: boolean;
+    // #582. The injected `resolveIsPrivate` seam stays boolean for the tests
+    // that use it; the production path takes the verdict, because a boolean
+    // cannot say WHY. Five different outcomes used to arrive here as `true` and
+    // every one was logged as "resolves to a private address" — including a
+    // hostname that does not resolve at all. On staging that mislabelled a
+    // stored URL corrupted by one character (`www.hy{echengineers.com`) as a
+    // security refusal; the real host resolves to two public addresses.
+    const injected = this.deps.resolveIsPrivate;
+    let verdict: HostResolutionVerdict;
     try {
-      refused = await check(host);
+      verdict = injected
+        ? { refused: await injected(host), reason: 'private_address', addresses: [] }
+        : await resolveHostVerdict(host);
     } catch (err) {
       // Fail CLOSED, and say why: a resolver that throws is not evidence the
       // address is public. Carrying the cause matters — signal-ownership R6:
       // a failure that cannot be classified from its log line is a defect of
       // the logger.
-      refused = true;
       logger.warn(
         {
           host,
@@ -944,14 +971,29 @@ export class DocumentDiscoveryRunner {
       return true;
     }
 
-    this.resolvedPrivateHosts.set(host, refused);
-    if (refused) {
+    // A name that does not resolve, or a lookup that timed out, is a TRANSIENT
+    // or DATA fault, not a stable fact about the host — cached the same way a
+    // thrown resolver is not: never. Only a real answer is cached.
+    const isStableVerdict =
+      verdict.reason !== 'dns_unresolvable' && verdict.reason !== 'dns_timeout';
+    if (isStableVerdict) this.resolvedPrivateHosts.set(host, verdict.refused);
+
+    if (verdict.refused) {
       logger.warn(
-        { host, url, ipoKey, reason: 'resolved_private_address' },
-        'OD-37 download refusal: host REFUSED because it resolves to a private, loopback, link-local or metadata address'
+        {
+          host,
+          url,
+          ipoKey,
+          reason: verdict.reason,
+          // The evidence, so a refusal can be audited afterwards instead of
+          // taken on trust. Empty when the lookup failed or answered empty.
+          addresses: verdict.addresses,
+          ...(verdict.cause ? { cause: verdict.cause } : {}),
+        },
+        REFUSAL_MESSAGE[verdict.reason] ?? 'OD-37 download refusal: host REFUSED'
       );
     }
-    return refused;
+    return verdict.refused;
   }
 
   private async request(

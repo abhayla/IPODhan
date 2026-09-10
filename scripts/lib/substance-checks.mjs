@@ -260,6 +260,30 @@ export function checkRegistrarQuality(row) {
 // Ordered registry consumed by the audit script. `name` is the report label;
 // `predicate` is the pure function; `optional` flags checks whose underlying
 // table/columns may be absent (the audit guards these gracefully).
+
+// ---- Check 14: a stored company website that cannot be a URL ---------------
+// #582. `Hy-Tech Engineers Ltd.` carried `https://www.hy{echengineers.com` — a
+// brace where a `t` belongs. The host does not resolve (ENOTFOUND), while the
+// real `www.hytechengineers.com` answers on two public addresses, so the
+// company's own filings were unreachable because of ONE character.
+//
+// It surfaced wearing the wrong clothes: the download guard reported it as
+// "resolves to a private address", because every fail-closed path shared that
+// one message. A wrong reason is how a data defect hides as a security event.
+//
+// The alphabet is RFC 3986's unreserved + reserved set. Anything outside it in
+// a stored URL is corruption, not an exotic address — a real URL would have
+// been percent-encoded before it was stored.
+const URL_ALPHABET = /^[A-Za-z0-9:/?#[\]@!$&'()*+,;=._~%-]+$/;
+
+export function checkCompanyWebsiteCharacters(row) {
+  const site = row.company_website;
+  if (typeof site !== 'string' || site.trim() === '') return null;
+  if (URL_ALPHABET.test(site)) return null;
+  const bad = [...new Set(Array.from(site).filter((c) => !URL_ALPHABET.test(c)))].join('');
+  return `company_website contains character(s) outside the URL alphabet (${JSON.stringify(bad)}): ${site}`;
+}
+
 export const SUBSTANCE_CHECKS = [
   { key: 'date_ordering', name: 'Date ordering (open<=close<allotment<listing)', predicate: checkDateOrdering },
   { key: 'lot_size', name: 'lot_size in [1..100000]', predicate: checkLotSize },
@@ -273,4 +297,5 @@ export const SUBSTANCE_CHECKS = [
   { key: 'listing_performance', name: 'listing_price>0 & gain in [-90..900]%', predicate: checkListingPerformance },
   { key: 'gmp_sanity', name: 'latest GMP premium in [-50..200]% of issue price', predicate: checkGmpSanity, optional: true },
   { key: 'registrar_quality', name: 'registrar free of address/contact pollution', predicate: checkRegistrarQuality },
+  { key: 'company_website_characters', name: 'company_website free of characters outside the URL alphabet', predicate: checkCompanyWebsiteCharacters },
 ];

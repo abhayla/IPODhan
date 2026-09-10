@@ -425,7 +425,53 @@ function isPrivateIPv6Address(ip: string): boolean {
  */
 const DNS_LOOKUP_TIMEOUT_MS = 5_000;
 
-export async function isResolvedAddressPrivate(hostname: string): Promise<boolean> {
+/**
+ * Why a host was refused, and the evidence for it.
+ *
+ * #582. `isResolvedAddressPrivate` returned a bare boolean, so FIVE different
+ * outcomes - a genuinely private address, a hostname that does not resolve at
+ * all, a lookup that timed out, an empty answer, and a malformed DNS entry -
+ * all arrived at the caller as `true`, and the caller logged every one of them
+ * as "resolves to a private, loopback, link-local or metadata address".
+ *
+ * That is a message asserting a cause it never established. Measured on staging
+ * 2026-09-11: host `www.hy{echengineers.com` (a stored URL corrupted by one
+ * character) was reported as a private-address refusal. It does not resolve at
+ * all - ENOTFOUND - and the real host `www.hytechengineers.com` resolves to two
+ * public Cloudflare addresses. A data-corruption bug was wearing a security
+ * refusal's clothes, and nothing in the log could tell them apart.
+ *
+ * The caller already HAD a separate `resolver_error` branch for a throwing
+ * resolver. It was dead code: this function's own `catch` swallowed the throw
+ * and returned `true`, so a DNS failure could never reach it.
+ *
+ * `addresses` carries what the lookup actually returned, so a refusal can be
+ * audited after the fact instead of taken on trust (signal-ownership R6).
+ */
+export type HostResolutionReason =
+  | 'private_address'
+  | 'dns_unresolvable'
+  | 'dns_timeout'
+  | 'no_addresses'
+  | 'malformed_dns_answer'
+  | 'public_address';
+
+export interface HostResolutionVerdict {
+  refused: boolean;
+  reason: HostResolutionReason;
+  /** Addresses the lookup returned. Empty when it failed or answered empty. */
+  addresses: string[];
+  /** The resolver's own error code/message, when it failed. */
+  cause?: string;
+}
+
+/**
+ * Resolve a hostname and say, with evidence, whether it may be fetched.
+ *
+ * Fails CLOSED on every edge - the refusal behaviour is byte-for-byte what it
+ * was; only the REASON is now truthful.
+ */
+export async function resolveHostVerdict(hostname: string): Promise<HostResolutionVerdict> {
   let addresses: Array<{ address: string; family: number }>;
   let timer: ReturnType<typeof setTimeout>;
   try {
@@ -435,8 +481,18 @@ export async function isResolvedAddressPrivate(hostname: string): Promise<boolea
         timer = setTimeout(() => reject(new Error('dns lookup timed out')), DNS_LOOKUP_TIMEOUT_MS);
       }),
     ]);
-  } catch {
-    return true;
+  } catch (err) {
+    const cause = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: string } | null)?.code;
+    // A timeout and a name that does not exist are different failures with
+    // different owners: one is the network, the other is our stored data.
+    const timedOut = cause === 'dns lookup timed out';
+    return {
+      refused: true,
+      reason: timedOut ? 'dns_timeout' : 'dns_unresolvable',
+      addresses: [],
+      cause: code ? `${code}: ${cause}` : cause,
+    };
   } finally {
     // Both outcomes race the same timer; a won lookup otherwise leaves it
     // pending and holds the event loop open for up to DNS_LOOKUP_TIMEOUT_MS
@@ -444,11 +500,37 @@ export async function isResolvedAddressPrivate(hostname: string): Promise<boolea
     // would idle at exit rather than exiting immediately).
     clearTimeout(timer!);
   }
-  if (addresses.length === 0) return true;
-  return addresses.some(({ address, family }) => {
-    if (typeof address !== 'string' || address.length === 0) return true;
-    return family === 6 ? isPrivateIPv6Address(address) : isPrivateIPv4Address(address);
-  });
+
+  if (addresses.length === 0) {
+    return { refused: true, reason: 'no_addresses', addresses: [] };
+  }
+
+  const seen: string[] = [];
+  let malformed = false;
+  let priv = false;
+  for (const entry of addresses) {
+    const { address, family } = entry ?? {};
+    if (typeof address !== 'string' || address.length === 0) {
+      malformed = true;
+      continue;
+    }
+    seen.push(address);
+    if (family === 6 ? isPrivateIPv6Address(address) : isPrivateIPv4Address(address)) priv = true;
+  }
+
+  // Order matters and is deliberate: a malformed entry is reported as such only
+  // when nothing else already refuses, so a genuinely private answer is never
+  // relabelled as a parsing problem.
+  if (priv) return { refused: true, reason: 'private_address', addresses: seen };
+  if (malformed) return { refused: true, reason: 'malformed_dns_answer', addresses: seen };
+  return { refused: false, reason: 'public_address', addresses: seen };
+}
+
+export async function isResolvedAddressPrivate(hostname: string): Promise<boolean> {
+  // Kept as the boolean face of the same decision so existing callers and
+  // their tests are untouched. New callers should use resolveHostVerdict and
+  // log its reason - a refusal that cannot say why is the defect in #582.
+  return (await resolveHostVerdict(hostname)).refused;
 }
 
 /**
