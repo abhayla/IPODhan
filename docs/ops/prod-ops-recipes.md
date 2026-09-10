@@ -457,3 +457,33 @@ Without `DUPLICATE_INVARIANT_FOLDS` that invariant reports every duplicate group
 the right shape for detection but useless as a per-repair proof: staging carries 12 unrelated groups
 (finding F-57), so an unscoped run is permanently red there.
 
+## 8f. Re-key the child-table normalised names after a matcher change (staging, 2026-09-10 23:32 IST)
+
+Used when slice 12-B changed the company-name rule and every stored key went stale.
+Two independent tools must agree on the count BEFORE anything is written.
+
+```bash
+# from scraper/ — password exported inline, never written to a file
+export DATABASE_HOST=localhost DATABASE_PORT=15432 \
+       DATABASE_USER=ipodhan_app DATABASE_NAME=ipodhan_staging
+export DATABASE_PASSWORD="$(grep '^IPODHAN_APP_DB_PASSWORD=' D:/Abhay/GLOBAL.env | cut -d= -f2-)"
+
+npx tsx scripts/backfill-normalized-name.ts            # dry run is the DEFAULT
+npx tsx scripts/backfill-normalized-name.ts --apply    # staging only; prod needs --allow-prod AND the owner
+npx tsx scripts/backfill-normalized-name.ts            # re-run: must now report 0 (idempotence)
+
+# then the proof that actually counts — survives two REAL scraper cycles
+cd .. && node scripts/assert-repair-held.mjs \
+  scripts/lib/repair-invariants/normalized-name-current.mjs --cycles 2 --timeout-min 90
+```
+
+**Never do this with a SQL UPDATE.** The database copy of the rule has no branch
+for junk names and would blank those rows. The tool is the only correct writer.
+
+**Cross-check before writing:** the invariant module and the backfill's dry run
+must report the SAME number. On 2026-09-10 23:32 IST both said 50 (26 peer_companies +
+24 ipo_intermediaries) out of 544 total rows. Two tools agreeing is the check;
+one tool's count is not.
+
+**Measured result:** 50 stale -> 0, second dry run 0, exit 0.
+

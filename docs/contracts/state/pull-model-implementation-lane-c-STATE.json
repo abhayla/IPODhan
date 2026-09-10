@@ -878,6 +878,14 @@
         "proofOwed": "12-B owes its staging read: `node scripts/assert-repair-held.mjs normalized-name-current --cycles 2` after this deploys, plus the 544-row re-key run through backfill-normalized-name.ts UNCHANGED. Never a SQL UPDATE - the SQL twin has no junk: branch and would collapse those rows to the empty string. The merge is HOW the proof is obtained (defect-fix contract item 5 timing); the gate that REQUIRES it is the release cut, not this merge.",
         "deferred": "12-D2 (CIN as an identity tier) stays FUTURE. Measured at ZERO effect today, and it contradicts ipo-identity.ts:485 where an exact-name match deliberately beats a key match. Its trigger query is on the card.",
         "notDone": "Item 12 is NOT done. Every planned slice is merged and none of it is proven on real data yet."
+      },
+      "stagingRepair": {
+        "at": "2026-09-10 23:32 IST",
+        "db": "ipodhan_staging",
+        "tool": "scraper/scripts/backfill-normalized-name.ts (unchanged, dry-run default, single transaction)",
+        "crossCheck": "The invariant module and the backfill dry run independently reported the SAME 50 rows (26 peer_companies + 24 ipo_intermediaries) out of 544 total. Two tools agreeing is the check; one tool count is not.",
+        "result": "APPLY exit 0. Invariant re-read afterwards: 50 stale -> 0. Second dry run: 0 would change, so it is idempotent.",
+        "stillOwed": "assert-repair-held --cycles 2 is RUNNING in the background (timeout 90 min). A clean read right after a repair proves nothing about surviving the next real scraper cycle - that is the whole reason the tool exists."
       }
     },
     "item-03": {
@@ -1308,7 +1316,11 @@
     "2026-09-10 23:16 IST ALSO CORRECTED IN #536: 12-E test header claimed four companies would stop showing GMP until their names align, 4 of 28 records. Probing the real normaliser shows all four fold to equal strings and bind. That figure was reasoned, never measured.",
     "2026-09-10 23:23 IST MAIN IS GREEN. #536 merged at 0164e707, all five checks green, verified against the CURRENT main head rather than assumed: merge-base equalled origin/main at merge time, and I re-ran the previously-failing test from a fresh main checkout afterwards - 11 passed where there had been 9. Both peers told; #532 and the migration freeze unblocked.",
     "2026-09-10 23:23 IST ADOPTING THE PEER INTERIM RULE for the rest of this lane regardless of what the owner decides on branch protection: no merge unless every check is green against the CURRENT main head, re-run if main moved, and the merge line quotes the run URL. It costs one command and it would have caught this.",
-    "2026-09-10 23:23 IST THE MECHANISM, STATED PRECISELY because the shared picture had it slightly wrong: this was NOT a check that failed to run. Run 34506230714 genuinely ran the file and genuinely passed it, 9 tests inside a 279-file suite. It passed because at that base the country drop did not exist, so AMBIGUOUS was correct THERE. Two honest green PRs; the defect lives only in their combination. Only branch-up-to-date-before-merge closes that, and it is an owner call I have not taken."
+    "2026-09-10 23:23 IST THE MECHANISM, STATED PRECISELY because the shared picture had it slightly wrong: this was NOT a check that failed to run. Run 34506230714 genuinely ran the file and genuinely passed it, 9 tests inside a 279-file suite. It passed because at that base the country drop did not exist, so AMBIGUOUS was correct THERE. Two honest green PRs; the defect lives only in their combination. Only branch-up-to-date-before-merge closes that, and it is an owner call I have not taken.",
+    "2026-09-10 23:32 IST 12-B STAGING REPAIR DONE, proof still running. Staging took 0164e707 at 17:51 UTC, which carries 12-B. The invariant was firing exactly as 12-B predicted: 50 STALE rows whose stored key still carried a trailing country word (\"amber enterprises india\" vs the new \"amber enterprises\").",
+    "2026-09-10 23:32 IST CROSS-CHECKED BEFORE WRITING ANYTHING: the invariant module and the backfill dry run independently reported the SAME 50 (26 peer_companies + 24 ipo_intermediaries) out of 544 total rows. Two tools agreeing is the check; one tool count is not - and tonight a single count already lied to me once.",
+    "2026-09-10 23:32 IST APPLIED through the productized tool unchanged, never a SQL UPDATE (the SQL twin has no junk: branch and would blank those rows). Exit 0. Invariant re-read after: 50 -> 0. Second dry run: 0 would change, so idempotent. THE PROOF IS NOT DONE: assert-repair-held --cycles 2 is running in the background, because a clean read right after a repair proves nothing about surviving the next real scraper cycle.",
+    "2026-09-10 23:32 IST Recipe written into docs/ops/prod-ops-recipes.md 8f the same turn it was used, per the standing rule, including the two-tools-must-agree precondition and the never-a-SQL-UPDATE warning."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
