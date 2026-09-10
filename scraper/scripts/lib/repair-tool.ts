@@ -147,7 +147,15 @@ export async function openRepairDb(
   return { dbName, isProd };
 }
 
-/** Read the currently-stored provenance source for one (ipo, table, field), or null. */
+/**
+ * Read the currently-stored provenance source for one (ipo, table, field), or null.
+ *
+ * CORRECT FOR NOW, NOT CORRECT IN GENERAL: this selects by the 3-column key and
+ * takes the first row. Every row_key is '' today, so there is exactly one row to
+ * find. Once slice s5b writes real row keys this will pick an ARBITRARY sibling.
+ * Which row key a repair should read is a design question owned by s5b/s7a/s7b —
+ * do not guess it here.
+ */
 export async function readFieldSource(
   txLike: SelectInsertLike,
   params: { ipoId: string; tableName?: string; fieldName: string }
@@ -223,7 +231,19 @@ export async function upsertFieldSource(
       ...row,
     })
     .onConflictDoUpdate({
-      target: [schema.fieldSources.ipoId, schema.fieldSources.tableName, schema.fieldSources.fieldName],
+      // MUST mirror unique_field_source_per_ipo (item 1 slice s18:
+      // ipo_id, table_name, row_key, field_name). Postgres needs an arbiter
+      // index matching this list EXACTLY, and the non-unique lookup index
+      // idx_field_sources_ipo_table_field does not qualify — a 3-column target
+      // here is 42P10 on the first write of EVERY repair tool, since
+      // scripts/ci/require-repair-tool-module.mjs forces them all through this
+      // module. rowKey is omitted from .values() above, so it defaults to ''.
+      target: [
+        schema.fieldSources.ipoId,
+        schema.fieldSources.tableName,
+        schema.fieldSources.rowKey,
+        schema.fieldSources.fieldName,
+      ],
       set: row,
     });
 

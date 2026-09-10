@@ -54,7 +54,7 @@
 ## Pre-made design decisions (the run must NOT pause on these)
 
 1. **The key is widened, not replaced.** `field_sources` and `data_conflicts` each gain a `row_key varchar(200) NOT NULL DEFAULT ''`. Empty string is the singleton sentinel for every table with one row per IPO; it is NOT nullable, because two NULLs are not equal under a unique index and two empty strings are.
-2. **The unique constraint is renamed as well as widened.** `unique_field_source_per_ipo` becomes `unique_field_source_per_ipo_row` on `(ipo_id, table_name, row_key, field_name)`. A constraint whose meaning changed but whose name did not is a trap for the next migration that only ALTERs.
+2. **The unique constraint is widened, and its NAME IS KEPT.** `unique_field_source_per_ipo` becomes `(ipo_id, table_name, row_key, field_name)` under the same name. REVERSED 2026-09-11 (slice s18): this contract originally called for a rename to `unique_field_source_per_ipo_row` on the grounds that a constraint whose meaning changed but whose name did not is a trap for the next ALTER-only migration. The name is referenced by migrations 0027 and 0038 and by the ops recipes, and `scripts/assert-schema-drift.ts` looks constraints up by name but compares the exact ORDERED column list — so the trap yields a loud drift failure, not a silent one. See the build card's "Reversal" section.
 3. **The natural key per table is the build card's**, not this run's to invent: `fiscalYear:basis` for `financial_statements`, `pricingEvent` for `ipo_valuation`, normalised company name for `promoters` and `peer_companies`, `role:normalizedName` for `ipo_intermediaries`, a heading hash for `ipo_risk_factors`, and `''` for `ipo_details` and `anchor_investors`.
 4. **The normalised-name column DOES NOT EXIST YET, and that changes the order of the work.** Measured
    2026-09-09 by `docs/design/probes/duplicate-scan.mjs` against production and confirmed against
@@ -171,7 +171,7 @@ year, each with a non-empty `row_key` of the form `fiscalYear:basis`. Read it in
 | Fork | Decision | Why |
 |---|---|---|
 | Widen the provenance key or add a parallel table | Widen, with `row_key NOT NULL DEFAULT ''` | One provenance table with one meaning; the sentinel keeps singleton tables working unchanged |
-| Rename the unique constraint or keep the name | Rename to `unique_field_source_per_ipo_row` | A constraint whose meaning changed but whose name did not is a trap for the next ALTER-only migration |
+| Rename the unique constraint or keep the name | KEEP `unique_field_source_per_ipo` (reversed 2026-09-11, slice s18) | The name is referenced by migrations 0027/0038 and the ops recipes; `assert-schema-drift.ts` compares the ORDERED column list under that name, so a stale ALTER-only reader fails loudly anyway |
 | Ship the constraint swap in the journal or gate it | `_gated/`, applied by hand after sign-off | Adding destructive DDL to the journal is how production columns get dropped |
 | Keep the old synthetic `rows` provenance write during transition | Delete it in the same change | Two provenance writers double-count every report that reads them |
 | Flag default | OFF everywhere, including local | The OFF path must be provably unchanged before the ON path is trusted |

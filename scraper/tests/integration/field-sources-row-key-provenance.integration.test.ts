@@ -396,6 +396,24 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
         confidence: 90,
       });
 
+      // DISCRIMINATING ASSERTION (review MINOR): read the table DIRECTLY,
+      // bypassing the repository and its cache. Under the old 3-column target
+      // the CACHE_B write UPDATED the CACHE_A row, so exactly ONE row existed
+      // and the cached CACHE_A read below still returned DRHP/70 from the
+      // stale entry — every assertion after this point passed for the wrong
+      // reason. Two rows in the table is the fact only the widened key can
+      // produce, and it cannot be faked by a warm cache.
+      const { rows: liveRows } = await pool!.query<{ row_key: string; source: string }>(
+        `SELECT row_key, source FROM field_sources
+          WHERE ipo_id = $1 AND table_name = 'ipo_gmp_cache_check' AND field_name = 'gmpValue'
+          ORDER BY row_key`,
+        [IPO_ID]
+      );
+      expect(liveRows.map((r) => [r.row_key, r.source])).toEqual([
+        ['CACHE_A', 'DRHP'],
+        ['CACHE_B', 'NSE'],
+      ]);
+
       // The warm CACHE_A entry is still TRUE — its row was never touched by
       // the sibling write, so serving it from cache is correct, not stale.
       const byOldKey = await repo!.findByField(IPO_ID, 'ipo_gmp_cache_check', 'gmpValue', 'CACHE_A');
