@@ -1468,8 +1468,15 @@ export async function persistFilingExtraction(
   // ------------------------------------------------- 6b. ipo_risk_factors
   //
   // The numbered RISK FACTORS chapter (extractor E8, `risk_factors`). Whole-set
-  // replace per IPO, like `promoters`: the seq numbering itself shifts between
-  // the ad and the final prospectus, so there is no stable per-row identity.
+  // replace per IPO, like `promoters`.
+  //
+  // Item 1 slice s6: this path no longer decides identity. It preserves the
+  // extractor's ORDER and nothing else — `IpoRiskFactorsRepository.
+  // replaceForIpo` derives `headingHash` (the row key), drops duplicates and
+  // re-derives `seq` from the surviving order, so there is exactly one place
+  // that can mint a risk factor's identity. The extractor's own `n`/`seq` is
+  // deliberately not carried through: it is a printed number that shifts
+  // between the ad and the final prospectus.
   const riskItems = list<{
     n?: number;
     seq?: number;
@@ -1478,19 +1485,17 @@ export async function persistFilingExtraction(
     kpis?: unknown;
   }>(extraction, 'risk_factors');
   const riskRows: IpoRiskFactorInsert[] = [];
-  riskItems.forEach((item, idx) => {
+  for (const item of riskItems) {
     const heading = typeof item?.heading === 'string' ? item.heading.trim() : '';
     // heading is NOT NULL in the schema; a row without one is not a risk factor.
-    if (heading === '') return;
-    const seq = typeof item?.n === 'number' ? item.n : typeof item?.seq === 'number' ? item.seq : idx + 1;
+    if (heading === '') continue;
     riskRows.push({
       ipoId,
-      seq,
       heading: heading.slice(0, 500),
       body: typeof item?.body === 'string' && item.body.trim() !== '' ? item.body : null,
       kpis: item?.kpis ?? null,
     });
-  });
+  }
   // W-82: `concentration_kpis` is a flat list of {label, value_pct}. The only
   // column in the schema that can hold it is `ipo_risk_factors.kpis` — jsonb ON
   // a risk-factor row — so a KPI is storable only when this same run is writing
@@ -1535,6 +1540,7 @@ export async function persistFilingExtraction(
       await replaceAllowed('ipo_risk_factors', {
         seq: null,
         heading: null,
+        headingHash: null,
         body: null,
         kpis: null,
       })

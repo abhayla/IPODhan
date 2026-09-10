@@ -1976,8 +1976,20 @@ export const ipoRiskFactors = pgTable(
     ipoId: uuid('ipo_id')
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
+    // Item 1 slice s6: DISPLAY ORDER ONLY. Re-derived from array position on
+    // every write and no longer load-bearing for identity — that is
+    // `headingHash` below.
     seq: integer('seq').notNull(),
     heading: varchar('heading', { length: 500 }).notNull(),
+    // Item 1 slice s6 (row key): first 16 hex chars of sha256 over the
+    // normalized heading — `headingHashForRiskFactor`, packages/shared/src/
+    // utils/risk-factor-heading-key.ts, the ONE implementation. Keeps the
+    // `''` DEFAULT until the gated file E2 is applied per slot (same shape
+    // and same reason as `normalizedName` on promoters/peers/intermediaries,
+    // slice s2): the default is what makes the journaled ADD COLUMN safe on
+    // the ~2130 pre-existing rows that have no hash yet. E2 drops it, so a
+    // caller can no longer omit the identity key.
+    headingHash: varchar('heading_hash', { length: 32 }).notNull().default(''),
     body: text('body'),
     kpis: jsonb('kpis'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -1985,7 +1997,13 @@ export const ipoRiskFactors = pgTable(
   },
   (table) => ({
     ipoIdIdx: index('idx_ipo_risk_factors_ipo_id').on(table.ipoId),
-    uniqueIpoSeq: unique('unique_ipo_risk_factors_ipo_seq').on(table.ipoId, table.seq),
+    // Item 1 slice s6: identity is the heading's content, NOT the position.
+    // The old `unique_ipo_risk_factors_ipo_seq` is dropped by the gated file
+    // E2 in the same reviewed step that adds this one.
+    uniqueIpoHeadingHash: unique('unique_ipo_risk_factors_ipo_heading_hash').on(
+      table.ipoId,
+      table.headingHash
+    ),
   })
 );
 
