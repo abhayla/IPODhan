@@ -847,3 +847,24 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   printed — and one company prints two of the three itself, which gives us a way to check our own
   arithmetic against the company's.
   **What is needed from you: nothing.** Still owed for later: a practice run of undoing a release.
+
+- 2026-09-10 22:35 IST — **Item 20 from 83% to 86% (6 of 7 merged). Item 16 is DONE and merged. Item 22 up to 5 of 8.**
+  The sixth of item 20's checks landed. I am calling it 6 of 7, not 100%, because a seventh check is
+  already built and waiting its turn — reporting 100% while a finished piece sits unopened would be
+  a nicer number and a false one.
+  **What a reader of ipodhan.com would notice.** Still nothing visible. Everything today is
+  machinery under the site. The one change with a future effect: documents hosted on a registrar's
+  own website — Link Intime, KFin, Bigshare — have been silently refused for weeks, and the fix for
+  that is now in checks. When it lands and runs, those documents start being fetched instead of
+  dropped, which over time means more filled-in fields on IPO pages.
+  **What went wrong, and this one is worth reading.** A check I merged an hour ago caught my own
+  next change before the pipeline ever saw it. The rule is "a safety switch listed as not-yet-wired
+  must be removed from the list the moment it IS wired" — and my new work wired one and left the
+  list untouched. That is the check doing exactly the job it was built for, on its author, within
+  the hour. Less good: one of the tests I wrote FOR that check asserted "the list has exactly one
+  entry left". That is a fact about today, not a rule, so it broke the instant the list shrank. If I
+  had not caught it, the easiest way for a future engineer to make the tests pass again would have
+  been to add a fake entry back to the list — the test would have pushed them the wrong way.
+  Replaced with the actual rule: every remaining entry names the piece of work that will close it.
+  **What is needed from you: nothing.** Still owed for later: a practice run of undoing a release,
+  and two test-server readings I have not yet taken.
