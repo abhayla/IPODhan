@@ -378,24 +378,28 @@
       "slices": [
         {
           "id": "12-A",
-          "status": "BUILT_HELD",
+          "status": "MERGED",
           "tier": "B",
-          "commit": "e5feea5c",
-          "branch": "feat/pm-c-item12-sA-single-company-identity-fold (pushed, no PR)",
-          "lines": "365 added / 10 deleted",
-          "title": "one company-identity fold, proven zero-false-merge on real names"
+          "pr": 510,
+          "mergeSha": "ff8a0522",
+          "title": "one company-identity fold, proven zero-false-merge on real names",
+          "proof": "DONE pre-merge, read-only: 709 real names across both databases, zero false merges. No proof debt."
+        },
+        {
+          "id": "12-C",
+          "status": "MERGED",
+          "tier": "A",
+          "pr": 511,
+          "mergeSha": "8047231e",
+          "title": "invariant catching a STALE row key, not just a missing one",
+          "proof": "DONE pre-merge, read-only: staging 0 stale at 19:52:56 IST (baseline for 12-B); detection proven red at 544 by mutating the deriving function. No proof debt."
         },
         {
           "id": "12-B",
           "status": "PLANNED",
           "tier": "A",
-          "title": "identity re-keyed - function, SQL twin, 531-row recompute, duplicate re-scan, TS-vs-SQL agreement test, one PR"
-        },
-        {
-          "id": "12-C",
-          "status": "PLANNED",
-          "tier": "A",
-          "title": "repair tool for existing duplicate rows, own dry-run evidence"
+          "title": "identity re-keyed - function, SQL twin, 544-row recompute, duplicate re-scan, TS-vs-SQL agreement test, delete the tunnel test, ONE PR",
+          "note": "now unblocked: its proof tool (normalized-name-current) is on main as of 8047231e"
         },
         {
           "id": "12-D",
@@ -410,8 +414,14 @@
           "title": "same identity rule in the grey-market source"
         }
       ],
-      "prs": [],
-      "mergeShas": [],
+      "prs": [
+        510,
+        511
+      ],
+      "mergeShas": [
+        "ff8a0522",
+        "8047231e"
+      ],
       "proof": {
         "status": "OWED",
         "cycle": null,
@@ -599,7 +609,8 @@
         "sideFinding": "Staging carries duplicate IPO rows production does not - 3 groups, 11 rows, slugs ending -o, -p, -lt, the trailing status-code artefacts of issue #16. A real data defect for item 12 later slices, NOT a fold problem, and the concrete case 12-C now has to repair.",
         "wiring": "The unit test needs none - pr-gate runs packages/shared vitest directory-wide at line 313. The parity test IS individually listed, so it was added to pr-gate.yml INSIDE the Node 22 window and before the Node 20 restore: it uses erasable-TS type stripping, and on Node 20 the SSOT import throws and it fails loud by design. Placement is load-bearing.",
         "detectionGate": "Does not fire - no file here is under scraper/src/services, scraper/src/scrapers, field-priority-matrix.ts or scraper/scripts/*.py. No declaration needed and none claimed."
-      }
+      },
+      "proofDebt": "NONE for 12-A and 12-C. Both are read-only work whose real-data proof was obtained BEFORE merge, against live databases, writing nothing. Unlike item 14 they owe no staging cycle. Stating this explicitly because merged-with-proof-owed is the default in this lane and these two are not that."
     },
     "item-03": {
       "item": 3,
@@ -861,7 +872,12 @@
     "2026-09-10 19:45 IST 12-A BUILT, PROVEN AND HELD at e5feea5c. Branch pushed, no pull request opened. 365 added / 10 deleted, in band.",
     "2026-09-10 19:45 IST 12-A REAL-DATA PROOF, the thing that matters for a fold feeding a row-deleting repair: ZERO false merges across 709 real company names. Production 333 rows / 333 distinct identities / zero collisions. Staging 376 / 356 / three groups, all three genuine same-company duplicates listed by name - ARCIL, H.R.Hygiene Products, Shree Balaji Mala Textiles.",
     "2026-09-10 19:45 IST 12-A SIDE FINDING: staging carries duplicate IPO rows production does not - 3 groups, 11 rows, slugs ending -o, -p, -lt, the status-code artefacts of issue #16. A real data defect for later item 12 slices, not a fold problem. It is the concrete case 12-C must repair.",
-    "2026-09-10 19:45 IST TWO FALSE RESULTS I CAUGHT IN MY OWN WORK ON 12-A, both the same shape - a green that meant nothing. The initial RED was false: the worktree had no node_modules, so the failure was vitest missing, not my module missing. And my first mutation silently failed to apply because the sed pattern did not match, so the parity test passed and proved nothing. Caught only by diffing before believing the pass. A test result is evidence only once the change you think you made is proven to have landed."
+    "2026-09-10 19:45 IST TWO FALSE RESULTS I CAUGHT IN MY OWN WORK ON 12-A, both the same shape - a green that meant nothing. The initial RED was false: the worktree had no node_modules, so the failure was vitest missing, not my module missing. And my first mutation silently failed to apply because the sed pattern did not match, so the parity test passed and proved nothing. Caught only by diffing before believing the pass. A test result is evidence only once the change you think you made is proven to have landed.",
+    "2026-09-10 20:08 IST 12-A MERGED as PR #510, sha ff8a0522. 12-C MERGED as PR #511, sha 8047231e. Item 12 is now two of five.",
+    "2026-09-10 20:08 IST NEITHER OWES A STAGING PROOF, which is unusual here and worth saying plainly. Both are read-only: 12-A proved zero false merges over 709 real names and 12-C proved 0 stale keys on staging plus detection red at 544, all before merge, writing nothing anywhere. Item 14 is the one carrying proof debt, not these.",
+    "2026-09-10 20:08 IST 12-B IS NOW UNBLOCKED. Its stated proof is assert-repair-held normalized-name-current --cycles 2, and that invariant reached main at 8047231e. Before tonight the tool did not exist, so 12-B could not have honoured its own contract.",
+    "2026-09-10 20:08 IST REBASE COST I OWN: main gained three commits touching pr-gate.yml while #510 was open, and pr-gate.yml is a file 12-A changes. I rebased rather than merge blind - GitHub reported CLEAN, but a clean TEXTUAL merge could still have placed my parity step outside the Node 22 window, which is the one thing that makes it fail. Verified after rebase: step at line 291, window 256 to 293, inside. That rebase consumed a CI run the peer had not budgeted. Justified, but mine.",
+    "2026-09-10 20:08 IST COUNT DISCREPANCY, unresolved and flagged rather than papered over: the peer reports 55 pr-gate runs today, my query of the same workflow reports 54. One of the two filters is wrong. It matters because the cap of 58 is being planned to the single run, and an off-by-one either wastes a slot or busts the cap."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
