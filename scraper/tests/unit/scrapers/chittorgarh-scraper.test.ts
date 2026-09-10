@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { scrapeChittorgarhIPOs } from '../../../src/scrapers/chittorgarh-scraper.js';
+import { scrapeChittorgarhIPOs, parseListingInfo } from '../../../src/scrapers/chittorgarh-scraper.js';
 import * as scraperUtils from '../../../src/utils/scraper-utils.js';
 
 /** Build one Chittorgarh API record with sane defaults, override as needed. */
@@ -269,5 +269,37 @@ describe('chittorgarh-scraper', () => {
       expect(result.ipos[0].openDate).toBeTruthy();
       expect(result.ipos[0].closeDate).toBe('2025-10-09');
     });
+  });
+});
+
+describe('item 2 slice 3a — parseListingInfo yields unknown when "Listing at" does not say', () => {
+  it('blank "Listing at" yields unknown segment and unknown exchange, never MAINBOARD/BOTH', () => {
+    const info = parseListingInfo('');
+    expect(info.segment).toBeNull();
+    expect(info.exchange).toBeUndefined();
+  });
+
+  it('whitespace-only "Listing at" yields unknown', () => {
+    const info = parseListingInfo('   ');
+    expect(info.segment).toBeNull();
+    expect(info.exchange).toBeUndefined();
+  });
+
+  it('"NSE SME" still yields SME (positive signal preserved)', () => {
+    const info = parseListingInfo('NSE SME');
+    expect(info.segment).toBe('SME');
+  });
+
+  it('a populated "Listing at" naming a real board without SME is a positive MAINBOARD signal', () => {
+    const info = parseListingInfo('BSE, NSE');
+    expect(info.segment).toBe('MAINBOARD');
+    expect(info.exchange).toBe('BOTH');
+  });
+
+  it('a full scrape with a blank "Listing at" cell writes a null segment, not MAINBOARD', async () => {
+    mockApiResponse([apiRecord({ 'Listing at': '' })]);
+    const result = await scrapeChittorgarhIPOs();
+    expect(result.ipos).toHaveLength(1);
+    expect(result.ipos[0].segment).toBeNull();
   });
 });

@@ -178,12 +178,23 @@ function parseChittorgarhAmount(amountStr: string): number {
  * @param listingAt - "BSE, NSE" or "NSE SME" or "BSE SME"
  * @returns {exchange, segment}
  */
-function parseListingInfo(listingAt: string): {
-  exchange: 'NSE' | 'BSE' | 'BOTH';
-  segment: 'MAINBOARD' | 'SME';
+export function parseListingInfo(listingAt: string): {
+  exchange: 'NSE' | 'BSE' | 'BOTH' | undefined;
+  segment: 'MAINBOARD' | 'SME' | null;
 } {
-  const normalized = listingAt.toUpperCase().trim();
+  const normalized = (listingAt || '').toUpperCase().trim();
 
+  // Item 2 slice 3a: a blank/missing "Listing at" cell carries no board
+  // signal at all -- it must yield unknown for BOTH fields, never a
+  // defaulted MAINBOARD/BOTH (the class this slice fixes). `listingExchange`
+  // uses `undefined` for unknown (its zod schema is .optional(), not
+  // .nullable() -- see validators.ts); `segment` uses `null` per its schema.
+  if (!normalized) {
+    return { exchange: undefined, segment: null };
+  }
+
+  // A populated "Listing at" naming an actual board without "SME" is a
+  // genuine positive MAINBOARD signal (the field literally states the board).
   let segment: 'MAINBOARD' | 'SME' = 'MAINBOARD';
   let exchange: 'NSE' | 'BSE' | 'BOTH' = 'BOTH';
 

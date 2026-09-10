@@ -898,6 +898,14 @@ export class DocumentDiscoveryRunner {
       attempts.push({ source: 'NSE', http: 0, ms: 0, outcome: 'no_symbol' });
       return null;
     }
+    // Item 2 slice 3a: a null/unknown segment MUST NOT silently default to
+    // the mainboard 'EQ' series — a real SME IPO would be queried against
+    // the wrong NSE series (wrong data or none). Report it as a genuine
+    // "could not answer" attempt rather than guessing.
+    if (ipo.segment !== 'SME' && ipo.segment !== 'MAINBOARD') {
+      attempts.push({ source: 'NSE', http: 0, ms: 0, outcome: 'unknown_segment' });
+      return null;
+    }
     const series = ipo.segment === 'SME' ? 'SME' : 'EQ';
     const url = `${NSE_IPO_DETAIL}?symbol=${encodeURIComponent(ipo.symbol)}&series=${series}`;
 

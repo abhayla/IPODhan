@@ -210,13 +210,24 @@ describe('detectSegmentFromExchange', () => {
       expect(detectSegmentFromExchange(['NSE', 'BSE'])).toBe('MAINBOARD');
     });
 
-    it('should return MAINBOARD for empty array', () => {
-      expect(detectSegmentFromExchange([])).toBe('MAINBOARD');
+  });
+
+  describe('item 2 slice 3a — unknown (no signal) yields null, never a defaulted MAINBOARD', () => {
+    it('an empty array carries no signal at all — returns null, not MAINBOARD', () => {
+      expect(detectSegmentFromExchange([])).toBeNull();
     });
 
-    it('should return MAINBOARD for null/undefined', () => {
-      expect(detectSegmentFromExchange(null as any)).toBe('MAINBOARD');
-      expect(detectSegmentFromExchange(undefined as any)).toBe('MAINBOARD');
+    it('null/undefined input carries no signal at all — returns null, not MAINBOARD', () => {
+      expect(detectSegmentFromExchange(null as any)).toBeNull();
+      expect(detectSegmentFromExchange(undefined as any)).toBeNull();
+    });
+
+    it('an array of blank/whitespace-only strings carries no signal — returns null', () => {
+      expect(detectSegmentFromExchange(['', '  '])).toBeNull();
+    });
+
+    it('a non-blank exchange naming a real board without SME is a positive MAINBOARD signal', () => {
+      expect(detectSegmentFromExchange(['NSE'])).toBe('MAINBOARD');
     });
   });
 
