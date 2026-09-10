@@ -368,6 +368,21 @@
           "title": "guard: stored normalized_name and heading_hash must re-compute to themselves under the current normaliser (#506)",
           "branch": "feat/pm-item01-s8b-derived-key-recompute-guard",
           "prBodyMustState": "Added to the pr-gate integration ALLOW-LIST at .github/workflows/pr-gate.yml:497 (scraper-document-integration job). It is an allow-list, not a glob - a guard not named on that run line executes nowhere and still looks like coverage. Reference #507: 11 of 17 files in scraper/tests/integration/ are in exactly that state."
+        },
+        {
+          "k": "s11",
+          "status": "PLANNED",
+          "tier": "A",
+          "pr": null,
+          "sha": null,
+          "title": "pr-gate integration allow-list: coverage test, triage of the 11, then add the runnable ones (#507)",
+          "order": "AFTER s8b, s6 and s9 - it is an item 1 slice under the shared web/CI hardening duty (delta 1 section 15), not a new item",
+          "plan": [
+            "1. Coverage test: every scraper/tests/integration/*.integration.test.ts is either named on the scraper-document-integration run line or on a named shrink-only exclusion list carrying a REASON per entry. This is the mechanical half; without it the eleventh file becomes the twelfth next month.",
+            "2. Triage the 11 with THREE categories, not two: on-the-list, excluded-with-reason, and BROKEN (reaches production through the SSH tunnel and cannot run in CI at all). A file that cannot run is broken, not excluded, and the list must say which.",
+            "3. Add the runnable ones LAST. Doing this first turns 11 silent non-runs into 11 loud failures with no plan."
+          ],
+          "notes": "company-name-normalizer-agreement.integration.test.ts is to be marked SUPERSEDED by lane C 12-B's own TS-vs-SQL agreement test (fixture ported plus junk and blank cases, run against the job's Postgres service, on the allow-list). Do not port it twice."
         }
       ],
       "prs": [
