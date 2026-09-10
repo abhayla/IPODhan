@@ -99,17 +99,19 @@
         },
         {
           "id": "14-S4",
-          "status": "PR-OPEN",
+          "status": "MERGED",
           "pr": 554,
           "tier": "A",
-          "title": "c_issue_size_consistency reports its coverage and never passes on zero examined"
+          "title": "c_issue_size_consistency reports its coverage and never passes on zero examined",
+          "mergeSha": "941cb57b"
         }
       ],
       "prs": [
         471
       ],
       "mergeShas": [
-        "10c96c6b"
+        "10c96c6b",
+        "941cb57b"
       ],
       "proof": {
         "status": "OWED",
@@ -1512,7 +1514,11 @@
     "2026-09-11 00:29 IST WHAT IT DELIBERATELY DOES NOT DO: fix the underlying gap. 91% of IPO rows carry no shares_offered, which is a data-population problem with a different owner. This makes the gap VISIBLE instead of absorbed into a PASS. Inventing a coverage threshold would be policy I have no basis for.",
     "2026-09-11 00:36 IST 14-S4 CLASS MEASURED RATHER THAN ASSERTED, because a Tier A reviewer has to verdict on covers-the-class and I would rather hand them evidence. The conflation is STRUCTURAL in all seven predicates in detection-floor-checks.mjs.",
     "2026-09-11 00:36 IST BUT ONLY ONE IS MISLEADING TODAY, measured over 277 production IPO rows: segment populated 277/277 (100%), issue_size floor 273/277 (98.6%), lot x band 269/277 (97.1%), corporate-action shape 269/277 (97.1%), and issue_size CONSISTENCY 24/277 (8.7%). The outlier is the one 14-S4 fixes; the other six examine 97-100% so their zero-violations is honest.",
-    "2026-09-11 00:36 IST DELIBERATELY NOT EXTENDING to the other six in this PR: a much larger diff for zero present effect, argued only from a speculative future coverage collapse. The honest version is a separate slice - every check reports its examined count so a collapse becomes visible WHEN it happens. Posted the measurement and that reasoning on the PR so a reviewer can overrule it on the table rather than by scope creep."
+    "2026-09-11 00:36 IST DELIBERATELY NOT EXTENDING to the other six in this PR: a much larger diff for zero present effect, argued only from a speculative future coverage collapse. The honest version is a separate slice - every check reports its examined count so a collapse becomes visible WHEN it happens. Posted the measurement and that reasoning on the PR so a reviewer can overrule it on the table rather than by scope creep.",
+    "2026-09-11 00:48 IST 14-S4 MERGED at 941cb57b. Five checks green, run 34518960959, checked base ad2dbdf8. Both clauses of the bounded re-run rule evaluated to ZERO - git diff --name-only ad2dbdf8..origin/main showed no movement at all, so no gate file and no two-directional overlap. Merge line carries the run URL, the base and the diff output, as the rule requires.",
+    "2026-09-11 00:48 IST THREE CI RUNS FOR ONE SLICE, and two of the re-runs were justified. Run 1 green, then main gained deploy-linux.sh; run 2 green, then main gained pr-gate.yml itself with a NEW staging-cadence gate step my branch had never executed, plus document-state-checks.mjs which is in my import set. Run 3 green with main still. The strict rule I started with had no fixed point during active hours; I raised that rather than relaxing it myself, and the bounded two-directional rule that replaced it is what I applied.",
+    "2026-09-11 00:48 IST THE AMENDMENT CAUGHT A REAL BLIND SPOT IN MY OWN COMPUTATION. My forward import set was 10 files. Adding files that IMPORT what I changed took it to 19 - audit-findings-to-issues.mjs, audit-ipo-coverage.mjs, floor-delta.mjs, migration-name-collision.mjs, vps-data-audit-cron.sh and two test files, none of which my forward set contained. A new caller of a changed signature is invisible one-directionally.",
+    "2026-09-11 00:48 IST ITEM 14 NOW HAS TWO MERGED SLICES (10c96c6b, 941cb57b) AND IS STILL NOT DONE. Its proof runs and FAILS on two live production rows, both behind the closed-board wall. 14-S4 made the proof honest, not passing - one of the two checks it relies on turned out to examine 8.7% of the population while reporting clean."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
