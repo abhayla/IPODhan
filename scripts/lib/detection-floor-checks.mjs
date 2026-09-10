@@ -141,6 +141,46 @@ export function checkIssueSizeSharesConsistency(row) {
   return null;
 }
 
+/**
+ * Item 14 slice 4: `checkIssueSizeSharesConsistency` returns null BOTH for a row
+ * it examined and found clean AND for a row it could not examine at all. That
+ * conflation is why the check could report "0 violation(s)" while looking at
+ * 24 of 277 production rows (8.7%) - and while skipping the exact two rows
+ * `c_issue_size_floor` was failing on. This predicate is the missing half: it
+ * says whether the row carries the data the check needs.
+ */
+export function issueSizeConsistencyExaminable(row) {
+  const size = toNumber(row.issueSize);
+  const shares = toNumber(row.sharesOffered);
+  const price = toNumber(row.priceRangeMax);
+  return size !== null && size > 0 && shares !== null && shares > 0 && price !== null && price > 0;
+}
+
+/**
+ * Runs the consistency check over a population and reports COVERAGE alongside
+ * the verdict. A scan that examined nothing returns UNVERIFIABLE, never PASS -
+ * an unexaminable population is the audit being blind, not the data being clean.
+ */
+export function summariseIssueSizeConsistency(rows) {
+  const violations = [];
+  let examined = 0;
+  for (const row of rows) {
+    if (!issueSizeConsistencyExaminable(row)) continue;
+    examined++;
+    const v = checkIssueSizeSharesConsistency(row);
+    if (v) violations.push({ row, message: v });
+  }
+  const total = rows.length;
+  const skipped = total - examined;
+  const status = examined === 0 ? 'UNVERIFIABLE' : violations.length === 0 ? 'PASS' : 'FAIL';
+  const coverage = `examined ${examined} of ${total} row(s), ${skipped} skipped (no shares_offered / issue_size / price_range_max)`;
+  const detail =
+    examined === 0
+      ? `${coverage} — nothing could be checked, so this is NOT a pass`
+      : `${violations.length} violation(s); ${coverage}`;
+  return { status, examined, skipped, total, violations, detail };
+}
+
 // ---- (d): lot x band SEBI window + corporate-action shape ------------------
 
 export function checkLotBandSebiWindow(row) {

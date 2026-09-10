@@ -52,6 +52,7 @@ import {
   checkExtractionStuck,
 } from './lib/document-state-checks.mjs';
 import {
+  summariseIssueSizeConsistency,
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
   checkIssueSizeSegmentFloor, checkIssueSizeSharesConsistency,
   checkLotBandSebiWindow, checkCorporateActionShape,
@@ -405,13 +406,19 @@ async function checkC() {
   for (const r of rows) {
     const v1 = checkIssueSizeSegmentFloor(r);
     if (v1) { floorOffenders.push(`"${r.company_name}" — ${v1}`); notify('c_issue_size_floor', 'P1', r.id, `issue_size below segment floor: ${r.company_name}`, v1); }
-    const v2 = checkIssueSizeSharesConsistency(r);
-    if (v2) { consistencyOffenders.push(`"${r.company_name}" — ${v2}`); notify('c_issue_size_consistency', 'P1', r.id, `issue_size inconsistent with shares x price: ${r.company_name}`, v2); }
+  }
+  // Item 14 slice 4: coverage is part of the verdict. This check examined 24 of
+  // 277 production rows (8.7%) while reporting a bare "0 violation(s)", and it
+  // skipped the exact rows c_issue_size_floor was failing on.
+  const consistency = summariseIssueSizeConsistency(rows);
+  for (const { row, message } of consistency.violations) {
+    consistencyOffenders.push(`"${row.company_name}" — ${message}`);
+    notify('c_issue_size_consistency', 'P1', row.id, `issue_size inconsistent with shares x price: ${row.company_name}`, message);
   }
   record('c_issue_size_floor', 'issue_size >= segment-appropriate floor', floorOffenders.length === 0 ? 'PASS' : 'FAIL',
     `${floorOffenders.length} violation(s)` + (floorOffenders.length ? `: ${floorOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
-  record('c_issue_size_consistency', 'issue_size (total incl. OFS) is within 0.75x-3.0x of shares_offered (net public offer) x price_range_max', consistencyOffenders.length === 0 ? 'PASS' : 'FAIL',
-    `${consistencyOffenders.length} violation(s)` + (consistencyOffenders.length ? `: ${consistencyOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+  record('c_issue_size_consistency', 'issue_size (total incl. OFS) is within 0.75x-3.0x of shares_offered (net public offer) x price_range_max', consistency.status,
+    consistency.detail + (consistencyOffenders.length ? `: ${consistencyOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
 // ---- (d): lot x band SEBI window + corporate-action shape -------------------
