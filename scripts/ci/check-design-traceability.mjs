@@ -429,6 +429,8 @@ function main() {
         );
       }
     }
+  } else {
+    lines.push('MODE 4 — SKIPPED (no --base given): hash drift was NOT compared');
   }
 
   const claimedLiveCount = liveIds.filter((id) => cardClaims.has(id) || declaredUnclaimed.has(id)).length;

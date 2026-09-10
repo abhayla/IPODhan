@@ -379,6 +379,26 @@ test('mode 4 is inert without --base: a non-git fixture tree still exits 0', () 
   }
 });
 
+test('mode 4 without --base prints an explicit skip line, never a silent no-op', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-900')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-900'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-900\n');
+
+    const res = runCheck(root); // no --base
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(
+      res.stdout,
+      /MODE 4 — SKIPPED \(no --base given\): hash drift was NOT compared/,
+      res.stdout + res.stderr
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('mode 4: hash changed at HEAD, neither card nor test in the diff -> exit 1, names the id + card', () => {
   const root = mkFixtureRoot();
   try {
