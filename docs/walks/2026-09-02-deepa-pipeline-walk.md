@@ -2724,3 +2724,30 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   real production import graph through the real entry point (catches anything reachable), and a static scan
   of both ESM trees (catches what nothing imports yet — provably invisible to the smoke import). PR #496,
   issue #497, staging proof OWED.
+
+- 2026-09-10 17:41 IST **[lane B] The review found my gate had a hole in the exact class it was built for.**
+  Tier A proved that a `__dirname` written inside a template-literal interpolation — the idiomatic way
+  to write this very bug — was reported PASS, because I blanked interpolations as if they were string
+  text. It also proved `__filename` sat in the banned list with zero test coverage: deleting it left the
+  suite green. The reviewer said merge and file follow-ups. I disagree and fixed both: shipping a gate
+  with a proven hole in its own class, and writing a ticket about it, IS the hollow observable this
+  slice is about.
+  Widening the scan from two directories to every genuinely-ESM surface (248 -> 393 files) surfaced 19
+  more hits. I checked each rather than assuming: 17 vitest configs, which vite bundles to CJS so
+  `__dirname` really does work there, and 2 uses of `createRequire(import.meta.url)`, which is correct
+  ESM. Zero real violations. That is the difference between a check that is trusted and one that is muted.
+  The combined change measured 645 lines, past the 400 cap, so it is split: #496 is the 38-line crash
+  fix plus the smoke import, and the scanner takes its own slice and its own review.
+
+- 2026-09-10 17:41 IST **[lane B] DEFECT-B18, mine, a repeat of a lesson I wrote this morning.** Undoing a test
+  mutation with `git checkout -- <file>` restored the file from the last COMMIT, wiping ~200 lines of
+  uncommitted hardening. Four of seven mutation results were then measured against the wrong file and
+  were worthless. DEFECT-B14 was the same command six hours earlier, and I had already written the rule.
+  Second occurrence in one day, so per Learn-or-block it becomes a **machine guard, not a lesson**:
+  `~/.claude/hooks/git-discard-uncommitted-guard.py` refuses `git checkout -- <path>` and
+  `git restore <path>` when git reports that path dirty, names the paths, and says to commit first and
+  restore from a backup copy. Verified in both directions five ways before wiring.
+  A near-miss inside that verification is worth naming too: the first test run printed `exit=2` five
+  times and looked like a working block. It was python failing to open an MSYS-mangled path. A red that
+  measured nothing reads exactly like a red that measured something — the same shape as every hollow
+  observable this run has hit. Re-ran with a Windows path before believing any of it.
