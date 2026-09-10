@@ -71,6 +71,7 @@ import {
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 import { checkPriceBand } from './lib/substance-checks.mjs';
+import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
 import {
   classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
   REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
@@ -1453,6 +1454,32 @@ async function checkP() {
     `${totals.doc} document-sourced vs ${totals.web} website-sourced rows in the last ${DOC_PROVENANCE_WINDOW_DAYS} days = ${pct.toFixed(1)}% — ${perField}`);
 }
 
+// ---- (q): per-row provenance on the multi-row child tables (item 1 slice s8)
+// field_sources.row_key defaults to '' — a writer that forgets to pass it
+// writes FY2023's and FY2024's provenance to the SAME key, silently naming the
+// wrong row. Only an independent read can see that. The all-'' state (today's
+// state: no caller keys rows yet) reports UNVERIFIABLE, never PASS — see the
+// header of scripts/lib/row-key-coverage-checks.mjs for the argument.
+const ROW_KEY_COVERAGE_NAME =
+  `every (ipo, child table) pair with MORE THAN ONE row in ${ROW_KEYED_CHILD_TABLES.join('/')} has a field_sources row for each of its row_keys`;
+
+async function checkQ_rowKeyCoverage() {
+  let result;
+  try {
+    result = await collectRowKeyCoverage(q);
+  } catch (e) {
+    record('q_field_sources_row_key_coverage', ROW_KEY_COVERAGE_NAME, 'UNVERIFIABLE',
+      `child tables or field_sources not readable: ${e.message}`);
+    return;
+  }
+  for (const offender of result.offenders) {
+    notify('q_field_sources_row_key_coverage', 'P1', offender.slice(0, 120),
+      'child rows with no per-row provenance', offender);
+  }
+  record('q_field_sources_row_key_coverage', ROW_KEY_COVERAGE_NAME, result.status,
+    result.detail + (result.offenders.length ? `: ${result.offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   console.log(`
@@ -1477,6 +1504,7 @@ async function main() {
   await checkN();
   checkO();
   await checkP();
+  await checkQ_rowKeyCoverage();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
