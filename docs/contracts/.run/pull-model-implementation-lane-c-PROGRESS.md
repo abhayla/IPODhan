@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 05:04 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 05:14 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1090,3 +1090,92 @@ blocked on external events and 266 false flags degrade the signal item 14's proo
 against.
 
 **Nothing of mine has written a database row. Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 05:14 IST - the board went stale for 44 minutes; the check fix is open as #601
+
+### My miss, caught by a peer tick
+
+`meta-c` was stamped 04:26 and still read *"three commits in, one to go, still in draft"* for
+work that had **merged** fourteen commits later, and still called #589 a data defect after I
+had inverted it. I wrote the tracked ledger and PROGRESS three times in that window.
+**The board is what the owner reads**, so for 44 minutes the owner-facing artifact said the
+opposite of my record on two separate points.
+
+This is precisely what lane A's slice **s15** exists for - *one command writes ledger, progress
+log and board payload, or fails loudly*. I had been writing the ledger and PROGRESS together in
+one command, which is why those stayed in step to the minute, and treating the board as a
+separate optional step. The coupling that was missing is the one already designed. I proved the
+need for it by being the failure case.
+
+### #601 is open, with a real-data proof
+
+The **same** audit script against staging, read-only, discrete `DATABASE_*` vars, password
+exported inline and never written to a file:
+
+| | violations |
+|---|---|
+| before (old check) | **239** |
+| after (new check) | **28** |
+
+And the script **names** all 28 rather than counting them: SIS and ADVENZYMES degenerate while
+still open; RAVELCARE stored 123 against an authoritative 130; APOLLO TECHNO 123 against 130;
+Unisem Agritech 63 against 65.
+
+Five mutations, all red - including restoring the **old naive rule**, which fails five tests
+including *"a CLOSED book-built issue with one price is NORMAL"*. That is the proof the new
+tests would have caught the old behaviour.
+
+**One mutation did not apply and reported green** - nested quoting in my patch command failed.
+The assert caught it and printed a traceback, so the non-result was visible instead of reading
+as a surviving mutation. Same trap as the ANSI grep and the wrapper exit code earlier; the
+assert made the difference, not care.
+
+### The oracle was in the query all along
+
+`listing_performance.issue_price` was already SELECTed and simply unused by this check. It must
+be read as the **raw** column, not the existing `issue_price` alias - that one is
+`COALESCE(lp.issue_price, i.price_range_max)`, which on a degenerate row **is** the stored
+value, so comparing against it would compare a number to itself and never fire. A mutation
+asserts that.
+
+**Nothing of mine has written a database row. Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 05:14 IST - #597 is a PRODUCTION defect, and I had not named the database
+
+A peer caught that #597 never said which database. I measured on **staging** and wrote it as if
+it were live. **The mirror of my own catch earlier tonight** - I stopped a production row
+deletion because peers reported duplicates "on production" that were on staging, then made the
+same error in the opposite direction.
+
+Re-read against **production**, read-only through the tunnel:
+
+| | staging | **production** |
+|---|---|---|
+| degenerate bands | 268 | 90 |
+| have an authoritative price | 207 | 47 |
+| **disagree - the defect** | 21 | **22** |
+| equal face value | 10 | 9 |
+
+**Production has one far worse than anything on staging: MARUTI INTERIOR PRODUCTS stored at 10,
+actually priced at 55 - 82% low.** Its stored value is its face value, so it is both the #515
+shape and an oracle disagreement. Nobody should assume one mechanism produced all 22.
+
+**I have not repaired anything on production and will not without the owner's word.** This is
+not a null-fill; it is overwriting existing wrong values on live rows.
+
+### I also corrected the proof precondition, which had become unsatisfiable
+
+The peer said not to read until the box serves `61391a9c`. It now serves `fd09b244`, a later
+deploy - so waiting for that exact sha would wait forever. The right condition is that the
+served sha **contains** the slice. Verified both ways: ancestry, and by content at the served
+sha (both files, the call site, the cadence key). Version endpoint read with `no-cache`.
+
+### The three numbers are unchanged, and that is expected
+
+29 rows, 22 values, 22 non-CHITTORGARH - identical to before. The fill runs on the **24-hour**
+aggregator cadence and the deploy landed minutes ago, so it has not fired. Recorded as a
+**pending** measurement, not dressed up as a pass or a failure.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
