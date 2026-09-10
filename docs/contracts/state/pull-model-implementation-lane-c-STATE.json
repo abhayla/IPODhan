@@ -1656,7 +1656,12 @@
     "2026-09-11 01:19 IST AND THAT ABSENCE IS EXPECTED, NOT A GAP: both rows carry listing_exchanges = [\"BSE\"] - BSE-ONLY listings, CLOSED, no ISIN, no bse_ipo_no. NSE past-issues would not contain a BSE-only listing. Checking that before reporting the absence as evidence is the difference between a finding and a false lead.",
     "2026-09-11 01:19 IST THE WALL, PROPERLY CHARACTERISED AT LAST: a BSE-ONLY, CLOSED row with no stored BSE identifier has no reachable source, because BSE is the only exchange that would list it and BSE publishes only its current board. Tested against THREE sources - BSE current board, Chittorgarh report 82 over four financial years, and NSE public-past-issues 1,431 records.",
     "2026-09-11 01:19 IST BOTH HALVES MATTER AND I WANT THEM STATED TOGETHER: my earlier reason - \"the exchanges publish only what is currently open\" - was BSE-only evidence written as a plural structural fact, and withdrawing it was right. The CONCLUSION survives, with better evidence and a far narrower testable shape. Being wrong about the reason did not make the conclusion wrong, and finding that out took three source checks rather than one.",
-    "2026-09-11 01:19 IST STILL OPEN AND NOT CLAIMED EITHER WAY: whether these two rows can be recovered by NAME plus DATE against some other archive. Untested."
+    "2026-09-11 01:19 IST STILL OPEN AND NOT CLAIMED EITHER WAY: whether these two rows can be recovered by NAME plus DATE against some other archive. Untested.",
+    "2026-09-11 01:21 IST VERIFIED THE STAGING DEPLOY STATE MYSELF rather than relaying it: DEPLOYED_SHA-staging reads ecccc4bd, release 20260910-190645-ecccc4bd.",
+    "2026-09-11 01:21 IST MY ITEM 2 STAGING PROOF STANDS. It was read against 49733e06, and 49733e06 IS an ancestor of ecccc4bd. Stating that explicitly because it would be easy to assume the deploy failures invalidated it and waste time re-doing a proof that is still good.",
+    "2026-09-11 01:21 IST BUT 14-S4 IS NOT ON STAGING: 941cb57b is NOT in ecccc4bd. So the new coverage line - \"examined 24 of 323 row(s), 299 skipped\" - will not appear there until a deploy succeeds, and a detection-floor read before then shows the OLD bare \"0 violation(s)\". A reader could easily mistake that for the fix not working.",
+    "2026-09-11 01:21 IST THE CAUSE IS RELAYED, NOT MEASURED BY ME, and I am marking it as such: lane B reports staging deploys fail at the drift assert since lane A alias preflight (#548) merged, because it requires a .git dir and a release directory is a git-archive extract without one. Plausible and theirs; I have not verified it.",
+    "2026-09-11 01:21 IST STANDING CONSEQUENCE FOR EVERY LANE C PROOF FROM HERE: check the served sha FIRST. 12-B next PBA extraction and 2-S3b repair evidence both need a green deploy before they mean anything, and reading them against a stale slot is exactly how I mis-classified STALLION six hours ago."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -1872,5 +1877,13 @@
     "theWallRESTATED": "A BSE-ONLY, CLOSED row with no stored BSE identifier has no reachable source - because BSE is the only exchange that would list it, and BSE publishes only its current board (37 rows). Tested against THREE sources: BSE current board (neither present), Chittorgarh report 82 across four financial years (neither present), NSE public-past-issues 1,431 records (neither present, and correctly so).",
     "whatChanged": "My earlier statement - \"the exchanges publish only what is currently open\" - was BSE-only evidence stated as a plural structural fact, and withdrawing it was right. The CONCLUSION survives with better evidence and a much narrower, testable shape. Both halves matter: the reason was wrong AND the wall is real.",
     "stillOpen": "Whether these two rows can be recovered by NAME+DATE against some other archive is untested and I am not claiming it either way."
+  },
+  "stagingDeployState": {
+    "at": "2026-09-11 01:21 IST",
+    "verifiedMyself": "ssh read of DEPLOYED_SHA-staging and the release symlink, not relayed. Staging serves ecccc4bd, release 20260910-190645-ecccc4bd.",
+    "item2ProofSTANDS": "My item 2 staging proof was read against 49733e06, and 49733e06 IS an ancestor of ecccc4bd. So the proof is unaffected by the deploy failures - worth stating because it would be easy to assume otherwise and re-do it.",
+    "item14S4NotDeployed": "941cb57b (14-S4) is NOT in ecccc4bd. So the new coverage line - \"examined 24 of 323 row(s), 299 skipped\" - will NOT appear on staging until a deploy succeeds. Any detection-floor read from staging before then shows the OLD bare \"0 violation(s)\" and a reader could mistake that for the fix not working.",
+    "cause": "Lane B reports staging deploys fail at the drift assert since lane A alias preflight (#548) merged: it requires a .git dir and a deploy release dir is a git-archive extract with none. Lane A has the one-file fix as first work. I have NOT verified that cause myself - it is theirs and it is plausible, but it is relayed, not measured by me.",
+    "consequence": "Every lane C proof read owed from here checks the served sha FIRST. 12-B next PBA extraction and 2-S3b repair evidence both need a green deploy before they mean anything."
   }
 }
