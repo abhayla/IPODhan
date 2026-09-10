@@ -549,3 +549,12 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   BOTH lanes is proven by it instead of taken on trust. One mistake already, mine, recorded honestly: a mistyped path
   meant a database reset silently did not run and the migration that followed ran on the wrong state - redone
   properly before anything was built. Nothing needed from you.
+- **2026-09-10 11:36 IST - 0% to 0% merged.** Still the first of item 20's four slices: the check that makes a pull request fail
+  when the design says something the code never tests. It was built, then an adversarial review refused it, and the
+  refusal was worth it. The check could report success while scanning nothing - point it at a folder that has been
+  renamed and it printed PASS instead of failing, which would have made a third of its job silently useless across
+  the whole repository. And the parser bug it fixed this morning had no test, so the bug could have come straight
+  back. Both are fixed and both fixes were proved by deliberately breaking them; a second review is checking that
+  the fix covers every path and not just the one the reviewer happened to try. A reader of ipodhan.com would notice
+  nothing from any of this - it is the machinery that proves the later items really do what the design says.
+  Nothing merged yet, no CI minutes spent by this lane, nothing needed from you.
