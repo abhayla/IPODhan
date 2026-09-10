@@ -24,6 +24,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DataConsolidationService } from '../../../src/services/data-consolidation-service.js';
+import { SME_SINGLE_EXCHANGE_CONFLICT_REASON } from '../../../src/services/listing-exchange-resolution.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
 
 vi.mock('../../../src/config/feature-flags.js', () => ({
@@ -311,6 +312,200 @@ describe('slice s4 — row key threaded through consolidation provenance', () =>
         rowKey: 'ACME-LTD',
         fieldName: 'peRatio',
       })
+    );
+  });
+
+  /**
+   * The two guards below sit on the OTHER two open-conflict lookups. Both act on
+   * `ipos` columns today (`listingExchanges`; the HIGH_VALUE date fields), so no
+   * production caller supplies a non-empty key on either path yet — they become
+   * load-bearing when child tables route through `consolidateField` in s5b/s7a/s7b.
+   * They are exercised here through the real public entry point with an explicit
+   * row key, which is exactly what those slices will do. Each goes red when its
+   * own guard is neutered.
+   */
+
+  it('SME collapse does NOT resolve another row open conflict', async () => {
+    const listingRepo = { findByIPO: vi.fn().mockResolvedValue(null) };
+    const smeService = new DataConsolidationService(
+      mockFieldSourcesRepo,
+      mockConflictsRepo,
+      listingRepo
+    );
+
+    // This row's OWN provenance (ROW-B) is the collapse evidence...
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow({
+        tableName: 'ipos',
+        rowKey: 'ROW-B',
+        fieldName: 'listingExchanges',
+        source: 'NSE',
+        value: ['NSE'],
+      }),
+    ] as any);
+
+    // ...while the only open SME conflict belongs to ROW-A.
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      {
+        id: 'conflict-row-a',
+        tableName: 'ipos',
+        rowKey: 'ROW-A',
+        fieldName: 'listingExchanges',
+        resolutionReason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+      },
+    ] as any);
+
+    const result = await smeService.consolidateIPOData({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey: 'ROW-B',
+      incomingData: { listingExchanges: ['BSE'] },
+      source: 'BSE',
+      existingData: { listingExchanges: ['NSE', 'BSE'], segment: 'SME' } as any,
+    });
+
+    // The collapse itself still happens — this proves the path was reached.
+    expect(result.consolidatedData.listingExchanges).toEqual(['NSE']);
+    // ROW-A's dispute stays OPEN: it was never this row's dispute to close.
+    expect(mockConflictsRepo.resolveConflict).not.toHaveBeenCalled();
+  });
+
+  it('control: SME collapse DOES resolve its own row open conflict', async () => {
+    const listingRepo = { findByIPO: vi.fn().mockResolvedValue(null) };
+    const smeService = new DataConsolidationService(
+      mockFieldSourcesRepo,
+      mockConflictsRepo,
+      listingRepo
+    );
+
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow({
+        tableName: 'ipos',
+        rowKey: 'ROW-B',
+        fieldName: 'listingExchanges',
+        source: 'NSE',
+        value: ['NSE'],
+      }),
+    ] as any);
+
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      {
+        id: 'conflict-row-b',
+        tableName: 'ipos',
+        rowKey: 'ROW-B',
+        fieldName: 'listingExchanges',
+        resolutionReason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+      },
+    ] as any);
+
+    await smeService.consolidateIPOData({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey: 'ROW-B',
+      incomingData: { listingExchanges: ['BSE'] },
+      source: 'BSE',
+      existingData: { listingExchanges: ['NSE', 'BSE'], segment: 'SME' } as any,
+    });
+
+    expect(mockConflictsRepo.resolveConflict).toHaveBeenCalledWith(
+      'conflict-row-b',
+      expect.objectContaining({ resolutionReason: 'SME_COLLAPSE_FIELD_SOURCE_PROVENANCE' })
+    );
+  });
+
+  /**
+   * Escape (b), the date-order invariant. `source2` is the SAME exchange as the
+   * incoming source in both cases below, so the consensus escape (a) is refused
+   * by its own same-source guard and the date-invariant lookup is the only one
+   * under test here.
+   */
+  const kanoharHeld = {
+    status: 'UPCOMING',
+    openDate: '2026-12-09',
+    closeDate: '2026-12-12',
+    listingDate: '2026-09-16',
+    segment: 'MAINBOARD',
+  };
+
+  function heldOpenDateRow(rowKey: string) {
+    return fieldSourceRow({
+      tableName: 'ipos',
+      rowKey,
+      fieldName: 'openDate',
+      source: 'CHITTORGARH',
+      value: '2026-12-09',
+    });
+  }
+
+  function openConflict(id: string, rowKey: string) {
+    return {
+      id,
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey,
+      fieldName: 'openDate',
+      source1: 'CHITTORGARH',
+      value1: '2026-12-09',
+      source2: 'NSE',
+      value2: '2026-09-08',
+      resolvedSource: 'CHITTORGARH',
+      resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+      severity: 'CRITICAL',
+      adminNote: null,
+      resolvedAt: null,
+      resolvedBy: null,
+      detectedAt: new Date(),
+      createdAt: new Date(),
+    };
+  }
+
+  it('the date-invariant override does NOT close another row open conflict', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      heldOpenDateRow('ROW-B'),
+    ] as any);
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      openConflict('conflict-row-a', 'ROW-A'),
+    ] as any);
+
+    const result = await service.consolidateIPOData({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey: 'ROW-B',
+      incomingData: { openDate: '2026-09-08', closeDate: '2026-09-10' },
+      source: 'NSE',
+      existingData: kanoharHeld,
+      scrapedAt: new Date('2026-09-05T00:01:00Z'),
+    });
+
+    // The override still fires for ROW-B — the path was reached.
+    const field = result.fieldResults.find((f) => f.fieldName === 'openDate');
+    expect(field!.conflictReason).toBe('DATE_INVARIANT_OVERRIDE_HELD_VALUE');
+    // ROW-A's CRITICAL dispute is left open rather than silently closed on
+    // evidence that was never about it.
+    expect(mockConflictsRepo.resolveConflict).not.toHaveBeenCalled();
+  });
+
+  it('control: the date-invariant override DOES close its own row open conflict', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      heldOpenDateRow('ROW-B'),
+    ] as any);
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      openConflict('conflict-row-b', 'ROW-B'),
+    ] as any);
+
+    await service.consolidateIPOData({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey: 'ROW-B',
+      incomingData: { openDate: '2026-09-08', closeDate: '2026-09-10' },
+      source: 'NSE',
+      existingData: kanoharHeld,
+      scrapedAt: new Date('2026-09-05T00:01:00Z'),
+    });
+
+    expect(mockConflictsRepo.resolveConflict).toHaveBeenCalledWith(
+      'conflict-row-b',
+      expect.objectContaining({ resolutionReason: 'DATE_INVARIANT_OVERRIDE_HELD_VALUE' })
     );
   });
 });
