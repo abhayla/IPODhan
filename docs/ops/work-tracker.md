@@ -692,3 +692,43 @@ What survives: ten old rows from a three-month window carry a number with no sou
 Item 1: **31%**, four of thirteen slices merged. The fifth is green on every check and waiting on the second of two live cycles to confirm yesterday's repair holds — one cycle in, zero problems.
 
 What is needed from you: nothing. **6 CI runs used today**, cap 60.
+
+**2026-09-10 08:58 IST — the fifth slice is in. Item 1: previous 31%, now 38%.**
+
+Five of thirteen slices merged. What landed: the database now refuses to store two records with the same identity for one IPO's promoters, comparable companies, or intermediaries. Before this, nothing stopped a duplicate; now it is impossible rather than merely discouraged.
+
+What a reader of ipodhan.com would notice: nothing yet. This is the floor the rest of the work stands on.
+
+One detail worth knowing, because it is the kind of thing that goes wrong quietly: the rule for intermediaries had to count the ROLE as well as the name. Four banks legitimately appear twice for a single IPO under two different roles — ICICI as both sponsor bank and public-issue bank, Kotak as sponsor and escrow, and so on. The obvious version of the rule would have rejected those real records, and "cleaning up the duplicates" would have deleted the fact that one bank does two jobs on an issue. Real data caught that, not a review.
+
+The slice also sat finished and unmerged for over an hour while every automated check was green. Those checks run against an empty database, so they cannot tell you whether the live system undoes yesterday's repair. A tool watched two real data cycles instead and confirmed nothing regressed — and the row counts grew during those cycles with every new record correctly stored, which is the part no test could prove.
+
+What went wrong: nothing new. The corrections I made earlier this morning stand — 10 old rows, not 39, and not ongoing.
+
+What is needed from you: nothing. **6 CI runs used today**, cap 60.
+
+## 10:07 — the third slice was checked before review and sent back
+
+The third slice of item 1 adds a "row key" to the provenance table, so the site can tell which of an
+IPO's several rows a fact came from rather than only which IPO. Earlier this morning I cut a
+constraint out of this slice, because production does not yet have the column that constraint depends
+on and applying it unattended would kill a deploy mid-flight.
+
+I checked that removal before letting anyone review it, and it was only half done. The constraint's
+SQL was gone, but the constraint was still *described* in the schema file the SQL is generated from,
+and the generator's own record of the database had been left saying the constraint was already in
+place. Both said the same wrong thing, so they agreed with each other — and a generator that agrees
+with itself stops emitting anything. The practical effect: that constraint could never have been
+created again on any server, and the drift alarm would have complained about it every night with no
+way to clear it. Quieter and longer-lived than the failure I was avoiding.
+
+The same slice also left two scratch files behind and reformatted an entire operations document — 431
+changed lines where only 154 were real writing. Both are being undone. A fix is running now; it
+rewrites the schema description back to what the databases actually have and regenerates the
+migration so all three records tell the same story.
+
+What went wrong: my own instruction. I told the worker to delete the generated SQL file, not the
+description that generates it. Deleting output while leaving the source is how the thing comes back.
+The brief template now says to check the schema, the snapshot and the migration together.
+
+What is needed from you: nothing. **6 CI runs used today**, cap 60.

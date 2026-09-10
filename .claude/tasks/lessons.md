@@ -428,3 +428,24 @@ sample contradicted the headline and I read past it.
 dates — not just nulls, and say in the brief which sentinels count as absent. Then READ the named
 sample before reporting the aggregate: if the examples do not look like the population you are claiming,
 the probe is wrong, not the examples. A named sample exists to falsify the headline, not to decorate it.
+
+## 2026-09-10 10:07 IST — A re-scope brief must name the SOURCE, not the artifacts
+
+**What happened.** Slice s3 was re-scoped to drop a unique-constraint swap. My brief said "delete the
+gated SQL file and any reference this slice added to it" and "verify the journaled migration contains no
+DROP/ADD CONSTRAINT". The worker did exactly that. But the constraint is *declared* in
+`packages/shared/src/db/schema.ts`; the SQL and the gated file were only its output. The declaration
+survived, and the generator snapshot was left recording the constraint as already applied.
+
+**Why that is worse than leaving it in.** Drizzle diffs schema.ts against the snapshot. Both said the
+4-column constraint existed; the live databases had the 3-column one. Agreeing with each other, the pair
+emits nothing forever — the constraint becomes permanently ungeneratable on every slot, and
+`audit:schema-drift` reports a false drift with no way to clear it. Slice s2 caught the mirror image of
+this (a stale snapshot that would RE-emit gated DDL); same class, opposite direction.
+
+**Rule.** A brief that removes generated DDL MUST name the declaration that generates it and require the
+snapshot be REGENERATED, never hand-edited. Verification is not "the artifact is gone" but "schema.ts,
+the snapshot, and the migration agree with what the database actually has". Check all three, not one.
+
+**Prevention.** Any slice touching `web/drizzle/migrations/` verifies the triple, and the re-scope
+brief template now carries that line.
