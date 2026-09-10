@@ -407,3 +407,24 @@ ask for the mutation that breaks it and the red output pasted. Two shapes to ref
 assertion comparing a pure function's output to itself, and a behaviour that lives only inside an
 unexported `main()`. Extract the decision into an exported pure function and test that; a side effect
 buried in a CLI entry point is unguardable by construction.
+
+## 2026-09-10 — a probe that counts sentinel values invents both a number and an urgency
+
+**What happened.** Measuring "IPO rows with a published value but no provenance", the probe counted a row
+if any of five fields was NON-NULL. Twenty-eight of the 39 hits were seed rows with `issue_size = 0` —
+non-null, so they counted — and their recent `created_at` produced a "this is happening today" claim.
+The true figure was 10 rows, all from a three-month window ending in March, none recent. I reported the
+wrong count AND the wrong character (ongoing rather than legacy) to the owner and on the issue.
+
+**Why it matters.** The count was a third too high; the recency claim was the part that made it sound
+urgent and it was entirely an artefact. A wrong number invites a wrong-sized fix; a wrong urgency
+invites reordering work that did not need reordering.
+
+**The tell was in my own output.** The five most recent offenders I listed included Sarda Proteins,
+which this repository already documents as corporate-action pollution rather than a real IPO. The
+sample contradicted the headline and I read past it.
+
+**Rule.** When measuring "rows with a published value", exclude sentinels — zero, empty string, epoch
+dates — not just nulls, and say in the brief which sentinels count as absent. Then READ the named
+sample before reporting the aggregate: if the examples do not look like the population you are claiming,
+the probe is wrong, not the examples. A named sample exists to falsify the headline, not to decorate it.

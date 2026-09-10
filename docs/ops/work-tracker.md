@@ -621,3 +621,74 @@ I also corrected my own reporting twice tonight. The command the contract uses t
 Open items, all with numbers: **#442** (fixed in the code, staging records still to correct, blocked by #449), **#443**, **#446**, **#447**, **#449**.
 
 What is needed from you: nothing. **1 CI run used today**, cap 60.
+
+**2026-09-10 00:58 IST — tick.** Item 1: previous 25%, now **31%** — four of thirteen slices merged.
+
+What a reader of ipodhan.com would notice: nothing yet, but the staging database can now apply changes again. Its migration records held tomorrow's dates, which made every database change skip in silence while the command reported success. All three are corrected and verified: a change made now would apply, where an hour ago it would have vanished.
+
+What went wrong, named not counted. Checking before building caught something the automated pipeline structurally cannot: the next slice adds a uniqueness rule to three tables, and against the data actually stored on staging it would have **failed on contact** — all 528 rows still hold the empty default, giving 101 colliding groups in the peer table alone. A fresh test database applies every change to an empty schema and passes, so the pipeline would have said yes and the staging deploy would have said no. The repair that fills those rows is running now.
+
+One process problem: a worker ended while its write to staging was still in progress. The tool writes all 528 rows in a single transaction, so it either all landed or none did — but "should be all or nothing" is an assumption, so a read-only check is confirming which, and explicitly forbidden from re-running the write. This is the second time tonight a worker has outlived its own report; the difference is that this one was writing to a database.
+
+Open items with numbers: **#442** (staging done, production is yours), **#443**, **#446**, **#447**.
+
+What is needed from you: nothing tonight. Two production actions are queued with their evidence for whenever you want them. **2 CI runs used today**, cap 60.
+
+**2026-09-10 01:34 IST — tick.** Item 1: **31%**, four of thirteen slices merged, unchanged since the last tick. The fifth is built and in its second round of correction.
+
+What a reader of ipodhan.com would notice: nothing yet, but staging's data is now in a state it has never been in — every promoter, peer and intermediary row carries a stable identity, where before tonight all 528 held an empty placeholder.
+
+What went wrong, named not counted. The strict review caught something that would have broken your **next production release**, two steps after this one. The database tool generates changes by comparing the schema against a stored picture of it. That picture was not updated, so the next slice to touch the schema would have regenerated these same three rules into the automatic deploy path — and on production, where all 531 rows still hold the empty placeholder, the release would have died halfway through. The safeguard this slice added protected only itself. It is being fixed now, and the fix has to be demonstrated by actually running the generator, not argued.
+
+Also caught: the previous round reported writing the operator instructions into the ops recipes file. It had not. That is a claim about a file's contents, which is checkable, and it was not checked before being reported.
+
+Open items with numbers: **#442** (staging done, production yours), **#443**, **#446**, **#447** (deferred with a trigger, verified unreachable from any job or workflow).
+
+What is needed from you: nothing tonight. Three production actions are queued with evidence. **2 CI runs used today**, cap 60.
+
+**2026-09-10 07:53 IST — session resumed after the previous one died at ~02:30; live-signal check first.**
+
+Item 1: **31%**, four of thirteen slices merged, unchanged. The fifth is built and waiting on staging.
+
+The nightly audit reported three live problems overnight. **Two were not problems, one was misdescribed, and the real defect was something nobody flagged.**
+
+- Two IPOs (Pranav Constructions, Veegaland Developers) had statuses that lagged reality at 03:46 and were **already correct by 07:45**. A visitor sees the right thing now. Acting on those would have spent a day's work fixing code that was already right.
+- The third (Manika Plastech) was reported as two sources disagreeing on the issue size, ₹123.20 Cr against ₹125.50 Cr. **Neither is wrong.** The offer is a fixed ₹92.5 Cr fresh issue plus 76,74,000 shares sold by existing holders at a band of ₹40-43, so the total is ₹123.2 Cr at the floor and ₹125.5 Cr at the cap. We publish the floor; the convention is the cap. Changing our number to match the other source would have been treating a difference of definition as an error.
+- **The actual defect: that IPO opens tomorrow and its page shows no price band and no lot size at all.** Both are null. The row was written once on 2026-09-09 and never updated after the band was published around 2026-09-07. Those two numbers are what an applicant needs in order to apply — far more than a 1.9% difference in a headline figure. Filed as **#453**.
+- One more, on the same row: it has **no provenance records at all**. We cannot say which scraper wrote its issue size. That is the very capability this whole item is building for other tables, and it turns out the main table can be bypassed too. Filed as **#454**.
+
+I also corrected myself in writing: I told you an IPO (Vinod Texworld) was missing from the database entirely. It is not — the row exists and its figures match public reporting. I had repeated an earlier check's claim without verifying it.
+
+What is needed from you: **#453 needs a decision** — repairing that row means writing to production, which this run does not do. Nothing else is urgent. **2 CI runs used today**, cap 60.
+
+**2026-09-10 08:12 IST — a finding worth your attention, and a gate running.**
+
+Item 1: **31%**, four of thirteen slices merged, unchanged. The fifth passed every automated check and is deliberately **not merged** — it waits on a tool now proving, across two real data cycles, that yesterday's repair survives the live system. Automated checks passing was never the thing that was blocking it.
+
+What a reader of ipodhan.com would notice: nothing new today. The work is still foundations.
+
+**The finding.** While the gate runs I measured something the overnight investigation turned up: **about one IPO in eight on the live site shows a number with no record of where it came from.** 39 of 331 on production, 45 of 373 on staging. Every other IPO carries around two dozen such records; these carry none. It is not old data — affected rows were created today, and every month back to December.
+
+In every case it is the same field, the issue size, and in every case the IPO has no documents stored. That points at one specific piece of code writing that number while skipping the step that records its source.
+
+Why it matters: when two sources disagree about a number, the record of where each came from is what decides which wins. For those 39 IPOs there is nothing to decide with. It also means the current work's starting assumption — that the main IPO record already keeps this history and only the detail tables lack it — is true for 88% of rows and not the rest. The work is still right; the picture was incomplete. Filed with the numbers as **#454**.
+
+What is needed from you: still just **#453** — an IPO opens tomorrow with no price band and no lot size, and fixing that row means writing to production, which this run does not do. **4 CI runs used today**, cap 60.
+
+**2026-09-10 08:34 IST — correcting the entry above. I gave you a wrong number and a wrong sense of urgency.**
+
+I wrote that about one IPO in eight on the live site shows a number with no record of where it came from — 39 of 331 — and that it was happening now, with rows created today.
+
+The real figure is **10 rows, all created between December 2025 and March 2026, and none since.** Not ongoing. Not one in eight.
+
+What went wrong: my measurement counted a row as having a "published value" if the field was not empty. Twenty-eight of those 39 are placeholder rows carrying an issue size of **zero** — not empty, so they counted — and because those placeholder rows were created recently, they also produced the "happening today" claim. Both halves of what I told you came from the same mistake.
+
+The evidence was in my own output and I missed it: the examples I listed included Sarda Proteins, which this project already knows is not a real IPO but a corporate-action record that polluted the data months ago. My own sample contradicted my own headline.
+
+I also checked the thing that would have been genuinely serious: whether the current work is built on a false assumption about a setting being switched on in production. **It is not — the setting is on, on both servers, and correctly wired.** So nothing needs reordering and no work was wasted.
+
+What survives: ten old rows from a three-month window carry a number with no source recorded, most likely written by a fallback path that deliberately skips recording the source when something upstream fails — and does so silently. That is small, bounded, and worth a note rather than a reordering.
+
+Item 1: **31%**, four of thirteen slices merged. The fifth is green on every check and waiting on the second of two live cycles to confirm yesterday's repair holds — one cycle in, zero problems.
+
+What is needed from you: nothing. **6 CI runs used today**, cap 60.

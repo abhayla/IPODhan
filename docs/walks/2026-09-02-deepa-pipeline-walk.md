@@ -1647,3 +1647,109 @@ Both readings were wrong in the same direction as far as the budget gate is conc
 Correct derivation, now in the supervision-tick prompt: compute IST midnight as a UTC ISO timestamp and pass `--created '>=<that timestamp>' --limit 100`, verified to return 1 and 1. Also worth noting the fetch returned exactly 100 rows at `--limit 100`, so a count over a busier window could still be truncated — the sanity check is now part of the tick.
 
 I reported "25 today, 3 this run" in the previous tick. That was wrong; the numbers were the previous IST day's. Correcting it here rather than leaving it in the ledger.
+
+**2026-09-10 00:42 IST — slice s0b MERGED as `6c225917` via PR #450.** All five checks green; the detection declaration was checked against the gate's own regex BEFORE pushing this time, so no repeat of #445's wasted run. Worktree removed cleanly: 1309 links as links, main checkout 4560 -> 4560, 0 deleted on disk. Item 1 is 4 of 13 slices merged.
+
+**Its Tier A review failed first, on a CRITICAL that is almost too apt.** Flipping the unmatched path's `process.exit(1)` back to `exit(0)` — restoring precisely the #449 behaviour the slice exists to remove — left ALL THIRTEEN tests green, because the decision lived inside an unexported `main()` that no test executed. The code was right; the guard on it did not exist. Now `decideRepairOutcome(matched, unmatched, apply)` is an exported pure function, and that same mutation turns a named test red with `expected +0 to be 1`.
+
+**That is the third untestable guard tonight, and the pattern is now recorded as a class in `lessons.md`.** A hash test comparing `crypto.createHash(x)` with itself; a key test asserting `rowKeyForName(x) === rowKeyForName(x)`; and an exit-code contract with no executable path into it. All three were found by a reviewer briefed to BREAK the guard, none by reading the diff. In every case the code was correct and the test was theatre. The rule that follows: a test earns its place only by being shown RED, and two shapes are refused on sight — an assertion comparing a pure function's output to itself, and a behaviour reachable only through an unexported entry point, which is unguardable by construction.
+
+**One reviewer finding was declined rather than fixed:** two migrations with identical content would resolve to the same row and abort the transaction with a misleading message. All 67 migration `.sql` files were hashed across all three variants with no cross-file collision, so it is unreachable; complicating the matcher for an impossible case is the worse trade. Recorded in the PR body instead. Also stated plainly there: the deduplication assertion has NO failing-capable test and is a deterrent against the guards being deleted as dead code, not proof of coverage — saying so is the whole point, given the three findings above.
+
+**The staging repair for #442 is now running with the fixed tool**, the ops worktree reset to `6c225917`. It is the debt that has been owed since the first merge tonight, and the reason #449 mattered at all.
+
+**2026-09-10 00:44 IST — the #442 staging repair is APPLIED and verified. The debt owed since the first merge tonight is closed.**
+
+```
+id 35  0049_ipo_details_ad_fields    1789031999000 -> 1788685590000
+id 36  20260906090638_icy_firelord   1789032000000 -> 1788685598000
+id 37  20260908004955_left_loners    1789032000500 -> 1788828595000
+APPLY complete on ipodhan_staging: 3 row(s) corrected.
+```
+
+Idempotent re-run: all three targets MATCHED a row and reported "already correct — skipping", 0 rows needing a change, exit 0. That distinction is the point of s0b — matched-and-unchanged is success, not-found is failure, and before tonight both printed the same cheerful line.
+
+Staging's `max(created_at)` is now **1788945600000** (2026-09-09T09:20:00Z), in the past. Current epoch at the check was 1788981195510, which is larger, so **a migration generated now applies to staging instead of being silently skipped**. That is the invariant #442 broke, restored and measured rather than assumed.
+
+Every guard held: `current_database()` asserted `ipodhan_staging` before and after, `--allow-prod` never passed, `ipodhan` never connected to, no repository file modified, backup written to `scraper/.repair-evidence-issue442/migration-journal-dates-backup-ipodhan_staging.json`.
+
+**PRODUCTION IS STILL OUTSTANDING and is the owner's call.** The same command against `ipodhan` requires `--allow-prod`; it has not been run and will not be run by this session. The staging output above IS its dry-run evidence — same three tags, same target values, which come from `_journal.json` on `main`. Recorded on issue #442 and to be listed in the final report's production-repair list.
+
+**What this detour cost and bought.** Cost: one slice (s0b), one Tier A round that failed, two PRs, roughly two hours. Bought: staging can apply migrations again; the tool works from any platform in either direction; a repair that cannot find its rows now fails loudly instead of reporting success; and #442's original real-data proof was exposed as having run against the one database whose rows it could see. Without that last finding the same blind spot would have sat under every future repair this run ships.
+
+Issue #449 auto-closed by PR #450. Item 1: 4 of 13 slices merged (31%).
+
+**2026-09-10 00:51 IST — measuring before briefing s2 caught a blocker that CI structurally cannot see.**
+
+I ran a duplicate scan expecting to answer the card's F-74 question (would the real normaliser fold distinct legal entities together?). It came back clean and well-controlled: zero collisions on all six slot × table combinations, computed with the shipped `rowKeyForName` rather than a re-implementation, with a sanity check confirming multi-row groups exist so the negative is not vacuous. `ABC Ltd` vs `ABC Pvt Ltd` does not occur in this data.
+
+**But that answered a different question from the one that gates the constraint, and the framing error was mine.** The scan computed what each key WOULD be from the name field. What decides s2 is what is STORED. Re-asked properly:
+
+| slot | table | rows | stored `''` | colliding groups on the stored value |
+|---|---|---|---|---|
+| staging | promoters | 24 | **24** | 6 |
+| staging | peer_companies | 321 | **321** | 101 (300 rows) |
+| staging | ipo_intermediaries | 183 | **183** | 22, and 26 on the intended `(ipo_id, role, normalized_name)` key |
+| prod | all three | — | **the column does not exist** | — |
+
+Every stored value on staging is the empty-string default. Five real peer rows for one IPO — Corona Remedies, Abbott India, Alkem, Eris, GlaxoSmithKline — all store `""`. **`UNIQUE (ipo_id, normalized_name)` would fail on contact**, and role does not disambiguate for intermediaries because they all share the same empty string.
+
+Production simply has not received the migration: no release has been cut since s1 merged, which is the release-branch model working as intended. It needs the schema change before it could ever need the backfill.
+
+**This is the CI blind spot the s1 reviewer named, made concrete.** A fresh CI database applies every migration to an empty schema and goes green. Staging has 528 real rows and would have failed. Had I briefed s2 as "add the constraints" — which is what the card literally says — it would have passed the pull request gate and died on the staging deploy. The card's own order (column, then backfill, then constraint) is right; what was missing was any check that step two had actually HAPPENED on the slot the constraint lands on. Dry-run-only is not applied.
+
+The backfill is now running with `--apply` against staging — 528 rows, the one staging write this contract permits, through the tool's own guard. Its AFTER evidence is the precondition s2 needs: zero rows still empty, zero collisions on the stored value. Contract decision 12 additionally requires `assert-repair-held.mjs --cycles 2`, which needs two real staging data cycles at three slots a day — so **s2's constraint cannot merge tonight regardless of how fast it is built**, and that is a schedule fact rather than a delay to apologise for.
+
+**2026-09-10 01:02 IST — the `normalized_name` backfill is APPLIED on staging: 528 rows, one transaction, verified.**
+
+promoters 24/24, peer_companies 321/321, ipo_intermediaries 183/183 changed; 0 null-key rows on any table. Idempotent re-run: 0/0/0 would change, exit 0. AFTER: zero rows still empty on all three tables. Ledger written to `scripts/state/backfill-normalized-name-apply-1788982212385.json` recording old and new values per changed id — that ledger, not a table snapshot, is the recovery path if one is ever needed.
+
+**Correcting my own speculation:** I guessed the six-minute apply was lock contention with staging's scraper. It was not. The worker checked `pg_stat_activity` and confirmed the transaction was actively progressing — 528 sequential row updates over an SSH tunnel inside one transaction is simply slow. The hypothesis was reasonable and wrong, and the check settled it rather than the reasoning.
+
+**The finding that decides s2's design.** After the backfill: promoters 0 collisions, peer_companies 0 collisions, `ipo_intermediaries` **5 collisions on `(ipo_id, normalized_name)`** and **0 on `(ipo_id, role, normalized_name)`**. Every one of the five is the SAME legal entity appearing twice for one IPO under two different roles:
+
+- ICICI Bank Limited — `SPONSOR_BANK` and `PUBLIC_ISSUE_BANK`
+- Kotak Mahindra Bank — `SPONSOR_BANK` and `ESCROW_BANK`
+- Axis Bank — `SPONSOR_BANK` and `PUBLIC_ISSUE_BANK`
+- Centrum Broking — `BRLM` and `SYNDICATE`
+
+These are correct, distinct rows. A constraint on `(ipo_id, normalized_name)` would reject them, and "repairing" them by merging would DELETE the fact that ICICI is both the sponsor bank and the public issue bank for that IPO — a real relationship an investor can read off the page. The build card specified `role:normalizedName` for this table from the start; this is real data confirming the card was right, in a place where a literal reading of "add the unique constraint" would have destroyed information.
+
+**s2 is now unblocked in design but still gated in schedule.** Contract decision 12 requires `scripts/assert-repair-held.mjs <invariant> --cycles 2` after a data repair — two real staging data cycles, which run at three slots a day. A clean read immediately after a repair proves nothing about whether the next scraper cycle re-empties those columns, which is exactly the failure this rule exists to catch: the live write paths now populate the key, but that claim is untested against a real cycle on a real slot. So the constraint cannot merge until two cycles have passed and held.
+
+Production remains behind: the column does not exist there at all, because no release has been cut since s1 merged. Production therefore needs the migration, then the backfill, then the constraint — three ordered steps, all the owner's call, all now recorded with staging evidence.
+
+**2026-09-10 01:58 IST — out-of-brief file in s2, flagged by the peer session, checked and accepted with the reason recorded.**
+
+`package.json` at the repo root is modified in the s2 worktree. Verified directly: **one added line, zero removed, no dependency change** —
+`"audit:row-key-constraints": "npx tsx scripts/assert-row-key-constraints.ts",`
+registering the F-2 constraint-existence check beside its siblings `audit:schema-drift`, `audit:coverage` and `audit:substance`.
+
+It IS outside the file list my fix brief gave, and that is my error rather than the builder's overreach: I authorised a new script under `scripts/` and then omitted the one line that makes it invokable. A check nobody can run is half-built, and the `audit:*` family is exactly where an operator looks. Accepted, and it must be named explicitly in the PR body and by the verifier's out-of-brief file check rather than passing silently — an out-of-brief path that turns out to be justified still has to be SEEN, because the check is what catches the one that is not.
+
+The guardrail that matters was not breached: the contract forbids a dependency the build card does not name, and `--numstat` confirms a single script line with no `dependencies`, `devDependencies` or `overrides` change.
+
+Worth noting the mechanism: a peer session reading the tree caught this, not my own supervision tick, which checks worker liveness and CI counts but does not diff worktrees against their briefs mid-flight. The verifier's file-list check catches it before merge, so nothing would have shipped unseen — but it would have been caught later than it was.
+
+## RESUMED SESSION 2026-09-10 (previous session died ~02:30 IST)
+
+State re-derived from git and the PR list rather than trusted from the handover: slices s0, s0b, s1 and s1b merged (#444, #450, #445, #448); item 1 at 4 of 13; s2 built in its worktree with an uncommitted CI edit from the worker that was killed mid-flight. That edit was verified present and correct rather than assumed lost — it added the peer-replace atomicity test to the integration job's run line.
+
+**The overnight live signal was mostly not what it said it was.** Issue #452 reported three live findings and the contract makes a live-data defect on an open IPO jump the queue. Investigated before acting, and the queue-jump was largely unwarranted:
+
+- **Pranav Constructions and Veegaland Developers** — statuses lagged reality at 03:46 and were **already correct by 07:45**. The daily transition cron trails a live oracle by a few hours around midnight. A visitor sees the right thing now. Acting on these would have spent a slice fixing code that was already right.
+- **Manika Plastech** — reported as two sources disagreeing on issue size, ₹123.20 Cr against ₹125.50 Cr. **Neither is wrong.** The offer is a fixed ₹92.5 Cr fresh issue plus 76,74,000 OFS shares at a band of ₹40-43: `92.5Cr + 7,674,000 x 40 = ₹123.196 Cr` (ours, band floor) and `x 43 = ₹125.498 Cr` (the oracle's, band cap). Convention uses the cap. The check's oracle is ipowatch.in — a third-party aggregator, not an authority — so "we disagree with ipowatch" was never evidence that we were wrong. Changing our figure to match would have been treating a definitional split as a data error.
+- **`m_live_ipo_has_state`** — I hypothesised a new check whose first night is a baseline. Wrong: added 2026-09-02 in `ce9fb4ff`, running nightly since. Its first finding is real.
+- **Both GONE ids were genuinely fixed, not retired** — three IPOs had `segment IS NULL`, defaulting the minimum-application multiplier to 1x instead of the SME 2x; all three now carry `segment = 'SME'`. Worth distinguishing, because a check that stops failing because it stopped running is not a fix.
+
+**Two corrections I had to publish about my own statements.** I told the owner and wrote into #452 that Vinod Texworld was missing from the database entirely. It is not — the row exists, SME, OPEN, issue size ₹42.83 Cr matching public reporting, dates correct. I had repeated an earlier worker's claim without verifying it. And I reported 1 CI run used today when it was 3; the IST day boundary pulls in the previous night's late run.
+
+**The real defect was one nobody flagged.** Manika Plastech opens 2026-09-11 with `price_band_low`, `price_band_high` and `lot_size` all NULL — written once on 2026-09-09 and never updated after the band published around 09-07. The page shows no price band and no lot size for an IPO opening tomorrow. Those are the two numbers an applicant needs. The stale floor-price issue size is a symptom of the same gap, not the disease. Filed as **#453**; repairing the row is a production write and therefore the owner's call.
+
+**And one that lands on this item's own subject.** That row has zero `field_sources` and zero `documents` rows — a published number with no lineage at all. Item 1 exists to give the eight child tables the provenance `ipos` already has, and here `ipos` does not have it either. Filed as **#454**, with measuring the population as the first step rather than a design.
+
+**The s2 merge gate: HELD, and more strongly than asked.** Seven completed staging cycles since the backfill (log lines from `ipodhan-scraper-staging-out.log`, 04:46 through 07:46 IST). Counts moved: promoters 24 -> 29, intermediaries 183 -> 194, peers flat at 321. **Zero empty, zero collisions, and the new rows those cycles wrote are also populated** — which proves the live write path, not merely that the repair survived. That is the part unit tests could not establish.
+
+Honest gap, flagged by the worker rather than glossed: `assert-repair-held.mjs` was NOT run, because no invariant module existed for this repair. The proof was a direct read plus cycle logs — stronger in substance, but not the contract's named mechanism. Writing `scripts/lib/repair-invariants/row-key-populated.mjs` closes that, and the gate then runs itself across two more cycles. The invariant must count duplicate groups on `(ipo_id, role, normalized_name)` for intermediaries, because ICICI Bank is legitimately both `SPONSOR_BANK` and `PUBLIC_ISSUE_BANK` for one IPO and a naive check would flag four real pairs as violations.
+
+**PR #455 is open with all five checks green and marked do-not-merge** until that gate completes. CI passing was never the blocker.

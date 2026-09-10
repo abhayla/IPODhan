@@ -1,0 +1,27 @@
+{
+ "dbName": "ipodhan_staging",
+ "capturedAt": "2026-09-09T19:12:47.885Z",
+ "rows": [
+  {
+   "tag": "0049_ipo_details_ad_fields",
+   "hash": "ed1d1e861d46c8432de8d34ba3c61727435397662c80de50dd076a3a27e0b15a",
+   "rowId": 35,
+   "before": "1789031999000",
+   "after": 1788685590000
+  },
+  {
+   "tag": "20260906090638_icy_firelord",
+   "hash": "960b4f239e810fbf34523fc6550bdb8e2f6cff9fc4a1c3c12f27e8a290f7be28",
+   "rowId": 36,
+   "before": "1789032000000",
+   "after": 1788685598000
+  },
+  {
+   "tag": "20260908004955_left_loners",
+   "hash": "f73924a0c70ef89df8e403498ecdf0fafcda9001852ca197a005ac181d4e0b9a",
+   "rowId": 37,
+   "before": "1789032000500",
+   "after": 1788828595000
+  }
+ ]
+}

@@ -51,7 +51,17 @@
     "s1 MERGED ae7832db via PR #445 after three Tier A rounds. s1b is BUILDING on a branch based on s1 and must be rebased onto main once its builder returns - do not rebase while a worker is live in that worktree.",
     "s1b MERGED cf232595 via PR #448. s2 inherits: drop the default so the column is not optional in the Insert type; #447 dedupe-script collision; duplicate scan must keep suffix collisions distinct.",
     "OWED repo-wide: web integration and E2E have never run (no .env.local anywhere, ci.yml continue-on-error, no postgres service). A CI-hardening slice must land before item 1 closes.",
-    "MEASUREMENT DEFECT 2: gh --created <date> filters by UTC date, so between 00:00 and 05:30 IST it reports the previous IST day. Correct form: --created >=<IST midnight as UTC ISO> with --limit 100. True count for the IST day of 2026-09-10 at 00:14 was 1 run, all this run own."
+    "MEASUREMENT DEFECT 2: gh --created <date> filters by UTC date, so between 00:00 and 05:30 IST it reports the previous IST day. Correct form: --created >=<IST midnight as UTC ISO> with --limit 100. True count for the IST day of 2026-09-10 at 00:14 was 1 run, all this run own.",
+    "s0b MERGED 6c225917 via PR #450. Tier A failed first on an unguarded exit code - the third untestable guard tonight; pattern recorded as a class in lessons.md.",
+    "#442 staging repair APPLIED and verified: 3 rows corrected, max(created_at) 1788945600000 now in the past, a migration generated now would apply. Production outstanding, owner call, never run by this session.",
+    "s2 DESIGN CONFIRMED by real data: ipo_intermediaries must use (ipo_id, role, normalized_name). On (ipo_id, normalized_name) there are 5 collisions, all the same bank under two roles (ICICI SPONSOR_BANK+PUBLIC_ISSUE_BANK, Kotak SPONSOR_BANK+ESCROW_BANK, Axis SPONSOR_BANK+PUBLIC_ISSUE_BANK, Centrum BRLM+SYNDICATE). Merging them would delete real relationships.",
+    "s2 PR #455 open, all 5 checks green, HELD on the repair gate: 7 staging cycles since the backfill, promoters 24->29 and intermediaries 183->194, all new rows populated, 0 collisions. assert-repair-held not yet run - no invariant existed; row-key-populated.mjs being written to close that.",
+    "#452 investigated: 2 of 3 findings self-healed, the issue-size conflict is a definitional split (band floor vs cap), not an error. Real defect found instead: #453 Manika Plastech opens 2026-09-11 with null price band and lot size. #454: that row has zero provenance rows.",
+    "CORRECTION: Vinod Texworld is NOT missing - row exists and is correct. An earlier claim was repeated without verification.",
+    "#453 production repair is a null-only fill from offer terms; per the owner rule of 2026-09-10 that is run by the supervisor session with dry-run evidence rather than held. Not this run. The CLASS fix is recorded against items 9, 10 and 4 where the cards place it, and is not started out of order.",
+    "Peer proposed folding a provenance floor for ipos.issue_size into item 1 acceptance. Declined as a scope expansion on a running item; taking the alternative the peer offered - the card records why not, so the gap is visible rather than either silently absorbed or silently dropped.",
+    "PREMISE VERIFIED: item 1 card's claim that ENABLE_SOURCE_TRACKING / ENABLE_DATA_CONSOLIDATION / ENABLE_CONFLICT_DETECTION are on in prod is TRUE - code defaults false but both slot env files set them true and are correctly symlinked. No stop-the-line; item 1 proceeds.",
+    "SELF-CORRECTION x2 on #454: reported 39 rows and 'ongoing, created today'; actual is 10 rows, all 2025-12 to 2026-03, none recent. My probe treated non-null as published, so 28 seed rows with issue_size=0 inflated both the count and the recency. The tell (Sarda Proteins, known corporate-action pollution) was in my own output and I did not read it."
   ],
   "items": {
     "item-01": {
@@ -70,9 +80,9 @@
         {
           "k": "s0b",
           "title": "fix #449: repair tool cannot match rows whose hash came from a different platform line ending",
-          "status": "BUILDING",
-          "pr": null,
-          "sha": null,
+          "status": "MERGED",
+          "pr": 450,
+          "sha": "6c225917",
           "tier": "A"
         },
         {
@@ -94,8 +104,8 @@
         {
           "k": "s2",
           "title": "real-normaliser duplicate scan + repair, then the three child-table unique constraints",
-          "status": "PLANNED",
-          "pr": null,
+          "status": "PR-OPEN",
+          "pr": 455,
           "sha": null,
           "tier": "A"
         },
@@ -167,12 +177,14 @@
       "prs": [
         444,
         445,
-        448
+        448,
+        450
       ],
       "mergeShas": [
         "6797fdab",
         "ae7832db",
-        "cf232595"
+        "cf232595",
+        "6c225917"
       ],
       "proof": {
         "status": "OWED",
@@ -459,20 +471,73 @@
     }
   },
   "prGateBudgetTonight": 20,
-  "prGateRunsSpentByThisRun": 1,
+  "prGateRunsSpentByThisRun": 2,
   "issuesFiled": [
     442,
     443,
     446,
     447,
-    449
+    449,
+    451,
+    452,
+    453,
+    454
   ],
-  "prGateRunsToday": 1,
+  "prGateRunsToday": 3,
   "prGateBudgetClaimedRaise": {
     "source": "superseded",
     "note": "peer relayed 40/20; owner typed 60/20 directly in-session 2026-09-09 - owner value adopted",
     "status": "RESOLVED"
   },
   "prGateCapPerDay": 60,
-  "ownerBudgetQuote": "cap 60 per day, 20 tonight"
+  "ownerBudgetQuote": "cap 60 per day, 20 tonight",
+  "stagingRepairs": [
+    {
+      "issue": 442,
+      "slot": "ipodhan_staging",
+      "appliedAt": "2026-09-09T19:14:11.159Z",
+      "rows": 3,
+      "tool": "scraper/scripts/repair-migration-journal-dates.ts@6c225917",
+      "result": "3 rows corrected, idempotent re-run clean, max(created_at) now in the past"
+    },
+    {
+      "issue": "item-1 s1 backfill",
+      "slot": "ipodhan_staging",
+      "appliedAt": "2026-09-09T19:32:02.731Z",
+      "rows": 528,
+      "tool": "scraper/scripts/backfill-normalized-name.ts@6c225917",
+      "result": "24+321+183 rows populated, 0 null-key, idempotent re-run clean, 0 rows still empty",
+      "proofOwed": "assert-repair-held.mjs --cycles 2 (two real staging cycles) before s2 constraint can merge"
+    }
+  ],
+  "productionRepairsAwaitingOwner": [
+    {
+      "issue": 442,
+      "slot": "ipodhan",
+      "command": "npx tsx scraper/scripts/repair-migration-journal-dates.ts --apply --allow-prod",
+      "evidence": "staging apply output on issue #442; same three tags, same target values from _journal.json on main",
+      "status": "NOT RUN - owner call"
+    },
+    {
+      "issue": "item-1 s1/s2",
+      "slot": "ipodhan",
+      "command": "1) cut a release so the normalized_name migration applies  2) npx tsx scraper/scripts/backfill-normalized-name.ts --apply --allow-prod  3) then the s2 constraint",
+      "evidence": "staging: 528 rows populated, 0 collisions on the intended keys",
+      "status": "NOT RUN - owner call; the column does not exist on prod yet"
+    }
+  ],
+  "carriedInputs": {
+    "item-09": [
+      "#453 class fix: when a price band arrives for an existing row, re-derive the price-dependent fields. Manika Plastech was written 2026-09-09 with a floor-price issue size and nothing recomputed it after the band published around 2026-09-07. Population: rows created between announcement and band publication, which is most MAINBOARD issues."
+    ],
+    "item-10": [
+      "#453 detection: nothing fires when an IPO within N days of opening still has a null price_band_low/high or lot_size. The existing a_b_live_conflict caught only the downstream symptom (issue size differing from an aggregator) and pointed at the smaller half of the problem; this check would have fired days earlier and named the actual gap."
+    ],
+    "item-04": [
+      "#453 validation: a MAINBOARD row within days of opening with a null band and null lot size should not validate as complete. Also #454: issue_size can be written with zero field_sources rows on about 12 percent of IPOs, so per-field validation should notice a published value with no provenance."
+    ],
+    "item-01": [
+      "AT ITEM CLOSE, add to the card Known gaps section (docs PR), with these CORRECTED numbers: 10 production rows carry a published issue_size with zero field_sources rows, all created between 2025-12 and 2026-03, none since. Not 39 and not ongoing - an earlier measurement of mine counted 28 seed rows with issue_size=0 as published values and mistook their recent created_at for current behaviour. The cause is data-persister.ts::upsertIPO's fallback door (~lines 1330-1385), which fires when consolidateIPOData throws and sets fieldSourcesWritten:false unconditionally by design. The create door (~line 1406) gates on ENABLE_SOURCE_TRACKING, which defaults false in code but is set true in both shared/env/prod/scraper.env and shared/env/staging/scraper.env, correctly symlinked - so the card's claim that these flags are already on in prod is TRUE and item 1's premise holds. Tracked as #454. Worth noting on the card that the fallback door writes data without provenance SILENTLY - no log, no error - which is the part worth a later check."
+    ]
+  }
 }

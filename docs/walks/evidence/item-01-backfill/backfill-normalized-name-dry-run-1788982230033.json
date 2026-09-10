@@ -1,0 +1,31 @@
+{
+ "apply": false,
+ "allowProd": false,
+ "ranAt": "2026-09-09T19:30:30.033Z",
+ "results": [
+  {
+   "tableName": "promoters",
+   "totalRows": 24,
+   "changed": 0,
+   "changedIds": [],
+   "nullKeyCount": 0,
+   "nullKeyIds": []
+  },
+  {
+   "tableName": "peer_companies",
+   "totalRows": 321,
+   "changed": 0,
+   "changedIds": [],
+   "nullKeyCount": 0,
+   "nullKeyIds": []
+  },
+  {
+   "tableName": "ipo_intermediaries",
+   "totalRows": 183,
+   "changed": 0,
+   "changedIds": [],
+   "nullKeyCount": 0,
+   "nullKeyIds": []
+  }
+ ]
+}
