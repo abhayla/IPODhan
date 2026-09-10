@@ -22,6 +22,7 @@ import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
 import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
+import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
 import {
   runDocumentCycle,
   runDocumentPurge,
@@ -91,6 +92,7 @@ export const STEP_NAMES = [
   'pruneScraperLogs',
   'pruneDataConflicts',
   'dataQualityWatchdog',
+  'pageRevalidation',
   'heartbeat',
 ] as const;
 export type StepName = typeof STEP_NAMES[number];
@@ -865,6 +867,15 @@ export async function main() {
       // BaseScraperOrchestrator.run() itself, not here. Non-fatal, same
       // pattern as the other post-scrape side effects above.
       await runStep(cycleId, 'dataQualityWatchdog', triggerDataQualityWatchdog);
+      // Item 21 slice 3 (OD-40). Placed after every step that can still WRITE
+      // to an IPO, and before the heartbeat, which only reports. This step
+      // DRAINS the touched-slug set, so running it earlier would refresh the
+      // pages of a cycle that had not finished writing and leave the later
+      // writes to wait out their timer - the exact delay it exists to remove.
+      // (First draft put it second in the chain while its own comment claimed
+      // it was last; the comment was right and the placement was wrong.)
+      await runStep(cycleId, 'pageRevalidation', triggerPageRevalidation);
+
       // T-194: job-completion heartbeat -- proves this cron cycle reached the
       // end of the pipeline (not that every source succeeded; source-level
       // failures are reported separately via AlertingService/notifyOwner).
