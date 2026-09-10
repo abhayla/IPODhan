@@ -965,3 +965,24 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   events are now written into a shared file and pushed. What is needed from Abhay: nothing tonight.
   Two decisions whenever you have time - whether the shared branch should refuse changes that have
   not passed their checks, and whether to approve the new PDF library the download work needs.
+
+- **2026-09-11 03:03 IST** - Item 20 is unchanged at 100% of its eight pieces merged and proven, previous and current;
+  it has been finished for hours and this tick moves nothing there. A reader of ipodhan.com would see
+  no difference today - everything in this stretch was underneath the site. What went wrong is mine and
+  there were two of them, both corrections I made against my own earlier claims. I had reported that
+  company prospectuses do not contain the rival-company comparison table we want to extract; they do,
+  and I had searched for a heading that the four documents word three different ways. And I raised an
+  alarm that one of our automated tests was writing into the live database on this laptop right now;
+  the fault is real, but "right now" was wrong - the settings file that test reads does not exist
+  anywhere on this machine, so it would have failed harmlessly here. I had checked one condition and
+  assumed the other. Both withdrawn in public where the original claims were made. The genuinely useful
+  version of the second one: the danger depends on which machine you are on, because that settings file
+  is deliberately kept out of the project, so the same command is harmless on one laptop and writes to
+  the live database on another with nothing to tell you which. An independent reviewer then failed my
+  first attempt at the fix - it did not confirm my work, it wrote four ways around my safety check and
+  watched all four pass. Two were real gaps, now closed and re-tested; two are now written down as NOT
+  covered instead of left implied. The fix is green and both of its proofs are paid, but I am holding it
+  unmerged until a second reviewer checks my rewrite, because nobody has reviewed that yet and I am not
+  signing off a change to a live-database safety path twice on my own word in one night. What is needed
+  from Abhay: nothing tonight. Two decisions whenever you have time - whether the shared branch should
+  refuse changes that have not passed their checks, and whether to approve the new PDF library.
