@@ -213,6 +213,13 @@
         "worse": "It skips NIRBHAY and PIYUSH SPECIFICALLY - the exact two rows the floor check flags. So item 14 proof recipe pairs a check that FAILS on two rows with a check that PASSES having never looked at those two rows.",
         "whyItMatters": "Item 14 proof recipe requires both checks to PASS. Half of that recipe is a green light over 8.7% of the population, presented with no coverage statement at all - the detail line reads \"0 violation(s)\" and says nothing about how many rows were examined. That is the scan-that-examined-nothing class, sitting inside the proof item 14 depends on.",
         "buildable": "YES, and it needs no external source and no owner decision: make the check report its examined count, and refuse to PASS - UNVERIFIABLE, not PASS - when coverage is below a threshold. Lane C owns this area; 14-S1 was a floor-check alignment."
+      },
+      "s4ClassMeasurement": {
+        "at": "2026-09-11 00:36 IST",
+        "structural": "The skip/clean conflation is present in ALL SEVEN check predicates in detection-floor-checks.mjs - every one has early return-null guards a caller cannot tell from examined-and-clean.",
+        "measuredCoverage": "But only ONE is misleading today, measured against 277 production IPO rows: segment populated 277/277 (100%), issue_size floor 273/277 (98.6%), lot x band 269/277 (97.1%), corporate-action shape 269/277 (97.1%), issue_size CONSISTENCY 24/277 (8.7%).",
+        "verdict": "14-S4 fixes the one check whose PASS was materially misleading. The other six share the shape but examine 97-100%, so their 0-violations is honest today.",
+        "deliberatelyNotDone": "Not extending the pattern to the other six in this PR - a much larger diff for zero present effect, argued only from a speculative future coverage collapse. The honest version is a separate slice: every check reports its examined count so a collapse becomes visible WHEN it happens. Worth doing; not worth smuggling into a fix whose measured class is one check."
       }
     },
     "item-02": {
@@ -1502,7 +1509,10 @@
     "2026-09-11 00:29 IST REAL-DATA PROOF TAKEN PRE-MERGE against staging. Before: \"0 violation(s)\". After: \"0 violation(s); examined 24 of 323 row(s), 299 skipped (no shares_offered / issue_size / price_range_max)\". 7 new tests red-first, existing detection-floor self-test still green, registry check exit 0.",
     "2026-09-11 00:29 IST THREE MUTATIONS PROVED RED, each by a before/after count rather than by trusting sed: PASS instead of UNVERIFIABLE on zero examined (2 tests red BY NAME), everything counted as examinable (3 red), coverage text removed (3 red). A FOURTH mutation failed to apply and my harness reported it as MEANINGLESS rather than as a pass - worth recording, because a silently-unapplied mutation is a false green and that exact thing bit me earlier tonight.",
     "2026-09-11 00:29 IST HONEST EFFECT ON ITEM 14: this arguably moves it FURTHER from done, because one of the two checks its proof recipe depends on turns out to have been weaker than it read. That is the right direction. The item is not closer to a DONE line and its proof is now honest rather than flattering.",
-    "2026-09-11 00:29 IST WHAT IT DELIBERATELY DOES NOT DO: fix the underlying gap. 91% of IPO rows carry no shares_offered, which is a data-population problem with a different owner. This makes the gap VISIBLE instead of absorbed into a PASS. Inventing a coverage threshold would be policy I have no basis for."
+    "2026-09-11 00:29 IST WHAT IT DELIBERATELY DOES NOT DO: fix the underlying gap. 91% of IPO rows carry no shares_offered, which is a data-population problem with a different owner. This makes the gap VISIBLE instead of absorbed into a PASS. Inventing a coverage threshold would be policy I have no basis for.",
+    "2026-09-11 00:36 IST 14-S4 CLASS MEASURED RATHER THAN ASSERTED, because a Tier A reviewer has to verdict on covers-the-class and I would rather hand them evidence. The conflation is STRUCTURAL in all seven predicates in detection-floor-checks.mjs.",
+    "2026-09-11 00:36 IST BUT ONLY ONE IS MISLEADING TODAY, measured over 277 production IPO rows: segment populated 277/277 (100%), issue_size floor 273/277 (98.6%), lot x band 269/277 (97.1%), corporate-action shape 269/277 (97.1%), and issue_size CONSISTENCY 24/277 (8.7%). The outlier is the one 14-S4 fixes; the other six examine 97-100% so their zero-violations is honest.",
+    "2026-09-11 00:36 IST DELIBERATELY NOT EXTENDING to the other six in this PR: a much larger diff for zero present effect, argued only from a speculative future coverage collapse. The honest version is a separate slice - every check reports its examined count so a collapse becomes visible WHEN it happens. Posted the measurement and that reasoning on the PR so a reviewer can overrule it on the table rather than by scope creep."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
