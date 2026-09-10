@@ -831,10 +831,11 @@ export const CANDIDATE_IPOS_SQL = `
        END,
        -- W-153: LISTED rotation order -- least-recently-touched first (NULL =
        -- never touched sorts first), listing_date DESC only breaks ties.
-       -- The app layer (enrichListedCandidates/orderAndCapCandidates)
-       -- remains the source of truth once a row's real fetch-state rows are
-       -- read; this ordering only decides which rows are reachable within
-       -- the W-135 enrichment bound.
+       -- The app layer (enrichRotatingCandidates/orderAndCapCandidates --
+       -- enrichRotatingCandidates now also drives rank 2's UPCOMING/PRE_OPEN
+       -- rotation, not just LISTED) remains the source of truth once a
+       -- row's real fetch-state rows are read; this ordering only decides
+       -- which rows are reachable within the W-135 enrichment bound.
        CASE WHEN upper(i.status::text) = 'LISTED' THEN dfs.last_activity END ASC NULLS FIRST,
        CASE WHEN upper(i.status::text) = 'LISTED' THEN i.listing_date END DESC NULLS LAST,
        CASE WHEN upper(i.status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
@@ -914,9 +915,20 @@ export async function loadCandidateIpos(deps: {
 
   // MAJOR-1 (#468 round 2): the SAME enrichment for rank 2 (UPCOMING/PRE_OPEN)
   // — mirrors the LISTED call directly above rather than a parallel
-  // implementation. No bound (`Infinity`): rank 2 is the live, time-sensitive
-  // tier, never a backlog to ration (see `lifecycleRank`'s doc comment), and
-  // the live-window filter above already keeps this population small.
+  // implementation. `Infinity` here is LOAD-BEARING FOR CORRECTNESS, not a
+  // rationing choice like the LISTED cap above. `CANDIDATE_IPOS_SQL` orders
+  // rank 2 by `open_date ASC` only (`dfs.last_activity` is applied to LISTED
+  // alone) — it does NOT know about the rotation key the app layer computes
+  // to pick which starved row goes first (see the rank-2 sort near the top
+  // of this file). SQL order and app-layer rotation order therefore
+  // disagree, and that disagreement is harmless ONLY because every rank-2
+  // row gets enriched and re-sorted in memory regardless of where SQL put
+  // it. A finite bound would silently reintroduce the #468 starvation: rows
+  // SQL happens to sort late would never reach the in-memory rotation at
+  // all, no matter how starved they are. This is guarded, not just
+  // documented — bounding this call to `1` turns two tests in
+  // document-cycle-passes.test.ts / document-cycle-listed-order.test.ts red,
+  // so do not "optimise" this to a finite number without reading why first.
   await enrichRotatingCandidates(candidates, deps, RANK2_STAGES, Infinity);
 
   // MAJOR-2: a LISTED row past the enrichment bound has no rotation
