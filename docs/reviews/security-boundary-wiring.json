@@ -3,10 +3,10 @@
   "boundaries": [
     {
       "id": "resolved-address-refusal",
-      "export": "isResolvedAddressPrivate",
+      "export": "resolveHostVerdict",
       "module": "scraper/src/services/company-host-source.ts",
       "rule": "referenced-somewhere",
-      "why": "the DNS-rebinding refusal. Shipped in #487 with zero callers, so a hostname that looks public and resolves to 127.0.0.1 or 169.254.169.254 was fetched normally for a full day."
+      "why": "the DNS-rebinding refusal. Shipped in #487 with zero callers, so a hostname that looks public and resolves to 127.0.0.1 or 169.254.169.254 was fetched normally for a full day. RE-POINTED 2026-09-11 (#586): the live guard is now resolveHostVerdict. isResolvedAddressPrivate became a boolean wrapper with ZERO production callers, and this gate was still passing because a multi-line import member line does not start with the word import, so the reference check counted dead code. That is the same shape as the incident this entry was written for, recreated by the refactor that improved it."
     },
     {
       "id": "registrar-document-allowlist",

@@ -544,3 +544,51 @@ Without `DUPLICATE_INVARIANT_FOLDS` that invariant reports every duplicate group
 the right shape for detection but useless as a per-repair proof: staging carries 12 unrelated groups
 (finding F-57), so an unscoped run is permanently red there.
 
+
+## Corrupted stored URLs — find them, and the repair that waits for the owner (#582, 2026-09-11)
+
+Read-only, through the tunnel. Finds any stored company website carrying a character outside the
+RFC 3986 alphabet — the class that made `Hy-Tech Engineers Ltd.` unreachable via one brace:
+
+```bash
+psql "$DSN" -At -F"|" -c "
+  select company_name, company_website from ipos
+  where company_website is not null
+    and company_website !~ '^[A-Za-z0-9:/?#\[\]@!\$&''()*+,;=._~%-]+\$'
+  order by company_name;"
+```
+
+Measured on `ipodhan_staging` 2026-09-11: **1 of 36** non-null values.
+`Hy-Tech Engineers Ltd. | https://www.hy{echengineers.com`
+
+Confirm before believing it is corruption rather than an exotic host — the corrupt name must not
+resolve AND the corrected one must:
+
+```bash
+node -e 'const d=require("dns");for(const h of process.argv.slice(1))d.lookup(h,{all:true},(e,a)=>console.log(h,e?e.code:JSON.stringify(a)))' \
+  "www.hy{echengineers.com" "www.hytechengineers.com"
+# expect: ENOTFOUND for the first, public addresses for the second
+```
+
+**The repair is a DATA WRITE and is NOT run without the owner's word.** When approved, dry-run first
+(`select` the rows the `update` would touch, print the count), then apply on staging, read it back,
+and only then prod on a separate approval:
+
+```sql
+-- dry run: exactly the rows that would change, and how many
+select id, company_name, company_website, replace(company_website,'hy{ech','hytech') as would_become
+from ipos where company_website like '%hy{ech%';
+
+-- apply (owner's word only), then read back
+update ipos set company_website = replace(company_website,'hy{ech','hytech'), updated_at = now()
+where company_website like '%hy{ech%';
+```
+
+Redis: the IPO's cached payload must be dropped after any manual row change, or the site serves the
+old value for up to an hour — `DEL ipo:detail:<slug>` and the documents key for that IPO
+(see the manual-DB-reset note in §2).
+
+Detection so this is not found by reading logs again: substance check
+`company_website_characters` (`scripts/lib/substance-checks.mjs`), which names the offending
+character. Note its column must be in the `SELECT` of `audit-substance-plausibility.mjs` or the
+check silently examines nothing — the suite's own test enforces that.

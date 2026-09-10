@@ -260,6 +260,51 @@ export function checkRegistrarQuality(row) {
 // Ordered registry consumed by the audit script. `name` is the report label;
 // `predicate` is the pure function; `optional` flags checks whose underlying
 // table/columns may be absent (the audit guards these gracefully).
+
+// ---- Check 14: a stored company website that cannot be a URL ---------------
+// #582. `Hy-Tech Engineers Ltd.` carried `https://www.hy{echengineers.com` — a
+// brace where a `t` belongs. The host does not resolve (ENOTFOUND), while the
+// real `www.hytechengineers.com` answers on two public addresses, so the
+// company's own filings were unreachable because of ONE character.
+//
+// It surfaced wearing the wrong clothes: the download guard reported it as
+// "resolves to a private address", because every fail-closed path shared that
+// one message. A wrong reason is how a data defect hides as a security event.
+//
+// The alphabet is RFC 3986's unreserved + reserved set. Anything outside it in
+// a stored URL is corruption, not an exotic address — a real URL would have
+// been percent-encoded before it was stored.
+const URL_ALPHABET = /^[A-Za-z0-9:/?#[\]@!$&'()*+,;=._~%-]+$/;
+
+export function checkCompanyWebsiteCharacters(row) {
+  const raw = row.company_website;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  // TRIMMED before testing, not merely before the emptiness check. The first
+  // version tested the untrimmed string, so a trailing space - one of the most
+  // common scrape artefacts there is - was reported as URL corruption. A check
+  // that reds a nightly gate on legal data is the defect it was written to stop.
+  const site = raw.trim();
+  if (URL_ALPHABET.test(site)) return null;
+
+  // An internationalised domain is LEGAL and is not corruption. .bharat is a
+  // live Indian TLD, which matters rather more on this project than most, and a
+  // unicode path is legal too. `new URL` punycodes the host and percent-encodes
+  // the path, so a URL that normalises cleanly is fine no matter how it was
+  // typed. Only something that survives normalisation still carrying an
+  // out-of-alphabet character - or that will not parse as a URL at all - is
+  // corruption.
+  try {
+    const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(site);
+    const normalised = new URL(hasScheme ? site : `https://${site}`).href;
+    if (URL_ALPHABET.test(normalised)) return null;
+  } catch {
+    // falls through to the report below: unparseable IS the finding
+  }
+
+  const bad = [...new Set(Array.from(site).filter((c) => !URL_ALPHABET.test(c)))].join('');
+  return `company_website contains character(s) outside the URL alphabet (${JSON.stringify(bad)}): ${site}`;
+}
+
 export const SUBSTANCE_CHECKS = [
   { key: 'date_ordering', name: 'Date ordering (open<=close<allotment<listing)', predicate: checkDateOrdering },
   { key: 'lot_size', name: 'lot_size in [1..100000]', predicate: checkLotSize },
@@ -273,4 +318,5 @@ export const SUBSTANCE_CHECKS = [
   { key: 'listing_performance', name: 'listing_price>0 & gain in [-90..900]%', predicate: checkListingPerformance },
   { key: 'gmp_sanity', name: 'latest GMP premium in [-50..200]% of issue price', predicate: checkGmpSanity, optional: true },
   { key: 'registrar_quality', name: 'registrar free of address/contact pollution', predicate: checkRegistrarQuality },
+  { key: 'company_website_characters', name: 'company_website free of characters outside the URL alphabet', predicate: checkCompanyWebsiteCharacters },
 ];

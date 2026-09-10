@@ -290,3 +290,83 @@ describe('OD-37 — a hostname that RESOLVES private is refused on every rung', 
     expect(resolved.length).toBe(unique.size);
   });
 });
+
+describe('#586 — what is cached depends on WHY, and the reason reaches the log', () => {
+  // These exist because a Tier A review ran a mutation that reverted the whole
+  // caching rule and the ENTIRE suite stayed green. There was no test at any
+  // level for the one behaviour the PR deliberately changed.
+  //
+  // Worse, the boolean seam hid it: wrapping `resolveIsPrivate` forced a
+  // hardcoded `private_address` reason, so every runner test took the cacheable
+  // branch. The "consults the resolver ONCE per host" test above passed only
+  // because of that hardcode, while production violated that invariant for
+  // exactly the hosts this change is about. A test that passes for a reason
+  // production would not produce is not a test — so `resolveVerdict` exists to
+  // let a test drive the real reasons.
+  function makeVerdictRunner(reason: string, refused = true) {
+    const asked: string[] = [];
+    const runner = new DocumentDiscoveryRunner({
+      fetcher: (async (url: string) => notFound(url)) as HttpFetcher,
+      store: new InMemoryDocumentFetchStateStore(),
+      documents: { async upsertDocument() { return { id: 'doc-1' }; } } as never,
+      counter: new NetworkCounter(),
+      now: () => new Date('2026-09-10T06:00:00Z'),
+      storeDir,
+      skipDownload: true,
+      sleep: async () => {},
+      resolveVerdict: async (hostname: string) => {
+        asked.push(hostname);
+        return { refused, reason, addresses: [] };
+      },
+    } as never);
+    return { runner, asked };
+  }
+
+  it('a host that does NOT RESOLVE is re-asked, not cached', async () => {
+    // A name that does not exist is a fact about OUR STORED DATA, not the
+    // network. NXDOMAIN is cheap, and re-asking means a corrected URL starts
+    // working inside the same cycle rather than being blackholed until the next.
+    // This is the case that started #582.
+    const { runner, asked } = makeVerdictRunner('dns_unresolvable');
+
+    await runner.runIpo(IPO, []);
+
+    expect(asked.length, 'the boundary did not run at all - the seam is not enabling it').toBeGreaterThan(0);
+    const unique = new Set(asked);
+    expect(asked.length, 'an unresolvable host must be re-asked per rung').toBeGreaterThan(
+      unique.size
+    );
+  });
+
+  it('a host whose lookup TIMED OUT is cached, because retrying it is the expensive one', async () => {
+    // Five seconds each, and several rungs share a host. Not caching a timeout
+    // spends 15s per affected IPO per cycle instead of 5s, for no extra safety —
+    // it is equally fail-closed either way. I originally lumped timeouts in with
+    // unresolvable; the review argued that was wrong and it was right.
+    const { runner, asked } = makeVerdictRunner('dns_timeout');
+
+    await runner.runIpo(IPO, []);
+
+    expect(asked.length, 'the boundary did not run at all - a zero-call pass is vacuous').toBeGreaterThan(0);
+    const unique = new Set(asked);
+    expect(asked.length, 'a timing-out host must be asked once per host').toBe(unique.size);
+  });
+
+  it('a genuinely private address is still cached, as it always was', async () => {
+    const { runner, asked } = makeVerdictRunner('private_address');
+
+    await runner.runIpo(IPO, []);
+
+    expect(asked.length, 'zero calls would satisfy the equality below').toBeGreaterThan(0);
+    expect(asked.length).toBe(new Set(asked).size);
+  });
+
+  it('a public verdict is cached too, so an allowed host is resolved once', async () => {
+    const { runner, asked } = makeVerdictRunner('public_address', false);
+
+    await runner.runIpo(IPO, []);
+
+    expect(asked.length, 'zero calls would satisfy the equality below').toBeGreaterThan(0);
+    expect(asked.length).toBe(new Set(asked).size);
+  });
+});
