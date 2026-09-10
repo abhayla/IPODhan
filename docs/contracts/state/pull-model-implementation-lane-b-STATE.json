@@ -216,7 +216,8 @@
     "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr merge; non-empty output triggers a JUDGEMENT, not an automatic rebase. Rebase only when main moved in a way that changes the result: a new CI gate landed (this branch's greens describe a gate set that no longer exists) or main changed code this slice touches. Proved by merge-tree that a behind branch does NOT delete main's newer files; a reflexive force-push cancels an in-flight run and spends the shared ceiling.",
     "supervision tick: enumerate EVERY process older than 20 minutes and subtract a known-good allowlist, printing the allowlist; never filter by process name",
     "a 'process killed' report from a tool or worker is a claim - verify by PID before recording it closed",
-    "any web unit result is recorded as 'green, suite instability open #446' and never as proof, until #446 closes (contract decision 8 forbids re-running to obtain green and calls a fail-then-pass a defect)"
+    "any web unit result is recorded as 'green, suite instability open #446' and never as proof, until #446 closes (contract decision 8 forbids re-running to obtain green and calls a fail-then-pass a defect)",
+    "before concluding a credential/config/process is ABSENT, enumerate the namespace (e.g. grep every NOTIFIER* name) rather than probing the one name expected - generalises the stray-process enumerate-and-subtract rule beyond processes"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -294,8 +295,9 @@
       "at": "2026-09-10 14:17 IST",
       "what": "no Notifier line was ever posted, including the Stage 0 '[lane B] started' the contract requires; the first attempt today returned HTTP 401 because NOTIFIER_KEY in GLOBAL.env is empty (length 0) and the project .env has none",
       "foundBy": "a peer asking whether the posts had landed",
-      "class": "same as DEFECT-B03 - a contract artefact checked off from recollection; the enumerate-and-confirm mechanism adopted then did not list the Notifier line",
-      "mechanism": "the Stage-0 artefact list now includes the Notifier line; the key itself is an OWNER-side gap - GLOBAL.md section 2 line 166 says the validating key lives in /root/notifier/.env on the VPS, so no laptop-side post is possible without the owner placing one"
+      "class": "two faults: (a) a contract artefact checked off from recollection, same as DEFECT-B03; (b) inferring ABSENCE from a single probe of an expected name instead of enumerating the namespace",
+      "mechanism": "the Stage-0 artefact list now includes the Notifier line; the key itself is an OWNER-side gap - GLOBAL.md section 2 line 166 says the validating key lives in /root/notifier/.env on the VPS, so no laptop-side post is possible without the owner placing one",
+      "correction": "the key EXISTS as NOTIFIER_KEY_IPODHAN (per-project, length 48); this run probed NOTIFIER_KEY, measured 0 correctly, and wrongly inferred no key exists. Item 20 landing note posted: HTTP 202."
     }
   ],
   "contractCorrectionsDue": [],
@@ -443,7 +445,15 @@
     }
   ],
   "ownerActionsNeeded": [
-    "NOTIFIER_KEY is empty in D:/Abhay/GLOBAL.env, so no lane can post from the laptop; the validating key lives in /root/notifier/.env on the VPS (GLOBAL.md section 2 line 166)",
     "issue #468's fix ships behind ENABLE_UPCOMING_DISCOVERY_RESERVATION, default OFF - the class is not fixed until it is turned on, staging then prod"
+  ],
+  "notifierPosts": [
+    {
+      "at": "2026-09-10 14:21 IST",
+      "line": "[lane B] item 20 DONE",
+      "status": "HTTP 202",
+      "endpoint": "https://firekaro.com/notifier-gw/notify",
+      "key": "NOTIFIER_KEY_IPODHAN (per-project)"
+    }
   ]
 }

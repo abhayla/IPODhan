@@ -2291,3 +2291,20 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   recollection instead of confirmed. The mechanism adopted then - enumerate the artefacts and confirm each by
   running or listing it - was not applied to the Notifier line because the Notifier was not on the enumerated list.
   It is now.
+
+- **2026-09-10 14:21 IST [lane B] CORRECTION to DEFECT-B10: the Notifier key EXISTS. This run looked for the wrong variable name.**
+  The item 20 landing note posted successfully: **HTTP 202**, empty body, via `https://firekaro.com/notifier-gw/notify`
+  with header `X-Api-Key` and project `ipodhan`.
+  The key is **`NOTIFIER_KEY_IPODHAN`** (length 48, verified), a PER-PROJECT name. This run checked `NOTIFIER_KEY`,
+  measured it correctly as length 0, and then drew the wrong conclusion from a correct measurement: it reported that
+  no laptop-side key exists and recorded an owner-side gap that is not real. A `grep -oE "^NOTIFIER[A-Z_]*"` listing
+  every NOTIFIER name in the file - four of them - would have shown the per-project key immediately.
+  **The lesson is sharper than "check harder", because the measurement was sound.** The failure was in the
+  INFERENCE: from "the variable I expected is empty" to "the credential does not exist". A measurement answers only
+  the question it was asked. Before concluding that something is ABSENT, enumerate the namespace rather than probing
+  one name - the same shape as this morning's stray-process rule (enumerate every process and subtract an allowlist,
+  never filter by the name you expect). That rule was adopted for processes and not generalised. It is now.
+  Also corrected: the earlier note citing `GLOBAL.md` §2 line 166 to explain the absence. That line is TRUE - the
+  key the gateway validates does live in `/root/notifier/.env` on the VPS - but it was used to justify a wrong
+  conclusion. A correct citation supporting a false inference is harder to catch than a wrong citation.
+  Contract obligation now met: the landing note the contract owes for item 20 is posted and its status confirmed.
