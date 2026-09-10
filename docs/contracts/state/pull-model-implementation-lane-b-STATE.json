@@ -281,9 +281,7 @@
       "mechanism": "rebase is a judgement triggered by the last-action check, not its automatic consequence; the trigger is a new CI gate or a code overlap, not any non-empty output"
     }
   ],
-  "contractCorrectionsDue": [
-    "decision 9: replace the `--search \"[lane B]\"` PR counter with a branch-prefix count (DEFECT-B04)"
-  ],
+  "contractCorrectionsDue": [],
   "resolvedAlarms": [
     {
       "at": "2026-09-10 11:59 IST",
@@ -405,6 +403,15 @@
       "proofPlan": "a staging cycle log line showing the new rank-2 reservation APPLIED - the path runs every cycle whether or not starvation occurs",
       "notMeasured": "production backlog size and per-cycle trip point - this lane reads staging only",
       "ownerNote": "the affected IPO opens 2026-09-11; the fix lands on main today, but whether it reaches production before then is the owner's deploy-window decision, not this run's"
+    }
+  ],
+  "contractCorrectionsMade": [
+    {
+      "at": "2026-09-10 14:00 IST",
+      "decision": 9,
+      "was": "count lane B PRs with gh pr list --search \"[lane B]\"",
+      "now": "count by branch prefix feat/pm-b-item / fix/pm-b-item with --limit 200",
+      "why": "DEFECT-B04: the search form returned lane A's PR #459; GitHub tokenises the bracketed string"
     }
   ]
 }
