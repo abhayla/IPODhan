@@ -1657,3 +1657,23 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
      the identity reporting. Filing this as an issue would have been within the rules and would have been the wrong
      call: the fix is two edits and one test.
   Fix dispatched, `sonnet`, 15 min / 30 calls, with the summary-name mutation required as its own proof.
+
+- **2026-09-10 11:48 IST [lane B] Item 20 slice s1 MERGED as `6c31d995` via PR #460. First lane B code on main.**
+  All five pull-request-gate checks green (lint/type/unit, scraper python extractor, scraper document integration,
+  deploy script tests, detection-change gate); `mergeable=MERGEABLE`, `mergeStateStatus=CLEAN`, files list exactly
+  the two slice files. `origin/main` was re-fetched immediately before the merge and had not moved (still
+  `54a8c5ee`), so the rebase held. Merged by squash, `state=MERGED` confirmed BEFORE the branch was deleted in a
+  SEPARATE command (the 2026-09-07 lesson: `gh pr merge --delete-branch` on an unmergeable PR closes it).
+  Worktree removed via `wt-rm.ps1 -Discard` after proving `git diff origin/main --stat` was genuinely empty; the tool
+  printed `links removed as links: 1309` and `main checkout: tracked 4560 -> 4560, dirty 9 -> 9, deleted-on-disk 0`.
+  Main checkout re-verified independently afterwards: 4560 tracked files, `packages/shared/src/db/schema.ts`
+  present. Three worktrees have been wiped by junction-following removals on this project; the proof is not optional.
+  **MEASUREMENT DEFECT-B05, mine, caught within a minute.** Two `git -C <worktree>` commands returned
+  `fatal: cannot change to ... No such file or directory` while the directory demonstrably existed, and the
+  `| wc -l` after them printed **0** - which I first read as "the worktree is fully merged, safe to delete". It was a
+  transient failure whose stderr went uncounted: **a zero from a command that errored is not a measurement.** This
+  is the fourth instance of that exact class in two days across both lanes (lane A's mangled `git show`, this lane's
+  DEFECT-B01 unchecked reset, DEFECT-B04's tokenised PR search, and now this). Re-run properly, the check separated
+  stdout from stderr and asserted BOTH - 0 stdout lines AND 0 stderr bytes AND exit 0 - before the removal ran.
+  Mechanism adopted for this lane: **any measurement that gates a destructive action captures stdout and stderr
+  separately and asserts the exit code; a zero is only believed when stderr is empty and the exit code is 0.**
