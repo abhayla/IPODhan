@@ -986,3 +986,22 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   signing off a change to a live-database safety path twice on my own word in one night. What is needed
   from Abhay: nothing tonight. Two decisions whenever you have time - whether the shared branch should
   refuse changes that have not passed their checks, and whether to approve the new PDF library.
+
+- **2026-09-11 03:21 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  One real gain this tick: the small fix I made two hours ago is now confirmed working on the test
+  server. The page-refresh step used to send nothing on a quiet cycle and say nothing, so a quiet
+  cycle and a step that had never been switched on left exactly the same blank in the log - I hit that
+  yesterday and it cost me a proof. It now writes one line saying it sent nothing and why, and that
+  line has appeared four times in real cycles. Small, but it converts a silence that could mean two
+  different things into a statement. A reader of ipodhan.com would notice nothing; this is all
+  underneath. What went wrong, and it is mine: an independent reviewer failed my safety check for the
+  SECOND time, and the second failure was worse than the first - my code for ignoring comments did not
+  understand one common piece of syntax, and as a result two test files carrying a live database
+  address slipped past every check. That exact syntax is already used in the folder the check
+  protects, so a future file could have gone unnoticed. Fixed by using the language's own parser
+  instead of my own hand-written one, which is what I should have done first. Two other proofs are
+  still owed and neither has moved: both need the test server to actually read a new document, and it
+  has read none in nineteen cycles because its download step is blocked on other grounds. I am
+  reporting that as unmoved rather than quietly waiting. What is needed from Abhay: nothing tonight.
+  Two decisions whenever you have time - whether the shared branch should refuse changes that have not
+  passed their checks, and whether to approve the new PDF library.
