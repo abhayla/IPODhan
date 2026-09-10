@@ -10,14 +10,24 @@
 // and nothing else.
 //
 // The alias array is EVALUATED, not pattern-matched in the file text: the
-// config is imported in a subprocess with node's type stripping (with
-// __dirname shimmed, since vite normally provides it), so a "simplification"
-// back to the object form -- which changes no text this test could grep for
-// -- still turns it red.
+// config is imported in a subprocess (via the print-scraper-vitest-alias
+// fixture, with __dirname shimmed since vite normally provides it), so a
+// "simplification" back to the object form -- which changes no text this
+// test could grep for -- still turns it red.
+//
+// The subprocess runs under tsx, not node's --experimental-strip-types:
+// that flag needs Node >= 22.6, and pr-gate.yml pins Node 20 for the step
+// this test runs under (.github/workflows/pr-gate.yml), so a
+// --experimental-strip-types subprocess is red on every CI run and green
+// only on a laptop with a newer Node -- exactly the local-green/CI-red gap
+// this file must never reintroduce. See
+// scripts/tests/no-experimental-strip-types-in-tests.test.mjs, which fails
+// the whole scripts/tests/ directory the moment that flag comes back.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve, sep } from 'node:path';
 
@@ -25,28 +35,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 const SCRAPER = join(REPO_ROOT, 'scraper');
 const BARE = '@ipodhan/shared';
+const FIXTURE = join(__dirname, 'fixtures', 'print-scraper-vitest-alias.mts');
+
+const require = createRequire(import.meta.url);
+// Resolve tsx's own CLI entry point rather than shelling out to `npx tsx`:
+// npx needs a shell on Windows (npx.cmd) and re-resolves the package on
+// every call, both avoidable failure modes for a check that must be
+// identical on a Windows laptop and an ubuntu-latest CI runner.
+const TSX_CLI = require.resolve('tsx/package.json').replace(/package\.json$/, 'dist/cli.mjs');
 
 function readAliasTable() {
-  const r = spawnSync(
-    process.execPath,
-    [
-      '--experimental-strip-types',
-      '--input-type=module',
-      '-e',
-      "globalThis.__dirname = process.cwd();" +
-        "const m = await import('./vitest.config.ts');" +
-        'const a = m.default?.resolve?.alias;' +
-        "if (!a) { console.error('NO_ALIAS'); process.exit(2); }" +
-        'console.log(JSON.stringify({' +
-        ' isArray: Array.isArray(a),' +
-        ' entries: Array.isArray(a)' +
-        '   ? a.map((e) => ({ find: String(e.find), isRegExp: e.find instanceof RegExp, source: e.find instanceof RegExp ? e.find.source : null, replacement: e.replacement }))' +
-        '   : Object.entries(a).map(([find, replacement]) => ({ find, isRegExp: false, replacement })),' +
-        '}));',
-    ],
-    { cwd: SCRAPER, encoding: 'utf8' }
-  );
-  assert.equal(r.status, 0, `could not evaluate scraper/vitest.config.ts:\n${r.stdout}\n${r.stderr}`);
+  const r = spawnSync(process.execPath, [TSX_CLI, FIXTURE, join(SCRAPER, 'vitest.config.ts')], {
+    cwd: SCRAPER,
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0, `could not evaluate scraper/vitest.config.ts via tsx:\n${r.stdout}\n${r.stderr}`);
   return JSON.parse(r.stdout);
 }
 
