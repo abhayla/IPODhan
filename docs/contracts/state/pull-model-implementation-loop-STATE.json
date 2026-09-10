@@ -225,7 +225,9 @@
   "[2026-09-10T19:30:31+00:00] #558's mechanism added to s11's plan rather than grown onto s18. s18 will make local and journal agree again, but BY ACCIDENT, not by mechanism - so the guard is what stops the next drift, and it belongs with the integration-suite hardening slice.",
   "[2026-09-10T19:47:51+00:00] LAPTOP MEMORY, acted on not just reported: free RAM hit 0.31 GB of 15.72 GB, under the 1 GB line the peer session set. Cause is single: the 23-S1 scratch-tree `next build` at 3.13 GB working set; every other node process is under 70 MB. Lane A paused for new dispatches. The #559 Tier A reviewer was hard-stopped on anything heavy (no vitest, no build, no npm ci, no new pools) and told to report its reading-based findings with the mutation runs marked NOT RUN, explicitly forbidden from softening that to 'expected to pass' or estimating what a run would have shown. Build deliberately NOT killed: it IS 23-S1's deliverable, killing it wastes the 3 GB already spent and the retry costs the same, and an OOM would itself be a measurement. Peer agreed. Recovering: 0.68 GB at 19:47Z.",
   "[2026-09-10T19:47:51+00:00] s17 CADENCE, three marks missed and I am not going to let silence read as success. Cron landed on main at 19:04:54Z (#549). At 19:47Z there are still ZERO runs with event=schedule; the only non-push run is the peer's manual workflow_dispatch. Eliminated: the workflow is state=active (id 338983929), the cron is top-level in `on:`, the file is on the default branch, and the decide gate reads no event payload or paths filter - so this is not a run created and then skipped, and not a run queued behind a busy self-hosted runner (that would still appear in the list). Verdict at ~20:05Z, one hour after landing.",
-  "[2026-09-10T19:47:51+00:00] s17 REPLACEMENT - peer proposes an external timer on the VPS cron calling `gh workflow run` with the runner's token. I DISAGREE and want it settled at the verdict, not assumed: that puts a credential and a scheduling duty back on the very box we are trying to unload, and it is new machinery to maintain. The card's own logic argues the other way - once item 23 lands, a deploy is unpack-and-flip rather than install-and-build, so its cost collapses and the cadence matters much less. If the schedule genuinely does not fire, the cheaper honest answer is to RESTORE THE PUSH TRIGGER, accept tonight's load for the few days until item 23 removes it properly, and record s17 as a mechanism that did not work rather than build a second mechanism to prop up the first. Owner's call if the two lanes disagree."
+  "[2026-09-10T19:47:51+00:00] s17 REPLACEMENT - peer proposes an external timer on the VPS cron calling `gh workflow run` with the runner's token. I DISAGREE and want it settled at the verdict, not assumed: that puts a credential and a scheduling duty back on the very box we are trying to unload, and it is new machinery to maintain. The card's own logic argues the other way - once item 23 lands, a deploy is unpack-and-flip rather than install-and-build, so its cost collapses and the cadence matters much less. If the schedule genuinely does not fire, the cheaper honest answer is to RESTORE THE PUSH TRIGGER, accept tonight's load for the few days until item 23 removes it properly, and record s17 as a mechanism that did not work rather than build a second mechanism to prop up the first. Owner's call if the two lanes disagree.",
+  "[2026-09-10T20:06:08+00:00] s17 VERDICT: MECHANISM DID NOT WORK. Recorded as such rather than left looking active, because a scheduled job that silently never fires is indistinguishable from one that works until someone reads a served sha. Evidence and eliminated causes are on the slice.",
+  "[2026-09-10T20:06:08+00:00] s12 AND s16 PROVEN ON THE REAL BOX, from the peer's FAILED deploy (run 34521965457) rather than from a successful one. s12: 'cleanup: removed the release dir this failed deploy created ... freed 1689 MB', two staging releases remaining, current untouched - a genuinely failed deploy is better evidence for an orphan-cleanup slice than any green one. s16: the release measured 1,689 MB against the old ~3.1 GB. That closes the size claim I recorded two hours ago as owed and refused to assert. The du -sh print in 23-S1 still lands: one reading from one incident is a measurement, not a mechanism."
  ],
  "items": {
   "item-01": {
@@ -514,11 +516,16 @@
     },
     {
      "k": "s17",
-     "status": "MERGED",
+     "status": "MERGED-MECHANISM-DID-NOT-WORK",
      "tier": "A",
      "pr": 549,
      "sha": "e7ef5357",
-     "title": "staging deploys on a 15-minute schedule when main differs, not on every push"
+     "title": "staging deploys on a 15-minute schedule when main differs, not on every push",
+     "verdict": "20:05Z 2026-09-10: zero runs with event=schedule in the last 30 runs of deploy-linux.yml (29 push, 1 workflow_dispatch). The cron landed on main at 19:04:54Z; the 19:15, 19:30, 19:45 and 20:00 marks all passed with nothing. Verified independently by both lanes.",
+     "eliminated": "workflow state=active (id 338983929); cron '*/15 * * * *' top-level in `on:`; file on the default branch; the decide gate reads no event payload and no paths filter, so this is not a run created then skipped; and no run appears in ANY state, so it is not one queued behind a busy self-hosted runner.",
+     "replacement": "Restore the push trigger in a one-line fix slice. NOT an external timer on the VPS cron calling `gh workflow run` - that puts a credential and a scheduling duty back on the box we are unloading and adds a second thing that can stop firing exactly as invisibly as this did. s17 was a stopgap for a load item 23 deletes; a more complicated stopgap is how a temporary thing becomes permanent. Peer proposed the timer, I argued against it, peer conceded on the argument.",
+     "keepScheduleBlock": "YES, leave the schedule block in place alongside push. If GitHub registers it later the decide gate compares staging's served sha against main's head, so a late tick arriving after a push deploy finds served == head and skips. Two triggers, no double deploy.",
+     "sequencing": "The push-trigger restore MUST land AFTER s19, or the first push deploy fails on the same preflight. Order: s19 -> trigger restore -> one green push deploy is the proof of both."
     },
     {
      "k": "s18",
@@ -530,6 +537,18 @@
      "why": "schema.ts:1518 is still the 3-column unique(ipo_id, table_name, field_name) and field-sources-repository.ts:209-225 targets those same three in onConflictDoUpdate with set: { rowKey, source, confidence, dataLineage }. Two child rows of one IPO writing the same field do not merely relabel each other - they REPLACE each other's source, confidence and lineage. The constraint exists nowhere: not in schema.ts, not in _gated/. data_conflicts has indexes only, no unique constraint, so it needs nothing.",
      "judgement": "Widening a unique key strictly WEAKENS it - every row set satisfying unique(a,b,d) also satisfies unique(a,b,c,d) - so no existing row can violate it, nothing needs repairing first, and a journaled migration is correct rather than a _gated file. The opposite of s6's E2, where a NEW column with a uniform default created real duplicates. The builder was told to TEST that claim on staging read-only rather than take it from me, and to refuse the journaled path if the duplicate-group count is not zero.",
      "mustBeSameCommit": "the ON CONFLICT target must widen with the constraint or Postgres raises 42P10 on the first write - a broken deploy, not a silent bug"
+    },
+    {
+     "k": "s19",
+     "title": "P0: alias-preflight demands a .git the release extract never has",
+     "status": "BUILT-PUSHED",
+     "pr": null,
+     "sha": "566f4325",
+     "tier": "A",
+     "rca": "scripts/lib/alias-preflight.mjs:47-66 finds the checkout root as the nearest ancestor holding BOTH package.json and .git, and throws otherwise. deploy-linux.sh:727-733 builds every release with `git archive \"$SHA\" | tar -x`, which never produces a .git. Deterministic and total: every staging and production deploy from #548's merge until this lands.",
+     "myMiss": "I merged #548. I reproduced its gates and read its diff and never asked what shape the deploy runs the preflight in. s14 was the slice built to stop a test resolving to the wrong source tree, and it shipped a wrong-shape assumption inside the guard itself - the same class, committed in the thing meant to catch the class.",
+     "failsSafe": "The deploy aborts before the flip: 'current' was NOT touched, nothing broken is served, and s12's cleanup removed the half-built release.",
+     "fix": "Nearest ancestor whose package.json identifies the repo ROOT (the root declares `workspaces`, the members do not), never .git. Deliberately NOT 'any package.json' - that stops at web/package.json and reintroduces the wrong-tree resolution s14 exists to prevent. Must still throw loudly outside any checkout: no cwd fallback, no default."
     }
    ],
    "prs": [
