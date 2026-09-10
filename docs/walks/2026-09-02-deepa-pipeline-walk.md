@@ -3018,3 +3018,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   was wrong and used that knowledge to explain the failure away in ten consecutive reports rather than
   to search for the fifteen-line tool that already solved it. Checking for an existing tool belongs
   BEFORE the workaround, not after someone else mentions it.
+
+- 2026-09-10 20:36 IST **[lane B] Item 18's purge change has a safety precondition that does not exist, and I
+  found it by asking what "extracted" actually means.** The new rule deletes a stored PDF seven days
+  after `extractedAt` — the reasoning being that once the text is out, the bytes are disposable.
+  Three measurements say the text is not out:
+  nothing writes or reads `document_pages` (the table I built an hour ago, still empty and unwired);
+  there is no text column on `documents` at all — no `extractedText`, no `rawText`, no `pageCount`;
+  and extraction pulls structured FIELDS out of the PDF and discards the rest. So `extractedAt` today
+  means "we got the fields we wanted from it", not "its text survives".
+  Ship the purge on that anchor and we delete the only copy of the source seven days later. OD-32's
+  own answer to its counter-case is "re-run on the stored text" — there would be nothing to re-run on,
+  and the card's §5 re-read loop has the identical dependency.
+  The writer is also not a wiring job: the Python extractors work page by page internally (pdfplumber),
+  but the TS contract never carries pages back — `pages` appears nowhere in `filing-auto-persist`'s
+  return shape. It is a cross-language contract change, and the card does not enumerate it as a slice.
+  **So I did not build slice 2.** That is not caution about difficulty; it is refusing to ship a
+  deletion path whose safety precondition is absent, with the evidence to show it. Slice 1 (the table)
+  stands — it is the right prerequisite, correctly built and tested. Escalated as a DESIGN gap.
