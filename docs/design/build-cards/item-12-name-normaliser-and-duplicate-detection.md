@@ -1,5 +1,12 @@
 # Item 12 — fold corporate-form words into the name normaliser, and run duplicate detection at discovery
 
+> **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
+> 1. Identity does not live in `scraper/src/services/document-discovery-runner.ts` (it never creates an `ipos` row); the binding site is `packages/shared/src/repositories/ipo-identity.ts`. Slices target that file.
+> 2. The existing binding accepts a 0.6 fuzzy-similarity match. The design forbids fuzzy identity (CIN-first; exact normalised name only as a fallback with provenance). The fuzzy accept is removed in this item, with a failing test first, and every row it bound is listed by the audit slice, never silently re-bound.
+> 3. "Nothing destructive to roll back" is wrong since #445/#455: `rowKeyForName` output is persisted in three `normalized_name` columns under UNIQUE. Any normaliser change therefore needs a backfill slice: a `repair-*.ts` tool via `openRepairDb`, dry-run default, staging `--apply` only, `assert-repair-held.mjs --cycles 2`, with the UNIQUE pre-check by read-only query against `ipodhan_staging` and `ipodhan` pasted in the PR body.
+> 4. Row merges go ONLY through `scraper/scripts/repair-merge-duplicate-ipo.ts` (item 19); no new SQL path.
+
+
 ## Purpose
 
 Two rows can no longer exist for the same IPO past discovery time: the binding normaliser folds
