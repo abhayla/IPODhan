@@ -1667,7 +1667,10 @@
     "2026-09-11 01:24 IST THE GENUINE FINDING: AAA TECHNOLOGIES LTD (AAATECH) is stored MAINBOARD and NSE securityType says SME. Matched by name AND symbol so it is not a collision. It also appears in tonight d_lot_band_window violations at 100 x Rs42 = Rs4,200 - which fails the MAINBOARD window AND the SME window, so re-segmenting alone would not clear it.",
     "2026-09-11 01:24 IST COVERAGE MEASURED: 142 of our 277 IPO rows match NSE past-issues (139 by name, 141 by symbol), but only THREE are segment-unprovenanced. So as a PROVENANCE source it is thin; its real value is CONFLICT DETECTION, and it found one genuine defect in its first run over 277 rows.",
     "2026-09-11 01:24 IST RECOMMENDATION: retire rule 1 or gate it behind name agreement, keep rule 2, and use the matcher as a nightly disagreement check between stored segment and NSE securityType rather than as a filler of gaps.",
-    "2026-09-11 01:24 IST STALE DOCSTRING NOTED: nse-api-client describes public-past-issues as \"Historical IPOs with listing performance (1,268 records)\". Measured: 1,431 records and NO listing performance - listingDate and issuePrice both read \"-\". Two wrong claims in one comment, and I nearly inherited the second."
+    "2026-09-11 01:24 IST STALE DOCSTRING NOTED: nse-api-client describes public-past-issues as \"Historical IPOs with listing performance (1,268 records)\". Measured: 1,431 records and NO listing performance - listingDate and issuePrice both read \"-\". Two wrong claims in one comment, and I nearly inherited the second.",
+    "2026-09-11 01:26 IST FILED TWO ISSUES so tonight findings survive outside a ledger nobody greps. #561: AAA TECHNOLOGIES stored MAINBOARD while NSE securityType says SME - the only VERIFIED stored-segment disagreement on production, matched by name AND symbol. #562: the unwired nse-past-issue-matcher rule 1 pairs INJECTO POLYMERS with INDIA PESTICIDES on a shared three-letter symbol.",
+    "2026-09-11 01:26 IST BOTH ISSUES CARRY THE THING THAT USUALLY GETS LOST: what is NOT established. #561 does not claim which segment value is correct - NSE securityType is a strong signal but the row is BSE-listed and I have not checked a BSE-side classification, so the defect is the DISAGREEMENT and it needs a source decision before any write. #562 says the matcher is dead code today, so the bug is latent rather than live, and names the fix without building it.",
+    "2026-09-11 01:26 IST #561 ALSO CARRIES THE TRAP: re-segmenting AAA TECHNOLOGIES will NOT clear its lot-window violation, because Rs4,200 fails the SME window (Rs90,000-3,00,000) as well as the MAINBOARD one. Someone fixing the segment and expecting the check to go green would be surprised, and that is exactly the kind of thing that gets discovered halfway through a fix."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -1901,5 +1904,9 @@
     "coverage": "142 of our 277 IPO rows match NSE past-issues by name or symbol (139 by name, 141 by symbol). Only THREE of the 142 are segment-unprovenanced, so as a provenance source it is thin. Its value is CONFLICT DETECTION, not filling gaps.",
     "recommendation": "Retire rule 1 (symbol-first) or gate it behind a name agreement; rule 2 is sound. Then the matcher value is a nightly disagreement check between our stored segment and NSE securityType - which found one real defect in its first run against 277 rows.",
     "staleDocstring": "Also: nse-api-client documents public-past-issues as \"Historical IPOs with listing performance (1,268 records)\". Measured: 1,431 records and NO listing performance - listingDate and issuePrice read \"-\" on the sample. Two stale claims in one docstring."
+  },
+  "issuesFiled": {
+    "561": "AAA TECHNOLOGIES LTD stored MAINBOARD while NSE securityType says SME. Verified by name AND symbol, so not a collision. Also notes that re-segmenting alone will NOT clear its lot-window violation, because Rs4,200 fails the SME window too.",
+    "562": "nse-past-issue-matcher rule 1 (exact symbol match) pairs our INJECTO POLYMERS (IPL) with NSE INDIA PESTICIDES (IPL). Unwired today, so latent. Rule 2 (name) is sound. Also records the two stale docstring claims in nse-api-client."
   }
 }
