@@ -3,9 +3,19 @@
   "slug": "pull-model-implementation-lane-b",
   "lane": "B",
   "startedAt": "2026-09-10T11:15:40+05:30",
-  "order": [20, 22, 18, 16, 8, 21],
+  "order": [
+    20,
+    22,
+    18,
+    16,
+    8,
+    21
+  ],
   "currentItem": 20,
-  "testDb": { "name": "ipodhan_test2", "drop": "OWED" },
+  "testDb": {
+    "name": "ipodhan_test2",
+    "drop": "OWED"
+  },
   "prGateRunsSpentByThisLane": 0,
   "laneCapPerDay": 25,
   "repoCeilingPerDay": 60,
@@ -21,11 +31,106 @@
     "Peer relays received 11:14 IST (information, adopted, loosen nothing): rebase immediately before BOTH pr create and pr merge; both lanes squash so use base=$(git merge-base HEAD origin/main) then 'git -c core.autocrlf=false rebase --onto origin/main $base'; stage docs/ops/prod-ops-recipes.md only with 'git -c core.autocrlf=false add'; every brief that mutates shared state ends by re-asserting it and pasting the proof; after any db:generate confirm the new _journal.json entry is not future-dated (5 min skew tolerance) - applies to items 18 and 22."
   ],
   "items": {
-    "item-20": { "item": 20, "card": "docs/design/build-cards/item-20-design-traceability-check.md", "status": "IN-PROGRESS", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
-    "item-22": { "item": 22, "card": "docs/design/build-cards/item-22-document-handling-and-download-limits.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
-    "item-18": { "item": 18, "card": "docs/design/build-cards/item-18-document-retention.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
-    "item-16": { "item": 16, "card": "docs/design/build-cards/item-16-retire-moneycontrol.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
-    "item-08": { "item": 8, "card": "docs/design/build-cards/item-08-ratios-basis-for-offer-price-extractor.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } },
-    "item-21": { "item": 21, "card": "docs/design/build-cards/item-21-read-side.md", "status": "PENDING", "slices": [], "prs": [], "mergeShas": [], "proof": { "status": "OWED", "cycle": null, "line": null } }
+    "item-20": {
+      "item": 20,
+      "card": "docs/design/build-cards/item-20-design-traceability-check.md",
+      "status": "IN-PROGRESS",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-22": {
+      "item": 22,
+      "card": "docs/design/build-cards/item-22-document-handling-and-download-limits.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-18": {
+      "item": 18,
+      "card": "docs/design/build-cards/item-18-document-retention.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-16": {
+      "item": 16,
+      "card": "docs/design/build-cards/item-16-retire-moneycontrol.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-08": {
+      "item": 8,
+      "card": "docs/design/build-cards/item-08-ratios-basis-for-offer-price-extractor.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    },
+    "item-21": {
+      "item": 21,
+      "card": "docs/design/build-cards/item-21-read-side.md",
+      "status": "PENDING",
+      "slices": [],
+      "prs": [],
+      "mergeShas": [],
+      "proof": {
+        "status": "OWED",
+        "cycle": null,
+        "line": null
+      }
+    }
+  },
+  "sharedDuties": {
+    "firstFlagSlice": {
+      "taken": true,
+      "takenBy": "lane A",
+      "branch": "feat/pm-item01-s5a-slot-aware-flags",
+      "verifiedAt": "2026-09-10 11:22 IST",
+      "evidence": "branch present in the repo branch list, not yet on origin; origin/main feature-flags.ts 477 lines with 0 DEPLOY_SLOT"
+    },
+    "firstWebTouchingSlice": {
+      "taken": false,
+      "verifiedAt": "2026-09-10 11:22 IST",
+      "evidence": "origin/main .github/workflows/ci.yml 107 lines, 5 matches of continue-on-error|postgres|test:integration",
+      "note": "likely falls to lane B via item 21, which is last in this lane's queue"
+    }
+  },
+  "carriedFromLaneA": [
+    "field_sources.row_key ships inert until lane A item-1 s4 wires callers; lane B writes provenance in the no-rowKey shape",
+    "lane A PR #459 (item 1 slice s3) open at 2026-09-10 11:22 IST"
+  ],
+  "prGateRunsRepoTodayAtLastRead": {
+    "count": 8,
+    "at": "2026-09-10 11:22 IST"
   }
 }
