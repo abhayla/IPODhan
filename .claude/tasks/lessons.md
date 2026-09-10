@@ -543,3 +543,21 @@ check: allowlist the benign, never denylist the suspicious.
 Second lesson, again: the worker's report said the process "has now been killed due to low memory, which
 resolves it cleanly." Both were still running. A finished worker's claim about the state of the world is
 a claim. Kill by PID and verify, never by `pkill -f` (whose pattern has matched the calling shell here).
+
+## 2026-09-10 14:40 IST — A top-N sorted by age can never find a young stray
+
+The stray-process sweep failed twice today, in two different ways, and the second survived my fix for
+the first.
+
+1. It filtered `Name='node.exe' or Name='python.exe'`. A `find.exe` running 110 minutes was invisible.
+2. After removing that filter I still wrote `Sort-Object -Descending Age | Select-Object -First 6`.
+   This machine has 106 non-allowlisted processes over 15 minutes, and the six oldest are boot-time
+   services at 707 minutes. Nothing this session started could ever reach the top six. Two ssh.exe at
+   375 minutes were invisible; someone else found them.
+
+Both defects share a shape: the check reported "clean" every time, which read as reassurance.
+
+**Rule.** A sweep for unexpected things must (a) filter POSITIVELY for what the run could have started —
+command line matching the repo path, or a process name from the tool set — rather than excluding a
+hand-written list of benign names, and (b) print the whole list, never a top-N. If an exclusion list
+needs 106 entries to go quiet, it is the wrong shape: name what you are looking for.
