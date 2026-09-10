@@ -314,7 +314,17 @@ scraper/manual-listing-entries.csv
 
 # Autonomous-run isolation artifacts
 .run-active.lock
-docs/contracts/.run/
+docs/contracts/.run/*
+# ...EXCEPT each lane's human-readable progress log. Those ARE the ledger the
+# /goal condition names, and while they were ignored they existed only on the
+# machine that wrote them: on 2026-09-11 lane B's tracked state carried FOUR
+# entries (last 11:14 IST) while its local log was at 02:10 — a full day of work
+# on no branch at all. Twice that same night a freshness tick read one of these
+# files and reported a timestamp no other machine could see.
+# NOTE the shape: `docs/contracts/.run/` (the directory) cannot be re-included
+# per-file, because git never descends into an excluded directory. Ignoring the
+# CONTENTS with `/*` is what makes the negation below work at all.
+!docs/contracts/.run/*-PROGRESS.md
 .sweep/
 
 # Local DB credential test scripts (never track — plaintext connection secrets)
@@ -352,5 +362,15 @@ IPODhan-t*/
 # runs (OD-25); they are evidence inputs, not repository content. Saved JSON/HTML
 # payload fixtures under docs/design/probes/fixtures/ ARE committed — they are the evidence.
 .run-active.lock
-docs/contracts/.run/
+docs/contracts/.run/*
+# ...EXCEPT each lane's human-readable progress log. Those ARE the ledger the
+# /goal condition names, and while they were ignored they existed only on the
+# machine that wrote them: on 2026-09-11 lane B's tracked state carried FOUR
+# entries (last 11:14 IST) while its local log was at 02:10 — a full day of work
+# on no branch at all. Twice that same night a freshness tick read one of these
+# files and reported a timestamp no other machine could see.
+# NOTE the shape: `docs/contracts/.run/` (the directory) cannot be re-included
+# per-file, because git never descends into an excluded directory. Ignoring the
+# CONTENTS with `/*` is what makes the negation below work at all.
+!docs/contracts/.run/*-PROGRESS.md
 docs/design/probes/fixtures/pdf/

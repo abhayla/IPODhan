@@ -232,3 +232,31 @@ describe('writeLedgerFile', () => {
     }
   });
 });
+
+describe('MUTATION 4 — the ON CONFLICT arbiter of upsertFieldSource (item 1 slice s18)', () => {
+  it('MUTATION: dropping rowKey from the target turns this red — the arbiter must name (ipo_id, table_name, row_key, field_name)', async () => {
+    const tx = mockTx(null);
+    await upsertFieldSource(tx as never, {
+      ipoId: 'ipo-1',
+      fieldName: 'issueSize',
+      source: 'NSE',
+      previousValue: null,
+      dataLineage: { tool: 't' },
+      updatedBy: 'test',
+    });
+
+    expect(tx.onConflictDoUpdate).toHaveBeenCalledTimes(1);
+    const target = tx.onConflictDoUpdate.mock.calls[0][0].target as Array<{ name: string }>;
+    // Postgres resolves ON CONFLICT to an arbiter INDEX whose columns match this
+    // list exactly. After slice s18 the only unique index on field_sources is
+    // the 4-column one, so a 3-column target here raises 42P10 on the FIRST
+    // write of every repair tool — and scripts/ci/require-repair-tool-module.mjs
+    // forces every repair tool through this function.
+    expect(target.map((c) => c.name)).toEqual([
+      'ipo_id',
+      'table_name',
+      'row_key',
+      'field_name',
+    ]);
+  });
+});

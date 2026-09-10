@@ -168,25 +168,11 @@ export class FieldSourcesRepository extends BaseRepository {
   async trackFieldUpdate(input: TrackFieldUpdateInput): Promise<FieldSourceRecord> {
     const rowKey = input.rowKey ?? '';
 
-    // The ON CONFLICT target below is (ipoId, tableName, fieldName) — rowKey
-    // is NOT part of it, so at most one row exists per that triple. The
-    // cache key in invalidateFieldSourceCaches() is keyed on rowKey though,
-    // so when an upsert changes an existing row's rowKey (A -> B), the old
-    // key (...:A:...) is never deleted and keeps serving the pre-update row
-    // for the rest of CacheTTL. Read the row's CURRENT rowKey before writing
-    // so both the old and new cache keys get invalidated.
-    const existing = await this.db
-      .select({ rowKey: fieldSources.rowKey })
-      .from(fieldSources)
-      .where(
-        and(
-          eq(fieldSources.ipoId, input.ipoId),
-          eq(fieldSources.tableName, input.tableName),
-          eq(fieldSources.fieldName, input.fieldName)
-        )
-      )
-      .limit(1);
-    const previousRowKey = existing[0]?.rowKey;
+    // rowKey is part of the ON CONFLICT target below (item 1 slice s18), so an
+    // upsert can never move an existing row from one rowKey to another: a
+    // different rowKey is a different row. The pre-read that used to look up
+    // the row's previous rowKey — and the extra cache invalidation under that
+    // old key — are gone along with the window they compensated for.
 
     const result = await this.executeQuery(
       'trackFieldUpdate',
@@ -207,9 +193,14 @@ export class FieldSourcesRepository extends BaseRepository {
             updatedBy: input.updatedBy || 'SYSTEM',
           })
           .onConflictDoUpdate({
+            // MUST mirror unique_field_source_per_ipo in
+            // packages/shared/src/db/schema.ts exactly — a target naming a
+            // column list with no matching unique constraint raises Postgres
+            // 42P10 on the FIRST write, which is a broken deploy.
             target: [
               fieldSources.ipoId,
               fieldSources.tableName,
+              fieldSources.rowKey,
               fieldSources.fieldName,
             ],
             set: {
@@ -235,14 +226,6 @@ export class FieldSourcesRepository extends BaseRepository {
       input.fieldName,
       rowKey
     );
-    if (previousRowKey !== undefined && previousRowKey !== rowKey) {
-      await this.invalidateFieldSourceCaches(
-        input.ipoId,
-        input.tableName,
-        input.fieldName,
-        previousRowKey
-      );
-    }
 
     return result[0] as FieldSourceRecord;
   }
