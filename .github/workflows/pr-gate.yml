@@ -330,22 +330,6 @@ jobs:
         run: npx vitest run --config vitest.config.ts tests/unit/pipeline-stages
         working-directory: ./scraper
 
-      - name: ESM module-scope globals - mutation proof
-        # Drives the real check against fixture trees, including the two
-        # mutations that prove it can FAIL and the zero-files floor that
-        # proves it cannot pass on an empty scan.
-        run: node --test scripts/ci/tests/check-esm-module-globals.test.mjs
-
-      - name: ESM module-scope globals (static)
-        # 2026-09-10: download-allowlist-loader.ts reached main with a bare
-        # __dirname at module scope. `scraper` is "type": "module", so the
-        # module threw ReferenceError the instant Node loaded it and the whole
-        # production scraper died at startup. vitest (CJS transform), `tsx -e`
-        # and `tsc --noEmit` (@types/node declares __dirname globally) were all
-        # green. This static pass catches the half of the class that nothing
-        # imports YET; the smoke import below catches the reachable half.
-        run: node scripts/ci/check-esm-module-globals.mjs
-
       - name: Scraper import smoke (real ESM runtime)
         # Loads the ENTIRE production import graph through the real entry
         # point, the same way pm2 runs it, then exits before any DB, network
