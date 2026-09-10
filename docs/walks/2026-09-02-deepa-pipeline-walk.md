@@ -2597,3 +2597,19 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   guard rather than prose in a brief. The path-form rule, the false-zero rule, the stale-artefact rule and the
   restore rule are all still sentences someone has to remember -- and this lane broke its own path rule within
   an hour of writing it. A hook does not forget; a brief does.
+
+- **2026-09-10 16:42 IST [lane B] The find-guard false positive is FIXED, and the fix did not create a false negative -- both
+  directions re-measured here, because a fix to an over-strict guard is exactly how an under-strict one is
+  born.**
+  - Documenting the pattern in a string: `printf "the guard blocks: find / -maxdepth 1 -name foo"` -> **exit 0,
+    allowed**. This ledger line contains the literal form and was written without a workaround, which is the
+    proof. The wrong incentive is gone: describing the rule accurately no longer trips it.
+  - An ACTUAL bare-root find -> **still BLOCKED**, same message, depth limit still no exemption.
+  That second check is the one that mattered. Loosening a guard to stop it complaining is the most common way
+  a guard quietly dies, and this run has found three of those today (a CI step that passed having run nothing,
+  a boundary check evaluating zero edges, a drift arm skipping silently). Verifying only the direction that was
+  annoying me would have been the same mistake with better manners.
+  Also tightened by the same change, per the guard owner: `$( )` substitution and finds inside loop or
+  conditional bodies are now blocked (previously a named gap), and backticks no longer count as substitution.
+  One edge carried into briefs: a heredoc whose body contains another heredoc start marker with no terminator
+  can false-block -- use distinct delimiters.
