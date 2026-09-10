@@ -285,7 +285,8 @@
           "tier": "A",
           "branch": "feat/pm-item01-s6-risk-factor-heading-key",
           "mergeCondition": "s6's PR MUST add the ipo_risk_factors/heading_hash entry to the s8b registry in scraper/tests/integration/derived-key-recompute-guard.integration.test.ts, in the same change that adds the column. s8b could not register it: normalizeHeading lives in risk-factor-heading-key.ts, which exists only on s6's branch, so importing it from main would break the build. Without the entry, heading_hash ships with a gated UNIQUE constraint and no re-compute guard - the exact hole #506 closed for normalized_name.",
-          "mergeAfter": "s8b"
+          "mergeAfter": "s8b",
+          "registryShapeDecision": "Keep the SINGLE registry array in derived-key-recompute-guard.integration.test.ts. s6 adds ONE entry and takes the one-line conflict at its merge gate; do NOT restructure into per-entry files. Only s6 adds an entry in this loop, so per-entry files would be speculative generality (rule 21). Split only if a third derived key appears."
         },
         {
           "k": "s7a",
@@ -365,7 +366,8 @@
           "pr": null,
           "sha": null,
           "title": "guard: stored normalized_name and heading_hash must re-compute to themselves under the current normaliser (#506)",
-          "branch": "feat/pm-item01-s8b-derived-key-recompute-guard"
+          "branch": "feat/pm-item01-s8b-derived-key-recompute-guard",
+          "prBodyMustState": "Added to the pr-gate integration ALLOW-LIST at .github/workflows/pr-gate.yml:497 (scraper-document-integration job). It is an allow-list, not a glob - a guard not named on that run line executes nowhere and still looks like coverage. Reference #507: 11 of 17 files in scraper/tests/integration/ are in exactly that state."
         }
       ],
       "prs": [
@@ -693,7 +695,8 @@
     503,
     504,
     505,
-    506
+    506,
+    507
   ],
   "prGateRunsToday": 49,
   "prGateBudgetClaimedRaise": {
