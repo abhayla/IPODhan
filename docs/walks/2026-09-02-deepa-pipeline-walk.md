@@ -2264,3 +2264,30 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   the loader but only FLAT keys are tested until lane C's slice 2-S2. If the download allow-list is nested and its
   error rendering looks wrong, that is lane C's untested path - **file it against item 2, do not patch the loader.**
   A lane patching another lane's shared component to make its own slice pass is how one loader becomes two.
+
+- **2026-09-10 14:17 IST [lane B] Two verifications, both of which changed what this run believed.**
+  **1. The builder's "pre-existing, unrelated" tzcase failure is TRUE - and that makes the GATE the defect.**
+  Checked on unmodified `origin/main` (`9bc5f71c`), not on the slice's branch:
+  `cd scraper && npx vitest run -c vitest.tzcase.config.ts` â **exit 1**, identical error
+  `TZCASE_EXPECT_TZ must be set by the parent: expected undefined to be truthy`. So the slice did not break it.
+  But: a grep across `package.json`, `scraper/package.json` and every workflow finds **no invocation of that config
+  at all** - no parent driver script, no CI step. So the command **cannot pass when run the way any brief asks for
+  it, and nothing else ever runs it.** This run's own brief demanded it as a gate for a scheduler-touching slice, and
+  a gate that always fails is worse than no gate: it teaches every worker that a red exit code is normal and can be
+  reported away. That is the same family as issue #461 (a CI step that passes having run no tests) - the mirror
+  image. Filing it.
+  Recording this against MYSELF as well: the brief this run wrote demanded a command it had never verified could
+  succeed. Naming a gate is not the same as knowing it works.
+  **2. The Notifier post returned HTTP 401 because `NOTIFIER_KEY` in `D:/Abhay/GLOBAL.env` is EMPTY** - measured,
+  `awk` on line 33 gives value length **0**. Not a wrong URL, not a network problem: there is no key to send. The
+  IPODhan project `.env` has no NOTIFIER entry either. `GLOBAL.md` §2 line 166 records the reason plainly:
+  *the per-project API key the gateway VALIDATES lives in `/root/notifier/.env`* - i.e. on the VPS, not on this
+  laptop.
+  So this lane **cannot post to the Notifier at all** without a key the owner would have to place. That is an
+  owner-side gap, not something this run can fix, and it is recorded rather than worked around.
+  **And the honest part: this run never ATTEMPTED a Notifier post until now.** Contract §0.3 asks for one at
+  Stage 0 (`[lane B] started`) and on BLOCKED / failed proof / daily cap. Stage 0 was reported complete without it.
+  That is the identical class as DEFECT-B03 (the missing PROGRESS log): a contract artefact checked off from
+  recollection instead of confirmed. The mechanism adopted then - enumerate the artefacts and confirm each by
+  running or listing it - was not applied to the Notifier line because the Notifier was not on the enumerated list.
+  It is now.

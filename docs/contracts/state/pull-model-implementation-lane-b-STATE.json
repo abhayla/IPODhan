@@ -280,6 +280,22 @@
       "foundBy": "a peer correction, then verified here with git merge-tree in a throwaway repo",
       "class": "an unmeasured PRECAUTION - adopted because it sounded prudent and looked cheap; the other two claims today were measured before acting, this one was not",
       "mechanism": "rebase is a judgement triggered by the last-action check, not its automatic consequence; the trigger is a new CI gate or a code overlap, not any non-empty output"
+    },
+    {
+      "id": "DEFECT-B09",
+      "at": "2026-09-10 14:17 IST",
+      "what": "this run's own worker briefs demanded `npx vitest run -c vitest.tzcase.config.ts` as a gate; it exits 1 on unmodified main and nothing in package.json or any workflow invokes it, so it can never pass as briefed",
+      "foundBy": "verifying a builder's 'pre-existing, unrelated' claim on main instead of accepting it",
+      "class": "a gate that always fails teaches workers that a red exit code is normal - the mirror image of issue #461, a gate that always passes",
+      "mechanism": "never name a command as a gate in a brief without having seen it succeed; filing the tzcase config as an issue"
+    },
+    {
+      "id": "DEFECT-B10",
+      "at": "2026-09-10 14:17 IST",
+      "what": "no Notifier line was ever posted, including the Stage 0 '[lane B] started' the contract requires; the first attempt today returned HTTP 401 because NOTIFIER_KEY in GLOBAL.env is empty (length 0) and the project .env has none",
+      "foundBy": "a peer asking whether the posts had landed",
+      "class": "same as DEFECT-B03 - a contract artefact checked off from recollection; the enumerate-and-confirm mechanism adopted then did not list the Notifier line",
+      "mechanism": "the Stage-0 artefact list now includes the Notifier line; the key itself is an OWNER-side gap - GLOBAL.md section 2 line 166 says the validating key lives in /root/notifier/.env on the VPS, so no laptop-side post is possible without the owner placing one"
     }
   ],
   "contractCorrectionsDue": [],
@@ -425,5 +441,9 @@
       "now": "count by branch prefix feat/pm-b-item / fix/pm-b-item with --limit 200",
       "why": "DEFECT-B04: the search form returned lane A's PR #459; GitHub tokenises the bracketed string"
     }
+  ],
+  "ownerActionsNeeded": [
+    "NOTIFIER_KEY is empty in D:/Abhay/GLOBAL.env, so no lane can post from the laptop; the validating key lives in /root/notifier/.env on the VPS (GLOBAL.md section 2 line 166)",
+    "issue #468's fix ships behind ENABLE_UPCOMING_DISCOVERY_RESERVATION, default OFF - the class is not fixed until it is turned on, staging then prod"
   ]
 }
