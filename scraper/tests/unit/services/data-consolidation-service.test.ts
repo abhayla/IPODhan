@@ -606,9 +606,12 @@ describe('DataConsolidationService', () => {
           confidence: 90,
         });
 
+        // s4: the row-key-aware 4-arg shape. `ipos` is a singleton table, so the
+        // key is the '' sentinel — the same rows are resolved as before.
         expect(mockConflictsRepo.autoResolveConverged).toHaveBeenCalledWith(
           'test-ipo',
           'ipos',
+          '',
           'total_subscription'
         );
         // Values are equivalent -> no new conflict is logged
