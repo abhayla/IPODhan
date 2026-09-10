@@ -221,7 +221,8 @@
             "noSourceNoGuess": 33,
             "applied": false
           },
-          "designCorrection": "Do NOT clear the 33 IPO rows. Clear only the 29 non-IPO rows where segment is meaningless. Add a detection check counting a non-null segment with NO field_sources row."
+          "designCorrection": "Do NOT clear the 33 IPO rows. Clear only the 29 non-IPO rows where segment is meaningless. Add a detection check counting a non-null segment with NO field_sources row.",
+          "rulingApproved": "2026-09-10 18:28 IST - clear only the 29 non-IPO rows, leave the 33 IPO labels, add a shrink-only presence check."
         },
         {
           "id": "2-S3c",
@@ -267,6 +268,14 @@
           "issue": 493,
           "title": "field-manifest-loader importable under real ESM + shrink-only class guard",
           "supersededBy": "lane B #496"
+        },
+        {
+          "id": "2-S3b2",
+          "tier": "A",
+          "status": "PLANNED",
+          "issue": 482,
+          "title": "source the 33 unprovenanced IPO segments - fixture proof FIRST; agree/disagree/no-source",
+          "blockedOn": "a real fixture proving any source states segment"
         }
       ],
       "prs": [
@@ -547,7 +556,10 @@
     "2026-09-10 18:25 IST ITEM 12 PLAN RE-CUT under delta 1.1: seven slices become FIVE. The delta band is 250-400 lines and every item 12 slice was 120-220, so they consolidate - but I re-cut by TIER and SHARED FILE, not by line count. Merging a Tier B change into a Tier A slice over-reviews it; the reverse under-reviews it. Two slices are deliberately left BELOW the band and the reason is recorded on each rather than padded to hit a target.",
     "2026-09-10 18:25 IST THE TWO DELIBERATE UNDER-BAND SLICES ARE THE POINT, not an exception: 12-B changes what binds to what and needs its TS normaliser and SQL twin in ONE commit - combining identity-critical work with filler to reach 250 lines would raise blast radius to save a PR. 12-C is a repair tool that WRITES rows; merging it into a code slice would bury a data write inside a code review. A size guideline that pushes either of those the wrong way is being applied against its own purpose.",
     "2026-09-10 18:25 IST 12-D EXISTS BECAUSE OF A COST WE HAVE ALREADY PAID FOUR TIMES: 12-S5 and 12-S6 both edit ipo-identity.ts behind the same flag. Kept separate they guarantee a rebase between two slices touching one file - the exact collision that cost lane A four rebases today and made a slice appear to delete another lane files. Combining them is worth more than the smaller diffs.",
-    "2026-09-10 18:25 IST CROSS-LANE OBLIGATION RECORDED so it is not discovered late: 12-B and 12-C must land BEFORE lane A item 1 writer slices, or lane A rebases onto them. Item 1 READS company-name-normalizer as its row-key function while item 12 CHANGES it. The merge gets announced in the ledger so lane A re-runs its row-key tests. This is the same shape as the config-loader race I flagged this morning - cheaper to raise before the work than to reconcile after."
+    "2026-09-10 18:25 IST CROSS-LANE OBLIGATION RECORDED so it is not discovered late: 12-B and 12-C must land BEFORE lane A item 1 writer slices, or lane A rebases onto them. Item 1 READS company-name-normalizer as its row-key function while item 12 CHANGES it. The merge gets announced in the ledger so lane A re-runs its row-key tests. This is the same shape as the config-loader race I flagged this morning - cheaper to raise before the work than to reconcile after.",
+    "2026-09-10 18:28 IST REVISED 2-S3b DESIGN APPROVED, with one condition that catches the half I MISSED. My revision left the 33 IPO guesses live and merely counted. The supervisor point is correct and I had not made it: a guess that stays live still STEERS the four write paths I fixed in 2fd8a43b for those rows - it selects which NSE series is queried and which plausibility floor applies. So the count must shrink through SOURCING, not only through time. Counting a live guess is visibility, not repair.",
+    "2026-09-10 18:28 IST 2-S3b SPLIT INTO TWO HALVES rather than disrupting a running builder mid-round. First half (in flight): clear the 29 meaningless non-IPO rows, report the 33, add the presence check. Second half (2-S3b2, PLANNED): source the 33 - source agrees, write provenance and leave the label; source disagrees, correct the label with provenance; no source states it, leave the label and let the nightly count carry it. That last outcome stays a SUCCESS, not a failure.",
+    "2026-09-10 18:28 IST 2-S3b2 IS BLOCKED ON THE ONE THING NOBODY HAS VERIFIED ALL DAY: that ANY source actually states segment. I flagged this as unverified when the repair was first scoped and it is still unverified. listing_exchanges is NOT it - populated on all 41 prod rows, but it says BSE or NSE, the EXCHANGE, and BSE runs both a main board and BSE SME. So 2-S3b2 first step is a REAL FIXTURE from NSE listing data or the Chittorgarh report showing a field that states the board. If none does, the honest end state is 33 labels left alone with the nightly count carrying them - and that is a legitimate finish, not a failure to be worked around."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
