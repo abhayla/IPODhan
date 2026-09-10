@@ -208,6 +208,14 @@
     {
       "at": "2026-09-10T23:03:23.661Z",
       "what": "#593 UNDOES #587: I merged the peer-section locator in TypeScript, but the peer extraction lives in Python (extract_filing.py, listed-peer block at :1714, over page_texts) and nothing on the TS side reads prospectus text to locate sections. #587 shipped a correct, tested function nothing would ever call - the correct-but-uncalled-helper class item 20 exists to surface, and I built item 20. Retired and ported to scraper/scripts/peer_table_section.py. Why the gate missed it: i_wire_or_retire covers scraper/src/scheduler/*.ts only; gap RECORDED not widened, since widening is item 20 scope and item 20 is closed. 20 tests, three mutations each asserting it applied, full python suite 199 passed 3 skipped. Failure-class entry re-homed so the registry does not cite a deleted path."
+    },
+    {
+      "at": "2026-09-10T23:09:33.295Z",
+      "what": "#592 MERGED (3773ba84) - rotation recipe on the card. #594 opened - cell fixtures. FOUR issuers produced THREE extraction modes: upright/detected (Karamtara, PRASOLCHEM), rotated 90deg recoverable by the recipe (Kanohar), and TEXT-ONLY with no table detected by either strategy (Glasswall). The page that does yield a Glasswall table containing its peer is a DIFFERENT table (a three-year KPI comparison) - checked rather than grabbed. Glasswall gets NO cell fixture deliberately, with a test asserting the absence, so the gap is a documented decision rather than a hole someone later fills with an empty capture."
+    },
+    {
+      "at": "2026-09-10T23:09:33.295Z",
+      "what": "FIFTH hollow check of the night, mine, caught in seconds: my first fixture verification reported Kanohar missing GE Vernova and Listed peers. The data was right; I had stored token ARRAYS and searched for the joined phrase as a substring, so it could never match. Same shape as the mutation harness that silently no-opped earlier. Caught by listing the rows rather than trusting the count."
     }
   ],
   "items": {
@@ -653,7 +661,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T23:03:23.661Z",
+  "lastStateWriteAt": "2026-09-10T23:09:33.295Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 2,
