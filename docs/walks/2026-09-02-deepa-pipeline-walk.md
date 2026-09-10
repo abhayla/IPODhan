@@ -2900,3 +2900,30 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   to close. I had already written that constraint down this afternoon and still nearly converted it —
   what stopped me was reading `defaultFetcher` rather than trusting my own note. The test now asserts
   the flag stays OFF, so the next reader cannot mistake the guard for an oversight and "finish the job".
+
+- 2026-09-10 19:39 IST **[lane B] Three security mechanisms shipped this week with nothing calling them. That is
+  a class, not three accidents.**
+  1. `isResolvedAddressPrivate` — merged in #487 this morning, zero callers all day. The DNS-rebinding
+     hole it closes stayed open on every fetch until slice 22-3 tonight.
+  2. `slotAwareFlagDefault` — merged in #476, zero production callers, so every flag this run added was
+     OFF on staging and the staging proof owed for #468 could only ever have come back empty.
+  3. The registrar host-set — `isTrustedDocumentHost(url, registrarHosts)` takes the set,
+     `loadRegistrarDocumentHosts` reads and caches it, `resetRegistrarDocumentHostsCache` exists. Both
+     real call sites pass **nothing**, so the set is always empty and registrar-hosted documents are
+     still refused. Its own docblock admits it: *"not wired here, item 22 is this function only."*
+  Every one of the three passed review, passed CI, and had unit tests — **tests on the FUNCTION, none
+  on its WIRING.** A function with no caller is perfectly testable and perfectly useless, and green is
+  exactly what it looks like. This is the same shape as the module-boundary check that evaluated zero
+  edges and the 70%/80% disk warning nobody could evaluate: the control exists, reports success, and
+  is not connected to the thing it names.
+  Learn-or-block creates the mechanism at the second occurrence. This is the third, so a note is not
+  an acceptable response: what is needed is a deterministic check that a named security-boundary
+  export has at least one non-test caller, and that a parameter carrying a security set is never
+  supplied only by its own default. Proposed as item 20's next slice rather than prose.
+- 2026-09-10 19:39 IST **[lane B] Judgement, stated rather than made silently: I am stopping new slice
+  construction at four held branches.** 20-5a, 20-5b, 22-3 and 22-s0d are built, green and unpushed.
+  Nothing can merge while the production disk is full, and each additional slice built on top of an
+  unmerged stack costs rebase risk that grows with depth — lane A has already lost a slice today to a
+  migration idx that went stale exactly this way. Building a fifth feature slice would add more work
+  that cannot land than value that can. The wiring gate above is the exception I would make, because
+  it prevents a class rather than adding to the queue.
