@@ -248,7 +248,8 @@
   "[2026-09-10T21:20:10+00:00] Worktree lifecycle: s19, s20 and progress-tracked removed (PRs #564, #567, #571 each confirmed MERGED by `gh pr view --json state` BEFORE touching the tree, never on the tool's ancestry signal). Main checkout proven intact after each: tracked 4702 -> 4702, dirty 11 -> 11, deleted-on-disk 0.",
   "[2026-09-10T21:45:14+00:00] PEER RULING CHECKED AND PARTLY REJECTED, with evidence. The claim: no remaining slice covers F-73's three tables, so item 1 would read 30/30 complete with revenue/EPS/valuation still on the no-priority direct-upsert path, and a 31st slice must be added tonight. I read the slice list before agreeing: s7b's title is 'call sites: the three direct-upsert sites + anchor-persister', and those three ARE ipo_details:993, financial_statements:1250, ipo_valuation:1316. So the coverage exists and a 31st slice would have duplicated it. NO new slice added; the count stays 30.",
   "[2026-09-10T21:45:14+00:00] BUT THE UNDERLYING WORRY WAS LEGITIMATE AND THE CAUSE WAS MINE: I scoped s5b to financial_statements alone, which is one of s7b's three, leaving the two slices overlapping ambiguously - s7b could be read as already covered by s5b, and the remaining two tables would fall in the gap. Fixed by making both titles explicit rather than by adding a slice: s5b now says FINANCIAL_STATEMENTS ONLY, s7b now names ipo_details and ipo_valuation directly instead of saying 'three' and leaving a reader to subtract. A count is only honest if each entry says what it covers.",
-  "[2026-09-10T21:45:14+00:00] Merge order agreed with lane C: their #569 first, s5b after, git merge-tree run between the heads anyway rather than asserted. Their PR is small, self-contained and already open; mine is a new write path that will take a review round, so making them wait behind it would be the wrong trade."
+  "[2026-09-10T21:45:14+00:00] Merge order agreed with lane C: their #569 first, s5b after, git merge-tree run between the heads anyway rather than asserted. Their PR is small, self-contained and already open; mine is a new write path that will take a review round, so making them wait behind it would be the wrong trade.",
+  "[2026-09-10T21:46:35+00:00] Slice statuses corrected - s8 (#556), s11 (#577) and s18 (#559) had all merged while the ledger still showed them open. 30 slices total: 25 have landed on main (one of those, s17, is recorded as a mechanism that DID NOT WORK and was replaced by s20), s15 is PR #581 open, s5b is building, s7a/s7b/s13 planned."
  ],
  "items": {
   "item-01": {
@@ -323,7 +324,7 @@
     {
      "k": "s5b",
      "title": "consolidatedUpsertChildRows on the orchestrator behind ENABLE_CHILD_TABLE_CONSOLIDATION - FINANCIAL_STATEMENTS ONLY",
-     "status": "PLANNED",
+     "status": "BUILDING",
      "pr": null,
      "sha": null,
      "tier": "A",
@@ -368,9 +369,9 @@
     {
      "k": "s8",
      "title": "detection check field-sources-row-key-coverage + registry regeneration",
-     "status": "PR-OPEN-BLOCKED",
+     "status": "MERGED",
      "pr": 556,
-     "sha": "2451de12",
+     "sha": "4cfed9c3",
      "tier": "A",
      "blocker": "waits for s18: its junk-named-promoter PASS case cannot pass while unique_field_source_per_ipo is 3-column"
     },
@@ -433,10 +434,10 @@
     },
     {
      "k": "s11",
-     "status": "PR-OPEN",
+     "status": "MERGED",
      "tier": "A",
      "pr": 577,
-     "sha": "fb68d5a4",
+     "sha": "30f7e019",
      "title": "pr-gate integration allow-list: coverage test, triage of the 11, then add the runnable ones (#507)",
      "order": "AFTER s8b, s6 and s9 - it is an item 1 slice under the shared web/CI hardening duty (delta 1 section 15), not a new item",
      "plan": [
@@ -517,10 +518,10 @@
     },
     {
      "k": "s15",
-     "status": "PLANNED",
+     "status": "PR-OPEN",
      "tier": "C",
-     "pr": null,
-     "sha": null,
+     "pr": 581,
+     "sha": "73deb05d",
      "title": "couple the status-board write to the ledger write so the board cannot go stale",
      "why": "The board and the ledger are written as two hand-made steps, so one can be done and the other forgotten. Tonight the board sat 33 minutes behind the ledger (NOT 95 - lane C corrected its own figure, which came from an estimate rather than the clock, and 33 is inside the 60-minute rule). So this is not a breach being papered over; it is a structure that will eventually produce one. The owner reads the board, and the failure mode is silent: a stale board looks exactly like a current one.",
      "plan": [
@@ -556,9 +557,9 @@
     {
      "k": "s18",
      "title": "widen unique_field_source_per_ipo to include row_key (the hard blocker for s5b/s7a/s7b)",
-     "status": "IN-REVIEW-ROUND-2",
-     "pr": null,
-     "sha": "4c6b2094",
+     "status": "MERGED",
+     "pr": 559,
+     "sha": "c00df079",
      "tier": "A",
      "why": "schema.ts:1518 is still the 3-column unique(ipo_id, table_name, field_name) and field-sources-repository.ts:209-225 targets those same three in onConflictDoUpdate with set: { rowKey, source, confidence, dataLineage }. Two child rows of one IPO writing the same field do not merely relabel each other - they REPLACE each other's source, confidence and lineage. The constraint exists nowhere: not in schema.ts, not in _gated/. data_conflicts has indexes only, no unique constraint, so it needs nothing.",
      "judgement": "Widening a unique key strictly WEAKENS it - every row set satisfying unique(a,b,d) also satisfies unique(a,b,c,d) - so no existing row can violate it, nothing needs repairing first, and a journaled migration is correct rather than a _gated file. The opposite of s6's E2, where a NEW column with a uniform default created real duplicates. The builder was told to TEST that claim on staging read-only rather than take it from me, and to refuse the journaled path if the duplicate-group count is not zero.",
