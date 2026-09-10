@@ -15,35 +15,64 @@
  */
 import { createHash } from 'node:crypto';
 
+// Each `.replace(...)` below is tagged RULE <n> in a trailing comment and
+// carries the SSOT's own comment condensed. The tags are load-bearing for
+// scripts/tests/normalize-company-name-parity.test.mjs's per-rule mutation
+// proof (delete ONE tagged rule, the parity test must go red naming it) —
+// do not renumber existing tags when adding a rule; append a new number.
 export function normalizeCompanyNameForMatching(companyName) {
   if (!companyName) return '';
 
   return companyName
     .toLowerCase()
     .trim()
+    // RULE 1: strip a trailing 1-2 letter status/category code appended
+    // AFTER the legal suffix ("Ltd. O", "Ltd. LT") — scrape artifact.
     .replace(/(\bltd\.?|\blimited)\s+[a-z]{1,2}$/i, '$1')
+    // RULE 2: strip a trailing KNOWN status code even when it trails a
+    // redundant parenthetical ("Ltd. (X IPO) O").
     .replace(/\s+(o|p|lt|ct)$/i, '')
+    // RULE 3: periods to spaces (do this before the suffix chain).
     .replace(/\./g, ' ')
+    // RULE 4: "&" to " and " so "&"-vs-"and" variants line up.
     .replace(/&/g, ' and ')
     .replace(/\s+/g, ' ')
     .trim()
+    // RULE 5: strip a trailing parenthetical block ("(Company Name IPO)")
+    // BEFORE the legal-suffix chain.
     .replace(/\s*\([^)]*\)\s*$/, '')
     .trim()
+    // RULE 6: fold parens to spaces (separators, not semantic content) —
+    // BEFORE the corporate-word strip so a mid-string "(India)" doesn't
+    // block an end-anchored corporate-suffix match.
+    .replace(/[()]/g, ' ')
+    // RULE 7: fold hyphens to spaces — same separators-first reasoning;
+    // "Hy-Tech Engineers Limited" and "Hy Tech Engineers Ltd" must reach
+    // one key.
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    // RULE 8: strip a trailing " ipo" token.
     .replace(/\s+ipo$/i, '')
+    // RULE 9: strip a trailing " fpo" token.
     .replace(/\s+fpo$/i, '')
-    .replace(/\s+limited$/i, '')
-    .replace(/\s+ltd\.?$/i, '')
-    .replace(/\s+private\s+limited$/i, '')
-    .replace(/\s+pvt\.?\s+ltd\.?$/i, '')
-    .replace(/\s+pvt\.?$/i, '')
-    .replace(/\s+private$/i, '')
-    .replace(/\s+inc\.?$/i, '')
-    .replace(/\s+incorporated$/i, '')
-    .replace(/\s+corp\.?$/i, '')
-    .replace(/\s+corporation$/i, '')
-    .replace(/\s+llc$/i, '')
-    .replace(/\s+llp$/i, '')
-    .replace(/\s+plc$/i, '')
+    // RULE 10: WHOLE-WORD (not end-anchored) corporate-form strip, ONE
+    // combined regex — a corporate-form word carries no identity wherever
+    // it appears ("IC Electricals Co.Ltd." / "IC Electricals Company" ->
+    // one key). Longer forms precede their prefixes so "private limited" is
+    // consumed as a unit. \b is load-bearing (else "co" matches inside
+    // "Cocoa"). Deliberately absent: "india", "and", "the", "of" — those
+    // belong to the coarser foldCompanyIdentity key, not this one.
+    .replace(
+      /\b(?:private\s+limited|pvt\.?\s+ltd\.?|limited|ltd|private|pvt|incorporated|inc|corporation|corp|company|co|llc|llp|plc)\b/gi,
+      ' '
+    )
+    .replace(/\s+/g, ' ')
+    .trim()
+    // RULE 11: strip a TRAILING "india"/"indian" token only (not leading or
+    // medial — "Indian Railway Finance", "East India Drums" keep their
+    // identity), guarded so "bank of india" -> "bank of", never "bank".
+    .replace(/(?<!of)(?<!for)\s+(india|indian)$/i, '')
     .trim();
 }
 
