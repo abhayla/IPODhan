@@ -218,11 +218,22 @@ export function checkDegenerateBookbuildingBand(row) {
     return `stored price ${min} disagrees with the authoritative issue price ${real} (${gapPct.toFixed(1)}% ${real > min ? 'low' : 'high'}) — a collapsed band that kept the floor and lost the cap`;
   }
 
-  // (2) still taking bids: a book-built band must be a range
+  // (2) still taking bids - or we cannot show that it is not.
+  //
+  // AN ABSENT close_date DOES NOT MEAN CLOSED. The first version of this read
+  // `close === null ? false`, i.e. it treated "we do not know when this closed"
+  // as "it is closed, therefore safe" - the same absence-reading-as-a-value
+  // shape this file's own history is full of, and the existing
+  // web/tests/unit/scripts/substance-checks.test.ts caught it: its Gabion-shape
+  // rows carry no close_date at all and were silently passed.
+  //
+  // Not knowing cannot be the safe answer. Costs nothing on real data: zero
+  // degenerate rows lack a close_date on staging (0 of 268) or prod (0 of 90).
   const close = toTime(row.close_date);
-  const stillOpen = close === null ? false : close >= Date.now();
-  if (stillOpen) {
-    return `price band is degenerate (min===max===${min}) while the issue is still open (closes ${row.close_date}) — a book-built issue must have floor < cap while the book is open`;
+  const notShownClosed = close === null || close >= Date.now();
+  if (notShownClosed) {
+    const when = row.close_date ? `closes ${row.close_date}` : 'no close date on record';
+    return `price band is degenerate (min===max===${min}) and the issue is not shown to have closed (${when}) — a book-built issue must have floor < cap while the book is open`;
   }
 
   // Closed, priced at a plausible value, and either agreeing with the oracle or

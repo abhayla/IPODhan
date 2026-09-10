@@ -79,7 +79,31 @@ test('FLAGS a degenerate band while the book is STILL OPEN', () => {
     row({ price_range_min: 500, price_range_max: 500, face_value: 2, close_date: openStill })
   );
   assert.ok(msg, 'a live book must have floor < cap');
-  assert.match(msg, /still open/);
+  assert.match(msg, /not shown to have closed/);
+});
+
+test('an ABSENT close_date is NOT treated as closed - not knowing cannot be the safe answer', () => {
+  // The first version read `close === null ? false`, i.e. "we do not know when
+  // this closed" became "it is closed, therefore safe". The existing
+  // web/tests/unit/scripts/substance-checks.test.ts caught it: its Gabion-shape
+  // rows carry no close_date and were silently passed. Costs nothing on real
+  // data - zero degenerate rows lack a close_date on staging (0/268) or prod
+  // (0/90) - and it is the correct default.
+  const msg = checkDegenerateBookbuildingBand({
+    price_range_min: 81,
+    price_range_max: 81,
+    issue_type: null,
+  });
+  assert.ok(msg, 'a row with no close_date must not be silently passed');
+  assert.match(msg, /no close date on record/);
+});
+
+test('the Gabion shape from the existing suite still flags', () => {
+  // Exactly the row web/tests/unit/scripts/substance-checks.test.ts asserts on.
+  assert.match(
+    checkDegenerateBookbuildingBand({ price_range_min: 81, price_range_max: 81, issue_type: 'BOOK_BUILDING' }),
+    /degenerate/
+  );
 });
 
 test('never fires on a real band', () => {
