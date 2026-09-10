@@ -550,3 +550,48 @@ That third one is tonight in miniature: a count that quietly includes failures i
 artifact answering a different question than the one asked - the same shape as the LEFT
 JOIN, the re-export, the stale draft header and the cached version endpoint. I built the
 guard because that shape has caught me five times.
+
+## 2026-09-11 03:00 IST — 2-S7 commit 5 of N: the name resolver (4c96316f)
+
+`buildFoldedIndex` + `resolveByFoldedName`. Matches a report-82 company name to **one**
+stored IPO by folded identity, or to nothing.
+
+**It refuses ambiguity.** Two stored rows folding to one key returns null instead of
+picking one. Staging holds 13 such collision groups. #562 is the live example of the
+opposite policy — our INJECTO POLYMERS matched to NSE's INDIA PESTICIDES on a shared
+three-letter symbol. Writing a sourced value onto the wrong company is worse than
+writing nothing.
+
+**The test nearly proved nothing.** My first draft carried a hand-rolled regex standing
+in for the identity fold — the re-implementation the defect-fix contract forbids. Swapped
+it for the real `foldCompanyIdentity`. Reaching it needed one additive line in the shared
+package's exports map: the only existing route was `utils/duplicate-ipo-merge`, which
+merely re-exports the fold. That is the same shape as `data-persister.ts`, where I told
+two peers their causal story was wrong because I read the filename instead of following
+the import.
+
+**Two process failures in one mutation run, both caught.**
+
+1. I gated the three mutations on a grep for "Tests". Vitest's ANSI codes ate the match,
+   so the run printed three silent non-results — which I could have read as three reds.
+   Re-ran on **exit codes**. That is the standing lesson from PR #302, and I broke it again.
+2. With the gate fixed, the mutation that removes the empty-key guard **survived**.
+
+**The surviving mutation is the finding.** `buildFoldedIndex` never stores a `''` key, so
+the resolve-side guard looked redundant and the suite could not tell the difference. But
+`index` is any `ReadonlyMap`. A caller assembling one another way hands in a `''` key —
+and since `India Company Limited` folds to the empty string, that single entry would match
+**every** unfoldable name at once. A guard nothing can prove is a guard someone deletes
+later in good faith. Added the hostile-map test; the mutation now turns the suite red.
+
+**Evidence.** 13 tests in the file. `tests/unit/services` + `tests/unit/scrapers` exit 0.
+`tsc` exits 2 with 94 errors, every one in a file this branch never touches (stale shared
+dist), none in the three changed files. Checked the #514 worktree-alias hazard directly:
+`@ipodhan/shared` resolves to this worktree's own `packages/shared`, not main's.
+
+**Still owed on 2-S7:** the wiring into the Chittorgarh orchestrator, then #569 out of
+draft with the three staging numbers — `ipo_details` rows before/after, non-null
+`issue_type` before/after, and the count of `issue_type` provenance rows **not** sourced
+CHITTORGARH held unchanged. That last number is the overwrite refutation.
+
+**Item 2 is not done. Items 14, 12 and 3 are not done. Zero of four have a DONE line.**
