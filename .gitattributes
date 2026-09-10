@@ -15,3 +15,11 @@
 # 2026-09-10: contract docs stay LF too, same class as the .sh/.mjs rules above —
 # reviewed cross-platform (Windows authors, Linux CI) and a CRLF diff noise defeats review.
 docs/contracts/*.md text eol=lf
+
+# Item 1 slice s3b (clause 8): the OPPOSITE direction of the rules above — this
+# file is stored all-CRLF, and three of its recipe commands embed a literal
+# `tr -d '"\r'` shell argument. Plain `git add` under core.autocrlf=true
+# rewrites CRLF->LF, and that conversion turns the `\r` inside those quoted
+# arguments into real line breaks, splitting the three password-reading
+# commands in half. Pin eol=crlf so `git add` stops rewriting this file at all.
+docs/ops/prod-ops-recipes.md text eol=crlf
