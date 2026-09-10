@@ -215,7 +215,8 @@
     "assert-schema-drift.test.ts and known-gated-type-drift.test.ts are UNWIRED until PR #464 - their green is not evidence",
     "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr merge; non-empty output triggers a JUDGEMENT, not an automatic rebase. Rebase only when main moved in a way that changes the result: a new CI gate landed (this branch's greens describe a gate set that no longer exists) or main changed code this slice touches. Proved by merge-tree that a behind branch does NOT delete main's newer files; a reflexive force-push cancels an in-flight run and spends the shared ceiling.",
     "supervision tick: enumerate EVERY process older than 20 minutes and subtract a known-good allowlist, printing the allowlist; never filter by process name",
-    "a 'process killed' report from a tool or worker is a claim - verify by PID before recording it closed"
+    "a 'process killed' report from a tool or worker is a claim - verify by PID before recording it closed",
+    "any web unit result is recorded as 'green, suite instability open #446' and never as proof, until #446 closes (contract decision 8 forbids re-running to obtain green and calls a fail-then-pass a defect)"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -365,6 +366,18 @@
       "item": 21,
       "risk": "web test:integration fails 193 of 292 locally through the tunnel; hypothesis (tunnel pool exhaustion) is UNTESTED. One ci.yml dispatch on a local postgres settles it. If it fails there too, the failures are real and clause 8's green-ci.yml requirement becomes an owner-level blocker for item 21.",
       "laneBPosition": "item 21 is last in the queue and also waits on lane A's item 5, so there is slack; if the dispatch is red, item 21 cannot honestly close and that is the owner's call - this lane does not lower the bar to close it"
+    },
+    {
+      "at": "2026-09-10 14:07 IST",
+      "item": 21,
+      "risk": "the web unit suite is order-dependent (a file tears window down for its successors) and shows fail-then-pass instability - 664/1147 fail under --no-isolate, 4 then 0 on re-run with no code change. Tracked as issue #446 (pre-existing); ci.yml's raw invocation was the main cause of the 664 and lane A's PR #474 fixes that.",
+      "laneBConsequence": "this run's contract forbids re-running a suite to obtain green and calls a fail-then-pass a DEFECT, so item 21 cannot treat a web unit green as proof until #446 closes; any such result is recorded as 'green, suite instability open #446'",
+      "gatesNowOnItem21": [
+        "lane A item 5 (ipo_field_plan data dependency)",
+        "clause-8 web CI hardening merged and green",
+        "issue #446 closed"
+      ],
+      "notMeasuredByThisLane": "the 193/292 web integration failures - closes with the next ci.yml dispatch after #474 merges"
     }
   ],
   "cardCorrectionsBinding": {

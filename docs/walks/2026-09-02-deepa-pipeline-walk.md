@@ -2225,3 +2225,24 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   minute, and the CONTRACT TEXT - the thing a future session actually reads - stayed wrong until now. STATE.json's
   `contractCorrectionsDue` list existed precisely so this would not be forgotten, and it was still the only entry on
   it. A correction that lives only in a ledger line is a correction the next session will not receive.
+
+- **2026-09-10 14:07 IST [lane B] The web unit suite is unreliable, and it lands squarely on item 21 - this lane's only web item.**
+  Lane A's `ci.yml` dispatch failed at the web unit step: **664 of 1147 tests fail under `--no-isolate`**, and 4 fail
+  without it - then **0 on a re-run with no code change**. Two separate faults stacked:
+  1. `ci.yml` invoked vitest raw rather than through `npm run test:unit` as pr-gate does. Lane A's **PR #474** (open)
+     makes the two match, and that was the main cause of the 664.
+  2. Underneath it the suite is **order-dependent** - a test file tears `window` down for the files that follow it -
+     and separately shows **fail-then-pass instability**. Tracked as **issue #446** ("Two web unit tests fail under
+     concurrent full-suite load but pass when the suite runs alone"), which is pre-existing, not new today.
+  Recording the number matters here rather than calling it generally known: signal-ownership R2 says a failure may be
+  called known ONLY when the line names the tracking issue. "It was the same yesterday" is not evidence.
+  **Why this is not a footnote for this lane.** This run's own contract (parent decision 8) says: *a test that fails
+  once and passes on re-run without a code change is a DEFECT - the slice stops, the flake is root-caused or the test
+  rewritten; re-running a suite to obtain green is forbidden.* The web unit suite currently violates that rule, so
+  **item 21 cannot honestly treat a web unit green as proof of anything** until #446 is closed. Adopted, effective
+  now: any web unit result this lane records goes into a PR body as `green, suite instability open #446`, never as
+  proof. That is on top of the existing clause-8 bar - lane A's CI hardening must ALSO be merged and green.
+  Item 21 therefore now carries three separate gates before it can close, none of which this lane controls: lane A's
+  item 5 (`ipo_field_plan`, a data dependency), the clause-8 web CI hardening, and #446. It is last in this lane's
+  queue, which is fortunate rather than planned. The 193-of-292 web integration question is still open and closes
+  with the next `ci.yml` dispatch after #474 merges.
