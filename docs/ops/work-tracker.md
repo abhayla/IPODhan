@@ -794,3 +794,22 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   undoing a release, when the download-safety item closes. Two pieces wait until midnight on purpose:
   three teams share a daily pipeline allowance, and I asked for three slots rather than five so the
   others keep room and one slot stays free in case the main branch breaks.
+
+- 2026-09-10 20:34 IST — **Item 20 at 83% (5 of 6 merged), item 22 at 4 of 8, and item 18 has now started.**
+  The security fix went in: a web address that looks like a normal public site but secretly points
+  back inside our own network was being fetched on every request the scraper makes, and the check
+  written for it this morning had nothing calling it. That is live now.
+  **A reader of ipodhan.com would still notice nothing.** All of today's work is machinery and
+  safety. No page changed.
+  **What went wrong, and it is the most useful thing I learned today.** Three tests have been failing
+  in my working copy since this morning. I diagnosed the cause correctly at the time — and then spent
+  ten hours quietly excluding those three from every result I reported to you, instead of asking
+  whether anyone had already solved it. A tool for exactly this has existed since yesterday. One
+  command fixed it, the three tests pass, and the whole suite is now clean for the first time today:
+  278 files, 3512 tests, no failures. Knowing why something is broken is not the same as fixing it,
+  and a workaround I can live with is the thing most likely to stop me looking for the fix.
+  I also stopped a merge I had been cleared to make, because the review found a mistake of mine that
+  would have made every network timeout look like a different kind of error in our logs — a signal
+  three parallel workstreams read. Fixed and merged after.
+  **What is needed from you: nothing.** One item still owed for later: a practice run of undoing a
+  release, when the download-safety item closes.
