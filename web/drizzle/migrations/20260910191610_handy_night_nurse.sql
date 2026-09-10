@@ -1,0 +1,2 @@
+ALTER TABLE "field_sources" DROP CONSTRAINT "unique_field_source_per_ipo";--> statement-breakpoint
+ALTER TABLE "field_sources" ADD CONSTRAINT "unique_field_source_per_ipo" UNIQUE("ipo_id","table_name","row_key","field_name");

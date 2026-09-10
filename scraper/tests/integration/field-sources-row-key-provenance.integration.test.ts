@@ -62,6 +62,15 @@ import { FieldSourcesRepository as WebFieldSourcesRepository } from '../../../we
  *   values — the pre-existing `noRedis` stub always misses, so it could
  *   never have caught this class of bug.
  *
+ * UPDATED BY SLICE s18: the constraint swap this file's header calls "the NEXT
+ * slice's job" has now landed — `unique_field_source_per_ipo` is
+ * (ipo_id, table_name, row_key, field_name) and the repositories' ON CONFLICT
+ * target matches it. Everything above describing a 3-column target is a record
+ * of what s3 shipped, not of current behaviour. Two cases here pinned that
+ * deferred behaviour and were rewritten to the new contract (see their bodies);
+ * the class proof itself lives in
+ * field-sources-row-key-unique.integration.test.ts.
+ *
  * SKIPS CLEANLY when no database is configured (pattern: T-403,
  * document-fetch-state-repository.integration.test.ts).
  *
@@ -307,7 +316,14 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
       expect(siblingUntouched).not.toBeNull();
     });
 
-    it('trackFieldUpdate updates row_key on conflict — MAJOR-2: the whole row must describe ONE write, never a mix of the new source with a stale rowKey', async () => {
+    it('two rowKeys for one field are two INDEPENDENT rows — s18 closed the s3 MAJOR-2 window structurally', async () => {
+      // s3 shipped this case against the 3-column ON CONFLICT target, where a
+      // second rowKey UPDATED the first row and the assertion it could make
+      // was only "the updated row must not mix the new source with a stale
+      // row_key". Slice s18 widened `unique_field_source_per_ipo` to
+      // (ipo_id, table_name, row_key, field_name), so the mixing window no
+      // longer exists at all: a different rowKey is a different row. This case
+      // now pins the stronger contract it was always a stand-in for.
       const first = await repo!.trackFieldUpdate({
         ipoId: IPO_ID,
         tableName: 'ipo_financials',
@@ -318,10 +334,6 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
       });
       expect(first.rowKey).toBe('A');
 
-      // Same (ipoId, tableName, fieldName) — the unchanged 3-column ON CONFLICT
-      // target still fires here, so this is an UPDATE of the same row, not an
-      // insert. Before the fix, row_key stayed 'A' while every other column
-      // (source, confidence, updatedAt) moved to describe the 'B' write.
       const second = await repo!.trackFieldUpdate({
         ipoId: IPO_ID,
         tableName: 'ipo_financials',
@@ -330,27 +342,31 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
         source: 'NSE',
         confidence: 95,
       });
-      expect(second.id).toBe(first.id);
+      expect(second.id).not.toBe(first.id);
       expect(second.rowKey).toBe('B');
       expect(second.source).toBe('NSE');
 
-      // findByField('B') must now find the row a caller just wrote — before
-      // the fix this returned null because the persisted row_key was still 'A'.
       const byNewKey = await repo!.findByField(IPO_ID, 'ipo_financials', 'revenue', 'B');
-      expect(byNewKey).not.toBeNull();
       expect(byNewKey?.rowKey).toBe('B');
       expect(byNewKey?.source).toBe('NSE');
 
-      // The stale key must no longer resolve — the row it used to name now
-      // describes a different write.
+      // 'A' is NOT stale any more — it is its own row, with its own
+      // provenance, which the 'B' write must not have touched. That is the
+      // whole point of the slice.
       const byOldKey = await repo!.findByField(IPO_ID, 'ipo_financials', 'revenue', 'A');
-      expect(byOldKey).toBeNull();
+      expect(byOldKey?.rowKey).toBe('A');
+      expect(byOldKey?.source).toBe('DRHP');
+      expect(byOldKey?.confidence).toBe(80);
     });
 
-    it('MAJOR-C: trackFieldUpdate invalidates the OLD rowKey cache entry when rowKey changes on conflict', async () => {
-      // The ON CONFLICT target is (ipoId, tableName, fieldName) — rowKey is
-      // NOT part of it, so at most one row can ever exist for this triple.
-      // Write it once under rowKey 'CACHE_A'.
+    it('a per-rowKey cache entry stays TRUE when a sibling rowKey is written — s18 removed the stale-old-key window', async () => {
+      // s3's MAJOR-C guarded a window created by the 3-column ON CONFLICT
+      // target: an upsert could move a row from rowKey A to rowKey B, leaving
+      // the warm `...:A:...` cache entry pointing at a row that no longer
+      // described that key. Slice s18 put rowKey INSIDE the conflict target,
+      // so a row can never change its rowKey — the window is gone by
+      // construction, not by compensating invalidation. What must now hold is
+      // that a sibling write does not corrupt or evict the other key's truth.
       await repo!.trackFieldUpdate({
         ipoId: IPO_ID,
         tableName: 'ipo_gmp_cache_check',
@@ -368,12 +384,9 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
       // tick to land before the next write, so the cache is genuinely warm.
       await flushFireAndForgetCacheWrite();
 
-      // Now the SAME field gets rewritten under a DIFFERENT rowKey — the
-      // upsert's 3-column ON CONFLICT target still matches the same DB row,
-      // so this UPDATEs it (rowKey moves CACHE_A -> CACHE_B). Before the fix,
-      // only the NEW key's cache entry was invalidated; the OLD key's cache
-      // entry was left standing, still holding the pre-update ('CACHE_A')
-      // record.
+      // Now the SAME field is written under a DIFFERENT rowKey. Under the
+      // widened 4-column target this INSERTs a second, independent row rather
+      // than moving the first one.
       await repo!.trackFieldUpdate({
         ipoId: IPO_ID,
         tableName: 'ipo_gmp_cache_check',
@@ -383,13 +396,14 @@ describe.each(VARIANTS)('field_sources row_key provenance — $label', ({ RepoCl
         confidence: 90,
       });
 
-      // A read under the OLD rowKey must NOT return the stale cached row —
-      // the row it used to name now describes a different write (or, in DB
-      // terms, no longer exists under that key at all).
+      // The warm CACHE_A entry is still TRUE — its row was never touched by
+      // the sibling write, so serving it from cache is correct, not stale.
       const byOldKey = await repo!.findByField(IPO_ID, 'ipo_gmp_cache_check', 'gmpValue', 'CACHE_A');
-      expect(byOldKey).toBeNull();
+      expect(byOldKey?.rowKey).toBe('CACHE_A');
+      expect(byOldKey?.source).toBe('DRHP');
+      expect(byOldKey?.confidence).toBe(70);
 
-      // Sanity: the new key resolves to the fresh write, from cache.
+      // And the new key resolves to its own fresh row.
       const byNewKey = await repo!.findByField(IPO_ID, 'ipo_gmp_cache_check', 'gmpValue', 'CACHE_B');
       expect(byNewKey?.rowKey).toBe('CACHE_B');
       expect(byNewKey?.source).toBe('NSE');
