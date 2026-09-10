@@ -1956,3 +1956,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Builder's own diff hygiene was right under pressure: `origin/main` advanced to `40889f8a` while it worked, so a
   plain two-ref diff showed slice 3's four merged files as its own. It noticed, verified its change two independent
   ways (`HEAD~1..HEAD` and `6c31d995..HEAD`), and reported both as exactly the two allowed files.
+
+- **2026-09-10 12:51 IST [lane B] DEFECT-B06: an orphaned worker shell ran a whole-filesystem `find` for about 90 minutes.**
+  The slice-3 builder finished and reported at ~12:10, but one of its background shells outlived it:
+  `find / -maxdepth 2 -iname "tmp"; ...; find / -iname "mb-mutation-map-swap.json"` - a full-disk scan hunting for
+  its own mutation scratch file. It was still running when the goal check-in listed it, long after the agent that
+  started it had returned. Stopped.
+  Cost was real but bounded: disk I/O on the owner's laptop and, more importantly, it kept deferring the run's own
+  goal evaluation because the harness counts it as live background work. Nothing was corrupted and no gate depended
+  on it.
+  Two root causes, both worth naming. (1) **A worker's report of "done" does not mean its processes are done** - the
+  agent returned a clean report while a shell of its own kept scanning. (2) The brief told workers to use a scratch
+  directory OUTSIDE the worktree but did not name one, so the worker went looking for somewhere to put it, on a
+  Windows box where `/tmp` in Git Bash and `/tmp` as Windows sees it are different places - the same path-visibility
+  trap this run already hit in DEFECT-B01 and again when a Python helper could not read a file written to MSYS `/tmp`.
+  Mechanism adopted for every remaining brief in this lane: **name the scratch directory explicitly** (the session
+  scratchpad path, which both Git Bash and Windows tools can see), and require the worker's last action to confirm it
+  has removed it - the same shape as the existing "a clean tree is not a clean environment" rule that came out of
+  lane A's reviewer leaving a mutated database behind.

@@ -202,7 +202,8 @@
     "pre-PR: git diff --name-only origin/main HEAD | grep '^web/' - a hit requires the clause-8 local integration run and a ci.yml dispatch, and the slice waits for lane A's web duty to merge",
     "items 18 and 22: run db:generate, confirm the new _journal.json entry exists and is not future-dated (5 min skew tolerance), and have the verifier diff schema.ts against the generated SQL before the PR opens",
     "read `date` in a Bash call immediately before every Artifact board write and paste that exact value; the board document carries a timestampSource field (DEFECT-B02)",
-    "Stage 0 acceptance enumerates the four contract artefacts (ledger line, tracker section, STATE.json, PROGRESS log) and confirms each by ls, not by recollection (DEFECT-B03)"
+    "Stage 0 acceptance enumerates the four contract artefacts (ledger line, tracker section, STATE.json, PROGRESS log) and confirms each by ls, not by recollection (DEFECT-B03)",
+    "worker briefs name the scratch directory explicitly and require its removal to be confirmed as the worker's last action (DEFECT-B06)"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -241,6 +242,14 @@
       "foundBy": "lane B supervisor, within a minute",
       "class": "a zero from a command that errored is not a measurement (4th instance in two days across both lanes)",
       "mechanism": "any measurement gating a destructive action captures stdout and stderr separately and asserts the exit code; a zero is believed only with empty stderr and exit 0"
+    },
+    {
+      "id": "DEFECT-B06",
+      "at": "2026-09-10 12:51 IST",
+      "what": "an orphaned background shell from the finished slice-3 builder ran a whole-filesystem find for ~90 minutes, deferring the run's goal evaluation",
+      "foundBy": "the harness goal check-in listing it as live background work",
+      "class": "a worker's 'done' report does not mean its processes are done; and an unnamed scratch directory sends workers hunting on a box where Git Bash /tmp and Windows /tmp differ",
+      "mechanism": "every remaining brief names the scratch directory explicitly (the session scratchpad, visible to both Git Bash and Windows tools) and requires the worker's last action to confirm its removal"
     }
   ],
   "contractCorrectionsDue": [
