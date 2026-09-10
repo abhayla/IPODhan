@@ -411,6 +411,26 @@ export const FEATURE_FLAGS = {
   ENABLE_RESOLVED_ADDRESS_REFUSAL: slotAwareFlagDefault('ENABLE_RESOLVED_ADDRESS_REFUSAL'),
 
   /**
+   * Item 1 slice s5b: routes CHILD-table writes through
+   * `DataConsolidationOrchestrator.consolidatedUpsertChildRows` — per-field
+   * source-priority resolution plus a per-ROW `field_sources` provenance row —
+   * instead of the direct repository upsert that resolves nothing.
+   *
+   * Scope while this stays a slice: `financial_statements` ONLY. The other
+   * seven child tables named on the item-1 card still take the old path and
+   * are unaffected by this flag; they arrive in s7a/s7b.
+   *
+   * OFF must be BYTE-IDENTICAL to the pre-slice write — the call site branches
+   * on the flag and, when it is off, runs the untouched original upsert.
+   *
+   * Uses `slotAwareFlagDefault` (slice s5a) rather than `=== 'true'`: this
+   * changes which of two sources' numbers a real IPO ends up showing, so it
+   * defaults ON in staging (where a cycle can be READ against real documents)
+   * and OFF in prod and every unset slot until that read exists.
+   */
+  ENABLE_CHILD_TABLE_CONSOLIDATION: slotAwareFlagDefault('ENABLE_CHILD_TABLE_CONSOLIDATION'),
+
+  /**
    * Item 2 slice 4: gates whether the CLI entry point (the guard at the
    * bottom of `scraper/src/index.ts`) validates `scraper/config/field-manifest.json`
    * at process start. Default: false (Phase 0 — plain `process.env.X === 'true'`
