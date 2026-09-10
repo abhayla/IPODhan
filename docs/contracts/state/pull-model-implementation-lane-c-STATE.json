@@ -86,11 +86,15 @@
         {
           "id": "14-S2",
           "tier": "A",
-          "status": "PREMISE_DISPROVED",
+          "status": "HELD",
           "issue": 472,
           "file": "scraper/scripts/repair-bse-issue-size-residue.ts",
           "title": "Source-backed repair of the two BSE issue-size residue rows",
-          "finding": "issue_size is CORRECT on both flagged rows, verified against BSE source and reproduced independently. Nothing to repair. The defect is segment/offering_type, not size."
+          "finding": "issue_size is CORRECT on both flagged rows, verified against BSE source and reproduced independently. Nothing to repair. The defect is segment/offering_type, not size.",
+          "heldPending": [
+            "#482"
+          ],
+          "heldReason": "A repair that cannot source its value writes nothing. BSE has no segment field (bse-api-scraper.ts:287-292), so segment cannot be sourced from the source that wrote these rows. Held until #482 gives segment an honest source."
         }
       ],
       "prs": [
@@ -115,7 +119,11 @@
         "form": "Shrink-only baseline BY ROW ID, each entry carrying the reason and the source that was tried, exact-match, expiring the moment the row is repaired - modelled on the ratchet that already exists in this repo, NOT invented.",
         "precedentFound": "config/ already holds NINE *-baseline.json files, and f_conflict_noise_ratio already uses a shrink-only ratchet (nextRatchetBaseline / classifyConflictBacklogRatchet) inside scripts/lib/detection-floor-checks.mjs - the same file c_issue_size_floor lives in. c_issue_size_floor itself has NO baseline mechanism today.",
         "detectionDeclaration": "Adding the baseline IS a detection change and must be declared as one - never No detection change (supervisor condition, and correct: a check that learns to ignore rows has changed what it detects)."
-      }
+      },
+      "blockedBy": [
+        "#472",
+        "#482"
+      ]
     },
     "item-02": {
       "item": 2,
@@ -133,6 +141,48 @@
           ],
           "tests": 6,
           "mergeSha": "b0c42202"
+        },
+        {
+          "id": "2-S2",
+          "tier": "B",
+          "status": "IN_REVIEW",
+          "files": 4,
+          "lines": 390,
+          "tests": 8,
+          "note": "manifest + zod schema + capability cross-check"
+        },
+        {
+          "id": "2-S3a",
+          "tier": "A",
+          "status": "PLANNED",
+          "issue": 482,
+          "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD"
+        },
+        {
+          "id": "2-S3b",
+          "tier": "A",
+          "status": "PLANNED",
+          "issue": 482,
+          "title": "repair-segment-provenance.ts re-sources the 41 unprovenanced rows, leaves unsourceable ones NULL with the reason in provenance"
+        },
+        {
+          "id": "2-S3c",
+          "tier": "A",
+          "status": "PLANNED",
+          "issue": 482,
+          "title": "floor check treats NULL segment as unknown - declared detection change"
+        },
+        {
+          "id": "2-S4",
+          "tier": "A",
+          "status": "PLANNED",
+          "title": "validate the manifest at process start, before main()"
+        },
+        {
+          "id": "2-S5",
+          "tier": "B",
+          "status": "PLANNED",
+          "title": "seed the 16 live Group-C fields + config-diff test against field-source-resolution.spec.mjs"
         }
       ],
       "prs": [
@@ -244,7 +294,11 @@
     "2026-09-10 14:36 IST WHAT SAVED THE FIX: I recorded the competing segment hypothesis on #472 and insisted it be settled BEFORE any issue-size repair, and I briefed the builder that an unsourced row must be reported not guessed. Had the tool repaired on my published reading, it would have overwritten two CORRECT production values with numbers derived from my own bad arithmetic reasoning. The defect-fix contract ban on hand-computed repairs is exactly what that ban is for.",
     "2026-09-10 14:36 IST PUSHING BACK on the shrink-only baseline for these two, and not building it as briefed. The supervisor condition was for rows that cannot be SOURCED; these sourced fine and the source says the number is right. What is wrong is the data AROUND it: both are tiny fixed-price offers carrying segment=MAINBOARD and offering_type=IPO on PRODUCTION (verified, 2 rows). c_issue_size_floor is not misfiring - it correctly reports that a Rs70 lakh MAINBOARD IPO is implausible. Baselining would silence a check telling the truth, which is worse than the permanently-red state I filed #472 about: red-and-honest stays visible, baselined-and-wrong looks resolved.",
     "2026-09-10 14:36 IST SEGMENT ALONE DOES NOT CLOSE IT. As SME, Nirbhay (Rs1.48 Cr) clears the Rs1 Cr floor and stops being a violation; Piyush (Rs70.07 lakh, 10,490 shares) still fails even the SME floor. A 10,490-share offer is below real IPO scale in either segment, so the open question for Piyush is whether it is an IPO at all or corporate-action pollution - a class this repo has documented before.",
-    "2026-09-10 14:36 IST FALSE ALARM AVOIDED by checking prod before filing. The predicate also found LIGHT OF LIFE TRUST (issue_size=0) and SIS (issue_size=NULL, status OPEN). A live OPEN IPO with no issue size would be a user-facing defect worth escalating - but production has ZERO rows for either; both are staging-only artifacts. Nirbhay and Piyush ARE on production, which is why the nightly stays red. Third time today that checking before filing prevented a false alarm in the tracker."
+    "2026-09-10 14:36 IST FALSE ALARM AVOIDED by checking prod before filing. The predicate also found LIGHT OF LIFE TRUST (issue_size=0) and SIS (issue_size=NULL, status OPEN). A live OPEN IPO with no issue size would be a user-facing defect worth escalating - but production has ZERO rows for either; both are staging-only artifacts. Nirbhay and Piyush ARE on production, which is why the nightly stays red. Third time today that checking before filing prevented a false alarm in the tracker.",
+    "2026-09-10 14:40 IST 14-S2 HELD pending #482, not re-scoped. A repair that cannot source its value writes nothing. BSE has no segment field at all, so the segment repair the supervisor approved cannot be sourced from the source that wrote these rows. Item 14 stays MERGED-UNPROVEN with #472 and #482 named. The supervisor acknowledged his fact 2 was wrong and that the code comment at bse-api-scraper.ts:287-292 is the truth.",
+    "2026-09-10 14:40 IST #482 ROUTED to lane C as item 2 slices 2-S3a/b/c, and the placement is right rather than convenient: which source wins for segment IS a manifest entry (OD-5/OD-51), so it belongs to item 2, after the loader and the manifest exist.",
+    "2026-09-10 14:40 IST ITEM 2 PLAN RE-CUT under delta-1 section 1.1 (250-400 line slices): 2-S1 MERGED (loader); 2-S2 IN_REVIEW (manifest, schema, cross-check); 2-S3a Tier A (segment manifest entry + assembler returns NULL for unknown instead of asserting MAINBOARD); 2-S3b Tier A (repair-segment-provenance.ts re-sources the 41 rows, unsourceable ones stay NULL with the reason in provenance); 2-S3c Tier A (floor check treats NULL segment as unknown, declared detection change); 2-S4 Tier A (validate at process start, before main()); 2-S5 Tier B (seed the 16 Group-C fields + config-diff test). The old 2-S3/2-S4 shift down; nothing is dropped.",
+    "2026-09-10 14:40 IST OPEN DECISION for 2-S3c, deliberately NOT taken on convenience per the supervisor instruction: how c_issue_size_floor should treat a NULL segment - judge it against the stricter floor, or raise a separate segment_unknown finding. To be decided from the design per-field validation text when 2-S3c is briefed, not from whichever is easier to implement. Note the interaction: bse-api-scraper.ts:338 currently counts a null/blank segment AS MAINBOARD, so making writes honest will surface NULLs that readers have never seen."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
