@@ -334,7 +334,12 @@ export const FEATURE_FLAGS = {
    * does NOT fix the underlying starvation; the owner must set this to
    * 'true' (staging first, then prod) for the fix to take effect.
    */
-  ENABLE_UPCOMING_DISCOVERY_RESERVATION: process.env.ENABLE_UPCOMING_DISCOVERY_RESERVATION === 'true',
+  // s0d: converted from `=== 'true'` to the slot-aware default. This flag was
+  // introduced by this run and has never been deployed, so decision 28's
+  // "never convert" (which protects pre-existing flags that may carry a prod
+  // env value of unknown spelling) does not apply. It was OFF on staging,
+  // which would have made its own staging proof measure a disabled feature.
+  ENABLE_UPCOMING_DISCOVERY_RESERVATION: slotAwareFlagDefault('ENABLE_UPCOMING_DISCOVERY_RESERVATION'),
 
   /**
    * Item 22 slice 2: gates `defaultFetcher`'s streaming rewrite
@@ -345,6 +350,15 @@ export const FEATURE_FLAGS = {
    * the item-22 build card's Staging proof section); flag OFF is
    * byte-identical to the pre-existing buffer-then-check path.
    */
+  // s0d deliberately did NOT convert this one, and the reason is a real
+  // ordering constraint rather than caution: slot-aware means ON in staging,
+  // and when the cap trips today `defaultFetcher` returns `status: 0` — the
+  // SAME shape a timeout returns, by explicit design ("no caller needs a new
+  // branch for too-big versus timed-out"). Switching the cap on in staging
+  // before that refusal is distinguishable would make every over-size refusal
+  // read as a timeout in the attempt log, which is precisely the D17 gap the
+  // item-22 card names. It converts in the slice that gives the over-cap
+  // refusal its own status, alongside `refused:resolved_private_address`.
   ENABLE_DOWNLOAD_STREAMING_CAP: process.env.ENABLE_DOWNLOAD_STREAMING_CAP === 'true',
 
   /**
