@@ -558,3 +558,12 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   the fix covers every path and not just the one the reviewer happened to try. A reader of ipodhan.com would notice
   nothing from any of this - it is the machinery that proves the later items really do what the design says.
   Nothing merged yet, no CI minutes spent by this lane, nothing needed from you.
+- **2026-09-10 12:00 IST - 0% to 25% merged.** The first of item 20's four slices is live on main: a check that fails a pull
+  request when the design claims a rule the code never tests. Two review rounds refused it first, and both refusals
+  were right - it could have reported success while scanning nothing, and the parser bug it fixed had no test to stop
+  it returning. The third slice, which checks that no lower layer of the system reaches up into a higher one, was
+  refused outright: it passed every run, but it turned out to be looking at no code at all - the reviewer reversed
+  the entire rule it enforces and it still said PASS. That is being fixed now, and any real violations it finds will
+  be listed openly in a file that can only shrink, never hidden. A reader of ipodhan.com would notice nothing from
+  any of this yet; it is the machinery that makes the later work provable. One alarm was raised and disproved: the
+  test runner is not silently passing failing tests. Nothing needed from you.
