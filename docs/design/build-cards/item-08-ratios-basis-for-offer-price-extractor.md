@@ -332,7 +332,19 @@ rather than about my pattern. The table was on the page I had already cited, fur
 So the card's original "4 of 4" was right, and is now confirmed by a stronger method — reading all
 four tables.
 
-### The heading is worded three ways, and the section number varies
+### The heading is worded TWO ways, not three - correcting this card
+
+**Correction, 2026-09-11, third on this item and again mine.** This card recorded Glasswall's heading
+as "Comparison with listed industry peers". It is not. That phrase appears in Glasswall only inside a
+NOTE, as a cross-reference in curly quotes - *"...based on the peer set provided below under
+'Comparison with listed industry peers'"*. Its real heading sits twelve lines further down and reads
+**"VI. Comparison of accounting ratios with listed industry peers"**.
+
+So across the four issuers there are **two** wordings, separated by one word - `key`. I recorded a
+third because I read a sentence that mentions the table as if it were the table's title.
+
+That mistake is now a test: a prose mention inside a sentence must not be matched, and the locator
+requires the phrase to START the line after an optional section marker.
 
 A matcher anchored on any single wording will miss at least one of these four. Use
 `comparison .{0,40} listed industry peers`, case-insensitive, whitespace-collapsed.
@@ -342,7 +354,7 @@ A matcher anchored on any single wording will miss at least one of these four. U
 | Karamtara | Comparison of Accounting Ratios with Listed Industry Peers | 6 | 135 |
 | PRASOLCHEM | Comparison of Accounting Ratios with Listed Industry Peers | 6 | 206 |
 | Kanohar | Comparison of **key** accounting ratios with listed industry peers | 8 | 156 |
-| Glasswall | Comparison with listed industry peers | VI | 143 |
+| Glasswall | Comparison of accounting ratios with listed industry peers | VI | 144 |
 
 Kanohar also prints a **separate** "Comparison of KPIs with our peers listed in India" table (p.160).
 It is not this table and must not be parsed as it.
@@ -407,7 +419,7 @@ constraint is a comment.
 | Karamtara | `sebi.gov.in/sebi_data/attachdocs/sep-2026/1788514905936.pdf` | 17,662,879 B | 529 |
 
 The PDFs are 9.5-17.7 MB each and are NOT committed. What must be committed is the **extracted text of
-the peer-table pages** for all four, so the parser tests run offline and the three heading wordings are
+the peer-table pages** for all four, so the parser tests run offline and both heading wordings are
 all exercised. Two fixtures are not enough: two issuers already disagree on columns.
 
 **One NEGATIVE fixture is required, and it is not optional.** Kanohar p.160 prints a second,
