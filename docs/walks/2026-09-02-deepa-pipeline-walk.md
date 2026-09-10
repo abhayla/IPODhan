@@ -2983,3 +2983,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   comparison artifact resurfacing in an audit whose entire purpose was to detect shared changes — the
   wrong baseline would have produced a false alarm about the exact thing being audited. Merge-base,
   every time.
+
+- 2026-09-10 20:24 IST **[lane B] The alias probe answers differently depending on which runner asks, and my
+  first probe asked the wrong one.** Told to prove rather than infer a worktree's `@ipodhan/shared`
+  target, I wrote a marker into this tree's `packages/shared` and imported the alias under **tsx**.
+  It said THIS WORKTREE — the opposite of the junction's `readlink`, and the opposite of what the
+  supervisor had been told about my trees.
+  Rather than report that, I looked for the mechanism, and it is a genuine split:
+  `scraper/tsconfig.json` maps `@ipodhan/shared` to `../packages/shared/src/index.ts`, so **tsx uses
+  the worktree's copy**; `scraper/vitest.config.ts` aliases `@web`, `@shared`, `@scraper` and a few
+  SUBPATHS but **not the bare `@ipodhan/shared` specifier**, so vitest falls through to the
+  node_modules junction and uses **main's copy**. Re-probed under vitest: MAIN CHECKOUT.
+  Tests run under vitest. So lane A's finding is right for the case that matters, and **a tsx-based
+  marker probe would have handed all three lanes a false all-clear** on precisely the question it was
+  invented to settle. It also explains the three repository tests failing here with "Compared values
+  have no visual difference": relative imports get the worktree's copy, bare-alias imports get main's,
+  and the two instances fail identity comparison.
+  The rule that comes out of it is narrower and more useful than "probe it": **probe under the same
+  runner as the proof you are trying to defend.** A probe run under a different resolver measures a
+  different program.
