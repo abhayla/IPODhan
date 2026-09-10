@@ -11,7 +11,7 @@
     8,
     21
   ],
-  "currentItem": 8,
+  "currentItem": "8",
   "testDb": {
     "name": "ipodhan_test2",
     "drop": "OWED"
@@ -47,10 +47,11 @@
     "Peer relays received 11:14 IST (information, adopted, loosen nothing): rebase immediately before BOTH pr create and pr merge; both lanes squash so use base=$(git merge-base HEAD origin/main) then 'git -c core.autocrlf=false rebase --onto origin/main $base'; stage docs/ops/prod-ops-recipes.md only with 'git -c core.autocrlf=false add'; every brief that mutates shared state ends by re-asserting it and pasting the proof; after any db:generate confirm the new _journal.json entry is not future-dated (5 min skew tolerance) - applies to items 18 and 22."
   ],
   "items": {
-    "20": {
-      "status": "DONE",
-      "slices": "8 of 8 merged",
-      "proof": "PR #552 sha 0c01a1d2 last; every slice green in CI; the traceability check runs on every PR including lane A's"
+    "8": {
+      "status": "PREMISE_CORRECTED_NOT_STARTED",
+      "slices": "0 merged",
+      "why": "a real 529-page RHP fetched at 01:35 overturned the card premise: the prospectus carries a P/E SUMMARY (Highest/Lowest/Average naming two companies), not a peer table. Eight of the ten peer_companies columns are absent. Filed as #565. Building on the old premise would have written two malformed rows per issuer.",
+      "nextStep": "table-level check on a second issuer before the scope is settled"
     },
     "16": {
       "status": "DONE",
@@ -58,15 +59,15 @@
       "proof": "PR #528 sha 9a958a53; all five checks green on CI run 34504887739; mutation-checked - restoring moneycontrol to the CLI allow-list turns the suite red"
     },
     "18": {
-      "status": "BUILT_NOT_DONE",
-      "slices": "3 of 3 built and merged, 18-2b planned",
-      "why": "the contract defines item 18 as \"PDF deleted seven days after its LAST SUCCESSFUL EXTRACTION\". The anchor is still the IPO close date, so the item is not DONE by its own definition. 18-2b (per-document anchor) is unblocked and is the remaining work. The data-loss hole is closed: no PDF is deleted while its text is missing.",
-      "owed": "cycle proof - BLOCKED, staging deploys down at the drift assert"
+      "status": "DONE",
+      "slices": "4 of 4 built and merged: 18-1 (#543, d20790ac), 18-1b (#560, d7d3b9ec), 18-2 (#563, ac4ec20d), 18-2b (#566, e9c998b9)",
+      "why": "the contract defines item 18 as a PDF deleted seven days after its LAST SUCCESSFUL EXTRACTION. 18-2b moved the anchor from the IPO close date to each document own extracted_at, which is that definition. Real-data proof read-only on ipodhan_staging: of 283 candidate rows, 17 blocked by no stored text and 85 blocked by the document own window; 181 still purge.",
+      "owed": "the staging CYCLE log line for 18-1, 18-1b and 18-2. Was BLOCKED while staging deploys failed at the drift assert; lane A fix landed on run 34525050492, so it is now obtainable on the next deploy carrying these slices."
     },
-    "22": {
-      "status": "BLOCKED",
-      "slices": "6 of 8 merged",
-      "why": "22-5 needs pdf-lib, a NEW shared dependency and therefore an owner line, AND a real password-protected filing, which has not appeared on either slot. 22-6 depends on 22-5. Both re-checked tonight rather than assumed."
+    "20": {
+      "status": "DONE",
+      "slices": "8 of 8 merged",
+      "proof": "PR #552 sha 0c01a1d2 last; every slice green in CI; the traceability check runs on every PR including lane A's"
     },
     "21": {
       "status": "BLOCKED-DEPENDENCY(lane A item 5)",
@@ -74,11 +75,10 @@
       "why": "the provenance line reads ipo_field_plan.verify_due_at. Contract test run at 01:43 on 2026-09-11: `git show origin/main:packages/shared/src/db/schema.ts | grep -c ipoFieldPlan` returns 0, and the contract's PR search shows no item 5 slice merged. The contract authorises this closure explicitly (decision 3).",
       "trigger": "that grep returning non-zero"
     },
-    "8": {
-      "status": "PREMISE_CORRECTED_NOT_STARTED",
-      "slices": "0 merged",
-      "why": "a real 529-page RHP fetched at 01:35 overturned the card premise: the prospectus carries a P/E SUMMARY (Highest/Lowest/Average naming two companies), not a peer table. Eight of the ten peer_companies columns are absent. Filed as #565. Building on the old premise would have written two malformed rows per issuer.",
-      "nextStep": "table-level check on a second issuer before the scope is settled"
+    "22": {
+      "status": "BLOCKED",
+      "slices": "6 of 8 merged",
+      "why": "22-5 needs pdf-lib, a NEW shared dependency and therefore an owner line, AND a real password-protected filing, which has not appeared on either slot. 22-6 depends on 22-5. Both re-checked tonight rather than assumed."
     }
   },
   "sharedDuties": {
@@ -482,15 +482,15 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T01:45:00+05:30",
+  "lastStateWriteAt": "2026-09-10T20:27:28.554Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
-    "20": 8,
-    "22": 6,
-    "18": 3,
-    "16": 1,
     "8": 0,
-    "21": 5
+    "16": 1,
+    "18": 4,
+    "20": 8,
+    "21": 5,
+    "22": 6
   },
   "stagingProofsOwedAndBlocked": [
     "18-1 migrate",
@@ -500,5 +500,5 @@
     "22-4 migrate",
     "item 22 #496 and #468"
   ],
-  "stagingProofsBlockedReason": "staging deploys fail at the drift assert since lane A #548; lane A has the fix as first work"
+  "stagingProofsBlockedReason": "UNBLOCKED 2026-09-11 01:5x IST: lane A preflight fix proved on run 34525050492 (OK: no schema drift). The five proofs become obtainable once a deploy carrying each slice has flipped; the push trigger is still lane A next PR, so a deploy currently happens only by dispatch. Read the served sha with a no-cache header - the public /api/version carries s-maxage=31536000 and Cloudflare served a stale sha two minutes after a flip."
 }
