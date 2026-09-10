@@ -106,22 +106,30 @@ export function formatReport({ newIds, goneIds, sameIds, newEntitiesByCheck }, {
   return lines.join('\n');
 }
 
-async function postToNotifier(summary, { newIds, newEntitiesByCheck }) {
-  const url = process.env.NOTIFIER_URL;
-  const key = process.env.NOTIFIER_KEY || process.env.NOTIFIER_KEY_IPODHAN;
-  if (!url || !key) {
-    console.log('NOTIFY-SKIP: NOTIFIER_URL/NOTIFIER_KEY (or NOTIFIER_KEY_IPODHAN) not set');
-    return;
-  }
+// Gateway accepts only P0|P1|P2|info (GLOBAL.md §2) — 'high'/'low' are
+// rejected with 400. This script's finding is never P0/P1 (no outage, no
+// live-data corruption by itself — it's a detection signal), so it maps to
+// P2 on a NEW finding and info otherwise.
+export function buildNotifyPayload(summary, { newIds, newEntitiesByCheck }) {
   const hasNew = newIds.length > 0 || newEntitiesByCheck.size > 0;
-  const payload = {
+  return {
     project: 'ipodhan',
-    severity: hasNew ? 'high' : 'low',
+    severity: hasNew ? 'P2' : 'info',
     title: hasNew ? 'nightly floor: NEW finding(s)' : 'nightly floor: no new findings',
     body: summary.slice(0, 3500),
     type: 'floor-delta',
     dedupeKey: `floor-delta-${new Date().toISOString().slice(0, 10)}`,
   };
+}
+
+export async function postToNotifier(summary, delta) {
+  const url = process.env.NOTIFIER_URL;
+  const key = process.env.NOTIFIER_KEY || process.env.NOTIFIER_KEY_IPODHAN;
+  if (!url || !key) {
+    console.log('NOTIFY-SKIP: NOTIFIER_URL/NOTIFIER_KEY (or NOTIFIER_KEY_IPODHAN) not set');
+    return false;
+  }
+  const payload = buildNotifyPayload(summary, delta);
   try {
     const res = await fetch(`${url.replace(/\/$/, '')}/notify`, {
       method: 'POST',
@@ -129,9 +137,21 @@ async function postToNotifier(summary, { newIds, newEntitiesByCheck }) {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15000),
     });
-    console.log(`NOTIFY: POST ${url}/notify -> ${res.status}`);
+    if (res.status >= 200 && res.status < 300) {
+      console.log(`NOTIFY-OK ${res.status}`);
+      return true;
+    }
+    let body = '';
+    try {
+      body = (await res.text()).slice(0, 200);
+    } catch {
+      // best-effort body read only
+    }
+    console.log(`NOTIFY-FAIL ${res.status} ${body}`);
+    return false;
   } catch (err) {
     console.log(`NOTIFY-ERROR: ${err.message} (never fatal to this script)`);
+    return false;
   }
 }
 
