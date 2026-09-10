@@ -32,7 +32,7 @@ const preflight = await import(pathToFileURL(join(LIB, 'alias-preflight.mjs')).h
  *   <tmp>/elsewhere/shared            (the "main checkout" the bad link points at)
  * `where` picks which of the two the workspace link resolves to.
  */
-function makeCheckout(where) {
+function makeCheckout(where, { git = true } = {}) {
   const base = mkdtempSync(join(tmpdir(), 'alias-preflight-'));
   const checkout = join(base, 'checkout');
   const inside = join(checkout, 'packages', 'shared');
@@ -44,10 +44,17 @@ function makeCheckout(where) {
     writeFileSync(join(d, 'package.json'), JSON.stringify({ name: '@ipodhan/shared', version: '0.0.0', main: 'index.js' }));
     writeFileSync(join(d, 'index.js'), 'module.exports = {};\n');
   }
-  writeFileSync(join(checkout, 'package.json'), JSON.stringify({ name: 'fake-root' }));
+  // The root package.json is the one that declares `workspaces`; the members
+  // (web/, scraper/, packages/*) do not. That field is what the root finder
+  // keys on, so the fixture must carry it exactly as the real root does.
+  writeFileSync(
+    join(checkout, 'package.json'),
+    JSON.stringify({ name: 'fake-root', workspaces: ['web', 'scraper', 'packages/*'] })
+  );
   // A LINKED worktree carries `.git` as a file, not a directory -- the root
-  // finder must accept both, so the fixture uses the harder of the two.
-  writeFileSync(join(checkout, '.git'), 'gitdir: /nowhere\n');
+  // finder must accept both. A `git archive` extract -- the shape EVERY
+  // deploy runs in -- carries no `.git` at all; `git: false` builds that.
+  if (git) writeFileSync(join(checkout, '.git'), 'gitdir: /nowhere\n');
   for (const f of ['alias-preflight.mjs', 'alias-preflight-auto.mjs', 'alias-preflight-quiet.mjs', 'alias-preflight-global-setup.mjs']) {
     cpSync(join(LIB, f), join(checkout, 'scripts', 'lib', f));
   }
@@ -106,12 +113,12 @@ test('refuses from a SUBDIRECTORY cwd too (the repair tools run from scraper/)',
   }
 });
 
-test('findCheckoutRoot needs BOTH package.json and .git, and accepts .git as a file', () => {
+test('findCheckoutRoot finds the root in a worktree, with .git as a file', () => {
   const fx = makeCheckout('inside');
   try {
     const deep = join(fx.checkout, 'scripts', 'lib');
     assert.equal(resolve(preflight.findCheckoutRoot(deep)), resolve(fx.checkout));
-    // packages/shared has a package.json but no .git -- it must NOT be
+    // packages/shared has a package.json but no `workspaces` -- it must NOT be
     // mistaken for the root, or the boundary check would always pass.
     assert.equal(resolve(preflight.findCheckoutRoot(fx.inside)), resolve(fx.checkout));
   } finally {
@@ -194,5 +201,73 @@ test('the run-level layer PRINTS on success and throws on refusal', () => {
     assert.match(r.out, /REFUSING TO RUN/);
   } finally {
     rmSync(bad.base, { recursive: true, force: true });
+  }
+});
+
+// --- the shape the deploy actually runs in (P0, 2026-09-11) ----------------
+// scripts/deploy-linux.sh builds the release directory with
+// `git archive "$SHA" | tar -x`, so a release NEVER contains `.git` at any
+// level. Keying the checkout root on `.git` made every staging and production
+// deploy fail at the schema-drift step (run 34521965457). The root is found by
+// the package.json that declares `workspaces` -- the members do not -- which
+// exists in both shapes.
+
+test('findCheckoutRoot resolves the root in a .git-less archive extract', () => {
+  const fx = makeCheckout('inside', { git: false });
+  try {
+    assert.equal(
+      resolve(preflight.findCheckoutRoot(join(fx.checkout, 'scripts', 'lib'))),
+      resolve(fx.checkout)
+    );
+  } finally {
+    rmSync(fx.base, { recursive: true, force: true });
+  }
+});
+
+test('the preflight RUNS in a .git-less archive extract (every deploy release dir)', () => {
+  const fx = makeCheckout('inside', { git: false });
+  try {
+    const r = runPreflight(fx.checkout);
+    assert.equal(r.status, 0, r.out);
+    assert.ok(r.out.includes(fx.inside), `expected the in-tree path in:\n${r.out}`);
+  } finally {
+    rmSync(fx.base, { recursive: true, force: true });
+  }
+});
+
+test('walking up from a WORKSPACE MEMBER reaches the repo root, not the member', () => {
+  const fx = makeCheckout('inside', { git: false });
+  try {
+    // A member package.json (no `workspaces` key) is exactly what a widened
+    // "any package.json" rule would stop at, reintroducing the wrong-tree
+    // resolution this guard exists to prevent.
+    const member = join(fx.checkout, 'web');
+    mkdirSync(join(member, 'lib'), { recursive: true });
+    writeFileSync(join(member, 'package.json'), JSON.stringify({ name: 'web', private: true }));
+    assert.equal(resolve(preflight.findCheckoutRoot(join(member, 'lib'))), resolve(fx.checkout));
+  } finally {
+    rmSync(fx.base, { recursive: true, force: true });
+  }
+});
+
+test('findCheckoutRoot THROWS outside any checkout, naming what it looked for', () => {
+  const base = mkdtempSync(join(tmpdir(), 'alias-preflight-nowhere-'));
+  const deep = join(base, 'a', 'b');
+  mkdirSync(deep, { recursive: true });
+  try {
+    // No fallback, ever: resolving to the WRONG tree must be impossible, so
+    // "found nothing" is a hard failure -- never cwd, never a default.
+    assert.throws(
+      () => preflight.findCheckoutRoot(deep),
+      (err) => {
+        assert.match(err.message, /alias-preflight: no checkout root above/);
+        assert.match(err.message, /package\.json/);
+        assert.match(err.message, /workspaces/);
+        assert.ok(!/\.git\b/.test(err.message), `must not send the reader chasing .git:\n${err.message}`);
+        return true;
+      }
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
   }
 });
