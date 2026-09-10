@@ -383,6 +383,19 @@
         "status": "OWED",
         "cycle": null,
         "line": null
+      },
+      "planRecut": {
+        "at": "2026-09-10 18:38 IST",
+        "basis": "delta-1 section 1.1 (250-400 line slices)",
+        "outcome": "REVIEWED, NO CHANGE. Five slices stay five. Consolidating would make the item worse, not faster.",
+        "sizes": "3-S1 ~180 (B), 3-S2 ~250 (A), 3-S3 ~230 (A), 3-S4 ~200 (A), 3-S5 ~190 (A)",
+        "whyNoMerge": [
+          "3-S1 + 3-S2 is the only real merge candidate (~430, over the band) and it MIXES TIERS: 3-S1 deletes 27 unreachable keys and is provably a no-op by deep-equal snapshot; 3-S2 changes the rules deciding live writes for 16 fields. Folding a provable no-op into a live-write change buries the safe half inside a Tier A review.",
+          "3-S3 is blocked on lane A item 1 being DONE on main - it must be written against item 1 FINAL call sites, and the plan says a rebase there is a real conflict, not a textual one. It cannot be merged into an earlier slice that is not blocked.",
+          "3-S4 is a repair tool that DELETES rows. Same reasoning as item 12 12-C: a data deletion stays its own slice with its own dry-run evidence rather than buried inside a code review.",
+          "3-S5 is a detection change with its own registry entry and regenerated aggregate. Merging it into a code slice would mix a CI/detection change with a behaviour change."
+        ],
+        "keptOrdering": "The plan already orders the three matrix hunks so none overlaps - 3-S1 deletions only, 3-S2 additions only, 3-S3 the two function bodies only. That ordering is the thing preventing conflicting hunks in one file and is preserved."
       }
     }
   },
@@ -572,7 +585,10 @@
     "2026-09-10 18:28 IST 2-S3b2 IS BLOCKED ON THE ONE THING NOBODY HAS VERIFIED ALL DAY: that ANY source actually states segment. I flagged this as unverified when the repair was first scoped and it is still unverified. listing_exchanges is NOT it - populated on all 41 prod rows, but it says BSE or NSE, the EXCHANGE, and BSE runs both a main board and BSE SME. So 2-S3b2 first step is a REAL FIXTURE from NSE listing data or the Chittorgarh report showing a field that states the board. If none does, the honest end state is 33 labels left alone with the nightly count carrying them - and that is a legitimate finish, not a failure to be worked around.",
     "2026-09-10 18:37 IST 2-S3b FIX ROUND DONE (5f26f964) and it implements the corrected design exactly. Staging dry run: 370 rows carry a segment, 308 already have provenance, 29 WOULD BE WRITTEN (clear-non-ipo), 33 REPORTED ONLY - zero IPO rows touched. The decision was renamed no-source-no-guess to report-unprovenanced-ipo and changed to touch:false, and the summary now prints rows that WOULD BE WRITTEN separately from rows REPORTED ONLY, never written, so the output cannot be misread as a pending write.",
     "2026-09-10 18:37 IST THE NEW CHECK IS WIRED, NOT PAPER: d_segment_provenance has a pure predicate checkSegmentHasProvenance in detection-floor-checks.mjs AND a real record() call in audit-detection-floor.mjs, which is why it belongs in section checks rather than notCoveredByThisManifest. The builder made that call itself and explained the reasoning - a check registered in checks without a live record() call fails audit-detection-floor.test.mjs case 79 and reads as wider coverage than the floor actually has. Tests: vitest 6/6, node:test 118/118, both mutations red-then-green with .bak restore and diff confirmation.",
-    "2026-09-10 18:37 IST ITEM 2 IS FULLY BUILT: four slices merged, three built and held for the 00:00 budget reset (2-S3b, 2-S4, 2-S5), and one planned and honestly blocked (2-S3b2, waiting on a real fixture proving any source publishes segment). Nothing further can ship today - the repo sits at 48 of a 50 stop with the last runs reserved for another lane approved work and for a red main."
+    "2026-09-10 18:37 IST ITEM 2 IS FULLY BUILT: four slices merged, three built and held for the 00:00 budget reset (2-S3b, 2-S4, 2-S5), and one planned and honestly blocked (2-S3b2, waiting on a real fixture proving any source publishes segment). Nothing further can ship today - the repo sits at 48 of a 50 stop with the last runs reserved for another lane approved work and for a red main.",
+    "2026-09-10 18:38 IST ITEM 3 RE-CUT: REVIEWED, NO CHANGE - five slices stay five, and that is the honest outcome rather than a failure to optimise. Sizes are 180/250/230/200/190 against a 250-400 band, so three sit below it, but every one is below for a STRUCTURAL reason and consolidating would make the item worse.",
+    "2026-09-10 18:38 IST THE ONLY REAL MERGE CANDIDATE WAS 3-S1 + 3-S2 and it fails on two counts: about 430 lines, over the band, and it MIXES TIERS. 3-S1 deletes 27 unreachable keys and is provably a no-op by deep-equal snapshot; 3-S2 changes the rules deciding live writes for 16 fields. Folding a provable no-op into a live-write change buries the safe half inside a Tier A review and gains one PR. The other three cannot merge at all: 3-S3 is blocked on lane A item 1 landing and must be written against its FINAL call sites; 3-S4 DELETES rows and stays isolated with its own dry-run evidence; 3-S5 is a detection change with a registry entry.",
+    "2026-09-10 18:38 IST A RE-CUT THAT CONCLUDES NO CHANGE IS A REAL RESULT. I re-cut item 12 from seven slices to five where consolidation genuinely helped, and I am not manufacturing the same churn here to show symmetry. The delta section 1.1 is a SPEED lever; applying it where it would mix tiers, bury a deletion, or force a blocked slice forward would be applying a guideline against its own purpose - the same argument I made for the two under-band slices in item 12."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
