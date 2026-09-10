@@ -143,3 +143,84 @@ so the owner's board showed the headline but not the slice table.
 
 **Meanwhile:** `items/item-01` written with all 19 slices and their statuses. No contract change
 needed — the contract was right and I was not following it.
+
+---
+
+## 8. §0.1.4's zero-diff proof cannot pass once any other PR merges
+
+**Contract §0.1.4:** before removing a slice worktree, "first prove
+`git -C <dir> diff origin/main --stat | wc -l` is 0 after `git fetch`, then re-run with `-Discard`."
+
+**Actual:** a squash merge puts the slice's content on `main` under a new commit, so the branch's
+own commits are outside main's ancestry. That alone is survivable. What breaks the test is that
+**anything merging after the slice** makes `git diff origin/main <branch>` print the reverse of
+those later changes. Measured today on five worktrees whose PRs were all `MERGED`:
+
+| worktree | PR | diff-vs-main lines |
+|---|---|---|
+| IPODhan-s01-s3 | #459 | 78 |
+| IPODhan-s01-s5a | #476 | 82 |
+| IPODhan-IPODhan-s01-s3e | #489 | 40 |
+| IPODhan-IPODhan-s01-s10 | #495 | 41 |
+| IPODhan-IPODhan-s01-s3f | #500 | 38 |
+
+None of those is unmerged work. Every line is a later PR the branch does not have. On the
+contract's literal test not one of these worktrees could ever be removed, and with three lanes
+merging continuously the number only grows.
+
+**Proposed test:** prove the PR is merged, not that the diff is empty —
+`gh pr view <n> --json state` returns `MERGED` — then `wt-rm.ps1 -Discard`, and keep the tool's
+own post-removal proof that the main checkout is intact, which is the check that actually protects
+against the junction-deletion accident this rule exists for.
+
+**Meanwhile:** the five above were removed after confirming `MERGED` on each, with
+`tracked 4631 -> 4631, deleted-on-disk 0` printed on every removal.
+
+---
+
+## 9. Decision 8 already required the fix that #504 reports — it was half-executed
+
+Not a contract defect. My own incomplete execution, recorded so it is not read as a new discovery.
+
+**Contract, decision 8:** "`.github/workflows/ci.yml` today marks its web unit and E2E steps
+`continue-on-error: true`, has no Postgres service and no web `test:integration` step … The first
+web-touching slice of the run … removes `continue-on-error` from those steps, adds a `postgres:16`
+service with the migrations applied, and a `cd web && npm run test:integration` step."
+
+**What landed:** the Postgres service, the integration step, and the `continue-on-error` removal
+from the E2E step.
+
+**What did not:** the E2E step was never given `DATABASE_URL`. `web/playwright.config.ts` boots the
+app itself with `npm run dev`, inheriting the step's environment, so the app starts with no
+database and every page that reads IPOs renders an error. The run log says
+`Database configuration missing! Set DATABASE_URL or individual DATABASE_* environment variables.`
+
+So `continue-on-error` was removed from a step that then could not pass for an environmental
+reason — turning a suppressed-but-meaningless signal into a loud-but-meaningless one. Both the 10
+failures and, more dangerously, the 22 passes are void: a test that passes against an app with no
+data is asserting on an empty shell.
+
+**Meanwhile:** issue #504, with the ten failing tests named. The two-line fix is held until after
+00:00 IST — one PR-gate run remains of the fifty agreed across three lanes.
+
+---
+
+## 10. Two decisions this run has not been following, stated plainly
+
+Neither is a contract defect. Both are mine.
+
+**Decision 4, the red line.** The contract requires the red line to be produced in a *separate
+worktree at `origin/main` with only the test file applied*, created by `wt-new.ps1` with
+`-TtlHours 4` and removed immediately after. Recent slices proved their guards by **mutation**
+instead — breaking the source in place and showing the test go red. Mutation is a stronger check
+of whether a guard can fail at all, and it caught a fake test object in s6 that a red-line run
+would have missed. But it is not the same evidence: it does not prove the test was red *before*
+the change existed. Either the contract should accept mutation as an equivalent, or the slices
+should do both. Owner's call; I am not deciding it silently.
+
+**Decision 7 and the supervisor gate.** The contract routes gate reproduction to a `sonnet`
+verifier, and the owner's own rule says the goal session does no mechanical work. Several gates
+this session were reproduced by the goal session directly, on the argument that a single command
+is cheaper to run than to dispatch. That argument is real but it is not what the contract says,
+and reproducing one's own claim is exactly the blind spot `independent-test-verification.md`
+exists to close. Recorded rather than quietly continued.
