@@ -2945,3 +2945,25 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   one this whole run keeps producing, and it applies to detection code hardest of all: **the question
   is never whether the check is correct in principle, it is what the check actually evaluated when it
   ran.** A gate reasoned about is a gate untested.
+
+- 2026-09-10 20:17 IST **[lane B] I had a green run and clearance to merge, and stopped.** #512 was 5 of 5 green
+  and the supervisor had cleared it to merge on the run it already had. The Tier A review then found a
+  MAJOR that was mine: `main` classified the NSE attempt as `status === 0 ? 'timeout' : 'http_error'`,
+  and my slice flattened the fallback to a literal `'http_error'` — so **every NSE timeout would have
+  read as an HTTP error**, in a string three lanes match exactly.
+  What makes it worth writing down is that it is the SAME defect I narrowed that helper to avoid three
+  hours earlier, reintroduced in the opposite direction, in a file whose own test comment calls the
+  class "a real regression". Knowing a trap and having just escaped it is not protection against
+  walking into it backwards. I checked every classification site against main rather than only the one
+  the reviewer named — one wrong, the other four already correct.
+  Two more fixed (a refusal was retried with nothing asserting otherwise; a transient resolver error
+  was cached for the whole cycle, blackholing a host on one DNS blip). One mutant SURVIVES and is
+  declared rather than dressed up: the `host === null` fail-closed branch is unreachable, so no test
+  can drive it — I added a predicate test, re-ran the mutation, watched it survive, and rewrote the
+  comment to say it is predicate coverage and not branch coverage. Deleting the branch would have
+  raised the mutation score by deleting a real guard.
+- 2026-09-10 20:17 IST **[lane B] My own measuring instrument failed silently three times tonight.** A grep meant
+  to capture a test summary matched nothing and printed nothing, and an empty result reads exactly
+  like a clean run. I nearly recorded a mutation as "caught" on the strength of no output at all.
+  Fixed by writing the run to a file and reading the specific line. It is the same shape as every other
+  finding this run has produced, and this time the instrument was mine.
