@@ -378,11 +378,11 @@
           "title": "pr-gate integration allow-list: coverage test, triage of the 11, then add the runnable ones (#507)",
           "order": "AFTER s8b, s6 and s9 - it is an item 1 slice under the shared web/CI hardening duty (delta 1 section 15), not a new item",
           "plan": [
-            "1. Coverage test: every scraper/tests/integration/*.integration.test.ts is either named on the scraper-document-integration run line or on a named shrink-only exclusion list carrying a REASON per entry. This is the mechanical half; without it the eleventh file becomes the twelfth next month.",
-            "2. Triage the 11 with THREE categories, not two: on-the-list, excluded-with-reason, and BROKEN (reaches production through the SSH tunnel and cannot run in CI at all). A file that cannot run is broken, not excluded, and the list must say which.",
-            "3. Add the runnable ones LAST. Doing this first turns 11 silent non-runs into 11 loud failures with no plan."
+            "1. Coverage test: every scraper/tests/integration/*.integration.test.ts is either run by the job or on a named shrink-only skip-list carrying a REASON per entry. The mechanical half; without it the eleventh file becomes the twelfth next month.",
+            "2. Triage the 11 with THREE categories, not two: run, skipped-with-reason, and BROKEN (cannot run in CI at all). A file that cannot run is broken, not excluded, and the list must say which.",
+            "3. Invert the polarity: replace the positional allow-list at pr-gate.yml:497 with the directory glob vitest.integration.config.ts already declares, plus the skip-list file. Running becomes the default and opting out becomes a visible, reviewable edit. Today running is opt-in, and eleven people opted out by accident over months with a reviewer on every diff."
           ],
-          "notes": "company-name-normalizer-agreement.integration.test.ts is to be marked SUPERSEDED by lane C 12-B's own TS-vs-SQL agreement test (fixture ported plus junk and blank cases, run against the job's Postgres service, on the allow-list). Do not port it twice."
+          "notes": "company-name-normalizer-agreement.integration.test.ts: lane C 12-B ships the replacement (TS-vs-SQL agreement against the job's Postgres service, junk AND blank cases, on the list) AND deletes this file in the SAME PR. Not a separate deletion slice and never before the replacement: it does not run in CI so a gap costs nothing there, but anyone running the suite locally with the tunnel up loses the only TS-vs-SQL check that exists, exactly across the days the normaliser changes. Measured, against the 'production hazard' framing: it opens a pool on the prod tunnel (lines 27/29/105) but runs exactly two statements, both SELECT <expression>(bound literal) at lines 128 and 149 - no table read, no write, max:2. The real grounds for removal are that nothing asserts the target is not prod (no default_transaction_read_only, against the project rule), it is the only test reading web/.env.local so it is the template the next person copies, and it buys nothing in CI."
         }
       ],
       "prs": [
