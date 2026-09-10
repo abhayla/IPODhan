@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 02:49 IST** — written in the SAME turn as the board, the state file and the ledger commit. All four or none. — written in the SAME command as the ledger commit below it. Local only
+**Last refreshed: 2026-09-11 03:39 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -771,3 +771,33 @@ the citation is the part to open.**
 
 **Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines. Item 3 is
 with the owner.**
+
+## 2026-09-11 03:40 IST — CORRECTION: the stale-ledger claim was right and I was wrong
+
+I told a peer "the 40-minute gap does not exist" and blamed their tick's grep. **That was
+false, and I exported the false cause.**
+
+Line 3 of this file is `**Last refreshed: ...**` — the file's **own declared freshness
+contract**, and the field a tick is supposed to read. It had been frozen at **02:49 across
+five consecutive commits** — every ledger write I made tonight. I appended current sections
+at the bottom and never touched the marker that publishes freshness. Their reading was
+correct in the exact field designed to report it. The gap was real and it was 41 minutes.
+
+**Why this is worse than the error it concerns.** I didn't merely get it wrong. I checked,
+found the *sections* current, declared their claim dead, wrote it into the ledger and this
+log as a peer failure, and sent them a paragraph about verifying before acting. They then
+rewrote their cron on the strength of my correction. I manufactured a false root cause and
+shipped it to someone who acted on it.
+
+The mechanism is the same one I have been cataloguing all night: my grep looked at `## `
+headers because that is where **I** had been writing, never at the line the **consumer**
+reads. I confirmed the thing I was already looking at rather than the thing being asked
+about — the LEFT JOIN, the filename-instead-of-import, and the page-size default all have
+this shape.
+
+**Fixed structurally, not by promise.** The marker now carries its own contract in its text:
+it is what a tick reads, it must be rewritten in the same command as any section appended
+below, and a current file with a stale marker reports a working lane as quiet. My earlier
+note blaming the tick's pattern is **withdrawn**.
+
+**Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines.**
