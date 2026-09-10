@@ -681,3 +681,18 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   groundwork lands, and this item cannot be called finished until then.
   **Nothing needs you today.** Two things will later: a rollback rehearsal at the close of this item, and a
   decision on the 100MB limit if you would rather it stayed at 150MB.
+
+- 2026-09-10 17:26 IST — **A real one, and it was mine.** The security fix I merged this morning carried a one-line
+  mistake that stopped the scraper from starting at all. Not "slower" or "missing some data" — it would not
+  run. The only reason nobody saw it is that the test server has been refusing new code since 7:40 this
+  morning for an unrelated reason, so my broken version never got there. That is luck, and I am not counting
+  luck as a safety net.
+  What bothers me more than the mistake is that three separate checks all said it was fine. The test suite,
+  the type checker, and a quick command-line check each quietly filled in the missing piece for me. None of
+  them ever started the scraper the way the real server starts it. So I added a check that does exactly
+  that — it starts the real program, confirms every part of it loads, and stops before it touches the
+  database or the internet. It takes seconds and it would have caught this in the first minute.
+  I also found the same mistake in a second file, written by another part of the team, sitting unused. It
+  has never run, so it has never failed — it would have failed the day someone first used it. Fixed both.
+  Fix is in review now. **Nothing needs you.** The one thing still owed is proof on the test server, which
+  has to wait until that server accepts deployments again.

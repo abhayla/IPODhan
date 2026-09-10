@@ -2706,3 +2706,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Decision: **no pipelining; item 22 proceeds sequentially** until 22-2 merges, and 22-4 waits for #459 to land
   so the journal number is known rather than guessed. The cost is wall-clock; the alternative is a merge
   conflict in the one file where a conflict is dangerous rather than annoying.
+
+- 2026-09-10 17:26 IST **[lane B] The scraper could not start. My own slice 22-1 did it.** `scraper` is an ESM package,
+  so `__dirname` does not exist at module scope, and `download-allowlist-loader.ts` (#487) used it to build a
+  path. Node threw the moment it loaded the module — and `company-host-source.ts:557` calls that loader at
+  module scope, so `tsx src/index.ts`, exactly what pm2 runs, died at startup. Measured, not inferred:
+  `npx tsx src/index.ts --smoke-import` on origin/main exits 1 with the ReferenceError.
+  It never became an outage only because staging has refused every deploy since 07:40 IST, so main never
+  reached it. That is luck, not a control.
+  **Why nothing caught it — the hollow-observable class again, three deep.** vitest transforms modules to
+  CJS and shims `__dirname`; `tsx -e` shims it too; and `tsc --noEmit` is green because `@types/node`
+  declares `__dirname` globally regardless of module system. Three green signals, not one of which ever
+  evaluated the module under the real module system.
+  **A second member found**: `field-manifest-loader.ts` (#483, lane C) has the identical bug plus missing
+  `.js` extensions. Zero importers, so it has never been loaded — it would have detonated on its first caller.
+  **Two detection checks, because neither covers the class alone**: a `--smoke-import` flag that loads the
+  real production import graph through the real entry point (catches anything reachable), and a static scan
+  of both ESM trees (catches what nothing imports yet — provably invisible to the smoke import). PR #496,
+  issue #497, staging proof OWED.
