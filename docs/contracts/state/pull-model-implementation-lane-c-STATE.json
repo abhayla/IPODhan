@@ -10,7 +10,7 @@
     12,
     3
   ],
-  "currentItem": 14,
+  "currentItem": 2,
   "runState": "RUNNING",
   "haltPrecondition": "0.2.3(h)",
   "haltNote": "lane A has not released 14, 12, 2, 3; type the split in lane A's session",
@@ -72,25 +72,30 @@
     "item-14": {
       "item": 14,
       "card": "docs/design/build-cards/item-14-bse-share-count-conversion.md",
-      "status": "BUILDING",
+      "status": "MERGED-UNPROVEN",
       "slices": [
         {
           "id": "14-S1",
           "tier": "B",
-          "status": "IN_REVIEW",
+          "status": "MERGED",
           "branch": "feat/pm-c-item14-s1-floor-check-alignment",
           "sourceChange": false,
-          "pr": 471
+          "pr": 471,
+          "mergeSha": "10c96c6b"
         }
       ],
       "prs": [
         471
       ],
-      "mergeShas": [],
+      "mergeShas": [
+        "10c96c6b"
+      ],
       "proof": {
         "status": "OWED",
         "cycle": null,
-        "line": null
+        "line": null,
+        "recipe": "node scripts/audit-detection-floor.mjs against ipodhan_staging after a real BSE cycle: c_issue_size_consistency and c_issue_size_floor both PASS with zero BSE-sourced violations; cross-check one BSE row issue_size / (shares x band floor) approx 1.0. Read-only, obtainable without the owner.",
+        "owedSince": "2026-09-10 13:49 IST"
       }
     },
     "item-02": {
@@ -174,7 +179,9 @@
     "2026-09-10 13:42 IST 14-S1 PR #471 OPENED. 37 tests (32 before), one file, +90/-0, no source change. Verifier PASS at Tier B, gate reproduced independently including the load-bearing mutation. Lane C PR-gate runs today: 1 of 15; repo total 17 of a 50 stop.",
     "2026-09-10 13:42 IST REBASE WAS REQUIRED and this is the case the supervisor named: lane A merged #464 (\"make the CI gate able to fail, and teach schema drift about indexes\") while 14-S1 was in review. That changes the GATE SET, so a green on the old base would not have described the gate the PR actually faces. Rebased with the --onto form; afterwards level with origin/main, exactly one file, and the tests re-run green (exit 0, 37/37) on the new base per decision 20.",
     "2026-09-10 13:42 IST GOTCHA: the first rebase attempt failed with \"cannot rebase: You have unstaged changes\" while git status --porcelain was EMPTY and git diff --numstat was empty. Stale index stat-cache - test runs and node_modules relinking had touched mtimes. Fix is `git update-index --refresh` before the rebase, never git stash (blocked in worktrees by a hook, and the standing rule).",
-    "2026-09-10 13:42 IST MY ERROR, caught by the independent verifier and corrected in the PR body rather than buried: I justified the new test import as following existing precedent. It does not. The precedent I cited (backfill-allotment-date-chittorgarh.test.ts importing ../../../scripts/lib/repair-tool.js) resolves to scraper/scripts/lib - scraper-LOCAL. The new import goes four levels up to the REPO-ROOT scripts/lib, outside the scraper workspace, and is measured to be the only such import anywhere under scraper/. Kept deliberately (test-only, and copying the constant into the test is exactly the paper guard this slice exists to avoid; check-module-boundaries passes at exit 0 because it scans scraper/src, not tests), but declared as a NEW pattern with its justification. I asserted precedent to the builder, to the supervisor and to this ledger without checking where the path resolved."
+    "2026-09-10 13:42 IST MY ERROR, caught by the independent verifier and corrected in the PR body rather than buried: I justified the new test import as following existing precedent. It does not. The precedent I cited (backfill-allotment-date-chittorgarh.test.ts importing ../../../scripts/lib/repair-tool.js) resolves to scraper/scripts/lib - scraper-LOCAL. The new import goes four levels up to the REPO-ROOT scripts/lib, outside the scraper workspace, and is measured to be the only such import anywhere under scraper/. Kept deliberately (test-only, and copying the constant into the test is exactly the paper guard this slice exists to avoid; check-module-boundaries passes at exit 0 because it scans scraper/src, not tests), but declared as a NEW pattern with its justification. I asserted precedent to the builder, to the supervisor and to this ledger without checking where the path resolved.",
+    "2026-09-10 13:49 IST ITEM 14 MERGED as 10c96c6b via PR #471, squash. All five CI checks pass, mergeState CLEAN, zero non-success conclusions - read from the checks themselves, not from the watch wrapper exit code (that lie already cost me once today). Status is MERGED-UNPROVEN, not DONE: the card staging proof is owed and item 14 closes DONE only on it (parent decision 10 ceiling: <=2 MERGED-UNPROVEN across this lane, none past 24h. Currently 1).",
+    "2026-09-10 13:49 IST Verified the merge landed before discarding the slice worktree, rather than trusting the MERGED state: origin/main copy of bse-api-scraper.test.ts is 433 lines (343 + 90) and contains the describe block, the detection-floor-checks import and the mapper-to-detector test. wt-rm reported 1309 links removed AS LINKS and main checkout tracked 4595 -> 4595 with 0 deleted-on-disk. The squash merge is why wt-rm first REFUSED: the branch commits are not literally on main and the remote branch was already deleted, so they read as 4 unpushed commits. Expected after a squash; -Discard was correct only BECAUSE the content check above passed first."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
