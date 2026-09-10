@@ -243,7 +243,7 @@
         {
           "id": "2-S3b",
           "tier": "A",
-          "status": "BUILT_HELD",
+          "status": "MERGED",
           "issue": 482,
           "title": "repair-segment-provenance.ts re-sources the 41 unprovenanced rows, leaves unsourceable ones NULL with the reason in provenance",
           "firstStep": "SOURCE PROOF with a real fixture showing a field that STATES segment, BEFORE any repair code. \"No source states it\" is a SUCCESSFUL outcome and ends 2-S3b as NULL-with-reason for the 41 rows.",
@@ -268,7 +268,9 @@
             "id": "d_segment_provenance",
             "section": "checks",
             "why": "a record() call is actually wired into audit-detection-floor.mjs, not merely designed - a check specified before its record() exists belongs in notCoveredByThisManifest or it is a paper check"
-          }
+          },
+          "pr": 523,
+          "mergeSha": "de647f80"
         },
         {
           "id": "2-S3c",
@@ -293,18 +295,22 @@
         {
           "id": "2-S4",
           "tier": "A",
-          "status": "BUILT_HELD",
+          "status": "MERGED",
           "title": "validate the manifest at process start, before main()",
-          "commit": "fa7f37f8"
+          "commit": "fa7f37f8",
+          "pr": 524,
+          "mergeSha": "d8779c20"
         },
         {
           "id": "2-S5",
           "tier": "B",
-          "status": "BUILT_HELD",
+          "status": "MERGED",
           "title": "seed the 16 live Group-C fields + config-diff test against field-source-resolution.spec.mjs",
           "commit": "e90d6318",
           "heldReason": "Repo pr-gate at 48 of a 50 stop; PR opens after 00:00 IST.",
-          "finding": "Only 8 of item 3 sixteen Group-C keys are real sourced fields. The builder refused to fabricate manifest rows for the other 8 and added a test asserting they stay ABSENT, with reasons."
+          "finding": "Only 8 of item 3 sixteen Group-C keys are real sourced fields. The builder refused to fabricate manifest rows for the other 8 and added a test asserting they stay ABSENT, with reasons.",
+          "pr": 525,
+          "mergeSha": "b612ff25"
         },
         {
           "id": "2-fix-493",
@@ -334,7 +340,10 @@
         "b0c42202",
         "4e188187",
         "2fd8a43b",
-        "4d28b4db"
+        "4d28b4db",
+        "de647f80",
+        "d8779c20",
+        "b612ff25"
       ],
       "proof": {
         "status": "OWED",
@@ -405,6 +414,12 @@
           ]
         },
         "nextHypothesis": "UNTESTED: Chittorgarh serves a report API at webnodejs.chittorgarh.com/cloud/report/data-read/<id>/... whose rows are anchors carrying REAL hrefs (chittorgarh-scraper.ts:34 documents the shape). If those report rows also carry issue_category, one call could both rediscover a real url AND read the label for many rows at once - rediscovery from a listing, which is the sanctioned route, not slug construction. This is a hypothesis. It has not been probed and must not be written up as a finding until it is."
+      },
+      "standing": {
+        "at": "2026-09-10 22:41 IST",
+        "merged": "SEVEN slices merged: 2-S1 b0c42202, 2-S2 4e188187, 2-S3a 2fd8a43b, 2-S3c 4d28b4db, 2-S3b de647f80, 2-S4 d8779c20, 2-S5 b612ff25. Every slice the item was PLANNED with is now on main.",
+        "notDone": "Item 2 is NOT done. 2-S3b2 is BLOCKED - zero of the 17 unprovenanced IPO rows carry a reachable page, and slug-building is the failure mode design section 2.3.1 exists to stop. 2-S6 is NEW work from tonight #515 finding and was not in the original item. And the merged repair owes its staging read.",
+        "whyIAmNotCallingItDone": "The planned slices being merged is not the same as the item being proven. Saying DONE here would be the exact move the goal condition forbids - a waiting state dressed as completion."
       }
     },
     "item-12": {
@@ -1232,7 +1247,10 @@
     "2026-09-10 22:28 IST 12-D2 DEFERRED AS A FUTURE SLICE ON MY OWN MEASUREMENT, not on a hunch. Production 31 of 333 rows carry a CIN (9.3%) and ALL 31 already resolve to the SAME row by name; staging 36 of 376 (9.6%), all 36 the same. Zero rows on either slot would bind differently. Changing ipo-identity.ts:485 alters behaviour every existing caller relies on, for zero present effect.",
     "2026-09-10 22:28 IST RECORDED ITS TRIGGER so the deferral is not a quiet drop: re-run the query and BUILD when the count of CIN-bearing rows whose name match disagrees is non-zero. And its first behaviour when built is AMBIGUOUS-never-bind on a shared CIN - the first real value of a CIN tier is REFUSING to bind, because a CIN typo binding two different companies is worse than a name miss the name tiers would never have made.",
     "2026-09-10 22:28 IST THE ONE SHARED CIN IS A DUPLICATE, NOT A CIN PROBLEM: U85110DL2017PLC322623 is held by Rays of Belief Limited- For Profit Social Enterprise and Rays of Belief Ltd. on both slots. It goes on 12-C duplicate list. It is also the flagship W-108 name in the identity module own comments.",
-    "2026-09-10 22:28 IST I ALSO OVER-ESCALATED TWICE AND WAS CORRECTED. I put the 22 configuration entries to the owner as an open decision when it had already been ruled, and I put the CIN question to the owner without doing the measurement that makes it decidable. Both are the same failure - escalating instead of finishing the work that lets someone decide. The measurement took one query."
+    "2026-09-10 22:28 IST I ALSO OVER-ESCALATED TWICE AND WAS CORRECTED. I put the 22 configuration entries to the owner as an open decision when it had already been ruled, and I put the CIN question to the owner without doing the measurement that makes it decidable. Both are the same failure - escalating instead of finishing the work that lets someone decide. The measurement took one query.",
+    "2026-09-10 22:41 IST MERGED: #523 2-S3b at de647f80, #524 2-S4 at d8779c20, #525 2-S5 at b612ff25. Every slice item 2 was PLANNED with is now on main - seven in total.",
+    "2026-09-10 22:41 IST ITEM 2 IS STILL NOT DONE, and the distinction matters. 2-S3b2 is BLOCKED because zero of the 17 unprovenanced IPO rows carry a reachable page. 2-S6 is NEW work from tonight #515 finding and was never part of the original item. The merged repair owes its staging read. Planned-slices-merged is not proven, and calling it DONE would be a waiting state dressed as completion - the exact move the goal condition forbids.",
+    "2026-09-10 22:41 IST Delta 2 is on main at 13924d41 with all three of my corrections in it: the probe-marker location (index.ts would have been invisible to a subpath import), #515 as three provenance states rather than one ingestion path, and the string-function traps. Adoption line owed at the next Stage 1a."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
