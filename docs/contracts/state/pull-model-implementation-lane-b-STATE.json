@@ -164,12 +164,28 @@
     {
       "at": "2026-09-10T22:32:19.392Z",
       "what": "#586 green on all seven and deliberately NOT merged: a Tier A adversarial review is running first. Base rate justifies it - three review rounds on my guard code tonight, three real defects, including a CRITICAL false green I would otherwise have shipped. Laptop memory read myself at 04:01: 2.58 GB free of 15.72, node holding 0.5 GB - above the 2.5 GB floor and HIGHER than a peer 03:53 reading of 1.89, so it is recovering rather than falling. No second builder dispatched regardless."
+    },
+    {
+      "at": "2026-09-10T22:43:56.492Z",
+      "what": "#587 MERGED (08126361): peer-table section locator on main. Item 8 slices: 8-pre merged, 8a-1 merged, 8a-2 next."
+    },
+    {
+      "at": "2026-09-10T22:43:56.492Z",
+      "what": "MEASURED before building 8a-2: the committed TEXT fixtures cannot support the column mapper. Header blocks are one-or-two words per line with nothing marking where one header ends and the next begins - header-name mapping from text is impossible, not hard. pdfplumber extract_tables gives column-aligned cells. Two issuers disagree sharply: Karamtara 16x10 fragmented headers, PRASOLCHEM 13x20 with half the columns empty filler. The peer table is NOT table 0 (1 of 2, and 1 of 11). Card amendment open as docs/pm-b-item08a-cells-not-text; a cell-structured fixture slice (8a-1b) comes before the mapper."
+    },
+    {
+      "at": "2026-09-10T22:43:56.492Z",
+      "what": "Tier A review of #586: FAIL, but the guard is NOT weakened - refusal byte-identical, 12 adversarial probes, three mutations dead by name. Two HIGH findings, both real. HIGH-1: after the refactor isResolvedAddressPrivate had ZERO production callers and the security-boundary gate STILL PASSED, because a multi-line import member line does not start with the word import so a dead import counted as a caller. That gate exists for exactly this - its registry entry records this same function shipping with zero callers in #487. Registry re-pointed at resolveHostVerdict, dead import dropped, gate verified to FAIL without the real caller. HIGH-2: the deliberate caching change had no test and the reverting mutation left the suite green; the boolean seam hardcoded private_address so every runner test took the cacheable branch. Verdict seam added; caching SPLIT - dns_unresolvable not cached, dns_timeout cached (5s x3 rungs)."
+    },
+    {
+      "at": "2026-09-10T22:43:56.492Z",
+      "what": "FOURTH HOLLOW PROOF OF THE NIGHT, mine, caught within minutes: adding the resolveVerdict seam without adding it to the flag getter left the boundary DISABLED for any test using only that seam, so the resolver was never called and three of my four new tests passed measuring nothing (0 === new Set([]).size). Fixed in the getter; all four now assert the resolver ran at all before asserting how often."
     }
   ],
   "items": {
     "8": {
       "status": "PREMISE_SETTLED_FIXTURES_MERGED",
-      "slices": "8-pre MERGED (#580, 97bc04a5). 8a READY_NEXT with constraint (#579) and fixtures both on main. 8b READY.",
+      "slices": "8-pre MERGED (#580), 8a-1 MERGED (#587, 08126361). 8a-1b (cell fixtures) then 8a-2 (header-mapped parser) next. 8b READY.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -609,10 +625,10 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T22:32:19.392Z",
+  "lastStateWriteAt": "2026-09-10T22:43:56.492Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
-    "8": 1,
+    "8": 2,
     "16": 1,
     "18": 4,
     "20": 8,
