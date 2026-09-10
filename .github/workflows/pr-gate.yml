@@ -275,6 +275,21 @@ jobs:
         # rest of this job is verified against.
         run: node --test scripts/tests/normalize-company-name-parity.test.mjs
 
+      - name: Company-identity fold parity self-test (item 12 slice A)
+        # scripts/lib/repair-invariants/duplicate-ipo-rows.mjs hand-copies the
+        # company-identity fold as `foldName` because a plain-node script cannot
+        # import TypeScript. This asserts that copy still agrees with the SSOT
+        # (packages/shared/src/utils/company-identity-fold.ts) over the shared
+        # fixture. MUST stay INSIDE the Node 22 window above and before the
+        # Node 20 restore below: it uses the same erasable-TS type stripping,
+        # so on Node 20 the SSOT import throws and this fails loud by design.
+        #
+        # Why it is a gate and not a nicety: two names folding equal are
+        # treated as the same company by the duplicate-row repair, which
+        # DELETES a row. Drift between the two implementations means the
+        # report and the repair disagree about what they are about to delete.
+        run: node --test scripts/tests/company-identity-fold-parity.test.mjs
+
       - name: Setup Node.js 20 (restore pinned version for the rest of the job)
         uses: actions/setup-node@v4
         with:
