@@ -44,7 +44,43 @@
     "Stage 0 preconditions verified 2026-09-10T11:15:40+05:30: (a) main-gate.yml on main conclusion=success (2026-09-10T05:28:21Z); (b) ipodhan_test2 reset on ONE connection then migrated, public tables 35 = grep -c pgTable schema.ts 35; (c) check-design-consistency --gate exit 0 (23/23), check-build-cards exit 0 (22 cards, 0 missing paths); (d) 180G free on D:; (e) gh authed as abhayla, repo visibility public; (f) lane A alive, ops/impl-loop-ledger last commit 2026-09-10T11:00:25+05:30; (g) test-db-lifecycle.mjs on main, ipodhan_test2 already existed (tool printed 'already exists', exit 0).",
     "DEFECT-B01 (mine, same class lane A hit twice): the first reset attempt ran node on a $HOME-expanded /c/... scratchpad path while MSYS_NO_PATHCONV=1 was set; Git Bash left the path unconverted and node resolved it under D: and exited 1. The migrate in the SAME compound command then ran anyway (no && between them) against a NOT-reset database and printed exit 0. A gate that ran on the wrong state is not a gate: the reset+migrate was redone from inside the worktree with a relative script path, and only that second run counts. Rule adopted: never chain a gate after a step whose exit code is not checked.",
     "Board read 2026-09-10T11:15:40+05:30: all six lane B items carry lane:'B', status PENDING, zero slices - no lane A claim on item 20. Lane A's own STATE.json order no longer contains 20, 22, 18, 16, 8 or 21.",
-    "Peer relays received 11:14 IST (information, adopted, loosen nothing): rebase immediately before BOTH pr create and pr merge; both lanes squash so use base=$(git merge-base HEAD origin/main) then 'git -c core.autocrlf=false rebase --onto origin/main $base'; stage docs/ops/prod-ops-recipes.md only with 'git -c core.autocrlf=false add'; every brief that mutates shared state ends by re-asserting it and pasting the proof; after any db:generate confirm the new _journal.json entry is not future-dated (5 min skew tolerance) - applies to items 18 and 22."
+    "Peer relays received 11:14 IST (information, adopted, loosen nothing): rebase immediately before BOTH pr create and pr merge; both lanes squash so use base=$(git merge-base HEAD origin/main) then 'git -c core.autocrlf=false rebase --onto origin/main $base'; stage docs/ops/prod-ops-recipes.md only with 'git -c core.autocrlf=false add'; every brief that mutates shared state ends by re-asserting it and pasting the proof; after any db:generate confirm the new _journal.json entry is not future-dated (5 min skew tolerance) - applies to items 18 and 22.",
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "BACKFILL, written 2026-09-11T02:22:16+05:30: notes 0-3 are all from 11:15 IST and nothing from the working day reached any branch. Cause: the ledger docs/contracts/.run/*-PROGRESS.md is matched by .gitignore line 355, so 399 lines of record live only on this laptop and on the board. A peer lane measured this and was right. Lane A is opening a .gitignore PR to un-ignore the PROGRESS files; until it merges these notes are the shared copy. The neglect is recorded, not erased."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "ITEM 20 COMPLETE, 8 of 8 slices merged: #460, #465, #462, #470, #509 (942051e8), #526 (90337baf), #531 (915178d4), #552 (0c01a1d2). The last one closed a hole I opened myself: docs-only PRs skipped the gate, including the one check whose job is reading the docs."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "ITEM 16 COMPLETE, 1 of 1: #528 (9a958a53). Moneycontrol no longer fetched from either caller; its ~180 rows untouched. Mutation-checked - restoring moneycontrol to the CLI allow-list turns the suite red."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "ITEM 18 DONE, 4 of 4: #543 (d20790ac) retention columns + migration, #560 (d7d3b9ec) per-page text stored so it outlives the PDF, #563 (ac4ec20d) the extracted_but_no_stored_text purge veto, #566 (e9c998b9) the retention clock is each document own rather than the IPO. Real-data read on ipodhan_staging: of 283 candidate rows 17 held for no stored text and 85 for the document own window, 181 still purge."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "ITEM 21 CLOSED BLOCKED-DEPENDENCY on lane A item 5. Five slices merged: #537 (700c9b7c), #539 (b8259c4c), #542 (66ed1ebc), #544 (90e9a3b5), #557 (8c092992). Owed: the provenance line. Trigger, run not asserted: git show origin/main:packages/shared/src/db/schema.ts | grep -c ipoFieldPlan returning non-zero. It returned 0 at 01:43."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "ITEM 22 CLOSED BLOCKED. Seven slices merged: #487, #492, #496, #512 (5ae181c9), #516 (b783689b), #529 (fb07256e), #550 (7492b14a). 22-5 needs pdf-lib, a NEW shared dependency and therefore an owner decision, AND a real password-protected filing which exists on neither slot; 22-6 depends on it. Both re-checked tonight rather than carried forward."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "ITEM 8 NOT STARTED, premise now settled on FOUR issuers. I filed #565 claiming an RHP carries only a P/E summary and that 8 of 10 peer columns are absent. WRONG and withdrawn. All four RHPs carry the full table. I missed it because the heading is worded three ways across issuers and my regex matched none of them, and I read zero hits as a fact about the document instead of about my pattern. The real finding: the column set and column ORDER vary by issuer, so 8a must parse by column header, never by position."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "STAGING PROOFS - two PAID, two still owed with named causes. PAID by deploy run 34526518484 (push, 2ad49a4e, release 20260910-202813-2ad49a4e): 18-1 migrate and 22-4 migrate, via the chain assert newest applied 1789065238437 >= newest journaled plus OK: no schema drift. That assert is not decorative - it killed run 34521965457 earlier tonight. OBTAINED at cycle 20:45:02Z: 18-2, the guard string Purge held: a document is still inside its own retention window (item 18 s2b) fired 170 times in the real pipeline - but all 170 carry latest:null, so the never-extracted arm ran and the real-timestamp comparison did not. STILL OWED: 18-1b page rows, because the cycle extracted nothing (found 0, extractionBlocked 11) and page rows are never backfilled; 21-3 revalidate line, because the cycle wrote no IPO so the touched-slug list drained empty and the step skipped without logging. ADMIN_API_TOKEN is present on staging, so 21-3 is not a token skip."
+    },
+    {
+      "at": "2026-09-11T02:22:16+05:30",
+      "what": "DEFECTS OF MINE TODAY, recorded rather than buried: fabricated a command and its output in #538 (claimed zero callers of safeDelPattern; the real answer is 8) - corrected; claimed a production duplicate from a staging-only measurement in #553 - corrected by lane C reading prod; broke main with a docs-only PR #537 citing a file that did not exist yet; merged a StepResult type mismatch in #557, fixed in #560; hit the MSYS_NO_PATHCONV Windows-path trap three times, once reading it as lost work when nothing was lost; let this STATE.json go stale from item 22 until 01:45."
+    }
   ],
   "items": {
     "8": {
@@ -488,7 +524,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T20:41:39.290Z",
+  "lastStateWriteAt": "2026-09-11T02:22:16+05:30",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 0,
