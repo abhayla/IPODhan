@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 04:24 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 04:49 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -938,3 +938,53 @@ flags.
 
 **Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines. Item 3 is with
 the owner.**
+
+
+## 2026-09-11 04:49 IST - a conflicting PR gets NO CI, silently; and my proposed fix was wrong too
+
+### CI did not break. My PR conflicted.
+
+Two pushes produced **zero** workflow runs, zero check-runs, and a bare no-checks-reported. I
+read it as queue latency across three waits. A `pull_request` workflow needs GitHub to build a
+**merge ref**, and a conflicting PR has none - so it creates no run and says nothing about why.
+Resolving the conflict flipped `mergeable` to MERGEABLE and two runs appeared immediately.
+
+**The one-call diagnostic:** `gh pr view N --json mergeable,mergeStateStatus`. CONFLICTING
+means CI is *impossible*, not slow. The absence of a signal **was** the signal. Now a rule for
+all three lanes.
+
+### The treadmill, and my wrong fix for it
+
+All three conflicts tonight were the same file: the **generated** failure-class aggregate. The
+per-entry JSON files merged cleanly every time - that layout works; only the aggregate
+collides. Three merges lost to one generated file.
+
+**I proposed a `.gitattributes` merge driver, and it would not have worked.** GitHub's
+server-side merge - the thing that computes `mergeable` and builds the PR merge ref - does not
+honour custom merge drivers, because a driver is *local git config* the servers do not have.
+The PR would still read CONFLICTING and still get zero runs. I was fixing the symptom visible
+on my own machine, not the one that blocks CI. Corrected by the peer with a fact rather than a
+preference, which is the right kind of correction to receive.
+
+The two real options go to delta 3 with my evidence: untrack the aggregate (the per-entry files
+are the source of truth), or emit it in deterministic sorted order so additions collide only
+when alphabetically adjacent. Correctly not decided at 04:40 by two agents.
+
+I verified the merges ate nobody's work by **listing, not counting**: all 30 of main's
+per-entry files plus exactly my 2. My first arithmetic said 33 - the extra row was the table
+**header** my grep counted.
+
+### A peer note found an error in my own PR body
+
+Lane A saw the tsc baseline reported as 94, 226 and 228 by three builders, all honest,
+differing on whether the shared package is built. **My line was wrong**: the dist **is** built
+here and TS6305 is **zero**, so blaming a stale dist was a cause I asserted without checking -
+in the sentence meant to reassure a reviewer the errors were benign. They are mostly `TS2339`
+(Drizzle properties the compiler cannot see). The body now states the build method explicitly.
+
+### Evidence
+
+306 files / **3815 passed** / 9 skipped, exit 0. The bounded re-run rule fired legitimately -
+the merge auto-merged `filing-persister.ts`, which this branch depends on.
+
+**Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines.**
