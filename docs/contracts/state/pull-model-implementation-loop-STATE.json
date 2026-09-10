@@ -194,7 +194,9 @@
     "STAGING DOWN ALL DAY, first failure is my #464 merge (c6a4c9c4, 08:11:23Z); ten consecutive push-triggered deploys failed, every one at the schema-drift assert. deploy-linux.sh line ~1030 calls the checker BARE while pr-gate sets SCHEMA_DRIFT_IGNORE_GATED=1 at one line. #464 taught that checker to see indexes and constraints, so the bare call started failing on gated items. My own #464 comment said bare callers failing on gated items 'is intended' - it is not: it makes any slot without the hand-applied gated DDL permanently undeployable. s10 fixes the call and the false comment.",
     "MEASURED on ipodhan_staging read-only 2026-09-10 17:09 IST: idx_ipos_slug ABSENT, all three E1 unique constraints ABSENT, normalized_name PRESENT on promoters/peer_companies/ipo_intermediaries. So the column shipped via #445/#448 but the gated constraints were never hand-applied to staging - which is the EXPECTED gated state, not a fault. Only idx_ipos_slug is a genuine fault.",
     "CORRECTED A RELAYED DIAGNOSIS: I was told 'the gated-registry flag is NOT the cause: those four are not in the allowlist'. Three of the four ARE - KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT names all three constraints and isKnownGatedUniqueConstraintDrift matches the deploy log's detail string verbatim. Accepting that would have produced a fix aimed at the wrong thing; correcting it means two fixes, one mine and one the owner's.",
-    "2026-09-10: the owner's '26 failing web integration files' figure is WITHDRAWN as a measurement. It came from a ci.yml run whose integration step was crashing at repo root with no DATABASE_URL/REDIS_URL (my s3d regression, fixed by #489/d8ad025d). The shrink-only baseline mechanism itself stands unchanged and still ships files: [] \u2014 it populates only from a report produced after d8ad025d. Confirmed with lane C, which is telling the owner the number is withdrawn."
+    "2026-09-10: the owner's '26 failing web integration files' figure is WITHDRAWN as a measurement. It came from a ci.yml run whose integration step was crashing at repo root with no DATABASE_URL/REDIS_URL (my s3d regression, fixed by #489/d8ad025d). The shrink-only baseline mechanism itself stands unchanged and still ships files: [] \u2014 it populates only from a report produced after d8ad025d. Confirmed with lane C, which is telling the owner the number is withdrawn.",
+    "2026-09-10: pr-gate budget is counted on the IST day, not the UTC day \u2014 `startsWith(\"2026-09-10\")` drops runs between 00:00 and 05:30 IST and under-counted by two at 4-remaining. Codified as scripts/ops/pr-gate-count.mjs on the ledger branch; no tick retypes the filter. pr-gate is `on: pull_request` only, so a push to a branch with no open PR costs zero runs \u2014 build-and-hold is free.",
+    "2026-09-10: item 1 slice s6 (ipo_risk_factors re-key seq -> heading_hash) stopped at its measurement gate. Staging has 7 collision groups / 14 surplus rows, all byte-duplicates with empty bodies (distinct_bodies=1, max_body_len=0) on prasol-chemicals, hy-tech-engineers, sumax-engineering, pranav-constructions, ss-retail, vinod-texworld x2. Card line 720's 'headings unique per IPO' is false as a measurement. Decision taken: collapse them (lowest seq wins) AND de-duplicate in the write path inside one transaction, because the extractor keeps emitting duplicates and the new constraint would otherwise throw on the next extraction of a live OPEN IPO."
   ],
   "items": {
     "item-01": {
@@ -245,9 +247,9 @@
         {
           "k": "s3",
           "title": "row_key on field_sources and data_conflicts, widened unique constraint, repository threading",
-          "status": "IN-CI",
+          "status": "MERGED",
           "pr": 459,
-          "sha": null,
+          "sha": "87cbeddf",
           "tier": "A"
         },
         {
@@ -261,9 +263,9 @@
         {
           "k": "s5a",
           "title": "slot-aware feature-flag helper + DEPLOY_SLOT plumbing",
-          "status": "TIER-A-ROUND-2",
-          "pr": null,
-          "sha": null,
+          "status": "MERGED",
+          "pr": 476,
+          "sha": "667c1370",
           "tier": "A"
         },
         {
@@ -344,6 +346,14 @@
           "title": "deploy path honours the gated-drift registry (#464 defect that blocked ten staging deploys)",
           "pr": 495,
           "sha": "ee8cec23"
+        },
+        {
+          "k": "s3f",
+          "status": "MERGED",
+          "tier": "C",
+          "pr": 500,
+          "sha": "c15c7eb3",
+          "title": "populate the web-integration shrink-only baseline from the first real CI report (#486)"
         }
       ],
       "prs": [
@@ -353,7 +363,10 @@
         450,
         455,
         489,
-        495
+        495,
+        459,
+        476,
+        500
       ],
       "mergeShas": [
         "6797fdab",
@@ -362,7 +375,10 @@
         "6c225917",
         "bd94e536",
         "d8ad025d",
-        "ee8cec23"
+        "ee8cec23",
+        "87cbeddf",
+        "667c1370",
+        "c15c7eb3"
       ],
       "proof": {
         "status": "OWED",
@@ -659,9 +675,10 @@
     451,
     452,
     453,
-    454
+    454,
+    501
   ],
-  "prGateRunsToday": 3,
+  "prGateRunsToday": 49,
   "prGateBudgetClaimedRaise": {
     "source": "superseded",
     "note": "peer relayed 40/20; owner typed 60/20 directly in-session 2026-09-09 - owner value adopted",
