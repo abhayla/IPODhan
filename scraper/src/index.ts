@@ -13,6 +13,12 @@ import { runNSEScraper } from './scrapers/nse-scraper-orchestrator-v2.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator-v2.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
+import {
+  runIssueTypeFillJob,
+  makeIssueTypeJobDeps,
+} from './services/chittorgarh-issue-type-job.js';
+import { makeIpoDetailsWriter } from './services/filing-persist-deps.js';
+import { FieldSourcesRepository } from '@ipodhan/shared';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
 import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performance-cadence.js';
@@ -393,6 +399,30 @@ async function runDueStepCycle(
       // production, because prod runs the due-step scheduler.
       logger.info({ candidateCount }, 'Due-step cycle: aggregator cadence due — running Chittorgarh for UPCOMING/OPEN IPOs');
       const cgOk = await runCycleStep('aggregator:CHITTORGARH', () => runChittorgarhScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));
+
+      // Item 2 slice 7. Report 82 publishes Pricing Method as a first-class
+      // field; this fills `ipo_details.issue_type` where it is NULL and never
+      // overwrites. A SEPARATE step from the scrape above because it writes a
+      // different table under a different safety argument (a NULL guard, not a
+      // priority engine), and it runs regardless of `cgOk`: the scrape writing
+      // `ipos` and the report publishing an issue type are independent, so a
+      // partial scrape is no reason to drop a field the same response carried.
+      await runCycleStep('aggregator:CHITTORGARH_ISSUE_TYPE', async () => {
+        const result = await runIssueTypeFillJob(
+          makeIssueTypeJobDeps(
+            db,
+            makeIpoDetailsWriter(),
+            new FieldSourcesRepository(db, redis),
+            logger
+          )
+        );
+        // A refusal is a FAILED step, never a quiet success - otherwise a
+        // permanently broken call reads as a clean cycle forever.
+        return result.abortedReason
+          ? { success: false, errors: [`issue-type fill aborted: ${result.abortedReason}`] }
+          : { success: true };
+      });
+
       if (cgOk) {
         await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
       } else {

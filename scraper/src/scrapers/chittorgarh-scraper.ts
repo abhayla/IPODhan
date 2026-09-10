@@ -304,7 +304,7 @@ function determineStatus(
  * @param category - Filter: "all" | "mainboard" | "sme" | "reit" | "invit" | "mainboard-fpo" | "sme-fpo"
  * @returns API response data
  */
-async function fetchChittorgarhAPI(
+export async function fetchChittorgarhAPI(
   page: number = 1,
   perPage: number = REPORT82_PAGE_SIZE,
   category: string = 'all'
