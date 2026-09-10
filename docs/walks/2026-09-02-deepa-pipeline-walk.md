@@ -1472,3 +1472,24 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   pr-gate step `Design traceability (OD-52)` printing its identity line on a clean PR and exiting 1 naming the
   offending id on one that deletes a card's rule line, both demonstrated in s4's own PR, plus the first lane A PR it
   grades. It never counts toward the MERGED-UNPROVEN ceiling (contract decision 3).
+
+- **2026-09-10 11:22 IST [lane B] Shared duty: the flag duty (parent decision 11) is TAKEN BY LANE A. Verified, not taken on the relay's word.**
+  Lane A's supervisor relayed at ~11:20 IST that it had claimed the slot-aware feature-flag duty on branch
+  `feat/pm-item01-s5a-slot-aware-flags`. Checked independently: that branch exists in this repository's branch list
+  (not yet on `origin`), so the claim is real and in flight. Also re-measured both duties on `origin/main` with
+  `MSYS_NO_PATHCONV=1` and a line count before believing any zero (the trap lane A fell into this morning):
+  `scraper/src/config/feature-flags.ts` is **477 lines, 0 occurrences of DEPLOY_SLOT**; `.github/workflows/ci.yml` is
+  **107 lines, 5 matches of continue-on-error/postgres/test:integration**. Both duties therefore still absent from
+  main; the flag one is being built by lane A and this lane will NOT build any part of it. When item 22 needs its
+  flag, this lane waits for that PR to merge and rebases onto it; until it is merged AND a staging cycle log prints
+  the slot and the flag state, no slot-aware flag counts as ON (parent decision 11).
+  **The web duty (parent decision 8: ci.yml without continue-on-error on the web steps, a postgres:16 service with
+  migrations applied, and a `cd web && npm run test:integration` step) is still UNTAKEN by either lane.** Item 21 is
+  this lane's only web-touching item and it is last in the queue, so this duty most likely falls to lane B; it is
+  recorded here now so it is not discovered late. Until it lands, every web integration or E2E claim in either lane
+  is OWED, not proven, and no web-touching item can close.
+- **2026-09-10 11:22 IST [lane B] Two more facts carried from lane A, recorded so they are not rediscovered:** (a) the `row_key` column
+  on `field_sources` ships INERT - no caller passes a rowKey until lane A's item-1 s4 wires them - so any provenance
+  this lane writes uses the no-rowKey shape and adds no row-key plumbing; (b) lane A's s3 is PR #459, open, and the
+  shared pull-request-gate count for the IST day of 2026-09-10 measured **8 runs** at this moment (repo ceiling 60,
+  this lane stops pushing at a repo total of 50, own cap 25).
