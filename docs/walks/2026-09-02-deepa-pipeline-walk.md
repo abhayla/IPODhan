@@ -2069,3 +2069,31 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   are assertions, and they are the cheapest of all to check, because the card is right there.
   Mechanism: any relayed claim about a lane B item's own card is checked against the card on `origin/main` in the
   same turn it is recorded, not when the item starts. STATE.json's shared-file list is corrected now.
+
+- **2026-09-10 13:12 IST [lane B] Item 20 slice s2 MERGED as `78fb228b` via PR #465. Item 20 at 75%; the last slice is the one that
+  makes any of it real.** 5/5 checks green; then `origin/main` moved under it when PR #466 landed, the
+  `git log --oneline origin/main ^HEAD` check caught it as a HARD STOP exactly as lane A's lesson prescribes, and the
+  branch was rebased with the merge-base `--onto` form, re-gated locally (self-test, traceability, module-boundaries,
+  design-consistency, build-cards - all exit 0), force-pushed with `--force-with-lease`, and CI re-run to 5/5 on the
+  rebased head before merging. Moving that check to the LAST action before merge was adopted this morning and earned
+  its keep within the hour.
+  `state=MERGED` confirmed before the branch was deleted in a separate command; worktree removed only after the diff
+  to main was proved empty on stdout, stderr AND exit code; `wt-rm.ps1` printed `tracked 4595 -> 4595, dirty 9 -> 9,
+  deleted-on-disk 0` and the main checkout was re-verified afterwards. (The tracked count rose from 4560 to 4595
+  because main itself gained files from #466 - not a loss, and worth stating so the number is not misread later.)
+  **Slice s4 dispatched: the CI wiring.** Until it merges, a grep over `.github/workflows/` finds none of the three
+  checks invoked anywhere - they are correct code guarding nothing, and this run has said so in every update rather
+  than letting "merged" read as "protecting something". Its brief carries five steps: each self-test as its own step
+  BEFORE its gate (the card's own requirement, so a broken check cannot pass as a clean repository); the traceability
+  gate with `--base` from the pull request's base sha; the module-boundary gate; and
+  `check-design-consistency.mjs --gate`, which a review assigned here because it is **the only thing in the
+  repository that catches a build card claiming a RETIRED rule id** and it runs in no workflow today.
+  Two traps named in the brief because both would produce a hollow gate - the failure class this item has already
+  hit three times. (1) A `--base` the runner cannot resolve makes the gate exit 2 on EVERY pull request, so the
+  builder must check `actions/checkout`'s `fetch-depth` and prove mode 4 RUNS rather than printing its new
+  `MODE 4 - SKIPPED` line. (2) The detection registry's `checks` section is cross-checked by case 79 against a
+  `record('<id>')` call in the nightly audit script; this is a PR gate, not a nightly check, so a `checks` entry with
+  no such call is a PAPER CHECK that reads as wider coverage than the floor has. The builder must choose the correct
+  section, say why, and report a card deviation rather than resolving it silently.
+  The card also requires the gate to be demonstrated FAILING - exiting 1 and naming the offending id when a card's
+  rule line is deleted - using the exact command string the workflow runs, not an approximation.

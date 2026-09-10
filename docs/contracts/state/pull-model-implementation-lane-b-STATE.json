@@ -16,7 +16,7 @@
     "name": "ipodhan_test2",
     "drop": "OWED"
   },
-  "prGateRunsSpentByThisLane": 2,
+  "prGateRunsSpentByThisLane": 4,
   "laneCapPerDay": 25,
   "repoCeilingPerDay": 60,
   "repoStopAt": 50,
@@ -65,9 +65,9 @@
         {
           "k": "s2",
           "title": "failure mode 4: rule hash changed, card and test untouched",
-          "status": "IN-REVIEW",
-          "pr": null,
-          "sha": "486bf400",
+          "status": "MERGED",
+          "pr": 465,
+          "sha": "78fb228b",
           "tier": "A",
           "reviewVerdict": "MERGE YES conditional on the silent-skip fix; card rationale proven false and amended; 10/10 mutations RED"
         },
@@ -84,7 +84,7 @@
         {
           "k": "s4",
           "title": "pr-gate wiring + design_traceability registry entry",
-          "status": "PLANNED",
+          "status": "BUILDING",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -92,11 +92,13 @@
       ],
       "prs": [
         460,
-        462
+        462,
+        465
       ],
       "mergeShas": [
         "6c31d995",
-        "40889f8a"
+        "40889f8a",
+        "78fb228b"
       ],
       "proof": {
         "status": "OWED",
