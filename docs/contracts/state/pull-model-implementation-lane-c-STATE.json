@@ -157,7 +157,7 @@
         {
           "id": "2-S3a",
           "tier": "A",
-          "status": "IN_REVIEW",
+          "status": "FIX_ROUND",
           "issue": 482,
           "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD",
           "definitionOfDone": "Reader audit is INSIDE the DoD, not optional: every reader of segment (bse-api-scraper.ts:338 count, web filters, audit predicates) handles NULL explicitly, or the slice is not mergeable. If that pushes past 400 lines, the readers become 2-S3a-prime and the WRITE-PATH change waits for it - surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change.",
@@ -185,7 +185,12 @@
             "source": 137,
             "tests": 495
           },
-          "capBreach": "632 total lines against delta 1.1 cap of 400. DECLARED, not hidden. Source is only 137 lines across 10 files (about 14 each, surgical); 495 are tests. Splitting would either cut test coverage or separate the writers from the readers - and the supervisor ruled the reader audit MUST land with the write change, because surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change. Section 1.1 is a SPEED lever; the reader-audit rule is a SAFETY rule. Safety wins and the breach is recorded with its reason."
+          "capBreach": "632 total lines against delta 1.1 cap of 400. DECLARED, not hidden. Source is only 137 lines across 10 files (about 14 each, surgical); 495 are tests. Splitting would either cut test coverage or separate the writers from the readers - and the supervisor ruled the reader audit MUST land with the write change, because surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change. Section 1.1 is a SPEED lever; the reader-audit rule is a SAFETY rule. Safety wins and the breach is recorded with its reason.",
+          "reviewRound1": {
+            "verdict": "PASS but covers-the-class NO for the read path",
+            "majors": 2,
+            "minors": 4
+          }
         },
         {
           "id": "2-S3b",
@@ -348,7 +353,12 @@
     "2026-09-10 15:29 IST MECHANISM, not a promise to remember: the board write goes in the SAME TURN as the ledger commit for any transition, never as a separate step I might defer. Every stale board today has the same cause - I committed the ledger and moved straight to the next piece of work. A resolution to be more attentive would fail the same way next time; tying the two writes together is the only thing that changes the outcome. Board older than 45 minutes with ledger commits behind it is a lane defect, mine included.",
     "2026-09-10 15:54 IST 2-S3a BUILT (dbc76c0e) and IN TIER A REVIEW with a fresh Opus reviewer. 20 files, +601/-31, 297/297 tests across 20 files claimed. Not accepted - the reviewer is asked to falsify, with the two targets I most expect to yield something named explicitly: is there a FIFTH silent MAINBOARD default anywhere in scraper/src, and does the shared helper change silently alter NSE behaviour.",
     "2026-09-10 15:54 IST THE BUILDER CORRECTED MY BRIEF AND WAS RIGHT - verified before accepting. My class table named bse-scraper.ts:258 as write site 4. That line computes isSME INSIDE a page.evaluate block and feeds only a stat at :276; the actual written segment is detectSegmentFromExchange(listingExchanges) at :300. So my grep-derived table pointed at dead code. Better still, that helper is SHARED with nse-scraper.ts, so fixing it covers two scrapers rather than one. Third time today a builder instructed to follow the code over my wording found my wording wrong.",
-    "2026-09-10 15:54 IST BUDGET BREACH by the builder, recorded per R10: 179 tool calls against a briefed 120 (149 percent); wall clock 33 min against 60, so time was fine. R10 says a worker STOPS at budget and reports done/not-done/next-command; this one ran to completion. The work is good and the overrun is explicable - 10 source files, 6 updated test files and 4 new ones - but my brief failed to say which single gate would dominate the call count, which is the fix. Briefs from here name the dominating gate so the worker can budget around it."
+    "2026-09-10 15:54 IST BUDGET BREACH by the builder, recorded per R10: 179 tool calls against a briefed 120 (149 percent); wall clock 33 min against 60, so time was fine. R10 says a worker STOPS at budget and reports done/not-done/next-command; this one ran to completion. The work is good and the overrun is explicable - 10 source files, 6 updated test files and 4 new ones - but my brief failed to say which single gate would dominate the call count, which is the fix. Briefs from here name the dominating gate so the worker can budget around it.",
+    "2026-09-10 16:00 IST 2-S3a TIER A ROUND 1: two MAJORs, NOT merged. (1) The defect SURVIVED INSIDE THE FIX: chittorgarh-scraper still falls through to MAINBOARD for ANY non-blank text, so \"Emerge\", a typo'd \"NSE Emerge Platform\", a renamed board or junk becomes MAINBOARD listed on BOTH - asserted with no board word matched. \"BSE SME\" only worked because the literal SME appears. That is the original defect in a new costume, and it is precisely the falsification target I asked the reviewer to attack.",
+    "2026-09-10 16:00 IST MAJOR 2 IS MY SCOPING ERROR, and it is user-facing. I gave the builder the reader list from a grep over web/lib, web/app, scraper/src, scripts and packages/shared/src - and OMITTED web/components, even though my own earlier count had shown 24 files there touching segment. Two components render segment === SME ? SME : Mainboard, so an unknown segment is shown to a VISITOR as \"Mainboard\". Since this slice deliberately increases NULL volume, merging it as-is would make a user-facing mislabel MORE common. Caught by the reviewer, not by me.",
+    "2026-09-10 16:00 IST DECISION: fix both before merge rather than merge-and-defer, which is what the reviewer offered. MAJOR 1 means shipping a fix that still guesses; MAJOR 2 means shipping a change that makes a visitor-facing error more frequent. Neither is acceptable to defer, and both fixes are small. R9 allows a second Tier A round on MAJOR, so one will run after the fix.",
+    "2026-09-10 16:00 IST REVIEWER FOUND A FALSE-GREEN TRAP IN ITS OWN METHOD and reported it: its first mutation attempt silently no-op'd (a perl edit that did not apply) and the test still passed - which would have read as proof the guard was absent when the guard was simply never removed. Now standing in fix briefs: CONFIRM a mutation actually applied before reading its result. A mutation that did not apply is a false green, not a passing test.",
+    "2026-09-10 16:00 IST UNVERIFIABLE CLAIM recorded rather than accepted: the builder reported 297/297 tests across 20 files; the reviewer running the 10 touched files by literal path observed 180. Neither is necessarily wrong (different file sets), but the builder number could not be reproduced from the files it named, so it is recorded as unverifiable rather than as evidence. Also worth knowing: scraper/tsconfig.json EXCLUDES tests, so the 495 lines of new tests are not type-checked by the tsc proof at all."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
