@@ -57,10 +57,12 @@
         {
           "k": "s3",
           "title": "module-boundary import check (R-142..R-144)",
-          "status": "PLANNED",
+          "status": "IN-REVIEW",
           "pr": null,
           "sha": null,
-          "tier": "A"
+          "tier": "A",
+          "reviewRounds": 1,
+          "reviewVerdict": "MERGE NO - CRITICAL: zero both-endpoints-mapped edges, gate cannot fail; fix round dispatched with a shrink-only violation baseline"
         },
         {
           "k": "s4",
@@ -224,5 +226,13 @@
   ],
   "contractCorrectionsDue": [
     "decision 9: replace the `--search \"[lane B]\"` PR counter with a branch-prefix count (DEFECT-B04)"
+  ],
+  "resolvedAlarms": [
+    {
+      "at": "2026-09-10 11:59 IST",
+      "alarm": "node --test may exit 0 with failing subtests, which would void every pr-gate node --test step",
+      "verdict": "FALSE - cause was a masked exit code in the builder's own command; Node v22.20.0 exits 1 on failure and pr-gate invokes the runner bare at 16 sites",
+      "note": "held from the peer lane until measured; a relayed guess would have sent lane A chasing a defect that does not exist"
+    }
   ]
 }

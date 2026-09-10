@@ -1704,3 +1704,36 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Honest note on the builder's own diff measurement: `origin/main` advanced under it when s1 merged, so a plain
   two-ref `git diff origin/main HEAD` wrongly showed the sibling slice's files as this slice's. It noticed and used
   the merge-base form `origin/main...HEAD`. That is the pipelining hazard the contract warns about, caught correctly.
+
+- **2026-09-10 11:59 IST [lane B] Item 20 s3 Tier A: MERGE NO, CRITICAL - the gate cannot fail. Also: the repo-wide alarm was FALSE.**
+  **PRIORITY 1 settled, cause (b): a masked exit code, not the runner.** Node v22.20.0 measured directly:
+  `node --test` with the script absent gives 10 failures and **exit 1**; a trivial failing test gives **exit 1**; and
+  `pr-gate.yml` invokes `node --test <file>` BARE at 16 sites with no pipe. There is **no repo-wide defect** and
+  nothing needs to be told to lane A. The builder's red-evidence line was simply wrong (its "9 tests" also disagreed
+  with the real 10). Holding the relay until it was measured was the right call - a relayed guess would have sent
+  the other lane chasing a defect that does not exist.
+  **CRITICAL: of 2660 resolved import edges, ZERO have both endpoints mapped.** The reviewer instrumented the loop
+  and then proved it the only way that counts: it reversed the ENTIRE layer order in the map - the maximal possible
+  violation of the rule the check exists to enforce - and the check still printed `PASS (exit 0)`. No code change in
+  this repository can make this gate fail. Slice 4 would have wired it into every pull request in both lanes, and a
+  green line reading "no upward-pointing import edge found" would have been taken as evidence the architecture is
+  clean. A gate that structurally cannot fail is worse than no gate, because it manufactures false confidence.
+  Cause, and it is not the engine: the 27 globs cover two DISJOINT islands - 27 scraper files that do not import one
+  another, and `web/lib/repositories/**` which no scraper file can import. `read-side` sits highest in the order, so
+  its 25 files can contribute no enforceable edge at all. The reviewer proved the engine sound by a JSON-only
+  two-entry edit that lifted coverage 52 -> 98 and immediately produced `FAIL (exit 1) - 2 upward import edge(s)`.
+  That also confirms the map is genuinely data-driven, which was one of the things under review.
+  Not findings, each checked rather than assumed: `plan` and `walk` really are absent from the code (no
+  `ipo_field_plan` anywhere in `packages/shared/src` or `scraper/src`); four spot-checked mappings are correct
+  against the design's own module table; the diff is exactly three files; and the traceability check that merged an
+  hour ago still exits 0 with this branch's test file present, so the new R-142/143/144 declarations do not break it.
+  **Supervisor decision on the fix, taken without asking because it follows this repository's own established
+  pattern:** widening the map will surface REAL upward-import edges (the reviewer already saw 2). Those are not to
+  be hidden by narrowing the map, reordering the layers or special-casing a file - the one unforgivable move. They
+  go into a **shrink-only baseline**, `config/module-boundary-baseline.json`, with exactly the semantics of the
+  existing write ratchet: a new violation fails the build, a baselined one passes but is printed by identity every
+  run, and a baseline entry that no longer exists in the graph fails as exit 2 so the file can only ever shrink.
+  Each entry carries a one-line `why` naming what would have to change to remove it, because a baseline entry is a
+  debt and an unexplained debt never gets paid.
+  The fix also adds the number whose absence let this hide: **the count of edges with BOTH endpoints mapped**,
+  printed every run, guarded so that zero is exit 2, and asserted by its own test.
