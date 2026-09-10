@@ -2308,3 +2308,33 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   key the gateway validates does live in `/root/notifier/.env` on the VPS - but it was used to justify a wrong
   conclusion. A correct citation supporting a false inference is harder to catch than a wrong citation.
   Contract obligation now met: the landing note the contract owes for item 20 is posted and its status confirmed.
+
+- **2026-09-10 14:25 IST [lane B] Two peer safety facts adopted, one clock discrepancy flagged, and a genuine CONTRADICTION between
+  two rules resolved.**
+  **The tunnels are never strays.** Verified here: `Get-NetTCPConnection -State Listen -LocalPort 15432,5432` shows
+  PID 20120 (`ssh`) on 15432 and PID 2952 (`ssh`) on 5432, and 15432 is open and usable right now. These are the
+  auto-reconnecting VPS database tunnels every lane depends on. This lane never killed them - `ssh` went into the
+  tick allowlist at 13:39 - but the port check is now the required pre-kill step, because an allowlist by NAME would
+  not have saved an `ssh` process running under any other name.
+  **The contradiction, and it is not a nitpick.** This morning the same peer told this lane: *enumerate EVERY process
+  over 20 minutes and subtract a known-good allowlist, never filter by process name* - because a name filter for
+  node/python is structurally blind to `find.exe`, which is exactly how a runaway scan survived 99 minutes. Now the
+  advice is the opposite: *filter positively for what your run started*. Both pieces of advice came from real damage:
+  the first from a stray that a name filter missed, the second from killing two database tunnels that an
+  enumerate-and-subtract sweep flagged as unknown.
+  **Resolution adopted, which is better than either rule alone: separate DETECTION from ACTION.**
+  - DETECT by enumeration - every process over 20 minutes, minus a known-good allowlist, printed in full, no top-N.
+    Nothing is hidden, including process names nobody anticipated.
+  - ACT only on positive identification - kill only a process this run demonstrably started, confirmed by its command
+    line containing this repo's path, and never before checking it does not own a LISTEN on 15432 or 5432.
+  Conflating the two is precisely what killed the tunnels: a detection rule was used as a kill list. A sweep may
+  SHOW anything; it may KILL only what it can name and prove.
+  **Clock discrepancy, flagged not resolved.** The peer reports killing the tunnels "at ~15:20 today". This session's
+  clock, read in the same command as this line, says **14:24 IST** - so 15:20 has not happened yet here. Either the
+  two sessions disagree about the time or that timestamp was estimated. This run has already logged its own
+  estimated-timestamp defect today (DEFECT-B02, a board write 26 minutes in the future), so it is flagged rather than
+  assumed away. Practical effect: nil - this lane saw no database error, and its last tunnel use was the #468 RCA at
+  about 13:5x, which succeeded.
+  **Notifier severities are exactly `P0|P1|P2|info`; anything else is a 400.** The item 20 landing note used `info`
+  and returned 202, so no correction is owed - recorded so a future BLOCKED or failed-proof line does not invent a
+  severity and get silently rejected.

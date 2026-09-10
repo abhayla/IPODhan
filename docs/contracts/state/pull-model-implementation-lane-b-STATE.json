@@ -214,10 +214,11 @@
     "item 18: if its migration adds a gated index or constraint, register it in the documented SCHEMA_DRIFT_IGNORE_GATED list; never widen the suppression",
     "assert-schema-drift.test.ts and known-gated-type-drift.test.ts are UNWIRED until PR #464 - their green is not evidence",
     "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr merge; non-empty output triggers a JUDGEMENT, not an automatic rebase. Rebase only when main moved in a way that changes the result: a new CI gate landed (this branch's greens describe a gate set that no longer exists) or main changed code this slice touches. Proved by merge-tree that a behind branch does NOT delete main's newer files; a reflexive force-push cancels an in-flight run and spends the shared ceiling.",
-    "supervision tick: enumerate EVERY process older than 20 minutes and subtract a known-good allowlist, printing the allowlist; never filter by process name",
     "a 'process killed' report from a tool or worker is a claim - verify by PID before recording it closed",
     "any web unit result is recorded as 'green, suite instability open #446' and never as proof, until #446 closes (contract decision 8 forbids re-running to obtain green and calls a fail-then-pass a defect)",
-    "before concluding a credential/config/process is ABSENT, enumerate the namespace (e.g. grep every NOTIFIER* name) rather than probing the one name expected - generalises the stray-process enumerate-and-subtract rule beyond processes"
+    "before concluding a credential/config/process is ABSENT, enumerate the namespace (e.g. grep every NOTIFIER* name) rather than probing the one name expected - generalises the stray-process enumerate-and-subtract rule beyond processes",
+    "process sweep: DETECT by enumeration (every process >20 min minus a known-good allowlist, printed in full, no top-N) but ACT only on positive identification - kill only a process this run started, confirmed by its command line containing the repo path, and never before `Get-NetTCPConnection -State Listen -LocalPort 15432,5432` proves it owns no tunnel. A detection rule is not a kill list.",
+    "Notifier severity must be one of P0|P1|P2|info; anything else returns 400"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -455,5 +456,8 @@
       "endpoint": "https://firekaro.com/notifier-gw/notify",
       "key": "NOTIFIER_KEY_IPODHAN (per-project)"
     }
+  ],
+  "infrastructureFacts": [
+    "ssh.exe PIDs owning LISTEN on 15432 and 5432 are the auto-reconnecting VPS database tunnels every lane depends on - never kill; verified 2026-09-10 14:24 IST (PID 20120 on 15432, PID 2952 on 5432, 15432 open)"
   ]
 }
