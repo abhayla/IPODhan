@@ -269,24 +269,125 @@ function isPrivateIPv4Address(ip: string): boolean {
 }
 
 /**
- * IPv6 address in a loopback/link-local/unique-local range.
- * `fc00::/7` (unique-local) and `fe80::/10` (link-local) checked on the
- * first 16-bit group; `::ffff:a.b.c.d` (IPv4-mapped) defers to the IPv4
- * check on the embedded address. An address this cannot parse is treated
- * as private (fail closed).
+ * Parse any textual IPv6 form (expanded, `::`-compressed, with a trailing
+ * dotted-decimal IPv4 tail, any casing, an optional zone id or brackets)
+ * into its 8 canonical 16-bit groups. Returns null on anything that does
+ * not parse — the caller fails closed on null, never on a thrown error.
+ *
+ * This is the fix for the class the reviewer found (item 22 round 2):
+ * the old check matched ONE textual spelling of IPv4-mapped
+ * (`::ffff:a.b.c.d`) via regex, so the same address written in expanded
+ * hex form (`0:0:0:0:0:ffff:7f00:1`, which some resolvers/stacks emit)
+ * read as public. Parsing to groups first means every spelling of the
+ * same bits is classified identically.
+ */
+function parseIPv6Groups(raw: string): number[] | null {
+  let s = raw.trim().toLowerCase();
+  s = s.replace(/^\[/, '').replace(/\]$/, '');
+  const zoneIdx = s.indexOf('%');
+  if (zoneIdx >= 0) s = s.slice(0, zoneIdx);
+  if (s === '') return null;
+
+  // A trailing dotted-decimal IPv4 tail (IPv4-mapped/-compatible/NAT64,
+  // written in dotted form rather than hex) — fold it into two hex groups
+  // before the generic `::`-expansion below, so every embedding form
+  // reduces to the same 8-group shape.
+  const lastColon = s.lastIndexOf(':');
+  const tail = lastColon >= 0 ? s.slice(lastColon + 1) : s;
+  if (tail.includes('.')) {
+    const octetStrs = tail.split('.');
+    if (octetStrs.length !== 4 || octetStrs.some((o) => !/^\d{1,3}$/.test(o))) return null;
+    const octets = octetStrs.map(Number);
+    if (octets.some((o) => o > 255)) return null;
+    const g6 = ((octets[0] << 8) | octets[1]).toString(16);
+    const g7 = ((octets[2] << 8) | octets[3]).toString(16);
+    s = lastColon >= 0 ? `${s.slice(0, lastColon + 1)}${g6}:${g7}` : `${g6}:${g7}`;
+  }
+
+  if ((s.match(/::/g) ?? []).length > 1) return null;
+
+  let groups: string[];
+  if (s.includes('::')) {
+    const [headStr, tailStr] = s.split('::');
+    const head = headStr === '' ? [] : headStr.split(':');
+    const tailGroups = tailStr === '' ? [] : tailStr.split(':');
+    const missing = 8 - head.length - tailGroups.length;
+    if (missing < 0) return null;
+    groups = [...head, ...Array(missing).fill('0'), ...tailGroups];
+  } else {
+    groups = s.split(':');
+  }
+  if (groups.length !== 8) return null;
+
+  const values: number[] = [];
+  for (const g of groups) {
+    if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+    values.push(parseInt(g, 16));
+  }
+  return values;
+}
+
+/** Reassemble two 16-bit groups (the low 32 bits of an IPv6 address) as a dotted IPv4 string. */
+function ipv4FromGroups(g6: number, g7: number): string {
+  return [(g6 >> 8) & 0xff, g6 & 0xff, (g7 >> 8) & 0xff, g7 & 0xff].join('.');
+}
+
+/**
+ * IPv6 address in a loopback/link-local/unique-local range, OR one that
+ * EMBEDS an IPv4 address in a private range — however the embedding or the
+ * address itself is spelled. Parses to 8 canonical groups first (see
+ * `parseIPv6Groups`), so expanded hex, `::`-compressed, and dotted-tail
+ * forms of the same bits are all classified identically.
+ *
+ * Embeddings checked, each by testing the embedded IPv4 with
+ * `isPrivateIPv4Address` (item 22 round 2, MAJOR-1):
+ *   - IPv4-mapped `::ffff:a.b.c.d` (groups 0-4 zero, group 5 = 0xffff) —
+ *     RFC 4291 §2.5.5.2, the form a dual-stack resolver hands back for an
+ *     IPv4-only name; this is the class the reviewer's mutation proved has
+ *     no test at all.
+ *   - IPv4-compatible `::a.b.c.d` (groups 0-5 zero, deprecated by RFC 4291
+ *     but still parsed by Node's resolver) — same embedding, no `ffff`
+ *     marker; refused on the same embedded-address check. `::` itself
+ *     (all-zero, the unspecified address) refuses too — never a valid
+ *     fetch target.
+ *   - NAT64 `64:ff9b::/96` (groups 0-1 = `64:ff9b`, groups 2-5 zero) — a
+ *     stateless IPv4/IPv6 translator prefix; the last 32 bits are the real
+ *     IPv4 destination, so a translated request to a private address is
+ *     refused the same as a direct one. A NAT64-embedded PUBLIC address is
+ *     allowed, matching how the translator would actually route it.
+ *
+ * An address this cannot parse is treated as private (fail closed).
  */
 function isPrivateIPv6Address(ip: string): boolean {
-  const normalized = ip.toLowerCase();
-  if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') return true;
+  const groups = parseIPv6Groups(ip);
+  if (!groups) return true;
 
-  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIPv4Address(mapped[1]);
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups;
 
-  const firstGroup = normalized.split(':')[0] ?? '';
-  const value = firstGroup === '' ? 0 : parseInt(firstGroup, 16);
-  if (Number.isNaN(value)) return true;
-  if (value >= 0xfe80 && value <= 0xfebf) return true; // fe80::/10 link-local
-  if (value >= 0xfc00 && value <= 0xfdff) return true; // fc00::/7 unique-local
+  // ::1 loopback (groups 0-6 zero, group 7 === 1), any spelling.
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0 && g6 === 0 && g7 === 1) {
+    return true;
+  }
+
+  // IPv4-mapped ::ffff:a.b.c.d
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0xffff) {
+    return isPrivateIPv4Address(ipv4FromGroups(g6, g7));
+  }
+
+  // IPv4-compatible ::a.b.c.d (deprecated form, still emitted by some stacks).
+  // :: (all-zero, unspecified) also lands here and is refused — never fetchable.
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    if (g6 === 0 && g7 === 0) return true; // :: unspecified
+    return isPrivateIPv4Address(ipv4FromGroups(g6, g7));
+  }
+
+  // NAT64 well-known prefix 64:ff9b::/96 — check the embedded IPv4 destination.
+  if (g0 === 0x64 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    return isPrivateIPv4Address(ipv4FromGroups(g6, g7));
+  }
+
+  if (g0 >= 0xfe80 && g0 <= 0xfebf) return true; // fe80::/10 link-local
+  if (g0 >= 0xfc00 && g0 <= 0xfdff) return true; // fc00::/7 unique-local
   return false;
 }
 
@@ -297,22 +398,34 @@ function isPrivateIPv6Address(ip: string): boolean {
  * can hide the malicious address behind a legitimate first answer) and
  * refuses if ANY resolved address is private/loopback/link-local/unique-local.
  *
- * Fails CLOSED: a lookup that throws (NXDOMAIN, timeout, a malformed
- * hostname) is treated as private/refused, never as "couldn't check, allow
- * it" — the caller is refusing a network request either way, so an
- * unresolvable host must refuse the same as a resolvable-but-private one.
+ * Fails CLOSED on every edge, not just a thrown lookup (item 22 round 2,
+ * MAJOR-3/MINOR-1):
+ *   - a lookup that throws (NXDOMAIN, timeout, a malformed hostname);
+ *   - a resolved entry with a non-string/missing `address` field, so a
+ *     malformed DNS answer refuses the caller instead of throwing a
+ *     TypeError out of this function (the docblock's "fail closed" promise
+ *     previously held only for the whole-lookup failure, not a per-entry one);
+ *   - a lookup that never settles — raced against `DNS_LOOKUP_TIMEOUT_MS`.
  */
+const DNS_LOOKUP_TIMEOUT_MS = 5_000;
+
 export async function isResolvedAddressPrivate(hostname: string): Promise<boolean> {
   let addresses: Array<{ address: string; family: number }>;
   try {
-    addresses = await lookup(hostname, { all: true });
+    addresses = await Promise.race([
+      lookup(hostname, { all: true }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('dns lookup timed out')), DNS_LOOKUP_TIMEOUT_MS)
+      ),
+    ]);
   } catch {
     return true;
   }
   if (addresses.length === 0) return true;
-  return addresses.some(({ address, family }) =>
-    family === 6 ? isPrivateIPv6Address(address) : isPrivateIPv4Address(address)
-  );
+  return addresses.some(({ address, family }) => {
+    if (typeof address !== 'string' || address.length === 0) return true;
+    return family === 6 ? isPrivateIPv6Address(address) : isPrivateIPv4Address(address);
+  });
 }
 
 /**

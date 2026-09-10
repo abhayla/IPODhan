@@ -219,6 +219,95 @@ describe('isResolvedAddressPrivate — DNS-rebinding-safe host refusal (item 22,
     vi.mocked(lookup).mockRejectedValue(new Error('ENOTFOUND'));
     expect(await isResolvedAddressPrivate('unresolvable.example')).toBe(true);
   });
+
+  describe('IPv4-mapped loopback — every spelling of the same bits (MAJOR-1/MAJOR-2)', () => {
+    it('refuses the EXPANDED hex form the reviewer proved bypassed the old regex', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '0:0:0:0:0:ffff:7f00:1', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('expanded-mapped.example')).toBe(true);
+    });
+
+    it('refuses the compressed hex form (::ffff:7f00:1)', async () => {
+      vi.mocked(lookup).mockResolvedValue([{ address: '::ffff:7f00:1', family: 6 }] as never);
+      expect(await isResolvedAddressPrivate('compressed-mapped.example')).toBe(true);
+    });
+
+    it('refuses the dotted form (::ffff:127.0.0.1)', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '::ffff:127.0.0.1', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('dotted-mapped.example')).toBe(true);
+    });
+
+    it('refuses regardless of casing (::FFFF:127.0.0.1)', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '::FFFF:127.0.0.1', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('uppercase-mapped.example')).toBe(true);
+    });
+
+    it('admits an IPv4-mapped PUBLIC address (::ffff:8.8.8.8)', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '::ffff:8.8.8.8', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('mapped-public.example')).toBe(false);
+    });
+  });
+
+  describe('IPv4-compatible and NAT64 embeddings', () => {
+    it('refuses IPv4-compatible ::127.0.0.1 (deprecated form, still embeds a private address)', async () => {
+      vi.mocked(lookup).mockResolvedValue([{ address: '::127.0.0.1', family: 6 }] as never);
+      expect(await isResolvedAddressPrivate('ipv4-compatible.example')).toBe(true);
+    });
+
+    it('refuses the unspecified address :: (all-zero)', async () => {
+      vi.mocked(lookup).mockResolvedValue([{ address: '::', family: 6 }] as never);
+      expect(await isResolvedAddressPrivate('unspecified.example')).toBe(true);
+    });
+
+    it('refuses a NAT64 address embedding a private destination (64:ff9b::7f00:1)', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '64:ff9b::7f00:1', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('nat64-private.example')).toBe(true);
+    });
+
+    it('admits a NAT64 address embedding a public destination (64:ff9b::808:808)', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '64:ff9b::808:808', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('nat64-public.example')).toBe(false);
+    });
+  });
+
+  describe('malformed resolved-address entries fail CLOSED, not loud (MAJOR-3)', () => {
+    it('refuses an entry with address undefined instead of throwing', async () => {
+      vi.mocked(lookup).mockResolvedValue([{ address: undefined, family: 4 }] as never);
+      await expect(isResolvedAddressPrivate('malformed.example')).resolves.toBe(true);
+    });
+
+    it('refuses an entry with a non-string address', async () => {
+      vi.mocked(lookup).mockResolvedValue([{ address: 12345, family: 4 }] as never);
+      await expect(isResolvedAddressPrivate('malformed-numeric.example')).resolves.toBe(true);
+    });
+
+    it('refuses an entry with an empty-string address', async () => {
+      vi.mocked(lookup).mockResolvedValue([{ address: '', family: 6 }] as never);
+      await expect(isResolvedAddressPrivate('malformed-empty.example')).resolves.toBe(true);
+    });
+  });
+
+  describe('DNS lookup timeout refuses rather than hangs the caller (MINOR-1)', () => {
+    it('refuses when the lookup never settles, within the deadline', async () => {
+      vi.useFakeTimers();
+      vi.mocked(lookup).mockImplementation(() => new Promise(() => {})); // never resolves/rejects
+      const pending = isResolvedAddressPrivate('hanging.example');
+      await vi.advanceTimersByTimeAsync(6_000);
+      await expect(pending).resolves.toBe(true);
+      vi.useRealTimers();
+    });
+  });
 });
 
 describe('loadRegistrarDocumentHosts — registrar hosts as data, cached per cycle', () => {
