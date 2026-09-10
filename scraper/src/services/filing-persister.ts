@@ -199,6 +199,15 @@ export interface PersistFilingSummary {
   /** Metric series withheld because two documents disagree about them. */
   skipped_cross_document_disagreement: string[];
   skipped_failed_check: string[];
+  /**
+   * Item 1 slice s7a. Child rows this run wrote WITHOUT per-field resolution or
+   * provenance, each NAMED by `<table> <row_key> (<reason>)` — never a tally.
+   * `signal-ownership.md` R1: a count is not a reading, so the caller can act on
+   * this line instead of re-querying which rows lost provenance.
+   *
+   * Optional so existing callers that build a summary literal keep compiling.
+   */
+  unresolved_child_rows?: string[];
   skipped_no_column: string[];
   /** Unit-dependent writes refused because the filing states no usable unit. */
   skipped_no_unit: string[];
@@ -740,6 +749,8 @@ export async function persistFilingExtraction(
 
   const written: Record<string, number> = {};
   const skippedFailedCheck: string[] = [];
+  /** See `PersistFilingSummary.unresolved_child_rows`. */
+  const unresolvedChildRows: string[] = [];
   const skippedNoColumn: string[] = [];
   const skippedNoUnit: string[] = [];
   const skippedUnitMismatch: string[] = [];
@@ -829,8 +840,11 @@ export async function persistFilingExtraction(
     if (!FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) return;
     if (entries.length === 0) return;
     if (!deps.childRowConsolidator) {
+      for (const entry of entries) {
+        unresolvedChildRows.push(`${tableName} ${entry.rowKey} (no childRowConsolidator injected)`);
+      }
       logger.error(
-        { ipoId, tableName, rows: entries.length },
+        { ipoId, tableName, rowKeys: entries.map((e) => e.rowKey) },
         '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
       );
       return;
@@ -860,15 +874,16 @@ export async function persistFilingExtraction(
       );
     } catch (error) {
       const cause = (error as { cause?: { message?: string } } | undefined)?.cause?.message;
+      const why = `consolidation failed: ${(error as Error)?.message ?? 'unknown'}${
+        cause ? ` <- ${cause}` : ''
+      }`;
       logger.error(
-        { err: error, cause, ipoId, tableName, rows: inputs.length },
+        { err: error, cause, ipoId, tableName, rowKeys: entries.map((e) => e.rowKey) },
         '[FilingPersister] child-row consolidation failed — writing the rows unresolved'
       );
-      skippedFailedCheck.push(
-        `${tableName} (consolidation failed: ${(error as Error)?.message ?? 'unknown'}${
-          cause ? ` <- ${cause}` : ''
-        }; ${inputs.length} rows written unresolved)`
-      );
+      for (const entry of entries) {
+        unresolvedChildRows.push(`${tableName} ${entry.rowKey} (${why})`);
+      }
       return;
     }
 
@@ -876,10 +891,10 @@ export async function persistFilingExtraction(
     for (const entry of entries) {
       const decided = decidedByKey.get(entry.rowKey);
       if (!decided || decided.skipped) {
-        skippedFailedCheck.push(
+        unresolvedChildRows.push(
           `${tableName} ${entry.rowKey} (consolidation skipped: ${
             decided?.skipReason ?? 'NO_RESULT'
-          }; row written unresolved)`
+          })`
         );
         continue;
       }
@@ -2440,6 +2455,21 @@ export async function persistFilingExtraction(
     if (trusted(extraction, field) !== null) skippedNoColumn.push(`${field} (${reason})`);
   }
 
+  if (unresolvedChildRows.length > 0) {
+    // The rows are NAMED, not counted: a bare `unresolved: 4` is unreadable and
+    // - condition 2 of the s7a review - these rows have NO `field_sources` entry
+    // at all, so this line is the only place they surface until the nightly
+    // q_field_sources_row_key_coverage check sees the missing keys.
+    logger.warn(
+      {
+        ipoId,
+        company: existing?.companyName ?? null,
+        docType: options.docType,
+        unresolvedChildRows,
+      },
+      '[FilingPersister] child rows written WITHOUT per-row provenance'
+    );
+  }
   logger.info(
     { ipoId, docType: options.docType, apply, written },
     '[FilingPersister] filing extraction persisted'
@@ -2448,6 +2478,7 @@ export async function persistFilingExtraction(
   return {
     written,
     skipped_failed_check: skippedFailedCheck.sort(),
+    unresolved_child_rows: [...unresolvedChildRows].sort(),
     skipped_no_column: [...new Set(skippedNoColumn)].sort(),
     skipped_no_unit: [...new Set(skippedNoUnit)].sort(),
     skipped_lower_priority_source: [...new Set(skippedLowerPriority)].sort(),

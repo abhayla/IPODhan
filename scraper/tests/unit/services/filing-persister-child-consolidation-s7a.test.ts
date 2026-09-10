@@ -310,16 +310,50 @@ describe('s7a — flag ON routes each table through the consolidator', () => {
     // Losing provenance must never cost the row: a whole-set replace that drops
     // a promoter deletes it from the live page.
     expect(repoRows(m).promoters.map((r) => r.name)).toEqual(['Sunil Sharma', 'Kavita Rao']);
-    expect(
-      summary.skipped_failed_check.some((s) => s.startsWith('promoters ') && s.includes('MISSING_ROW_KEY'))
-    ).toBe(true);
+    // NAMED, never counted (signal-ownership R1): the row key is on the line.
+    expect(summary.unresolved_child_rows).toEqual(
+      expect.arrayContaining([
+        `promoters ${rowKeyForName('Sunil Sharma')} (consolidation skipped: MISSING_ROW_KEY)`,
+        `promoters ${rowKeyForName('Kavita Rao')} (consolidation skipped: MISSING_ROW_KEY)`,
+      ])
+    );
   });
 
-  it('falls back to the unresolved write when no consolidator is injected', async () => {
+  it('falls back to the unresolved write when no consolidator is injected, naming every row', async () => {
     const m = makeDeps();
-    await run(m.deps);
+    const summary = await run(m.deps);
     expect(repoRows(m).promoters).toHaveLength(2);
     expect(repoRows(m).peers).toHaveLength(2);
+
+    // Every one of the eight rows across the four tables is named with its own
+    // row key — an unresolved row has NO field_sources entry, so a count here
+    // would leave nothing to act on.
+    expect(summary.unresolved_child_rows).toHaveLength(8);
+    expect(summary.unresolved_child_rows).toEqual(
+      expect.arrayContaining([
+        `promoters ${rowKeyForName('Sunil Sharma')} (no childRowConsolidator injected)`,
+        `peer_companies ${rowKeyForName('Beta Chemicals Ltd')} (no childRowConsolidator injected)`,
+        `ipo_intermediaries SYNDICATE:${rowKeyForName('JM Financial Ltd')} (no childRowConsolidator injected)`,
+        `ipo_risk_factors ${headingHashForRiskFactor('We depend on one customer')} (no childRowConsolidator injected)`,
+      ])
+    );
+  });
+
+  it('a consolidation that THROWS names every row it wrote unresolved', async () => {
+    const boom = new Error('field_sources unreachable');
+    (boom as { cause?: unknown }).cause = new Error('ECONNREFUSED 127.0.0.1:5432');
+    const consolidate = vi.fn(async () => {
+      throw boom;
+    });
+    const m = makeDeps({ childRowConsolidator: { consolidatedUpsertChildRows: consolidate } as never });
+    const summary = await run(m.deps);
+
+    expect(repoRows(m).promoters).toHaveLength(2);
+    const named = (summary.unresolved_child_rows ?? []).filter((l) => l.startsWith('promoters '));
+    expect(named).toHaveLength(2);
+    // The cause travels with the reason (signal-ownership R6).
+    expect(named[0]).toContain('field_sources unreachable');
+    expect(named[0]).toContain('ECONNREFUSED');
   });
 
   it('a punctuation-only promoter is keyed by rowKeyForName, not the bare normaliser', async () => {
