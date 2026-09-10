@@ -877,7 +877,10 @@
     "2026-09-10 20:08 IST NEITHER OWES A STAGING PROOF, which is unusual here and worth saying plainly. Both are read-only: 12-A proved zero false merges over 709 real names and 12-C proved 0 stale keys on staging plus detection red at 544, all before merge, writing nothing anywhere. Item 14 is the one carrying proof debt, not these.",
     "2026-09-10 20:08 IST 12-B IS NOW UNBLOCKED. Its stated proof is assert-repair-held normalized-name-current --cycles 2, and that invariant reached main at 8047231e. Before tonight the tool did not exist, so 12-B could not have honoured its own contract.",
     "2026-09-10 20:08 IST REBASE COST I OWN: main gained three commits touching pr-gate.yml while #510 was open, and pr-gate.yml is a file 12-A changes. I rebased rather than merge blind - GitHub reported CLEAN, but a clean TEXTUAL merge could still have placed my parity step outside the Node 22 window, which is the one thing that makes it fail. Verified after rebase: step at line 291, window 256 to 293, inside. That rebase consumed a CI run the peer had not budgeted. Justified, but mine.",
-    "2026-09-10 20:08 IST COUNT DISCREPANCY, unresolved and flagged rather than papered over: the peer reports 55 pr-gate runs today, my query of the same workflow reports 54. One of the two filters is wrong. It matters because the cap of 58 is being planned to the single run, and an off-by-one either wastes a slot or busts the cap."
+    "2026-09-10 20:08 IST COUNT DISCREPANCY, unresolved and flagged rather than papered over: the peer reports 55 pr-gate runs today, my query of the same workflow reports 54. One of the two filters is wrong. It matters because the cap of 58 is being planned to the single run, and an off-by-one either wastes a slot or busts the cap.",
+    "2026-09-10 20:13 IST REAL RISK FOUND AND CLOSED: the three held item-2 commits existed only as local branches inside their worktrees, with no branch on origin. A worktree sweep would have destroyed finished, proven work. All three are now pushed, at zero CI cost - pr-gate triggers on pull_request only, which I verified in the workflow before pushing rather than assuming.",
+    "2026-09-10 20:13 IST PRE-FLIGHT on all three held slices, done now rather than at 00:00 because a stale slice failing CI would waste a run from a fresh budget. None needs a rebase. 2-S3b: aggregate not stale, main has 73 check entries and the branch has the same 73 plus its one new one. 2-S4: touches feature-flags.ts which main also changed, but it already sits ON TOP of that change - proven with merge-base --is-ancestor, not assumed, because that file is where I previously handed a builder the wrong flag helper. 2-S5: predates lane B ESM loader fix, but its test reads the manifest JSON directly with fs and never imports the loader, so the fix cannot affect it.",
+    "2026-09-10 20:13 IST I WAS WRONG ON THE CI COUNT and the peer was right. I reported 54 and implied their 56 might be off. gh run list --created=2026-09-10 filters by the UTC day and misses runs made between 00:00 and 05:30 IST, because the IST day begins at 18:30Z on the previous date. Adopting the IST filter. The lesson is the one I keep relearning today: a filter that silently matches less than you think looks exactly like a correct answer."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -991,5 +994,25 @@
     "whatICanSee": "I cannot see any goal_status field in my context. I have no visibility into the goal evaluator output and cannot report a met=true or a timestamp. Saying otherwise would be inventing evidence.",
     "whatIDidSee": "A Stop hook message keyed on the bare contract path docs/contracts/2026-09-10-pull-model-implementation-lane-c.md, asserting there was no evidence that file was created or exists, and listing the files I had actually written instead.",
     "whyThatMatters": "It corroborates the MECHANISM lane A diagnosed - the goal condition was set as a bare contract path and the evaluator reasoned about that path - but it produced the OPPOSITE verdict here. Lane A reports met=true. Lane C got not-met, with the evaluator apparently expecting the contract file to be an OUTPUT to create rather than the INPUT being executed. Same root cause, opposite readings, which is a stronger signal that a bare path is an unusable completion condition than either verdict alone."
+  },
+  "heldSlicePreflight": {
+    "at": "2026-09-10 20:13 IST",
+    "riskFound": "The three held item-2 commits existed ONLY as local branches inside their worktrees - no branch on origin at all. A worktree sweep would have taken finished, proven work with it. All three are now pushed. A branch push costs ZERO CI budget: pr-gate triggers on pull_request only, verified in the workflow before pushing.",
+    "pushed": {
+      "2-S3b": "5f26f964 -> fix/pm-c-item02-s3b-segment-provenance-repair",
+      "2-S4": "fa7f37f8 -> feat/pm-c-item02-s4-validate-at-process-start",
+      "2-S5": "e90d6318 -> feat/pm-c-item02-s5-seed-group-c-fields"
+    },
+    "staleness": {
+      "2-S3b": "5 behind main. No file overlap with what main gained. The generated aggregate docs/reviews/detection-checks.json is NOT stale: main has 73 per-entry check files, this branch has the same 73 plus exactly one new d_segment_provenance.json. build-detection-registry --check should pass.",
+      "2-S4": "5 behind main. No file overlap. It touches scraper/src/config/feature-flags.ts, which main also changed - but merge-base --is-ancestor proves this branch ALREADY sits on top of that change (667c1370, #476). This is the file where I previously gave the builder the wrong flag helper, so it was worth proving rather than assuming.",
+      "2-S5": "11 behind main. No file overlap. It predates lane B ESM loader fix (80a2ca61, #496) - which mattered because that loader reads the very manifest this slice seeds, and the broken loader was my own bug #493. Checked the test: it reads the JSON directly with fs and path and never imports the loader, so the fix is irrelevant to it. No risk."
+    },
+    "verdict": "All three are clean to open. No rebase needed on any. The point of doing this now rather than at 00:00 is that a stale slice failing CI would waste a scarce run from a fresh budget."
+  },
+  "ciCountCorrection": {
+    "at": "2026-09-10 20:13 IST",
+    "iWasWrong": "I flagged a discrepancy and implied the peer count might be wrong. Mine was. gh run list --created=2026-09-10 filters by the UTC day, so it misses runs made between 00:00 and 05:30 IST - the IST day starts at 18:30Z the previous date. Correct count is 56, not the 54 I reported. Adopting the IST filter (createdAt >= 2026-09-09T18:30:00Z); lane A prints it with provenance via scripts/ops/pr-gate-count.mjs.",
+    "consequence": "Remaining runs tonight are lane A s6 and lane B 22-s0d, reaching the 58 cap. 12-B and the three held item-2 slices all wait for the 00:00 IST reset."
   }
 }
