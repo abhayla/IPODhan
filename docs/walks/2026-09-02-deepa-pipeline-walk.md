@@ -2246,3 +2246,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   item 5 (`ipo_field_plan`, a data dependency), the clause-8 web CI hardening, and #446. It is last in this lane's
   queue, which is fortunate rather than planned. The 193-of-292 web integration question is still open and closes
   with the next `ci.yml` dispatch after #474 merges.
+
+- **2026-09-10 14:13 IST [lane B] Lane C's shared config loader is MERGED (#473, `b0c42202`) - item 22's slice 22-2 is unblocked.**
+  Verified with the gate this lane committed to rather than a bare grep, because a grep on a failed `git show`
+  returns a false zero and this run has been bitten by that class five times today:
+  `git show origin/main:scraper/src/config/validated-config-loader.ts` â **exit 0, 37 lines, 0 bytes of stderr**.
+  Signature read from the file itself, not from the relay:
+  `export function loadValidatedConfig<T>(configPath: string, schema: ZodType<T>): T` - JSON in, zod schema in, typed
+  value out or it throws. Never a default, never a silent repair. **Strictness belongs to the CALLER's schema**, so
+  lane B's allow-list schema owns unknown-key handling via `.strict()`; errors name the file, the failing key path,
+  and report every issue at once rather than the first.
+  Confirmed there is exactly ONE loader on main (`scraper/src/config/validated-config-loader.ts`) and
+  `scraper/config/` still does not exist. So item 22's config slice IMPORTS that loader and adds only
+  `scraper/config/download-allowlist.json` plus its zod schema - **no second loader, no ajv, no yaml**. That is the
+  binding instruction from item 22's own Architect correction block, not merely a relay.
+  **Known gap carried, and it is the kind that wastes an hour if rediscovered:** nested key paths are implemented in
+  the loader but only FLAT keys are tested until lane C's slice 2-S2. If the download allow-list is nested and its
+  error rendering looks wrong, that is lane C's untested path - **file it against item 2, do not patch the loader.**
+  A lane patching another lane's shared component to make its own slice pass is how one loader becomes two.
