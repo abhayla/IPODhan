@@ -48,7 +48,7 @@ function makeCheckout(where) {
   // A LINKED worktree carries `.git` as a file, not a directory -- the root
   // finder must accept both, so the fixture uses the harder of the two.
   writeFileSync(join(checkout, '.git'), 'gitdir: /nowhere\n');
-  for (const f of ['alias-preflight.mjs', 'alias-preflight-auto.mjs']) {
+  for (const f of ['alias-preflight.mjs', 'alias-preflight-auto.mjs', 'alias-preflight-quiet.mjs', 'alias-preflight-global-setup.mjs']) {
     cpSync(join(LIB, f), join(checkout, 'scripts', 'lib', f));
   }
   symlinkSync(where === 'inside' ? inside : outside, join(checkout, 'node_modules', '@ipodhan', 'shared'), 'junction');
@@ -140,5 +140,59 @@ test('the cwd is checked as its own resolution origin when it is inside the chec
     assert.equal(preflight.resolutionOrigins(join(fx.checkout, 'scripts', 'lib'), fx.checkout, fx.outside).length, 1);
   } finally {
     rmSync(fx.base, { recursive: true, force: true });
+  }
+});
+
+// --- the two vitest layers -------------------------------------------------
+// setupFiles runs once per test FILE (isolate:true gives no dedup), so the
+// printing form emitted ~560 lines per scraper run -- the volume that teaches
+// people to scroll past a guard. globalSetup runs once per RUN and aborts it
+// on throw, so that is where the healthy-run line lives; the per-file layer
+// stays silent until it refuses.
+
+function runModule(checkout, mod, { call = false } = {}) {
+  const href = pathToFileURL(join(checkout, 'scripts', 'lib', mod)).href;
+  const code = call ? `const m = await import('${href}'); await m.default();` : `await import('${href}');`;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { cwd: checkout, encoding: 'utf8' });
+  return { status: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') };
+}
+
+test('the per-file layer is SILENT on success and loud on refusal', () => {
+  const ok = makeCheckout('inside');
+  try {
+    const r = runModule(ok.checkout, 'alias-preflight-quiet.mjs');
+    assert.equal(r.status, 0, r.out);
+    assert.equal(r.out.trim(), '', `the per-file layer must print nothing on a healthy run, got:\n${r.out}`);
+  } finally {
+    rmSync(ok.base, { recursive: true, force: true });
+  }
+  const bad = makeCheckout('outside');
+  try {
+    const r = runModule(bad.checkout, 'alias-preflight-quiet.mjs');
+    assert.notEqual(r.status, 0, r.out);
+    assert.match(r.out, /REFUSING TO RUN/);
+    // A refusal still prints the resolution lines, whatever the caller asked for.
+    assert.match(r.out, /alias-preflight: @ipodhan\/shared from /);
+  } finally {
+    rmSync(bad.base, { recursive: true, force: true });
+  }
+});
+
+test('the run-level layer PRINTS on success and throws on refusal', () => {
+  const ok = makeCheckout('inside');
+  try {
+    const r = runModule(ok.checkout, 'alias-preflight-global-setup.mjs', { call: true });
+    assert.equal(r.status, 0, r.out);
+    assert.ok(r.out.includes(ok.inside), `the healthy run must still name the tree it read:\n${r.out}`);
+  } finally {
+    rmSync(ok.base, { recursive: true, force: true });
+  }
+  const bad = makeCheckout('outside');
+  try {
+    const r = runModule(bad.checkout, 'alias-preflight-global-setup.mjs', { call: true });
+    assert.notEqual(r.status, 0, r.out);
+    assert.match(r.out, /REFUSING TO RUN/);
+  } finally {
+    rmSync(bad.base, { recursive: true, force: true });
   }
 });

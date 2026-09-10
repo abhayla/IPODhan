@@ -112,6 +112,14 @@ jobs:
         # different checkout than the one under test.
         run: node --test scripts/tests/alias-preflight.test.mjs
 
+      - name: scraper vitest alias-table form (item 1 slice s14)
+        # Evaluates scraper/vitest.config.ts and asserts the bare
+        # @ipodhan/shared entry is an ANCHORED regex, not a string key. A
+        # string key also captures @ipodhan/shared/db/schema and rewrites it
+        # to <...>/index.ts/db/schema; reverting to the object form turns
+        # both cases red.
+        run: node --test scripts/tests/scraper-vitest-alias-table.test.mjs
+
       - name: Document-state check self-tests (T-403)
         # Mutation-proof: scripts/tests/document-state-checks.test.mjs imports
         # the real predicates from scripts/lib/document-state-checks.mjs, so

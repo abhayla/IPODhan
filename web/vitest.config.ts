@@ -12,7 +12,8 @@ export default defineConfig({
     // web has NO @ipodhan/shared alias at all (only '@'), so every shared
     // import here goes through node resolution: the preflight is the only
     // thing standing between this suite and the main checkout.
-    setupFiles: ['../scripts/lib/alias-preflight-auto.mjs', './vitest.setup.ts'],
+    globalSetup: ['../scripts/lib/alias-preflight-global-setup.mjs'],
+    setupFiles: ['../scripts/lib/alias-preflight-quiet.mjs', './vitest.setup.ts'],
     // Modest heap headroom margin for the jsdom + recharts component suite
     // (defensive; the suite's steady-state heap is well under this). CI #35.
     pool: 'forks',

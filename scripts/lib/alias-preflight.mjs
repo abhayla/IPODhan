@@ -128,17 +128,23 @@ export function resolutionOrigins(anchorDir, root, cwd = process.cwd()) {
 export function assertAliasResolvesInTree({
   anchorDir = dirname(fileURLToPath(import.meta.url)),
   cwd = process.cwd(),
+  printOnSuccess = true,
   log = (m) => process.stderr.write(m + '\n'),
 } = {}) {
   const root = findCheckoutRoot(anchorDir);
   const results = [];
+  const lines = [];
   let failure = null;
   for (const origin of resolutionOrigins(anchorDir, root, cwd)) {
     const resolved = resolveAliasPath(pathToFileURL(join(origin, '__alias-preflight__.mjs')).href);
-    log(formatLine(origin, resolved, root));
+    lines.push(formatLine(origin, resolved, root));
     results.push({ origin, resolved });
     if (!failure && !isInsideRoot(root, resolved)) failure = formatFailure(origin, resolved, root);
   }
+  // A refusal ALWAYS prints its resolution lines, whatever the caller asked
+  // for: the failure text names the offending pair, and the lines name every
+  // origin that was consulted.
+  if (printOnSuccess || failure) for (const line of lines) log(line);
   if (failure) throw new Error(failure);
-  return { root, results };
+  return { root, results, lines };
 }

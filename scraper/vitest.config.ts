@@ -24,7 +24,13 @@ export default defineConfig({
     // actually reading. A worktree whose node_modules was junctioned without
     // re-pointing the workspace packages resolves @ipodhan/shared to the MAIN
     // checkout, so a green suite here said nothing about the branch.
-    setupFiles: ['../scripts/lib/alias-preflight-auto.mjs'],
+    // globalSetup runs ONCE per run and aborts the run if it throws, so the
+    // "which checkout did this run read" line is printed there -- one line,
+    // not two per test file across ~280 files. setupFiles keeps the per-file
+    // check (a single misconfigured file still fails closed) but stays silent
+    // unless it refuses.
+    globalSetup: ['../scripts/lib/alias-preflight-global-setup.mjs'],
+    setupFiles: ['../scripts/lib/alias-preflight-quiet.mjs'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
