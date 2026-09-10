@@ -425,7 +425,7 @@
     "item-12": {
       "item": 12,
       "card": "docs/design/build-cards/item-12-name-normaliser-and-duplicate-detection.md",
-      "status": "BUILDING",
+      "status": "MERGED-UNPROVEN",
       "slices": [
         {
           "id": "12-A",
@@ -457,20 +457,24 @@
         },
         {
           "id": "12-B",
-          "status": "BUILT_PUSHED",
+          "status": "MERGED",
           "tier": "A",
           "title": "identity re-keyed - function, SQL twin, 544-row recompute, duplicate re-scan, TS-vs-SQL agreement test, delete the tunnel test, ONE PR",
           "note": "includes 12-E closing fix: trailing country-token strip",
           "commit": "a865e840",
-          "branch": "feat/pm-c-item12-sB-identity-rekey (pushed, NO PR - SQL twin still owed)"
+          "branch": "feat/pm-c-item12-sB-identity-rekey (pushed, NO PR - SQL twin still owed)",
+          "pr": 520,
+          "mergeSha": "3ffc9e19"
         },
         {
           "id": "12-E",
-          "status": "BUILT_PUSHED",
+          "status": "MERGED",
           "tier": "A",
           "title": "same identity rule in the grey-market source",
           "commit": "0fafafed",
-          "branch": "feat/pm-c-item12-sE-strict-list-binding"
+          "branch": "feat/pm-c-item12-sE-strict-list-binding",
+          "pr": 522,
+          "mergeSha": "da8cad5a"
         },
         {
           "id": "12-D1",
@@ -855,6 +859,13 @@
         "firstBehaviourWhenBuilt": "AMBIGUOUS-never-bind on a shared CIN. The first real value of a CIN tier is REFUSING to bind, not binding: a CIN typo binding two genuinely different companies is worse than a name miss, because the name tiers would never have made that mistake.",
         "theOneSharedCin": "U85110DL2017PLC322623 is held by two rows on BOTH slots - Rays of Belief Limited- For Profit Social Enterprise and Rays of Belief Ltd. That is one company as two rows, i.e. a DUPLICATE for 12-C list, not a CIN problem. It is also the flagship W-108 name in the identity module own comments.",
         "caveat": "This measures today data. Coverage should grow and the argument flips the moment a CIN-bearing row disagrees with its name match, which is exactly what the trigger watches for."
+      },
+      "standing": {
+        "at": "2026-09-10 22:45 IST",
+        "merged": "All SIX planned slices on main: 12-A ff8a0522, 12-C 8047231e, 12-C2 1373620c, 12-D1 0fc3ab80, 12-B 3ffc9e19, 12-E da8cad5a. 12-B merged first because 12-E binds on its key.",
+        "proofOwed": "12-B owes its staging read: `node scripts/assert-repair-held.mjs normalized-name-current --cycles 2` after this deploys, plus the 544-row re-key run through backfill-normalized-name.ts UNCHANGED. Never a SQL UPDATE - the SQL twin has no junk: branch and would collapse those rows to the empty string. The merge is HOW the proof is obtained (defect-fix contract item 5 timing); the gate that REQUIRES it is the release cut, not this merge.",
+        "deferred": "12-D2 (CIN as an identity tier) stays FUTURE. Measured at ZERO effect today, and it contradicts ipo-identity.ts:485 where an exact-name match deliberately beats a key match. Its trigger query is on the card.",
+        "notDone": "Item 12 is NOT done. Every planned slice is merged and none of it is proven on real data yet."
       }
     },
     "item-03": {
@@ -1250,7 +1261,10 @@
     "2026-09-10 22:28 IST I ALSO OVER-ESCALATED TWICE AND WAS CORRECTED. I put the 22 configuration entries to the owner as an open decision when it had already been ruled, and I put the CIN question to the owner without doing the measurement that makes it decidable. Both are the same failure - escalating instead of finishing the work that lets someone decide. The measurement took one query.",
     "2026-09-10 22:41 IST MERGED: #523 2-S3b at de647f80, #524 2-S4 at d8779c20, #525 2-S5 at b612ff25. Every slice item 2 was PLANNED with is now on main - seven in total.",
     "2026-09-10 22:41 IST ITEM 2 IS STILL NOT DONE, and the distinction matters. 2-S3b2 is BLOCKED because zero of the 17 unprovenanced IPO rows carry a reachable page. 2-S6 is NEW work from tonight #515 finding and was never part of the original item. The merged repair owes its staging read. Planned-slices-merged is not proven, and calling it DONE would be a waiting state dressed as completion - the exact move the goal condition forbids.",
-    "2026-09-10 22:41 IST Delta 2 is on main at 13924d41 with all three of my corrections in it: the probe-marker location (index.ts would have been invisible to a subpath import), #515 as three provenance states rather than one ingestion path, and the string-function traps. Adoption line owed at the next Stage 1a."
+    "2026-09-10 22:41 IST Delta 2 is on main at 13924d41 with all three of my corrections in it: the probe-marker location (index.ts would have been invisible to a subpath import), #515 as three provenance states rather than one ingestion path, and the string-function traps. Adoption line owed at the next Stage 1a.",
+    "2026-09-10 22:45 IST MERGED: #520 12-B at 3ffc9e19, then #522 12-E at da8cad5a. Order was forced, not chosen - 12-E binds GMP list rows on the key 12-B defines. All six planned item 12 slices are now on main.",
+    "2026-09-10 22:45 IST ITEM 12 IS MERGED-UNPROVEN, not done. 12-B owes `node scripts/assert-repair-held.mjs normalized-name-current --cycles 2` after deploy, plus the 544-row re-key through backfill-normalized-name.ts UNCHANGED - never a SQL UPDATE, because the SQL twin has no junk: branch and would collapse those rows to the empty string. Per the defect-fix contract the merge is HOW that proof is obtained; the gate that requires it is the release cut.",
+    "2026-09-10 22:45 IST 12-D2 stays deferred on purpose: CIN as an identity tier measures at ZERO effect on real data today and contradicts ipo-identity.ts:485, where an exact-name match deliberately beats a key match. Recorded on the card with its trigger query rather than dropped."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
