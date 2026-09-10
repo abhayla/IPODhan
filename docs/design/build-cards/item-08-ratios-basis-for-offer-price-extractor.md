@@ -428,3 +428,112 @@ companies with numeric columns, and a loose heading matcher WILL find it. Commit
 alongside the others and assert the parser **rejects it by heading** and returns nothing for it. Without
 that case, "does the matcher find the table" and "does the matcher find the RIGHT table" are the same
 test, and only the first one is actually being asked.
+
+---
+
+## 8a-2 must read CELLS, not text — measured 2026-09-11, before the parser was written
+
+**The committed text fixtures are sufficient for the LOCATOR and insufficient for the COLUMN MAPPER.**
+This was measured rather than discovered mid-build, and it changes the plan.
+
+### Why the text layer cannot support header mapping
+
+The card requires mapping columns by header NAME. In the extracted text layer, a header block looks
+like this (Karamtara, immediately after its heading):
+
+```
+Name of / Company / Face / Value / (₹ / Per / Share / ) / Closing / price as / on /
+August / 28, 2026 / (₹) / Market / capitalization / on BSE as on / August 28, / 2026 (in ₹ / millions)
+```
+
+One or two words per line, **with nothing marking where one column header ends and the next begins.**
+There is no delimiter, no blank line, no casing rule. You cannot tell whether `Closing` starts a new
+header or continues the previous one without positional information. Header-name mapping from this
+text is not hard — it is **not possible**.
+
+### Table extraction does support it
+
+`pdfplumber.Page.extract_tables()` returns column-aligned cells, and the header fragments stay in
+their own column index, so a header is reconstructed by joining the header rows down one column.
+
+| Issuer | Peer table shape | Header form |
+|---|---|---|
+| Karamtara (p.135, table 1 of 2) | 16 rows x 10 cols | fragmented across ~5 header rows, aligned by column |
+| PRASOLCHEM (p.206, table 1 of 11) | 13 rows x 20 cols | mostly complete strings in row 0 |
+
+### Two consequences the parser must handle
+
+1. **The extractor's column count is not the real column count.** PRASOLCHEM reports 20 columns, of
+   which roughly half are empty filler produced by whitespace gutters. Real columns are the ones with
+   a non-empty reconstructed header.
+2. **The peer table is not table 0.** It is table 1 of 2 on Karamtara and table 1 of 11 on
+   PRASOLCHEM. The section locator (slice 1) narrows the page; the table still has to be chosen by
+   its header row, never by index.
+
+### CORRECTION, same session: cells are necessary but NOT sufficient
+
+I wrote the section above after measuring TWO issuers. Extending to the other two broke it, which is
+the third time on this card that a conclusion from two samples did not survive the third.
+
+**On Kanohar, pdfplumber returns the peer table with its characters REVERSED.**
+
+```
+['rep Rs( VAN', ')erahs ytiuqe', ... '90.05', 'sreep detsiL', '65.161,1']
+```
+
+`sreep detsiL` is `Listed peers`. `65.161,1` is `1,161.56`. The table is found - 11x12, correctly
+column-aligned - and every cell is mirrored, so `Hitachi` is stored as `ihcatiH` and no search for a
+peer name finds it.
+
+Measured, so nobody re-diagnoses it: the page is **not rotated** (`/Rotate` absent, pdfplumber
+`rotation = 0`, portrait mediabox), and `ihcatiH` **is** present in pdfplumber's text. The PDF draws
+its glyphs in reverse order; pdfplumber preserves drawing order while pypdf reorders by position. On
+the same page pypdf yields 4,815 characters including `Hitachi`; pdfplumber yields 4,673 without it.
+The two libraries disagree about the CONTENT, not merely the layout.
+
+So the rule for 8a-2 is:
+
+| Source | Column mapping | Content |
+|---|---|---|
+| text layer (pypdf) | impossible - headers unsegmentable | correct |
+| cells (pdfplumber) | works - column-aligned | correct on 3 of 4; **mirrored on Kanohar** |
+
+**Detection is cheap and certain**: the divider row reads `Listed peers` or `Peer Group:` in every
+issuer, so the reversed spelling is an unambiguous signal. A parser that skips the check does not fail
+loudly on Kanohar - it finds a table, maps no headers, and returns nothing, which reads as "this
+issuer has no peer table".
+
+**CORRECTION AGAIN, and this one stops short of prescribing a fix.** Reversal is not the whole of it.
+Measured on the full table rather than a preview:
+
+- The table is **TRANSPOSED**: metrics are the ROWS (`NAV`, `EV / Operating EBITDA`, `RoNW`, `EPS`)
+  and the companies are the COLUMNS. Row 10 is `Name of the company`, reversed.
+- **Whole-cell reversal recovers the words but SCRAMBLES THEIR ORDER.** The raw cell
+  `yvaeH detimiL slacirtcelE tarahB` reverses to `Bharat Electricals Limited Heavy`; the company is
+  **Bharat Heavy Electricals Limited**. `Kanohar Electricals Limited` comes back as
+  `Limited Kanohar Electricals`. Reversing each token instead does not fix it either - the token
+  ORDER is genuinely scrambled, not merely inverted.
+
+So for this issuer the `extract_tables()` output is **not recoverable by any string transformation**.
+Recovery needs word-level COORDINATES (`extract_words()`, which carries x/y per word) to rebuild
+reading order - or that issuer takes the pypdf text path, which reads the same page correctly.
+
+**Which of those two 8a-2 uses is a decision to be made from a spike, not from this note.** I am
+deliberately not prescribing it: I have measured that the simple fix does not work, and I have not
+measured that either alternative does. Writing down a mechanism I have not validated is exactly how
+the three earlier wrong rules on this card got written.
+
+### What this means for the fixtures
+
+The five committed `.txt` fixtures stay — they are what the locator is tested on, and they carry the
+heading wordings. **A cell-structured companion is needed for 8a-2**: the `extract_tables()` output
+for each peer page, committed as JSON, so the column mapper is testable offline and the two issuers'
+very different shapes are both exercised. That is a slice of its own (8a-1b) and it comes before the
+mapper.
+
+### The point of recording this here
+
+Nothing had been built on the wrong assumption yet. The text fixtures were committed two hours
+earlier and would have looked adequate right up until the mapper failed to find a stable header — at
+which point the natural conclusion would have been "the header mapping approach is wrong", rather
+than "the input is wrong". That is the same shape as the two errors already recorded on this card.
