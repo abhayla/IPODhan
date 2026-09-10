@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@next/bundle-analyzer": "14.2.15",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/auto-instrumentations-node": "^0.65.0",
     "@opentelemetry/exporter-prometheus": "^0.206.0",
@@ -120,7 +121,6 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@lhci/cli": "^0.15.1",
-    "@next/bundle-analyzer": "14.2.15",
     "@playwright/test": "^1.55.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
@@ -144,5 +144,8 @@
     "typescript": "^5",
     "vitest": "^3.2.4",
     "vitest-mock-extended": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=22.3.0 <23.0.0"
   }
 }
