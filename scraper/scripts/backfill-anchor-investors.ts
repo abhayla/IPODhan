@@ -15,6 +15,7 @@
  */
 
 import dotenv from 'dotenv';
+import { pathToFileURL } from 'node:url';
 
 // Load environment variables
 dotenv.config();
@@ -26,6 +27,29 @@ import { AnchorInvestorRepository } from '../src/repositories/anchor-investor-re
 import { createAnchorInvestors } from '../src/services/data-persister.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, and, isNotNull, inArray, sql } from 'drizzle-orm';
+
+/**
+ * #488 — collects the IPO filter conditions for one combined `where(and(...))`
+ * call. Drizzle's `.where()` REPLACES the previous condition rather than
+ * ANDing it: even though ipoId/status below are mutually exclusive (if/else),
+ * whichever branch fired used to silently drop the base document-type/url
+ * filter set on the initial builder. Exported so it can be unit-tested
+ * without running the script's `main()`.
+ */
+export function buildAnchorInvestorsIposConditions(args: { ipoId?: string; status?: string }) {
+  const conditions = [
+    inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
+    isNotNull(schema.documents.documentUrl),
+  ];
+
+  if (args.ipoId) {
+    conditions.push(eq(schema.ipos.id, args.ipoId));
+  } else if (args.status) {
+    conditions.push(eq(schema.ipos.status, args.status as any));
+  }
+
+  return conditions;
+}
 
 /**
  * Parse command-line arguments
@@ -85,6 +109,12 @@ async function main() {
     const anchorInvestorRepository = new AnchorInvestorRepository(db);
 
     // Step 1: Get IPOs with DRHP documents
+    if (args.ipoId) {
+      logger.info(`[Backfill Anchor Investors] Processing specific IPO: ${args.ipoId}`);
+    } else if (args.status) {
+      logger.info(`[Backfill Anchor Investors] Filtering by status: ${args.status}`);
+    }
+
     let iposQuery = db
       .select({
         ipoId: schema.documents.ipoId,
@@ -94,23 +124,9 @@ async function main() {
       })
       .from(schema.documents)
       .innerJoin(schema.ipos, eq(schema.documents.ipoId, schema.ipos.id))
-      .where(
-        and(
-          inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
-          isNotNull(schema.documents.documentUrl)
-        )
-      )
+      .where(and(...buildAnchorInvestorsIposConditions(args)))
       .groupBy(schema.documents.ipoId, schema.ipos.companyName, schema.ipos.slug, schema.ipos.status)
       .$dynamic();
-
-    // Apply filters
-    if (args.ipoId) {
-      logger.info(`[Backfill Anchor Investors] Processing specific IPO: ${args.ipoId}`);
-      iposQuery = iposQuery.where(eq(schema.ipos.id, args.ipoId));
-    } else if (args.status) {
-      logger.info(`[Backfill Anchor Investors] Filtering by status: ${args.status}`);
-      iposQuery = iposQuery.where(eq(schema.ipos.status, args.status as any));
-    }
 
     if (args.limit) {
       logger.info(`[Backfill Anchor Investors] Limiting to ${args.limit} IPOs`);
@@ -228,8 +244,12 @@ async function main() {
   }
 }
 
-// Run script
-main().catch((error) => {
-  logger.error('[Backfill Anchor Investors] Unhandled error:', error);
-  process.exit(1);
-});
+// Auto-run if this is the main module (guards against side effects on
+// import, e.g. from a unit test importing buildAnchorInvestorsIposConditions).
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main().catch((error) => {
+    logger.error('[Backfill Anchor Investors] Unhandled error:', error);
+    process.exit(1);
+  });
+}
