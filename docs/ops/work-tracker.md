@@ -866,3 +866,35 @@ What is needed from you: nothing.
 
 Automated check-runs: **9 used today of a shared 60** — five mine, four the other stream's, none
 failed.
+
+**2026-09-10 12:34 IST — tick. A password was printed where it should not have been.** Item 1: **38%**,
+five of thirteen slices merged, unchanged.
+
+A worker searching the shared credentials file for the database login printed a line containing the
+top-level database password into its own working log. Its safety filter only recognised passwords
+written as `NAME=value` and missed the form where the password sits inside a web address. I checked
+the damage myself rather than taking its word: nothing was saved to any file, nothing was committed,
+and the only copies of that password are in that worker's log on this laptop. Worth knowing that the
+check mattered — the committed changes *do* contain two lines that look like a leak, but they are the
+throwaway login for a temporary database the automated build creates for itself, and the same lines
+already exist elsewhere in the project.
+
+**What is needed from you: one decision.** Should the top-level database password be changed? In
+favour: the rule is that any password appearing in a durable log gets changed, the log is still on
+disk, and this same password was changed once before in August. Against urgency: that account can only
+be used from the database machine itself, the log is on your own laptop, and it never left it. My
+recommendation is to change it, but it is a live production credential so the action is yours.
+
+This is the second time today a worker mishandled a password — the first wrote one into a local file.
+The instruction they were given covers *writing* passwords, not *searching* for them, which is the
+gap. That instruction is being rewritten.
+
+Otherwise: the test-pipeline fix is built and now genuinely fails when it should. A safety valve in it
+that silences one known mismatch had its removal instruction written as a comment; comments get
+forgotten, so it now has a test that breaks the moment the mismatch is no longer real, forcing someone
+to remove it.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+Automated check-runs: **10 used today of a shared 60** — five mine, five the other stream's, none
+failed (one of theirs is still running).
