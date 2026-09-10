@@ -199,4 +199,148 @@ describe('S-02 §5: no-op write suppression (valueActuallyChanged normalized com
 
     expect(result.fieldsUpdated).toBe(0);
   });
+
+  /**
+   * Item 15 (F-49 / W-106): `valueActuallyChanged` is a local const read once on
+   * the very next line, but it only DECIDES `valueChanged` when both
+   * `existingValueFromMap` is truthy and `hadDifferentSource` is false (same
+   * source re-supplies a value for a field that already has one). Walk item
+   * W-106 found that on every path it walked, one of the other terms was
+   * already true, so `valueActuallyChanged`'s own answer never once decided
+   * anything. These four cases pin the four-way split (`NoopSuppressionCounts`)
+   * that makes that branch separately observable instead of folded into the
+   * single `fieldsUpdated` counter.
+   */
+  describe('noopSuppression counters (item 15)', () => {
+    it('(a) no existing value: writtenNoExisting increments, nothing else does', async () => {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+      const result = await service.consolidateIPOData({
+        ipoId: 'test-ipo',
+        tableName: 'ipos',
+        incomingData: { revenue_fy1: 6800000000 },
+        source: 'NSE',
+        confidence: 90,
+      });
+
+      expect(result.noopSuppression).toEqual({
+        writtenNoExisting: 1,
+        writtenDifferentSource: 0,
+        writtenSameSourceChanged: 0,
+        suppressedNoop: 0,
+      });
+    });
+
+    it('(b) existing value, DIFFERENT source wins: writtenDifferentSource increments, writtenSameSourceChanged does NOT', async () => {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+        {
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'revenue_fy1',
+          source: 'MONEYCONTROL', // lower priority than DRHP in revenue_fy1's matrix entry
+          value: '6800000000.00',
+          confidence: 70,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.consolidateIPOData({
+        ipoId: 'test-ipo',
+        tableName: 'ipos',
+        incomingData: { revenue_fy1: 7100000000 }, // genuinely different value too
+        source: 'DRHP',
+        confidence: 90,
+      });
+
+      expect(result.noopSuppression).toEqual({
+        writtenNoExisting: 0,
+        writtenDifferentSource: 1,
+        writtenSameSourceChanged: 0,
+        suppressedNoop: 0,
+      });
+    });
+
+    it('(c) existing value, SAME source, equivalent after normalization: suppressedNoop increments, neither written counter does', async () => {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+        {
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'revenue_fy1',
+          source: 'NSE',
+          value: '6800000000.00', // as it round-trips from a pg NUMERIC column
+          confidence: 90,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.consolidateIPOData({
+        ipoId: 'test-ipo',
+        tableName: 'ipos',
+        incomingData: { revenue_fy1: 6800000000 }, // same value, different string shape only
+        source: 'NSE', // SAME source re-supplies it
+        confidence: 90,
+      });
+
+      expect(result.noopSuppression).toEqual({
+        writtenNoExisting: 0,
+        writtenDifferentSource: 0,
+        writtenSameSourceChanged: 0,
+        suppressedNoop: 1,
+      });
+    });
+
+    it('(d) existing value, SAME source, GENUINELY different value: writtenSameSourceChanged increments — the branch F-49 says has never fired', async () => {
+      // Measured, not assumed (this test was RED first against `revenue_fy1`,
+      // a field with no `sameSourceRefresh` opt-in): without opting into
+      // `sameSourceRefresh`, resolveConflict's DEFAULT_KEEP_EXISTING branch
+      // keeps the stored value even when the same source re-supplies a
+      // genuinely different one — that write never happens, so it cannot land
+      // in `writtenSameSourceChanged` (it lands in `suppressedNoop` instead,
+      // via `!valueChanged`). `priceRangeMin` opts in for NSE
+      // (field-priority-matrix.ts `sameSourceRefreshSources: ['DRHP', 'NSE',
+      // 'BSE']`) specifically so a same-source correction is NOT discarded —
+      // that is the field this branch actually exercises in production.
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+        {
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'priceRangeMin',
+          source: 'NSE',
+          value: 100,
+          confidence: 90,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.consolidateIPOData({
+        ipoId: 'test-ipo',
+        tableName: 'ipos',
+        // 120, NOT a string-shape variant of 100 — a genuinely different
+        // number from the SAME source re-supplying the field.
+        incomingData: { priceRangeMin: 120 },
+        source: 'NSE',
+        confidence: 90,
+      });
+
+      expect(result.noopSuppression).toEqual({
+        writtenNoExisting: 0,
+        writtenDifferentSource: 0,
+        writtenSameSourceChanged: 1,
+        suppressedNoop: 0,
+      });
+      expect(result.fieldsUpdated).toBe(1);
+    });
+  });
 });
