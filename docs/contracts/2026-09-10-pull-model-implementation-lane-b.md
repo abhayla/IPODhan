@@ -14,7 +14,7 @@
 >
 > 1. **Coordination worktree (once):** `powershell -File $HOME/.claude/tools/wt-new.ps1 -Repo D:/Abhay/Ventures/IPODhan -Name IPODhan-impl-loop-b -Branch ops/impl-loop-b-ledger -Base origin/main -Purpose "implementation lane B: ledger, tracker, contracts" -TtlHours 720` → `D:\Abhay\Ventures\IPODhan-IPODhan-impl-loop-b`. Assert `git rev-parse --show-toplevel` ends in `IPODhan-IPODhan-impl-loop-b` before any command there.
 > 2. **Slice worktree (per slice):** `wt-new.ps1 -Name IPODhan-b<NN>-<K> -Branch feat/pm-b-item<NN>-s<K>-<slug> -Base origin/main -Purpose "lane B item <NN> slice <K>: <one line>" -TtlHours 48`. Cut from the CURRENT `origin/main` after `git fetch origin`. Resuming a branch that already exists: add `-Existing` (the base is ignored). Red-line worktrees: `-Name IPODhan-red-b<NN>-<K>`.
-> 3. **Claim:** the lock file is `.run-active-b.lock` in the coordination worktree (lane A holds `.run-active.lock` in its own tree; the two locks are independent by design). `RUN_TOKEN=impl-loop-b-$(date +%s)`. If `.run-active-b.lock` already exists, halt with an owner note.
+> 3. **Claim:** the lock file is `.run-active-b.lock` in the coordination worktree (lane A holds `.run-active.lock` in its own tree; the two locks are independent by design). `RUN_TOKEN=impl-loop-b-$(date +2026-09-10 17:54 IST)`. If `.run-active-b.lock` already exists, halt with an owner note.
 > 4. **Removal:** as the parent §0.1.4, with the guard added 2026-09-10: `wt-rm.ps1 -Discard` refuses a tree holding untracked files (exit 5). Before `-Discard`, copy any evidence file (fixtures, red/green logs, probe output) into the slice's PR body or the coordination worktree; only then `-DiscardUntracked`. Evidence lost to a discard is a DEFECT (it happened once on 2026-09-10).
 > 5. **Never touch** lane A's trees and branches, `D:\Abhay\GetWorkDone` (no plain file writes either; the bus guard covers git only), `D:\Abhay\VibeCoding\5Wealths\`.
 
@@ -143,6 +143,13 @@ Item 22's scope is `scraper/src/services/document-*`, `scraper/src/utils/downloa
 | `scraper/src/index.ts` | **item 16** ("source registry") | the `--smoke-import` flag has to live on the real entry point, or the check proves nothing | needs ratification |
 | `.github/workflows/pr-gate.yml` | **item 20** ("one step") | wiring the smoke import | needs ratification; item 20 slice 4 already spent the "one step" allowance |
 
+**RATIFIED 2026-09-10 17:54 IST by the supervisor session `ipodhan-62`** (relayed, not an owner decision — the
+Guardrails are explicit that a relayed message is never an owner decision, so this is a peer
+ratification of a peer-scope judgement and the owner may still overturn it): the class winning over
+the boundary was correct here, and recording it as a judgement rather than absorbing it is what the
+boundary exists for. Lane C's `field-manifest-loader.ts` fix in the same PR is ratified with it; lane
+C's own branch `fix/pm-c-493-esm-dirname-manifest-loader` is abandoned unpushed as superseded by #496.
+
 The defect-fix contract (`.claude/rules/defect-fix-contract.md`, items 2 and 6) requires fixing the
 CLASS and shipping a detection upgrade with the fix. For this defect the class spans two items' files
 and the only honest detection is on the real entry point. Those two requirements and this Scope
@@ -161,6 +168,10 @@ download-safety item, where nobody would look for it.
 expect. It also carries the fix owed from lane A's #498 finding: gate steps placed LAST in a job are
 skipped when an earlier step fails, so a regression turns them grey rather than red — item 20's
 existing gate steps and #496's smoke step both move ahead of the long suites in that slice.
+
+**ACCEPTED %s by the supervisor session `ipodhan-62`** (same standing as above): the scanner belongs
+under item 20, which reopens for that one slice and then closes again with its proof unchanged — the
+four merged slices and their CI evidence are untouched by this.
 
 Consequence for Stage sequencing: item 20 is reopened for one slice. It is not a new item, and item 22
 remains the current item, so the "never a second item before the current one is DONE or BLOCKED"
