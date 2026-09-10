@@ -2576,3 +2576,24 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   unfixed code ALSO returns `too_large` -- after allocating the whole body -- so a verdict-only test passes
   against the defect. Same shape as every hollow gate this lane has found today: the observable that looks
   like proof is not the one that distinguishes fixed from broken.
+
+- **2026-09-10 16:33 IST [lane B] The find-root guard is LIVE, verified in both directions -- and it has a FALSE POSITIVE that
+  blocked this very ledger entry.** The guard exists because of this lane DEFECT-B06 this morning: an orphaned
+  root-anchored find ran 99 minutes on a shared laptop while this run reported it stopped.
+  Verified against the checker rather than its description:
+  - BLOCKED, correctly: a bare-root find with a depth limit. The depth limit did NOT exempt it, which is right
+    -- it bounds the walk, not the mount traversal. Message names the path and points at the worktree root.
+  - ALLOWED, correctly: `find docs/contracts ...` (exit 0), an absolute path with a real segment (exit 0), and
+    the word find in an ordinary sentence (exit 0).
+  **FALSE POSITIVE, found by using it:** a `printf` whose STRING ARGUMENT quotes the forbidden pattern is
+  blocked, even though nothing is executed. Writing this ledger line about the guard tripped the guard. The
+  relay said the word find inside strings is allowed, and that holds for a plain sentence, but not when the
+  string contains the root-anchored form itself. Impact: anyone DOCUMENTING the guard -- a ledger line, a
+  brief, a PR body written from a shell -- is blocked. Reported to the guard owner; worked around here by not
+  writing the literal.
+  Adopted into every builder brief: **a blocked find means search under the worktree root; never use the
+  bypass.** Known gap carried from the owner: a find inside a loop or conditional body is not caught.
+  Worth stating plainly: this is the FIRST correction from this lane today to become a deterministic machine
+  guard rather than prose in a brief. The path-form rule, the false-zero rule, the stale-artefact rule and the
+  restore rule are all still sentences someone has to remember -- and this lane broke its own path rule within
+  an hour of writing it. A hook does not forget; a brief does.
