@@ -1171,3 +1171,35 @@ What a reader of ipodhan.com would notice: nothing yet.
 What is needed from you: nothing.
 
 Automated check-runs: **35 used today of a shared 60**, twenty mine. No current failures of mine.
+
+**2026-09-10 17:08 IST — tick. The test site has not received a single update all day, and the first
+failure was mine.** Item 1: **46%**, six of thirteen slices merged.
+
+Every attempt to publish to the test site since 08:11 this morning has failed — ten in a row. The first
+one is the change I merged at 08:11. That change taught the pre-publish safety check to look at two new
+kinds of database object; the publish script runs that check in a mode that ignores the "known and
+deliberate" list, so it started refusing to publish over things that are deliberate.
+
+Three of the four objects it complains about are exactly that: database rules we deliberately keep out
+of the automatic process and apply by hand, one server at a time, and the test server has not had them
+applied. My own note in that change said failing on these "is intended". It is not — it makes any
+server that has not had the manual step permanently unpublishable. A fix is being built.
+
+**The fourth is real and needs you.** An index on the IPO table is genuinely missing from the test
+database, even though the schema file declares it, two old migrations create it, and the migration
+record claims it was applied. My fix will clear the first three complaints and this one will still
+refuse the publish — correctly. I am not creating it myself, because writing to that database is
+outside what I am allowed to do there. It needs one line from you:
+
+    CREATE INDEX IF NOT EXISTS idx_ipos_slug ON ipos (slug);
+
+Worth asking alongside it why the migration record says applied when the object is absent. That is the
+same class of fault as the one this whole work item started with, and it may not be the only object
+affected.
+
+Also corrected: I was told the gated list was not the cause. Three of the four are in it. Accepting that
+would have aimed the fix at the wrong thing.
+
+What a reader of ipodhan.com would notice: nothing — the live site is untouched and was never at risk.
+
+Automated check-runs: **37 of a shared 60**, twenty-two mine, no current failures of mine.
