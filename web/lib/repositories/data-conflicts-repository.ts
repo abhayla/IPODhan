@@ -15,6 +15,7 @@ export interface DataConflictRecord {
   id: string;
   ipoId: string;
   tableName: string;
+  rowKey: string;
   fieldName: string;
   source1: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
   value1: string | null;
@@ -33,6 +34,9 @@ export interface DataConflictRecord {
 export interface LogConflictInput {
   ipoId: string;
   tableName: string;
+  /** The row's natural key within tableName. Default '' (singleton row) when omitted —
+   *  see schema.ts's data_conflicts.rowKey comment for the per-table convention. */
+  rowKey?: string;
   fieldName: string;
   source1: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
   value1: string | null;
@@ -74,6 +78,8 @@ export class DataConflictsRepository extends BaseRepository {
    * Log a new conflict between sources
    */
   async logConflict(input: LogConflictInput): Promise<DataConflictRecord> {
+    const rowKey = input.rowKey ?? '';
+
     const result = await this.executeQuery(
       'logDataConflict',
       async () => {
@@ -82,6 +88,7 @@ export class DataConflictsRepository extends BaseRepository {
           .values({
             ipoId: input.ipoId,
             tableName: input.tableName,
+            rowKey,
             fieldName: input.fieldName,
             source1: input.source1,
             value1: input.value1 || null,
@@ -115,6 +122,8 @@ export class DataConflictsRepository extends BaseRepository {
    * rather than piling up beside it.
    */
   async upsertConflict(input: LogConflictInput): Promise<DataConflictRecord> {
+    const upsertRowKey = input.rowKey ?? '';
+
     const existing = await this.db
       .select({ id: dataConflicts.id })
       .from(dataConflicts)
@@ -122,6 +131,7 @@ export class DataConflictsRepository extends BaseRepository {
         and(
           eq(dataConflicts.ipoId, input.ipoId),
           eq(dataConflicts.tableName, input.tableName),
+          eq(dataConflicts.rowKey, upsertRowKey),
           eq(dataConflicts.fieldName, input.fieldName),
           isNull(dataConflicts.resolvedAt)
         )
@@ -145,6 +155,7 @@ export class DataConflictsRepository extends BaseRepository {
             resolvedSource: input.resolvedSource || null,
             resolutionReason: input.resolutionReason || null,
             severity: input.severity || 'INFO',
+            rowKey: upsertRowKey,
             detectedAt: new Date(),
           })
           .where(eq(dataConflicts.id, existing[0].id))
@@ -169,11 +180,30 @@ export class DataConflictsRepository extends BaseRepository {
    * still shows how the conflict closed. A no-op (returns 0) when there was
    * no open conflict for the field -- the common case.
    */
+  // Overloaded: the pre-row-key call shape (ipoId, tableName, fieldName) keeps compiling
+  // for the one caller not yet updated (data-consolidation-service.ts, slice s4's job) --
+  // rowKey defaults to '' in that shape. The 4-arg shape is the row-key-aware one new
+  // callers (item 1 slice s4+) use.
   async autoResolveConverged(
     ipoId: string,
     tableName: string,
     fieldName: string
+  ): Promise<number>;
+  async autoResolveConverged(
+    ipoId: string,
+    tableName: string,
+    rowKey: string,
+    fieldName: string
+  ): Promise<number>;
+  async autoResolveConverged(
+    ipoId: string,
+    tableName: string,
+    rowKeyOrFieldName: string,
+    maybeFieldName?: string
   ): Promise<number> {
+    const rowKey = maybeFieldName !== undefined ? rowKeyOrFieldName : '';
+    const fieldName = maybeFieldName !== undefined ? maybeFieldName : rowKeyOrFieldName;
+
     const result = await this.executeQuery(
       'autoResolveConvergedConflict',
       async () => {
@@ -188,13 +218,14 @@ export class DataConflictsRepository extends BaseRepository {
             and(
               eq(dataConflicts.ipoId, ipoId),
               eq(dataConflicts.tableName, tableName),
+              eq(dataConflicts.rowKey, rowKey),
               eq(dataConflicts.fieldName, fieldName),
               isNull(dataConflicts.resolvedAt)
             )
           )
           .returning({ id: dataConflicts.id });
       },
-      { ipoId, tableName, fieldName }
+      { ipoId, tableName, rowKey, fieldName }
     );
 
     if (result.length > 0) {

@@ -15,6 +15,7 @@ export interface FieldSourceRecord {
   id: string;
   ipoId: string;
   tableName: string;
+  rowKey: string;
   fieldName: string;
   source: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
   confidence: number;
@@ -29,6 +30,9 @@ export interface FieldSourceRecord {
 export interface TrackFieldUpdateInput {
   ipoId: string;
   tableName: string;
+  /** The row's natural key within tableName. Default '' (singleton row) when omitted —
+   *  see schema.ts's field_sources.rowKey comment for the per-table convention. */
+  rowKey?: string;
   fieldName: string;
   source: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
   confidence?: number;
@@ -64,9 +68,10 @@ export class FieldSourcesRepository extends BaseRepository {
   async findByField(
     ipoId: string,
     tableName: string,
-    fieldName: string
+    fieldName: string,
+    rowKey: string = ''
   ): Promise<FieldSourceRecord | null> {
-    const cacheKey = `field-source:${ipoId}:${tableName}:${fieldName}`;
+    const cacheKey = `field-source:${ipoId}:${tableName}:${rowKey}:${fieldName}`;
 
     return this.getFromCache(
       cacheKey,
@@ -78,6 +83,7 @@ export class FieldSourcesRepository extends BaseRepository {
             and(
               eq(fieldSources.ipoId, ipoId),
               eq(fieldSources.tableName, tableName),
+              eq(fieldSources.rowKey, rowKey),
               eq(fieldSources.fieldName, fieldName)
             )
           )
@@ -160,6 +166,28 @@ export class FieldSourcesRepository extends BaseRepository {
    * Records which source provided the field value
    */
   async trackFieldUpdate(input: TrackFieldUpdateInput): Promise<FieldSourceRecord> {
+    const rowKey = input.rowKey ?? '';
+
+    // The ON CONFLICT target below is (ipoId, tableName, fieldName) — rowKey
+    // is NOT part of it, so at most one row exists per that triple. The
+    // cache key in invalidateFieldSourceCaches() is keyed on rowKey though,
+    // so when an upsert changes an existing row's rowKey (A -> B), the old
+    // key (...:A:...) is never deleted and keeps serving the pre-update row
+    // for the rest of CacheTTL. Read the row's CURRENT rowKey before writing
+    // so both the old and new cache keys get invalidated.
+    const existing = await this.db
+      .select({ rowKey: fieldSources.rowKey })
+      .from(fieldSources)
+      .where(
+        and(
+          eq(fieldSources.ipoId, input.ipoId),
+          eq(fieldSources.tableName, input.tableName),
+          eq(fieldSources.fieldName, input.fieldName)
+        )
+      )
+      .limit(1);
+    const previousRowKey = existing[0]?.rowKey;
+
     const result = await this.executeQuery(
       'trackFieldUpdate',
       async () => {
@@ -168,6 +196,7 @@ export class FieldSourcesRepository extends BaseRepository {
           .values({
             ipoId: input.ipoId,
             tableName: input.tableName,
+            rowKey,
             fieldName: input.fieldName,
             source: input.source,
             confidence: input.confidence ?? 100,
@@ -184,6 +213,7 @@ export class FieldSourcesRepository extends BaseRepository {
               fieldSources.fieldName,
             ],
             set: {
+              rowKey,
               source: input.source,
               confidence: input.confidence ?? 100,
               previousValue: input.previousValue || null,
@@ -202,8 +232,17 @@ export class FieldSourcesRepository extends BaseRepository {
     await this.invalidateFieldSourceCaches(
       input.ipoId,
       input.tableName,
-      input.fieldName
+      input.fieldName,
+      rowKey
     );
+    if (previousRowKey !== undefined && previousRowKey !== rowKey) {
+      await this.invalidateFieldSourceCaches(
+        input.ipoId,
+        input.tableName,
+        input.fieldName,
+        previousRowKey
+      );
+    }
 
     return result[0];
   }
@@ -302,7 +341,8 @@ export class FieldSourcesRepository extends BaseRepository {
   async delete(
     ipoId: string,
     tableName: string,
-    fieldName: string
+    fieldName: string,
+    rowKey: string = ''
   ): Promise<boolean> {
     const result = await this.executeQuery(
       'deleteFieldSource',
@@ -313,16 +353,17 @@ export class FieldSourcesRepository extends BaseRepository {
             and(
               eq(fieldSources.ipoId, ipoId),
               eq(fieldSources.tableName, tableName),
+              eq(fieldSources.rowKey, rowKey),
               eq(fieldSources.fieldName, fieldName)
             )
           )
           .returning();
       },
-      { ipoId, tableName, fieldName }
+      { ipoId, tableName, rowKey, fieldName }
     );
 
     if (result.length > 0) {
-      await this.invalidateFieldSourceCaches(ipoId, tableName, fieldName);
+      await this.invalidateFieldSourceCaches(ipoId, tableName, fieldName, rowKey);
       return true;
     }
 
@@ -378,12 +419,13 @@ export class FieldSourcesRepository extends BaseRepository {
   private async invalidateFieldSourceCaches(
     ipoId: string,
     tableName: string,
-    fieldName: string
+    fieldName: string,
+    rowKey: string = ''
   ): Promise<void> {
     const keys = [
       `field-sources:ipo:${ipoId}:all`,
       `field-sources:table:${ipoId}:${tableName}`,
-      `field-source:${ipoId}:${tableName}:${fieldName}`,
+      `field-source:${ipoId}:${tableName}:${rowKey}:${fieldName}`,
     ];
 
     await this.deleteCache(keys);

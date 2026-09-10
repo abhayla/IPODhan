@@ -1408,6 +1408,13 @@ export const fieldSources = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     tableName: varchar('table_name', { length: 100 }).notNull(), // e.g., 'ipos', 'financial_data'
+    // Natural key of the row within tableName. '' for every table with exactly one row per
+    // IPO (ipos, ipo_details, anchor_investors, financial_data). Non-empty for tables that
+    // can hold multiple rows per IPO (e.g. financial_statements: '2024:RESTATED'). Never
+    // null — a nullable column can't sit inside a unique constraint the way an empty string
+    // can (two NULLs are not equal under a unique index; two '' are), which is exactly why
+    // '' is the singleton sentinel, not null.
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
     fieldName: varchar('field_name', { length: 100 }).notNull(), // e.g., 'issueSize', 'revenue_fy2024'
 
     // Source tracking
@@ -1433,14 +1440,19 @@ export const fieldSources = pgTable(
     fieldNameIdx: index('idx_field_sources_field_name').on(table.fieldName),
     sourceIdx: index('idx_field_sources_source').on(table.source),
 
-    // Composite index for common queries
+    // Composite index for common queries — WIDENED to include rowKey (was ipoId, tableName,
+    // fieldName): two child rows of the same table (e.g. two fiscal years) each need their
+    // own provenance-lookup path.
     ipoTableFieldIdx: index('idx_field_sources_ipo_table_field').on(
       table.ipoId,
       table.tableName,
+      table.rowKey,
       table.fieldName
     ),
 
-    // Unique constraint: one source record per field per IPO
+    // Unique constraint: one source record per field per IPO. A row-key-scoped version of
+    // this constraint is deferred to a later slice — this slice ships the rowKey column and
+    // the widened lookup index only.
     uniqueFieldPerIpo: unique('unique_field_source_per_ipo').on(
       table.ipoId,
       table.tableName,
@@ -1460,6 +1472,9 @@ export const dataConflicts = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     tableName: varchar('table_name', { length: 100 }).notNull(),
+    // Same row_key convention as field_sources (see that table's comment) — '' for singleton
+    // tables, non-empty natural key for tables with multiple rows per IPO.
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
     fieldName: varchar('field_name', { length: 100 }).notNull(),
 
     // Conflicting sources
@@ -1497,6 +1512,14 @@ export const dataConflicts = pgTable(
     ipoUnresolvedIdx: index('idx_data_conflicts_ipo_unresolved').on(
       table.ipoId,
       table.resolvedAt
+    ),
+
+    // Open-conflicts-for-this-row index — no unique constraint exists on this table today so
+    // none is added, but the row-scoped lookup needs its own index scan path.
+    ipoTableRowIdx: index('idx_data_conflicts_ipo_table_row').on(
+      table.ipoId,
+      table.tableName,
+      table.rowKey
     ),
   })
 );
