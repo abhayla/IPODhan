@@ -449,3 +449,97 @@ the snapshot, and the migration agree with what the database actually has". Chec
 
 **Prevention.** Any slice touching `web/drizzle/migrations/` verifies the triple, and the re-scope
 brief template now carries that line.
+
+## 2026-09-10 10:45 IST — A zero from a failed command is not a measurement
+
+Four distinct measurement defects in one morning, all the same shape: a command that did not
+measure what I thought, producing a plausible number I then acted on.
+
+1. `gh run list` defaults to 20 rows and silently caps.
+2. `gh --created <date>` filters by UTC date, so before 05:30 IST it reports the previous IST day.
+3. `date -d "today 00:00" -u` returns 00:00Z, not IST midnight (18:30Z the day before).
+4. `git show origin/main:.github/workflows/ci.yml` is mangled by MSYS path conversion into
+   `origin\main;.github\workflows\ci.yml`, fails, and `grep -c` on the empty output returns 0 —
+   which I read as "the file does not contain this", i.e. as evidence work was already done.
+
+Plus a fifth of the same family: I diffed a slice against the stale LOCAL `main` ref in a linked
+worktree instead of `origin/main`, and reported both the journal timestamps and the docs churn wrong.
+
+**Rule.** Before believing a count, prove the command measured something: check the fetched row
+count is below the limit, print a line count, or run a control that must be non-zero. A zero, an
+empty diff and a silent success are the three ways a broken command looks like a clean result.
+On Windows, export `MSYS_NO_PATHCONV=1` and quote any `<ref>:<path>` argument. In a worktree,
+always `git fetch` and compare against `origin/<branch>`, never the local ref.
+
+## 2026-09-10 11:05 IST — A clean tree is not a clean environment
+
+A Tier A reviewer mutated an index inside the shared test database to prove a guard could fail,
+restored the git tree, ran `git status --short`, saw it empty, and reported clean. The database kept
+the wrong index. Every later run in that worktree would have been testing against it, and the next
+worker to see a failure would have hunted it in the code.
+
+I asked for the tree proof and not the environment proof, so the brief is the root cause.
+
+**Rule.** Any brief that permits mutating shared state — a database, a Redis instance, a file outside
+the tree, a remote — must require the worker's LAST action to re-assert that state and paste the
+proof. `git status --short` proves only what git tracks. Name the specific assertions: the index
+definition, the row count, the constraint's ordered columns.
+
+Related, same turn: a reviewer's inability to run a suite is itself evidence to check, not to accept.
+This one reported the suite dying on a missing `ipos.category`; that column was renamed to `segment`
+by migration 0015, so its absence was correct and the real problem was elsewhere.
+
+## 2026-09-10 11:25 IST — A one-time duty with a trigger needs a check at the trigger, not a memory
+
+The contract says the FIRST web-touching slice must harden CI, and that until it lands every web
+integration claim is owed rather than proven. Slice s1b touched four files under `web/` and merged.
+So did s2. I knew the clause and still missed it twice, because nothing checked at merge time — I was
+carrying it as a thing to do "before item 1 closes" instead of a condition on a specific event.
+
+The tell was available and cheap: `git diff --name-only origin/main HEAD | grep '^web/'`. One line,
+runnable at every PR, and it answers the question exactly.
+
+**Rule.** Any contract clause phrased as "the first X to do Y must also do Z" gets a mechanical check
+in the pre-PR sequence, keyed on the trigger condition, not a note in a plan. Add it to the same block
+that already runs the rebase check and the detection-declaration grep — those two are checked every
+time precisely because they are commands, not intentions.
+
+## 2026-09-10 12:20 IST — Redaction that covers KEY=value misses the URL form
+
+A worker searching GLOBAL.env for database credentials printed the inline
+`postgresql://user:password@host` line into its transcript. Its own redaction regex matched
+`PASSWORD=` lines only, so it never fired. Second credential incident of this run; the first was a
+password written into a gitignored `.env.test`.
+
+The existing rule — "never write a password into a file, read it inline" — does not cover this. It
+governs *writing*, and this was *searching*. A worker that greps a secrets file for a pattern will
+print whatever matches, and secrets appear in at least two shapes: `KEY=value` and embedded in a
+connection URL.
+
+**Rule.** Briefs must say: never grep a secrets file for credential values. Read the ONE key you need,
+by exact name, into a variable in the same command, and never print the result. Redaction as a
+safety net must cover both `KEY=value` and `scheme://user:pass@host`.
+
+Containment note: verify exposure yourself rather than accepting the worker's summary. Here the
+committed diff did contain two `postgresql://postgres:***@localhost` lines — but they were the CI
+service container's own throwaway credentials, matching three identical pre-existing lines in
+pr-gate.yml. A count alone would have read as a leak.
+
+## 2026-09-10 13:30 IST — A check that filters by name can only find what you already thought of
+
+Two `find /` processes ran for 109 and 99 minutes. The supervision tick exists partly to catch exactly
+this — its instructions cite a `find /` that ran for an hour on 2026-09-09 after its builder reported
+success. My check missed it for two hours because I wrote it as:
+
+    Get-CimInstance Win32_Process -Filter "Name='node.exe' or Name='python.exe'"
+
+`find.exe` is neither. The check was structurally incapable of finding the thing it was written to find,
+and it reported "(empty = no strays)" every time, which read as reassurance.
+
+**Rule.** A sweep for unexpected things must not enumerate expected things. Enumerate ALL processes over
+an age threshold and subtract a known-good allowlist. The same applies to any "is anything odd running"
+check: allowlist the benign, never denylist the suspicious.
+
+Second lesson, again: the worker's report said the process "has now been killed due to low memory, which
+resolves it cleanly." Both were still running. A finished worker's claim about the state of the world is
+a claim. Kill by PID and verify, never by `pkill -f` (whose pattern has matched the calling shell here).

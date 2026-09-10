@@ -140,7 +140,12 @@
     "MY OWN FALSE PASS in the same hour, fourth instance of the class today: twenty minutes before this I ran that very check and reported 'scraper/config/ IGNORED - LOCAL would be valid' as fact. It was the bug talking. What settled it was a CONTROL TEST - querying a path I invented and watching it also report IGNORED. Generalises: when a check says yes, ask it something that must be no. That single trick would also have caught the node --test empty-glob case and the MSYS path-mangling zeros.",
     "CHECK-IGNORE, FINAL and my own fix suggestion RETRACTED 2026-09-10 13:40 IST, verified here. The discriminator is the PATTERN FIELD: `git check-ignore -v` prints `source:line:pattern<TAB>pathname`, and a bogus match has an EMPTY pattern while a genuine one names the rule. Measured: scraper/config/ and an invented directory both exit 0 with pattern='' ; node_modules/ and docs/design/probes/fixtures/pdf/ exit 0 with a real pattern. Correct rule: ignored IFF exit 0 AND non-empty pattern field.",
     "BOTH parts of the fix I proposed were WRONG, and lane B caught it with constructed fixtures. (a) 'Strip the trailing slash' would break genuine directory-only patterns whose path is absent from disk - docs/design/probes/fixtures/pdf/ is truly ignored via .gitignore:356, does not exist, and querying it WITHOUT the slash exits 1, so a correct (LOCAL) marker would start failing. (b) 'Require no tracked files' was a correlate, not the mechanism - that same genuinely-ignored path also has zero tracked files, so my rule would have misclassified it. My earlier reading that -v echoes the queried path as the pattern was simply a misparse of the tab-delimited format; what I called the pattern was the pathname column.",
-    "PROCESS NOTE worth keeping: within one hour I corrected lane B's diagnosis (its 'existing dirs are fine' was false, proven by scripts/state/) and lane B corrected my fix (both of my discriminators were wrong, proven by docs/design/probes/fixtures/pdf/). Neither correction came from argument; both came from a constructed case that had to behave a certain way. That is the same tool as 'when a check says yes, ask it something that must be no' - build the case that would falsify you, then run it."
+    "PROCESS NOTE worth keeping: within one hour I corrected lane B's diagnosis (its 'existing dirs are fine' was false, proven by scripts/state/) and lane B corrected my fix (both of my discriminators were wrong, proven by docs/design/probes/fixtures/pdf/). Neither correction came from argument; both came from a constructed case that had to behave a certain way. That is the same tool as 'when a check says yes, ask it something that must be no' - build the case that would falsify you, then run it.",
+    "s3b MERGED 2026-09-10 13:56 IST as c6a4c9c4 (PR #464). ci.yml can now fail on a web test; assert-schema-drift detects index and unique-constraint drift by ordered columns; .gitattributes pins prod-ops-recipes.md; pr-gate runs the registry-invalidation test. Worktree removed via wt-rm with the main-checkout proof: 1309 junction links removed AS LINKS, tracked files 4595 before and after, schema.ts present. That proof is not ceremony - this repo has had 442 tracked files wiped twice by a removal following junctions.",
+    "ci.yml SETTLING RUN dispatched on main at 08:11:37Z. It is the discriminating test for the 193-of-292 local web integration failures: CI uses a local postgres:16 service with no SSH tunnel. Green => record the tunnel as LIKELY (not proven) and move on; red => send lane B the failing test NAMES before the owner, because '193 fail through a tunnel' and 'N fail on a local service' are different classes and only the second is a real gate.",
+    "s3 REBASE could not be replayed and was REBUILT as one commit 54c9a349. Two reasons the replay failed, both worth remembering: the branch history contains a re-scope commit that reverts an earlier one, so replaying fought itself; and an old commit touching docs/ops/prod-ops-recipes.md could not be applied against main's NEW .gitattributes pin from #464. Rebuilt by taking the 12 uncontested files from the verified tip 32bd3028 and merging .github/workflows/pr-gate.yml BY HAND so that #464's tsx step and s3's integration-test entry both survive - verified both present, and the staged pr-gate diff is exactly 1 insertion / 1 deletion.",
+    "DEFECT IN MY OWN MERGED RULE, found while rebuilding s3: the .gitattributes line `docs/ops/prod-ops-recipes.md text eol=crlf` means STORE LF, CHECK OUT CRLF - so it does not freeze the existing CRLF blob, it mandates a one-time renormalisation of it. main still holds the pre-pin CRLF blob (460 CRs), so the next stage of that file by anyone converts it. The attribute overrides core.autocrlf, so `-c core.autocrlf=false add` cannot prevent it. s3 absorbs that one-time 483/459 conversion; ignoring whitespace the real change is 28/4. If the intent was to freeze the stored form rather than convert it, the correct attribute is `-text`. Recorded, not changed - altering it is its own PR.",
+    "PUSH SILENTLY FAILED and was caught only by verification: the first `git push --force-with-lease` printed a truncated hint and did NOT land; remote was still at the old tip while local was at the rebuilt commit. Comparing local and remote SHAs caught it and the retry succeeded. A push whose output you did not read is not a push."
   ],
   "items": {
     "item-01": {
@@ -254,10 +259,11 @@
         },
         {
           "k": "s3b",
-          "status": "IN-CI",
+          "status": "MERGED",
           "tier": "A",
           "title": "clause-8 CI hardening: real ci.yml gate, .gitattributes for docs/ops, schema-drift index and constraint coverage",
-          "pr": 464
+          "pr": 464,
+          "sha": "c6a4c9c4"
         }
       ],
       "prs": [
@@ -659,8 +665,7 @@
     "firstWebTouchingSlice": {
       "taken": true,
       "takenBy": "lane A slice s3b",
-      "checkedAt": "2026-09-10 12:11 IST",
-      "status": "BUILT, in fix round - rebase onto #460 plus a self-invalidating guard for the drift-suppression registry"
+      "status": "MERGED as c6a4c9c4 via PR #464"
     }
   },
   "owedToLaneB": [
