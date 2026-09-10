@@ -157,7 +157,7 @@
         {
           "id": "2-S3a",
           "tier": "A",
-          "status": "FIX_ROUND",
+          "status": "FIX_DONE_PENDING_ROUND2",
           "issue": 482,
           "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD",
           "definitionOfDone": "Reader audit is INSIDE the DoD, not optional: every reader of segment (bse-api-scraper.ts:338 count, web filters, audit predicates) handles NULL explicitly, or the slice is not mergeable. If that pushes past 400 lines, the readers become 2-S3a-prime and the WRITE-PATH change waits for it - surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change.",
@@ -190,7 +190,8 @@
             "verdict": "PASS but covers-the-class NO for the read path",
             "majors": 2,
             "minors": 4
-          }
+          },
+          "fixCommit": "512f7fe6"
         },
         {
           "id": "2-S3b",
@@ -358,7 +359,12 @@
     "2026-09-10 16:00 IST MAJOR 2 IS MY SCOPING ERROR, and it is user-facing. I gave the builder the reader list from a grep over web/lib, web/app, scraper/src, scripts and packages/shared/src - and OMITTED web/components, even though my own earlier count had shown 24 files there touching segment. Two components render segment === SME ? SME : Mainboard, so an unknown segment is shown to a VISITOR as \"Mainboard\". Since this slice deliberately increases NULL volume, merging it as-is would make a user-facing mislabel MORE common. Caught by the reviewer, not by me.",
     "2026-09-10 16:00 IST DECISION: fix both before merge rather than merge-and-defer, which is what the reviewer offered. MAJOR 1 means shipping a fix that still guesses; MAJOR 2 means shipping a change that makes a visitor-facing error more frequent. Neither is acceptable to defer, and both fixes are small. R9 allows a second Tier A round on MAJOR, so one will run after the fix.",
     "2026-09-10 16:00 IST REVIEWER FOUND A FALSE-GREEN TRAP IN ITS OWN METHOD and reported it: its first mutation attempt silently no-op'd (a perl edit that did not apply) and the test still passed - which would have read as proof the guard was absent when the guard was simply never removed. Now standing in fix briefs: CONFIRM a mutation actually applied before reading its result. A mutation that did not apply is a false green, not a passing test.",
-    "2026-09-10 16:00 IST UNVERIFIABLE CLAIM recorded rather than accepted: the builder reported 297/297 tests across 20 files; the reviewer running the 10 touched files by literal path observed 180. Neither is necessarily wrong (different file sets), but the builder number could not be reproduced from the files it named, so it is recorded as unverifiable rather than as evidence. Also worth knowing: scraper/tsconfig.json EXCLUDES tests, so the 495 lines of new tests are not type-checked by the tsc proof at all."
+    "2026-09-10 16:00 IST UNVERIFIABLE CLAIM recorded rather than accepted: the builder reported 297/297 tests across 20 files; the reviewer running the 10 touched files by literal path observed 180. Neither is necessarily wrong (different file sets), but the builder number could not be reproduced from the files it named, so it is recorded as unverifiable rather than as evidence. Also worth knowing: scraper/tsconfig.json EXCLUDES tests, so the 495 lines of new tests are not type-checked by the tsc proof at all.",
+    "2026-09-10 16:18 IST 2-S3a FIX ROUND DONE (512f7fe6). MAJOR 1 fixed: chittorgarh now requires a literal NSE or BSE before asserting anything, and exchange also stopped defaulting to BOTH - once a board word is found exactly one branch is a genuine signal rather than a fallback. The builder LEFT \"Emerge\" unrecognised on purpose and its reasoning is right: Emerge is NSE real SME platform, but nothing in that source guarantees the word always means NSE SME, so encoding it would stack a second unverified guess on top of the fix. Scope-out, stated, not silently dropped. MAJOR 2 fixed by matching the em-dash convention the web components already use for absent values rather than inventing a label.",
+    "2026-09-10 16:18 IST THE FIX ROUND FOUND A BIGGER BUG THAN IT WAS SENT TO FIX, and I verified it before believing it. Drizzle .where() REPLACES the prior condition instead of AND-ing it, so `if (a) q = q.where(A); if (b) q = q.where(B)` silently discards A. Swept the repo: 8 files carry 2+ re-assigning .where() calls. CONFIRMED LIVE: registrar-repository (BOTH copies - two CONSECUTIVE calls in the same if(activeOnly) branch, so a registrar search with activeOnly returns INACTIVE registrars) and market-holiday-repository (three INDEPENDENT ifs on year/exchange/upcoming, so any two together drop the earlier - and holidays feed IPO date arithmetic). CONFIRMED SAFE: lot-calculator route uses if/else, mutually exclusive. Filed #488.",
+    "2026-09-10 16:18 IST THE DISCRIMINATOR IS THE SHAPE, NOT THE COUNT - and checking it is what kept #488 honest. Three more files carry 2 calls each (backfill-peer-companies, backfill-objectives, backfill-anchor-investors) and are recorded in #488 as UNCHECKED CANDIDATES, not defects, because they may be if/else like the lot calculator. Had I filed on the raw count of 8 files I would have put three false alarms in the tracker - the fourth time today that checking the shape before filing prevented one.",
+    "2026-09-10 16:18 IST BUILDER CONTRADICTED MY BRIEF TWICE AND WAS RIGHT BOTH TIMES. (1) I said isSME at bse-scraper.ts:258 would be unused after deleting the dead segment field; it is not - it drives an in-browser SME/MAINBOARD counter. It deleted only the genuinely dead field and said so. (2) MINOR 4 could not be the smallest change I asked for: adding a fourth .where() to ipo-reviews-job would have silently dropped the status filter, so it had to convert the whole chain to a single and(). That is what exposed #488. My brief was wrong on both and the builder followed the code.",
+    "2026-09-10 16:18 IST SECOND BUDGET BREACH, and my estimates are the pattern: 88 tool calls against 60 (147 percent), wall clock 15 min against 30. I DID name the dominating gate this time as I promised and it still overran, so the fix is not better framing - my call budgets are systematically too low for multi-file work. Raising the default for any slice touching more than about 5 files rather than repeating the same underestimate."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
