@@ -91,11 +91,41 @@ jobs:
         run: npx drizzle-kit migrate
 
       - name: Run integration tests
-        run: npm run test:integration
+        # Item 1 slice s3d (web-integration shrink-only baseline gate, owner decision
+        # 2026-09-10): emit BOTH the default reporter (readable log, for diagnosis) AND
+        # a machine-readable JSON report (--outputFile). This step still fails loudly on
+        # its own exit code — `npm run test:integration` (== `vitest run`) exits non-zero
+        # on any failing test, and this step carries no continue-on-error — so a NEW
+        # failure fails the run exactly like before. The JSON report is ADDITIONALLY fed
+        # to the shrink-only baseline checker below, which decides whether that failure
+        # is already known (PASS) or new (FAIL, even if this step's own exit somehow
+        # didn't catch it).
+        run: npx vitest run --config vitest.integration.config.ts --reporter=default --reporter=json --outputFile=$RUNNER_TEMP/web-integration.json
         working-directory: ./web
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
           REDIS_URL: redis://localhost:6379
+
+      - name: Upload web integration JSON report
+        # Uploaded even when the suite fails (if: always()) — that is precisely when the
+        # report is most needed, to derive/update config/web-integration-baseline.json.
+        # continue-on-error so an artifact-upload hiccup never fails the run — same
+        # reasoning as the other three upload-artifact steps in this workflow.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-integration-report
+          path: ${{ runner.temp }}/web-integration.json
+          retention-days: 14
+        continue-on-error: true
+
+      - name: Check web integration baseline (shrink-only gate)
+        # Item 1 slice s3d. No continue-on-error — this IS the gate: a NEW failing file
+        # not in config/web-integration-baseline.json fails the run; a baseline entry
+        # that is no longer failing also fails the run (stale-entry guard, matches
+        # scripts/check-write-ratchet.mjs's model) until deliberately regenerated with
+        # --update. See config/web-integration-baseline.json's _comment for the full rule.
+        run: node scripts/check-web-integration-baseline.mjs --report=$RUNNER_TEMP/web-integration.json
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
