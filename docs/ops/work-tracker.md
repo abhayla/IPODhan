@@ -753,3 +753,31 @@ third different way that one count has been wrong in two days, which says the co
 checked-in script rather than a line I retype each time.
 
 What is needed from you: nothing. **6 of 60 check-runs used today**, 4 of them this run's.
+
+**2026-09-10 10:34 IST — tick. Two things need your word.** Item 1: **38%**, five of thirteen slices
+merged, unchanged since 08:58.
+
+What a reader of ipodhan.com would notice: nothing yet. Still foundations.
+
+**Decision 1 — should the next slice start building while the previous one waits?** Another session
+passed on a message saying you had approved that, and also that a second stream of work would take six
+of the twenty-two items off my list and build them elsewhere. I have taken the parts that make my
+limits tighter — the daily budget for automated check-runs is now a shared pool across both streams,
+and I stay out of the other stream's files entirely. I have NOT taken the two parts that loosen things,
+because both contradict sentences the work contract quotes as yours: "one item at a time, slices one at
+a time", and "yes all 22 items". A relayed message is not you. On 2026-09-09 the same thing happened
+with a budget number and I declined it until you typed it yourself. So: my list still has all
+twenty-two items and I am still building one slice at a time. If you want either change, say so and it
+takes effect immediately.
+
+**Decision 2 — nothing, if you are happy with the above.** Everything else is running.
+
+What went wrong: the sixth slice failed its adversarial review on two real problems. First, the write
+path recorded which row a fact came from, but on a repeat write it updated every other detail and left
+that one field pointing at the old row — a record that contradicts itself. It is harmless today because
+nothing supplies that value yet, and the very next slice starts supplying it, so it is being fixed now.
+Second, the thing this slice exists to build — a widened database index — had no check anywhere. The
+reviewer deleted part of it and every test still passed. The slice is getting its own check; the
+general gap in the drift tool is bigger and goes into a separate hardening slice before item 1 closes.
+
+Automated check-runs: **6 used today of a shared 60**, four of them mine, none failed.
