@@ -2181,3 +2181,36 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   precisely the artifact proved false earlier today; the merge-base diff showed the truth and both sides are present
   on main. `state=MERGED` confirmed before the branch was deleted separately; worktree removed on the three-way
   proof; main checkout 4595 tracked, `packages/shared` intact; zero slice worktrees left.
+
+- **2026-09-10 13:59 IST [lane B] #468 RCA done: STARVATION by a priority inversion. The tiers that matter LEAST have reserved
+  slots; the tier that matters most does not.**
+  The document-discovery cycle walks candidates in a fixed tier order - OPEN(0), CLOSED(1), **UPCOMING/PRE_OPEN(2)**,
+  LISTED(3), WITHDRAWN/POSTPONED(4) - under a whole-cycle wall-clock budget of 60 seconds
+  (`CYCLE_BUDGET.DISCOVERY_MS`, `scraper/src/services/document-state-machine.ts:738`). When that budget trips
+  mid-walk, `runDocumentCycle` (`scraper/src/services/document-cycle.ts:1128-1185`) **reserves a guaranteed slot for
+  the rank-4 purge candidate and up to `listedCap` rank-3 LISTED candidates - and reserves NOTHING for rank 2.**
+  OPEN and CLOSED are uncapped. So if ranks 0 and 1 alone eat the 60 seconds, the loop breaks before
+  `processCandidate` - the only path to `ensureRow` - reaches a single UPCOMING row. Every cycle. Indefinitely.
+  Read plainly: **an IPO that has already listed, and one that was withdrawn, are each guaranteed attention; an IPO
+  that opens tomorrow is not.** That is the inversion, and it is one reserved slot away from being fixed.
+  Exactly ONE write path to `document_fetch_state` exists - `ensureRow` in
+  `packages/shared/src/repositories/document-fetch-state-repository.ts:129`, reachable only through
+  `processCandidate`. So missing the walk means missing the table entirely; there is no second path that could have
+  saved this row.
+  Every rival explanation was ruled out with evidence, not dismissed: no status or segment predicate excludes it
+  (`isInLiveWindow` passes all UPCOMING unconditionally, and no segment filter exists on this path); an error inside
+  `processCandidate` is caught and would still stamp a rotation-touch row, but only for a row the walk REACHES; the
+  creation path is irrelevant because the table is seeded purely by cycle participation. And the boring explanation -
+  "it just has not had its turn yet" - is ruled out for production by arithmetic: the row was created 2026-09-09, the
+  floor failed 2026-09-10, and at a 30-minute cadence that is roughly 48 to 96 cycles with zero successes. That is
+  systematic starvation, not bad luck, **and it will not get a turn before the IPO opens tomorrow unless the backlog
+  shrinks on its own.**
+  **The honest limit, and it shapes the proof: the class cannot be reproduced on staging today.** A live join found
+  **0** currently-matching rows there - staging's own Manika row (created 09-07, a different row from production's
+  09-09) already has 6 `document_fetch_state` rows, and staging has too few OPEN+CLOSED candidates (37) to exhaust a
+  60-second budget. That is consistent with the RCA rather than against it, but it means the contract's usual
+  real-data proof - a staging cycle line showing the counter move - is not available in its usual shape. The proof
+  must instead be a staging cycle log line showing the NEW rank-2 reservation being APPLIED, which exercises the code
+  path on every real cycle regardless of whether starvation is occurring.
+  Production was deliberately NOT measured (this lane reads staging only), so the prod backlog size and the exact
+  per-cycle trip point are recorded as **not measured** rather than estimated.
