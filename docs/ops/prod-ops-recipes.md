@@ -390,6 +390,61 @@ it is). For the slice that DOES ship the swap, record here:
   for such tables, or a caller that forgets to pass one silently collides with the sentinel
   convention instead of failing loudly.
 
+### 8d. Risk-factor row key: `(ipo_id, seq)` -> `(ipo_id, heading_hash)` (item 1 slice s6, gated)
+
+`web/drizzle/migrations/_gated/E2_risk_factor_heading_hash_key.sql` is kept OUT of
+`meta/_journal.json` (see its header and `_gated/README.md` entry 11). The journaled migration
+`20260910121813_cooing_manta` ships ONLY the `ALTER TABLE ... ADD COLUMN heading_hash varchar(32)
+NOT NULL DEFAULT ''`, which is safe unattended. The constraint swap is owner-applied per slot, in
+this order, never skipped:
+
+1. **Deploy the column.** Once the release carrying `20260910121813_cooing_manta` is on the slot.
+2. **Backfill the hash.**
+   ```bash
+   cd scraper && npx tsx scripts/repair-risk-factor-heading-hash.ts --backfill          # dry run
+   npx tsx scripts/repair-risk-factor-heading-hash.ts --backfill --apply
+   ```
+   Re-run until it prints `written=0`. Idempotent — a row whose stored hash already matches is
+   not touched.
+3. **Delete the duplicates** (same tool, second phase). Surplus rows sharing
+   `(ipo_id, heading_hash)` go; the LOWEST `seq` survives, so the risk factor as it appeared
+   earliest in the document is the one kept.
+   ```bash
+   npx tsx scripts/repair-risk-factor-heading-hash.ts --dedupe                          # dry run
+   npx tsx scripts/repair-risk-factor-heading-hash.ts --dedupe --apply
+   ```
+   The dry run names every row it would delete (ipo, seq, heading) — read that list before
+   applying. Re-run until it prints `deleted=0`.
+4. **Precheck — BOTH counts MUST read 0:**
+   ```sql
+   SELECT 'blank_hash' AS check, count(*) FROM ipo_risk_factors WHERE heading_hash = ''
+   UNION ALL SELECT 'surplus_duplicates', coalesce(sum(n-1),0) FROM (
+     SELECT count(*) n FROM ipo_risk_factors GROUP BY ipo_id, heading_hash HAVING count(*) > 1) d;
+   ```
+   Run it against the slot through the tunnel (connection recipe: §1 and §8c).
+5. **Apply the gated file** by hand, through the tunnel.
+6. **Verify:** `npx tsx scripts/assert-row-key-constraints.ts "$DATABASE_URL"` against the SAME
+   slot — an operator's memory of having run step 5 is not proof. That tool carries
+   `unique_ipo_risk_factors_ipo_heading_hash` in its expected list, so a slot where step 5 was
+   skipped reports `[MISSING]` and exits 1.
+
+**If the precheck reports a non-zero count:** do NOT apply the gated file. A non-zero
+`blank_hash` means step 2 has not finished on this slot; a non-zero `surplus_duplicates` means
+step 3 has not. Go back to that step, re-run it with `--apply`, and re-run the precheck. Applying
+first hits a duplicate-key violation on the very first `ADD CONSTRAINT` and dies mid-flight —
+the same hazard §8c exists to avoid.
+
+**Measured before proposing the constraint** (`ipodhan_staging`, 2026-09-10, 2748 rows / 34 IPOs):
+7 collision groups, 21 rows, **14 surplus**, 6 IPOs — `prasol-chemicals-ltd` (x6, OPEN),
+`hy-tech-engineers-ltd` (x5, LISTED), `pranav-constructions-ltd`, `ss-retail-ltd` (UPCOMING),
+`sumax-engineering-ltd` (SME), `vinod-texworld-ltd` (x2, twice, OPEN). Every group is
+byte-identical rows differing ONLY in `seq` (`distinct_bodies=1`, `distinct_kpis=1`,
+`max_body_len=0`), so collapsing them loses no fact — unlike §8c's `ipo_intermediaries`, where the
+5 collisions were one bank legitimately holding two roles. The duplicate emission itself is an
+extractor defect (#502, with #503 for table rows scraped into the heading column); the write
+path's de-duplication (`prepareRiskFactorRows`) is a guard against a mid-write constraint
+violation, not the cure.
+
 ## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
 Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`
 (owner word after reading the first dry-run log `/root/data-audit-ipodhan/state/run-<date>.log`: `ISSUES-DRY-RUN` + the
