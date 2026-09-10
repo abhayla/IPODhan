@@ -395,7 +395,8 @@
       "what": "git -C with an MSYS-form path (/d/...) fails with exit 128 when MSYS_NO_PATHCONV=1 is set; the piped grep then prints a false zero",
       "foundBy": "applying the false-zero rule to a suspicious 0 during a routine tick",
       "class": "ROOT CAUSE of DEFECT-B01 as well - MSYS_NO_PATHCONV=1 suppresses path conversion, so a Windows binary cannot resolve an MSYS-form path; both incidents surfaced as a downstream false zero",
-      "mechanism": "under MSYS_NO_PATHCONV=1, every path handed to a Windows binary uses the Windows form D:/... never /d/..."
+      "mechanism": "under MSYS_NO_PATHCONV=1, every path handed to a Windows binary uses the Windows form D:/... never /d/...",
+      "mechanismLanded": "user-level PreToolUse hook git-refpath-guard.py, verified live 2026-09-10 16:45 IST in four directions; the shared cause of all three is now blocked at the tool call"
     },
     {
       "id": "DEFECT-B14",
@@ -411,7 +412,8 @@
       "what": "powershell -File $HOME/.claude/tools/wt-rm.ps1 failed because MSYS_NO_PATHCONV=1 makes $HOME expand to the MSYS form",
       "foundBy": "the command failing loudly",
       "class": "THIRD occurrence of the MSYS path-conversion cause today (DEFECT-B01, DEFECT-B13) - and the first where the supervisor broke a rule it had written for workers an hour earlier",
-      "mechanism": "the path rule applies to the supervisor own commands, not just briefs: every path handed to powershell, git, node or gh is Windows-form, and $HOME is never used in such a command"
+      "mechanism": "the path rule applies to the supervisor own commands, not just briefs: every path handed to powershell, git, node or gh is Windows-form, and $HOME is never used in such a command",
+      "mechanismLanded": "user-level PreToolUse hook git-refpath-guard.py, verified live 2026-09-10 16:45 IST in four directions; the shared cause of all three is now blocked at the tool call"
     },
     {
       "id": "DEFECT-B16",

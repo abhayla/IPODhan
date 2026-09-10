@@ -2634,3 +2634,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   so the module-boundary check decides it rather than taste.
   One risk named for the reviewer that neither the card nor the plan raises: a server sending one byte a
   minute stays under the cap forever. Streaming fixes the memory class and may open a slow-drip hang class.
+
+- **2026-09-10 16:45 IST [lane B] The git ref:path guard is LIVE and verified in all four directions -- and it closes the exact
+  defect this lane nominated an hour ago.** Three occurrences today of one cause: DEFECT-B01 at 11:15 (a
+  database reset that silently did not run, letting a migration apply to the wrong state), DEFECT-B13 at 15:07
+  (`git -C` failing on a real directory, the piped grep printing a false zero), DEFECT-B15 at 16:19 (my own
+  worktree-removal command, an hour after I wrote the rule for workers).
+  Measured here, not taken on description:
+  - `git show origin/main:README.md` with no prefix -> **BLOCKED**, and the message says exactly what to do
+    AND to sanity-check with a line count before believing a zero -- which is the second half of the lesson,
+    since the silent symptom was always a false zero rather than the error itself.
+  - the same command with the env prefix -> exit 0.
+  - an earlier `export` in the same command -> exit 0 (this lane writes its ledger that way).
+  - lookalikes untouched: `npm run` exit 0, plain `git log` exit 0.
+  **Two of this lane defects are now machine guards rather than prose**, and both came from the same source:
+  a mistake this run made, reported honestly, then handed to whoever could turn it into something that cannot
+  be forgotten. The remaining corrections -- the false-zero rule, the external-artefact rule, the
+  restore-by-copy rule -- are still sentences in briefs. The evidence that prose is not enough is this lane
+  own record: it broke its path rule within an hour of writing it, and its progress log went stale while its
+  ledger stayed perfect.
