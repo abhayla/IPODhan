@@ -1089,3 +1089,30 @@ does not mark which files failed — a search of it returns all forty-four, the 
 eighteen passing together — so writing that list today would silently mark eighteen healthy files as
 allowed to fail. The list has to come from a machine-readable report produced by the build itself. If the
 mechanism is ready before that report exists, it ships with an empty list and a note, not a guess.
+
+**2026-09-10 15:37 IST — tick. The safeguard I built could never have run.** Item 1: **38%**, five of
+thirteen slices merged, unchanged.
+
+Your decision this afternoon is built and submitted: a list of the known-broken website tests that can
+only ever shrink, so a change is blocked when it breaks something *new* rather than because twenty-six
+things were already broken.
+
+The part worth telling you: as first built it would never have worked, and it would have passed review.
+The build stops at the first failing step, and the check that reads the list came *after* the tests. So
+on the twenty-six known failures the run would halt before reaching the check — the safeguard could only
+have run on a day when nothing was failing, which is the one day it is not needed. Everything about it
+looked right: the code existed, its own tests passed fourteen out of fourteen, both of its refusal
+behaviours were demonstrated. It simply sat downstream of a stop sign. Found by reading it rather than
+trusting the report, and fixed by moving the decision into the check itself.
+
+The list itself is deliberately **empty** for now. The names of the twenty-six are not yet knowable —
+the build's log does not mark which files failed, so reading it gives all forty-four, the broken and the
+healthy together. Filling it from that would have marked eighteen healthy files as allowed-to-fail, and
+since the list only shrinks, someone would later have had to "fix" files that were never broken. One
+build run after this merges produces the real names.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: nothing.
+
+Automated check-runs: **29 used today of a shared 60**, fifteen mine, no current failures of mine.
