@@ -418,6 +418,8 @@ export function resolveFinalOutcome(
  * A negative status cannot collide with any real HTTP code, is never retried
  * (see requestWithLadder), and reads unambiguously in the attempts array.
  */
+const EMPTY_REGISTRAR_HOSTS: ReadonlySet<string> = new Set();
+
 export const STATUS_REFUSED_RESOLVED_PRIVATE = -1;
 
 /**
@@ -593,6 +595,14 @@ export interface RunnerDeps {
    * is the network boundary and the boundary refuses when it cannot tell.
    */
   resolveIsPrivate?: (hostname: string) => Promise<boolean>;
+
+  /**
+   * OD-37 registrar host set, loaded once per cycle by the caller (it needs a
+   * DB read; the allow-list check itself stays pure and synchronous, which is
+   * what the build card asks for). Absent means an empty set — the behaviour
+   * before slice 22-7, when nothing supplied it at all.
+   */
+  registrarHosts?: ReadonlySet<string>;
   /**
    * Retry backoff sleep, injectable (MIN-4).
    *
@@ -810,6 +820,11 @@ export class DocumentDiscoveryRunner {
    */
   private get resolvedAddressRefusalEnabled(): boolean {
     return this.deps.resolveIsPrivate !== undefined || FEATURE_FLAGS.ENABLE_RESOLVED_ADDRESS_REFUSAL;
+  }
+
+  /** OD-37 registrar host set for this cycle; empty when the caller supplies none. */
+  private get registrarHosts(): ReadonlySet<string> {
+    return this.deps.registrarHosts ?? EMPTY_REGISTRAR_HOSTS;
   }
 
   /** OD-37: one DNS answer per host per cycle (see isHostRefused). */
@@ -1679,7 +1694,7 @@ export class DocumentDiscoveryRunner {
           // investor page routinely links documents parked on a CDN or a
           // merchant bank; the owner's rule is issuer-or-exchange only, and it
           // applies on THIS rung too.
-          isStorableFromCompanyPage(l.url, companyUrl)
+          isStorableFromCompanyPage(l.url, companyUrl, this.registrarHosts)
       );
       attempts.push({
         source: 'COMPANY',
@@ -1780,7 +1795,7 @@ export class DocumentDiscoveryRunner {
     }
     const answer = page.evidence;
 
-    const links = extractVerifierLinks(page.html, verifierUrl, triedUrls).filter(
+    const links = extractVerifierLinks(page.html, verifierUrl, triedUrls, this.registrarHosts).filter(
       (l) => l.docType === docType
     );
     attempts.push({

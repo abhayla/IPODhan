@@ -88,6 +88,11 @@ vi.mock('../../../src/utils/network-counter.js', () => ({
 
 vi.mock('../../../src/services/company-host-source.js', () => ({
   isVerifierUrl: () => false,
+  // OD-37 slice 22-7: the cycle now loads the registrar host allow-list once
+  // per run. A partial mock that omits these throws at the call site, which is
+  // how 28 tests in this file failed on the first version of that slice.
+  resetRegistrarDocumentHostsCache: () => {},
+  loadRegistrarDocumentHosts: async () => new Set<string>(),
 }));
 
 // W-124 round 2: a vi.fn() (not a plain arrow) so individual tests can
