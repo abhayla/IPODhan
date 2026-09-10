@@ -280,9 +280,9 @@
         {
           "k": "s6",
           "title": "ipo_risk_factors re-key from seq to heading_hash",
-          "status": "TIER-A-FAIL-FIX-ROUND",
+          "status": "FIX-PUSHED-AWAITING-CI",
           "pr": 513,
-          "sha": "cfaee7f0",
+          "sha": "0e2a5142",
           "tier": "A",
           "branch": "feat/pm-item01-s6-risk-factor-heading-key",
           "mergeCondition": "s6's PR MUST add the ipo_risk_factors/heading_hash entry to the s8b registry in scraper/tests/integration/derived-key-recompute-guard.integration.test.ts, in the same change that adds the column. s8b could not register it: normalizeHeading lives in risk-factor-heading-key.ts, which exists only on s6's branch, so importing it from main would break the build. Without the entry, heading_hash ships with a gated UNIQUE constraint and no re-compute guard - the exact hole #506 closed for normalized_name.",
@@ -451,6 +451,20 @@
             "the failure message names the rule, so the reader does not have to rediscover why"
           ],
           "whyPrintAlways": "Printing only on failure means a passing run still cannot be audited later. The two wrong results tonight both LOOKED like ordinary output; what was missing was the one line saying which tree was read."
+        },
+        {
+          "k": "s15",
+          "status": "PLANNED",
+          "tier": "C",
+          "pr": null,
+          "sha": null,
+          "title": "couple the status-board write to the ledger write so the board cannot go stale",
+          "why": "The board sat 95 minutes behind the ledger tonight while the owner reads the board. Both were written by hand as two steps, so one could be done and the other forgotten. A reminder to remember is not a fix.",
+          "plan": [
+            "one script appends the ledger/tracker line AND emits the board payload file in the same run",
+            "the script prints the exact Artifact call, so the follow-up is mechanical rather than recalled",
+            "stretch: refuse to append a ledger line when the previous run emitted a payload that was never consumed"
+          ]
         }
       ],
       "prs": [
@@ -786,7 +800,7 @@
     507,
     514
   ],
-  "prGateRunsToday": 50,
+  "prGateRunsToday": 57,
   "prGateBudgetClaimedRaise": {
     "source": "superseded",
     "note": "peer relayed 40/20; owner typed 60/20 directly in-session 2026-09-09 - owner value adopted",
