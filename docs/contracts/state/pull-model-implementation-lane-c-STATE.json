@@ -157,7 +157,7 @@
         {
           "id": "2-S3a",
           "tier": "A",
-          "status": "ROUND_3_VERIFYING",
+          "status": "IN_CI",
           "issue": 482,
           "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD",
           "definitionOfDone": "Reader audit is INSIDE the DoD, not optional: every reader of segment (bse-api-scraper.ts:338 count, web filters, audit predicates) handles NULL explicitly, or the slice is not mergeable. If that pushes past 400 lines, the readers become 2-S3a-prime and the WRITE-PATH change waits for it - surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change.",
@@ -180,10 +180,10 @@
           "commit": "dbc76c0e",
           "files": 20,
           "lines": {
-            "added": 601,
-            "deleted": 31,
-            "source": 137,
-            "tests": 495
+            "source": 270,
+            "tests": 708,
+            "total": 978,
+            "files": 27
           },
           "capBreach": "632 total lines against delta 1.1 cap of 400. DECLARED, not hidden. Source is only 137 lines across 10 files (about 14 each, surgical); 495 are tests. Splitting would either cut test coverage or separate the writers from the readers - and the supervisor ruled the reader audit MUST land with the write change, because surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change. Section 1.1 is a SPEED lever; the reader-audit rule is a SAFETY rule. Safety wins and the breach is recorded with its reason.",
           "reviewRound1": {
@@ -199,7 +199,9 @@
             "residualMajor": 1,
             "minors": 3
           },
-          "round3Commit": "8266fb0a"
+          "round3Commit": "8266fb0a",
+          "pr": 490,
+          "finalCommit": "8266fb0a (rebased)"
         },
         {
           "id": "2-S3b",
@@ -283,7 +285,7 @@
     }
   },
   "prGate": {
-    "laneCRunsToday": 3,
+    "laneCRunsToday": 4,
     "repoRunsTodayAtPreflight": 17,
     "laneCDailyCap": 15,
     "repoStopAt": 50
@@ -388,7 +390,10 @@
     "2026-09-10 16:48 IST 2-S3a ROUND 3 BUILT (8266fb0a), 5 files, and the residual MAJOR is closed on the repo own precedent rather than on anyone domain confidence. Measured outputs: \"NSE Emerge Platform\" -> SME/NSE (was MAINBOARD/NSE, the wrong answer round 2 caught); \"Emerge\" -> null, unchanged; \"BSE SME\" -> SME/BSE; \"NSE, BSE\" -> MAINBOARD/BOTH. Word-boundary matching landed too, so \"Nonsense\" and \"Absent\" no longer assert a board. All 21 pre-existing cases survived; suite 27/27. Both mutations confirmed APPLIED before their result was read, per the standing line earned when one silently no-opd earlier.",
     "2026-09-10 16:48 IST TWO MINORS I OWNED ARE CLOSED PROPERLY. (1) The behaviour fix I approved with no test now has one: the builder exported the query builder following the repo existing convention for DB-parameterised builders and wrote 4 tests on the REAL function, then mutation-proved them by removing the isNotNull(segment) push and watching 3 of 4 go red. That is a real test, not a re-implementation. (2) isSME deletion: the builder INDEPENDENTLY verified round 2 was right and the previous builder justification was false - only .ipos and .subscriptions are ever read off extractedData, so the in-browser counters were 100 percent discarded. The REPORTED smeCount/mainboardCount come from a separate untouched computation.",
     "2026-09-10 16:48 IST PROPORTIONATE REVIEW CHOICE, stated because the alternative was expensive: two full Tier A rounds already passed this slice and R9 does not mandate a third, so I dispatched a FOCUSED Sonnet verification of round 3 rather than a third Opus round (~140k tokens). Its budget is spent almost entirely on the one genuine risk - the DELETION - with the falsifying question named: is there ANY path by which the deleted values reached a caller, a log line, a metric or a test. A previous builder asserted the opposite about this exact code and was wrong, so neither claim is taken on trust.",
-    "2026-09-10 16:48 IST MY RAISED BUDGET WORKED: round 3 used 60 tool calls against 100 briefed, after two consecutive overruns at 149 and 147 percent on the old numbers. The fix was raising the estimate for multi-file work, not asking workers to try harder - two attempts at better framing had already failed."
+    "2026-09-10 16:48 IST MY RAISED BUDGET WORKED: round 3 used 60 tool calls against 100 briefed, after two consecutive overruns at 149 and 147 percent on the old numbers. The fix was raising the estimate for multi-file work, not asking workers to try harder - two attempts at better framing had already failed.",
+    "2026-09-10 16:56 IST 2-S3a PR #490 OPENED after three review rounds. Rebased clean onto current main, gate re-reproduced post-rebase: exit 0, 110 tests across 5 files. 27 files, +906/-72 - source 270 lines, tests 708. Lane C 4 of 15 PR-gate runs; repo 34 of a 50 stop.",
+    "2026-09-10 16:56 IST FINAL VERIFICATION PASSED with one honest limit the verifier stated rather than implied: it traced bse-scraper.integration.test.ts STATICALLY rather than running it, because that test is DB-guarded and this slice is a no-DB proof. Its evidence is grep plus an unchanged-code diff plus consistent test design - strong, but not a live green on that one file. Recorded in the PR body as an unexecuted check rather than folded into the pass. A verifier that names what it could NOT run is worth more than one that quietly counts it as covered.",
+    "2026-09-10 16:56 IST THE SLICE TOOK FOUR BUILD/REVIEW ROUNDS and every round found something the previous one missed, which is the argument for the tier rather than against it: round 1 found the defect had survived INSIDE its own fix and that I had scoped the readers wrongly; round 2 EXECUTED the predicate instead of reading it and found the fix narrowed rather than eliminated; round 3 closed it on the repo own precedent; the final check disproved a builder justification and confirmed a deletion was safe. Three of those four findings would have shipped under a single-round review."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
