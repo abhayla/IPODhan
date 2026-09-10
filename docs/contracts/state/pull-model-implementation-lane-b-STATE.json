@@ -68,10 +68,10 @@
           "title": "module-boundary import check (R-142..R-144)",
           "status": "IN-REVIEW",
           "pr": null,
-          "sha": "26dd474a",
+          "sha": "67cd210f",
           "tier": "A",
           "reviewRounds": 3,
-          "reviewVerdict": "round 2 MERGE NO - CRITICAL resolver blind to .js->.ts (2 of 83 cross-module edges); round 3 fix in flight; a FOURTH round defers the slice per contract"
+          "reviewVerdict": "rounds 1-2 MERGE NO (vacuous gate, then blind resolver); round 3 fix hit targets exactly (471->14 unresolved, 2->83 cross-module) and surfaced 41 real violations, all baselined; FINAL review in flight"
         },
         {
           "k": "s4",
@@ -247,5 +247,8 @@
   ],
   "carriedIntoLaterItems": [
     "item 22: the traceability check reports R-160 claimed by the item-22 card with no test declaring it - fold into item 22's slice plan"
+  ],
+  "findingsForOwner": [
+    "The codebase has 41 real upward-import violations of the design's own layer order (section 7.6), found only once the check could resolve scraper imports. All baselined shrink-only with a why per entry, so they are visible and can only decrease - none is fixed by this slice, and fixing them is not item 20's job."
   ]
 }

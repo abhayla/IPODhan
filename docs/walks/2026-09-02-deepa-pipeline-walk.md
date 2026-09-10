@@ -1827,3 +1827,34 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Round 3 dispatched (the contract defers a slice needing a FOURTH round, so this one is exact and narrow): fix the
   `.js` -> `.ts` lookup, move the floor to the cross-module count and print it, keep identities on the ~14 residual
   unresolved specifiers, and baseline - never hide - every real upward edge the better resolution surfaces.
+
+- **2026-09-10 12:25 IST [lane B] s3 round-3 fix landed (`67cd210f`): the resolver now sees the scraper, and the codebase turns out
+  to have 41 real layering violations.** The numbers hit the reviewer's predicted targets exactly - unresolved
+  relative specifiers **471 -> 14**, cross-module edges **2 -> 83**, both-endpoints-mapped 49 -> 173 - which is
+  itself a good sign: the fix did what the diagnosis said it would, not something else.
+  The summary now prints, in the check's own words, `CROSS-MODULE edges (what this check can actually FAIL on): 83`
+  as a separate line from the both-endpoints-mapped total, and the floor sits on that number. Nobody can read a big
+  total again and infer power the gate does not have.
+  **41 real upward-import edges surfaced and every one is baselined by identity, not hidden.** Grouped by pattern:
+  scrapers calling `utils/validators.ts` inline mid-extraction; `discovery` and `download` services classifying
+  documents inline through `document-classifier.ts`; consolidation and download services recording
+  `step-ledger`/`step-ledger-recorders` inline; `filing-auto-persist` and `filing-persister` calling
+  `cross-document-agreement.ts`. Each entry carries its own `why`. No map narrowing, no layer reordering, no
+  resolver weakening was used to make any of them disappear - the one move that was forbidden outright.
+  The `validation`/`consolidation` adjacent-pair swap that PASSED in round 2 now correctly FAILS, surfacing 14 real
+  `consolidation -> validation` edges. That confirms round 2's reading: the pair was never undetectable, there was
+  simply too little being evaluated to notice.
+  **Round 3 review dispatched, and its first priority is the most dangerous thing in this diff: the builder modified
+  SIX pre-existing tests.** Its explanation is plausible - their fixtures used same-module filler edges that now trip
+  the new cross-module floor, so it swapped them for real cross-module edges "preserving each test's original
+  intent" - and plausible is exactly the problem. Editing existing tests so a change passes is the textbook way a
+  suite is silently weakened. The reviewer must read each of the six before-and-after, say whether it still asserts
+  the same behaviour or a weaker one, and PROVE its reading by mutating the behaviour each test claims to cover and
+  confirming THAT test - not merely some other test - turns red.
+  Its second priority is whether the 41 baselined entries are a real debt register or a way to quiet a noisy check.
+  It must open at least six importing files and confirm the import exists and the direction genuinely violates the
+  design's order - and specifically judge whether `scrapers -> utils/validators.ts` is a real upward edge or a
+  symptom of `utils/validators.ts` being mapped to the wrong module. **41 baselined false positives would be worse
+  than no baseline: they would train everyone to ignore the file.**
+  This is the THIRD review round. The contract defers a slice that needs a fourth, so this verdict decides whether
+  s3 merges or is set aside with its findings recorded.
