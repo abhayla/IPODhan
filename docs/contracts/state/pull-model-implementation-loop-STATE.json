@@ -256,9 +256,9 @@
         {
           "k": "s4",
           "title": "rowKey through consolidateField, trackFieldSource, ConflictInfo, open-conflict lookups",
-          "status": "TIER-A-FIX-ROUND",
+          "status": "MERGED",
           "pr": 518,
-          "sha": "fa10d752",
+          "sha": "49733e06",
           "tier": "A"
         },
         {
@@ -312,7 +312,7 @@
         {
           "k": "s8",
           "title": "detection check field-sources-row-key-coverage + registry regeneration",
-          "status": "PLANNED",
+          "status": "BUILDING",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -391,10 +391,10 @@
         },
         {
           "k": "s12",
-          "status": "TIER-A-FIX-ROUND",
+          "status": "MERGED",
           "tier": "A",
-          "pr": null,
-          "sha": "e1f6c854",
+          "pr": 517,
+          "sha": "2a7849eb",
           "title": "failed deploy no longer orphans its release directory (#505)",
           "order": "AFTER s6, BEFORE s11 (lane C agreed)",
           "plan": [
@@ -444,10 +444,10 @@
         },
         {
           "k": "s14",
-          "status": "BUILT-HELD-NO-PR",
+          "status": "PR-OPEN",
           "tier": "B",
-          "pr": null,
-          "sha": "f82b32cb",
+          "pr": 548,
+          "sha": "5e1024e9",
           "title": "preflight: refuse to run when @ipodhan/shared resolves outside this checkout (#514, repo side)",
           "order": "tomorrow; repo side of #514. The laptop side (wt-new.ps1 creating the junction) is lane C, Tier A, with the junction-deletion history in the brief - NOT tonight.",
           "plan": [
@@ -473,10 +473,10 @@
         },
         {
           "k": "s16",
-          "status": "BUILT-HELD-NO-PR",
+          "status": "PR-OPEN",
           "tier": "A",
-          "pr": null,
-          "sha": "d15bfd10",
+          "pr": 547,
+          "sha": "4ac8a1a3",
           "title": "move the Next build cache out of the release (per-slot, under shared/)",
           "branch": "perf/pm-item01-s16-next-cache-out-of-release",
           "blockedBy": "s12. MEASURED, not assumed: s16 merges CLEAN against main as it is now (merge-tree exit 0) and CONFLICTS against a simulated post-s12 main (exit 1). Both slices edit scripts/deploy-linux.sh AND scripts/tests/deploy-linux.test.sh. So s16's PR is held until s12 merges, then rebased - opening it now would show reviewers a diff that will not apply.",
@@ -484,10 +484,10 @@
         },
         {
           "k": "s17",
-          "status": "BUILDING",
+          "status": "PR-OPEN",
           "tier": "A",
-          "pr": null,
-          "sha": null,
+          "pr": 549,
+          "sha": "1a69cf40",
           "title": "staging deploys on a 15-minute schedule when main differs, not on every push"
         }
       ],
@@ -504,7 +504,9 @@
         500,
         498,
         508,
-        513
+        513,
+        517,
+        518
       ],
       "mergeShas": [
         "6797fdab",
@@ -519,7 +521,9 @@
         "c15c7eb3",
         "15a8378f",
         "12fc2dbc",
-        "8536ff51"
+        "8536ff51",
+        "2a7849eb",
+        "49733e06"
       ],
       "proof": {
         "status": "OWED",
