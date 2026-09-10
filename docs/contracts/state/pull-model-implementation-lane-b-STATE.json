@@ -490,6 +490,12 @@
         "issue #446 closed"
       ],
       "notMeasuredByThisLane": "the 193/292 web integration failures - closes with the next ci.yml dispatch after #474 merges"
+    },
+    {
+      "at": "2026-09-10 15:21 IST",
+      "item": 21,
+      "risk": "the web-integration baseline may ship EMPTY because the 26 file names are not yet known (a failed-run log cannot distinguish pass from fail; names need a vitest JSON report from CI after the mechanism slice merges)",
+      "laneBPosition": "no new failure is NOT treated as measurable for web-touching work until the baseline is populated; before relying on it, check whether an empty baseline makes the gate fail every failure (safe) or pass everything (hollow) - the class this lane found three times today"
     }
   ],
   "cardCorrectionsBinding": {
@@ -572,10 +578,12 @@
     {
       "at": "2026-09-10 15:18 IST",
       "relay": "owner decision: baseline the 26 failing web integration files shrink-only; web-touching slices gate on NO NEW failures; replaces item 21 wait-for-green-ci.yml",
-      "status": "HELD - not adopted",
+      "status": "LIFTED and adopted",
       "why": "it LOOSENS a constraint the contract attributes to clause 8; a peer relay may tighten unilaterally but never loosen. Lane A ledger head on origin (15:00:25) does not yet contain it.",
       "costOfHolding": "nil - item 21 is last in the queue and also waits on lane A item 5",
-      "release": "a lane A ledger line recording the decision, or the owner typing it in this session"
+      "release": "a lane A ledger line recording the decision, or the owner typing it in this session",
+      "verifiedAt": "2026-09-10 15:21 IST",
+      "evidence": "owner verbatim text read from sha 0f632837 on origin/ops/impl-loop-ledger (ancestor confirmed), dated 2026-09-10T15:19:35+05:30"
     }
   ]
 }
