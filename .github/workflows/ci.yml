@@ -91,22 +91,29 @@ jobs:
         run: npx drizzle-kit migrate
 
       - name: Run integration tests
-        # Item 1 slice s3d (web-integration shrink-only baseline gate, owner decision
-        # 2026-09-10): emit BOTH the default reporter (readable log, for diagnosis) and
-        # a machine-readable JSON report, which the baseline checker below consumes.
+        # Item 1 slice s3d/s3e. Runs the npm script, not a raw `npx vitest` - the same
+        # one-suite-one-command rule #474 established for the unit step; the extra
+        # reporter flags are appended after `--`. Emits BOTH the default reporter
+        # (readable log) and the JSON report the baseline checker below consumes.
         #
-        # THE DECISION MOVED. This step's own exit code is no longer the gate; the
-        # checker is. That is why continue-on-error is set here - without it the step
-        # fails on the 26 known failures, the run stops, and the checker is SKIPPED,
-        # so the gate could only ever run on an already-green suite: dead on arrival.
+        # THE DECISION MOVED. This step's exit code is no longer the gate; the checker
+        # is. That is why continue-on-error is set - without it the step fails on the
+        # known failures, the run stops, and the checker is SKIPPED, so the gate could
+        # only ever run on an already-green suite. NOT a rollback of #464: #464 removed
+        # the flag where nothing else judged the result; here the checker does, and it
+        # fails the run on a NEW failure. Remove this line only by moving the decision
+        # back here too.
         #
-        # This is NOT a rollback of #464. #464 removed continue-on-error from steps
-        # where NOTHING else judged the result. Here something does, and it fails the
-        # run on a NEW failure. If you remove this line, move the decision back here
-        # too, or the gate stops working silently.
-        run: npx vitest run --config vitest.integration.config.ts --reporter=default --reporter=json --outputFile=$RUNNER_TEMP/web-integration.json
+        # working-directory and env are load-bearing: s3d dropped them and the step
+        # crashed at repo root with 'Could not resolve vitest.integration.config.ts',
+        # wrote no report, and continue-on-error showed it as success. The checker's
+        # fail-closed-on-missing-report is what caught it.
+        run: npm run test:integration -- --reporter=default --reporter=json --outputFile=$RUNNER_TEMP/web-integration.json
+        working-directory: ./web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+          REDIS_URL: redis://localhost:6379
         continue-on-error: true
-
       - name: Upload web integration JSON report
         # Uploaded even when the suite fails (if: always()) — that is precisely when the
         # report is most needed, to derive/update config/web-integration-baseline.json.
