@@ -2927,3 +2927,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   migration idx that went stale exactly this way. Building a fifth feature slice would add more work
   that cannot land than value that can. The wiring gate above is the exception I would make, because
   it prevents a class rather than adding to the queue.
+
+- 2026-09-10 19:46 IST **[lane B] The gate written to catch unwired security controls had three of its own, and
+  caught them itself.** Three controls shipped this week doing nothing, so the mechanism was overdue:
+  a check that a registered security boundary is actually referenced, and that a parameter carrying a
+  security set is actually supplied rather than left at its empty default.
+  Its first version was wrong three ways, and every one surfaced only because I ran it against the
+  real wiring rather than reasoning about whether it was right:
+  it demanded a CALL, so `deps.resolveIsPrivate ?? isResolvedAddressPrivate` — properly wired, no
+  parentheses — read as unwired; it demanded ANOTHER module, so `slotAwareFlagDefault` used by the
+  `FEATURE_FLAGS` object beside it read as unwired; and matching the bare name made a **second
+  declaration** of the same function in `web/lib/config/feature-flags.ts` count as a caller, so the
+  check reported **PASS on a boundary with zero callers**. That third one is the precise defect the
+  check exists to catch, occurring inside the check, on its first run.
+  It is now 15 mutation cases with a shrink-only baseline holding exactly one entry — the registrar
+  allow-list — which names the slice that closes it rather than muting the check. The lesson is the
+  one this whole run keeps producing, and it applies to detection code hardest of all: **the question
+  is never whether the check is correct in principle, it is what the check actually evaluated when it
+  ran.** A gate reasoned about is a gate untested.
