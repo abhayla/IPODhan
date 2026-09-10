@@ -2784,3 +2784,18 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Rule taken forward, into every reviewer brief I write from here: **name the allow-cases that resemble
   block-cases, and the quoting/escaping forms, as explicit required coverage.** The supervisor owns the
   fix, since the hook is machine-level; I am not duplicating that work.
+
+- 2026-09-10 17:56 IST **[lane B] Why my test 17 passed while the reviewer proved the same case broken — the
+  sharper version of today's lesson.** My suite asserted that `git restore --staged <file>` is ALLOWED,
+  and it passed. Tier A proved it is FALSE-BLOCKED. Both are true: I placed that assertion in the block
+  of the suite where the repository was still **clean**, before the line that dirties the file. On a
+  clean path the guard allows everything, so the case could not have failed no matter what the guard
+  did. The reviewer ran it against a DIRTY file — the only state in which the assertion means anything.
+  So the fault is not "I forgot a case". I wrote the right case and placed it where it was incapable of
+  failing. That is the same defect as the 0.2MB boundary test that `Buffer.alloc` truncated so it never
+  landed on the boundary, and as the module-boundary check that evaluated zero edges: **the test ran, was
+  green, and measured nothing.**
+  The rule I am carrying forward is therefore stronger than "add allow-cases that look like block-cases":
+  **every allow-case must be asserted in the state where the guard is actually armed.** An allow-case
+  proved under conditions that disarm the guard is not evidence, and 32 of 32 green told me nothing
+  about the one case that mattered. Fix is with the supervisor's worker; I am not touching it.
