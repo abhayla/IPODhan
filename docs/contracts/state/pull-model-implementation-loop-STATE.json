@@ -256,10 +256,11 @@
         {
           "k": "s4",
           "title": "rowKey through consolidateField, trackFieldSource, ConflictInfo, open-conflict lookups",
-          "status": "BUILDING",
+          "status": "WORKTREE-READY-NOT-DISPATCHED",
           "pr": null,
           "sha": null,
-          "tier": "A"
+          "tier": "A",
+          "note": "Worktree IPODhan-IPODhan-s01-s4 exists, linked with wt-link-modules.ps1 and marker-probed OK. No builder was ever dispatched - the P0 disk incident intervened. Recorded BUILDING in error for ~2h."
         },
         {
           "k": "s5a",
@@ -389,17 +390,18 @@
         },
         {
           "k": "s12",
-          "status": "BUILDING",
+          "status": "BUILT-HELD-NO-PR",
           "tier": "A",
           "pr": null,
-          "sha": null,
+          "sha": "b76b4479",
           "title": "failed deploy no longer orphans its release directory (#505)",
           "order": "AFTER s6, BEFORE s11 (lane C agreed)",
           "plan": [
             "preflight BEFORE populating the release directory, so a deploy that will fail on disk never allocates ~3.1GB first",
             "remove the just-created release directory in the on_deploy_error trap that already exists in scripts/deploy-linux.sh",
             "both: (1) alone misses a failure AFTER the preflight, (2) alone still lets a tight box be pushed over before the check runs"
-          ]
+          ],
+          "branch": "fix/pm-item01-s12-orphan-release-on-failed-deploy"
         },
         {
           "k": "s13",
