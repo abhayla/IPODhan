@@ -803,7 +803,18 @@
         "scopeHeld": "The plus-or-minus one day date tolerance was left alone. The card asked for the similarity path only, and widening to unmeasured behaviour is how a slice grows a defect.",
         "unreachableHandledAnyway": "UNBOUND is handled explicitly in the caller even though it is unreachable there. An invariant the compiler cannot see is exactly the kind that stops being true after an edit.",
         "detectionDeclaration": "No detection change, with the reason: the slice only NARROWS what is written and sits behind a flag off in every slot, so it cannot introduce a new wrong-write class, only decline writes it previously made.",
-        "proof": "9 new tests including both directions of the flag on identical input - off binds a merely-similar name, on refuses it. Existing orchestrator suite unchanged, 13 of 13 together. Zero type errors in this file; main carries 99 pre-existing scraper errors and this adds none."
+        "proof": "9 new tests including both directions of the flag on identical input - off binds a merely-similar name, on refuses it. Existing orchestrator suite unchanged, 13 of 13 together. Zero type errors in this file; main carries 99 pre-existing scraper errors and this adds none.",
+        "closingChain": {
+          "at": "2026-09-10 21:55 IST",
+          "question": "What closes the four IPOs that lose GMP under strict binding, and when?",
+          "measured12BDoesNotCloseThem": "Ran the 29-record fixture against staging WITH 12-B applied: unbound stays at 4. Its whole-word suffix strip removes Company and Ltd, which was never the blocker.",
+          "singleCause": "All four are the COUNTRY WORD. Jindal Supreme vs Jindal Supreme (India) Ltd.; Steamhouse vs Steamhouse India Ltd.; Asset Reconstruction vs ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED; Glass Wall Systems vs Glass Wall Systems (India) Limited. The source omits India, we store it, nothing else differs.",
+          "closingFixMeasured": "Dropping the country word from the BINDING key: production 333 names, identities 333 to 333, ZERO newly merged groups. Staging 376 names, 349 to 349, ONE newly merged group - the ARCIL pair, which is the same company and the merge 12-B exists to make. Zero false merges across 709 real names.",
+          "whyThisDoesNotContradictMyWarning": "I warned against fixing it with foldCompanyIdentity and that still stands. The FOLD strips india AND and/the/of/company AND compacts away every space - far wider, and it is the key a row-DELETING repair uses. Dropping ONLY the country word is a much narrower change and it measures clean. The distinction is the point, not a walk-back.",
+          "chain": "12-E as-is: 4 unbound. Plus the country-word drop: 1. Plus 12-C duplicate repair: 0.",
+          "theLastOne": "Asset Reconstruction is AMBIGUOUS rather than unmatched - staging carries two rows that both reduce to the same key, which is the genuine duplicate pair. It resolves when that duplicate is repaired, which is already 12-C job. No new slice needed.",
+          "whereItShips": "Folding the country-word drop into 12-B rather than opening a seventh branch: it touches the same function in the same file 12-B already changes, and shipping it separately would re-key the same 544 rows twice. Flagged to the peer that if they want it reviewed as its own slice that is defensible, at the cost of a double re-key."
+        }
       }
     },
     "item-03": {
@@ -1172,7 +1183,12 @@
     "2026-09-10 21:52 IST CORRECTED MY OWN #515 RCA, which had already been codified into delta 2. I claimed the six rows came from ONE ingestion path. The provenance rows show THREE states: BSE wrote two (22 provenance rows each), Chittorgarh wrote one (29 rows), and three have ZERO field_sources rows for the entire IPO - written by a path recording no provenance at all.",
     "2026-09-10 21:52 IST THE ASSOCIATION STANDS, THE CAUSE DOES NOT. 5 of 6 still lack a segment source against a base rate of about 9.6%, which is real and worth acting on. But same-symptom is not same-writer. This was not a measurement failure - I had the overlap number and inferred a common cause from it without checking who wrote the field, and that check took one query.",
     "2026-09-10 21:52 IST CONSEQUENCE: a single writer fix cannot close this class, so 2-S6 RCA must name a treatment per state. One of them is to read the raw BSE payload for BANGANGA and NIRBHAY BEFORE concluding anything - BSE demonstrably serves a real band elsewhere, Price_Band 132.00-139.00 alongside a separate Face_Value 10.00, and the scraper already maps them separately and correctly. Whether BSE served a degenerate band for those two, or an empty-band path produced it, is UNDETERMINED and I am not guessing it.",
-    "2026-09-10 21:52 IST Corrected on the issue and sent to the delta-2 author so the wrong inference does not outlive the message that created it."
+    "2026-09-10 21:52 IST Corrected on the issue and sent to the delta-2 author so the wrong inference does not outlive the message that created it.",
+    "2026-09-10 21:55 IST ANSWERED THE 12-E REGRESSION CHALLENGE WITH MEASUREMENT, not a promise. 12-B closes NONE of the four - with 12-B applied the unbound count stays at 4, because its whole-word strip removes Company and Ltd and those were never the blocker.",
+    "2026-09-10 21:55 IST ALL FOUR HAVE ONE CAUSE: the country word. The GMP source omits India and we store it - Jindal Supreme versus Jindal Supreme (India) Ltd., Steamhouse versus Steamhouse India Ltd., and so on. Nothing else differs in any of the four.",
+    "2026-09-10 21:55 IST THE CLOSING FIX MEASURES CLEAN: dropping the country word from the BINDING key gives production 333 identities to 333 with ZERO newly merged groups, and staging 349 to 349 with ONE - the ARCIL pair, the same company, the merge 12-B exists to make. Zero false merges across 709 real names.",
+    "2026-09-10 21:55 IST AND THAT DOES NOT WALK BACK MY WARNING. I said do not fix it with foldCompanyIdentity, and that stands: the FOLD strips india AND and/the/of/company AND compacts away every space, and it is the key a row-DELETING repair uses. Dropping only the country word is far narrower. The distinction is the whole point.",
+    "2026-09-10 21:55 IST CHAIN, with the count that moves: 12-E as-is 4 unbound, plus the country-word drop 1, plus 12-C duplicate repair 0. The last one is Asset Reconstruction, AMBIGUOUS rather than unmatched because staging holds a genuine duplicate pair - already 12-C job, so no new slice is needed."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
