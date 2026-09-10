@@ -70,6 +70,17 @@ jobs:
         # stop catching that pattern class. No deps needed (Node builtins only).
         run: node --test scripts/tests/check-write-ratchet.test.mjs
 
+      - name: Web integration baseline gate self-test (item 1 slice s3d, issue #461)
+        # Mutation-proof: scripts/tests/check-web-integration-baseline.test.mjs
+        # imports the actual exported functions (extractFailingFiles,
+        # normalizeFileName, diffAgainstBaseline) from the checker script, so a
+        # weakened guard (e.g. a bare glob that matches nothing, or a suite that
+        # registers zero tests) turns this red before ci.yml's gate can silently
+        # stop enforcing shrink-only on the web integration suite. Literal path,
+        # never a glob — a glob matching nothing exits 0 same as a real pass
+        # (issue #461). No deps needed (Node builtins only).
+        run: node --test scripts/tests/check-web-integration-baseline.test.mjs
+
       - name: Scripts type-check exclude shrink-only guard (issue #434)
         # config/scripts-typecheck-exclude-baseline.json is the only
         # legitimate source of scraper/tsconfig.scripts.json exclusions; a

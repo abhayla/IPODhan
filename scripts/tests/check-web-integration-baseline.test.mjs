@@ -270,3 +270,88 @@ test('CLI: missing --report argument exits 1', () => {
   assert.equal(result.code, 1);
   assert.match(result.stderr, /missing required --report/);
 });
+
+// ---------------------------------------------------------------------------
+// Dead-on-arrival class (MINOR-8): every way vitest can die/misconfigure
+// BEFORE producing a real report must fail closed with a reason, never pass
+// silently and never crash with a raw stack. These are the cases that decide
+// whether the gate can be bypassed by anything that kills vitest early.
+// ---------------------------------------------------------------------------
+
+test('CLI: report file missing exits 1 and names the path', () => {
+  const dir = makeTmpDir();
+  const baselinePath = join(dir, 'baseline.json');
+  writeFileSync(baselinePath, JSON.stringify({ count: 0, files: [] }, null, 2));
+  const missingReportPath = join(dir, 'does-not-exist.json');
+
+  const result = runChecker([`--report=${missingReportPath}`, `--baseline=${baselinePath}`]);
+
+  assert.equal(result.code, 1, `expected exit 1, got ${result.code}. stderr:
+${result.stderr}`);
+  assert.match(result.stderr, /report file not found/);
+  assert.match(result.stderr, /does-not-exist\.json/);
+});
+
+test('CLI: empty report file exits 1 with a parse-failure reason', () => {
+  const dir = makeTmpDir();
+  const baselinePath = join(dir, 'baseline.json');
+  writeFileSync(baselinePath, JSON.stringify({ count: 0, files: [] }, null, 2));
+  const reportPath = join(dir, 'report.json');
+  writeFileSync(reportPath, '');
+
+  const result = runChecker([`--report=${reportPath}`, `--baseline=${baselinePath}`]);
+
+  assert.equal(result.code, 1, `expected exit 1, got ${result.code}. stderr:
+${result.stderr}`);
+  assert.match(result.stderr, /could not parse report JSON/);
+});
+
+test('CLI: malformed JSON report exits 1 with a parse-failure reason', () => {
+  const dir = makeTmpDir();
+  const baselinePath = join(dir, 'baseline.json');
+  writeFileSync(baselinePath, JSON.stringify({ count: 0, files: [] }, null, 2));
+  const reportPath = join(dir, 'report.json');
+  writeFileSync(reportPath, '{ "testResults": [ this is not json');
+
+  const result = runChecker([`--report=${reportPath}`, `--baseline=${baselinePath}`]);
+
+  assert.equal(result.code, 1, `expected exit 1, got ${result.code}. stderr:
+${result.stderr}`);
+  assert.match(result.stderr, /could not parse report JSON/);
+});
+
+test('CLI: valid JSON with no testResults key exits 1 with a reason, never a raw stack', () => {
+  const dir = makeTmpDir();
+  const baselinePath = join(dir, 'baseline.json');
+  writeFileSync(baselinePath, JSON.stringify({ count: 0, files: [] }, null, 2));
+  const reportPath = join(dir, 'report.json');
+  writeFileSync(reportPath, JSON.stringify({ success: false }));
+
+  const result = runChecker([`--report=${reportPath}`, `--baseline=${baselinePath}`]);
+
+  assert.equal(result.code, 1, `expected exit 1, got ${result.code}. stderr:
+${result.stderr}`);
+  assert.match(result.stderr, /\[web-integration-baseline\] FAIL/);
+  assert.match(result.stderr, /testResults/);
+  assert.doesNotMatch(result.stderr, /at extractFailingFiles/, 'must print a reason, not a raw stack trace');
+});
+
+test('CLI: testResults: [] (zero test files collected) exits 1, never PASSes (MAJOR-3)', () => {
+  const dir = makeTmpDir();
+  const baselinePath = join(dir, 'baseline.json');
+  writeFileSync(baselinePath, JSON.stringify({ count: 0, files: [] }, null, 2));
+  const reportPath = join(dir, 'report.json');
+  writeFileSync(reportPath, JSON.stringify({ success: true, testResults: [] }));
+
+  const result = runChecker([`--report=${reportPath}`, `--baseline=${baselinePath}`]);
+
+  assert.equal(result.code, 1, `expected exit 1, got ${result.code}. stderr:
+${result.stderr}`);
+  assert.match(result.stderr, /\[web-integration-baseline\] FAIL/);
+  assert.match(result.stderr, /ZERO test files/);
+  assert.doesNotMatch(result.stdout, /PASS/, 'a broken/empty run must never print PASS');
+});
+
+test('extractFailingFiles: throws on testResults: [] (zero files collected)', () => {
+  assert.throws(() => extractFailingFiles({ success: true, testResults: [] }), /ZERO test files/);
+});
