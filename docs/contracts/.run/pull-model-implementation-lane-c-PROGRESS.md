@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 04:54 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 05:04 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1035,3 +1035,58 @@ signal.
 
 **A merge is not a proof. Item 2 has no DONE line. Items 14, 12 and 3 have none. Item 3 is with
 the owner.**
+
+
+## 2026-09-11 05:04 IST - 21 live wrong prices, found under 266 false flags (#597)
+
+### I was one command from shipping a fix that hid two known defects
+
+Having measured that 266 of 268 degenerate-band flags are correct data, the obvious fix was to
+gate the check on the issue still being OPEN. Then I read the comment above it: the check
+exists because *the price-band collapse at close/listing went unnoticed for three round-6
+occurrences*. **It was built for the closed population my gate would exempt.**
+
+Concretely it would have hidden **STALLION and NIRBHAY** - two of the three rows item 14's
+floor check fails on, both CLOSED with `price = face_value = 10`.
+
+### The oracle test turned "noisy check" into 21 named defects
+
+`listing_performance.issue_price` is the authoritative per-share price and was **already in the
+caller's SELECT**, unused by this check. Of the 268 degenerate rows, 207 have it: **186 agree**
+(the collapsed value IS the real price) and **21 disagree**.
+
+| | |
+|---|---|
+| all 21 store a value LOWER than the real price | 21 |
+| store a HIGHER value | **0** |
+| average gap | Rs 10.00 (**8.63%**) |
+| **control:** real-band rows where issue price = the CAP | **46 of 46** |
+
+Indian IPOs price at the cap. A value 8.6% below the real price is the **floor** of a band
+whose cap was discarded - 8.6% being the ordinary floor-to-cap spread.
+
+**What a reader sees:** a wrong per-share price on 21 LISTED pages. ADMACH stored 227, priced
+at 239. K V Toys 227 vs 239. Lot value and listing gain inherit it. Filed as **#597**.
+
+### This is the prediction from an hour ago, now proven
+
+I wrote that 266 standing false flags would train a reader to skip the check so the genuine
+cases arrive invisible. That is precisely what happened. **The cost of a noisy check is not the
+noise; it is the signal it buries.**
+
+### #589 resolved opposite to how I filed it
+
+The data is right and the check is wrong for closed issues: at the source, all 183 closed
+book-built rows carry a single price and only the 18 still-open ones carry a range. I was wrong
+**twice** before getting there - filed it as "the band was lost on the way in", then corrected
+to "the collapse is upstream" while still calling it a defect. It is not a defect for closed
+issues at all.
+
+### Scope, stated rather than smuggled
+
+A peer told me to take this fix as a Tier B slice. A peer cannot expand my scope, and it is none
+of items 14/2/12/3. I am taking it on **my own judgement**, because all four of my items are
+blocked on external events and 266 false flags degrade the signal item 14's proof is read
+against.
+
+**Nothing of mine has written a database row. Items 14, 2, 12 and 3: zero DONE lines.**
