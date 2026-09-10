@@ -491,6 +491,13 @@
           "status": "FUTURE",
           "tier": "A",
           "title": "CIN as an identity tier - measured at ZERO effect today, deferred with a trigger"
+        },
+        {
+          "id": "12-E-fix",
+          "status": "MERGED",
+          "pr": 536,
+          "mergeSha": "0164e707",
+          "title": "main was red on 12-E own test; premise corrected, three outcomes pinned where one stood"
         }
       ],
       "prs": [
@@ -499,7 +506,12 @@
       ],
       "mergeShas": [
         "ff8a0522",
-        "8047231e"
+        "8047231e",
+        "1373620c",
+        "0fc3ab80",
+        "3ffc9e19",
+        "da8cad5a",
+        "0164e707"
       ],
       "proof": {
         "status": "OWED",
@@ -1293,7 +1305,10 @@
     "2026-09-10 23:16 IST CLOSED #534 rather than relabelling it pre-emptive config, which the reviewer offered. Its own argument for refusing entries for seven fields was that dead config reads as coverage - the exact class item 3 exists to remove. Adding two inert entries is that defect at a smaller size, and the principle does not exempt my own two fields.",
     "2026-09-10 23:16 IST MAIN WENT RED ON MY OWN #522 and that was the first work: PR #536. The gate was NOT lying - run 34506230714 genuinely ran the file and passed it, 9 tests, inside a 279-file suite. It passed because the branch was tested against a base WITHOUT 12-B: chooseListBinding calls normalizeCompanyNameForMatching, which data-persister only RE-EXPORTS from company-name-normalizer.ts, the file 12-B rewrites. 12-B merged, then 12-E, and the COMBINATION was never tested by anything.",
     "2026-09-10 23:16 IST I GOT THAT DIAGNOSIS WRONG ONCE AND TOLD BOTH PEERS SO. I checked data-persister.ts own git history, saw 12-B had not touched that file, and told them their causal story was wrong. It was right. Following the filename instead of the import is what fooled me, and it is the second time tonight a re-export or an alias has hidden a real dependency.",
-    "2026-09-10 23:16 IST ALSO CORRECTED IN #536: 12-E test header claimed four companies would stop showing GMP until their names align, 4 of 28 records. Probing the real normaliser shows all four fold to equal strings and bind. That figure was reasoned, never measured."
+    "2026-09-10 23:16 IST ALSO CORRECTED IN #536: 12-E test header claimed four companies would stop showing GMP until their names align, 4 of 28 records. Probing the real normaliser shows all four fold to equal strings and bind. That figure was reasoned, never measured.",
+    "2026-09-10 23:23 IST MAIN IS GREEN. #536 merged at 0164e707, all five checks green, verified against the CURRENT main head rather than assumed: merge-base equalled origin/main at merge time, and I re-ran the previously-failing test from a fresh main checkout afterwards - 11 passed where there had been 9. Both peers told; #532 and the migration freeze unblocked.",
+    "2026-09-10 23:23 IST ADOPTING THE PEER INTERIM RULE for the rest of this lane regardless of what the owner decides on branch protection: no merge unless every check is green against the CURRENT main head, re-run if main moved, and the merge line quotes the run URL. It costs one command and it would have caught this.",
+    "2026-09-10 23:23 IST THE MECHANISM, STATED PRECISELY because the shared picture had it slightly wrong: this was NOT a check that failed to run. Run 34506230714 genuinely ran the file and genuinely passed it, 9 tests inside a 279-file suite. It passed because at that base the country drop did not exist, so AMBIGUOUS was correct THERE. Two honest green PRs; the defect lives only in their combination. Only branch-up-to-date-before-merge closes that, and it is an owner call I have not taken."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
