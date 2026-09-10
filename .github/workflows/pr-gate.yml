@@ -197,7 +197,7 @@ jobs:
         # drift vs base) actually runs instead of printing its SKIPPED line;
         # the checkout step above fetches full history so that base commit is
         # present locally for the `git show`/`git diff` calls this makes.
-        run: node scripts/ci/check-design-traceability.mjs --base ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/check-design-traceability.mjs --base "${{ github.event.pull_request.base.sha }}"
 
       - name: Module boundaries self-test (item 20 / §7.6)
         # Mutation-proof: scripts/ci/tests/check-module-boundaries.test.mjs
