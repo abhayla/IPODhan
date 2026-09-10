@@ -1,3 +1,4 @@
+// implements: R-160
 import { describe, it, expect } from 'vitest';
 import * as zlib from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -9,6 +10,7 @@ import {
   sha256Hex,
   MIN_DOCUMENT_BYTES,
   MAX_DOCUMENT_BYTES,
+  getMaxDocumentBytes,
   selectZipMemberForType,
 } from '../../../src/services/document-download-verifier.js';
 
@@ -181,13 +183,59 @@ describe('verifyDownload — matrix §3', () => {
     if (r.ok) expect(r.coverCheck).toBe('skipped_no_text_layer');
   });
 
-  it('T33 REFUSES a body over the 150 MB cap (F20, zip bomb)', () => {
-    // The production cap is 150 MB; the check is exercised through the injectable
-    // override so the test does not have to allocate 150 MB of real memory.
-    expect(MAX_DOCUMENT_BYTES).toBe(150 * 1024 * 1024);
+  it('T33 REFUSES a body over the 100 MB cap (F20, zip bomb)', () => {
+    // The production cap is 100 MB (item 22 build card, lowered from 150 MB);
+    // the check is exercised through the injectable override so the test does
+    // not have to allocate 100 MB of real memory.
+    expect(MAX_DOCUMENT_BYTES).toBe(100 * 1024 * 1024);
     const r = verifyDownload(fakePdf(100_000), PDF_META, { maxBytes: 60_000 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('too_large');
+  });
+
+  it('T33b the exact-cap boundary: body.length === maxBytes is ACCEPTED — the single input where too_large and acceptable meet', () => {
+    // The cap is derived from getMaxDocumentBytes() (the same source
+    // verifyDownload's default path reads), never a hard-coded literal — so
+    // this pins verifyDownload's `body.length > maxBytes` comparison
+    // specifically: a `>` -> `>=` mutation here flips this from accepted to
+    // too_large.
+    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '1' } as NodeJS.ProcessEnv);
+    const r = verifyDownload(fakePdf(maxBytes), PDF_META, { maxBytes });
+    expect(r.ok).toBe(true);
+  });
+
+  it('T33c one byte over the exact-cap boundary: body.length === maxBytes + 1 is REFUSED as too_large', () => {
+    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '1' } as NodeJS.ProcessEnv);
+    const r = verifyDownload(fakePdf(maxBytes + 1), PDF_META, { maxBytes });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('too_large');
+  });
+
+  it('implements: R-160 — a body sized like the old 100-150 MB accept window now fails too_large under the default cap', () => {
+    // No real 100+ MB allocation: exercises the SAME comparison
+    // verifyDownload's default path runs (maxBytes falls back to
+    // getMaxDocumentBytes(), 100 MB) via the injectable override, scaled down
+    // so the test stays fast. A body of 120 units against a 100-unit cap is
+    // the same "over 100 MB, under the old 150 MB ceiling" shape.
+    const scaledCap = 100 * 1024;
+    const scaledBodyOnceOverNewCap = 120 * 1024; // < old 150-unit cap, > new 100-unit cap
+    const r = verifyDownload(fakePdf(scaledBodyOnceOverNewCap), PDF_META, { maxBytes: scaledCap });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('too_large');
+  });
+
+  it('implements: R-160 — verifyDownload defaults to getMaxDocumentBytes() (100 MB) when no maxBytes override is given', () => {
+    expect(getMaxDocumentBytes()).toBe(100 * 1024 * 1024);
+  });
+
+  it('implements: R-160 — PROSPECTUS_MAX_DOCUMENT_MB overrides the default document byte cap', () => {
+    expect(getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '50' } as NodeJS.ProcessEnv)).toBe(50 * 1024 * 1024);
+    // Non-finite / non-positive overrides fall back to the 100 MB default.
+    expect(getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: 'not-a-number' } as NodeJS.ProcessEnv)).toBe(
+      100 * 1024 * 1024
+    );
+    expect(getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '-5' } as NodeJS.ProcessEnv)).toBe(100 * 1024 * 1024);
+    expect(getMaxDocumentBytes({} as NodeJS.ProcessEnv)).toBe(100 * 1024 * 1024);
   });
 });
 

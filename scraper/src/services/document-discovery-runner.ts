@@ -39,7 +39,13 @@ import {
 import { parseBseBoard, resolveBseBoardRow, extractBseCoreRow, type BseBoardRow } from './bse-ipo-board.js';
 import { parseBseParties } from './bse-party-parser.js';
 import { parseNseLeadManagers } from './nse-party-parser.js';
-import { verifyDownload, isVerifyFailure, type VerifyResult } from './document-download-verifier.js';
+import {
+  verifyDownload,
+  isVerifyFailure,
+  getMaxDocumentBytes,
+  type VerifyResult,
+} from './document-download-verifier.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { storeDocument, getStoreDir } from './document-store.js';
 import { extractCoverText as extractCoverTextFromPdf } from './pdf-cover-text.js';
 import {
@@ -605,6 +611,42 @@ export interface IpoRunResult {
 // The default fetcher
 // ---------------------------------------------------------------------------
 
+/**
+ * Reads `body` (a whatwg `ReadableStream<Uint8Array>`), counting bytes as
+ * chunks arrive and cancelling the stream the moment the running total
+ * exceeds `maxBytes` — so an oversized response never lands in memory in
+ * full. Counts BYTES, not chunks (a response delivered as many small chunks
+ * that together exceed the cap must still abort). Returns `null` when the
+ * cap was exceeded (caller maps this to the same status-0 transport-failure
+ * sentinel a timeout returns); otherwise the fully-read `Buffer`.
+ */
+async function readStreamWithCap(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+  controller: AbortController
+): Promise<Buffer | null> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        controller.abort();
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    reader.releaseLock?.();
+  }
+}
+
 /** A real `fetch`-backed HttpFetcher. Never throws; a failure is status 0. */
 export const defaultFetcher: HttpFetcher = async (url, init) => {
   const controller = new AbortController();
@@ -616,7 +658,26 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
       body: init.body,
       signal: controller.signal,
     });
-    const body = Buffer.from(await res.arrayBuffer());
+
+    // ENABLE_DOWNLOAD_STREAMING_CAP OFF (default): byte-identical to the
+    // pre-existing buffer-then-check path — no streaming, no cap here.
+    if (!FEATURE_FLAGS.ENABLE_DOWNLOAD_STREAMING_CAP || !res.body) {
+      const body = Buffer.from(await res.arrayBuffer());
+      return {
+        status: res.status,
+        contentType: res.headers.get('content-type'),
+        body,
+        url: res.url || url,
+      };
+    }
+
+    const body = await readStreamWithCap(res.body, getMaxDocumentBytes(), controller);
+    if (body === null) {
+      // Over the cap — the SAME transport-failure shape a timeout returns
+      // (see HttpFetcher's contract above), so no caller needs a new
+      // branch for "too big" versus "timed out".
+      return { status: 0, contentType: null, body: Buffer.alloc(0), url };
+    }
     return {
       status: res.status,
       contentType: res.headers.get('content-type'),
