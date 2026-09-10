@@ -261,6 +261,17 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_UPCOMING_DISCOVERY_RESERVATION: process.env.ENABLE_UPCOMING_DISCOVERY_RESERVATION === 'true',
 
+  /**
+   * Item 22 slice 2: gates `defaultFetcher`'s streaming rewrite
+   * (`document-discovery-runner.ts`) — counts bytes as they arrive and
+   * aborts once the running total exceeds the document byte cap, instead of
+   * buffering the whole response into memory before checking its size.
+   * Default OFF until proven against a real large fixture in staging (see
+   * the item-22 build card's Staging proof section); flag OFF is
+   * byte-identical to the pre-existing buffer-then-check path.
+   */
+  ENABLE_DOWNLOAD_STREAMING_CAP: process.env.ENABLE_DOWNLOAD_STREAMING_CAP === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
   // T-297 D9 / #193: this file is the SSOT for which flags gate live logic
   // in prod. `// LIVE-GATE` on a *_PERCENTAGE field and `// PROD-REQUIRED-TRUE`
