@@ -374,8 +374,42 @@
     "item-12": {
       "item": 12,
       "card": "docs/design/build-cards/item-12-name-normaliser-and-duplicate-detection.md",
-      "status": "PENDING",
-      "slices": [],
+      "status": "BUILDING",
+      "slices": [
+        {
+          "id": "12-A",
+          "status": "BUILT_HELD",
+          "tier": "B",
+          "commit": "e5feea5c",
+          "branch": "feat/pm-c-item12-sA-single-company-identity-fold (pushed, no PR)",
+          "lines": "365 added / 10 deleted",
+          "title": "one company-identity fold, proven zero-false-merge on real names"
+        },
+        {
+          "id": "12-B",
+          "status": "PLANNED",
+          "tier": "A",
+          "title": "identity re-keyed - function, SQL twin, 531-row recompute, duplicate re-scan, TS-vs-SQL agreement test, one PR"
+        },
+        {
+          "id": "12-C",
+          "status": "PLANNED",
+          "tier": "A",
+          "title": "repair tool for existing duplicate rows, own dry-run evidence"
+        },
+        {
+          "id": "12-D",
+          "status": "PLANNED",
+          "tier": "A",
+          "title": "one row per offering, duplicate detection at discovery"
+        },
+        {
+          "id": "12-E",
+          "status": "PLANNED",
+          "tier": "A",
+          "title": "same identity rule in the grey-market source"
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
@@ -542,6 +576,29 @@
         "whatTheThirdIsNot": "normalizeCompanyNameForMatching (company-name-normalizer.ts:76) is NOT a third copy. It is a different function: it keeps SPACES where the fold strips them, its suffix chain is END-ANCHORED rather than a global word strip, and its word list differs. compactCompanyNameKey (:159) is a one-line wrapper over it, not a fold copy either.",
         "theRealFinding": "Collapsing the binding normaliser into the fold would violate a DOCUMENTED decision, not just miscount. The comment above foldCompanyName says in as many words that it is kept independent of normalizeCompanyNameForMatching so that a future change to the normaliser does not silently change what the repair tool considers the same company. 12-S2 is the slice that changes the normaliser. If 12-S1 had merged them, 12-S2 would have silently re-scoped a data-repair tool.",
         "correctedScope": "12-S1 is coherent once the count is fixed: create company-identity-fold.ts as the single TS home, have duplicate-ipo-merge.ts re-export it with its body deleted (one real collapse), and leave the .mjs copy in place - it is a plain-node script that cannot import TypeScript, which the plan itself acknowledges - guarded by a parity test over a 20-name fixture. Two implementations, one collapsed, one kept and guarded."
+      },
+      "claimedAt": "2026-09-10 19:45 IST",
+      "slice12A": {
+        "at": "2026-09-10 19:45 IST",
+        "commit": "e5feea5c",
+        "tier": "B",
+        "size": "365 added / 10 deleted (band 250-400)",
+        "whatItIs": "An EXTRACTION, not a behaviour change. The fold body moved verbatim to packages/shared/src/utils/company-identity-fold.ts; duplicate-ipo-merge.ts keeps foldCompanyName as an alias to it (same function, not a wrapper); the .mjs keeps its hand copy because a plain-node script cannot import TypeScript, now guarded by a parity test rather than by trust.",
+        "proofs": {
+          "redThenGreen": "Unit test failed naming ./company-identity-fold with the module moved aside; 5/5 green restored. The FIRST red run was a FALSE red - the worktree had no node_modules, so the failure was vitest itself. Linked modules and re-established red honestly rather than bank the first result.",
+          "preExistingRegression": "scraper/tests/unit/duplicate-ipo-merge.test.ts, 28 tests, authored by someone else, passes UNCHANGED - the extraction proven behaviour-preserving by a test I did not write.",
+          "suites": "packages/shared 17 files / 270 tests green; tsc --noEmit clean; require-repair-tool-module exit 0.",
+          "mutation": "Adding industries to the .mjs word list ONLY turns the parity test red, naming the diverging pair. Restored from .bak; git confirms byte-identical to HEAD; green again. My FIRST mutation attempt silently failed to apply - sed did not match - and the resulting pass proved nothing. Caught by diffing before believing it."
+        },
+        "realDataProof": {
+          "how": "scripts/audit/fold-collision-report.mjs, read-only, default_transaction_read_only proven per connection before any query, zero writes, discrete DATABASE_* parts and never a DATABASE_URL.",
+          "ipodhan": "333 named rows, 333 distinct identities, ZERO collision groups.",
+          "ipodhan_staging": "376 named rows, 356 distinct identities, 3 collision groups.",
+          "verdict": "ZERO FALSE MERGES across 709 real names. All three staging groups are genuine same-company duplicates reported BY NAME not as a count (signal-ownership R1): the ARCIL pair, H.R.Hygiene Products (4 rows), Shree Balaji (Mala) Textiles (5 rows)."
+        },
+        "sideFinding": "Staging carries duplicate IPO rows production does not - 3 groups, 11 rows, slugs ending -o, -p, -lt, the trailing status-code artefacts of issue #16. A real data defect for item 12 later slices, NOT a fold problem, and the concrete case 12-C now has to repair.",
+        "wiring": "The unit test needs none - pr-gate runs packages/shared vitest directory-wide at line 313. The parity test IS individually listed, so it was added to pr-gate.yml INSIDE the Node 22 window and before the Node 20 restore: it uses erasable-TS type stripping, and on Node 20 the SSOT import throws and it fails loud by design. Placement is load-bearing.",
+        "detectionGate": "Does not fire - no file here is under scraper/src/services, scraper/src/scrapers, field-priority-matrix.ts or scraper/scripts/*.py. No declaration needed and none claimed."
       }
     },
     "item-03": {
@@ -800,7 +857,11 @@
     "2026-09-10 19:22 IST ON THE GOAL EVALUATOR, answering only what I can actually see: I cannot see a goal_status field at all and will not report a met=true or a time I cannot observe. What I DID see was a Stop hook keyed on the bare contract path claiming that file was never created. That corroborates the mechanism lane A diagnosed - a bare path used as the condition - but with the OPPOSITE verdict. Lane A got met=true; lane C got not-met, the evaluator treating the input contract as an output it should have produced. Same cause, opposite readings.",
     "2026-09-10 19:33 IST 12-A PREMISE CORRECTED BEFORE BUILDING. The plan says 12-S1 collapses THREE copies of the fold. There are TWO: foldCompanyName at duplicate-ipo-merge.ts:26 and foldName at duplicate-ipo-rows.mjs:47, logically identical.",
     "2026-09-10 19:33 IST AND THE MISCOUNT WAS LOAD-BEARING, which is why it was worth checking rather than building past. The plausible third - normalizeCompanyNameForMatching - is a genuinely different function: spaced key not compact, end-anchored suffix chain not a global word strip, different word list. The comment above foldCompanyName explicitly says it is kept INDEPENDENT of that normaliser so a change there does not silently change what the repair tool treats as the same company. 12-S2 is the slice that changes that normaliser. Collapsing them in 12-S1 would have made 12-S2 silently re-scope a data-repair tool.",
-    "2026-09-10 19:33 IST CORRECTED 12-S1 SCOPE: create company-identity-fold.ts as the single TS home; duplicate-ipo-merge.ts re-exports it with its body deleted (the one real collapse); the .mjs keeps its copy because a plain-node script cannot import TypeScript - which the plan itself acknowledges - guarded by a parity test over a 20-name fixture."
+    "2026-09-10 19:33 IST CORRECTED 12-S1 SCOPE: create company-identity-fold.ts as the single TS home; duplicate-ipo-merge.ts re-exports it with its body deleted (the one real collapse); the .mjs keeps its copy because a plain-node script cannot import TypeScript - which the plan itself acknowledges - guarded by a parity test over a 20-name fixture.",
+    "2026-09-10 19:45 IST 12-A BUILT, PROVEN AND HELD at e5feea5c. Branch pushed, no pull request opened. 365 added / 10 deleted, in band.",
+    "2026-09-10 19:45 IST 12-A REAL-DATA PROOF, the thing that matters for a fold feeding a row-deleting repair: ZERO false merges across 709 real company names. Production 333 rows / 333 distinct identities / zero collisions. Staging 376 / 356 / three groups, all three genuine same-company duplicates listed by name - ARCIL, H.R.Hygiene Products, Shree Balaji Mala Textiles.",
+    "2026-09-10 19:45 IST 12-A SIDE FINDING: staging carries duplicate IPO rows production does not - 3 groups, 11 rows, slugs ending -o, -p, -lt, the status-code artefacts of issue #16. A real data defect for later item 12 slices, not a fold problem. It is the concrete case 12-C must repair.",
+    "2026-09-10 19:45 IST TWO FALSE RESULTS I CAUGHT IN MY OWN WORK ON 12-A, both the same shape - a green that meant nothing. The initial RED was false: the worktree had no node_modules, so the failure was vitest missing, not my module missing. And my first mutation silently failed to apply because the sed pattern did not match, so the parity test passed and proved nothing. Caught only by diffing before believing the pass. A test result is evidence only once the change you think you made is proven to have landed."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
