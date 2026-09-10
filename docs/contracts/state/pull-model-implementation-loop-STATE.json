@@ -471,11 +471,14 @@
         },
         {
           "k": "s16",
-          "status": "PLANNED",
+          "status": "BUILT-HELD-NO-PR",
           "tier": "A",
           "pr": null,
-          "sha": null,
-          "title": "move the Next build cache out of the release (per-slot, under shared/)"
+          "sha": "d15bfd10",
+          "title": "move the Next build cache out of the release (per-slot, under shared/)",
+          "branch": "perf/pm-item01-s16-next-cache-out-of-release",
+          "blockedBy": "s12. MEASURED, not assumed: s16 merges CLEAN against main as it is now (merge-tree exit 0) and CONFLICTS against a simulated post-s12 main (exit 1). Both slices edit scripts/deploy-linux.sh AND scripts/tests/deploy-linux.test.sh. So s16's PR is held until s12 merges, then rebased - opening it now would show reviewers a diff that will not apply.",
+          "owedProof": "The rm -rf symlink NON-DESCENT property is NOT proven locally: this Windows box has no native symlinks (ln -s copies; MSYS=winsymlinks:nativestrict returns Operation not permitted), so the local case proves only that the target sits outside the release tree. The strong claim runs on Linux CI. The test PRINTS which claim it made rather than letting a weaker pass read as the stronger one."
         },
         {
           "k": "s17",
