@@ -738,3 +738,24 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   **What is needed from you: one thing, and not today.** A practice run of undoing a release, when the
   download-safety item closes. Two pieces are built and waiting for the daily CI allowance to reset at
   midnight; the rest waits on the test server accepting new code, which another lane is fixing.
+
+- 2026-09-10 18:47 IST — **Something does need you now, and it is urgent: the server's disk is full.**
+  96GB of 96GB used, 788MB free. That box serves the live site, so this is not only a
+  "we cannot deploy" problem — a server with no free disk can stop serving, fail to write logs, and
+  corrupt what it is writing. Another lane found it; I checked it myself rather than take their word.
+  **Item 20 is unchanged at 67% (4 of 6) and item 22 at 3 of 7.** Nothing merged, nothing pushed, and
+  nothing will be until the disk is cleared: every merge creates another 3.1GB folder on that same
+  full disk. A reader of ipodhan.com would notice nothing yet — the site is still up.
+  **What went wrong is worth knowing, because we have a mechanism for exactly this and it could not
+  have helped.** The weekly disk clean-up job is installed and does work: it last ran on Sunday
+  6 September at 04:17 and reported 56% used, 43GB free. In the four days since, roughly 42GB was
+  eaten, most of it today, because a failed deploy leaves its 3.1GB folder behind — the clean-up only
+  runs after a deploy SUCCEEDS. Twelve failures today, twelve folders.
+  The deeper problem is the warning. Your rule set warnings at 70% and 80%. The disk crossed both of
+  those this week and nothing told anyone, because the only thing that checks the number is the weekly
+  job itself — so between Sundays, the threshold is not being watched at all. A warning that can only
+  fire once a week cannot catch something that fills the disk in a day.
+  **What is needed from you: the clean-up itself.** Deleting files on the live server is your call,
+  not mine, and another lane is sending you the exact command. Two follow-up fixes belong in our work,
+  not yours: prune the old folder when a deploy FAILS, not only when it succeeds; and check the
+  number daily rather than weekly.
