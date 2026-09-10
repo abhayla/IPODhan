@@ -470,6 +470,39 @@ their own column index, so a header is reconstructed by joining the header rows 
    PRASOLCHEM. The section locator (slice 1) narrows the page; the table still has to be chosen by
    its header row, never by index.
 
+### CORRECTION, same session: cells are necessary but NOT sufficient
+
+I wrote the section above after measuring TWO issuers. Extending to the other two broke it, which is
+the third time on this card that a conclusion from two samples did not survive the third.
+
+**On Kanohar, pdfplumber returns the peer table with its characters REVERSED.**
+
+```
+['rep Rs( VAN', ')erahs ytiuqe', ... '90.05', 'sreep detsiL', '65.161,1']
+```
+
+`sreep detsiL` is `Listed peers`. `65.161,1` is `1,161.56`. The table is found - 11x12, correctly
+column-aligned - and every cell is mirrored, so `Hitachi` is stored as `ihcatiH` and no search for a
+peer name finds it.
+
+Measured, so nobody re-diagnoses it: the page is **not rotated** (`/Rotate` absent, pdfplumber
+`rotation = 0`, portrait mediabox), and `ihcatiH` **is** present in pdfplumber's text. The PDF draws
+its glyphs in reverse order; pdfplumber preserves drawing order while pypdf reorders by position. On
+the same page pypdf yields 4,815 characters including `Hitachi`; pdfplumber yields 4,673 without it.
+The two libraries disagree about the CONTENT, not merely the layout.
+
+So the rule for 8a-2 is:
+
+| Source | Column mapping | Content |
+|---|---|---|
+| text layer (pypdf) | impossible - headers unsegmentable | correct |
+| cells (pdfplumber) | works - column-aligned | correct on 3 of 4; **mirrored on Kanohar** |
+
+**8a-2 must read cells AND detect reversal.** Detection is cheap and certain: the divider row reads
+`Listed peers` or `Peer Group:` in every issuer, so if the reversed spelling appears instead, reverse
+every cell before parsing. A parser that skips this does not fail loudly on Kanohar - it finds a
+table, maps no headers, and returns nothing, which reads as "this issuer has no peer table".
+
 ### What this means for the fixtures
 
 The five committed `.txt` fixtures stay — they are what the locator is tested on, and they carry the
