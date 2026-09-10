@@ -43,6 +43,15 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Docs-gate coverage self-test
+        # A change to the documentation must reach a gate that reads the
+        # documentation. Runs in BOTH workflows on purpose: editing pr-gate.yml
+        # is a CODE change, so it triggers pr-gate and not docs-gate - and that
+        # is exactly the edit most likely to put the documentation gates back
+        # behind a skip. A self-test that only runs on the PRs it is about is
+        # the same blind spot one level up.
+        run: node --test scripts/ci/tests/check-docs-gate-coverage.test.mjs
+
       - name: Build cards keep their promise
         # Run explicitly as well as via the design gate below, so a build-card
         # failure names itself in the step list instead of arriving as one line
