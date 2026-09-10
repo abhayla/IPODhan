@@ -40,10 +40,28 @@ name: Deploy Linux (Migration M3)
 # occasionally dropped, when Actions is under load. A missed tick means
 # staging is up to one more interval behind, never a wrong deploy — the
 # next tick still sees the same sha difference and deploys.
+#
+# PUSH TRIGGER RESTORED (s20, 2026-09-11). The `schedule` trigger above has
+# NEVER fired since it landed at 19:04:54Z (#549) — measured twice, an hour
+# apart, via `gh run list --workflow deploy-linux.yml`: 29 `push` events, 1
+# `workflow_dispatch`, zero `schedule`. Staging had no automatic deploy at
+# all for over an hour. `push` is restored below, exactly as it was before
+# #549 (including the `paths-ignore` list). The `schedule` block is KEPT,
+# not deleted: if GitHub does register it later it is harmless — the
+# `decide` job below compares staging's served sha against main's head, so
+# a late scheduled tick arriving after a push already deployed finds
+# `served == head` and skips. Two triggers, no double deploy.
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   schedule:
-    # Every 15 minutes. Best-effort, see the CADENCE note above.
+    # Every 15 minutes. Best-effort, see the CADENCE note above. Has never
+    # actually fired (see PUSH TRIGGER RESTORED above) — kept as a harmless
+    # backstop in case GitHub starts registering it.
     - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
@@ -57,17 +75,17 @@ on:
         type: string
         default: ''
 
-# One in-flight deploy per SLOT, exactly as before. This expression used to
-# read `github.event_name == 'push' && 'staging' || inputs.slot`; with the
-# push trigger gone that test is false on every event, and `inputs.slot` is
-# EMPTY on a schedule event, so the group would have collapsed to the bare
-# string "deploy-linux-" — a group a scheduled staging deploy shares with
-# nothing, meaning it would NOT serialise against a manual `slot=staging`
-# dispatch on the same box. Keying on `schedule` instead restores the old
-# semantics: schedule -> deploy-linux-staging, dispatch -> deploy-linux-
-# <the chosen slot>.
+# One in-flight deploy per SLOT. This expression used to read
+# `github.event_name == 'schedule' && 'staging' || inputs.slot` (from #549,
+# when `push` had been removed). With `push` restored (s20), a push event
+# is neither `schedule` nor a dispatch, so `inputs.slot` is EMPTY on a push
+# and the group would collapse to the bare string "deploy-linux-" — which
+# would NOT serialise a push deploy against a manual `slot=staging`
+# dispatch on the same box, a real double-deploy hazard. The expression now
+# treats BOTH `push` and `schedule` as staging: push -> deploy-linux-staging,
+# schedule -> deploy-linux-staging, dispatch -> deploy-linux-<chosen slot>.
 concurrency:
-  group: deploy-linux-${{ github.event_name == 'schedule' && 'staging' || inputs.slot }}
+  group: deploy-linux-${{ (github.event_name == 'push' || github.event_name == 'schedule') && 'staging' || inputs.slot }}
   cancel-in-progress: false # never cancel a deploy mid-flight (release dirs are immutable, but a cancelled npm/next build can leave a half-built release)
 
 jobs:
