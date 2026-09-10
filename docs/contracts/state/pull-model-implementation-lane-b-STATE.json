@@ -16,7 +16,7 @@
     "name": "ipodhan_test2",
     "drop": "OWED"
   },
-  "prGateRunsSpentByThisLane": 1,
+  "prGateRunsSpentByThisLane": 2,
   "laneCapPerDay": 25,
   "repoCeilingPerDay": 60,
   "repoStopAt": 50,
@@ -31,6 +31,13 @@
       "exposure": "none today: 16/16 pr-gate sites literal and present, 0 glob-shaped",
       "class": "CI steps that report success when they executed no tests",
       "owner": "unassigned - outside item 20's card; lane A said it will assign in the next contract delta"
+    },
+    {
+      "number": 463,
+      "at": "2026-09-10 12:38 IST",
+      "title": "module-boundary baseline: 10 type-only imports described as runtime calls; 41 edges are 40 file pairs; 4 of 14 unresolved specifiers unnamed",
+      "class": "a signal that reads as stronger or more alarming than what was measured",
+      "owner": "natural home is item 20 slice 4, which next touches check-module-boundaries.mjs"
     }
   ],
   "notes": [
@@ -66,9 +73,9 @@
         {
           "k": "s3",
           "title": "module-boundary import check (R-142..R-144)",
-          "status": "IN-REVIEW",
-          "pr": null,
-          "sha": "67cd210f",
+          "status": "MERGED",
+          "pr": 462,
+          "sha": "40889f8a",
           "tier": "A",
           "reviewRounds": 3,
           "reviewVerdict": "rounds 1-2 MERGE NO (vacuous gate, then blind resolver); round 3 fix hit targets exactly (471->14 unresolved, 2->83 cross-module) and surfaced 41 real violations, all baselined; FINAL review in flight"
@@ -83,10 +90,12 @@
         }
       ],
       "prs": [
-        460
+        460,
+        462
       ],
       "mergeShas": [
-        "6c31d995"
+        "6c31d995",
+        "40889f8a"
       ],
       "proof": {
         "status": "OWED",
