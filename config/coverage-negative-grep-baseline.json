@@ -1,5 +1,5 @@
 {
-  "$schema": "T-470 (issue #197) coverage-negative-grep ratchet baseline — same shape as web/.eslint-baseline-error-count.txt / config/write-ratchet-baseline.json: the gap list found on the day this check was wired in. Can only SHRINK. A NEW name not in this file fails the gate (regression). A baseline name that no longer shows as a gap (a test now covers it, or it moved to config/coverage-negative-grep-allowlist.json) also fails the gate until removed from here in the same PR — that is what makes 'shrink only' enforced instead of aspirational.",
+  "$schema": "T-470 (issue #197) coverage-negative-grep ratchet baseline \u2014 same shape as web/.eslint-baseline-error-count.txt / config/write-ratchet-baseline.json: the gap list found on the day this check was wired in. Can only SHRINK. A NEW name not in this file fails the gate (regression). A baseline name that no longer shows as a gap (a test now covers it, or it moved to config/coverage-negative-grep-allowlist.json) also fails the gate until removed from here in the same PR \u2014 that is what makes 'shrink only' enforced instead of aspirational.",
   "generatedOn": "2026-09-07",
   "generatedBy": "T-470",
   "web": [
@@ -36,9 +36,6 @@
     "profit_fy1",
     "profit_fy2",
     "profit_fy3",
-    "ebitdaFy2022",
-    "roe_percentage",
-    "roce_percentage",
-    "pb_ratio"
+    "ebitdaFy2022"
   ]
 }
