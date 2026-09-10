@@ -1858,3 +1858,27 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   than no baseline: they would train everyone to ignore the file.**
   This is the THIRD review round. The contract defers a slice that needs a fourth, so this verdict decides whether
   s3 merges or is set aside with its findings recorded.
+
+- **2026-09-10 12:38 IST [lane B] Item 20 slice s3 MERGED as `40889f8a` via PR #462, after THREE Tier A rounds. Item 20 at 50%.**
+  Final verdict merge YES on every axis the rounds had questioned: the six adversarial mutations are all caught
+  (revert the resolver, disable the cross-module floor, disable upward-edge detection, delete a live baseline entry,
+  fabricate one, reverse the layer order); the 41 baselined violations are REAL, seven of them opened and confirmed
+  line by line, and `scraper/src/utils/validators.ts` was read to establish the MAP is right rather than the code -
+  it holds zod schemas and `validateIPOData`/`sanitizeIpoWriteFields`, which is the design's `validation`, not
+  `extraction`; and the six pre-existing tests the fix touched are **intact**, exit codes unchanged, assertions added
+  and never removed, two of them strengthened - proved by mutating the behaviour each guards and confirming THAT
+  test turns red, not merely that the suite did.
+  Three MINORs went to issue **#463** rather than a fourth round, which the contract would have treated as a defer:
+  ten of the 41 entries are `import type` specifiers, erased at compile time, whose `why` claims a runtime call that
+  does not exist; edges are counted per import statement so the 41 are 40 distinct file pairs; and the 14 residual
+  unresolved specifiers print 10 identities plus "and 4 more" where R1 wants all 14 at that size. None touches
+  soundness - they are accuracy of what the gate SAYS, not of what it CATCHES - but a debt register that overstates
+  its debts is one people learn to ignore, which is why it is filed rather than dropped.
+  Merge hygiene held to the same bar as s1: 5/5 checks green, `mergeStateStatus=CLEAN`, file list exactly the four,
+  `state=MERGED` confirmed BEFORE the branch was deleted in a separate command, and the worktree removed only after
+  the diff to main was proved empty on all three of stdout, stderr and exit code - the DEFECT-B05 mechanism, applied
+  rather than remembered. `wt-rm.ps1` printed `tracked 4560 -> 4560, dirty 9 -> 9, deleted-on-disk 0`, and the main
+  checkout was re-verified independently afterwards.
+  Both merged checks confirmed present on `origin/main`: `check-design-traceability.mjs`, `check-module-boundaries.mjs`,
+  `module-map.json`, `config/module-boundary-baseline.json`. **Neither runs in CI yet** - slice 4 wires them, and
+  until it merges these are two good checks nobody executes on a pull request. That is the honest state.
