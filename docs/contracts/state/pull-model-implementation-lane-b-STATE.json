@@ -382,5 +382,12 @@
       "purge KEEPS the withdrawn and no_close_date arms as explicit cases with tests; dropping a live arm is a MAJOR",
       "migration slice bumps the stage-0 journalEntries fixture, confirms the journal entry is not future-dated, verifier diffs schema.ts against generated SQL"
     ]
-  }
+  },
+  "tickAllowlistExtras": [
+    "chrome",
+    "Code",
+    "ssh",
+    "WindowsTerminal",
+    "LockApp"
+  ]
 }
