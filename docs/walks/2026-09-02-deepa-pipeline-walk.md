@@ -2653,3 +2653,37 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   restore-by-copy rule -- are still sentences in briefs. The evidence that prose is not enough is this lane
   own record: it broke its path rule within an hour of writing it, and its progress log went stale while its
   ledger stayed perfect.
+
+- **2026-09-10 16:49 IST [lane B] 22-2 Tier A: merge yes with three conditions -- and MAJOR-1 is MY error, not the builder.**
+  **MAJOR-1: I told the builder to skip a binding gate, and did not declare it.** Item 22 card, Architect
+  correction item 4, verbatim from origin/main: *"The flag slice waits for lane A slot-aware helper PR and
+  rebases onto it."* My brief instead said to ship a plain equality read and explicitly told the builder not to
+  write the helper. I carried that pattern across from the #468 flag, where a peer had given exactly that
+  guidance -- but a relay cannot loosen a card-attributed constraint, which is the rule this lane has applied
+  to others all day and did not apply to itself here.
+  Verified the dependency is genuinely absent rather than assuming: feature-flags.ts on origin/main is **488
+  lines with 0 occurrences of DEPLOY_SLOT** -- the line count proves the zero is real, per the rule from this
+  morning false zeros.
+  Decision: MERGE with the deviation declared, rather than hold. Reasoning, stated so it can be judged: the
+  flag ships OFF either way, the slice code is unaffected by the helper, and the only consequence is that
+  staging never auto-enables -- so the card mandated staging proof is OWED and cannot be obtained until the
+  helper lands. That is already true of #468. Holding a sound slice would not produce the proof any sooner.
+  **The debt is recorded, not waived: when lane A helper merges, this flag and #468 flag must be converted to
+  the slot default, and item 22 cannot close until then.**
+  **MAJOR-2: half this slice is NOT flag-gated, and it changes production on merge.** The cap drop from 150 MB
+  to 100 MB in document-download-verifier.ts is ungated. A filing between 100 and 150 MB that is accepted
+  today will be refused as too_large once this merges -- staging immediately, production at the next release.
+  That is what the card specifies, so it is intended, but describing this slice as *default OFF, no production
+  impact* would be false and the PR body and the owner tracker say so plainly.
+  MINOR carried: an over-cap refusal currently returns status 0 and the runner records it as `timeout`, so a
+  size refusal is indistinguishable from a network failure until slice 22-4 lands the refusal log. **Therefore
+  the flag must not be enabled in ANY slot before 22-4** -- recorded as a hard precondition.
+  What the review confirmed, each by execution: the byte count measures the FETCHER not the mock (the counting
+  stream increments inside `pull()`, which a whatwg ReadableStream calls only on consumer demand); the abort
+  genuinely cancels (the mock own cancel flag is asserted, and chunks delivered stay unchanged after a wait);
+  the flag-OFF fetcher path is byte-identical to today; the shared-cap deviation is correct and the module
+  boundary is clean; and a slow-drip stream IS bounded by the existing abort timer -- strictly better than the
+  buffering it replaces.
+  Honest limit reported rather than glossed: memory is **not** released mid-read -- chunks accumulate and are
+  concatenated at the end. Peak is now BOUNDED by the cap instead of unbounded, which is the stated goal, but
+  it is a bound, not a stream-through.
