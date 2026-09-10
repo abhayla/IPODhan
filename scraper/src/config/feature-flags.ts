@@ -17,8 +17,83 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '..', '..', '.env') });
 
 /**
+ * Slot-aware feature-flag default (item 01 slice s5a).
+ *
+ * Resolves a flag's default from `DEPLOY_SLOT` so staging can default ON
+ * without anyone editing a server env file, while prod stays OFF with no
+ * action required:
+ * - `DEPLOY_SLOT=staging` and the env var is genuinely UNSET (`undefined`)
+ *   -> true
+ * - any other slot value, OR `DEPLOY_SLOT` unset/missing -> false (this is
+ *   the case that protects production — the safe answer is the fallback,
+ *   not something every slot has to opt into)
+ * - an explicit value on the flag's OWN env var always wins over the slot
+ *   default, in either direction (e.g. forcing a flag on for a one-off prod
+ *   test, or off on staging to isolate a regression)
+ *
+ * `undefined` vs explicitly-empty are NOT the same thing and must not be
+ * treated the same. `undefined` means the operator never set this var — that
+ * is the only case that falls through to the slot default. An explicit but
+ * EMPTY value (`FLAG=`, or whitespace-only) is what a deploy template
+ * produces when `FLAG=${SOMEVAR}` is written but `SOMEVAR` never expanded —
+ * a template bug, not an operator choosing "use the default". Silently
+ * turning that into ON on staging is the same silent-wrong-direction hazard
+ * an unrecognised spelling is, so it is treated exactly like one: warn and
+ * fail closed to `false`, never the slot default.
+ *
+ * Every OTHER flag in this file (the ENABLE_* assignments below) uses the
+ * strict `process.env.X === 'true'` convention — exact string, no other
+ * spelling recognised, no logging. This helper does NOT reuse that as-is:
+ * it is the one place an operator's raw env spelling decides which of TWO
+ * live defaults (staging-ON vs prod-OFF) a flag takes, so an unrecognised
+ * spelling is a real hazard in BOTH directions — `FLAG=0` on staging must
+ * not silently stay ON, and `FLAG=1`/`TRUE`/`yes` on prod must not silently
+ * fall through to OFF. Recognised spellings (case-insensitive, trimmed):
+ *   truthy: true, 1, yes, on
+ *   falsy:  false, 0, no, off
+ * Anything else — including empty/whitespace-only — is logged (flag name +
+ * raw value) and resolved to `false` — the fail-closed safe value, NEVER the
+ * slot default — so a typo (or an unexpanded template variable) is visible
+ * in the logs instead of silently picking a live behaviour.
+ * This widening is scoped to this opt-in helper only; the plain `=== 'true'`
+ * flags above are untouched.
+ */
+const SLOT_AWARE_TRUTHY = new Set(['true', '1', 'yes', 'on']);
+const SLOT_AWARE_FALSY = new Set(['false', '0', 'no', 'off']);
+
+export function slotAwareFlagDefault(envVarName: string): boolean {
+  const explicit = process.env[envVarName];
+  // Only a genuinely UNSET var (`undefined`) falls through to the slot
+  // default. An explicit empty string is handled below, identically to an
+  // unrecognised value — see the doc comment above.
+  if (explicit === undefined) {
+    return process.env.DEPLOY_SLOT === 'staging';
+  }
+  const normalized = explicit.trim().toLowerCase();
+  if (normalized === '') {
+    console.warn(
+      `slotAwareFlagDefault: ${envVarName} is explicitly set but empty — treating as unrecognised (fail-closed to false), not the slot default. This usually means a deploy-template variable (e.g. FLAG=\${SOMEVAR}) that did not expand — fix the template.`
+    );
+    return false;
+  }
+  if (SLOT_AWARE_TRUTHY.has(normalized)) return true;
+  if (SLOT_AWARE_FALSY.has(normalized)) return false;
+  console.warn(
+    `slotAwareFlagDefault: unrecognised value ${envVarName}=${explicit} — treating as false (fail-closed), not the slot default.`
+  );
+  return false;
+}
+
+/**
  * Feature flag configuration
- * All flags default to false/0 for safety
+ * All flags default to false/0 for safety.
+ *
+ * REVIEWED EXCEPTION (item 01 slice s5a, T-item01-s5a): a flag that explicitly
+ * reads its default via `slotAwareFlagDefault()` below may default ON for the
+ * `staging` deploy slot instead of false. This is opt-in per flag (nothing
+ * above is rewired by this slice) and the fallback for prod, local, and any
+ * unset/unknown slot is still false — the safety default this comment
+ * describes is unchanged for every flag that does not call the helper.
  */
 export const FEATURE_FLAGS = {
   // ==================== CORE FEATURES ====================

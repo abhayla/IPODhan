@@ -27,6 +27,18 @@ for safety". Percentage knobs MUST default to `'0'` via
 enforces 0–100 bounds at startup. New flags MUST follow this shape — never
 default-true, never inverted (`!== 'false'`) for a real capability.
 
+**Reviewed exception (item 01 slice s5a):** a flag MAY read its default via
+`slotAwareFlagDefault(envVarName)` (`scraper/src/config/feature-flags.ts` and
+its `web/lib/config/feature-flags.ts` mirror) instead of the plain
+`=== 'true'` shape above. That helper still resolves to `false` for prod, for
+local dev, and for any unset/unknown `DEPLOY_SLOT` — the ONLY slot it defaults
+`true` for is `staging`, and an explicit value on the flag's own env var
+always overrides the slot default in either direction. This is opt-in per
+flag (adopting it is a deliberate, reviewed choice for that one flag, the same
+class of decision as an owner §GATE below) and does not change clause (a)'s
+default for any flag that does not call it — plain `=== 'true'` flags are
+still required to default OFF exactly as before.
+
 ## (b) Land the pure core first; gate the live side as a §GATE no-op
 
 A new scraper capability MUST ship its deterministic "pure core" (parsing,

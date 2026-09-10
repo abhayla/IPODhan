@@ -457,12 +457,15 @@ fi
 # --- (not the script source) to a file, run the REAL (DRY_RUN=0) start path
 # --- against fixture release dirs, and assert TZ=UTC actually reached the
 # --- pm2 process — proving runtime behavior, not just the source text.
+# item 01 slice s5a: also records DEPLOY_SLOT the same way, so cases 9b/9c/9d
+# prove DEPLOY_SLOT reaches the pm2 process at runtime, not just that the
+# source line mentions it.
 fake_pm2_recorder() {
   local dir="$1"
   cat > "$dir/pm2" <<'EOSCRIPT'
 #!/usr/bin/env bash
 if [ "$1" = "start" ]; then
-  { printf 'ARGV: %s\n' "$*"; printf 'TZ=%s\n' "${TZ:-<unset>}"; } >> "$PM2_CALL_LOG"
+  { printf 'ARGV: %s\n' "$*"; printf 'TZ=%s\n' "${TZ:-<unset>}"; printf 'DEPLOY_SLOT=%s\n' "${DEPLOY_SLOT:-<unset>}"; } >> "$PM2_CALL_LOG"
 fi
 exit 0
 EOSCRIPT
@@ -499,18 +502,20 @@ else
     PM2_SCRAPER_APP="ipodhan-scraper"
     DEPLOY_WEB_INSTANCES=2
     PYTHON_BIN_PATH="/tmp/fake-venv-9b/bin/python"
+    SLOT="staging" # item 01 slice s5a: restart_pm2() reads $SLOT for DEPLOY_SLOT="$SLOT"
     PATH="$FAKEBIN9B:$PATH"
     export PM2_CALL_LOG="$CALLLOG9B"
     restart_pm2
   ) >/tmp/deploy-test-9b.log 2>&1
 
   TZ_COUNT9B="$(grep -c '^TZ=UTC$' "$CALLLOG9B" 2>/dev/null || echo 0)"
-  if [ "$TZ_COUNT9B" = "2" ] \
+  SLOT_COUNT9B="$(grep -c '^DEPLOY_SLOT=staging$' "$CALLLOG9B" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9B" = "2" ] && [ "$SLOT_COUNT9B" = "2" ] \
     && grep -q -- "--name ipodhan-web" "$CALLLOG9B" \
     && grep -q -- "--name ipodhan-scraper" "$CALLLOG9B"; then
-    pass "case 9b: restart_pm2() REAL (non-dry-run) path sets TZ=UTC on both the web and scraper pm2 start (deploy-linux.sh:530,537)"
+    pass "case 9b: restart_pm2() REAL (non-dry-run) path sets TZ=UTC and DEPLOY_SLOT on both the web and scraper pm2 start (deploy-linux.sh:530,537)"
   else
-    fail "case 9b: restart_pm2() REAL path did not set TZ=UTC on both real pm2 start invocations (tz_count=$TZ_COUNT9B)"
+    fail "case 9b: restart_pm2() REAL path did not set TZ=UTC/DEPLOY_SLOT on both real pm2 start invocations (tz_count=$TZ_COUNT9B, slot_count=$SLOT_COUNT9B)"
     cat "$CALLLOG9B" 2>/dev/null
     cat /tmp/deploy-test-9b.log
   fi
@@ -542,16 +547,18 @@ else
     SCRAPER_RESUME_TARGET="new"
     PM2_SCRAPER_APP="ipodhan-scraper"
     PYTHON_BIN_PATH="/tmp/fake-venv-9c/bin/python"
+    SLOT="staging" # item 01 slice s5a: resume_scraper() reads $SLOT for DEPLOY_SLOT="$SLOT"
     PATH="$FAKEBIN9C:$PATH"
     export PM2_CALL_LOG="$CALLLOG9C"
     resume_scraper
   ) >/tmp/deploy-test-9c.log 2>&1
 
   TZ_COUNT9C="$(grep -c '^TZ=UTC$' "$CALLLOG9C" 2>/dev/null || echo 0)"
-  if [ "$TZ_COUNT9C" = "1" ] && grep -q -- "--name ipodhan-scraper" "$CALLLOG9C"; then
-    pass "case 9c: resume_scraper() REAL (non-dry-run) path sets TZ=UTC on the scraper pm2 start (deploy-linux.sh:308)"
+  SLOT_COUNT9C="$(grep -c '^DEPLOY_SLOT=staging$' "$CALLLOG9C" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9C" = "1" ] && [ "$SLOT_COUNT9C" = "1" ] && grep -q -- "--name ipodhan-scraper" "$CALLLOG9C"; then
+    pass "case 9c: resume_scraper() REAL (non-dry-run) path sets TZ=UTC and DEPLOY_SLOT on the scraper pm2 start (deploy-linux.sh:308)"
   else
-    fail "case 9c: resume_scraper() REAL path did not set TZ=UTC on the scraper pm2 start (tz_count=$TZ_COUNT9C)"
+    fail "case 9c: resume_scraper() REAL path did not set TZ=UTC/DEPLOY_SLOT on the scraper pm2 start (tz_count=$TZ_COUNT9C, slot_count=$SLOT_COUNT9C)"
     cat "$CALLLOG9C" 2>/dev/null
     cat /tmp/deploy-test-9c.log
   fi
@@ -583,16 +590,18 @@ else
     PREVIOUS_RELEASE="$REL9D"
     PM2_WEB_APP="ipodhan-web"
     DEPLOY_WEB_INSTANCES=2
+    SLOT="staging" # item 01 slice s5a: rollback_start_web() reads $SLOT for DEPLOY_SLOT="$SLOT"
     PATH="$FAKEBIN9D:$PATH"
     export PM2_CALL_LOG="$CALLLOG9D"
     rollback_start_web
   ) >/tmp/deploy-test-9d.log 2>&1
 
   TZ_COUNT9D="$(grep -c '^TZ=UTC$' "$CALLLOG9D" 2>/dev/null || echo 0)"
-  if [ "$TZ_COUNT9D" = "1" ] && grep -q -- "--name ipodhan-web" "$CALLLOG9D"; then
-    pass "case 9d: rollback_start_web() REAL (non-dry-run) path sets TZ=UTC on the rollback web pm2 start"
+  SLOT_COUNT9D="$(grep -c '^DEPLOY_SLOT=staging$' "$CALLLOG9D" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9D" = "1" ] && [ "$SLOT_COUNT9D" = "1" ] && grep -q -- "--name ipodhan-web" "$CALLLOG9D"; then
+    pass "case 9d: rollback_start_web() REAL (non-dry-run) path sets TZ=UTC and DEPLOY_SLOT on the rollback web pm2 start"
   else
-    fail "case 9d: rollback_start_web() REAL path did not set TZ=UTC on the rollback web pm2 start (tz_count=$TZ_COUNT9D)"
+    fail "case 9d: rollback_start_web() REAL path did not set TZ=UTC/DEPLOY_SLOT on the rollback web pm2 start (tz_count=$TZ_COUNT9D, slot_count=$SLOT_COUNT9D)"
     cat "$CALLLOG9D" 2>/dev/null
     cat /tmp/deploy-test-9d.log
   fi
