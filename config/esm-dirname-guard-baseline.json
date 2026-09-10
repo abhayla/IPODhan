@@ -1,0 +1,9 @@
+{
+  "_comment": "Shrink-only baseline for scraper/tests/unit/config/esm-dirname-guard.test.ts (#493). A file here is a KNOWN offender: it references bare __dirname/__filename without defining it via fileURLToPath(import.meta.url) in an ESM package. A NEW offender not listed here fails the gate (regression). A listed file that no longer offends (fixed) also fails the gate until removed from here in the same PR — that is what makes 'shrink only' enforced instead of aspirational, same shape as config/coverage-negative-grep-baseline.json and config/module-boundary-baseline.json.",
+  "files": [
+    {
+      "path": "scraper/src/config/download-allowlist-loader.ts",
+      "why": "lane B's PR #487 merged this file using bare __dirname; out of lane C's (#493) scope to fix. Remove this entry in the same PR that fixes it — the test enforces that."
+    }
+  ]
+}
