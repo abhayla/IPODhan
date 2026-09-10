@@ -231,6 +231,16 @@ export const KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT: { tableName: string; constrain
   { tableName: 'promoters', constraintName: 'unique_promoters_ipo_id_normalized_name' },
   { tableName: 'peer_companies', constraintName: 'unique_peer_companies_ipo_id_normalized_name' },
   { tableName: 'ipo_intermediaries', constraintName: 'unique_ipo_intermediaries_ipo_id_role_normalized_name' },
+  // Item 1 slice s6: the risk-factor re-key from positional `seq` to
+  // `heading_hash`. schema.ts declares this constraint, but its DDL lives in
+  // web/drizzle/migrations/_gated/E2_risk_factor_heading_hash_key.sql and is
+  // deliberately OUT of meta/_journal.json - a journaled DROP+ADD would run
+  // unattended against ~2130 rows still holding the '' default and fail on the
+  // second one, killing the release mid-deploy. So a journal-replayed database
+  // legitimately lacks it until an operator applies the gated file per slot
+  // (docs/ops/prod-ops-recipes.md section 8d). Same reason as the three E1
+  // entries above. Remove this entry once every slot has E2 applied.
+  { tableName: 'ipo_risk_factors', constraintName: 'unique_ipo_risk_factors_ipo_heading_hash' },
 ];
 
 export function isKnownGatedUniqueConstraintDrift(d: Drift): boolean {

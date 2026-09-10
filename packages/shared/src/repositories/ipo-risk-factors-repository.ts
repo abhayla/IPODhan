@@ -22,6 +22,7 @@ import { headingHashForRiskFactor } from '../utils/risk-factor-heading-key';
 import type * as schema from '../db/schema';
 import { CacheTTL } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
+import { logger } from '../logger';
 
 export interface IpoRiskFactorRow {
   id: string;
@@ -131,6 +132,28 @@ export class IpoRiskFactorsRepository extends BaseRepository {
    */
   async replaceForIpo(ipoId: string, rows: IpoRiskFactorInsert[]): Promise<IpoRiskFactorRow[]> {
     const prepared = prepareRiskFactorRows(rows);
+
+    // A dropped row is a risk factor that will NOT appear on the live page.
+    // `prepareRiskFactorRows` counted them and the counts were then discarded,
+    // so rows could vanish with no log line at all (Tier A review, 2026-09-10).
+    // signal-ownership R1: a count is not a reading - the headings are named,
+    // truncated, so the next reader can act on the line instead of re-querying.
+    if (prepared.droppedDuplicateKey.length > 0 || prepared.droppedNoHeading > 0) {
+      logger.warn(
+        {
+          ipoId,
+          submitted: rows.length,
+          kept: prepared.rows.length,
+          droppedDuplicateKey: prepared.droppedDuplicateKey.length,
+          droppedNoHeading: prepared.droppedNoHeading,
+          droppedHeadings: prepared.droppedDuplicateKey.map((h) =>
+            h.length > 120 ? `${h.slice(0, 120)}...` : h
+          ),
+        },
+        'ipo_risk_factors: dropped rows before insert (duplicate heading key / no heading)'
+      );
+    }
+
     try {
       const result = await this.db.transaction(async (tx) => {
         await tx.delete(ipoRiskFactors).where(eq(ipoRiskFactors.ipoId, ipoId));

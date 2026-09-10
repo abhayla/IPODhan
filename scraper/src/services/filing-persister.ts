@@ -1491,6 +1491,14 @@ export async function persistFilingExtraction(
     if (heading === '') continue;
     riskRows.push({
       ipoId,
+      // KNOWN LIMITATION (item 1 slice s6, Tier A review 2026-09-10): the
+      // heading is truncated to the column's 500 chars BEFORE
+      // `headingHashForRiskFactor` sees it, so two risk factors whose headings
+      // share their first 500 characters collapse to one row key and the second
+      // is dropped as a duplicate. Real risk-factor headings are one line, so
+      // this has never fired; recorded rather than changed because hashing the
+      // untruncated heading would re-key every existing row - a migration, not
+      // a one-line edit.
       heading: heading.slice(0, 500),
       body: typeof item?.body === 'string' && item.body.trim() !== '' ? item.body : null,
       kpis: item?.kpis ?? null,

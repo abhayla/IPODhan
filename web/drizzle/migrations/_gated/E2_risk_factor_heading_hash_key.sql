@@ -27,13 +27,30 @@
 -- IF THE PRECHECK IS NON-ZERO: do NOT apply this file. A non-zero first count
 -- means the backfill (step 2) has not finished on this slot; a non-zero second
 -- count means the repair (step 3) has not. Go back to that step, re-run it with
--- --apply, and re-run the precheck. Applying first hits a duplicate-key
+-- --apply, and re-run the precheck.
+--
+-- ESCAPE CONDITION (do not loop forever). Two states are NOT fixable by
+-- re-running, and re-running them loops without end:
+--   (a) a row whose `heading` is whitespace-only. `headingHashForRiskFactor`
+--       returns null for it by design (no content, no identity), so the
+--       backfill reports it under `nullKey` and NEVER writes a hash - the
+--       first count stays non-zero however many times you re-run. Compare the
+--       first count with the backfill's `nullKey` length: if they are equal,
+--       the backfill IS finished; fix or delete those rows by hand, then
+--       re-run the precheck. Zero such rows on either slot on 2026-09-10.
+--   (b) a group the repair tool reported as CONFLICT (rows carrying differing
+--       non-null body/kpis). The tool deliberately refuses those and exits
+--       non-zero; the second count stays non-zero until a human resolves them.
+-- In both cases the fix is a human decision, not another --apply. Applying first hits a duplicate-key
 -- violation on the very first ADD CONSTRAINT and the migration dies mid-flight
 -- — the exact hazard the column-then-backfill-then-constraint order exists to
 -- avoid (E1 header, slice s2).
 --
--- MEASURED COLLISIONS (ipodhan_staging, 2026-09-10, 2748 rows / 34 IPOs):
--- 7 groups, 21 rows, 14 surplus, 6 IPOs — prasol-chemicals-ltd (x6),
+-- MEASURED COLLISIONS, PER SLOT (2026-09-10). Row counts differ per slot -
+-- quote the slot with every number.
+--
+-- STAGING (ipodhan_staging): 2748 rows / 34 IPOs; 7 groups, 21 rows,
+-- 14 surplus, 6 IPOs — prasol-chemicals-ltd (x6),
 -- hy-tech-engineers-ltd (x5), pranav-constructions-ltd, ss-retail-ltd,
 -- sumax-engineering-ltd, vinod-texworld-ltd (x2, twice). Every group is
 -- byte-identical rows differing ONLY in `seq`: distinct_bodies=1,
@@ -42,6 +59,12 @@
 -- legitimately holding two roles and a 2-column key would have rejected
 -- correct data. The duplicate emission itself is an extractor defect, filed
 -- separately — the write path's de-duplication is a guard, not the cure.
+--
+-- PRODUCTION (ipodhan): 2440 rows; 7 groups, 17 surplus rows. Same shape -
+-- zero lossy groups (no group in which a row carrying content would be the
+-- one deleted). The staging and production numbers are NOT interchangeable;
+-- the "~2130 rows" figure this file used to carry was a staging-only estimate
+-- and understated production by ~300 rows.
 --
 -- WHY DROP DEFAULT IS BUNDLED HERE (same reason as E1): the `''` default is
 -- what makes `headingHash` omittable in Drizzle's Insert type. Today no caller
