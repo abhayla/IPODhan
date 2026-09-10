@@ -310,9 +310,12 @@
   },
   "prGate": {
     "laneCRunsToday": 7,
-    "repoRunsTodayAtPreflight": 17,
-    "laneCDailyCap": 15,
-    "repoStopAt": 50
+    "laneCPRsToday": 6,
+    "repoRunsToday": 48,
+    "repoStopAt": 50,
+    "laneCCap": 15,
+    "measuredAt": "2026-09-10 17:45 IST",
+    "holdUntil": "00:00 IST 2026-09-11"
   },
   "notes": [
     "2026-09-10 13:12 IST preflight: 7 of 8 preconditions pass. (a) origin/main green. (f) repo pr-gate runs this IST day = 14, well under the 50 stop. (g) scripts/ops/test-db-lifecycle.mjs confirmed on origin/main.",
@@ -445,7 +448,10 @@
     "2026-09-10 17:38 IST 2-S5 DISPATCHED (seed the manifest for item 3 16 Group-C fields). 2-S4 stays BLOCKED: it imports field-manifest-loader at process start and lane B #496, which fixes that loader ESM defect, is still OPEN - importing a still-broken loader is exactly the crash 2-S4 would cause.",
     "2026-09-10 17:38 IST PLAN CORRECTION I CAUGHT BY RUNNING IT, and it would have burned a worker budget: the pre-made plan says to run node docs/design/field-source-resolution.spec.mjs and diff its OUTPUT. I ran it - exit 0, ZERO bytes printed. It is a MODULE exporting F, RESOLVE(f,type), renderA1/A2 and STATS, not a script, and docs/design/check-design-consistency.mjs already consumes it. An exit 0 on no output is precisely the #461 trap. The brief now points the builder at the real exports and at the existing consumer to copy, instead of at stdout that does not exist.",
     "2026-09-10 17:38 IST STRAY PROCESS OF MY OWN, stopped and confirmed: a repo-wide grep I ran timed out into the background and left two grep.exe processes. Killed by PID, re-checked, zero remaining. My own standing rule caught my own violation - and the deeper fix is the one already in the briefs: scope greps to a directory rather than the repo root, which is why that rule exists.",
-    "2026-09-10 17:40 IST 2-S3c MERGED as 4d28b4db via PR #499. FOUR of item 2 seven slices are now on main: 2-S1 the loader, 2-S2 the manifest, 2-S3a the honest writes plus the reader audit, 2-S3c the tests that make the unknown-segment exclusion deliberate. Verified on origin/main after merge, worktree removed, main checkout 4614 -> 4614, 0 deleted-on-disk."
+    "2026-09-10 17:40 IST 2-S3c MERGED as 4d28b4db via PR #499. FOUR of item 2 seven slices are now on main: 2-S1 the loader, 2-S2 the manifest, 2-S3a the honest writes plus the reader audit, 2-S3c the tests that make the unknown-segment exclusion deliberate. Verified on origin/main after merge, worktree removed, main checkout 4614 -> 4614, 0 deleted-on-disk.",
+    "2026-09-10 17:45 IST BUDGET CORRECTION, material: the supervisor said 46 repo pr-gate runs with 4 left. I measured 48, so only TWO remain before the 50 stop. Getting this wrong is precisely how a repo crosses its ceiling while three lanes each believe they have room - which is why the contract puts the stop at 50 under a cap of 60. My own count from the branch-prefix form: 7 pr-gate runs on pm-c-* branches (cap 15), 6 lane C PRs today - #471, #473, #483, #490, #499 merged, #494 closed as superseded.",
+    "2026-09-10 17:45 IST HOLD ADOPTED IN FULL: no new lane C PR and no re-push before 00:00 IST. It costs nothing I could otherwise have done - 2-S5 is building and its PR simply waits, and 2-S4 is independently blocked because it imports field-manifest-loader at process start and lane B #496 has not merged. Also corrected the supervisor: #490 is already MERGED (2fd8a43b), not awaiting checks, so there is no free already-green merge for me to spend. Named the one exception I would still spend a run on: a red main caused by lane C. None exists.",
+    "2026-09-10 17:45 IST BRIEF FIX FROM A NEW MACHINE-WIDE HOOK, and it would have bitten mid-round: git checkout -- is now blocked by a PreToolUse hook (it discarded uncommitted work twice). My mutation-testing briefs have been telling workers to revert mutations with exactly that command. A builder hitting the block mid-round would leave the MUTATION STILL APPLIED, and its next run would read as a genuine failure. Standing line changed to: copy to a .bak BEFORE applying the mutation, restore from the .bak."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -524,6 +530,7 @@
     "Use DISTINCT heredoc delimiters (never nested EOF) - a heredoc body containing another unterminated start marker can false-block the find guard.",
     "Prefix MSYS_NO_PATHCONV=1 on any git show/cat-file/ls-tree with a <ref>:<path>, and sanity-check with a line count before believing a zero.",
     "Gate CI on: status == COMPLETED AND conclusion != SUCCESS. A pending check has an EMPTY-STRING conclusion, not null, so a null-test counts it as a failure.",
-    "A hard-stop check runs as its OWN command and its output is READ before the gated action. Batching check+action in one command makes the gate decorative."
+    "A hard-stop check runs as its OWN command and its output is READ before the gated action. Batching check+action in one command makes the gate decorative.",
+    "Revert a mutation from a .bak copy taken BEFORE applying it - never git checkout --, which a PreToolUse hook now blocks and which has discarded uncommitted work twice."
   ]
 }
