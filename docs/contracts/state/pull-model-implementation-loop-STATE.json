@@ -95,7 +95,13 @@
     "PIPELINING IN USE for the first time: s5a builds while s3 sits in CI as PR #459. Still one builder at a time.",
     "COMPLIANCE MISS, mine, found 2026-09-10 11:23 IST: contract clause 8 says the FIRST web-touching slice of the run must harden ci.yml (remove continue-on-error from the web unit and E2E steps, add a postgres:16 service with migrations applied, add `cd web && npm run test:integration`), and that until it lands every web integration or E2E claim is OWED not proven and no web-touching item can close. That trigger already fired: s1b (#448, cf232595) touched web/app/api/admin/update-field-record/route.ts, web/lib/repositories/peer-company-repository.ts, web/scripts/seed-data.ts and web/scripts/seed-peer-companies.ts, and merged without the duty. s2 (#455) touched web/ too. I did not catch it at either merge. The duty is OVERDUE, not merely pending.",
     "Consequence and plan: s5a is ALSO web-touching (it creates web/lib/config/feature-flags.ts, which does not exist today), and clause 8 additionally requires any web-touching slice to run `cd web && npm run test:integration` locally AND dispatch ci.yml to success before merge. Dispatching today's ci.yml is theatre - it carries continue-on-error on the web steps, has no postgres service and no integration step, so a green run proves lint, type-check and build only. Therefore the web duty lands as its own slice BEFORE s5a merges, and s5a rebases onto it. Taking it in lane A rather than leaving it to lane B, which reaches it last at item 21.",
-    "The web duty slice also carries the two riders already recorded: a .gitattributes entry for docs/ops/*.md (that file is a CRLF blob that plain `git add` rewrites to LF, splitting three tr -d commands), and extending scripts/assert-schema-drift.ts to indexes and constraints (it contains zero occurrences of index/constraint/unique/pg_index and is green on a knowingly-wrong schema.ts, proven by mutation in s3 round 2)."
+    "The web duty slice also carries the two riders already recorded: a .gitattributes entry for docs/ops/*.md (that file is a CRLF blob that plain `git add` rewrites to LF, splitting three tr -d commands), and extending scripts/assert-schema-drift.ts to indexes and constraints (it contains zero occurrences of index/constraint/unique/pg_index and is green on a knowingly-wrong schema.ts, proven by mutation in s3 round 2).",
+    "s5a TIER A FAIL 2026-09-10 12:01 IST, one CRITICAL, and it is a CONTRACT defect not a builder error. Contract clause 11 says the first flag slice must add DEPLOY_SLOT to both required-key lists in scripts/assert-env-keys.sh. But that script reads the static env FILES passed as arguments (shared/env/<slot>/web.env.local and scraper.env), while DEPLOY_SLOT is INJECTED by deploy-linux.sh at pm2-start time from $SLOT - it was never meant to live in a file. Verified by construction: no fixture under scripts/tests/fixtures/env-assert/ contains DEPLOY_SLOT, the slice touches no env file, and it documents no manual step. Net effect if merged: assert-env-keys refuses every deploy on both slots until a human hand-edits four server files, which this run is forbidden to do. Worse, every push to main deploys staging, so merging it breaks the bench both lanes take their proofs from.",
+    "DECISION on the s5a CRITICAL: the clause-11 wording is contract-author text, not owner-quoted (the owner-quoted parts of the contract are 'one item at a time' and 'yes all 22 items'), so I am correcting it rather than following it into a broken staging deploy. s5a will NOT require DEPLOY_SLOT in the static env-file lists; it keeps the deploy-script export and the runtime proof, which is strictly stronger - deploy-linux.test.sh cases 9b/9c/9d now assert DEPLOY_SLOT actually reaches the pm2 process, and a site-specific mutation reddens only that site. A contract delta will be proposed. Requiring a deploy-injected variable in a static config file blocks deploys while proving nothing the runtime test does not already prove better.",
+    "s5a MAJOR, same root cause: the two required-key entries are unfalsifiable - deleting one leaves the suite at exactly 21 FAIL, unchanged, because the fixtures already fail on the other key and no positive test asserts either entry. Removing the entries removes the finding.",
+    "s5a MINOR to fix: slotAwareFlagDefault treats only the literal strings 'true' and 'false' as explicit. FLAG=0, FLAG=FALSE and FLAG=no fall through to the slot default and yield TRUE on staging, so an operator disabling a flag on staging with =0 silently leaves it ON. Must parse falsy values consistently with how the rest of feature-flags.ts reads env values.",
+    "NODE --TEST ALARM from lane B is FALSE, measured here independently 2026-09-10 12:01 IST on Node v22.20.0: a failing assertion exits 1, and a file throwing at import exits 1. BUT the probe found a real adjacent hole: `node --test <path matching nothing>` exits 0 - no test runs, nothing fails, the gate passes forever. All four gate files this run relies on exist today so the gates are honest, but a rename or a mistyped workflow path turns any of them into a pass-on-nothing. Reported to lane B for its 16 bare node --test sites in pr-gate.yml. Cheap guard if either lane touches them: assert a file count first, or use --test-reporter=tap and require a non-zero plan.",
+    "Lane B merged #460 (item 20 slice 1), so a traceability check now runs on PRs. PR #459's green predates it - re-check #459's full check list before merging rather than trusting the earlier green, which described a different gate set."
   ],
   "items": {
     "item-01": {
@@ -162,7 +168,7 @@
         {
           "k": "s5a",
           "title": "slot-aware feature-flag helper + DEPLOY_SLOT plumbing",
-          "status": "BUILDING",
+          "status": "TIER-A-FAIL-FIXING",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -206,6 +212,12 @@
           "pr": null,
           "sha": null,
           "tier": "A"
+        },
+        {
+          "k": "s3b",
+          "status": "BUILDING",
+          "tier": "A",
+          "title": "clause-8 CI hardening: real ci.yml gate, .gitattributes for docs/ops, schema-drift index and constraint coverage"
         }
       ],
       "prs": [
