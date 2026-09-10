@@ -337,11 +337,11 @@
         },
         {
           "k": "s9",
-          "status": "IN-REVIEW",
+          "status": "MERGED",
           "tier": "A",
           "title": "wire or retire the tz-case suite (#478) so decision 8 stops naming an unrunnable command",
           "pr": 498,
-          "sha": null
+          "sha": "15a8378f"
         },
         {
           "k": "s10",
@@ -361,9 +361,9 @@
         },
         {
           "k": "s8b",
-          "status": "BUILT-HELD-NO-PR",
+          "status": "PR-OPEN",
           "tier": "B",
-          "pr": null,
+          "pr": 508,
           "sha": null,
           "title": "guard: stored normalized_name and heading_hash must re-compute to themselves under the current normaliser (#506)",
           "branch": "feat/pm-item01-s8b-derived-key-recompute-guard",
@@ -383,6 +383,20 @@
             "3. Invert the polarity: replace the positional allow-list at pr-gate.yml:497 with the directory glob vitest.integration.config.ts already declares, plus the skip-list file. Running becomes the default and opting out becomes a visible, reviewable edit. Today running is opt-in, and eleven people opted out by accident over months with a reviewer on every diff."
           ],
           "notes": "company-name-normalizer-agreement.integration.test.ts: lane C 12-B ships the replacement (TS-vs-SQL agreement against the job's Postgres service, junk AND blank cases, on the list) AND deletes this file in the SAME PR. Not a separate deletion slice and never before the replacement: it does not run in CI so a gap costs nothing there, but anyone running the suite locally with the tunnel up loses the only TS-vs-SQL check that exists, exactly across the days the normaliser changes. Measured, against the 'production hazard' framing: it opens a pool on the prod tunnel (lines 27/29/105) but runs exactly two statements, both SELECT <expression>(bound literal) at lines 128 and 149 - no table read, no write, max:2. The real grounds for removal are that nothing asserts the target is not prod (no default_transaction_read_only, against the project rule), it is the only test reading web/.env.local so it is the template the next person copies, and it buys nothing in CI."
+        },
+        {
+          "k": "s12",
+          "status": "PLANNED",
+          "tier": "A",
+          "pr": null,
+          "sha": null,
+          "title": "failed deploy no longer orphans its release directory (#505)",
+          "order": "AFTER s6, BEFORE s11 (lane C agreed)",
+          "plan": [
+            "preflight BEFORE populating the release directory, so a deploy that will fail on disk never allocates ~3.1GB first",
+            "remove the just-created release directory in the on_deploy_error trap that already exists in scripts/deploy-linux.sh",
+            "both: (1) alone misses a failure AFTER the preflight, (2) alone still lets a tight box be pushed over before the check runs"
+          ]
         }
       ],
       "prs": [
@@ -395,7 +409,8 @@
         495,
         459,
         476,
-        500
+        500,
+        498
       ],
       "mergeShas": [
         "6797fdab",
@@ -407,7 +422,8 @@
         "ee8cec23",
         "87cbeddf",
         "667c1370",
-        "c15c7eb3"
+        "c15c7eb3",
+        "15a8378f"
       ],
       "proof": {
         "status": "OWED",
@@ -713,7 +729,7 @@
     506,
     507
   ],
-  "prGateRunsToday": 49,
+  "prGateRunsToday": 50,
   "prGateBudgetClaimedRaise": {
     "source": "superseded",
     "note": "peer relayed 40/20; owner typed 60/20 directly in-session 2026-09-09 - owner value adopted",
@@ -843,5 +859,6 @@
   "crossLaneMergeOrder": "lane C 12-B/12-C (function + SQL twin in one commit) -> same slice re-runs backfill-normalized-name.ts on the THREE tables that carry the stored column: peer_companies, promoters, ipo_intermediaries. There is NO ipos.normalized_name column - ipo-repository.ts's 22 references are the query-time normalizedCompanyNameSql expression (lane C's correction, verified). The re-backfill MUST run in TypeScript through rowKeyForName, never in SQL through normalizedCompanyNameSql: rowKeyForName has a junk branch (junk:<sha1> for a name that normalises to empty but is not blank) that the SQL twin lacks, and a SQL backfill would collapse every junk row to '' so they collide under E1. -> same slice re-runs the duplicate scan under the new normaliser before E1 is applied anywhere; baseline 0/0/5 measured under the old one, and the 5 on ipo_intermediaries are CORRECT rows (one bank, two roles) that must not be merged away. -> lane A writer slices s5b, s7a, s7b. Lane A s4, s6, s8, s8b are order-free. E1's apply step is gated on the re-backfill and the re-scan landing on staging.",
   "knownTestDbDrift": "ipodhan_test carries a stray heading_hash column on ipo_risk_factors, left from s6 testing on this machine. The test DB is AHEAD of origin/main. A slice that assumes ipodhan_test mirrors main can get a green that means nothing.",
   "laneAMergeOrderAfterFreeze": "s8b BEFORE s6. s6's merge condition is to add the ipo_risk_factors/heading_hash entry to the registry in scraper/tests/integration/derived-key-recompute-guard.integration.test.ts - a file that only exists once s8b has merged. Merging s6 first makes its own merge condition unsatisfiable. Then s9, which is 8 behind origin/main and needs `git rebase --onto origin/main <last-base-commit> <branch>` plus one PR-gate run before it can merge.",
-  "goalCondition": "Append 'LANE A COMPLETE' as the final line of the lane A ledger (branch ops/impl-loop-ledger) only when items 1, 15, 13, 4, 5, 6, 7, 9, 10, 11 and 17 each have a DONE ledger line with proof. Reading or complying with the contract is NOT completion. A merge freeze, BLOCKED-OWNER or waiting is neither completion nor impossibility: keep working unblocked slices or wait for the owner's word. (Owner, 2026-09-10 19:4x IST, replacing the path-shaped goal the evaluator cleared at 12:52Z.)"
+  "goalCondition": "Append 'LANE A COMPLETE' as the final line of the lane A ledger (branch ops/impl-loop-ledger) only when items 1, 15, 13, 4, 5, 6, 7, 9, 10, 11 and 17 each have a DONE ledger line with proof. Reading or complying with the contract is NOT completion. A merge freeze, BLOCKED-OWNER or waiting is neither completion nor impossibility: keep working unblocked slices or wait for the owner's word. (Owner, 2026-09-10 19:4x IST, replacing the path-shaped goal the evaluator cleared at 12:52Z.)",
+  "prGateStopTonight": 55
 }
