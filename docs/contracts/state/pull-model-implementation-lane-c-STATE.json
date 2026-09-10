@@ -448,16 +448,24 @@
           "branch": "feat/pm-c-item12-sB-identity-rekey (pushed, NO PR - SQL twin still owed)"
         },
         {
-          "id": "12-D",
-          "status": "PLANNED",
-          "tier": "A",
-          "title": "one row per offering, duplicate detection at discovery"
-        },
-        {
           "id": "12-E",
           "status": "PLANNED",
           "tier": "A",
           "title": "same identity rule in the grey-market source"
+        },
+        {
+          "id": "12-D1",
+          "status": "BUILT_PUSHED",
+          "tier": "A",
+          "commit": "289933b6",
+          "branch": "feat/pm-c-item12-sD1-duplicate-candidate-at-discovery",
+          "title": "log duplicate candidates at discovery - observe-only, flag default false in every slot"
+        },
+        {
+          "id": "12-D2",
+          "status": "BLOCKED_DESIGN",
+          "tier": "A",
+          "title": "CIN identity tier - blocked: its card requires CIN to beat a name match, ipo-identity.ts:485 deliberately does the opposite"
         }
       ],
       "prs": [
@@ -763,6 +771,15 @@
         "whatItActuallyRequires": "12-D must introduce a precedence distinction so a CIN key match outranks a name match while ISIN and symbol still do not - i.e. modify line 485, the single most-reviewed line in the module (T-403 Tier-A review item 4, guarding behaviour every existing caller depends on). That is a Tier A change to the most-guarded logic in the identity path, not \"add a tier\".",
         "theTradeToWeigh": "Combined with the sizing: this modification would be made to benefit the 9.6% of rows that carry a CIN. Changing the most-reviewed guard in the identity module to serve one row in ten is a trade the owner or the design should weigh explicitly, not something to improvise at build time.",
         "whatIsStillCleanlyBuildable": "The duplicate-candidate half (former 12-S5) does NOT touch line 485 at all - it appends a structured log after the tier chain and returns the row unchanged. It is buildable on its own, it carries the real value per the sizing (13 candidate groups on staging, 0 on prod), and it has real fixtures. If the CIN decision takes time, that half should not wait behind it."
+      },
+      "slice12D1": {
+        "at": "2026-09-10 21:38 IST",
+        "commit": "289933b6",
+        "safetyProperty": "The scan runs BEFORE the tier chain and is awaited for its side effect only. It reads nothing the tiers produce and feeds nothing back, so it CANNOT alter the returned row however it behaves. Placing it after the chain would have meant threading it past three separate return statements, and the first thing to go wrong there is a return that skips it.",
+        "failureContainment": "It swallows its own failures - every scraper write depends on resolveIpoRow, so an observation must never break it. Pinned by a test that rejects the scan and asserts resolution still returns the right row, and another that deletes the repository method entirely.",
+        "flagDecision": "Plain === true, deliberately NOT slotAwareFlagDefault(), which returns true on staging when unset. The card says default false in EVERY slot. Pinned by a test that sets DEPLOY_SLOT=staging and asserts the scan is not even queried. I gave a builder the wrong helper on this exact point once before; this time I read feature-flags.ts:64 first rather than trusting memory.",
+        "queryShape": "findLiveByOpenDate is date-FILTERED rather than fetch-all-live-rows: a same-day query returns a handful, where a full live scan would cost an O(n) fold on EVERY identity resolution - and identity resolution runs on every scraped record.",
+        "proof": "9 new tests; the pre-existing 39-test identity suite passes UNCHANGED; tsc exit code 0 - gated on tsc own exit code after I caught my command printing CLEAN off a piped tail exit status; mutation - requiring three matches instead of two turns exactly the log test red, restored to 9 of 9."
       }
     },
     "item-03": {
@@ -1112,7 +1129,12 @@
     "2026-09-10 21:31 IST THE CARD SAYS a non-empty CIN matching one row WINS over a disagreeing name match. THE CODE SAYS otherwise: ipo-identity.ts:485 resolves a key-versus-name disagreement as nameMatchIsTier3b ? keyMatch : nameMatch, so an exact-name match BEATS the key match. That is deliberate and annotated - T-403 Tier-A review item 4 kept it because every existing caller relied on it. Add CIN as another key tier and it LOSES, which is the opposite of the requirement.",
     "2026-09-10 21:31 IST AND A SHORT-CIRCUIT DOES NOT RESCUE IT. Returning immediately on a unique CIN hit would make CIN win, but the card also requires logging identity_conflict when CIN disagrees with a name match - and you cannot detect a disagreement without running the name tiers. So neither obvious implementation satisfies the card.",
     "2026-09-10 21:31 IST WHAT IT REALLY REQUIRES is a precedence distinction so a CIN key match outranks a name match while ISIN and symbol still do not - i.e. modifying line 485, the most-reviewed line in the module. Set against the sizing, that means changing the most-guarded logic in the identity path to benefit the 9.6% of rows that carry a CIN. That trade belongs to the owner or the design, not to me at build time.",
-    "2026-09-10 21:31 IST THE DUPLICATE-CANDIDATE HALF IS UNAFFECTED and should not wait behind the CIN decision: it appends a structured log after the tier chain and returns the row unchanged, never touching line 485. It carries the real value per the sizing and it has real fixtures."
+    "2026-09-10 21:31 IST THE DUPLICATE-CANDIDATE HALF IS UNAFFECTED and should not wait behind the CIN decision: it appends a structured log after the tier chain and returns the row unchanged, never touching line 485. It carries the real value per the sizing and it has real fixtures.",
+    "2026-09-10 21:38 IST 12-D1 BUILT AND PUSHED at 289933b6 - duplicate candidates logged at discovery, observe-only, flag default false in every slot. 9 new tests, the pre-existing 39-test identity suite unchanged, tsc clean, mutation red-then-green.",
+    "2026-09-10 21:38 IST THE SAFETY PROPERTY IS THE PLACEMENT, not the try/catch. The scan runs BEFORE the tier chain and is awaited for its side effect only, so it structurally cannot alter the returned row. After the chain I would have had to thread it past three separate return statements, and the first thing to go wrong there is a return that skips it.",
+    "2026-09-10 21:38 IST I AVOIDED REPEATING A KNOWN MISTAKE BY CHECKING RATHER THAN REMEMBERING. slotAwareFlagDefault() returns true on staging when unset - I once handed a builder that helper for a card that said default false in every slot. This time I read feature-flags.ts:64 before writing the flag, used the plain === true convention, and pinned it with a test that sets DEPLOY_SLOT=staging and asserts the scan is never queried.",
+    "2026-09-10 21:38 IST AND I CAUGHT MY OWN COMMAND LYING. My tsc check printed CLEAN even while tsc reported three errors, because I gated on the exit status of a piped tail rather than on tsc itself. Re-ran gating on the real exit code. That is the same shape as everything else tonight - a green that could not have gone red.",
+    "2026-09-10 21:38 IST 12-D SPLIT: the CIN half is now 12-D2 and BLOCKED on a design decision, so the duplicate half did not have to wait behind it. That split is only possible because the duplicate half never touches line 485."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
