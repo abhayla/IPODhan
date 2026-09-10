@@ -1509,3 +1509,23 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
      matching migration is invisible to CI in BOTH lanes. So each of those slices runs `db:generate`, confirms the
      new `_journal.json` entry exists and is not future-dated (the lint tolerates 5 minutes of clock skew), and its
      verifier diffs `schema.ts` against the generated SQL before the PR opens.
+
+- **2026-09-10 11:26 IST [lane B] Item 20 slice s1 built, commit `95351103`, now in independent verification.**
+  `scripts/ci/check-design-traceability.mjs` (264 lines) + its self-test (183 lines); diff against `origin/main` is
+  exactly those two new files. Builder-reported RED: the six subtests fail `MODULE_NOT_FOUND` with the check script
+  absent, exit 1. Builder-reported GREEN: 6 pass / 0 fail, exit 0; the check against the REAL repository prints
+  `166 rules, 166 claimed, 0 orphans`, exit 0. All builder numbers are CLAIMS until the `sonnet` verifier reproduces
+  them - dispatched, and its brief requires it to re-create the red itself and to leave the worktree provably as it
+  found it (lane A's reviewer left a mutated database behind this morning after reporting a clean tree).
+  **Two defects the builder found in its own work before committing, both worth recording as classes:**
+  1. Card parsing used `indexOf('## Rules implemented')`, which matched a PROSE MENTION of that heading inside
+     `item-19-merge-tool-shared-write-path.md`'s Interfaces section instead of the real heading 200 lines later -
+     silently dropping item 19's whole `R-049..R-052` claim and inventing four false orphans. Fixed by anchoring on
+     `/^## Rules implemented\s*$/m`. Class: any markdown parser that locates a section by substring rather than by
+     an anchored heading match.
+  2. The self-test's own fixture string `// implements: R-999` sits inside `scripts/ci/tests/**`, which is one of
+     the roots the real check scans - so the gate would have failed on EVERY future pull request in BOTH lanes, for
+     a rule id that exists only as test data. The builder worked around it by concatenating the string so the raw
+     source is unscannable. **That workaround is a supervisor concern, not an accepted fix:** it depends on nobody
+     ever writing the literal again, and the structural problem - a scanner that scans its own fixtures - is
+     untouched. It is named explicitly in the Tier A review brief as the first thing to attack.

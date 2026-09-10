@@ -35,7 +35,40 @@
       "item": 20,
       "card": "docs/design/build-cards/item-20-design-traceability-check.md",
       "status": "IN-PROGRESS",
-      "slices": [],
+      "slices": [
+        {
+          "k": "s1",
+          "title": "traceability check, failure modes 1-3",
+          "status": "IN-REVIEW",
+          "pr": null,
+          "sha": "95351103",
+          "tier": "A"
+        },
+        {
+          "k": "s2",
+          "title": "failure mode 4: rule hash changed, card and test untouched",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s3",
+          "title": "module-boundary import check (R-142..R-144)",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        },
+        {
+          "k": "s4",
+          "title": "pr-gate wiring + design_traceability registry entry",
+          "status": "PLANNED",
+          "pr": null,
+          "sha": null,
+          "tier": "A"
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
@@ -141,5 +174,8 @@
   "adoptedPractices": [
     "pre-PR: git diff --name-only origin/main HEAD | grep '^web/' - a hit requires the clause-8 local integration run and a ci.yml dispatch, and the slice waits for lane A's web duty to merge",
     "items 18 and 22: run db:generate, confirm the new _journal.json entry exists and is not future-dated (5 min skew tolerance), and have the verifier diff schema.ts against the generated SQL before the PR opens"
+  ],
+  "openConcerns": [
+    "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief."
   ]
 }
