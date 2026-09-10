@@ -274,12 +274,17 @@ test('the real repository passes, with the registrar gap baselined and named', (
   const { code, out, err } = run(REPO_ROOT);
   assert.equal(code, 0, err || out);
   assert.match(out, /PASS/);
-  // The baseline must not be empty-by-accident: the one real gap is recorded,
-  // and it names the slice that closes it rather than just muting the check.
+  // Assert the PROPERTY, not the moment. The first version pinned
+  // `unwired.length === 1` and the id of the single entry — which failed the
+  // instant item 22 slice 7 wired that boundary and emptied the list, i.e. it
+  // failed on the ratchet working. A baseline that shrinks to zero is the goal,
+  // so the durable assertion is that whatever remains is properly justified.
   const baseline = JSON.parse(
     readFileSync(join(REPO_ROOT, 'config/security-boundary-wiring-baseline.json'), 'utf8')
   );
-  assert.equal(baseline.unwired.length, 1);
-  assert.equal(baseline.unwired[0].id, 'registrar-document-allowlist');
-  assert.ok(baseline.unwired[0].fixedBy, 'a baselined gap must name the slice that closes it');
+  assert.ok(Array.isArray(baseline.unwired), 'baseline must carry an unwired array');
+  for (const entry of baseline.unwired) {
+    assert.ok(entry.id, 'every baselined gap needs an id');
+    assert.ok(entry.fixedBy, `baselined gap ${entry.id} must name the slice that closes it`);
+  }
 });

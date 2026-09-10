@@ -34,7 +34,11 @@ import {
   type IpoRunResult,
 } from './document-discovery-runner.js';
 import { NetworkCounter } from '../utils/network-counter.js';
-import { isVerifierUrl } from './company-host-source.js';
+import {
+  isVerifierUrl,
+  loadRegistrarDocumentHosts,
+  resetRegistrarDocumentHostsCache,
+} from './company-host-source.js';
 import { deriveLifecycleStage } from '../scheduler/stage-reconciler.js';
 import { isInLiveWindow, CYCLE_BUDGET, planIpoCycle, type IssueShape } from './document-state-machine.js';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
@@ -1067,11 +1071,45 @@ export async function runDocumentCycle(
   // end of the function) leaked the lock for its full 45-minute TTL, since
   // nothing between those two points ran under a finally.
   try {
+    // OD-37 slice 22-7: load the registrar host set ONCE for this cycle and
+    // hand it to the runner. The allow-list check stays pure and synchronous;
+    // the DB read happens here, at the cycle boundary, exactly once.
+    //
+    // Until this call existed, `isTrustedDocumentHost` was invoked with one
+    // argument everywhere, so its `registrarHosts` parameter only ever took its
+    // own empty default and a filing served by a legitimate registrar was
+    // refused — even though the loader, the cache and the parameter had all
+    // been built and merged.
+    let registrarHosts: ReadonlySet<string> = new Set();
+    try {
+      // The reset belongs INSIDE the guard too: it is part of the same optional
+      // step, and leaving it outside meant a failure there still took the whole
+      // cycle down — which is exactly what this guard exists to prevent.
+      resetRegistrarDocumentHostsCache();
+      registrarHosts = await loadRegistrarDocumentHosts(db as never);
+      logger.info(
+        { registrarHostCount: registrarHosts.size },
+        'OD-37: registrar document host allow-list loaded for this cycle'
+      );
+    } catch (err) {
+      // Degrade to an empty set, never take the cycle down with it. An empty
+      // set is exactly the behaviour before this slice: registrar-hosted
+      // documents are refused, nothing else changes. Making this read fatal
+      // would mean a transient registrars query failure stops ALL document
+      // discovery — strictly worse than not widening the allow-list, and the
+      // first version of this slice did precisely that (34 tests said so).
+      logger.warn(
+        { cause: err instanceof Error ? err.message : String(err) },
+        'OD-37: registrar host allow-list could not be read — continuing with an EMPTY set, so registrar-hosted documents are refused this cycle (pre-slice-22-7 behaviour), and discovery is NOT stopped'
+      );
+    }
+
     const runner = new DocumentDiscoveryRunner({
       fetcher: defaultFetcher,
       store,
       documents,
       counter,
+      registrarHosts,
     });
 
     const { candidates: allCandidates, listedCap, listedDeferred, listedComplete, listedEnriched, listedSkippedUnenriched } =
