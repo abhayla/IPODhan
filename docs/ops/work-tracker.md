@@ -1043,3 +1043,23 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   own tests caught it. What is needed from Abhay: nothing new. The three waiting items are unchanged
   - one data correction (one row of thirty-six, recipe written, not run), whether the shared branch
   should refuse changes that have not passed their checks, and whether to approve the new PDF library.
+
+- **2026-09-11 04:56 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current. A
+  reader of ipodhan.com would notice nothing today; all of tonight's work is underneath the site.
+  What moved: the reader that pulls the rival-company comparison table out of a prospectus can now
+  identify every column in two different documents correctly. That matters because the two documents
+  disagree about almost everything - one lists a company's market value and the other does not, one
+  lists total income and the other does not, one puts the share's face value in the second column and
+  the other in the first. A reader that assumed a fixed layout would file one company's revenue under
+  another company's face value, with nothing going wrong on screen. Eventually this puts the
+  comparison an IPO prospectus prints - revenue, earnings, price-to-earnings, return on net worth for
+  each rival - onto the page, instead of leaving it in a PDF nobody opens. What went wrong, twice, and
+  both mine: a pattern I wrote reached the file with invisible control characters in it, so it could
+  never match anything while READING correctly on screen - that cost half an hour and I now have a
+  test that catches it. And the rule I wrote for telling a header row from a data row was wrong in a
+  way that produced the right answer anyway, because two stray years in a header looked like data; I
+  only found it by reading the rows rather than the result. Both are now covered by tests. What is
+  needed from Abhay: nothing new. The same three - a one-row data correction (a company's stored web
+  address has a single wrong character; the fix is written but not run, because data corrections wait
+  for your word), whether the shared branch should refuse changes that have not passed their checks,
+  and whether to approve the new PDF library.
