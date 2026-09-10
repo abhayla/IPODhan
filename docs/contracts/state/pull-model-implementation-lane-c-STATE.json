@@ -440,10 +440,12 @@
         },
         {
           "id": "12-B",
-          "status": "PLANNED",
+          "status": "WIP_PUSHED",
           "tier": "A",
           "title": "identity re-keyed - function, SQL twin, 544-row recompute, duplicate re-scan, TS-vs-SQL agreement test, delete the tunnel test, ONE PR",
-          "note": "now unblocked: its proof tool (normalized-name-current) is on main as of 8047231e"
+          "note": "now unblocked: its proof tool (normalized-name-current) is on main as of 8047231e",
+          "commit": "fcce0734",
+          "branch": "feat/pm-c-item12-sB-identity-rekey (pushed, NO PR - SQL twin still owed)"
         },
         {
           "id": "12-D",
@@ -671,6 +673,25 @@
         "tests": "The module had NO tests, which is poor for the tool a 544-row re-key is proven with. Seven added against a stub pool: all-current, un-backfilled collapses to one finding, un-backfilled still FAILS, mixed stays STALE, a single genuinely stale key, the no-identity pair, empty table. Red first - the run failed naming the missing OUTCOME_NOT_YET_BACKFILLED export.",
         "realData": "ipodhan_staging still reads 0 after the change (it is fully backfilled), so the happy path it was originally proven on is unchanged.",
         "wiring": "Added to pr-gate INSIDE the Node 22 window and before the Node 20 restore, verified at line 304 with the window at 256 to 306. The invariant imports rowKeyForName via erasable type stripping, so on Node 20 it cannot load and every test fails. Placement is load-bearing, not cosmetic."
+      },
+      "slice12B": {
+        "at": "2026-09-10 20:38 IST",
+        "commit": "fcce0734",
+        "status": "WORK IN PROGRESS - must not open a PR until the SQL twin moves too",
+        "rootCause": "The corporate-form strip was END-ANCHORED and ran BEFORE the separator fold. A mid-string paren such as (India) sat between the word company/co and the end of the string and blocked the strip. That is why ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED and Asset Reconstruction Co.(India) Ltd. kept two identities. The fix is to fold separators FIRST and strip on word boundaries.",
+        "zeroFalseMergeProof": "Measured over real names BEFORE the code was written, read-only, zero writes. Production: 333 named rows to 333 distinct identities - ZERO merges, no behaviour change at all. Staging: 376 rows, exactly ONE newly merged group, the ARCIL pair this slice exists for; three other multi-name groups were already merged before. Zero false merges across 709 real names and precisely the one intended.",
+        "regression": "The existing company-name-normalizer suite passes 28 of 28 unchanged.",
+        "escapingNearMiss": "My first attempt LOST THE WORD BOUNDARIES. Python wrote two 0x08 backspace bytes where the boundary escapes belonged, leaving a regex that would strip co from Cocoa and corp from Corporate - the exact false merges I had just proven absent. Caught by running the behaviour check before committing anything, NOT by the diff looking wrong; the mangled regex looked plausible. Restored from HEAD, re-verified byte-identical including line endings, reapplied with raw strings, and pinned cases added: Cocoa Traders Limited stays cocoa traders, Corporate Park Ltd stays corporate park.",
+        "aliasProbe": "Run in THIS worktree, under vitest, against THIS function, before trusting any local result. A marker in the worktree copy came back through the @ipodhan/shared alias as PROBE_MARKER_12B. Local results in this tree are trustworthy. Restored, tree clean. NOTE: my first probe attempt used the duplicate-ipo-merge suite, which exercises the FOLD and not this function, so it reported 0 sightings - inconclusive, and easy to misread as proof the alias was broken. The second probe targeted the function directly.",
+        "stillOwed": [
+          "normalizedCompanyNameSql rewritten in lock-step - a 20-level nested REGEXP_REPLACE tower; the whole-word form collapses it to one word-bounded replace, a simplification that still needs proving equal to the JS",
+          "the ARCIL equality test, shown red on the OLD function",
+          "TS-vs-SQL agreement test against the pr-gate Postgres service",
+          "deletion of the tunnel-reading agreement integration test",
+          "the 544-row re-key on staging plus assert-repair-held --cycles 2",
+          "the duplicate re-scan, baseline 0/0/5, the five two-role bank rows kept"
+        ],
+        "whyStoppedHere": "The SQL tower rewrite is the most delicate part of this slice, its PR waits for 00:00 regardless, and I told the peer 12-B is the one slice that must never be rushed. Starting a 20-level SQL rewrite late in a long session would contradict that. What is proven is committed and PUSHED so it cannot be lost."
       }
     },
     "item-03": {
@@ -953,7 +974,11 @@
     "2026-09-10 20:28 IST THE REAL FINDING IS THE ASSOCIATION, not the count. 5 of those 6 rows ALSO have no source for their segment. The base rate for an unsourced segment is 31 of 322, so independence predicts about 0.6 overlapping rows and five were observed. These rows came through ONE ingestion path that populated neither field. Three separate-looking defects - guessed segment, missing price band, wrong issue size - are one upstream cause.",
     "2026-09-10 20:28 IST AND IT EXPLAINS ITEM 14 WITHOUT EXCUSING IT. computeBSEIssueSize multiplies the share count by band.min. When band.min IS the face value, issue_size is understated by roughly real_price over face_value. The conversion arithmetic is right; the price it is fed is wrong. That is very likely why two of three c_issue_size_floor violations are rows from this list.",
     "2026-09-10 20:28 IST CONSEQUENCE I ALMOST MISSED and have flagged: NIRBHAY sits in BOTH classes, so repairing its segment alone will NOT clear c_issue_size_floor for it. If 2-S3b ledger line claims the floor goes GONE for NIRBHAY, that line promises something the repair cannot deliver. The floor signal for that row is gated on #515 as well.",
-    "2026-09-10 20:28 IST ALIAS PROBE RUNNER CONFIRMED as vitest, which is the case that matters: npx vitest run --config vitest.config.ts tests/unit/duplicate-ipo-merge.test.ts from scraper/ inside the worktree, resolving through node_modules, and it saw the marker. No re-probe needed before 12-B, though I will still probe in 12-B own tree because that tree changes rowKeyForName itself."
+    "2026-09-10 20:28 IST ALIAS PROBE RUNNER CONFIRMED as vitest, which is the case that matters: npx vitest run --config vitest.config.ts tests/unit/duplicate-ipo-merge.test.ts from scraper/ inside the worktree, resolving through node_modules, and it saw the marker. No re-probe needed before 12-B, though I will still probe in 12-B own tree because that tree changes rowKeyForName itself.",
+    "2026-09-10 20:38 IST 12-B TS SIDE BUILT AND PROVEN, pushed as WIP at fcce0734. NO pull request: the whole point of this slice is that the function and its SQL twin ship in ONE commit, so the branch stays unopened until the twin moves. A WIP commit on an unopened branch creates no window; a merge would.",
+    "2026-09-10 20:38 IST 12-B ZERO-FALSE-MERGE PROOF, obtained BEFORE the code was written: production 333 rows to 333 distinct identities, ZERO merges - the change is a no-op on prod. Staging merges exactly ONE group, the ARCIL pair. Zero false merges across 709 real names. Existing suite 28 of 28 unchanged.",
+    "2026-09-10 20:38 IST NEAR MISS WORTH KEEPING. My first attempt lost the regex word boundaries to a string-escaping bug - two backspace bytes written where the escapes belonged - producing a regex that would strip co from Cocoa and corp from Corporate, i.e. exactly the false merges I had just proven absent. The mangled regex LOOKED plausible in the diff. It was caught only because I ran the behaviour check before committing. Cocoa Traders and Corporate Park are now pinned cases in the code comment.",
+    "2026-09-10 20:38 IST AND MY FIRST ALIAS PROBE FOR 12-B WAS INCONCLUSIVE, which I nearly misread. I ran it against the duplicate-ipo-merge suite, which exercises the FOLD, not the function 12-B changes - so it reported zero marker sightings, which looks exactly like proof the alias was broken. The correct probe targeted the function directly and returned PROBE_MARKER_12B through the alias. A probe against the wrong subject is not a weaker result, it is no result."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
