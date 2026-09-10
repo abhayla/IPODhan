@@ -3036,3 +3036,26 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   **So I did not build slice 2.** That is not caution about difficulty; it is refusing to ship a
   deletion path whose safety precondition is absent, with the evidence to show it. Slice 1 (the table)
   stands — it is the right prerequisite, correctly built and tested. Escalated as a DESIGN gap.
+
+- 2026-09-10 21:03 IST **[lane B] Item 8's approach is falsified by its own two fixtures, and I found out by
+  fetching them instead of trusting the card.** The card routes NSE's "Ratios / Basis of Issue Price"
+  filing to `extract_price_band_ad`, a TEXT parser, on the reasoning that the two documents are the
+  same content. Its Tests section says the fixtures were never transcribed and that doing so is "the
+  first task of implementation, not optional". So I did that first.
+  Both fetched cleanly from nsearchives (HTTP 200, PK magic). `RATIOS_ARCIL` is 6.2MB and contains
+  **ten PDF members, one per newspaper page** — Financial Express and Jansatta, pages 1–5 of each.
+  `RATIOS_VINOD` is 13.6MB, one member, six pages. Then pdfplumber: ARCIL yields 5,132 characters
+  across ten pages with ten embedded images; VINOD yields 39,657 across six with fourteen.
+  The 39,657 looked promising until I searched it. **Neither fixture contains a single occurrence of
+  "ratio", "turnover", "acquisition", "peer", "basis of issue", "eps", "p/e", "net asset" or
+  "ebitda".** Page-1 text is whitespace. Those character counts are font artifacts, not content. The
+  KPI table, the WACA figure and the peer set this item exists to extract are **pixels**.
+  So routing the doc type to a text parser would return nothing on the only two real fixtures that
+  exist — a green build and an extractor that silently produces empty output, which is this run's
+  signature failure. Item 8 needs the OCR path (`ocr_pages.py` exists; `anchor_report_text.py`
+  already uses it for damaged scans), and even that has a prerequisite: `pytesseract` imports here
+  but the tesseract BINARY is not on PATH.
+  This is the defect-fix contract working exactly as written — *"a brief that ships a parser or
+  extractor MUST include a REAL fixture captured from the live source, never a format typed from
+  memory."* The fixture requirement is not bureaucracy; it falsified the design before a line of
+  code was written.
