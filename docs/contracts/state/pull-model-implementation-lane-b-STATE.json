@@ -100,6 +100,30 @@
     {
       "at": "2026-09-10T21:07:02.551Z",
       "what": "Ledger is TRACKED from 2026-09-11 02:4x. Lane A #571 merged as dac257b6; verified by exit code (check-ignore -q exits 1) and git status -uall, not by check-ignore -v output which prints the negation rule and reads as still-ignored. First tracked commit e2776742, 408 lines that had existed only on this laptop."
+    },
+    {
+      "at": "2026-09-10T21:16:31.369Z",
+      "what": "TIER A, outside the six items but acted on because it is a live production write: scraper/tests/integration/consolidation-dedup.integration.test.ts read web/.env.local and built its own Pool, bypassing assertSafeIntegrationTargets which only inspects process.env. Running the scraper integration suite with the tunnel up INSERTed a row into production ipos. Tunnel port 15432 was OPEN on this laptop at 02:4x, so this was live today. I did not run the suite. Severity precisely: the paired DELETE is scoped to the fixture own name so no real IPO was at risk; the defect is the write reaching prod and the scoping being a convention. PR #578."
+    },
+    {
+      "at": "2026-09-10T21:16:31.369Z",
+      "what": "Class measured, smaller than the brief: 10 own-Pool integration files, NINE take process.env.DATABASE_URL and are guarded, each listed with its proving line. normalizer-sql-agreement is NOT in the class - process.env at :31, env.local only in comments recording the FIRST occurrence. The class was fixed once per-file and recurred on a different file because nothing re-read the others, so the fix is a check that reads every file, in the UNIT suite so it runs without a database. Red on main naming consolidation-dedup (1 failed 2 passed), green after (3 passed)."
+    },
+    {
+      "at": "2026-09-10T21:16:31.369Z",
+      "what": "My first guard version keyed on constructs-a-Pool-without-process.env, which would flag a correct helper-based fix as the defect - a check that fails on its own fix gets switched off. A peer caught it pre-ship. Rewritten to key on a connection string not supplied by the guarded environment, stripping comments first."
+    },
+    {
+      "at": "2026-09-10T21:16:31.369Z",
+      "what": "FINDING worth more than the proof: the denylist is host-based and the SSH tunnel defeats it necessarily - through the tunnel the URL is localhost:15432 and carries no marker. On the path developers actually use, the database-NAME check is the ONLY thing between the suite and production. Sound design (ipodhan_test shares the host with ipodhan so a host list cannot discriminate) but it makes the name check load-bearing, and it is exactly the check the bypass skipped."
+    },
+    {
+      "at": "2026-09-10T21:16:31.369Z",
+      "what": "#578 proof 1 PAID: guard refuses a prod URL with socket connect attempts ZERO, measured by patching net.Socket.prototype.connect before importing the guard - a throw after a connect would still have touched prod. Proof 2 OWED: green against ipodhan_test cannot run with the tunnel DOWN (that DB lives on the denylisted host); meaningful version is tunnel up with DATABASE_URL on ipodhan_test. Held while an adversarial reviewer mutates the guard in the only worktree with a working install."
+    },
+    {
+      "at": "2026-09-10T21:16:31.369Z",
+      "what": "8a constraint opened as PR #579 (card) - header-mapped never positional, three heading wordings, four-issuer column table, six universal columns, column-swap test. Fourth trap found while writing it: Kanohar p.160 prints a SEPARATE Comparison of KPIs with our peers table which is peer-shaped and must be rejected by heading."
     }
   ],
   "items": {
@@ -544,7 +568,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T21:07:02.551Z",
+  "lastStateWriteAt": "2026-09-10T21:16:31.369Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 0,
