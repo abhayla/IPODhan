@@ -2765,3 +2765,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   gate is unreadable, and #461 was the same class. The step is now merged at the END of the gate job in
   #496. It must move ahead of the long suites. The repo CI budget is at 49 of 50, so this rides with the
   parked static-gate slice at 00:00 IST rather than spending the reserved run.
+
+- 2026-09-10 17:54 IST **[lane B] My 32 green tests were not enough, and the shape of the gap is worth keeping.**
+  Tier A on the discard guard returned MAJOR with four defects my suite never probed: a quoted path
+  (`git checkout -- "mod.txt"`) was MISSED entirely — and since any path containing a space *must* be
+  quoted, those paths were permanently unguardable; `git restore --staged <file>` was FALSE-BLOCKED,
+  though unstaging never touches the worktree; a sentence merely *naming* a dirty path
+  (`echo "run git checkout -- mod.txt to undo" >> NOTES.md`) was FALSE-BLOCKED because my matcher was a
+  substring search instead of being anchored to the start of the command segment; and
+  `bash -c "git checkout -- x"` slipped past.
+  I had written 10 block-cases, 11 allow-cases and 7 fail-open probes and read the 32/32 as coverage.
+  The gap has a precise shape: **I tested things that should block, and things that obviously should
+  not — but nothing that should be ALLOWED while LOOKING like a block, and nothing about quoting.**
+  Three of the four defects are false BLOCKS, which is the more corrosive failure: a guard that fires on
+  innocent commands gets bypassed by habit, and then it is not a guard at all. This is the same family
+  as the module-boundary check that evaluated zero edges and the boundary test that never landed on the
+  boundary — the test suite agreed with the code instead of interrogating it.
+  Rule taken forward, into every reviewer brief I write from here: **name the allow-cases that resemble
+  block-cases, and the quoting/escaping forms, as explicit required coverage.** The supervisor owns the
+  fix, since the hook is machine-level; I am not duplicating that work.
