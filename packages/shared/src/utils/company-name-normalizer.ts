@@ -162,7 +162,13 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
     // did nothing - caught by running it, not by reading it.
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/\s+(india|indian)$/i, '')
+    // The of/for guard. Two SEPARATE fixed-length lookbehinds, not one
+    // alternation: Postgres ACCEPTS a variable-length lookbehind such as
+    // (?<!\\y(of|for)\\s) and then SILENTLY STRIPS ANYWAY - measured, it
+    // turned "bank of india" into "bank of" with no error at all. Two fixed
+    // lookbehinds behave correctly in BOTH engines, which is what lets the SQL
+    // twin stay character-for-character equivalent.
+    .replace(/(?<!of)(?<!for)\s+(india|indian)$/i, '')
     .trim();
 }
 
@@ -301,7 +307,7 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
     )
   )
 ),
-  '\\s+(india|indian)$',
+  '(?<!of)(?<!for)\\s+(india|indian)$',
   '',
   'i'
 )`;
