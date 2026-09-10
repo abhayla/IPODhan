@@ -390,6 +390,18 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_RESOLVED_ADDRESS_REFUSAL: slotAwareFlagDefault('ENABLE_RESOLVED_ADDRESS_REFUSAL'),
 
+  /**
+   * Item 2 slice 4: gates whether the CLI entry point (the guard at the
+   * bottom of `scraper/src/index.ts`) validates `scraper/config/field-manifest.json`
+   * at process start. Default: false (Phase 0 — plain `process.env.X === 'true'`
+   * pattern, matching `ENABLE_DATA_CONSOLIDATION` above, per the item-02 build
+   * card's own text). Nothing reads the manifest yet (item 3 wires the matrix
+   * to it) so a malformed file is harmless while this stays off; it exists so
+   * item 3 can flip it once there is something to protect. Flag OFF is a
+   * pure no-op — the loader import never even runs `loadFieldManifest()`.
+   */
+  ENABLE_FIELD_MANIFEST: process.env.ENABLE_FIELD_MANIFEST === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
   // T-297 D9 / #193: this file is the SSOT for which flags gate live logic
   // in prod. `// LIVE-GATE` on a *_PERCENTAGE field and `// PROD-REQUIRED-TRUE`

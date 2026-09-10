@@ -47,6 +47,7 @@ import { checkDeployDrift, getMainShaFromOrigin, getServedShaForSlot } from './s
 import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { FEATURE_FLAGS, validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
+import { loadFieldManifest } from './config/field-manifest-loader.js';
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
@@ -445,6 +446,39 @@ export function assertRequiredEnvForCycle(source: string, env: NodeJS.ProcessEnv
       `(T-340: a missing ADMIN_API_TOKEN previously caused a silent per-step skip, not a startup failure)`
     );
   }
+}
+
+/**
+ * Item 2 slice 4 — validate `scraper/config/field-manifest.json` at process
+ * start, BEFORE `main()` runs (see the CLI guard at the bottom of this file).
+ *
+ * Class this closes: configuration that is read at runtime but never
+ * validated, so a malformed file is discovered by a wrong result rather than
+ * a loud failure. Nothing consumes the manifest yet (item 3 wires the field
+ * priority matrix to it), so with `ENABLE_FIELD_MANIFEST` at its default of
+ * `false` this is a pure no-op — `loadFieldManifest()` is never even called.
+ * Once the flag is on, `loadFieldManifest()` throws SYNCHRONOUSLY on a
+ * malformed manifest; the CLI guard has no try/catch, so that throw reaches
+ * Node's default uncaught-exception handler (process exits non-zero) before
+ * the `main();` statement that follows it ever runs — before ANY cycle-start
+ * log line is emitted, not just before the process eventually exits.
+ *
+ * `manifestPath` is an optional override so unit tests can point at a
+ * temp-file fixture without touching the real
+ * `scraper/config/field-manifest.json` — same pattern `loadFieldManifest`
+ * itself already uses. `enabled` defaults to the real `FEATURE_FLAGS` value
+ * (what production reads) but can be passed explicitly by tests — the same
+ * explicit-override-with-a-real-default shape `assertRequiredEnvForCycle`
+ * above already uses for `env`, so a test can flip the flag without
+ * `vi.resetModules()` + re-importing this whole module (which FEATURE_FLAGS
+ * bakes to a boolean once, at first import, per module instance).
+ */
+export function validateFieldManifestAtStartup(
+  manifestPath?: string,
+  enabled: boolean = FEATURE_FLAGS.ENABLE_FIELD_MANIFEST
+): void {
+  if (!enabled) return;
+  loadFieldManifest(manifestPath);
 }
 
 /**
@@ -1400,5 +1434,9 @@ async function pruneDataConflicts(): Promise<StepResult> {
 // trigger a live scrape; matches the pattern used by
 // scrapers/listing-performance-updater.ts and the scripts/ CLIs).
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Item 2 slice 4: MUST run before main() — see validateFieldManifestAtStartup's
+  // doc comment. A malformed manifest (flag ON) throws synchronously here and
+  // main() never runs, so no cycle-start log line is ever emitted.
+  validateFieldManifestAtStartup();
   main();
 }
