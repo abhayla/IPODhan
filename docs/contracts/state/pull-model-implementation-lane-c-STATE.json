@@ -199,6 +199,13 @@
         "whatIDid": "Read-only GET to BSE IPO_HomePageDetail with the Referer the probe documents. HTTP 200, 37 board rows. PIYUSH is NOT among them.",
         "why": "PIYUSH closed 2026-05-17, four months ago. BSE publishes only the CURRENT board. The detail endpoint needs IPO_NO, which comes from that board listing - and the probe own note says IPO_NO comes from the board listing, NEVER from a guess. We store no IPO_NO, no ISIN and no verifier_url for PIYUSH; it has a symbol and nothing else.",
         "consolidation": "THIS IS THE SAME WALL AS 2-S3b2, not a separate blocker. Both are closed historical rows with no reachable exchange source: 2-S3b2 has 17 IPO rows with zero verifier_url, 14-S3 has PIYUSH off the board with no stored identifier. One structural cause, two slices."
+      },
+      "consistencyCheckIsNearlyVacuous": {
+        "at": "2026-09-11 00:23 IST",
+        "finding": "c_issue_size_consistency reports PASS while examining 24 of 277 production IPO rows - 8.7%. It SKIPS 91% because sharesOffered comes from a subquery on subscriptions and is NULL for them. Staging is the same: 24 of 323.",
+        "worse": "It skips NIRBHAY and PIYUSH SPECIFICALLY - the exact two rows the floor check flags. So item 14 proof recipe pairs a check that FAILS on two rows with a check that PASSES having never looked at those two rows.",
+        "whyItMatters": "Item 14 proof recipe requires both checks to PASS. Half of that recipe is a green light over 8.7% of the population, presented with no coverage statement at all - the detail line reads \"0 violation(s)\" and says nothing about how many rows were examined. That is the scan-that-examined-nothing class, sitting inside the proof item 14 depends on.",
+        "buildable": "YES, and it needs no external source and no owner decision: make the check report its examined count, and refuse to PASS - UNVERIFIABLE, not PASS - when coverage is below a threshold. Lane C owns this area; 14-S1 was a floor-check alignment."
       }
     },
     "item-02": {
@@ -1478,7 +1485,11 @@
     "2026-09-11 00:21 IST MEASURED DIRECTLY, verifying lane B rather than taking the relay: production has 333 IPOs but only 25 ipo_details rows - 19 BOOK_BUILDING, 6 NULL. Staging has 376 IPOs and 29 rows - 22 BOOK_BUILDING, 7 NULL. The column IS populated where a row exists. The real gap is COVERAGE: 7.5% of production IPOs have an ipo_details row at all.",
     "2026-09-11 00:21 IST THE OPERATIVE CONCLUSION SURVIVES, FOR A DIFFERENT REASON: there is ZERO FIXED_PRICE anywhere on either database, so the exemption still exempts nothing today and building it would still have been a paper fix. Right answer, wrong reasoning, and the reasoning is what I published.",
     "2026-09-11 00:21 IST AND MY DERIVE-THEN-EXEMPT WARNING IS NOT HYPOTHETICAL: lane B reports the extractor ranked chain ends with a floor == cap fallback (extract_filing.py:2340-2349, persisted at filing-persister.ts:904-925). That circularity is ALREADY SHIPPED - derive FIXED_PRICE from a degenerate band, then exempt degenerate bands. Lane B files it against that chain.",
-    "2026-09-11 00:21 IST THAT IS THE THIRD TIME TONIGHT A LEFT JOIN OR A RE-EXPORT MADE ABSENCE LOOK LIKE A VALUE. Same shape as the LIKE inversion and the data-persister re-export: the query answered a question I did not ask, and I did not check which question it answered."
+    "2026-09-11 00:21 IST THAT IS THE THIRD TIME TONIGHT A LEFT JOIN OR A RE-EXPORT MADE ABSENCE LOOK LIKE A VALUE. Same shape as the LIKE inversion and the data-persister re-export: the query answered a question I did not ask, and I did not check which question it answered.",
+    "2026-09-11 00:23 IST ITEM 14 PASSING HALF IS NEARLY VACUOUS, and I found it by asking whether the PASS could have failed. c_issue_size_consistency reports PASS while examining 24 of 277 production IPO rows - 8.7%. It skips 91% because sharesOffered comes from a subquery on subscriptions and is NULL for them. Staging: 24 of 323.",
+    "2026-09-11 00:23 IST AND IT SKIPS THE TWO ROWS IN QUESTION. NIRBHAY and PIYUSH both have sharesOffered NULL, so the consistency check never looked at them. Item 14 proof recipe therefore pairs a check that FAILS on two rows with a check that PASSES having never examined those two rows - and the recipe treats both as evidence.",
+    "2026-09-11 00:23 IST THE DETAIL LINE SAYS \"0 violation(s)\" AND NOTHING ELSE - no examined count, no coverage. A reader cannot tell 0-of-277-clean from 0-of-24-looked-at. That is the scan-that-examined-nothing class sitting inside the proof item 14 depends on, and it is the same class I built the NOT_YET_BACKFILLED distinction for in 12-C2 this evening.",
+    "2026-09-11 00:23 IST THIS ONE IS BUILDABLE: no external source, no owner decision, lane C own area (14-S1 was a floor-check alignment). Make the check report its examined count and return UNVERIFIABLE rather than PASS when coverage is below a threshold. Recording it before building so the finding survives even if the build does not."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
