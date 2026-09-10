@@ -150,6 +150,228 @@ else
   fail "case 2.5: expected \"current' was NOT touched\" message not found in output"
 fi
 
+# --- Case 2.6: item 1 (s16) — web/.next/cache lives in ONE per-slot dir ----
+# --- under $ROOT/shared, not inside the release. 1.5 GB of a 3.1 GB       --
+# --- release was a build cache never read at runtime; twelve failed       --
+# --- deploys at 3.1 GB apiece filled the VPS root filesystem 2026-09-10.  --
+#
+# Placed here (early) deliberately: this suite dies partway through case 30
+# onward on the Windows dev box (a pre-existing `grep -P` locale problem),
+# so a case appended at the end would never run locally.
+#
+# `ln -s` on the Windows dev box under MSYS silently COPIES instead of
+# linking, so every assertion below is written to be meaningful either way:
+# the subject is always the SHARED TARGET, which lives outside the release
+# tree in both shapes. Where a real symlink exists, the stronger claim (rm
+# unlinks the symlink and does not descend into it) is asserted too.
+SYMLINKS_OK=0
+SLPROBE="$(mktemp -d)"
+mkdir -p "$SLPROBE/t"
+if ln -sfn "$SLPROBE/t" "$SLPROBE/l" 2>/dev/null && [ -L "$SLPROBE/l" ]; then
+  SYMLINKS_OK=1
+fi
+rm -rf "$SLPROBE"
+echo "note: native symlink support in this environment: SYMLINKS_OK=$SYMLINKS_OK"
+
+# --- Case 2.6a: the cache target is created before the build, outside the --
+# --- release, and the release's web/.next/cache points at it. -------------
+ROOT26="$(fresh_root)"
+CACHE26="$ROOT26/shared/next-cache/staging"
+if [ -e "$CACHE26" ]; then
+  fail "case 2.6a: precondition — $CACHE26 already exists in a fresh root"
+fi
+DEPLOY_ROOT="$ROOT26" bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-26a.log 2>&1
+RC26A=$?
+if [ "$RC26A" -ne 0 ]; then
+  fail "case 2.6a: staging dry-run deploy exited $RC26A"
+  cat /tmp/deploy-test-26a.log
+fi
+if [ -d "$CACHE26" ]; then
+  pass "case 2.6a: per-slot cache target created when absent ($CACHE26)"
+else
+  fail "case 2.6a: cache target $CACHE26 was not created"
+fi
+# Read the target the SCRIPT actually chose out of its own log rather than
+# re-asserting the constant above — a change that moved the cache back
+# inside the release tree would otherwise pass this case untouched.
+LOGGED26="$(grep -o "$ROOT26[^ ]*" /tmp/deploy-test-26a.log | grep 'next-cache' | head -1)"
+if [ -z "$LOGGED26" ]; then
+  fail "case 2.6a: the deploy log names no cache target under $ROOT26"
+else
+  case "$LOGGED26" in
+    "$ROOT26"/releases*) fail "case 2.6a: the chosen cache target sits under the releases tree ($LOGGED26)" ;;
+    "$ROOT26"/shared/*) pass "case 2.6a: the chosen cache target ($LOGGED26) is under shared/, outside every releases directory" ;;
+    *) fail "case 2.6a: the chosen cache target is neither under shared/ nor recognisable ($LOGGED26)" ;;
+  esac
+fi
+
+# Ordering: the cache must be wired BEFORE the build, or the build creates
+# its own cache inside the release and the whole point is lost.
+CACHE_LINE26="$(grep -n '^==> .*Next build cache' /tmp/deploy-test-26a.log | head -1 | cut -d: -f1)"
+BUILD_LINE26="$(grep -n '^==> Building release' /tmp/deploy-test-26a.log | head -1 | cut -d: -f1)"
+if [ -n "$CACHE_LINE26" ] && [ -n "$BUILD_LINE26" ] && [ "$CACHE_LINE26" -lt "$BUILD_LINE26" ]; then
+  pass "case 2.6a: cache wired at line $CACHE_LINE26, before the build at line $BUILD_LINE26"
+else
+  fail "case 2.6a: expected the cache line before the build line (cache=$CACHE_LINE26 build=$BUILD_LINE26)"
+fi
+
+REL26="$(current_target "$ROOT26/current-staging")"
+if [ "$SYMLINKS_OK" -eq 1 ]; then
+  if [ -L "$REL26/web/.next/cache" ] && [ "$(readlink "$REL26/web/.next/cache")" = "$CACHE26" ]; then
+    pass "case 2.6a: release web/.next/cache is a symlink to $CACHE26"
+  else
+    fail "case 2.6a: release web/.next/cache is not a symlink to the shared target"
+  fi
+else
+  if grep -q 'emulated. Next build cache NOT linked' /tmp/deploy-test-26a.log; then
+    pass "case 2.6a: no native symlinks here — the script declined to link rather than COPY the shared cache in"
+  else
+    fail "case 2.6a: expected the emulated-no-symlink line on a filesystem without native symlinks"
+  fi
+fi
+
+# --- Case 2.6b: a second deploy REUSES the existing target, never --------
+# --- clobbers what is already cached in it. -------------------------------
+printf 'warm\n' > "$CACHE26/sentinel-2.6b"
+sleep 1.1
+DEPLOY_ROOT="$ROOT26" bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-26b.log 2>&1
+if [ -f "$CACHE26/sentinel-2.6b" ]; then
+  pass "case 2.6b: an existing cache directory is reused, its contents intact"
+else
+  fail "case 2.6b: the second deploy destroyed the existing cache contents"
+fi
+
+# --- Case 2.6c: retention pruning does NOT reach the shared target -------
+# --- (the whole-deploy proof: KEEP=1 across three deploys). ---------------
+ROOT26C="$(fresh_root)"
+CACHE26C="$ROOT26C/shared/next-cache/prod"
+for i in 1 2 3; do
+  DEPLOY_ROOT="$ROOT26C" DEPLOY_KEEP_RELEASES=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force \
+    >/tmp/deploy-test-26c-$i.log 2>&1 || fail "case 2.6c: deploy #$i failed"
+  printf 'warm\n' > "$CACHE26C/sentinel-2.6c"
+  sleep 1.1
+done
+# shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric
+COUNT26C="$(ls -1 "$ROOT26C/releases" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$COUNT26C" -le 1 ]; then
+  pass "case 2.6c: prune ran (kept $COUNT26C release)"
+else
+  fail "case 2.6c: prune did not run as expected (kept $COUNT26C releases) — the rest of this case proves nothing"
+fi
+if [ -f "$CACHE26C/sentinel-2.6c" ] && [ -d "$CACHE26C" ]; then
+  pass "case 2.6c: the shared cache target survived the release prune"
+else
+  fail "case 2.6c: the release prune destroyed the shared cache target"
+fi
+
+# --- Case 2.6d: the rm form itself — `rm -rf dir` AND `rm -rf dir/` on a --
+# --- release containing the cache link must leave the target intact. ------
+# The trailing-slash form is the one where the answer could differ, so it is
+# asserted separately rather than assumed to behave like the bare form.
+for FORM in "bare" "trailing-slash"; do
+  RMROOT="$(fresh_root)"
+  RMTGT="$RMROOT/shared/next-cache/prod"
+  RMREL="$RMROOT/releases/20260910-120000-abcdef1"
+  mkdir -p "$RMTGT" "$RMREL/web/.next"
+  printf 'warm\n' > "$RMTGT/sentinel"
+  LINKED=0
+  if ln -sfn "$RMTGT" "$RMREL/web/.next/cache" 2>/dev/null && [ -L "$RMREL/web/.next/cache" ]; then
+    LINKED=1
+  fi
+  if [ "$FORM" = "bare" ]; then
+    rm -rf "${RMREL:?}"
+  else
+    rm -rf "${RMREL:?}/"
+  fi
+  if [ -d "$RMREL" ]; then
+    fail "case 2.6d ($FORM): the release directory was not removed"
+  fi
+  if [ -f "$RMTGT/sentinel" ]; then
+    if [ "$LINKED" -eq 1 ]; then
+      pass "case 2.6d ($FORM): rm -rf on the release unlinked the symlink and did NOT descend into the shared target"
+    else
+      pass "case 2.6d ($FORM): shared target intact after rm -rf on the release (no native symlink here — proves the target is out of the release tree, not the non-descent property)"
+    fi
+  else
+    fail "case 2.6d ($FORM): rm -rf on the release DESTROYED the shared cache target — retention pruning follows the link"
+  fi
+  rm -rf "$RMROOT"
+done
+
+# --- Case 2.6e: prod and staging never share a cache. A shared one would --
+# --- bake one slot's NEXT_PUBLIC_* values into the other slot's build. ----
+ROOT26E="$(fresh_root)"
+DEPLOY_ROOT="$ROOT26E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-26e-prod.log 2>&1
+sleep 1.1
+DEPLOY_ROOT="$ROOT26E" bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-26e-stg.log 2>&1
+PTGT="$(grep -o '[^ ]*shared/next-cache/prod' /tmp/deploy-test-26e-prod.log | head -1)"
+STGT="$(grep -o '[^ ]*shared/next-cache/staging' /tmp/deploy-test-26e-stg.log | head -1)"
+if [ -n "$PTGT" ] && [ -n "$STGT" ] && [ "$PTGT" != "$STGT" ] \
+   && [ -d "$ROOT26E/shared/next-cache/prod" ] && [ -d "$ROOT26E/shared/next-cache/staging" ]; then
+  pass "case 2.6e: prod and staging resolve to different cache targets ($PTGT vs $STGT)"
+else
+  fail "case 2.6e: prod and staging did not resolve to distinct per-slot cache targets (prod='$PTGT' staging='$STGT')"
+fi
+
+# --- Case 2.6f: the target-path guard refuses anything outside the -------
+# --- deploy root, and refuses BEFORE creating it or touching 'current'. ---
+ROOT26F="$(fresh_root)"
+OUTSIDE26F="$(fresh_root)/not-the-deploy-root/next-cache"
+DEPLOY_ROOT="$ROOT26F" DEPLOY_TEST_NEXT_CACHE_DIR="$OUTSIDE26F" \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-26f.log 2>&1
+RC26F=$?
+if [ "$RC26F" -ne 0 ]; then
+  pass "case 2.6f: an out-of-root cache target aborts the deploy (exit $RC26F)"
+else
+  fail "case 2.6f: an out-of-root cache target was ACCEPTED (exit 0)"
+fi
+if grep -q 'not under .*shared/next-cache/' /tmp/deploy-test-26f.log; then
+  pass "case 2.6f: the refusal names the path and why"
+else
+  fail "case 2.6f: expected a 'not under .../shared/next-cache/' refusal in the log"
+fi
+if [ -e "$OUTSIDE26F" ]; then
+  fail "case 2.6f: the out-of-root target was CREATED before the guard refused it"
+else
+  pass "case 2.6f: the out-of-root target was never created"
+fi
+if [ -e "$ROOT26F/current" ]; then
+  fail "case 2.6f: 'current' was flipped despite the refused cache target"
+else
+  pass "case 2.6f: 'current' untouched by the refused cache target"
+fi
+
+# --- Case 2.6g: a '..' traversal in the target is refused even when the ---
+# --- prefix matches (the same hole safe_rm_venv_dir closed in W-111 r3). --
+ROOT26G="$(fresh_root)"
+DEPLOY_ROOT="$ROOT26G" DEPLOY_TEST_NEXT_CACHE_DIR="$ROOT26G/shared/next-cache/../../../escaped" \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-26g.log 2>&1
+RC26G=$?
+if [ "$RC26G" -ne 0 ] && grep -q "contains " /tmp/deploy-test-26g.log; then
+  pass "case 2.6g: a '..' traversal in the cache target is refused"
+else
+  fail "case 2.6g: expected a '..' refusal (exit $RC26G)"
+fi
+
+# --- Case 2.6h: SOURCE-level — vps-disk-hygiene.sh's prune_slot() can -----
+# --- only consider entries under $releases_dir whose basename matches -----
+# --- RELEASE_NAME_RE, so shared/next-cache/<slot> is structurally out of --
+# --- its reach. A future change widening that glob would silently put the -
+# --- shared cache back in range, and only a source assertion catches it. --
+HYGIENE26="$SCRIPT_DIR/../vps-disk-hygiene.sh"
+if [ ! -f "$HYGIENE26" ]; then
+  fail "case 2.6h: $HYGIENE26 not found — has the hygiene script moved?"
+else
+  PRUNE_BODY26="$(awk '/^prune_slot\(\) \{/,/^\}/' "$HYGIENE26")"
+  if emitn "$PRUNE_BODY26" | grep -q 'for d in "\$releases_dir"/\*' \
+     && emitn "$PRUNE_BODY26" | grep -q 'RELEASE_NAME_RE' \
+     && ! emitn "$PRUNE_BODY26" | grep -q 'shared'; then
+    pass "case 2.6h: prune_slot() only walks \$releases_dir/* filtered by RELEASE_NAME_RE — never \$ROOT/shared"
+  else
+    fail "case 2.6h: prune_slot() no longer looks the way this change relies on — re-check that the shared cache is out of its reach"
+  fi
+fi
+
 # --- Case 3: a second clean deploy succeeds after the broken one ------------
 if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-3.log 2>&1; then
   pass "case 3: second clean deploy after a broken build succeeds"
