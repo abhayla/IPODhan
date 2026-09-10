@@ -409,3 +409,10 @@ constraint is a comment.
 The PDFs are 9.5-17.7 MB each and are NOT committed. What must be committed is the **extracted text of
 the peer-table pages** for all four, so the parser tests run offline and the three heading wordings are
 all exercised. Two fixtures are not enough: two issuers already disagree on columns.
+
+**One NEGATIVE fixture is required, and it is not optional.** Kanohar p.160 prints a second,
+peer-shaped table: *"Comparison of KPIs with our peers listed in India"*. It lists the same peer
+companies with numeric columns, and a loose heading matcher WILL find it. Commit that page's text
+alongside the others and assert the parser **rejects it by heading** and returns nothing for it. Without
+that case, "does the matcher find the table" and "does the matcher find the RIGHT table" are the same
+test, and only the first one is actually being asked.
