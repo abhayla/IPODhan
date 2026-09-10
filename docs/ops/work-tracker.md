@@ -661,3 +661,12 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   review is now checking whether a COMMENT tells the truth about what the code actually blocks -- because the
   original comment claimed more protection than existed, and that is what makes a future reader stop looking.
   A reader of ipodhan.com sees nothing from this. **Nothing needs you today.**
+- **2026-09-10 16:37 IST - the second download-safety piece is being built: stopping an oversized download while it happens,
+  instead of after.** Today the scraper reads an entire response into memory and only then asks whether it was
+  too big. A very large or hostile response is therefore a memory problem on the same machine that serves the
+  site, not a refused download. The fix counts bytes as they arrive and stops the moment the limit is passed,
+  and lowers the limit from 150MB to the 100MB the design specifies.
+  Nothing went wrong this round. A new automatic safeguard went live across the machine today because of a
+  mistake this lane made this morning -- a runaway search that ran for over an hour. It is the first of
+  today lessons to become something enforced automatically rather than a note someone has to remember.
+  **Nothing needs you today.** One thing will at the close of this item: a rollback rehearsal.
