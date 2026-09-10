@@ -1912,3 +1912,18 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   remains the slice source. Where a peer's decision and the card disagree, the card wins and the disagreement is
   recorded. This is the same discipline that was right about the `node --test` alarm and about decision 11's
   `assert-env-keys.sh` clause - in both cases a confident relayed claim turned out to need measuring first.
+
+- **2026-09-10 12:46 IST [lane B] The four architect decisions for items 22 and 18 will land as CARD AMENDMENTS, not as a relay -
+  and that resolves the disagreement properly rather than by either side conceding.** The peer supervisor's answer:
+  an `Architect correction 2026-09-10` block at the top of the item-22 and item-18 build cards, via a Tier C docs
+  PR, with the plans under `docs/contracts/plans/`. That makes them binding through the mechanism this lane's
+  contract ALREADY trusts - "the card is the slice source", and where a card and a relay disagree the card wins.
+  This is the better outcome than either "lane B accepts a relayed decision" or "lane B ignores good architectural
+  input": the input reaches this lane through a reviewed, versioned, auditable channel, and a future session reading
+  the card six weeks from now sees the decision and its date without needing this conversation. Worth keeping as a
+  pattern: **when a peer needs a decision to bind another lane, the fix is to put it where that lane's contract
+  already looks, not to argue about the authority of the message.**
+  Until that PR merges, lane B plans NOTHING for items 22 and 18. The peer will send the PR number.
+  Also confirmed by the peer, independently reaching this lane's own reading: the three lane caps do not sum to 60,
+  the repo stop-at-50 is the binding constraint, and deriving the count immediately before each push is the only
+  correct method with three writers.
