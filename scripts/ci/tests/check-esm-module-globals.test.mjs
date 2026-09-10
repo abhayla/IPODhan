@@ -155,6 +155,114 @@ test('MUTATION: scanning zero files exits 2, never PASS', () => {
   }
 });
 
+test('MUTATION: __filename is enforced, not just __dirname', () => {
+  // The first Tier A review of this check proved that removing __filename from
+  // BANNED left the whole suite green — half the banned list had zero coverage.
+  const root = makeRoot();
+  try {
+    writeFile(root, 'scraper/src/config/loader.ts', 'export const F = __filename;\n');
+    const { code, err } = run(root);
+    assert.equal(code, 1, err);
+    assert.match(err, /scraper\/src\/config\/loader\.ts:1\s+__filename/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('MUTATION: __dirname inside a template interpolation is caught', () => {
+  // The first Tier A review proved this was silently PASSing. `${...}` is CODE,
+  // not string text, and this is the idiomatic way to write the exact bug the
+  // check exists for.
+  const root = makeRoot();
+  try {
+    writeFile(root, 'scraper/src/config/loader.ts', 'export const s = `path: ${__dirname}/x`;\n');
+    const { code, err } = run(root);
+    assert.equal(code, 1, err);
+    assert.match(err, /loader\.ts:1\s+__dirname/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('MUTATION: a nested interpolation does not hide it either', () => {
+  const root = makeRoot();
+  try {
+    writeFile(root, 'scraper/src/config/loader.ts', 'export const s = `a ${ {k: `b ${__filename}`}.k }`;\n');
+    const { code, err } = run(root);
+    assert.equal(code, 1, err);
+    assert.match(err, /loader\.ts:1\s+__filename/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an unparsable file degrades to the conservative scan and still reports', () => {
+  // A regex literal holding a backtick desynchronises the scanner. It must fall
+  // back to comments-only (which over-reports) and say so — never silently pass.
+  const root = makeRoot();
+  try {
+    writeFile(
+      root,
+      'scraper/src/config/loader.ts',
+      'const strip = s => s.replace(/`([^`]*)`/g, "$1");\nexport const P = __dirname;\nexport default strip;\n'
+    );
+    const { code, out, err } = run(root);
+    assert.match(out, /could not be fully parsed/);
+    assert.equal(code, 1, out);
+    assert.match(err, /loader\.ts:2\s+__dirname/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('createRequire(import.meta.url) is accepted; a bare require is not', () => {
+  const root = makeRoot();
+  try {
+    writeFile(
+      root,
+      'scripts/ok.mjs',
+      "import { createRequire } from 'node:module';\n" +
+        'const require = createRequire(import.meta.url);\n' +
+        "const { Client } = require('pg');\n" +
+        'export default Client;\n'
+    );
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /PASS/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('tool config files are excluded (vite bundles them to CJS)', () => {
+  const root = makeRoot();
+  try {
+    writeFile(root, 'scraper/keep.ts', 'export const a = 1;\n');
+    writeFile(root, 'scraper/vitest.config.ts', "import path from 'path';\nexport default { root: path.resolve(__dirname) };\n");
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /scanned 1 file\(s\)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('CommonJS trees are NOT scanned (web/*.js, scripts/*.js may use __dirname)', () => {
+  // The repo root and web/ are "type": "commonjs". Flagging scripts/export-
+  // issues.js would be a false positive, and a check that cries wolf gets
+  // switched off. Only .mjs/.mts are picked up outside the ESM packages.
+  const root = makeRoot();
+  try {
+    writeFile(root, 'scripts/legacy.js', 'const p = __dirname;\nmodule.exports = p;\n');
+    writeFile(root, 'scraper/src/keep.ts', 'export const a = 1;\n');
+    const { code, out } = run(root);
+    assert.equal(code, 0, out);
+    assert.match(out, /scanned 1 file\(s\)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('the real repository passes (regression guard on the two fixed loaders)', () => {
   const { code, out, err } = run(REPO_ROOT);
   assert.equal(code, 0, err || out);
