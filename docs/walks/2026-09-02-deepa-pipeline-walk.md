@@ -1547,3 +1547,23 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   pull request in both lanes. That is finding number one in the Tier A brief, with the structurally sound
   alternatives named (exclude the check's own test directory, restrict declarations to a header region, or an
   explicit opt-out marker) and the reviewer asked to rule MAJOR or acceptable-for-slice-1, with the cost.
+
+- **2026-09-10 11:29 IST [lane B] Two defects of this run's OWN process, both caught by lane A's supervisor tick and not by this run.**
+  1. **DEFECT-B02, estimated timestamps on the live board.** Two `run/meta-b` writes carried hand-typed times
+     (11:22 and 11:52 IST); the database recorded the second at 05:56Z = 11:26 IST, so it was **26 minutes ahead of
+     the real clock**. The ledger lines are unaffected - they were stamped by `date` inside the same command - but
+     the board is the owner's window and it was showing a time that had not happened yet. Root cause: the Artifact
+     write takes its data inline, so there is no `date` in the call and the value gets typed from memory. Mechanism
+     adopted, effective immediately: **read `date` in a Bash call immediately before every board write and paste
+     that exact value**; the board document now also carries a `timestampSource` field naming where its time came
+     from, so a future estimate is visible rather than invisible. This is the same class the project logged on
+     2026-09-05 (ledger times drifted 80 minutes) - a recurrence, so it is a mechanism and not a note.
+  2. **DEFECT-B03, the PROGRESS log was never created.** Contract §0.3 requires
+     `docs/contracts/.run/pull-model-implementation-lane-b-PROGRESS.md` from Stage 0 with a header line and an entry
+     per transition. Stage 0 created the ledger, the tracker section, STATE.json and the board and simply skipped
+     it. Now created and backfilled from the ledger's own date-stamped times (never re-estimated), with both defects
+     as entries in it. Root cause: Stage 0's acceptance list was read as the ledger + STATE + board, and §0.3's
+     artefacts were not turned into a checklist. Mechanism: the Stage-0 acceptance check for any future lane is the
+     four §0.2/§0.3 artefacts enumerated, each confirmed to EXIST by `ls`, not by recollection.
+  Both were found by the peer lane's 30-minute tick reading this lane's own outputs. That is the mechanism working
+  as designed - but the honest reading is that this run's self-checks did not catch either one.
