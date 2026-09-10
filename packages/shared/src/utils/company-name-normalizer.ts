@@ -177,102 +177,97 @@ export function compactNormalizedCompanyNameSql(input: SQL): SQL {
 }
 
 export function normalizedCompanyNameSql(input: SQL): SQL {
+  // Item 12 slice B. Step order mirrors normalizeCompanyNameForMatching exactly.
+  // The INNERMOST REGEXP_REPLACE runs FIRST, so relative to the JS chain this
+  // reads bottom-up: trailing-status-code strip innermost, whitespace collapse
+  // outermost.
+  //
+  // Two changes, matching the JS side:
+  //   1. paren and hyphen folds moved ABOVE the corporate-word strip - a
+  //      mid-string parenthetical used to block an END-ANCHORED strip;
+  //   2. ten end-anchored suffix replaces collapse into ONE word-bounded global
+  //      replace. Postgres spells the word boundary \\y and it is load-bearing:
+  //      without it Co matches inside Cocoa and Corp inside Corporate.
+  //
+  // EVERY backslash below is DOUBLED because this is a template literal: JS
+  // collapses the pair to one before Postgres sees it. A single backslash is
+  // silently eaten, and a single-backslash 1 backreference is an illegal octal
+  // escape that truncates the literal. BOTH happened on the first attempt.
+  //
+  // Agreement with the JS side is gated by
+  // scraper/tests/integration/normalizer-sql-agreement.integration.test.ts.
   return sql`LOWER(
   TRIM(
     REGEXP_REPLACE(
       REGEXP_REPLACE(
-        REGEXP_REPLACE(
-          REGEXP_REPLACE(
-            REGEXP_REPLACE(
-              REGEXP_REPLACE(
-                REGEXP_REPLACE(
-                  REGEXP_REPLACE(
-                    REGEXP_REPLACE(
-                      REGEXP_REPLACE(
-                        REGEXP_REPLACE(
-                          REGEXP_REPLACE(
-                            REGEXP_REPLACE(
-                              REGEXP_REPLACE(
-                                REGEXP_REPLACE(
-                                  REGEXP_REPLACE(
-                                    REGEXP_REPLACE(
-                                      REGEXP_REPLACE(
-                                        REGEXP_REPLACE(
-                                          ${input},
-                                        '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
-                                        '\\1',
-                                        'i'
-                                    ),
-                                      '\\s+(O|P|LT|CT)$',
-                                      '',
-                                      'i'
-                                  ),
-                                    '\\.',
-                                    ' ',
-                                    'g'
-                                ),
-                                  '&',
-                                  ' and ',
-                                  'g'
-                              ),
-                                '\\s+',
-                                ' ',
-                                'g'
-                            ),
-                              '^\\s+|\\s+$',
-                              '',
-                              'g'
-                          ),
-                            '\\s*\\([^)]*\\)\\s*$',
-                            ''
-                        ),
-                          '\\s+(IPO|FPO)$',
-                          '',
-                          'i'
-                      ),
-                        '\\s+(Limited|Ltd\\.?)$',
-                        '',
-                        'i'
-                    ),
-                      '\\s+(Private\\s+Limited|Pvt\\.?\\s+Ltd\\.?)$',
-                      '',
-                      'i'
-                  ),
-                    '\\s+(Pvt\\.?|Private)$',
-                    '',
-                    'i'
-                ),
-                  '\\s+(Inc\\.?|Incorporated)$',
-                  '',
-                  'i'
-              ),
-                '\\s+(Corp\\.?|Corporation)$',
-                '',
-                'i'
-            ),
-              '\\s+(LLC|LLP|PLC)$',
-              '',
-              'i'
-          ),
-            '\\s+company$',
-            '',
-            'i'
-        ),
-          '\\s+co$',
-          '',
-          'i'
-      ),
-        '[()]',
-        ' ',
-        'g'
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      REGEXP_REPLACE(
+      ${input},
+      '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
+      '\\1',
+      'i'
     ),
-          '-',
-          ' ',
-          'g'
-      ),
-        '\\s+',
-        ' ',
-        'g'
+      '\\s+(O|P|LT|CT)$',
+      '',
+      'i'
+    ),
+      '\\.',
+      ' ',
+      'g'
+    ),
+      '&',
+      ' and ',
+      'g'
+    ),
+      '\\s+',
+      ' ',
+      'g'
+    ),
+      '^\\s+|\\s+$',
+      '',
+      'g'
+    ),
+      '\\s*\\([^)]*\\)\\s*$',
+      '',
+      'g'
+    ),
+      '[()]',
+      ' ',
+      'g'
+    ),
+      '-',
+      ' ',
+      'g'
+    ),
+      '\\s+',
+      ' ',
+      'g'
+    ),
+      '^\\s+|\\s+$',
+      '',
+      'g'
+    ),
+      '\\s+(IPO|FPO)$',
+      '',
+      'i'
+    ),
+      '\\y(Private\\s+Limited|Pvt\\.?\\s+Ltd\\.?|Limited|Ltd|Private|Pvt|Incorporated|Inc|Corporation|Corp|Company|Co|LLC|LLP|PLC)\\y',
+      ' ',
+      'gi'
+    ),
+      '\\s+',
+      ' ',
+      'g'
     )
   )
 )`;
