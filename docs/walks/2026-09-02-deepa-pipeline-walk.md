@@ -2835,3 +2835,30 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   these two have never been deployed, so they are exactly what the helper exists for. No hand-set
   server env value — the run never edits server env files, and a hand-set value is invisible to the
   next person who reads it.
+
+- 2026-09-10 18:48 IST **[lane B] Stop-the-line: the production disk is full, and the guard we built for it was
+  structurally incapable of firing.** 96GB of 96GB, 788MB free, on the box that serves the live site.
+  Lane A found it; I verified with `df` rather than relaying. Freeze accepted — I had nothing to stop
+  (0 open PRs, both slices unpushed) and they stay held.
+  The finding worth keeping is not the cause but the **non-warning**. The weekly hygiene job works: it
+  ran 2026-09-06 at 04:17 and logged 56% used, 43.0GB free. Roughly 42GB went in the four days since,
+  most of it today, because a failed deploy leaves its 3.1GB directory behind and only a SUCCESSFUL
+  deploy prunes. The owner's R9 rule set Notifier warnings at 70% and 80%. The disk crossed both this
+  week and nothing fired — **because the only thing that evaluates those thresholds is the weekly cron
+  itself.** Between Sundays the number is unwatched, and the next scheduled evaluation was three days
+  away. A threshold that can only be tested once a week cannot catch a fill that takes one day; those
+  numbers have been decorative since they were written. That is signal-ownership R3 with no consumer
+  at all, rather than an unread one — and it is the same family as every other finding this run: a
+  control that exists, reports green, and is not in a position to observe the thing it names.
+- 2026-09-10 18:48 IST **[lane B] DEFECT-B22 and B23, both mine, both while investigating the above.**
+  B22: I ran `du -xh --max-depth=1 /` on a production host sitting at 100% full. It timed out after 90
+  seconds, told me nothing, and added load to a box that serves live traffic — precisely the ad-hoc
+  run on production the owner's rule forbids, committed while I was writing up someone else's incident.
+  `df`, a `stat` and a `tail` of an existing log were the justified reads, and they produced the entire
+  answer including the 56%/43GB baseline.
+  B23: my `/var/www/*/releases/*` glob returned 7 directories and I raised that as "does not reconcile
+  with twelve orphans". The orphans are in `releases-staging` — 47GB across 15 directories — which that
+  pattern never matched. I did label it unverified and warn against acting on it before confirming,
+  which is the only reason it cost nothing. But the doubt came from a glob that did not match the
+  directory name, and a confidently-raised doubt is as capable of misdirecting an incident as a
+  confidently-wrong fact.
