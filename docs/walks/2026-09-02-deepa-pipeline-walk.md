@@ -2452,3 +2452,20 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   **Owed at item close:** Tier A means a rollback rehearsal (flag off for one cycle), which needs the owner
   -- the one owner-facing item this item genuinely creates, and it is real, unlike the two lane B wrongly
   claimed earlier today.
+
+- **2026-09-10 15:08 IST [lane B] DEFECT-B13, and it is the ROOT CAUSE of DEFECT-B01 from this morning.** Isolated at last:
+  `git -C /d/Abhay/Ventures/IPODhan worktree list` fails with `fatal: cannot change to ... No such file or
+  directory` and exit 128 -- **but only when MSYS_NO_PATHCONV=1 is set.** Three measurements settle it:
+  (1) `cd` to the same path then `git worktree list` -> exit 0, 8 worktrees; (2) `git -C "D:/Abhay/..."`
+  (Windows path form) with MSYS_NO_PATHCONV=1 -> exit 0; (3) the same MSYS-form path with the variable
+  UNSET -> exit 0. So the rule is exact: **MSYS_NO_PATHCONV=1 stops Git Bash converting /d/... to D:\..., and
+  a Windows binary cannot resolve the MSYS form.**
+  This is the same interaction that produced DEFECT-B01 at 11:15 today, when a $HOME-expanded /c/... path was
+  handed to node under the same variable and the database reset silently did not run. Two incidents, six hours
+  apart, one cause -- and both times the visible symptom was a downstream FALSE ZERO from the piped command
+  that followed. That is why the false-zero rule keeps catching things: it is the signature this cause emits.
+  Rule adopted: **when MSYS_NO_PATHCONV=1 is set, every path handed to a Windows binary (git, node, gh) is in
+  Windows form (D:/...), never MSYS form (/d/...).** The variable is needed for git refspecs like
+  origin/main:path, so the answer is not to drop it -- it is to stop mixing the two path forms under it.
+  Worktree state, from a command that SUCCEEDED: 8 worktrees, none of them a lane B slice tree; lane C now has
+  its coordination tree and lane A has three.
