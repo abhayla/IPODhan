@@ -1,0 +1,48 @@
+{
+  "$comment": [
+    "Scraper integration test files that the pr-gate job `scraper-document-integration`",
+    "deliberately does NOT run. Enforced by scripts/ci/require-integration-test-coverage.mjs:",
+    "every file under scraper/tests/integration/ must be in the job's run list or in here.",
+    "kind 'cannot-run-in-ci' = hits a live external site / needs the prod tunnel / needs a",
+    "credential CI does not have. kind 'broken' = cannot currently run anywhere; it needs a",
+    "tracking issue, because a broken test hiding inside 'excluded' is exactly the silence",
+    "this gate exists to end (issue #507).",
+    "Paths are relative to scraper/ and must name one file exactly — no wildcards."
+  ],
+  "exclusions": [
+    {
+      "file": "tests/integration/nse-subscription.integration.test.ts",
+      "kind": "cannot-run-in-ci",
+      "reason": "Calls testNSEAPIConnection() and scrapeNSEAPI() against the LIVE nseindia.com API (cookie handshake, real rate limits). A CI runner's IP is blocked by NSE and the result would be non-deterministic; it is a manual connectivity probe, not a gate."
+    },
+    {
+      "file": "tests/integration/consolidation-dedup.integration.test.ts",
+      "kind": "cannot-run-in-ci",
+      "reason": "Builds its own pool from web/.env.local, i.e. the PRODUCTION database through the SSH tunnel — it bypasses DATABASE_URL and therefore also the vitest.integration.setup.ts db-safety-guard. CI has neither the file nor the tunnel, and must never have them. Runs on a developer laptop with the tunnel up. Re-pointing it at DATABASE_URL would make it CI-runnable and is worth doing."
+    },
+    {
+      "file": "tests/integration/bse-document-scraper.integration.test.ts",
+      "kind": "broken",
+      "issue": "#572",
+      "reason": "Inserts documents rows for a randomUUID ipo_id it never seeds into ipos, so documents_ipo_id_ipos_id_fk rejects the write (SQLSTATE 23503). Fails on any database, CI or laptop."
+    },
+    {
+      "file": "tests/integration/bse-scraper.integration.test.ts",
+      "kind": "broken",
+      "issue": "#573",
+      "reason": "Three 'Data Discrepancy Handling' cases fail on expectations that no longer match the merge logic. Everything external is vi.mock'ed, so this is not an environment problem — it is red anywhere."
+    },
+    {
+      "file": "tests/integration/ipo-alerts-fallback.integration.test.ts",
+      "kind": "broken",
+      "issue": "#574",
+      "reason": "'should validate and transform all fixture IPOs correctly' fails with expected undefined to be 'MAINBOARD' — the transform stopped producing the category the fixture asserts. Fully mocked, so red anywhere."
+    },
+    {
+      "file": "tests/integration/phase-1-e2e.test.ts",
+      "kind": "broken",
+      "issue": "#575",
+      "reason": "All five cases fail; fixtures use string ids such as 'test-ipo-e2e-001' where ipos.id is a uuid column, so every seed/cleanup statement errors. Red on any database."
+    }
+  ]
+}

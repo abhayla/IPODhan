@@ -660,11 +660,32 @@ jobs:
         run: npx tsx --test scripts/tests/known-gated-registry-invalidation.test.ts
 
       - name: Run the document-state integration tests
+        # THIS LIST IS GATED. Every file under scraper/tests/integration/ must
+        # appear here or in scripts/ci/integration-test-exclusions.json with a
+        # reason; scripts/ci/require-integration-test-coverage.mjs (job
+        # integration-coverage-gate below) parses THIS command and fails the PR
+        # on anything in neither. Adding a test file and forgetting this line is
+        # the class that issue #507 keeps recurring as.
         working-directory: ./scraper
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
           REDIS_URL: redis://localhost:6379
-        run: npx vitest run -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts tests/integration/child-table-normalized-name.integration.test.ts tests/integration/child-table-row-key-unique-constraint.integration.test.ts tests/integration/peer-company-replace-atomicity.integration.test.ts tests/integration/field-sources-row-key-provenance.integration.test.ts tests/integration/field-sources-row-key-unique.integration.test.ts tests/integration/duplicate-ipo-merge.integration.test.ts tests/integration/normalizer-sql-agreement.integration.test.ts tests/integration/derived-key-recompute-guard.integration.test.ts
+        run: >-
+          npx vitest run -c vitest.integration.config.ts
+          tests/integration/document-fetch-state-repository.integration.test.ts
+          tests/integration/child-table-normalized-name.integration.test.ts
+          tests/integration/child-table-row-key-unique-constraint.integration.test.ts
+          tests/integration/peer-company-replace-atomicity.integration.test.ts
+          tests/integration/field-sources-row-key-provenance.integration.test.ts
+          tests/integration/field-sources-row-key-unique.integration.test.ts
+          tests/integration/normalizer-sql-agreement.integration.test.ts
+          tests/integration/derived-key-recompute-guard.integration.test.ts
+          tests/integration/alternative-sources.integration.test.ts
+          tests/integration/data-conflicts-repository-hold.integration.test.ts
+          tests/integration/db-timezone.integration.test.ts
+          tests/integration/duplicate-ipo-merge.integration.test.ts
+          tests/integration/nse-scraper.integration.test.ts
+          tests/integration/oracle-parity.test.ts
 
   # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
   # pr-gate's `gate` job only runs the two node self-tests under
@@ -746,3 +767,25 @@ jobs:
           GH_PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         run: node scripts/ci/require-detection-change.mjs origin/${{ github.base_ref }} HEAD
+
+  # Item 1 slice s11 (issue #507, recurring 2026-09-11): the
+  # scraper-document-integration job named the files it runs on a
+  # hand-maintained line, and nothing compared that line to the files on disk.
+  # Three integration test files were added and never executed once; a green
+  # pr-gate said nothing at all about them. This job enumerates the files,
+  # parses that job's own run command, subtracts an exclusion file in which
+  # every entry carries a reason, and fails naming anything left over. No npm
+  # install, no database, no network - it is seconds, and it runs on every PR.
+  integration-coverage-gate:
+    name: Integration-Test Coverage Gate (#507)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Coverage-gate self-test
+        run: node --test scripts/tests/require-integration-test-coverage.test.mjs
+
+      - name: Every scraper integration test is run by CI or excluded with a reason
+        run: node scripts/ci/require-integration-test-coverage.mjs
