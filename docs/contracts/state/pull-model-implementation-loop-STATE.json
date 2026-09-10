@@ -88,7 +88,11 @@
     "Lane B's new .gitattributes covers *.sh, *.mjs and docs/contracts/*.md only - it does NOT cover docs/ops/prod-ops-recipes.md, so that CRLF file is still unprotected and the clause-8 web duty must still add it. #458 adds no migration, so the journal stays at 37 entries and the stage-0 fixture does not move.",
     "Cross-lane conventions confirmed adopted by both lanes 2026-09-10: rebase with --onto using the pre-rebase merge-base; run the rebase check immediately before PR create AND before merge, because a branch level with origin/main at the start of a review round is behind by the end of it; stage docs/ops/prod-ops-recipes.md with `git -c core.autocrlf=false add` and verify the committed blob is all CRLF with zero bare LF; any brief permitting mutation of shared state must make the worker's LAST action re-assert that state and paste the proof. The .gitattributes rule for docs/ops/*.md rides with the clause-8 web duty, whichever lane reaches it first.",
     "CLOCK DISCREPANCY flagged to lane B 2026-09-10 11:13 IST: the peer reported lane B started ~12:20 IST, 67 minutes ahead of this machine's clock, and both lanes share one machine (git worktree list from the shared repo lists IPODhan-IPODhan-impl-loop-b locally). This matters because #442 - the defect that opened item 1 - was future-dated _journal.json entries silently no-opping every migration, and slice s0 tightened the journal lint tolerance from 24 hours to 5 minutes. A 67-minute skew is 13x that tolerance, so any migration lane B generates would fail the gate. Unresolved: whether the 12:20 was a slip in the relay or a real clock read.",
-    "CLOCK DISCREPANCY RESOLVED 2026-09-10 11:14 IST, benign: no skew. The peer's '12:20' and an earlier '12:05' were estimates written without reading the clock - the 2026-09-05 lesson recurring, which had drifted 80 minutes then and ~67 now. One machine, one clock, `date` agrees across both lanes. Consequence that was real: the board's lane B document carried a lastUpdate an hour in the future; corrected and now stamped from a read clock. Both lanes have the two checks, including decoding the newest _journal.json entry after any db:generate, since the 5-minute journal tolerance is the gate that bites first."
+    "CLOCK DISCREPANCY RESOLVED 2026-09-10 11:14 IST, benign: no skew. The peer's '12:20' and an earlier '12:05' were estimates written without reading the clock - the 2026-09-05 lesson recurring, which had drifted 80 minutes then and ~67 now. One machine, one clock, `date` agrees across both lanes. Consequence that was real: the board's lane B document carried a lastUpdate an hour in the future; corrected and now stamped from a read clock. Both lanes have the two checks, including decoding the newest _journal.json entry after any db:generate, since the 5-minute journal tolerance is the gate that bites first.",
+    "s3 TIER A ROUND 3 PASS 2026-09-10 11:22 IST, no CRITICAL or MAJOR, all five earlier fixes re-proven by mutation rather than by reading: FakeRedis.del made a no-op turns the stale-cache test RED on both copies (and the fake is faithful - BaseRepository calls only get/set/setex/del/keys and it implements all five); breaking ONLY the web copy reddens ONLY the web case and breaking ONLY the shared copy reddens ONLY the shared case, so describe.each genuinely exercises both files rather than resolving back to one. Suite 16/16. PR #459 opened after a pre-create rebase check.",
+    "s3 round 3 MINORs, both carried to s4 rather than fixed here. (1) The previousRowKey SELECT is outside the upsert and trackFieldUpdate uses no transaction, so two concurrent writers on one triple could both read the same previous key - verified UNREACHABLE today because NO caller anywhere passes rowKey (data-persister.ts:264,417,1182,1418; filing-persister.ts:602,652,660; data-consolidation-service.ts:2127; data-consolidation-orchestrator.ts:242 all use the no-rowKey shape), so previousRowKey === rowKey === '' and the second invalidation branch is dead code. It goes live the moment s4 wires callers: s4 must wrap SELECT+upsert in one transaction or invalidate by pattern. (2) data_conflicts caches conflicts:field:{table}:{field} without ipoId and never invalidates it on logConflict/upsertConflict - pre-existing, unchanged by s3, recorded for the s4 card.",
+    "FLAG DUTY CLAIMED by lane A 2026-09-10 11:22 IST as slice s5a, lane B told not to start it. Re-verified untaken immediately before claiming with a line-count sanity check. Chosen as the first pipelined slice because it is the only queued slice independent of s3: s4 wires rowKey into the provenance path and depends on s3; s6 adds a migration and would collide with s3's journal entry.",
+    "PIPELINING IN USE for the first time: s5a builds while s3 sits in CI as PR #459. Still one builder at a time."
   ],
   "items": {
     "item-01": {
@@ -139,8 +143,8 @@
         {
           "k": "s3",
           "title": "row_key on field_sources and data_conflicts, widened unique constraint, repository threading",
-          "status": "PLANNED",
-          "pr": null,
+          "status": "IN-CI",
+          "pr": 459,
           "sha": null,
           "tier": "A"
         },
@@ -155,7 +159,7 @@
         {
           "k": "s5a",
           "title": "slot-aware feature-flag helper + DEPLOY_SLOT plumbing",
-          "status": "PLANNED",
+          "status": "BUILDING",
           "pr": null,
           "sha": null,
           "tier": "A"
@@ -596,9 +600,10 @@
   ],
   "sharedDuties": {
     "firstFlagSlice": {
-      "taken": false,
-      "checkedAt": "2026-09-10T10:45+05:30",
-      "check": "git show 'origin/main:scraper/src/config/feature-flags.ts' | grep -c DEPLOY_SLOT  -> 0"
+      "taken": true,
+      "takenBy": "lane A slice s5a",
+      "checkedAt": "2026-09-10 11:22 IST",
+      "check": "DEPLOY_SLOT count 0 in feature-flags.ts (477 lines), deploy-linux.sh, assert-env-keys.sh at claim time"
     },
     "firstWebTouchingSlice": {
       "taken": false,
