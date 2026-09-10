@@ -602,3 +602,13 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   open, so a big enough backlog starves it every single cycle. A reader of ipodhan.com would see that as an IPO page
   with no prospectus-derived detail on the morning it opens. The fix lands on main today; **whether it reaches the
   live site before that IPO opens tomorrow is your deploy decision, not something this run does.**
+- **2026-09-10 14:36 IST - item 20 stays at 100%; the queue-jumping defect is in its second round because the first fix only
+  helped one IPO.** The reserved slot the fix adds was going to the same IPO every cycle, forever - so with twenty
+  starved IPOs, nineteen would still get nothing. The review recommended merging it anyway as an improvement; I sent
+  it back, because the rule this whole run works under is that a defect is fixed for the whole class, not for the
+  one case that was reported. The mechanisms needed already exist a few lines away for a different tier, so this is
+  copying something that works, not inventing anything. A reader of ipodhan.com would notice nothing today; the
+  visible symptom is an IPO page with no prospectus detail on the morning it opens.
+  **Two things still need you, unchanged from the last note:** the fix ships switched off, so it needs a deploy AND
+  the flag turned on to help the IPO opening tomorrow; and a test gate in the project can never pass (issue #478),
+  which is teaching every worker that a red result is normal.
