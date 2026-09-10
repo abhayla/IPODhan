@@ -390,7 +390,7 @@
         },
         {
           "k": "s12",
-          "status": "BUILT-HELD-NO-PR",
+          "status": "TIER-A-FIX-ROUND",
           "tier": "A",
           "pr": null,
           "sha": "b76b4479",
@@ -401,7 +401,8 @@
             "remove the just-created release directory in the on_deploy_error trap that already exists in scripts/deploy-linux.sh",
             "both: (1) alone misses a failure AFTER the preflight, (2) alone still lets a tight box be pushed over before the check runs"
           ],
-          "branch": "fix/pm-item01-s12-orphan-release-on-failed-deploy"
+          "branch": "fix/pm-item01-s12-orphan-release-on-failed-deploy",
+          "reviewVerdict": "PASS-with-findings; one MAJOR (pm2-cwd window) being fixed before merge"
         },
         {
           "k": "s13",
