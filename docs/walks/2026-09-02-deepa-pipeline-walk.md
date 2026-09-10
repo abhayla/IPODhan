@@ -2404,3 +2404,51 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   this lane's own `find` run 99 minutes), and under the old enumerate-and-subtract-then-kill rule it would have been
   killed - which is how two database tunnels died this afternoon. Detection found it; identification stopped the
   kill. Both halves of the rule earned their keep inside one sweep.
+
+- **2026-09-10 15:05 IST [lane B] delta-1 adopted at item 22; item 22 slice plan re-cut from 8 pre-made slices to 6.**
+  Delta read in full from origin/main at Stage 1a. Adopted: slices of 250-400 lines (cap 400, under ~150
+  merged unless fix / migration-only / tier differs); tiers applied AS WRITTEN, not upward; later review
+  rounds read only changed lines and start from the slice plan mutation list; the two brief lines added to
+  this lane templates -- reviewer: build the case that would falsify the claim, then run it; builder: verify
+  any instruction naming a checker AGAINST the checker and follow the checker over the brief.
+  Corrections that change lane B behaviour: no brief may cite vitest.tzcase.config.ts until #478 wires it
+  (lane B own finding, now binding on all three lanes); assert-env-keys.sh is deleted from decision 11, and
+  the slot-aware helper applies to NEW flags only -- so item 22 flag ships with the plain equality reading
+  now, exactly as the #468 flag did, and becomes slot-aware later. It is therefore NOT gated, which the
+  pre-made plan predates. A node --test invocation is always a literal path, never a glob (#461). Item 16
+  does not touch field-priority-matrix.ts.
+  **One deliberate deviation, recorded rather than skipped.** Delta 3.10 asks each lane to run a Notifier
+  channel assertion once immediately. Lane B already holds that proof: a real info landing note returned
+  **HTTP 202** at 14:2x today, recorded in STATE.json notifierPosts. A no-op repost would add owner-visible
+  noise to a WhatsApp channel for zero new information, against the standing rule that automation speaks
+  only when it has something to say. The assertion PURPOSE -- prove the channel is alive -- is satisfied and
+  dated. If the supervisor wants the literal no-op, it is one command.
+  **The re-cut**, from docs/contracts/plans/lane-b-items-22-18.md (verified against code at 6c31d995):
+  - **22-1 (Tier A, ~400, AT THE CAP)** resolved-address refusal + allow-list as config. Old 22-1 (~140)
+    merged with old 22-2 (~260): both edit company-host-source.ts, one concern. At 400 this is the cap, not
+    a target -- if it grows during build it SPLITS rather than merging large. Imports lane C
+    validated-config-loader.ts, never a second loader (delta 3.15). R-160.
+  - **22-2 (Tier A, ~320)** streaming byte cap + its own flag, merged because a flag belongs with the
+    behaviour it guards -- shipping a cap in one slice and its controlling flag in another is how a
+    half-wired feature reaches main. The failing test asserts on BYTES PULLED, not the final verdict: the
+    plan is explicit that a verdict-only test passes against unfixed code, the same shape as the hollow-gate
+    findings lane B made today. R-160.
+  - **22-3 (Tier B, ~180)** structured refusal log + detection entry. **Tier corrected DOWNWARD from A**,
+    per delta 1.2: no rows, no migration, no hook, no CI, no scheduler, no budget, no write path, no repair
+    tool. The unsure-goes-to-A rule does not apply because there is no uncertainty about which list it is
+    in. R-160.
+  - **22-4 (Tier A, ~110)** migration: part_number, exchange_document_id. Under 150 but migration-only,
+    which 1.1 exempts. Bumps the stage-0 fixture journalEntries 36 to 37 and checks the new journal entry is
+    not future-dated after db:generate. R-021, R-025.
+  - **22-5 (Tier A, ~300)** multi-volume classifier + per-part store loop. Binding card correction: ONE
+    documents row per download, parts carry partNumber and their own sha256, parent COMPLETED only when
+    every part extracted. Test proves two rows, part numbers 1 and 2, both files on disk -- one row must not
+    replace the other. R-021, R-025.
+  - **22-6 (Tier A, ~150)** blank-password attempt behind ENABLE_DOCUMENT_PASSWORD_CHECK: an encrypted
+    fixture returns password_protected with the library error string rather than not_a_pdf, attempted
+    EXACTLY ONCE. R-023.
+  Every slice carries the pre-made mutation list into its reviewer brief (delta 1.3). Pipelining pairs are
+  re-verified against the re-cut file sets before any parallel dispatch, never assumed.
+  **Owed at item close:** Tier A means a rollback rehearsal (flag off for one cycle), which needs the owner
+  -- the one owner-facing item this item genuinely creates, and it is real, unlike the two lane B wrongly
+  claimed earlier today.
