@@ -77,7 +77,8 @@ curl -s -o /dev/null -w '%{http_code}' https://ipodhan.com/
 cd web && npm run test:prod-verify          # laptop, needs >= 2.5 GB free
 npm run audit:data                          # root; expect only the known legacy reds
 # audit:coverage needs a DB: web/.env.local is git-ignored and may be missing on the laptop; supply the tunnel instead:
-#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"'); DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" npm run audit:data
+#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
+'); DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" npm run audit:data
 ```
 Then on the VPS: served sha (section 2), pm2 web x2 online, scraper `stopped` between runs, next cycle
 `extractionFailed 0`, extractor `ni=10`.
@@ -122,66 +123,6 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 
 ## 8. Data repair tools (productized; never hand SQL)
 
-### 8a. Migration journal date repair (GitHub #442) — supersedes the T-403 round-3 exemption
-
-**What T-403 round 3 chose, and why.** `web/drizzle/migrations/meta/_journal.json` idx 32-34
-(`0049_ipo_details_ad_fields`, `20260906090638_icy_firelord`, `20260908004955_left_loners`) carried
-hand-typed `when` values dated into the future (up to 2026-09-10T09:20:00.500Z), because drizzle's
-migrator only applies a journal entry whose `when` is STRICTLY GREATER than the last-applied
-`created_at` — idx 33's real authoring `when` (~1788685598881, 2026-09-06) sorted BELOW idx 32's
-future-dated `when`, so idx 33 would be silently skipped by `db:migrate` on any slot that hadn't
-already applied it. Round 3 (T-403) fixed the ordering by pushing idx 33's `when` to just above idx
-32's — restoring monotonic order — and then set `MONOTONIC_CHECK_FROM_IDX` / `FUTURE_CHECK_AFTER_IDX`
-in `scripts/lib/migration-journal-lint.mjs` to 33, so CI would not fail on the still-future-dated
-result.
-
-**Why that was not enough.** The exemption hid the mistake instead of fixing it: idx 32-34 stayed
-future-dated, and any slot that had already applied a migration with `created_at` in that future range
-silently skipped every migration generated before 2026-09-10T09:20:00.500Z — demonstrated on
-`ipodhan_test`, where `db:migrate` exited 0 while three rows in `drizzle.__drizzle_migrations` still
-carried the future `created_at`.
-
-**What this change does instead.** `web/drizzle/migrations/meta/_journal.json` idx 32-34 now carry
-their honest, real-authoring `when` values (2026-09-06T09:06:30.000Z / :38.000Z, 2026-09-08T00:49:55.000Z).
-`FUTURE_CHECK_AFTER_IDX` is lowered to `-1` (no idx-based exemption at all — every entry, at any idx,
-is checked for a future-dated `when` from here on). `MONOTONIC_CHECK_FROM_IDX` stays at 33: the real
-journal has a second, unrelated hand-typed anomaly at idx 31 (`0048_ipo_valuation_share_legs`, dated
-above idx 32's honest value) that is out of this change's scope to correct, and lowering the boundary
-below 33 would fail CI on that entry — see the comment above `MONOTONIC_CHECK_FROM_IDX` in
-`scripts/lib/migration-journal-lint.mjs` for the exact pair and how the boundary was verified.
-
-**Residue an operator should know about.** Idx 25-31 still carry a fabricated one-per-day ladder
-(`when` hand-typed to an exact `09:20:00.000Z`, one day apart) rather than real authoring times, and
-correcting idx 32 pulled it below idx 31, leaving exactly one known monotonic drop (idx 31 -> idx 32,
-pinned by a regression test in `scripts/tests/check-migration-journal.test.mjs` so a second one fails
-CI). This is harmless only because idx 32-34 are already applied on every slot; it would stop being
-harmless for a database whose recorded state sits precisely between idx 31 and idx 32 (0048 applied,
-0049 not yet run), which no known slot is in today but a partial restore could create.
-
-**What an operator must do on staging and production.** Fixing the journal file alone does nothing for
-a database that already applied idx 32-34 with their future `created_at` — the DB rows need the same
-correction, per slot:
-```bash
-cd scraper
-# Durable backup location — the tool's default (OS temp dir) can be cleared by the OS before anyone
-# reads it, and this backup is the only record of the pre-change rows for a production --apply.
-export MIGRATION_JOURNAL_REPAIR_EVIDENCE_DIR=/root/evidence/migration-journal-dates-442
-# 1. staging (tunnel env — see section 4/5 for the PW= line): dry run, then apply
-DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging \
-  npx tsx scripts/repair-migration-journal-dates.ts            # dry-run, prints the plan + backup path
-  ... --apply                                                  # writes staging
-# 2. production — ONLY on the owner's word, after the staging run is read and clean:
-DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432 DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan \
-  npx tsx scripts/repair-migration-journal-dates.ts --allow-prod          # dry-run
-  ... --apply --allow-prod                                                # prod write (owner word only)
-```
-Idempotent (a second run against an already-corrected slot finds 0 rows to repair) and scoped to
-exactly the three rows named in #442, matched by `sha256(<migration .sql file content>)` — the same
-hash drizzle-orm's own migrator computes — never by a slot's possibly-drifted `created_at`. Backup of
-the pre-change rows defaults to the OS temp directory (`MIGRATION_JOURNAL_REPAIR_EVIDENCE_DIR` to
-override); it must never default to a path outside this repo — set the override above before any
-production `--apply` so the backup survives on durable storage, not somewhere the OS may sweep it.
-
 **Shared guards (T-490):** every repair/backfill tool imports `scraper/scripts/lib/repair-tool.ts` - `openRepairDb()`
 (prints `current_database(): <name>` from the WRITING pool and refuses a prod `--apply` without `--allow-prod`),
 `upsertFieldSource()` (keeps `previous_source`, takes `previous_value` from the caller's ledger),
@@ -189,31 +130,10 @@ production `--apply` so the backup survives on durable storage, not somewhere th
 `scripts/ci/require-repair-tool-module.mjs` fails a PR whose new `scraper/scripts/{repair,backfill}-*.ts` neither
 imports the module nor carries `// repair-tool-exempt: <YYYY-MM-DD> <reason>`.
 
-**8a-i. Line-ending-safe matching (GitHub #449).** The row-matching hash above is taken over the
-migration `.sql` file exactly as `readMigrationFiles()` (drizzle-orm) and this tool both read it — and
-that byte content depends on which platform wrote/checked it out. A migration applied by the Linux
-deploy runner writes an LF hash into `drizzle.__drizzle_migrations`; the same logical file read from a
-Windows checkout (git `core.autocrlf` converting to CRLF) hashes differently, so the tool matched zero
-of the three named rows and printed "nothing to repair" — indistinguishable from the healthy case, in
-EITHER direction (a Windows checkout could not see a Linux-written row; a Linux checkout could not see
-a Windows-written row). The tool now computes all THREE of {raw (file as this checkout reads it),
-LF-normalized, CRLF} for every target, and accepts a `drizzle.__drizzle_migrations` row matching **any**
-of them — normalizing only one direction was rejected because a slot whose migrations were applied from
-a Windows checkout would then fail the same way in the opposite direction. The CRLF variant is always
-built by normalizing to LF first and then expanding, never by converting as-read content directly,
-so an already-CRLF file is never turned into CRCRLF. When two or three variants collapse to the same
-value (the common case), a row is matched (and counted) once, never twice.
-**A zero — or partial — match is now a loud failure**, not a quiet "0 rows to repair": if the tool
-matches fewer of `TARGET_ENTRIES` than it was asked to find, it prints every unmatched tag with all three
-hashes it tried and exits **1**; only when every target resolves to a row (whether or not that row still
-needs a `created_at` correction) does it exit 0. Re-run the dry run in section 8a above from a Windows
-checkout against `ipodhan_staging`/`ipodhan` any time the previous run reported "nothing to repair" from
-this checkout — that message is no longer trustworthy from before this fix, and any future zero-match
-run now fails loudly instead of looking healthy.
-
 ```bash
 # issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
-cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
+')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432   DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts                     # dry run (staging)
   ... --apply                                                                    # write on staging
   ... --allow-prod            (DATABASE_NAME=ipodhan)                            # prod dry run
@@ -277,7 +197,7 @@ plus a nameless `asset-reconstruction-co-india-ltd`) because the name normaliser
 runs the whole merge in one transaction.
 
 ```bash
-PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
 # 1. rehearse on staging (it usually carries the same pair)
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging"   node scripts/merge-duplicate-ipo.mjs --keep <uuid> --drop <uuid> [--set-issue-size <rupees>]
 #    ... then the same line with --apply
@@ -319,76 +239,6 @@ DUPLICATE_INVARIANT_FOLDS=<foldedname> node scripts/assert-repair-held.mjs   scr
 Without `DUPLICATE_INVARIANT_FOLDS` that invariant reports every duplicate group table-wide, which is
 the right shape for detection but useless as a per-repair proof: staging carries 12 unrelated groups
 (finding F-57), so an unscoped run is permanently red there.
-
-### 8c. Row-key UNIQUE constraints on promoters / peer_companies / ipo_intermediaries (item 1 slice s2, gated)
-
-`web/drizzle/migrations/_gated/E1_row_key_unique_constraints.sql` is deliberately kept OUT of
-`meta/_journal.json` (see that file's own header and `_gated/README.md` entry 10) — it is
-owner-applied per slot, in this exact order, never skipped:
-
-1. **Add the column via a release.** `normalized_name` (`NOT NULL DEFAULT ''`) already ships in
-   journaled migration `20260909153933_sloppy_morph` — this step is done once the release
-   carrying that migration has deployed to the slot.
-2. **Run the backfill.** `scraper/scripts/backfill-normalized-name.ts` against the slot — dry run
-   first, then `--apply` — until it reports 0 rows still at `''`.
-3. **Apply this gated file** (`E1_row_key_unique_constraints.sql`) by hand, through the tunnel.
-4. **Verify.** `npx tsx scripts/assert-row-key-constraints.ts "$DATABASE_URL"` (read-only; queries
-   `information_schema.table_constraints` for the three constraint names and exits 1 naming any that
-   are missing). Run this against the SAME slot step 3 was just applied to — an operator's memory of
-   having run step 3 is not proof, and nothing else checks whether it actually landed (F-2 / item 1
-   slice s2 fix round: `assert-schema-drift.ts` cannot see this — it reads only column shape, never
-   constraints).
-
-**Not wired into the nightly audit.** Unlike `assert-schema-drift.ts` (which runs every night against
-prod), `assert-row-key-constraints.ts` is NOT called from the nightly audit cron. The gated file is
-applied per-slot, on the owner's own schedule, and there is no `KNOWN_GATED_TYPE_DRIFT`-style allow-list
-here yet — an unconditional nightly call would report FAIL every night on any slot the owner has not
-yet hand-applied it to, which is not a defect, just an unfinished rollout. Running it manually as step 4
-above, right after step 3, is the intended cadence. Revisit once every slot has the constraint applied:
-at that point a nightly check earns its keep (catching a FUTURE regression, e.g. a restore from an older
-backup) and should be added then, not before.
-
-**Precheck before step 3 — all three MUST read 0:**
-```bash
-cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
-DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" psql "$DATABASE_URL" -c "
-  SELECT 'promoters' AS t, count(*) FROM promoters WHERE normalized_name = ''
-  UNION ALL SELECT 'peer_companies', count(*) FROM peer_companies WHERE normalized_name = ''
-  UNION ALL SELECT 'ipo_intermediaries', count(*) FROM ipo_intermediaries WHERE normalized_name = '';
-"
-```
-
-**If the precheck reports a non-zero count for any table:** do NOT apply the gated file — go back to
-step 2 (`backfill-normalized-name.ts --apply`) for that table and re-run the precheck. Applying the
-file first fails immediately: every pre-existing `''` row on that table collides on the very first
-`ADD CONSTRAINT` (27 promoters, 326 peer_companies, 178 ipo_intermediaries in prod as of this slice),
-and the migration — and the deploy, if it were journaled — dies mid-flight.
-
-
-### 8c-note. field_sources row_key — deferred to the slice that ships the constraint swap (item 1 slice s3)
-
-Slice s3 added `field_sources.row_key` (column + widened non-unique index) but does NOT ship the
-constraint swap or retarget any upsert's `ON CONFLICT` — see this slice's commit body and
-`docs/design/build-cards/item-01-child-table-consolidated-writer.md` for the re-scope rationale
-(the original F1-gated design created a broken window: `ON CONFLICT` naming a constraint that
-doesn't exist yet before F1 is applied, and two untouched upsert paths breaking the other way once
-it is). For the slice that DOES ship the swap, record here:
-
-- **Four `field_sources` upsert sites must ALL retarget together**, in the same change that swaps
-  the constraint: `packages/shared/src/repositories/field-sources-repository.ts` and its `web/lib/`
-  copy (`trackFieldUpdate`'s `onConflictDoUpdate` target), `packages/shared/src/repositories/
-  ipo-repository.ts:1143` (the duplicate-IPO merge provenance upsert, an owner-run production
-  repair), and `scraper/scripts/lib/repair-tool.ts:222` (the shared upsert every field-repair
-  script uses). Retargeting only the repository copies while the DDL is live reproduces this
-  slice's original finding on the two paths this diff never touches.
-- **`web/scripts/apply-phase0-direct.ts:88` creates the OLD three-column constraint by hand** —
-  a bootstrap run on a fresh slot would recreate the wrong key unless that script is updated in
-  the same change.
-- **A real row key of `''` is indistinguishable from the singleton sentinel.** Nothing today
-  rejects an empty row key for a table known to hold multiple rows per IPO (e.g.
-  `financial_statements`) — the slice that ships the constraint swap must reject `rowKey === ''`
-  for such tables, or a caller that forgets to pass one silently collides with the sentinel
-  convention instead of failing loudly.
 
 ## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
 Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`
