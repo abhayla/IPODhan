@@ -192,3 +192,29 @@ def test_no_source_file_contains_a_control_character():
         if bad:
             offenders.append("%s: %s" % (name, sorted(set(bad))))
     assert not offenders, "control characters in source: %s" % offenders
+
+
+def test_header_continuation_rows_are_not_mistaken_for_data():
+    """Karamtara's header runs SIX rows, and rows 5 and 6 of it read
+    ``Share / 28, 2026 / 2026 (in Rs / 2026`` — two bare YEARS.
+
+    A "two or more numbers means data" rule cut the header block two rows early
+    on exactly that. The mapping still worked, which is the dangerous part: the
+    keywords happened to live in the earlier rows, so nothing failed and the
+    detector was quietly wrong. Threshold raised to three numbers, plus the
+    first non-empty cell must not itself be numeric.
+    """
+    table = peer_table(*KARAMTARA)
+    assert detect_header_row_count(table) == 6
+    headers = reconstruct_headers(table, detect_header_row_count(table))
+    # The fragments from those two rows must now be part of the headers.
+    assert "millions" in headers[3]
+    assert "Share" in headers[1]
+
+
+def test_the_issuer_row_is_not_swallowed_into_the_header():
+    """The row after the header must be the issuer's own figures, not a
+    fragment — otherwise the divider logic starts one row late."""
+    table = peer_table(*KARAMTARA)
+    first_data = table[detect_header_row_count(table)]
+    assert "Karamtara" in " ".join(first_data)

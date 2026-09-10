@@ -123,14 +123,25 @@ _NUMERIC = re.compile(r"^[\s(]*[-+]?[\d,]+(?:\.\d+)?\s*%?\s*[)]*$")
 
 
 def _looks_like_data(row):
-    """A data row carries several numbers. A header row does not.
+    """A data row carries a NAME and several numbers. A header row does not.
 
-    Two or more numeric cells is the threshold: one stray figure in a header
-    (a year, a face value printed in the header itself) must not end the header
-    block early, and no real peer row has fewer than two numbers.
+    Two thresholds, both learned from the fixtures rather than chosen:
+
+    * At least THREE numeric cells. Two is not enough - Karamtara's header
+      continuation rows read `Share / 28, 2026 / 2026 (in Rs / 2026`, and the
+      two bare years matched a two-number rule, so the header block was cut two
+      rows early. Every real peer row here carries seven or more numbers.
+    * The first non-empty cell must not itself be numeric, and the row must have
+      one. Header continuations begin with an EMPTY first column because the
+      name column's header was finished on an earlier row; a peer row always
+      opens with the company name.
     """
-    numeric = sum(1 for c in row if _NUMERIC.match(" ".join((c or "").split())))
-    return numeric >= 2
+    cells = [" ".join((c or "").split()) for c in row]
+    numeric = sum(1 for c in cells if _NUMERIC.match(c))
+    if numeric < 3:
+        return False
+    first = next((c for c in cells if c), None)
+    return first is not None and not _NUMERIC.match(first)
 
 
 def detect_header_row_count(rows, limit=8):
