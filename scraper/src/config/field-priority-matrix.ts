@@ -460,6 +460,38 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 1e6, max: 999999990000 }, // 1 Cr floor (issue_size) to 999,999.9 Cr ceiling (issueSize, mirrors NUMERIC(15,2) cap)
   },
 
+  // Item 3 slice 2: the fresh-issue / offer-for-sale split. Both fell through
+  // to DEFAULT_RULES until now, which ranked NSE third — and the field manifest
+  // records NSE as `capable: false` for exactly these two fields, because NSE
+  // computes an offer value from shares x price and never prints the split.
+  // So the default was ranking a source that cannot produce the field at all.
+  //
+  // Measured before changing anything, read-only over `field_sources` on both
+  // `ipodhan` and `ipodhan_staging`: DRHP is the ONLY source that has ever
+  // written either field (freshIssue 8 prod / 10 staging, ofsIssue 4 / 5).
+  //
+  // Rank mirrors `scraper/config/field-manifest.json` (`DOC` there is `DRHP`
+  // here); ADMIN leads because a manual override outranks every source and is
+  // deliberately not carried in the manifest.
+  //
+  // No `min`: a pure offer-for-sale has a legitimately zero fresh issue (the
+  // manifest marks fresh_issue `na` for OFS), and a 1 Cr floor would reject it.
+  freshIssue: {
+    sources: ['ADMIN', 'DRHP', 'BSE', 'CHITTORGARH'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Fresh-issue rupee amount, printed separately from the OFS amount on the price-band ad. NSE is excluded on capability, not on priority.',
+    validation: { max: 999999990000, allowNull: true },
+  },
+
+  ofsIssue: {
+    sources: ['ADMIN', 'DRHP', 'BSE', 'CHITTORGARH'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Offer-for-sale rupee amount, printed separately from the fresh-issue amount on the price-band ad. NSE is excluded on capability, not on priority.',
+    validation: { max: 999999990000, allowNull: true },
+  },
+
   // T-434 (walk step G4): DRHP added at rank 2. Face value is a charter fact
   // the offer document PRINTS; the exchanges frequently carry a default 10.
   // Deepa Jewellers: ad Rs 2 vs NSE Rs 10, and without this entry the filing
