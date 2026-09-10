@@ -224,6 +224,10 @@
     {
       "at": "2026-09-10T23:21:06.057Z",
       "what": "THIRD occurrence tonight of my own recorded heredoc-backslash trap, and it cost half an hour: a regex written as \\bEPS\\b reached the file with escapes already interpreted, so the source held literal BACKSPACE bytes and could never match. Editors, diffs and the Read tool all render them invisibly, so the code READ correctly and the mapper looked not-smart-enough while the file was corrupt. Chased logic, bytecode caching and module identity before printing the compiled constant. A control-character test now guards this slice; injecting one real backspace turns it red. Also reported a SURVIVING mutation rather than hiding it: the empty-header skip is redundant and now says so in a comment instead of posing as a guard - second time tonight I wrote a line that looked load-bearing and was not."
+    },
+    {
+      "at": "2026-09-10T23:24:40.952Z",
+      "what": "#596: detection gate failed, class filed rather than exempted (invisible-control-chars-in-source - two occurrences tonight, not a one-off). Then looking at the DATA ROWS before writing the next slice found a flaw in the detector just written: Karamtara header runs SIX rows and rows 5-6 contain two bare YEARS, which my two-numeric-cells rule read as data and cut the header two rows early. NOTHING FAILED - the keywords were in earlier rows so all ten columns still mapped and every test stayed green. Detector wrong, result right: the state in which a fault survives to production. Fixed with a three-numeric threshold plus a non-numeric first cell; Karamtara now 6 header rows, PRASOLCHEM 4, both still ten columns, two tests pin it."
     }
   ],
   "items": {
@@ -669,7 +673,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T23:21:06.057Z",
+  "lastStateWriteAt": "2026-09-10T23:24:40.952Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 5,
