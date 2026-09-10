@@ -220,10 +220,31 @@ check_disk_free() {
   fi
 }
 
-# --------------------------------------------------------------- 7. node >= 20
+# ------------------------------------------- 7. node major matches the pin
+# Item 23 S1: `>= 20` passes on a Node major that cannot run the artifact.
+# From 23-S2 the release is BUILT in CI on the pinned major and unpacked
+# here; a box on a different major runs prebuilt output it was not built
+# for. The pin is .nvmrc at the repo root (SSOT, also read by engines.node
+# in root/web/scraper package.json). A mismatch is FATAL — this script's
+# FAIL aborts the deploy before `pm2 stop`/the flip, leaving `current`
+# untouched. PREFLIGHT_NVMRC_FILE overrides the pin path for the self-test.
 check_node() {
+  pin_file="${PREFLIGHT_NVMRC_FILE:-$(dirname "$0")/../.nvmrc}"
+  if [ ! -r "$pin_file" ]; then
+    emit FAIL "node major matches .nvmrc pin — pin file not readable at '$pin_file'"
+    return
+  fi
+  pinned_raw="$(head -1 "$pin_file" | tr -d ' 	')"
+  pinned="${pinned_raw#v}"
+  pinned_major="${pinned%%.*}"
+  case "$pinned_major" in
+    ''|*[!0-9]*)
+      emit FAIL "node major matches .nvmrc pin — could not parse a major from '$pinned_raw' in $pin_file"
+      return
+      ;;
+  esac
   if ! command -v node >/dev/null 2>&1; then
-    emit FAIL "node >= 20 — node not found on PATH"
+    emit FAIL "node major matches .nvmrc pin — pinned v$pinned_major, node not found on PATH"
     return
   fi
   node_version="$(node --version 2>/dev/null)"
@@ -231,13 +252,13 @@ check_node() {
   major="${ver_no_v%%.*}"
   case "$major" in
     ''|*[!0-9]*)
-      emit FAIL "node >= 20 — could not parse version from '$node_version'"
+      emit FAIL "node major matches .nvmrc pin — pinned v$pinned_major, could not parse version from '$node_version'"
       ;;
     *)
-      if [ "$major" -ge 20 ]; then
-        emit OK "node >= 20 — found $node_version"
+      if [ "$major" = "$pinned_major" ]; then
+        emit OK "node major matches .nvmrc pin — pinned v$pinned_major, found $node_version"
       else
-        emit FAIL "node >= 20 — found $node_version"
+        emit FAIL "node major matches .nvmrc pin — pinned v$pinned_major, found $node_version (MAJOR mismatch: the artifact is built on the pinned major)"
       fi
       ;;
   esac

@@ -1082,7 +1082,7 @@ build_release() {
 
   # T-243: the slot env file above sets NODE_ENV=production, and `set -a` has
   # already exported it — so a bare `npm ci` OMITS devDependencies and the build
-  # then dies on missing husky / vitest / @next/bundle-analyzer. Install with
+  # then dies on missing husky / vitest / typescript. Install with
   # dev deps explicitly; the BUILD still runs under NODE_ENV=production.
   # HUSKY=0: release dirs are `git archive` exports, not git repos.
   ( cd "$RELEASE_DIR" && NODE_ENV=development HUSKY=0 npm ci --include=dev --no-audit --no-fund )
@@ -1098,6 +1098,52 @@ log "Building release (npm ci + next build, env sourced from $WEB_ENV_FILE)"
 if ! build_release; then
   fatal "build failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
 fi
+
+# ------------------------- 6.2 release + shared-cache size (item 23 slice S1)
+# s16 moved the Next build cache out of the release directory on the claim
+# that a release drops from ~3.1GB to ~1.6GB; nothing in the deploy ever
+# measured it, so the central number of that slice was owed and could only
+# be collected by someone visiting the box by hand. Item 23's definition of
+# done needs the release size "measured by du -sh" on every deploy — both to
+# set the artifact-size threshold S1 reports and to give 23-S3 a run of real
+# build-mode before-numbers to compare its artifact-mode releases against.
+# Two labelled lines (release + shared cache), never one aggregate, so the
+# split s16 created is visible.
+#
+# This measurement MUST NOT be able to fail the deploy: a `du` that errors,
+# is missing, or hangs prints an honest "size unavailable: <reason>" and the
+# deploy continues. A deploy must not die measuring itself.
+measure_dir_size() {
+  local dir="$1" out rc timeout_s="${DEPLOY_SIZE_TIMEOUT_SECONDS:-60}"
+  if [ -z "$dir" ]; then
+    printf 'size unavailable: no path given'
+    return 0
+  fi
+  if [ ! -d "$dir" ]; then
+    printf 'size unavailable: not a directory'
+    return 0
+  fi
+  if ! command -v du >/dev/null 2>&1; then
+    printf 'size unavailable: du not found on PATH'
+    return 0
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    out="$(timeout "$timeout_s" du -sh "$dir" 2>/dev/null | cut -f1)"; rc=$?
+  else
+    out="$(du -sh "$dir" 2>/dev/null | cut -f1)"; rc=$?
+  fi
+  if [ "$rc" -ne 0 ] || [ -z "$out" ]; then
+    printf 'size unavailable: du exited %s (timeout %ss)' "$rc" "$timeout_s"
+    return 0
+  fi
+  printf '%s' "$out"
+}
+
+report_build_sizes() {
+  log "Release size: $(measure_dir_size "$RELEASE_DIR") — $RELEASE_DIR"
+  log "Next build cache size: $(measure_dir_size "$NEXT_CACHE_DIR") — $NEXT_CACHE_DIR (shared per slot, outside the releases tree since s16)"
+}
+report_build_sizes || warn "could not report build sizes — continuing (a deploy never fails on its own measurement)"
 
 # ------------------------- 6.5 scraper Python deps in a deploy-managed venv (W-111/W-112)
 # The scraper's auto-persist path spawns `python`/`python3` (PYTHON_BIN) for
