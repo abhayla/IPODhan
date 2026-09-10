@@ -459,7 +459,8 @@
     "scraper/src/config/validated-config-loader.ts MERGED #473 b0c42202 (verified: exit 0, 37 lines): loadValidatedConfig<T>(configPath, schema: ZodType<T>): T. Item 22 slice 22-2 IMPORTS it and adds only scraper/config/download-allowlist.json plus its zod schema (.strict() owns unknown keys). No second loader, no ajv, no yaml. KNOWN GAP: nested key paths implemented but only flat keys tested until lane C's 2-S2 - if nested error rendering looks wrong, file against item 2, never patch the loader."
   ],
   "carriedInputs": [
-    "Items 22 and 18: the four architect decisions land as an 'Architect correction 2026-09-10' block AMENDING the build cards themselves (Tier C docs PR), with the plans under docs/contracts/plans/. Binding via 'the card is the slice source' rather than via a relay. Plan nothing for 22 or 18 until that PR merges; the peer sends the number."
+    "Items 22 and 18: the four architect decisions land as an 'Architect correction 2026-09-10' block AMENDING the build cards themselves (Tier C docs PR), with the plans under docs/contracts/plans/. Binding via 'the card is the slice source' rather than via a relay. Plan nothing for 22 or 18 until that PR merges; the peer sends the number.",
+    "lane A measured 26 of 44 web integration tests failing WITHOUT the tunnel (14:59 tick) - the tunnel-exhaustion hypothesis is partly falsified and the failures are substantially real"
   ],
   "cardDefectsUnderReview": [
     {
@@ -566,5 +567,15 @@
     "at": "2026-09-10 15:05 IST",
     "atItem": 22,
     "deviation": "the 3.10 Notifier channel assertion is satisfied by the real info post that returned HTTP 202 at 14:2x today (see notifierPosts); a no-op repost would add owner-visible noise for no new information"
-  }
+  },
+  "heldRelays": [
+    {
+      "at": "2026-09-10 15:18 IST",
+      "relay": "owner decision: baseline the 26 failing web integration files shrink-only; web-touching slices gate on NO NEW failures; replaces item 21 wait-for-green-ci.yml",
+      "status": "HELD - not adopted",
+      "why": "it LOOSENS a constraint the contract attributes to clause 8; a peer relay may tighten unilaterally but never loosen. Lane A ledger head on origin (15:00:25) does not yet contain it.",
+      "costOfHolding": "nil - item 21 is last in the queue and also waits on lane A item 5",
+      "release": "a lane A ledger line recording the decision, or the owner typing it in this session"
+    }
+  ]
 }

@@ -2469,3 +2469,27 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   origin/main:path, so the answer is not to drop it -- it is to stop mixing the two path forms under it.
   Worktree state, from a command that SUCCEEDED: 8 worktrees, none of them a lane B slice tree; lane C now has
   its coordination tree and lane A has three.
+
+- **2026-09-10 15:18 IST [lane B] Two relayed owner decisions: one adopted, one HELD -- because one of them loosens a gate.**
+  Verified as the relay itself asked: lane A ledger branch IS on origin now, head 2026-09-10T15:00:25 --
+  *"14:59 tick - tunnel hypothesis partly falsified, 26 of 44 fail without it"*. It does **not** yet contain
+  either decision said to have been typed at ~15:2x. That is expected (the relay said lane A will push them),
+  but it means they are not yet verifiable.
+  **Decision 2 -- delta 1 section 1 approved as written -- ADOPTED, because it changes nothing.** Lane B
+  adopted those terms at item 22 Stage 1a already; an owner confirming an existing rule cannot loosen
+  anything, so there is nothing to hold.
+  **Decision 1 -- baseline the web integration failures, gate on NO NEW failures -- HELD, not adopted.** It
+  would replace item 21 gate of *wait for a green ci.yml* with *no new failure against a baseline*. That is a
+  LOOSENING of a constraint this lane contract attributes to clause 8, and lane B own rule is explicit: a
+  peer relay can tighten a constraint unilaterally, never loosen one the contract attributes to a direct
+  owner statement. The same rule was applied on 2026-09-09 to a relayed budget raise and it was right then.
+  Held pending either lane A ledger line or the owner typing it here. **Cost of holding: nil.** Item 21 is
+  last in the queue and also waits on lane A item 5, so this decision does not gate anything lane B is doing
+  today. If it is genuine it will be verifiable long before item 21 starts.
+  **The measurement inside lane A tick matters more than either decision, and it vindicates the caution.**
+  Earlier the story was 193 of 292 web integration tests failing THROUGH THE TUNNEL, with tunnel pool
+  exhaustion as the hypothesis. Lane A now reports **26 of 44 fail WITHOUT the tunnel**. So the failures are
+  substantially real, not an artefact of running through an SSH tunnel. That is exactly why item 21 was never
+  allowed to treat a web green as proof, and why a baseline -- if the owner really did approve it -- is a
+  reasonable mechanism rather than a way of hiding red: it is the same shrink-only shape lane B used for the
+  41 module-boundary violations, where every entry stays visible and the file can only get smaller.
