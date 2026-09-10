@@ -513,7 +513,7 @@
           "status": "ACCEPTED - 12-B carries it",
           "verified": {
             "counts": "CONFIRMED, and my own earlier count was the wrong one. Files matching *.integration.test.ts on main: 16 present, 5 on the pr-gate:497 allow-list, 11 never run. With s8b that is 17 present, 6 listed, still 11 never run - exactly the numbers lane A gave. I had said 18/5/13 because I globbed *.test.ts, which swept in two non-integration files. Correcting myself, not them.",
-            "tunnelFile": "CONFIRMED and worse than unlisted. company-name-normalizer-agreement.integration.test.ts is the only TS-vs-SQL test and it resolves web/.env.local at :27, reads DATABASE_URL at :29, and opens a pool at :105 through the tunnel on localhost:15432 - i.e. it reaches PRODUCTION. It cannot run in CI, and running it locally points a test at the production database. That is a second problem on top of it being unlisted.",
+            "tunnelFile": "CORRECTED 2026-09-10 19:15 IST. I called this file a production hazard that points a test at the production database. That was WRONG and I checked it myself rather than take the correction on trust. It runs exactly two statements - SELECT of a bound literal expression at :128 and :149 - with no FROM, no table, and no write. The file header at :21 says so in as many words: a read-only SELECT of the normalizer applied to bound literals, no table read. It uses prod as a SQL evaluation engine, nothing more. No data is read or exposed. My phrasing implied data exposure and that does not happen.",
             "parityIsNotSql": "CONFIRMED. scripts/tests/normalize-company-name-parity.test.mjs contains ZERO occurrences of the string sql. Its own header says it compares the hand copy scripts/lib/normalize-company-name.mjs against the TypeScript SSOT. So it proves JS-copy agrees with TypeScript. It says nothing about the SQL twin."
           },
           "consequence": "Nothing in CI checks that the SQL normaliser agrees with the TypeScript one. 12-B changes BOTH in one commit. So 12-B must ship that check itself - there is no existing guard to lean on, and the junk vs empty-string divergence was caught by hand today precisely because none was running.",
@@ -525,7 +525,14 @@
             "Do NOT cite the parity run or the tunnel file as coverage. Neither is."
           ],
           "tier": "A confirmed - 12-B writes rows and now also touches CI.",
-          "notMine": "Lane A owns #507 - the coverage test, the triage of the other unrun files, and the list itself. Lane C touches none of the other 10."
+          "notMine": "Lane A owns #507 - the coverage test, the triage of the other unrun files, and the list itself. Lane C touches none of the other 10.",
+          "groundsForDeletion": [
+            "The pool it opens carries NO read-only guard, unlike openReadOnlyPool which sets default_transaction_read_only=on and then proves it. Today it only evaluates literals, but nothing structurally stops the next edit from adding a FROM.",
+            "It is the only test in the repo that reads web/.env.local, so it is the template the next person copies when they want a database in a test.",
+            "It buys nothing in CI - it cannot run there at all."
+          ],
+          "deletionInSamePR": "ACCEPTED. 12-B deletes company-name-normalizer-agreement.integration.test.ts in the SAME PR that adds the CI-service agreement test. Reason: it is the only TS-vs-SQL check that exists for anyone running the suite locally with a tunnel up, and that window falls across the exact days the normaliser changes. One PR that adds the replacement and removes the old one leaves no gap and has one owner. Lane A has agreed and will not touch it.",
+          "prBodyMustSay": "The three grounds above, NOT my overstatement. The PR body must not describe this file as a production hazard."
         }
       }
     },
@@ -776,7 +783,11 @@
     "2026-09-10 19:11 IST NEW REQUIREMENT ACCEPTED for 12-B after verifying all three claims: nothing in CI checks that the SQL normaliser agrees with the TypeScript one, and 12-B changes both in one commit, so 12-B ships that check itself.",
     "2026-09-10 19:11 IST CORRECTING MY OWN COUNT, not theirs. Files matching *.integration.test.ts: 16 on main, 5 listed, 11 never run; with s8b, 17 present, 6 listed, 11 never run - exactly lane A numbers. I had said 18/5/13 because I globbed *.test.ts and swept in two non-integration files. Their arithmetic was right and mine was not.",
     "2026-09-10 19:11 IST The only TS-vs-SQL test is worse than unlisted. company-name-normalizer-agreement.integration.test.ts resolves web/.env.local at :27 and opens a pool at :105 through the tunnel - it reaches PRODUCTION. It cannot run in CI, and running it locally points a test at the production database. Flagged to lane A as a second problem on top of it being unrun.",
-    "2026-09-10 19:11 IST PARITY PROVES NOTHING ABOUT SQL, now measured rather than argued: normalize-company-name-parity.test.mjs contains ZERO occurrences of the string sql, and its header says it compares the hand copy against the TypeScript SSOT. It shows JS-copy agrees with TypeScript. That is all. I said earlier that a green parity run is not evidence for the junk path; it is not evidence for SQL agreement at all."
+    "2026-09-10 19:11 IST PARITY PROVES NOTHING ABOUT SQL, now measured rather than argued: normalize-company-name-parity.test.mjs contains ZERO occurrences of the string sql, and its header says it compares the hand copy against the TypeScript SSOT. It shows JS-copy agrees with TypeScript. That is all. I said earlier that a green parity run is not evidence for the junk path; it is not evidence for SQL agreement at all.",
+    "2026-09-10 19:15 IST I WAS WRONG and am correcting it. I described company-name-normalizer-agreement.integration.test.ts as a production hazard and told the owner that running the suite locally points a test at live production data. That implies data exposure and it is false. I re-read every statement in the file myself: two SELECTs of bound literal expressions at :128 and :149, no FROM, no table, no write. Its own header at :21 already said so. It uses prod as a SQL evaluation engine and reads nothing.",
+    "2026-09-10 19:15 IST The grounds that DO stand for deleting it, and the only ones going in the PR body: the pool has no read-only guard unlike openReadOnlyPool which sets default_transaction_read_only=on and proves it; it is the only test reading web/.env.local so it is the template the next person copies; and it buys nothing in CI because it cannot run there.",
+    "2026-09-10 19:15 IST ACCEPTED: 12-B deletes that file in the SAME PR that adds the CI-service agreement test. It is the only TS-vs-SQL check available to a local run today, and that window spans the days the normaliser changes, so add-and-remove in one PR leaves no gap and one owner.",
+    "2026-09-10 19:15 IST LESSON against myself, second overstatement of the day after the 2-S3b2 unblock. Both times I escalated a real but narrow finding into a stronger claim than the evidence carried, and both times the evidence to check was already in the file I was citing - the header of this one literally said no table read. Read the whole artifact before characterising its severity, not just the part that supports the point."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
