@@ -157,7 +157,7 @@
         {
           "id": "2-S3a",
           "tier": "A",
-          "status": "ROUND_3_FIX",
+          "status": "ROUND_3_VERIFYING",
           "issue": 482,
           "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD",
           "definitionOfDone": "Reader audit is INSIDE the DoD, not optional: every reader of segment (bse-api-scraper.ts:338 count, web filters, audit predicates) handles NULL explicitly, or the slice is not mergeable. If that pushes past 400 lines, the readers become 2-S3a-prime and the WRITE-PATH change waits for it - surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change.",
@@ -198,7 +198,8 @@
             "major2": "closed",
             "residualMajor": 1,
             "minors": 3
-          }
+          },
+          "round3Commit": "8266fb0a"
         },
         {
           "id": "2-S3b",
@@ -383,7 +384,11 @@
     "2026-09-10 16:42 IST FIND-ROOT GUARD v2 verified against MY OWN highest-risk patterns rather than accepted: file now 15693 bytes (was 12074) at 16:40. Tested (1) a heredoc whose BODY mentions the forbidden form as prose - ALLOWED, which is the fix that matters most to me since I write issue bodies quoting commands; (2) pipe-to-command - allowed; (3) a rooted find with a real segment - allowed, returns results. My workflow is unaffected. I checked rather than assumed because a false-block would hit mid-slice with a confusing symptom, and I write heredocs constantly.",
     "2026-09-10 16:42 IST THE HEREDOC CAUTION IS A REAL RISK FOR ME SPECIFICALLY, not a generic footnote: the guard can false-block when a heredoc body contains another start marker with no terminator, and I use the SAME delimiter (EOF) for nearly every issue body, commit message and file write today - several of which contained fenced code samples. A body quoting a heredoc example would trip it. Adopted as a standing brief line and my own habit: distinct delimiters, never nested EOF.",
     "2026-09-10 16:45 IST GIT-REFPATH GUARD registered (7418 bytes, 16:43). This one lands on MY OWN habits: I used git show <ref>:<path> repeatedly today to prove merges had landed before discarding worktrees, and I applied MSYS_NO_PATHCONV=1 INCONSISTENTLY - on some commands, not all. If the unprefixed reads had been mangled, every \"verified on main before discarding\" claim today would have been worthless, and I would have deleted worktrees on the strength of a bad read.",
-    "2026-09-10 16:45 IST SO I RE-VERIFIED RATHER THAN ASSUMED I HAD BEEN LUCKY. Re-read all four files with the prefix provably set: validated-config-loader.ts 37 (recorded 37), its test 101 (recorded 101), field-manifest.json 63 (recorded 63), bse-api-scraper.test.ts 433 (recorded 433). All four match exactly, so the earlier claims stand and no correction is owed. Recording the CHECK, not just the happy answer - the value was in being willing to find out I was wrong, and this is the first time today that a check of my own past work came back clean."
+    "2026-09-10 16:45 IST SO I RE-VERIFIED RATHER THAN ASSUMED I HAD BEEN LUCKY. Re-read all four files with the prefix provably set: validated-config-loader.ts 37 (recorded 37), its test 101 (recorded 101), field-manifest.json 63 (recorded 63), bse-api-scraper.test.ts 433 (recorded 433). All four match exactly, so the earlier claims stand and no correction is owed. Recording the CHECK, not just the happy answer - the value was in being willing to find out I was wrong, and this is the first time today that a check of my own past work came back clean.",
+    "2026-09-10 16:48 IST 2-S3a ROUND 3 BUILT (8266fb0a), 5 files, and the residual MAJOR is closed on the repo own precedent rather than on anyone domain confidence. Measured outputs: \"NSE Emerge Platform\" -> SME/NSE (was MAINBOARD/NSE, the wrong answer round 2 caught); \"Emerge\" -> null, unchanged; \"BSE SME\" -> SME/BSE; \"NSE, BSE\" -> MAINBOARD/BOTH. Word-boundary matching landed too, so \"Nonsense\" and \"Absent\" no longer assert a board. All 21 pre-existing cases survived; suite 27/27. Both mutations confirmed APPLIED before their result was read, per the standing line earned when one silently no-opd earlier.",
+    "2026-09-10 16:48 IST TWO MINORS I OWNED ARE CLOSED PROPERLY. (1) The behaviour fix I approved with no test now has one: the builder exported the query builder following the repo existing convention for DB-parameterised builders and wrote 4 tests on the REAL function, then mutation-proved them by removing the isNotNull(segment) push and watching 3 of 4 go red. That is a real test, not a re-implementation. (2) isSME deletion: the builder INDEPENDENTLY verified round 2 was right and the previous builder justification was false - only .ipos and .subscriptions are ever read off extractedData, so the in-browser counters were 100 percent discarded. The REPORTED smeCount/mainboardCount come from a separate untouched computation.",
+    "2026-09-10 16:48 IST PROPORTIONATE REVIEW CHOICE, stated because the alternative was expensive: two full Tier A rounds already passed this slice and R9 does not mandate a third, so I dispatched a FOCUSED Sonnet verification of round 3 rather than a third Opus round (~140k tokens). Its budget is spent almost entirely on the one genuine risk - the DELETION - with the falsifying question named: is there ANY path by which the deleted values reached a caller, a log line, a metric or a test. A previous builder asserted the opposite about this exact code and was wrong, so neither claim is taken on trust.",
+    "2026-09-10 16:48 IST MY RAISED BUDGET WORKED: round 3 used 60 tool calls against 100 briefed, after two consecutive overruns at 149 and 147 percent on the old numbers. The fix was raising the estimate for multi-file work, not asking workers to try harder - two attempts at better framing had already failed."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
