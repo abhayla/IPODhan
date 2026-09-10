@@ -606,6 +606,35 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
         run: npx drizzle-kit migrate
 
+      - name: Row-key coverage seeded DB proof (T-518)
+        # scripts/tests/row-key-coverage.db.test.mjs was committed with NO CI
+        # job invoking it — a check that exists and measures nothing. This is
+        # the wire-up. The test's own before() hook would SKIP quietly if
+        # DATABASE_URL were unset or unreachable (fine for a local run with no
+        # DB), so the reachability assertion below runs FIRST and hard-fails
+        # the step (non-zero exit under `set -e`) rather than letting the test
+        # print a skip and go green with zero assertions — the exact failure
+        # mode this item exists to close. Placed AFTER "Replay the journal
+        # from empty" so promoters/ipo_intermediaries/peer_companies/
+        # financial_statements/field_sources exist to seed into.
+        working-directory: .
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+        run: |
+          node -e "
+            const { Client } = require('pg');
+            const c = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 5000 });
+            c.connect()
+              .then(() => c.query('SELECT current_database() AS db'))
+              .then(({ rows }) => {
+                if (!/_test\$/.test(rows[0].db)) throw new Error('refusing: current_database() is ' + rows[0].db + ', not a *_test database');
+                console.log('row-key coverage DB check: reachable, current_database()=' + rows[0].db);
+                return c.end();
+              })
+              .catch((e) => { console.error('row-key coverage DB unreachable — failing, not skipping:', e.message); process.exit(1); });
+          "
+          node --test scripts/tests/row-key-coverage.db.test.mjs
+
       - name: Assert schema drift (T-405 stage 0 — journal must rebuild the schema)
         # The journal-only rebuild above must match packages/shared/src/db/schema.ts.
         # SCHEMA_DRIFT_IGNORE_GATED=1 tolerates ONLY the exact, documented,

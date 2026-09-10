@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 
 import pg from 'pg';
 import { collectRowKeyCoverage } from '../lib/row-key-coverage-checks.mjs';
+import { rowKeyForName } from '../lib/normalize-company-name.mjs';
 
 // Explicit only — no fallback that could resolve to a live host. CI already
 // exports DATABASE_URL pointing at its ipodhan_test service container.
@@ -186,4 +187,59 @@ test('seeded cross-table FAIL: a promoter and an intermediary row with no proven
   assert.equal(mine.mine.length, 2, `expected one offender per table, got: ${mine.mine.join('; ')}`);
   assert.ok(mine.mine.some((o) => /promoters/.test(o) && /'jane roe'/.test(o)));
   assert.ok(mine.mine.some((o) => /ipo_intermediaries/.test(o) && /'BRLM:axis capital'/.test(o)));
+});
+
+test('seeded junk-named promoter: rowKeyForName derives a stable junk: key, and a missing provenance row for it is named (T-518 fix proof)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const name = `S8 Junk Case ${RUN} Ltd`;
+  const id = await seedIpo(name);
+  // A real promoter and a scrape-artifact "----" name (pure punctuation) —
+  // this is exactly the class the rowKeyForName re-port (this branch) fixed:
+  // the OLD bare-normalizer derivation would have keyed "----" as '', which
+  // can never match a real junk:<sha1> provenance row and would false-FAIL
+  // forever. The junk key is deterministic — computed here the same way the
+  // check computes it, not hand-typed, so a hash-algorithm change fails this
+  // test rather than silently drifting.
+  await q(
+    `INSERT INTO promoters (ipo_id, name) VALUES ($1, 'Jane Roe'), ($1, '----')`,
+    [id]
+  );
+  const junkKey = rowKeyForName('----');
+  // Only the real name gets provenance — the junk row's write was forgotten,
+  // same shape as the other seeded FAIL cases above.
+  await q(
+    `INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source)
+     VALUES ($1, 'promoters', 'jane roe', 'sharesHeld', 'DRHP')`,
+    [id]
+  );
+
+  const result = await collectRowKeyCoverage(q);
+  const mine = forIpo(result, id, name);
+  console.log('  [seeded junk-named FAIL] status=%s offenders=%o junkKey=%s', mine.status, mine.mine, junkKey);
+  assert.equal(result.status, 'FAIL');
+  assert.equal(mine.mine.length, 1);
+  assert.match(mine.mine[0], /promoters/);
+  assert.ok(mine.mine[0].includes(`'${junkKey}'`), `offender line must name the junk: key, got: ${mine.mine[0]}`);
+});
+
+test('seeded junk-named promoter with provenance under its junk: key PASSes (proves the fix both ways, not just the FAIL direction)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const name = `S8 Junk Pass Case ${RUN} Ltd`;
+  const id = await seedIpo(name);
+  await q(
+    `INSERT INTO promoters (ipo_id, name) VALUES ($1, 'Jane Roe'), ($1, '----')`,
+    [id]
+  );
+  const junkKey = rowKeyForName('----');
+  await q(
+    `INSERT INTO field_sources (ipo_id, table_name, row_key, field_name, source)
+     VALUES ($1, 'promoters', 'jane roe', 'sharesHeld', 'DRHP'),
+            ($1, 'promoters', $2, 'sharesHeld', 'DRHP')`,
+    [id, junkKey]
+  );
+
+  const result = await collectRowKeyCoverage(q);
+  const mine = forIpo(result, id, name);
+  console.log('  [seeded junk-named PASS] status=%s myOffenders=%d', mine.status, mine.mine.length);
+  assert.equal(mine.mine.length, 0, `this IPO must be clean, got: ${mine.mine.join('; ')}`);
 });
