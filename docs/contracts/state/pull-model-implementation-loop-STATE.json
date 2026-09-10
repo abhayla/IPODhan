@@ -397,6 +397,22 @@
             "remove the just-created release directory in the on_deploy_error trap that already exists in scripts/deploy-linux.sh",
             "both: (1) alone misses a failure AFTER the preflight, (2) alone still lets a tight box be pushed over before the check runs"
           ]
+        },
+        {
+          "k": "s13",
+          "status": "PLANNED",
+          "tier": "B",
+          "pr": null,
+          "sha": null,
+          "title": "runtime invariant: stored heading_hash still equals what the current function produces",
+          "order": "AFTER s12 (#505). Lane C owns the invariant RUNNER (assert-repair-held.mjs); lane A may add a module under scripts/lib/repair-invariants/ without touching it. A runner change is a lane C ask, not a lane A edit.",
+          "plan": [
+            "scripts/lib/repair-invariants/heading-hash-current.mjs, same shape as lane C normalized-name-current.mjs (#511)",
+            "proven by function mutation: a marker inside headingHashForRiskFactor must turn it red on every row; record the staging baseline count BEFORE mutating",
+            "read-only; no writes to any slot"
+          ],
+          "orderingHazardNotStatedByLaneC": "s13 can be BUILT any time but can only be MEANINGFULLY RUN on a slot where s6's column exists AND its backfill has run. The column ships NOT NULL DEFAULT '', so between the migration and the backfill all ~2130 rows read '' and the invariant would report every one of them stale - correct but useless, and it trains people to ignore the check. The module must distinguish NOT-YET-BACKFILLED from STALE and say which, or recipe 8d must forbid running it before step 2. Prefer the module doing it: a runbook instruction is a thing people skip, a distinct exit is a thing they cannot.",
+          "whyItIsWorthBuilding": "After #508 and #511, normalized_name has BOTH a CI-side guard and a runtime invariant; heading_hash has only the CI-side one. The asymmetry is the argument - not precedent in the abstract, but a named twin the sibling column has and this one does not."
         }
       ],
       "prs": [
