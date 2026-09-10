@@ -1670,7 +1670,10 @@
     "2026-09-11 01:24 IST STALE DOCSTRING NOTED: nse-api-client describes public-past-issues as \"Historical IPOs with listing performance (1,268 records)\". Measured: 1,431 records and NO listing performance - listingDate and issuePrice both read \"-\". Two wrong claims in one comment, and I nearly inherited the second.",
     "2026-09-11 01:26 IST FILED TWO ISSUES so tonight findings survive outside a ledger nobody greps. #561: AAA TECHNOLOGIES stored MAINBOARD while NSE securityType says SME - the only VERIFIED stored-segment disagreement on production, matched by name AND symbol. #562: the unwired nse-past-issue-matcher rule 1 pairs INJECTO POLYMERS with INDIA PESTICIDES on a shared three-letter symbol.",
     "2026-09-11 01:26 IST BOTH ISSUES CARRY THE THING THAT USUALLY GETS LOST: what is NOT established. #561 does not claim which segment value is correct - NSE securityType is a strong signal but the row is BSE-listed and I have not checked a BSE-side classification, so the defect is the DISAGREEMENT and it needs a source decision before any write. #562 says the matcher is dead code today, so the bug is latent rather than live, and names the fix without building it.",
-    "2026-09-11 01:26 IST #561 ALSO CARRIES THE TRAP: re-segmenting AAA TECHNOLOGIES will NOT clear its lot-window violation, because Rs4,200 fails the SME window (Rs90,000-3,00,000) as well as the MAINBOARD one. Someone fixing the segment and expecting the check to go green would be surprised, and that is exactly the kind of thing that gets discovered halfway through a fix."
+    "2026-09-11 01:26 IST #561 ALSO CARRIES THE TRAP: re-segmenting AAA TECHNOLOGIES will NOT clear its lot-window violation, because Rs4,200 fails the SME window (Rs90,000-3,00,000) as well as the MAINBOARD one. Someone fixing the segment and expecting the check to go green would be surprised, and that is exactly the kind of thing that gets discovered halfway through a fix.",
+    "2026-09-11 01:28 IST WORKTREE HYGIENE COMPLETE for lane C, per the owner standing rule that a tree dies the session its use ends. Twelve removed tonight in total, each with the main checkout proven intact by wt-rm own before/after counts (4698 -> 4698, deleted-on-disk 0 on the last two). ONE remains - the coordination worktree holding the ledger, which is correct and stays until close-out.",
+    "2026-09-11 01:28 IST PRESERVED BEFORE DELETING, because both would otherwise have been rebuilt from scratch: the 99-name matrix resolution snapshot from 3-D, and the matrix-manifest-drift analyzer written for 3-S5 (6,540 bytes, carrying its deliberate do-not-report decisions in the header). Copied to the scratchpad, not lost with their trees.",
+    "2026-09-11 01:28 IST STILL OWED AND DELIBERATELY NOT DONE: ipodhan_test3 must be dropped at Stage 7 close-out via the lifecycle tool. Close-out has NOT been reached - the goal condition is unmet - so dropping the test database now would break a later stage. Recording it as owed rather than quietly doing it to look tidy."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -1908,5 +1911,12 @@
   "issuesFiled": {
     "561": "AAA TECHNOLOGIES LTD stored MAINBOARD while NSE securityType says SME. Verified by name AND symbol, so not a collision. Also notes that re-segmenting alone will NOT clear its lot-window violation, because Rs4,200 fails the SME window too.",
     "562": "nse-past-issue-matcher rule 1 (exact symbol match) pairs our INJECTO POLYMERS (IPL) with NSE INDIA PESTICIDES (IPL). Unwired today, so latent. Rule 2 (name) is sound. Also records the two stale docstring claims in nse-api-client."
+  },
+  "worktreeHygiene": {
+    "at": "2026-09-11 01:28 IST",
+    "removedTonight": "NINE lane C worktrees, each with the main checkout proven intact by wt-rm counts: c12-b, c12-e, c12-c2, c12-d1, c02-3b, c02-4, c02-5 (all merged), c03-s2 (PR closed), c03-d (3-D reverted), c14-s4 (merged), c12-efix (merged), c03-s5 (slice moot after the item 3 re-cut).",
+    "remaining": "ONE - IPODhan-IPODhan-impl-loop-c, the coordination worktree that holds the ledger. That is correct and it stays until close-out.",
+    "preservedBeforeDeleting": "Two artifacts copied to the scratchpad rather than lost with their trees: the 99-name matrix resolution snapshot from 3-D, and the matrix-manifest-drift analyzer written for 3-S5 (6,540 bytes, with its deliberate do-not-report decisions documented in the header). Both would have been recreated from scratch by whoever picks those up.",
+    "stillOwed": "ipodhan_test3 must be dropped at Stage 7 close-out via scripts/ops/test-db-lifecycle.mjs --name ipodhan_test3 --drop --apply. NOT done tonight because close-out has not been reached - the goal condition is unmet, so dropping the test database early would break a later stage."
   }
 }
