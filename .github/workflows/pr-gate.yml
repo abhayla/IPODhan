@@ -258,6 +258,22 @@ jobs:
         # other cheap gates rather than after the suites.
         run: node scripts/ci/check-security-boundary-wired.mjs
 
+      - name: ESM module-scope globals self-test (item 20 / slice 5)
+        # Drives the real check against fixture trees: the mutations that prove
+        # it can FAIL and the zero-files floor that proves it cannot pass on an
+        # empty scan. Needs no install, so it belongs here with the other cheap
+        # gates rather than after the suites.
+        run: node --test scripts/ci/tests/check-esm-module-globals.test.mjs
+
+      - name: ESM module-scope globals (static)
+        # 2026-09-10: download-allowlist-loader.ts reached main with a bare
+        # __dirname at module scope and the production scraper could not start
+        # at all. vitest (CJS transform), tsx -e, and tsc --noEmit (@types/node
+        # declares __dirname globally) were ALL green on it. This static pass
+        # covers the half of the class nothing imports YET; the import smoke
+        # covers the reachable half.
+        run: node scripts/ci/check-esm-module-globals.mjs
+
       - name: Design consistency gate (docs/design/check-design-consistency.mjs)
         # The only check in the repository that catches a build card claiming
         # a retired or unknown rule id (prints "N card(s) claim a retired or
