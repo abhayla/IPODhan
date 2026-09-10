@@ -149,7 +149,8 @@
           "files": 4,
           "lines": 390,
           "tests": 8,
-          "note": "manifest + zod schema + capability cross-check"
+          "note": "manifest + zod schema + capability cross-check",
+          "pr": 483
         },
         {
           "id": "2-S3a",
@@ -194,7 +195,8 @@
         }
       ],
       "prs": [
-        473
+        473,
+        483
       ],
       "mergeShas": [
         "b0c42202"
@@ -245,7 +247,7 @@
     }
   },
   "prGate": {
-    "laneCRunsToday": 2,
+    "laneCRunsToday": 3,
     "repoRunsTodayAtPreflight": 17,
     "laneCDailyCap": 15,
     "repoStopAt": 50
@@ -309,7 +311,10 @@
     "2026-09-10 14:40 IST OPEN DECISION for 2-S3c, deliberately NOT taken on convenience per the supervisor instruction: how c_issue_size_floor should treat a NULL segment - judge it against the stricter floor, or raise a separate segment_unknown finding. To be decided from the design per-field validation text when 2-S3c is briefed, not from whichever is easier to implement. Note the interaction: bse-api-scraper.ts:338 currently counts a null/blank segment AS MAINBOARD, so making writes honest will surface NULLs that readers have never seen.",
     "2026-09-10 14:43 IST #482 IS FOUR WRITE PATHS, not one, and I found the other three by looking rather than assuming my first instance was the whole class. All four use the same binary test where \"not detected as SME\" is ASSERTED as MAINBOARD: historical-ipo-assembler.ts:84, chittorgarh-scraper.ts:187, moneycontrol-scraper.ts:278, bse-scraper.ts:258. None can express \"the source did not say\". The single path that gets it right is bse-api-scraper.ts:292 (segment: undefined, with the comment explaining why).",
     "2026-09-10 14:43 IST THE FIX IS AN EXISTING DOCUMENTED PRINCIPLE, not a new design decision - which shrinks the risk of 2-S3a considerably. moneycontrol-scraper.ts carries W-145 ONE LINE ABOVE its segment line: listingExchange was hard-coded to BOTH, asserted a fact the page never carries, stomped correct single-board values and wrongly marked 5 SME rows in prod; it was fixed by omitting unknown, with the comment \"a source that cannot determine a field must not overwrite it\". segment on the very next line still does exactly what W-145 fixed. So 2-S3a applies a rule this repo already states twice, at the four sites that do not follow it.",
-    "2026-09-10 14:43 IST CHITTORGARH IS A PLAUSIBLE re-sourcing source but NOT a proven one: it derives segment from a listingAt string (\"BSE SME\", \"NSE, BSE\"), so when that field is POPULATED, SME in it is a genuine source assertion - its defect is narrower, only the empty/unparseable case. Whether listingAt is actually populated for the 41 historical rows is UNCHECKED and I am not assuming it. 2-S3b proves it against a real fixture first."
+    "2026-09-10 14:43 IST CHITTORGARH IS A PLAUSIBLE re-sourcing source but NOT a proven one: it derives segment from a listingAt string (\"BSE SME\", \"NSE, BSE\"), so when that field is POPULATED, SME in it is a genuine source assertion - its defect is narrower, only the empty/unparseable case. Whether listingAt is actually populated for the 41 historical rows is UNCHECKED and I am not assuming it. 2-S3b proves it against a real fixture first.",
+    "2026-09-10 14:45 IST 2-S2 PR #483 OPENED. 8 tests, exit 0, 4 files +390/-0. Verifier PASS at Tier B with all four mutations reproduced independently PLUS a fifth of its own: replacing loadFieldManifest with a bare JSON.parse fails 7 of 8 tests, so nothing passes vacuously. Lane C 3 of 15 PR-gate runs; repo 27 of a 50 stop.",
+    "2026-09-10 14:45 IST DIVERGENCE DECIDED BY ME, declared in the PR body rather than absorbed. The verifier caught that one capability reason string is paraphrased, not verbatim: the card says \"SEE CONTRADICTION below\", the shipped JSON names the contradiction (OD-3 retires Moneycontrol scheduling; owner decision C-1 pending). KEPT deliberately - \"below\" is a pointer into the card prose, and lifted into a standalone JSON file it points at NOTHING, sending a reader after text that does not exist. Every other field of every row matches the card verbatim, checked field by field by the reviewer including all other reason strings.",
+    "2026-09-10 14:45 IST 2-S1 GAP CLOSED HERE as planned, not forgotten: nested key paths were implemented but untested in 2-S1 and declared as a known gap in its PR. 2-S2 proves them against the REAL nested manifest rather than an invented fixture - observed renderings fields.<key>.rank.MAINBOARD.1 and fields.<key>.capability.BSE.capable. Deferring a test to where the real data exists, and writing the deferral down, worked."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
