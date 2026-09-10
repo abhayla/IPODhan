@@ -160,6 +160,16 @@
         "correctionToMyself": "I told the peer that two of the three names were on my unprovenanced-segment list and implied the finding was therefore a segment defect. Two ARE unprovenanced (NIRBHAY and PIYUSH) but only ONE of those (NIRBHAY) is EXPLAINED by segment. PIYUSH fails both floors, so its label is irrelevant to its violation. Two-unprovenanced and two-explained-by-segment are different claims and I ran them together.",
         "whoOwnsWhat": "1 of 3 belongs to the segment work. 2 of 3 belong to issue size, and of those, PIYUSH is item 14 own class (BSE share count not covering the full issue) while STALLION looks like a price-band defect and needs measuring before it is claimed.",
         "nextStep": "Item 14 remains MERGED-UNPROVEN until c_issue_size_floor reads GONE for these names. That needs the segment repair for NIRBHAY and a real fix for PIYUSH. Neither is tonight work and neither should be rushed."
+      },
+      "stagingProofRun": {
+        "at": "2026-09-10 23:55 IST",
+        "db": "ipodhan_staging",
+        "tool": "node scripts/audit-detection-floor.mjs",
+        "readOnly": true,
+        "wasBlockedBy": "staging deploys failing since 08:11 IST - CLEARED, staging took 0164e707 at 17:51 UTC",
+        "result": "FAILED, and usefully. c_issue_size_consistency PASSES with 0 violations. c_issue_size_floor FAILS with THREE, named per signal-ownership R1: NIRBHAY COLOURS INDIA LTD (Rs1,47,97,000), STALLION INDIA FLUOROCHEMICALS LTD (Rs4,33,20,000), PIYUSH LIMITED (Rs70,07,320), each below the MAINBOARD floor of Rs10,00,00,000.",
+        "classification": "All three resolve to KNOWN classes with numbers, per R2. NIRBHAY and STALLION are the #515 face-value class - the stored price band carries the face value, not the real band, so computeBSEIssueSize(shares, band.min) multiplies by the wrong price. PIYUSH is 14-S3 own named class (the 10,490-share row). Zero unexplained violations.",
+        "verdict": "Item 14 stays MERGED-UNPROVEN. Its proof is now OBTAINABLE (it was not, for most of today) and it FAILS. That is better than owed: the debt is now three named rows in two tracked classes rather than an unknown."
       }
     },
     "item-02": {
@@ -1354,7 +1364,11 @@
     "2026-09-10 23:44 IST GOAL-LEVEL CONSEQUENCE I AM NOT GOING TO PAPER OVER: the completion condition names items 14, 2, 12 AND 3, each needing a DONE ledger line with proof. Item 3 cannot reach one - not because it is blocked or waiting, but because measurement shows most of the work it specifies SHOULD NOT BE DONE. That is a contract question for the owner, not something a lane or a peer session can rule away.",
     "2026-09-10 23:51 IST 12-B TWO-CYCLE ASSERTION PASSED, exit 0, count 0 at both cycles. AND IT IS WEAKER THAN IT READS. The two cycles advanced the scraper_logs marker only; the repaired tables were not written by them - promoters and ipo_intermediaries last changed 2026-09-09T16:48Z, peer_companies 2026-06-17. A cycle that never touches the repaired rows cannot refute the repair.",
     "2026-09-10 23:51 IST TWO FALSE ALARMS OF MY OWN, both checked before reporting and both withdrawn. The marker timestamps appeared 5h30m in the future and I was one step from declaring the proof invalid. They are the known stored-timestamp skew (staging labels rows ~5.5h behind real time), not a tool bug. Watching the marker for 90 seconds settled it: the logs marker moved 12:46:30 -> 12:48:28 inside 50 seconds of real time, so the advances the tool counted were genuine.",
-    "2026-09-10 23:51 IST HONEST STATE OF ITEM 12: repair applied, invariant independently clean (50 -> 0, idempotent, cross-checked by two tools before the write), assertion passed, and the assertion does not yet cover the write path at risk. What would make it strong is a cycle that actually writes a promoter, peer or intermediary row - those come from document extraction, not from every wake. I am not calling item 12 proven on this."
+    "2026-09-10 23:51 IST HONEST STATE OF ITEM 12: repair applied, invariant independently clean (50 -> 0, idempotent, cross-checked by two tools before the write), assertion passed, and the assertion does not yet cover the write path at risk. What would make it strong is a cycle that actually writes a promoter, peer or intermediary row - those come from document extraction, not from every wake. I am not calling item 12 proven on this.",
+    "2026-09-10 23:55 IST ITEM 14 STAGING PROOF RAN AND FAILED - and that is progress, because for most of today it could not run at all. Staging deploys resumed (0164e707 at 17:51 UTC), so the read-only detection floor is obtainable again.",
+    "2026-09-10 23:55 IST RESULT: c_issue_size_consistency PASSES with 0 violations. c_issue_size_floor FAILS with THREE, named rather than counted (R1): NIRBHAY COLOURS INDIA LTD Rs1,47,97,000, STALLION INDIA FLUOROCHEMICALS LTD Rs4,33,20,000, PIYUSH LIMITED Rs70,07,320 - each below the MAINBOARD floor of Rs10,00,00,000.",
+    "2026-09-10 23:55 IST ALL THREE CARRY A CLASS AND A NUMBER (R2), none is unexplained. NIRBHAY and STALLION are the #515 face-value class: the stored price band holds the face value rather than the real band, so the issue-size computation multiplies by the wrong price. PIYUSH is 14-S3 own named class. So item 14 debt is no longer an unknown - it is three named rows in two tracked classes.",
+    "2026-09-10 23:55 IST ITEM 14 STAYS MERGED-UNPROVEN, honestly. The proof exists, runs, and says no."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
