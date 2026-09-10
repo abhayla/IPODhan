@@ -232,12 +232,16 @@
     {
       "at": "2026-09-10T23:26:08.106Z",
       "what": "TICK 2026-09-10T23:26:08.106Z: item 20 unchanged 8/8. #596 open with 7 checks, 4 pending - nothing to merge. No agent running, nothing over budget. My own MONITOR produced a hollow pass earlier this tick: it reported SETTLED because only ONE check had registered and all-not-pending is trivially true of a set of one. Caught by reading the run list instead of the summary; re-armed with a minimum-count guard. Sixth instance tonight of the instrument being broken rather than the thing measured."
+    },
+    {
+      "at": "2026-09-10T23:31:26.001Z",
+      "what": "Row extractor pushed to #596, completing the parse path. Oracle = the document own P/E summary naming highest/lowest of the peer set, so a dropped row fails without a hand-written expected list. It caught my card out at once: PRASOLCHEM has SEVEN peers, not five - the five came from a dump truncated at 3,500 chars and Yasho/Excel (the two the summary names) were in the part I never read. Same shape as the original #565 error. It also found a SEBI-filed document contradicting itself: Karamtara summary says KP Green Energy, its table says KP Green Engineering; the real company is Engineering, so the oracle matches on the first two words - an exact match would fail on a CORRECT parse. Mutations: divider and placeholder rules die by name; the minimum-value filter SURVIVED until a synthetic fragment case made it reachable - third line tonight that looked load-bearing and was not, third reported rather than hidden. 11 tests, 246 passed 3 skipped."
     }
   ],
   "items": {
     "8": {
       "status": "PREMISE_SETTLED_FIXTURES_MERGED",
-      "slices": "8-pre MERGED (#580), locator MERGED in Python (#593) after the TS version (#587) was retired, cell fixtures MERGED (#594), constraints and rotation recipe MERGED (#590, #592). Column mapper OPEN (#596). Row extraction next.",
+      "slices": "8-pre, locator (py), cell fixtures, constraints, rotation recipe all MERGED. #596 open: column mapper + row extractor, completing the parse path. Persist wiring and 8b next.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -677,7 +681,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T23:26:08.106Z",
+  "lastStateWriteAt": "2026-09-10T23:31:26.001Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 5,
