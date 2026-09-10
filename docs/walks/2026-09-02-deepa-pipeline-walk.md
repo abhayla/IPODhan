@@ -2542,3 +2542,26 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   like noise, not by the restore step itself: a silent revert produces symptoms far from its cause. Brief line
   strengthened: **never `git checkout --` in a worktree holding uncommitted work; restore a mutated file by
   copying back the pre-mutation copy, and verify with `diff` before continuing.**
+
+- **2026-09-10 16:19 IST [lane B] Item 22 slice 22-1 MERGED as `c3a8071b` via PR #487.** 5/5 checks green, mergeStateStatus
+  CLEAN, six files. Verified on origin/main rather than assumed: `isResolvedAddressPrivate` appears twice in
+  company-host-source.ts and `scraper/config/download-allowlist.json` exists. state=MERGED confirmed before the
+  branch was deleted separately; worktree removed only after the diff to main proved empty on stdout, stderr
+  AND exit code; main checkout re-read afterwards -- 4602 tracked, packages/shared present, zero lane B slice
+  worktrees left.
+  Three build rounds, three adversarial reviews, every review found something real: an unreachable protocol
+  guard; the classic IPv4-in-IPv6 bypass closed in one spelling and open in another, on a line no test
+  protected; then the same untested-guard class again on the cloud metadata address. Round 3 clean at every
+  level, all claims reproduced by execution rather than reading.
+- **2026-09-10 16:19 IST [lane B] DEFECT-B15, mine, and the THIRD occurrence of one cause today: `powershell -File
+  $HOME/.claude/tools/wt-rm.ps1` failed** with *the argument /c/Users/itsab/... does not exist*, because
+  MSYS_NO_PATHCONV=1 was set and $HOME expands to the MSYS form. Same cause as DEFECT-B01 (11:15, a database
+  reset that silently did not run) and DEFECT-B13 (15:07, git -C failing on a real directory).
+  **The uncomfortable part: I wrote the rule an hour ago and put it in every worker brief -- and then broke it
+  in my own command.** The rule was authored as an instruction for others rather than a habit for myself. It
+  is the same shape as the board defect the owner caught: the internal record was right, the thing I actually
+  operated was not updated.
+  This failure was LOUD (a clear error, nothing proceeded), unlike DEFECT-B01 which was silent and let a
+  migration run on the wrong state. Cost: one retry. Recorded because three occurrences in one day is a habit,
+  not an accident, and the mechanism now applies to the supervisor own commands, not just to briefs: **every
+  path handed to powershell, git, node or gh is Windows-form, and $HOME is never used in such a command.**
