@@ -1101,6 +1101,15 @@
         "whatSURVIVES": "The load-bearing half is intact. 12-A claim was ZERO FALSE MERGES - that the fold never merges DIFFERENT companies. Production is 333 rows / 333 identities / 0 groups, exactly as reported, and that is the half that proves it. Reading all 13 staging groups now: every one pairs identical or near-identical names (Gulf Lloyds x2, Laser Power x2, G.V.Electricals x3, Indo-MIM x2, Cube Highways Trust x2, Atharva Polyplast x2 and so on). No group pairs two different companies. So zero false merges holds, and it now holds across 13 groups rather than the 3 I actually examined.",
         "whatIsWORSE": "Staging has FOUR TIMES the duplicate backlog anyone has been planning around. Whoever cleans it up is facing 13 groups, not 3.",
         "howItGotThrough": "I examined three groups, found all three genuine, and wrote \"all three\" as though three were all of them. Nobody re-checks a merged proof."
+      },
+      "arcilHeldProof": {
+        "at": "2026-09-11 01:51 IST",
+        "exit": 0,
+        "verdict": "HELD: violation count stayed 0 across 2 distinct scraper cycles.",
+        "scoped": "DUPLICATE_INVARIANT_FOLDS=assetreconstruction, exactly as the invariant own docstring prescribes - an unscoped run would be permanently red on the 12 remaining staging groups and would prove nothing about this repair.",
+        "cycles": "markers 2026-09-10T20:15:23Z and 20:19:40Z (stored time), counts 0 and 0.",
+        "caveatStated": "MILDER than the 12-B one but real, and I checked rather than banked the exit code. In the proof window: 9 ipos rows UPDATED, 2 scraper_logs rows, but ZERO ipos rows CREATED. The scraper was genuinely active on the ipos table, which is more than 12-B got - but ROW CREATION is the operation that could re-introduce a duplicate, and it did not occur. So the assertion covers real cycles that touched the table, not the specific insert path at risk.",
+        "honestVerdict": "The repair held across two real, active cycles. It has not yet survived a cycle that CREATES an IPO row. Given 12-B now folds both ARCIL spellings to one key, a creation would resolve to the survivor rather than insert - which is the structural argument, not this proof."
       }
     },
     "item-03": {
@@ -1712,7 +1721,10 @@
     "2026-09-11 01:39 IST MY OWN ARITHMETIC SHOULD HAVE CAUGHT IT AT 19:45: 376 rows minus 356 identities is 20 surplus rows, and three groups of 2, 4 and 5 account for only 8. The gap of 12 was sitting in the figures I published.",
     "2026-09-11 01:39 IST THE LOAD-BEARING HALF SURVIVES, and I checked rather than assumed. 12-A claim was ZERO FALSE MERGES - that the fold never merges DIFFERENT companies. Production is 333 / 333 / 0 exactly as reported, and reading all 13 staging groups now, every one pairs identical or near-identical names (Gulf Lloyds x2, Laser Power x2, G.V.Electricals x3, Indo-MIM x2, Cube Highways Trust x2, Atharva Polyplast x2...). None pairs two different companies. So zero false merges holds, and now across 13 groups rather than the 3 I actually looked at.",
     "2026-09-11 01:39 IST WHAT IS WORSE THAN THE ERROR: staging carries FOUR TIMES the duplicate backlog anyone has been planning around. Whoever cleans it up faces 13 groups, not 3, and that changes the size of the job.",
-    "2026-09-11 01:39 IST HOW IT GOT THROUGH: I examined three groups, found all three genuine, and wrote \"all three\" as if three were all of them. Nobody re-checks a merged proof - which is exactly why the self-audit needs to cover claims already shipped, not only the ones still in flight."
+    "2026-09-11 01:39 IST HOW IT GOT THROUGH: I examined three groups, found all three genuine, and wrote \"all three\" as if three were all of them. Nobody re-checks a merged proof - which is exactly why the self-audit needs to cover claims already shipped, not only the ones still in flight.",
+    "2026-09-11 01:51 IST ARCIL HELD-PROOF: exit 0, \"violation count stayed 0 across 2 distinct scraper cycles\", scoped DUPLICATE_INVARIANT_FOLDS=assetreconstruction exactly as the invariant docstring prescribes. An unscoped run would be permanently red on the 12 remaining staging groups and would have proven nothing about this repair.",
+    "2026-09-11 01:51 IST CAVEAT CHECKED RATHER THAN BANKED, and it is milder than the 12-B one but real: in the proof window 9 ipos rows were UPDATED and 2 scraper_logs rows written, but ZERO ipos rows were CREATED. The scraper was genuinely active on the ipos table - more than 12-B ever got - but ROW CREATION is the operation that could re-introduce a duplicate, and it did not occur.",
+    "2026-09-11 01:51 IST SO THE HONEST VERDICT: the repair held across two real, active cycles, and has not yet survived a cycle that CREATES an IPO row. The reason to expect it will is structural, not empirical - 12-B now folds both ARCIL spellings to one key, so a creation resolves to the survivor instead of inserting. That argument was proven separately tonight against the real normaliser; this assertion does not add to it."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
