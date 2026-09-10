@@ -1631,3 +1631,29 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   `gh pr list --state all --limit 200 --json number,headRefName --jq '[.[] | select(.headRefName | startswith("feat/pm-b-item") or startswith("fix/pm-b-item"))] | length'`. Measured that way, lane B has opened 0. The repo-wide
   pull-request-gate count for the IST day, measured with the `>= 18:30Z` cutoff and `--limit 100` as the contract
   requires, is recorded beside it. The contract's own text is wrong here and is corrected at the next docs PR.
+
+- **2026-09-10 11:38 IST [lane B] Item 20 s1 Tier A round 2: MERGE YES. Both MAJORs closed, proved by mutation, numbers hand-checked.**
+  The round-2 reviewer re-ran everything itself and mutation-tested six things. Five turned RED, including the two
+  that matter: reverting the heading anchor to `indexOf` is now caught (it was GREEN in round 1 - that is MAJOR 2
+  genuinely closed), and removing, weakening or mis-exiting the new zero-test-roots floor are all caught.
+  On MAJOR 1 it did the thing that decides whether a class is covered rather than an instance: it tested BOTH code
+  paths, not just the one round 1 used. `--tests /nonexistent` exits 2, and the DEFAULT path with no roots anywhere
+  also exits 2. It also found the honest limit and reported it rather than passing it over: if ONE of four default
+  roots is renamed the check still exits 0 for the rest, so mode 3 is unarmed for that root alone - but the new
+  summary line now shows the root missing and `0 test declaration(s)`, so it is visible. Ruled MINOR, outside the
+  reviewed class, and recorded here rather than silently accepted.
+  It checked the env seam for a hole and found none: `DESIGN_TRACEABILITY_MODE2_ENFORCE` is strict-equality `'true'`,
+  so garbage and `false` both leave it off and no value can WEAKEN any arm - it can only make the check stricter.
+  And it verified the summary line is TRUE instead of trusting it: `grep -rn "implements: R-"` over the four named
+  roots returns 9 hits, one of which is the fixture's own prose comment with no `R-\d+`, so **8 real declarations** -
+  matching what the check prints. `ls -d packages/*/tests` returns nothing, which is why that root is absent.
+  **Two MINORs left, and this run is fixing both before merge rather than filing them.**
+  1. On the default path the floor's fatal message degrades to `zero test roots exist out of 0 requested ...
+     Requested: (none)` - it exits 2 correctly but names no root, in the one message where identity matters most,
+     inside the very check whose purpose is that signals carry identities. Cause: `defaultTestRoots()` filters by
+     `existsSync` before the message is built.
+  2. A mutation replacing the summary's root NAMES with a count left the self-test GREEN. That is an untested guard -
+     the identical class as the MAJOR that already cost this slice a round - so a future edit could silently delete
+     the identity reporting. Filing this as an issue would have been within the rules and would have been the wrong
+     call: the fix is two edits and one test.
+  Fix dispatched, `sonnet`, 15 min / 30 calls, with the summary-name mutation required as its own proof.
