@@ -190,7 +190,10 @@
     "s3d ALSO reintroduced `npx vitest run --config ...` for the integration step - the exact one-suite-two-commands divergence #474 removed from the unit step, where it cost 90 of 187 files. I reviewed that diff twice and missed it both times. #489 returns it to `npm run test:integration -- <flags>`.",
     "VERIFICATION TOOK FOUR ATTEMPTS AND THE FIRST THREE WERE INVALID: they returned 'no file' because the fresh worktree had no node_modules, so vitest resolved from an npx cache and never started. Had I stopped at the first I would have concluded the fix was wrong and hunted a second bug that does not exist. Fourth attempt, in a tree that has node_modules: 861-byte report, valid JSON, populated testResults. New standing brief line: confirm node_modules resolves in a fresh worktree BEFORE reporting any test result from it.",
     "PIPELINING: slice s9 dispatched while s3 (#459) and s5a (#476) wait on the baseline. Chosen because almost every other remaining item-1 slice depends on one of those two - s4 and s8 on s3's row_key, s5b on s5a's helper, s6 would put a second migration in flight against s3's journal entry. s9 is independent and is a prerequisite for items 15 and 6.",
-    "DELIBERATELY NOT REBASING the two held PRs: s3 is 8 behind with 15 files reading as deletions, s5a is 7 behind with 13. Rebasing now would burn CI runs on PRs that cannot merge until the baseline populates, and main will move again before they can. One rebase each, at the merge gate."
+    "DELIBERATELY NOT REBASING the two held PRs: s3 is 8 behind with 15 files reading as deletions, s5a is 7 behind with 13. Rebasing now would burn CI runs on PRs that cannot merge until the baseline populates, and main will move again before they can. One rebase each, at the merge gate.",
+    "STAGING DOWN ALL DAY, first failure is my #464 merge (c6a4c9c4, 08:11:23Z); ten consecutive push-triggered deploys failed, every one at the schema-drift assert. deploy-linux.sh line ~1030 calls the checker BARE while pr-gate sets SCHEMA_DRIFT_IGNORE_GATED=1 at one line. #464 taught that checker to see indexes and constraints, so the bare call started failing on gated items. My own #464 comment said bare callers failing on gated items 'is intended' - it is not: it makes any slot without the hand-applied gated DDL permanently undeployable. s10 fixes the call and the false comment.",
+    "MEASURED on ipodhan_staging read-only 2026-09-10 17:09 IST: idx_ipos_slug ABSENT, all three E1 unique constraints ABSENT, normalized_name PRESENT on promoters/peer_companies/ipo_intermediaries. So the column shipped via #445/#448 but the gated constraints were never hand-applied to staging - which is the EXPECTED gated state, not a fault. Only idx_ipos_slug is a genuine fault.",
+    "CORRECTED A RELAYED DIAGNOSIS: I was told 'the gated-registry flag is NOT the cause: those four are not in the allowlist'. Three of the four ARE - KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT names all three constraints and isKnownGatedUniqueConstraintDrift matches the deploy log's detail string verbatim. Accepting that would have produced a fix aimed at the wrong thing; correcting it means two fixes, one mine and one the owner's."
   ],
   "items": {
     "item-01": {
@@ -329,6 +332,12 @@
           "status": "BUILDING",
           "tier": "A",
           "title": "wire or retire the tz-case suite (#478) so decision 8 stops naming an unrunnable command"
+        },
+        {
+          "k": "s10",
+          "status": "BUILDING",
+          "tier": "A",
+          "title": "deploy path honours the gated-drift registry (#464 defect that blocked ten staging deploys)"
         }
       ],
       "prs": [
@@ -754,7 +763,8 @@
     "by": "owner typed in lane A session"
   },
   "ownerActions": [
-    "NOTIFIER KEY MISSING - blocks a contract-mandated channel for all three lanes. D:/Abhay/GLOBAL.env has NOTIFIER_KEY with an EMPTY value (length 0) and no NOTIFIER_KEY_IPODHAN. GLOBAL.md:166 says the key the gateway validates lives on the VPS at /root/notifier/.env as NOTIFIER_KEY_<PROJECT>. Owner action: put the IPODhan key into GLOBAL.env and re-sync to both VPSes per the standing duty. This run will not read it off the production VPS - the standing rule limits us there to logs/pm2/df, and pulling a secrets file would land it in a transcript, which is the exact incident contained earlier today."
+    "NOTIFIER KEY MISSING - blocks a contract-mandated channel for all three lanes. D:/Abhay/GLOBAL.env has NOTIFIER_KEY with an EMPTY value (length 0) and no NOTIFIER_KEY_IPODHAN. GLOBAL.md:166 says the key the gateway validates lives on the VPS at /root/notifier/.env as NOTIFIER_KEY_<PROJECT>. Owner action: put the IPODhan key into GLOBAL.env and re-sync to both VPSes per the standing duty. This run will not read it off the production VPS - the standing rule limits us there to logs/pm2/df, and pulling a secrets file would land it in a transcript, which is the exact incident contained earlier today.",
+    "STAGING BLOCKED, needs one decision: ipos.idx_ipos_slug is genuinely ABSENT on ipodhan_staging (measured read-only) while schema.ts declares it, migrations 0000 and 0002 create it, and the journal says applied. My s10 fix makes the deploy honour the gated registry, which clears three of four findings - but this fourth is real drift and will still fail the deploy, correctly. I will not create it myself: that is a schema write to staging and my standing constraint limits me there to a repair tool's guarded --apply. Owner action: approve `CREATE INDEX IF NOT EXISTS idx_ipos_slug ON ipos (slug);` on staging, and note the open question of WHY the journal says applied when the object is missing - same class as #442's silent skip, and it may not be the only affected object."
   ],
   "ownerTypedLines": [
     {
