@@ -926,3 +926,19 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   **What is needed from you: nothing tonight.** One decision when you have a moment: whether the
   shared branch should refuse changes that have not passed their checks. It has no protection at all
   today, and two changes that were each individually correct broke it only in combination.
+
+- **2026-09-11 01:58 IST** - Item 20's eight pieces were all merged and proven before this tick and still are: 100%
+  previous, 100% current, no change there. What changed is the file-retention work, which finished at
+  01:56 - three of the lane's six items are now done. A reader of ipodhan.com would notice nothing new
+  on the page today; what changed is underneath it. Until tonight, the text pulled out of a company's
+  prospectus could be thrown away along with the PDF, because the deletion clock was the IPO's closing
+  date rather than the date we last read that particular file - so a prospectus read yesterday could be
+  deleted because the offer closed a month ago. Now the text is kept for good and only the heavy PDF is
+  cleared, a week after we finish reading it. Measured on the real test server: of 283 files the old
+  rules would have deleted, 102 are now held back. What went wrong: I hit the same Windows path trap
+  twice in one night and for a moment read it as lost work - nothing was lost, but I spent time on a
+  false alarm. What is needed from Abhay: nothing tonight. Two decisions are waiting whenever you have
+  time - whether the shared branch should refuse changes that have not passed their checks, and whether
+  to approve the new PDF library the document-download work needs. One proof is still owed and named:
+  a real deletion run on the test server. Test-server deploys were broken all evening and came back an
+  hour ago, so that proof was unobtainable, not skipped.
