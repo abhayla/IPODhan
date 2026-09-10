@@ -1,0 +1,9 @@
+{
+  "class_id": "a step that skips silently is indistinguishable from a step that never ran",
+  "feature": "scraper cycle steps returning { status: 'skipped' } (scraper/src/services/**, dispatched from src/index.ts STEP_NAMES)",
+  "symptom": "a cycle step decides it has no work and returns skipped WITHOUT logging, so the log contains the same absence whether the step ran and found nothing, was never registered, threw before its first statement, or was skipped by the dispatcher. Any proof read of the form 'grep the log for this step's line' then produces no evidence in either direction, and the natural misreading is 'the step is not wired'.",
+  "first_seen": "2026-09-10 staging cycle 20:45:02Z on release 20260910-202813-2ad49a4e: triggerPageRevalidation drained an empty touched-slug list and returned skipped with no log line. ADMIN_API_TOKEN was present, so the token skip was excluded; the absence still could not be read, and it cost the item 21 slice 3 staging proof for that cycle.",
+  "fix_prs": "item 21 slice 3b (this PR) - the empty-drain path emits one line, 'Page revalidation skipped', carrying sent:0 and the reason",
+  "detection_check": "scraper/tests/unit/services/page-revalidation-trigger.test.ts, case 'SAYS it sent nothing, so a quiet cycle is not mistaken for a step that never ran' - spies on the logger and asserts the empty-drain path emits exactly one line with sent:0 and the reason string. Mutation-checked: deleting the logger.info call turns the case red (1 failed | 10 passed) and restoring it green (11 passed).",
+  "status": "guarded for this step only; the other STEP_NAMES members returning skipped have not been swept for the same silence"
+}
