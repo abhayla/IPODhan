@@ -121,7 +121,31 @@ import {
 } from './step-ledger-recorders.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { runAnchorAutoPersist, type AnchorAutoOutcome } from './anchor-auto-persist.js';
-import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
+import {
+  EXTRACT_TIMEOUT_MS,
+  SIDECAR_TIMEOUT_MS,
+  LOCK_SLACK_MS,
+  DEFAULT_MAX_SPAWNS_PER_CYCLE,
+  DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE,
+  FILING_EXTRACTION_LOCK_TTL_MS,
+  maxAnchorSpawnsWithinLockTtl,
+} from '../config/extraction-budgets.js';
+
+/**
+ * Item 7 part A: these numbers no longer live here. They are DERIVED in
+ * `../config/extraction-budgets.js` from one invariant ("never start an
+ * extraction unless the remaining budget can absorb its full timeout") and
+ * re-exported here so every existing importer keeps working.
+ */
+export {
+  EXTRACT_TIMEOUT_MS,
+  SIDECAR_TIMEOUT_MS,
+  LOCK_SLACK_MS,
+  DEFAULT_MAX_SPAWNS_PER_CYCLE,
+  DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE,
+  FILING_EXTRACTION_LOCK_TTL_MS,
+  maxAnchorSpawnsWithinLockTtl,
+};
 
 /**
  * The extractor build that produced a stored extraction.
@@ -162,9 +186,6 @@ export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
   ...EXTRACTABLE_DOC_TYPES,
   ANCHOR_DOC_TYPE,
 ];
-
-/** 10 minutes: an OCR pass over a 600-page RHP is slow, but not unbounded. */
-export const EXTRACT_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const MAX_EXTRACTION_ATTEMPTS = 10;
 export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
@@ -497,8 +518,6 @@ export interface SpawnBudget {
   remaining: number;
 }
 
-/** Default cap on python spawns per document cycle, across every IPO. */
-export const DEFAULT_MAX_SPAWNS_PER_CYCLE = 3;
 
 /**
  * W-168. Before this, the anchor allocation report shared the SAME cycle-wide
@@ -514,7 +533,6 @@ export const DEFAULT_MAX_SPAWNS_PER_CYCLE = 3;
  * filing document this call — never drawn from the filing budget, and never
  * blocking a filing document behind it.
  */
-export const DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE = 1;
 
 /**
  * W-168 round 2 (HOLE 1). The lock-TTL static test only ever asserted the
@@ -528,26 +546,6 @@ export const DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE = 1;
  * derived from the same constants the static test checks — never hard-coded
  * — and warns once per call when it had to clamp.
  */
-export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
-
-/** Same 60s slack the F3 static test already reserves for the filing side. */
-export const LOCK_SLACK_MS = 60_000;
-
-/**
- * The largest anchor spawn count that still leaves the filing worst case +
- * that many anchor sidecars + slack under the lock TTL. Exported so the
- * static test can assert against THIS derivation instead of a re-typed copy.
- */
-export function maxAnchorSpawnsWithinLockTtl(sidecarTimeoutMs: number): number {
-  const filingWorstMs = DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS;
-  const budgetForAnchors = FILING_EXTRACTION_LOCK_TTL_MS - filingWorstMs - LOCK_SLACK_MS;
-  // Strict "<", not "<=": a count whose worst case lands EXACTLY on the
-  // budget still leaves zero margin against the TTL, so floor() alone (which
-  // can land exactly on it when the division is even) is one spawn too many.
-  let n = Math.max(0, Math.floor(budgetForAnchors / sidecarTimeoutMs));
-  while (n > 0 && n * sidecarTimeoutMs >= budgetForAnchors) n--;
-  return n;
-}
 
 /**
  * `ANCHOR_MAX_SPAWNS_PER_CYCLE` env override, read at call time (not module
@@ -571,6 +569,26 @@ export function anchorMaxSpawnsPerCycle(): number {
     return cap;
   }
   return requested;
+}
+
+/**
+ * The never-start invariant (item 7 part A). An extraction is started ONLY
+ * when the remaining budget can absorb its FULL `EXTRACT_TIMEOUT_MS`.
+ *
+ * Strictly more conservative than the old `now() >= deadlineMs` check, which
+ * happily started a 30-minute extraction with two minutes left and then let
+ * it run past the deadline (the deadline was only ever read BEFORE a spawn,
+ * never enforced during one). This is what makes the filing pass worst case
+ * equal to the extraction BUDGET rather than `spawns x timeout`, which is in
+ * turn what the lock TTL derivation in `../config/extraction-budgets.js`
+ * depends on.
+ */
+export function hasFullBudgetRemaining(
+  deps: Pick<AutoPersistDeps, 'deadlineMs' | 'now'>
+): boolean {
+  if (deps.deadlineMs === undefined) return true; // unbounded — existing callers/tests
+  const now = (deps.now ?? Date.now)();
+  return deps.deadlineMs - now >= EXTRACT_TIMEOUT_MS;
 }
 
 /**
@@ -1587,12 +1605,12 @@ export async function processPendingFilings(
       // silently no-op the anchor pass — it has to show up the SAME way a
       // filing-side deadline skip does: `skippedBudget` incremented and a
       // skip reason recorded, both of which the cycle-summary log reads.
-      if (deps.deadlineMs !== undefined && (deps.now ?? Date.now)() >= deps.deadlineMs) {
+      if (deps.deadlineMs !== undefined && !hasFullBudgetRemaining(deps)) {
         const remaining = anchorBudgeted.length - i;
         result.skippedBudget += remaining;
         result.skipped = [
           ...result.skipped,
-          `${remaining} anchor document(s) left PENDING — extraction deadline reached`,
+          `${remaining} anchor document(s) left PENDING — extraction deadline reached (less than one full extraction timeout remained)`,
         ];
         break;
       }
@@ -1655,12 +1673,12 @@ export async function processPendingFilings(
     // one already running — an extraction in flight always finishes. Once
     // past the deadline, every remaining document in THIS call is left
     // PENDING and reported the same way the spawn-budget cutoff already is.
-    if (deps.deadlineMs !== undefined && (deps.now ?? Date.now)() >= deps.deadlineMs) {
+    if (deps.deadlineMs !== undefined && !hasFullBudgetRemaining(deps)) {
       const remaining = pendingForThisCall.length - pendingIdx;
       result.skippedBudget += remaining;
       result.skipped = [
         ...result.skipped,
-        `${remaining} document(s) left PENDING — extraction deadline reached`,
+        `${remaining} document(s) left PENDING — extraction deadline reached (less than one full extraction timeout remained)`,
       ];
       break;
     }

@@ -1368,18 +1368,20 @@ describe('processPendingFilings — the per-document extraction deadline (F3)', 
   }));
 
   it('stops spawning once the deadline is reached BEFORE a new spawn, never interrupting one in flight', async () => {
-    // Clock advances by 1 tick per read; deadlineMs=2 means: doc 0 checked at
-    // t=0 (spawns), doc 1 checked at t=1 (spawns), doc 2 checked at t=2 -> at
-    // the deadline, stop before spawning it (and every doc after it).
-    let t = -1;
+    // Item 7 part A: the check is now "can the remaining budget absorb a FULL
+    // EXTRACT_TIMEOUT_MS?", not "is now past the deadline?". Clock advances one
+    // full timeout per read; deadline = 2 timeouts, so doc 0 sees 2 timeouts
+    // left (spawns), doc 1 sees exactly 1 (spawns — the boundary is >=), doc 2
+    // sees 0 and stops before spawning it, and every doc after it.
+    let t = -EXTRACT_TIMEOUT_MS_REAL;
     const now = () => {
-      t++;
+      t += EXTRACT_TIMEOUT_MS_REAL;
       return t;
     };
     const d = deps({
       loadDocuments: vi.fn(async () => FIVE_DOCS),
       loadStates: vi.fn(async () => FIVE_STATES),
-      deadlineMs: 2,
+      deadlineMs: 2 * EXTRACT_TIMEOUT_MS_REAL,
       now,
     });
 
@@ -1389,6 +1391,38 @@ describe('processPendingFilings — the per-document extraction deadline (F3)', 
     expect(result.spawned).toBe(2);
     expect(result.skippedBudget).toBe(3);
     expect(result.skipped.join(' ')).toContain('extraction deadline reached');
+  });
+
+  // ---- item 7 part A: the never-start invariant, on the real function ----
+
+  it('a wake with less remaining budget than ONE full timeout starts ZERO extractions', async () => {
+    // The exact case the old `now() >= deadlineMs` check wrongly allowed: the
+    // deadline has NOT passed, but there is nowhere near a full extraction
+    // left in it. Old behaviour: spawn a 30-minute extraction with 1 minute of
+    // budget and overrun. New behaviour: spawn nothing.
+    const d = deps({
+      loadDocuments: vi.fn(async () => FIVE_DOCS),
+      loadStates: vi.fn(async () => FIVE_STATES),
+      deadlineMs: EXTRACT_TIMEOUT_MS_REAL - 1,
+      now: () => 0,
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(result.spawned).toBe(0);
+    expect(result.skippedBudget).toBe(5);
+    expect(result.skipped.join(' ')).toContain('extraction deadline reached');
+  });
+
+  it('hasFullBudgetRemaining is the invariant, not the raw deadline', async () => {
+    const { hasFullBudgetRemaining } = await import('../../../src/services/filing-auto-persist.js');
+    // deadline not yet reached, but under one full timeout left -> refuse
+    expect(hasFullBudgetRemaining({ deadlineMs: EXTRACT_TIMEOUT_MS_REAL - 1, now: () => 0 })).toBe(false);
+    // exactly one full timeout left -> allow (the boundary is inclusive)
+    expect(hasFullBudgetRemaining({ deadlineMs: EXTRACT_TIMEOUT_MS_REAL, now: () => 0 })).toBe(true);
+    // no deadline at all -> unbounded, allow
+    expect(hasFullBudgetRemaining({ deadlineMs: undefined, now: () => 0 })).toBe(true);
   });
 
   it('with no deadlineMs set, all pending documents are spawned (existing callers unaffected)', async () => {
@@ -1408,19 +1442,25 @@ describe('processPendingFilings — the per-document extraction deadline (F3)', 
  * takes the full extractor timeout — that total, plus slack, must stay under
  * the lock TTL.
  */
-describe('F3 — spawn cap cannot outlive the extraction lock', () => {
-  it('DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS + anchor sidecar + 60s < FILING_EXTRACTION_LOCK_TTL_MS', async () => {
+describe('F3 — the filing pass cannot outlive the extraction lock', () => {
+  it('the filing pass worst case + anchor sidecars + slack < FILING_EXTRACTION_LOCK_TTL_MS, derived not re-typed', async () => {
     const { FILING_EXTRACTION_LOCK_TTL_MS } = await import('../../../src/services/document-cycle.js');
     const { DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE } = await import('../../../src/services/filing-auto-persist.js');
-    const { SIDECAR_TIMEOUT_MS } = await import('../../../src/scrapers/anchor-investors-scraper.js');
-    // W-168: the anchor pass runs AFTER the filing pass, on its OWN budget —
-    // its worst case (every anchor spawn taking the full sidecar timeout)
-    // ADDS to the filing worst case rather than sharing it, so the lock TTL
-    // must cover both passes back to back, not just the filing one.
+    const { SIDECAR_TIMEOUT_MS, filingPassWorstCaseMs, LOCK_SLACK_MS } = await import(
+      '../../../src/config/extraction-budgets.js'
+    );
+    // Item 7 part A: the filing worst case is the extraction BUDGET, because
+    // `hasFullBudgetRemaining()` refuses to start a spawn that cannot finish
+    // inside it. The old `DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS`
+    // formula (3 x 30 min = 90 min) fits under no lock TTL this repo derives —
+    // asserted here so nobody quietly reinstates it.
+    expect(DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL).toBeGreaterThan(
+      FILING_EXTRACTION_LOCK_TTL_MS
+    );
     const worstCaseMs =
-      DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL +
+      filingPassWorstCaseMs() +
       DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE * SIDECAR_TIMEOUT_MS +
-      60_000;
+      LOCK_SLACK_MS;
     expect(worstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
   });
 
@@ -1438,18 +1478,17 @@ describe('F3 — spawn cap cannot outlive the extraction lock', () => {
 
     process.env.ANCHOR_MAX_SPAWNS_PER_CYCLE = '8';
     try {
-      // 8 unclamped would be 30min (filing) + 8*120s (16min) + 1min = 47min,
-      // OVER the 45-min TTL — proving the raw env value alone is unsafe.
-      const requestedWorstCaseMs =
-        DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + 8 * SIDECAR_TIMEOUT_MS + 60_000;
+      // 8 unclamped anchors on top of the filing worst case blows the TTL —
+      // proving the raw env value alone is unsafe.
+      const { filingPassWorstCaseMs } = await import('../../../src/config/extraction-budgets.js');
+      const requestedWorstCaseMs = filingPassWorstCaseMs() + 8 * SIDECAR_TIMEOUT_MS + 60_000;
       expect(requestedWorstCaseMs).toBeGreaterThan(FILING_EXTRACTION_LOCK_TTL_MS);
 
       const clamped = anchorMaxSpawnsPerCycle();
       expect(clamped).toBe(maxAnchorSpawnsWithinLockTtl(SIDECAR_TIMEOUT_MS));
       expect(clamped).toBeLessThan(8);
 
-      const actualWorstCaseMs =
-        DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + clamped * SIDECAR_TIMEOUT_MS + 60_000;
+      const actualWorstCaseMs = filingPassWorstCaseMs() + clamped * SIDECAR_TIMEOUT_MS + 60_000;
       expect(actualWorstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
     } finally {
       delete process.env.ANCHOR_MAX_SPAWNS_PER_CYCLE;
@@ -1796,7 +1835,7 @@ describe('W-142 — anchor allocation reports are selected by the automatic door
   it('a deadline already passed before the anchor pass records skippedBudget + a skip reason, never a silent no-op', async () => {
     const d = anchorDeps({
       deadlineMs: 1000,
-      now: () => 2000, // already past the deadline before the anchor pass runs
+      now: () => 2000, // no full extraction timeout left before the anchor pass runs
     });
     const r = await processPendingFilings(IPO, d);
 

@@ -85,6 +85,13 @@ const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
  */
 export { FILING_EXTRACTION_LOCK_TTL_MS };
 
+import {
+  DEFAULT_EXTRACTION_BUDGET_MS,
+  DEFAULT_WAKE_BUDGET_MS,
+  PURGE_RESERVE_MS,
+  getWakeBudgetMs,
+} from '../config/extraction-budgets.js';
+
 /**
  * W-140: registry of Redis locks currently held by an in-flight document
  * cycle, so a signal handler in `index.ts` (SIGTERM/SIGINT, which calls
@@ -137,40 +144,18 @@ export async function releaseHeldLocks(): Promise<void> {
 }
 
 /**
- * W-102: whole-extraction-pass (PASS 2) wall-clock ceiling across all
- * candidate IPOs, checked BETWEEN IPOs (never interrupting a
- * `processPendingFilings` call already in flight) — python extraction runs
- * (minutes, not milliseconds) must never be charged against
- * `CYCLE_BUDGET.DISCOVERY_MS`, but they still need a ceiling so pass 2 cannot
- * run unbounded inside a 30-minute cron cycle. Local to this file (not
- * `CYCLE_BUDGET` in document-state-machine.ts) — this round's touch-scope
- * kept that file untouched.
+ * Item 7 part A: `DEFAULT_EXTRACTION_BUDGET_MS`, `DEFAULT_WAKE_BUDGET_MS`,
+ * `PURGE_RESERVE_MS` and `getWakeBudgetMs()` moved to
+ * `../config/extraction-budgets.js`, where they are DERIVED from the
+ * never-start invariant instead of typed independently. Re-exported here so
+ * every existing importer keeps working.
  */
-export const DEFAULT_EXTRACTION_BUDGET_MS = 25 * 60 * 1000;
-
-/**
- * Cadence decision D-13 / cycle-overrun RCA (2026-09-06 observed 1,210-1,278s
- * document cycles): discovery (`CYCLE_BUDGET.DISCOVERY_MS`) and extraction
- * (`DEFAULT_EXTRACTION_BUDGET_MS`) used to be two INDEPENDENT budgets — a
- * worst case of 60s + 25min = ~26min per document cycle, on top of whatever
- * the rest of the same pm2 wake (live numbers, aggregators, purge) spent,
- * against a 30-minute wake. This is the ONE budget the two share: extraction
- * gets whatever discovery did not use, capped so discovery + extraction +
- * the purge reservation below can never together exceed this number. Default
- * 20 min leaves 10 min of the 30-min wake for everything else in the same
- * `runCycle` invocation (`scraper/src/index.ts`).
- */
-export const DEFAULT_WAKE_BUDGET_MS = 20 * 60 * 1000;
-
-/**
- * Fixed reservation, subtracted from the wake budget before computing
- * extraction's share — `triggerDocumentPurge()` (`index.ts`) runs `runDocumentPurge()`
- * as a separate step in the SAME wake, after this cycle returns. Without a
- * reservation, a wake budget fully spent on discovery+extraction leaves the
- * purge step nothing, and a slow purge (file deletes) has no ceiling of its
- * own to fall back to.
- */
-export const PURGE_RESERVE_MS = 2 * 60 * 1000;
+export {
+  DEFAULT_EXTRACTION_BUDGET_MS,
+  DEFAULT_WAKE_BUDGET_MS,
+  PURGE_RESERVE_MS,
+  getWakeBudgetMs,
+};
 
 /**
  * Reviewer MEDIUM (round 3): the post-budget-trip reservation loop (purge
@@ -213,13 +198,6 @@ export const UPCOMING_RESERVE_SLOTS = 1;
  */
 const RANK2_STAGES = new Set(['UPCOMING', 'PRE_OPEN']);
 
-/** `DOCUMENT_CYCLE_WAKE_BUDGET_MS` env override, default `DEFAULT_WAKE_BUDGET_MS`. */
-export function getWakeBudgetMs(): number {
-  const raw = process.env.DOCUMENT_CYCLE_WAKE_BUDGET_MS;
-  if (!raw) return DEFAULT_WAKE_BUDGET_MS;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WAKE_BUDGET_MS;
-}
 
 export interface DocumentCycleSummary {
   ipos: number;

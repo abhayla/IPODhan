@@ -20,6 +20,12 @@ import {
   PURGE_RESERVE_MS,
   getWakeBudgetMs,
 } from '../../../src/services/document-cycle.js';
+import {
+  cycleLockTtlMs,
+  budgetsRequireForceKillRemoval,
+  LEGACY_PM2_FORCE_KILL_INTERVAL_MS,
+  FILING_EXTRACTION_LOCK_TTL_MS,
+} from '../../../src/config/extraction-budgets.js';
 
 describe('getWakeBudgetMs — DOCUMENT_CYCLE_WAKE_BUDGET_MS env override', () => {
   const original = process.env.DOCUMENT_CYCLE_WAKE_BUDGET_MS;
@@ -78,12 +84,25 @@ describe('CYCLE_LOCK_TTL_MS (index.ts) is derived from the wake budget, not hard
     const expression = match![1].trim();
     expect(expression).toBe('getWakeBudgetMs() + 5 * 60 * 1000');
 
-    // And the derived value itself, for the default wake budget: TTL must be
-    // strictly greater than the wake budget (there must be slack) and must
-    // remain shorter than the 30-minute pm2 restart interval (round-3 M1 —
-    // a killed cycle's lock must always be gone before the next cycle starts).
-    const derivedTtl = DEFAULT_WAKE_BUDGET_MS + 5 * 60 * 1000;
+    // And the derived value itself: the whole-cycle lock must outlive the wake
+    // budget AND the filing-extraction lock nested inside it, so a legitimate
+    // cycle never outlives either.
+    const derivedTtl = cycleLockTtlMs(DEFAULT_WAKE_BUDGET_MS);
     expect(derivedTtl).toBeGreaterThan(DEFAULT_WAKE_BUDGET_MS);
-    expect(derivedTtl).toBeLessThan(30 * 60 * 1000);
+    expect(derivedTtl).toBeGreaterThan(FILING_EXTRACTION_LOCK_TTL_MS);
+  });
+
+  // Item 7 part A. The round-3 M1 assertion this replaces required the cycle
+  // lock to stay under the 30-minute pm2 restart interval, because a killed
+  // cycle's lock had to be gone before the next cycle started. That constraint
+  // exists ONLY because PM2 `--cron-restart` force-kills a running cycle. At
+  // OD-19's budgets it no longer holds — which is the honest statement that
+  // these numbers cannot be deployed ahead of item 7 part B (the force-kill
+  // removal). Asserted, not left implicit, so nobody ships half of item 7.
+  it('these budgets require the PM2 force-kill to be removed first (item 7 part B)', () => {
+    expect(budgetsRequireForceKillRemoval(DEFAULT_WAKE_BUDGET_MS)).toBe(true);
+    expect(cycleLockTtlMs(DEFAULT_WAKE_BUDGET_MS)).toBeGreaterThan(
+      LEGACY_PM2_FORCE_KILL_INTERVAL_MS
+    );
   });
 });

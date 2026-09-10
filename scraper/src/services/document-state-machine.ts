@@ -26,6 +26,7 @@
  * `document-discovery-runner.ts` (the network/DB side that consumes this).
  */
 
+import { DISCOVERY_RESERVE_MS } from '../config/extraction-budgets.js';
 import {
   DOCUMENT_PRECEDENCE,
   DOCUMENT_TYPES,
@@ -736,7 +737,8 @@ export function isStaleInProgress(row: StateRow, now: Date = new Date()): boolea
 /** R12 — the cycle's budgets. Discovery must never starve the 30-minute scrape. */
 export const CYCLE_BUDGET = {
   /** Whole-discovery wall-clock ceiling across all IPOs. */
-  DISCOVERY_MS: 60_000,
+  // Item 7 part A: one number, shared with the budget derivation.
+  DISCOVERY_MS: DISCOVERY_RESERVE_MS,
   /** At most one document is EXTRACTED per cycle (WP C). */
   EXTRACTIONS_PER_CYCLE: 1,
 } as const;

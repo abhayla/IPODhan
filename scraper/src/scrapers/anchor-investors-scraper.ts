@@ -108,7 +108,13 @@ const MAX_ANCHOR_SHARE_OF_QIB = 0.6;
 const MAX_QIB_SHARE_OF_ISSUE = 0.75;
 /** Slack on the issue-size check - `issue_size` is a scraped, rounded figure. */
 const ISSUE_SIZE_SLACK = 0.02;
-export const SIDECAR_TIMEOUT_MS = 120_000;
+/**
+ * Item 7 part A: the sidecar timeout is one input to the lock-TTL derivation,
+ * so it lives in `../config/extraction-budgets.js` with the rest of the chain.
+ * Re-exported here because that is where every caller already imports it from.
+ */
+export { SIDECAR_TIMEOUT_MS } from '../config/extraction-budgets.js';
+import { SIDECAR_TIMEOUT_MS } from '../config/extraction-budgets.js';
 /** Mirrors `memory_guard.EXIT_MEMORY_CEILING` — the sidecar's own OOM exit code. */
 export const ANCHOR_SIDECAR_MEMORY_CEILING_EXIT = 3;
 /**
