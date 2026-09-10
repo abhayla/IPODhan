@@ -1737,3 +1737,31 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   debt and an unexplained debt never gets paid.
   The fix also adds the number whose absence let this hide: **the count of edges with BOTH endpoints mapped**,
   printed every run, guarded so that zero is exit 2, and asserted by its own test.
+
+- **2026-09-10 12:03 IST [lane B] Issue #461 filed: `node --test` exits 0 on a GLOB that matches nothing. Real hazard, no current
+  exposure - and the premise it was raised on was wrong.** Lane A reported that renaming a test path in
+  `pr-gate.yml` would leave the step green forever. Measured on Node v22.20.0 with no pipe, that is **not true for a
+  literal path**: `nope.test.mjs` exits **1** with `Could not find`, a missing directory exits 1, an existing
+  directory with no test files exits 1, a failing assertion exits 1, an import-time throw exits 1. Only a **glob**
+  that matches nothing exits **0**, silently, with no stderr - `./nosuchdir/**/*.test.mjs` and `./*.test.mjs` in an
+  empty directory both do.
+  Audited all 16 `node --test` sites in `pr-gate.yml` on `origin/main`, each classified literal-vs-glob and checked
+  against disk: **16 of 16 literal, 16 of 16 present, 0 glob-shaped.** So no gate in this repository is hollow today,
+  and a renamed test file fails loudly rather than passing quietly - the behaviour we want. What remains is a latent
+  trap: the first person who tidies a step into `node --test scripts/ci/tests/*.test.mjs` converts it into a gate
+  that can never fail, with no signal at the moment it happens. Proposed fix in the issue, not built here because it
+  is outside item 20's card: assert a non-zero TAP plan (`--test-reporter=tap`, `1..N` with N > 0), which is
+  argument-shape independent and also catches a file that exists but registers no tests.
+  This is the SAME class as the CRITICAL found in this lane's own s3 an hour earlier - a check that scanned nothing
+  reporting a clean pass - and it is recorded as such in the issue.
+  Method note worth keeping: lane A's claim and this lane's earlier measurement contradicted each other, and BOTH
+  were partly right. The reviewer had tested a missing SUBJECT script; lane A had tested a missing TEST path. Neither
+  had separated literal from glob. The resolution came from testing six argument shapes rather than arguing. When two
+  measurements disagree, the answer is usually that they measured different things.
+- **2026-09-10 12:03 IST [lane B] Parent contract decision 11 is WRONG and is superseded; lane B carries it into no brief.**
+  Lane A caught it in review: the clause requires `DEPLOY_SLOT` to be added to both required-key lists in
+  `scripts/assert-env-keys.sh`, but that script validates STATIC env files under `shared/env/<slot>/`, while
+  `DEPLOY_SLOT` is injected at pm2 start. Requiring it there would refuse **every deploy** and break the staging
+  bench both lanes prove their work on. The same words appear in this lane's contract only inside the shared-duty
+  DESCRIPTION of a duty lane A owns and builds; lane B builds none of it, so the correction costs this lane nothing
+  beyond never repeating the wrong sentence in a worker brief.
