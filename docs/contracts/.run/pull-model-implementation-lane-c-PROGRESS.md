@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 02:18 IST** — written in the SAME turn as the board, the state file and the ledger commit. All four or none. — written in the SAME command as the ledger commit below it. Local only
+**Last refreshed: 2026-09-11 02:40 IST** — written in the SAME turn as the board, the state file and the ledger commit. All four or none. — written in the SAME command as the ledger commit below it. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -488,3 +488,27 @@ it actually is.
 2. **List your own open PRs before scoping a slice.** #367 cost most of an hour.
 3. **Check the served sha before any proof read** - and with `Cache-Control: no-cache`, since /api/version carries a one-year s-maxage and served lane B a stale sha two minutes after a flip.
 4. **A row-level finding names its database.** Two sessions reported staging as production in one night, in opposite directions; one was a step from an owner-approved production deletion.
+
+## 2026-09-11 02:40 IST - 2-S7 two commits in; a safety notice verified and half corrected
+
+**#569 (draft):** `335235dc` the pure mapper + captured fixture + 10 tests;
+`1b53add2` `fillIssueTypeIfNull` on the ONE live writer - `UPDATE ... WHERE ipo_id
+AND issue_type IS NULL`, rowCount returned so provenance follows a real write and not
+a no-op. 2172 tests green, tsc equal to main baseline with zero in the changed file,
+and the mutation removing the guard turns the suite red BY NAME.
+
+**The IS NULL guard is the entire safety argument.** `ipo_details` has no
+source-priority mechanism: the matrix governs `ipos` only, and `dropOutranked` is
+cover-versus-ad arbitration. Two mechanisms were claimed for this field tonight - one
+mine, one the planner - and both were withdrawn after reading the code.
+
+**Safety notice verified, and half of it corrected.** `consolidation-dedup` really does
+read `web/.env.local`, build its own Pool and INSERT INTO `ipos` on production. Precise
+severity: its DELETE is scoped to its own fixture name, so the defect is an unguarded
+production INSERT, not destruction of real rows.
+
+But the notice also named my `normalizer-sql-agreement` test. It does NOT match: never
+reads a file, takes `process.env.DATABASE_URL`, skips when unset, reads no table. The
+string `env.local` appears twice, BOTH IN COMMENTS saying it must never do that, because
+I built it in 12-B to REPLACE the tunnel-reading one. A grep-based check would flag the
+FIX as the defect - the same shape as a check keying on a field nothing populates.
