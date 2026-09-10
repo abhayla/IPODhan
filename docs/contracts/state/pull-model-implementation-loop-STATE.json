@@ -6,11 +6,7 @@
     1,
     15,
     13,
-    14,
-    12,
     4,
-    2,
-    3,
     5,
     6,
     7,
@@ -128,7 +124,10 @@
     "OPEN QUESTION for the s5a round-2 reviewer, deliberately not decided by me: the helper routes an explicitly EMPTY value (FLAG=) to the slot default, so on staging `FLAG=` yields TRUE. Defensible as 'empty means unset', but an operator who writes FLAG= may well mean off. Asked for a reasoned view rather than pre-judging it.",
     "CORRECTION of my own repeated causal claim, settled by raw bytes 2026-09-10 13:03 IST. I said several times - to the owner, to lane B, in the #459 and #464 PR bodies and in a .gitattributes comment - that `git add` renormalising docs/ops/prod-ops-recipes.md to LF is what SPLIT three `tr -d '\\\"\\r'` commands across lines. WRONG. Verified with `git cat-file blob`: the argument on main is a LITERAL two-character backslash-r, which EOL conversion never touches; the only real CR in that window is the line terminator. What is true: three commands ARE genuinely split on main (a real defect from some earlier edit, repaired by slice s3), and the file IS an all-CRLF blob that git add rewrites to LF (measured 486/459 churn). The churn is real and worth pinning against - it makes a two-lane file unreviewable - but it did not cause the splits. The .gitattributes comment now states the correct reason and explicitly names the wrong one so the next reader is not re-misled. Found by a Tier A reviewer challenging a rationale rather than only checking behaviour.",
     "LEDGER BRANCH WAS NEVER PUSHED, found and fixed 2026-09-10 13:03 IST. ops/impl-loop-ledger existed only locally with 38 commits - every tracker entry and STATE.json note from this whole run. Two consequences: the owner could not read the tracker in the repo at all, and lane C's preflight, which HALTS unless origin/ops/impl-loop-ledger shows its four items released, would have halted because the BRANCH did not exist rather than because the items were unreleased - fail-safe direction, misleading reason. Audited the 38 commits for credentials before pushing: one match, which was my own INC-02 note using `postgresql://user:pass@host` as a literal placeholder. Pushed and now tracking origin/ops/impl-loop-ledger.",
-    "REBASE CATCH #4 2026-09-10 13:03 IST, this one as the literal last action before merging: #466 landed and s3b would have DELETED four files - lane C's contract and all three lanes' slice plans. The last-action-before-merge rule earned itself in a single use. Four catches today from one command: #460 during a review round, #462 during a fix round, #466 at the merge gate, plus s3's earlier one. Lane B's merge cadence is faster than a review round, so any check done only at PR-create time is already stale by merge."
+    "REBASE CATCH #4 2026-09-10 13:03 IST, this one as the literal last action before merging: #466 landed and s3b would have DELETED four files - lane C's contract and all three lanes' slice plans. The last-action-before-merge rule earned itself in a single use. Four catches today from one command: #460 during a review round, #462 during a fix round, #466 at the merge gate, plus s3's earlier one. Lane B's merge cadence is faster than a review round, so any check done only at PR-create time is already stale by merge.",
+    "OWNER DIRECT 2026-09-10 13:15 IST: lane split approved, items 14, 12, 2, 3 RELEASED to lane C. This lane's queue is 1, 15, 13, 4, 5, 6, 7, 9, 10, 11, 17 (11 items). This lane VERIFIES lane C's merges and never rebuilds them, same as lane B. Coverage checked before releasing rather than assumed: lane A 11 + lane B 6 + lane C 4 + item 19 already DONE (verify-only, PR #433) = 22, zero overlaps, zero unassigned.",
+    "Released via STATE.json on origin/ops/impl-loop-ledger, which is what lane C's preflight (h) reads - it HALTS until it sees these four released, so this push is the release mechanism, not just a record. The branch only started existing on origin at 13:10 today; before that lane C would have halted on a missing branch and reported the wrong cause.",
+    "CARRIED DEPENDENCY now live: this lane's item 13 depends on lane C's item 2, which is why lane C's order is 14, 2, 12, 3 rather than 14, 12, 2, 3. Lane C posts a Notifier line when item 2 merges. Item 13 does not start before that lands, and when it does this lane VERIFIES item 2 rather than re-deriving it."
   ],
   "items": {
     "item-01": {
@@ -618,8 +617,8 @@
   },
   "laneAItems": [
     1,
-    2,
-    3,
+    15,
+    13,
     4,
     5,
     6,
@@ -627,10 +626,6 @@
     9,
     10,
     11,
-    12,
-    13,
-    14,
-    15,
     17
   ],
   "laneBItems": [
@@ -658,5 +653,21 @@
   "owedToLaneB": [
     "Tell lane B (session ipodhan-62 relay) the web-duty PR number as soon as it opens - it changes ci.yml for both lanes and lane B's tick will watch it. Also tell them when it MERGES, since any web-touching lane B slice is waiting on it.",
     "If the dispatched ci.yml run on the local postgres service is RED, send lane B the failing test NAMES before escalating to the owner - '193 fail through the tunnel' and 'N fail on a local service' are different classes and only the second is a real gate."
-  ]
+  ],
+  "laneCItems": [
+    14,
+    12,
+    2,
+    3
+  ],
+  "releasedToLaneC": {
+    "items": [
+      14,
+      12,
+      2,
+      3
+    ],
+    "releasedAt": "2026-09-10 13:15 IST",
+    "by": "owner typed in lane A session"
+  }
 }
