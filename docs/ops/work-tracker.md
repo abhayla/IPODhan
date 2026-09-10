@@ -984,3 +984,35 @@ What is needed from you: nothing. The password decision is closed — deferred u
 
 Automated check-runs: **17 used today of a shared 60** — nine mine, eight the other streams'. One
 failure, and it is the other stream's build-card check described above, not a fault in my work.
+
+**2026-09-10 14:06 IST — tick. A safety net I argued for caught something on its first real outing.**
+Item 1: **38%**, five of thirteen slices merged, unchanged.
+
+Earlier today I insisted that a note reading "remember to remove this when the next piece of work lands"
+be replaced with an automatic check, because notes get forgotten. That check has now blocked the very
+next submission — correctly. The piece of work it was waiting for arrived, the note was out of date, and
+the build refused to accept it until the stale entry was deleted. This is the first thing all day that
+worked because it was designed to.
+
+What went wrong, three things, all mine and all caught:
+
+The automated build failed on its first honest run. Not because the code is bad — because the build was
+running the website's tests with a setting that makes every test file share one workspace, and one file
+wipes a browser feature the others need. 90 of 187 files failed for that reason alone. Measured properly:
+with the setting, 664 tests fail; without it, 4. A one-line fix is submitted.
+
+I then claimed those 4 were long-standing broken tests and promised a written record of them. Re-running
+gave 1147 passed, zero failures. So the number I was about to report was not true, and I withdrew it. By
+our own rules a test that fails once and passes on a re-run is a fault to be investigated, not a number
+to be quoted, and certainly not something to re-run until it looks fine.
+
+And I opened a new ticket for that fault without checking, when one already existed from yesterday —
+one I had read this morning. Merged into the existing ticket, mine closed.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: nothing.
+
+Automated check-runs: **22 used today of a shared 60** — eleven mine, eleven the other streams'. Two
+failures, both understood: mine was the safety net doing its job, and the other stream's was their own
+build-card check.
