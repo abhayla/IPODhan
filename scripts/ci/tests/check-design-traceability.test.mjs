@@ -154,6 +154,35 @@ test('self-guard: zero live rules is a FAIL, never a pass -> exit 2', () => {
   }
 });
 
+test('Finding 2 regression: summary line names the roots scanned, not just a count', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-050')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-050'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-050\n');
+
+    const res = runCheck(root);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    // The summary must carry the identity of the scanned root(s) — a bare
+    // count regresses to the class this rule bars (signal-ownership.md R1).
+    // A future edit that swaps the root NAMES for a digit count must turn
+    // this test RED.
+    const match = res.stdout.match(/test roots scanned: (.+)$/m);
+    assert.ok(match, `no "test roots scanned:" segment in:\n${res.stdout}`);
+    const scanned = match[1].trim();
+    assert.ok(
+      !/^\d+$/.test(scanned),
+      `expected the scanned root NAMES, got what looks like a bare count: "${scanned}"`
+    );
+    // The fixture's only test root ends in "tests" — its name must survive
+    // into the summary line verbatim, not be collapsed to a number.
+    assert.match(scanned, /tests$/, `expected the root path to end in "tests", got: "${scanned}"`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('clean fixture tree -> exit 0', () => {
   const root = mkFixtureRoot();
   try {

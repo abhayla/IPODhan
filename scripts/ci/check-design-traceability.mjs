@@ -50,6 +50,10 @@ function parseArgs(argv) {
   return opts;
 }
 
+// Returns the CANDIDATE default test roots, unfiltered by existence. Callers
+// filter for existence themselves — keeping the unfiltered list around is
+// what lets the zero-test-roots fatal message (main(), below) name every
+// root it looked for, not just the ones that happened to exist (Finding 1).
 function defaultTestRoots() {
   const roots = [
     join(REPO_ROOT, 'scraper', 'tests'),
@@ -61,11 +65,10 @@ function defaultTestRoots() {
   if (existsSync(packagesDir)) {
     for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const testsDir = join(packagesDir, entry.name, 'tests');
-      if (existsSync(testsDir)) roots.push(testsDir);
+      roots.push(join(packagesDir, entry.name, 'tests'));
     }
   }
-  return roots.filter((r) => existsSync(r));
+  return roots;
 }
 
 function resolveOptions(argv) {
@@ -214,9 +217,11 @@ function main() {
   // looked for so a reader can see WHICH roots were requested vs found
   // (signal-ownership.md R1 — identities, not just counts).
   if (testRoots.length === 0) {
+    const missing = requestedTestRoots.filter((r) => !existsSync(r));
     fail2(
       `zero test roots exist out of ${requestedTestRoots.length} requested — a check that scans nothing is not a ` +
-        `clean pass. Requested: ${requestedTestRoots.join(', ') || '(none)'}`
+        `clean pass. Requested: ${requestedTestRoots.join(', ') || '(none)'}. ` +
+        `Missing: ${missing.join(', ') || '(none)'}`
     );
   }
 
