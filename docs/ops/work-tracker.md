@@ -807,3 +807,30 @@ value and the drift check reported everything fine. That is older than this work
 separate hardening job, which must land before item 1 can be called finished.
 
 Automated check-runs: **7 used today of a shared 60**, four of them mine, none failed.
+
+**2026-09-10 11:34 IST — tick. The sixth slice is finished and I am deliberately not merging it yet.**
+Item 1: **38%**, five of thirteen slices merged, unchanged.
+
+The sixth slice passed its third adversarial review with no serious findings, and all five automated
+checks on it are green — including the one that runs its new tests inside the shared build, which
+matters because a test that only ever runs on my laptop is not a gate.
+
+Why it is not merged: this morning I found that a rule in the work contract had been missed twice. The
+rule says the first change that touches the website's code must first fix the website's own test
+pipeline, which today is configured so that its tests cannot fail the build — no database is started
+for them and failures are ignored. Two earlier slices touched website code and merged without it, and
+I did not catch either. The check that would have caught it is a single command listing which files a
+change touches; it now runs before every submission, alongside the two other checks I never miss
+precisely because they are commands rather than good intentions.
+
+That same new check immediately flagged this slice: it touches five website files. So rather than
+grant myself an exemption hours after finding the miss, I am holding it and building the test-pipeline
+fix first. That fix is next in the queue, so the wait is short, and it also closes two other holes
+found today — one where nothing detects a schema file edited without its matching database change, and
+one where a formatting rule silently splits shell commands in half.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: nothing.
+
+Automated check-runs: **8 used today of a shared 60**, five of them mine, none failed.
