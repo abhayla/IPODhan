@@ -80,6 +80,14 @@
     {
       "at": "2026-09-11T02:22:16+05:30",
       "what": "DEFECTS OF MINE TODAY, recorded rather than buried: fabricated a command and its output in #538 (claimed zero callers of safeDelPattern; the real answer is 8) - corrected; claimed a production duplicate from a staging-only measurement in #553 - corrected by lane C reading prod; broke main with a docs-only PR #537 citing a file that did not exist yet; merged a StepResult type mismatch in #557, fixed in #560; hit the MSYS_NO_PATHCONV Windows-path trap three times, once reading it as lost work when nothing was lost; let this STATE.json go stale from item 22 until 01:45."
+    },
+    {
+      "at": "2026-09-10T21:00:35.000Z",
+      "what": "18-2 ruled OWED not paid, accepted. The 170 cycle holds were all the never-extracted arm; the extracted_at-vs-seven-days comparison, the only part that could refute the slice, did not run. MEASURED why it cannot run on staging today: 285 purge candidates, 18 carry a real latest_extracted_at, all 18 are also vetoed by textless_count>0 one step earlier, so ZERO reach the timestamp arm. document_pages is empty because the page-text writer went live in tonight deploy and nothing has been extracted since. The two owed proofs are ONE event: the next cycle that completes an extraction."
+    },
+    {
+      "at": "2026-09-10T21:00:35.000Z",
+      "what": "Item 21 slice 3b opened as PR #576. Defect of ours found by a proof read: the revalidation step returns skipped on an empty drain WITHOUT logging, so a quiet cycle and a step that never ran leave the same blank. One logger.info with sent:0 and the reason. Mutation-checked: deleting it turns the new test red (1 failed | 10 passed), restoring it green (11 passed). Detection change: docs/reviews/failure-classes/silent-skip-indistinguishable-from-not-run.json, which also names the unswept remainder - other steps returning skipped have not been checked."
     }
   ],
   "items": {
@@ -524,7 +532,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T02:22:16+05:30",
+  "lastStateWriteAt": "2026-09-10T21:00:35.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 0,
@@ -535,10 +543,9 @@
     "22": 6
   },
   "stagingProofsOwedAndBlocked": [
-    "18-1b page rows (cycle pending)",
-    "18-2 cycle (cycle pending)",
-    "21-3 revalidate line (cycle pending)",
-    "item 22 #496 and #468 (cycle pending)"
+    "18-1b page rows AND 18-2 timestamp arm - ONE condition: a cycle that completes an extraction",
+    "21-3 revalidate line - a cycle that writes an IPO; 21-3b (#576) makes the empty case readable",
+    "item 22 #496 and #468"
   ],
   "stagingProofsBlockedReason": "No longer blocked. Staging deploys were restored (lane A #564) and now fire on every non-docs merge (#567); run 34526518484 flipped staging to 2ad49a4e at 20:33:49Z. The remaining four proofs need a scraper CYCLE, not a deploy; staging scraper cron is 15,45.",
   "stagingProofsPaid": [
