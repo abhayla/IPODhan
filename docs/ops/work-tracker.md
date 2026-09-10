@@ -535,3 +535,17 @@ short. Design only — no behaviour ships from it.
 | 16:06 | **The design work is finished and the pull request is going up.** Every problem is closed — 114 recorded, none open. Four independent reviews, four real IPOs walked end to end, and a second review aimed at the fixes themselves, which found one place where my fix had made things worse. | 0 open | done | Report: docs/design/delta-report-2026-09-09.md |
 | 16:06 | **The most useful thing found today was not a mistake in the writing.** Walking four awkward IPOs showed that several rules cannot run at all, because the data they read is not there: the field that orders documents by date is filled on 27 of 266 documents, the field that says whether an IPO is fixed-price on 19 of 330, and two fields the rules name do not exist as columns at all. The design now states, for every such rule, what happens when the field is empty. | — | new section | This was invisible from reading the rules |
 | 16:06 | **Two decisions still need one line each from you.** (1) The nineteen "OFS" rows are Coal India, BHEL, NHPC and similar — already-listed companies whose promoters sold in a two-day auction. Give them their own page shape? (2) We fetch delayed prices from the exchanges' free pages; republishing them may need a licence. That is a compliance call and you are a Zerodha AP. | — | awaiting you | Nothing is blocked either way |
+
+## Implementation lane B - updates
+
+Lane B builds six of the twenty-two pull-model items - the CI traceability check, document downloads and retention,
+retiring Moneycontrol, the ratios extractor, and the read side - beside lane A, which builds the other fifteen.
+Nothing here is deployed; everything lands on `main`, which feeds staging only.
+
+- **2026-09-10 11:17 IST - lane B started.** 0% to 0%: nothing built yet. Preflight passed on every check - the shared code on
+  `main` is green, this lane's own throwaway test database is built and matches the schema exactly (35 tables to 35),
+  and the design documents pass their own consistency gates. First item is the check that makes CI fail when the
+  design says something the code never tests; a reader of ipodhan.com sees nothing from it, but every later item in
+  BOTH lanes is proven by it instead of taken on trust. One mistake already, mine, recorded honestly: a mistyped path
+  meant a database reset silently did not run and the migration that followed ran on the wrong state - redone
+  properly before anything was built. Nothing needed from you.

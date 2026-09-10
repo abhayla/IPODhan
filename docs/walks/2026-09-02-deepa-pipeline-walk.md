@@ -1425,3 +1425,50 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   the whole design costs 0.018% of that bandwidth. Two owner forks recorded: O-14 (what the 19 OFS
   rows should look like) and O-15 (whether a delayed exchange quote may be republished). Gate 23/23
   at every commit. No behaviour shipped.
+
+- **2026-09-10 11:16 IST [lane B] Stage 0 preflight PASSED - implementation lane B started (items 20, 22, 18, 16, 8, 21).**
+  Contract `docs/contracts/2026-09-10-pull-model-implementation-lane-b.md` (merged to main as PR #458). Coordination
+  worktree `IPODhan-IPODhan-impl-loop-b` on `ops/impl-loop-b-ledger`, lock `.run-active-b.lock` claimed
+  (`impl-loop-b-1789018669`). Preconditions, each with its output: main-gate on `main` conclusion `success`
+  (2026-09-10T05:28:21Z); `ipodhan_test2` schemas dropped and recreated on ONE connection that first asserted
+  `current_database() = 'ipodhan_test2'`, then `npm run db:migrate` exit 0 and `public` table count **35 = 35**
+  `grep -c 'pgTable(' packages/shared/src/db/schema.ts`; `check-design-consistency.mjs --gate` exit 0 (23/23),
+  `check-build-cards.mjs` exit 0 (22 cards, 348 paths cited, 0 missing); 180 GB free on D:; `gh` authed as
+  `abhayla`, repo visibility `public`; lane A alive (`ops/impl-loop-ledger` last commit 2026-09-10T11:00:25+05:30);
+  `scripts/ops/test-db-lifecycle.mjs --name ipodhan_test2 --create --apply` exit 0 ("already exists"). Board read:
+  all six items `lane: "B"`, `PENDING`, zero slices - no lane A claim on item 20. `testDb.drop` recorded **OWED**
+  in STATE.json so the disposable database stays visible as a debt even if this session dies.
+- **2026-09-10 11:16 IST [lane B] DEFECT-B01, mine, before anything was built.** The first `ipodhan_test2` reset ran `node` on a
+  `$HOME`-expanded `/c/...` scratchpad path while `MSYS_NO_PATHCONV=1` was set; Git Bash left the path unconverted,
+  node resolved it under the `D:` drive and exited 1 - and because the migrate followed in the same compound
+  command without `&&`, it ran anyway against a **not-reset** database and printed exit 0. Same class lane A
+  recorded twice today (a zero from a command that errored is not a measurement). The reset and migrate were redone
+  from inside the worktree with a relative script path; only the second run counts. Rule adopted for every brief
+  this lane writes: never chain a gate after a step whose exit code was not checked.
+
+- **2026-09-10 11:17 IST [lane B] Item 20 slice plan (design-to-test traceability CI check, Tier A).**
+  Card `docs/design/build-cards/item-20-design-traceability-check.md`. Inputs all verified present on main:
+  `rules.json` (166 rules, id + text hash), `rule-ownership.json`, `rules-unclaimed.json`, both generators. The two
+  checks are new; the existing `scripts/ci/require-detection-change.mjs` + `scripts/ci/tests/*.test.mjs` pair is the
+  shape to copy. Four slices, none above ~400 lines:
+  - **s1 (Tier A, ~280 lines)** `scripts/ci/check-design-traceability.mjs` failure modes 1-3 (a live rule claimed by
+    no card and not declared unclaimed; a card claiming an id no test declares - REPORTING mode per the card until
+    item 6 lands; a test declaring an id that is not live) + `scripts/ci/tests/check-design-traceability.test.mjs`
+    with one red-then-green case per mode, plus the self-guard the card names: zero live rules is FAIL, not pass.
+    Exit codes 0 clean / 1 broken link / 2 the check itself failed. R-ids: none (OD-52 and section 8.5 are decisions,
+    not extracted rule ids).
+  - **s2 (Tier A, ~150 lines)** failure mode 4 - a rule's text hash changed and neither its owning card nor a test
+    naming it is in `git diff --name-only <base>...HEAD` - plus its red case. Depends on s1 (same file); NOT
+    pipelinable with s1.
+  - **s3 (Tier A, ~260 lines)** `scripts/ci/check-module-boundaries.mjs` + self-test: the section 7.6 layer order
+    (discovery -> download -> extraction -> validation -> consolidation, then plan, walk, verification, re-read,
+    read-side), fails on an edge pointing up the order. R-ids **R-142, R-143, R-144** carried in the test header.
+    Touches no file s1 or s2 touches - **pipelinable with s1** (the verifier proves the empty diff intersection
+    before its builder is dispatched).
+  - **s4 (Tier A, ~80 lines)** `.github/workflows/pr-gate.yml`: four steps in the shape of the existing Repair-tool
+    and Write-ratchet steps, each self-test BEFORE its gate; plus the `design_traceability` entry in
+    `docs/reviews/detection-checks/` moved into `checks` with the registry regenerated. Depends on s1, s2, s3.
+  Item 20 has **no staging proof and that is not an omission** - it ships no runtime behaviour. Its proof is the
+  pr-gate step `Design traceability (OD-52)` printing its identity line on a clean PR and exiting 1 naming the
+  offending id on one that deletes a card's rule line, both demonstrated in s4's own PR, plus the first lane A PR it
+  grades. It never counts toward the MERGED-UNPROVEN ceiling (contract decision 3).
