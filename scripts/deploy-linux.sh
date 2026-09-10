@@ -102,6 +102,8 @@
 #     box needed. This is what scripts/tests/deploy-linux.test.sh drives.
 #
 # Env overrides: DEPLOY_ROOT, DEPLOY_KEEP_RELEASES, DEPLOY_PROBE_PORT,
+# DEPLOY_TEST_NEXT_CACHE_DIR (test hook — override the Next build-cache
+# target so next_cache_guard()'s out-of-root refusal can be exercised),
 # DEPLOY_MUTEX_MAX_WAIT_SECONDS, DEPLOY_MUTEX_POLL_SECONDS,
 # DEPLOY_HEALTH_TIMEOUT_SECONDS, DEPLOY_FAIL_BUILD (dry-run test hook — set
 # to force the "build" step to fail so the abort/no-flip path is exercised),
@@ -221,6 +223,18 @@ CERT_FILE="$ROOT/shared/certs/pg-server.crt"
 # $ROOT/shared/venv).
 PYTHON_VENV_DIR="$ROOT/shared/venv/$SLOT"
 PYTHON_BIN_PATH="$PYTHON_VENV_DIR/bin/python"
+
+# item 1 (s16): the Next.js build cache lives under $ROOT/shared, NOT inside
+# the release — release-independent for exactly the reasons shared/env,
+# shared/certs and shared/venv above are. Slotted per-$SLOT for the same
+# reason the venv is (W-111 round 2): the web build bakes that slot's
+# NEXT_PUBLIC_* values, so one cache serving both slots could carry
+# staging's baked values into a prod build. See link_next_build_cache().
+# DEPLOY_TEST_NEXT_CACHE_DIR is a TEST HOOK only (scripts/tests/deploy-linux
+# .test.sh case 2.6f): it can only ever be refused by next_cache_guard() or
+# land somewhere already inside $ROOT/shared/next-cache, so it cannot widen
+# where the cache may be written.
+NEXT_CACHE_DIR="${DEPLOY_TEST_NEXT_CACHE_DIR:-$ROOT/shared/next-cache/$SLOT}"
 
 if [ "$SLOT" = "prod" ]; then
   KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-3}"
@@ -964,6 +978,83 @@ else
     ln -sfn "$CERT_FILE" "$RELEASE_DIR/certs/pg-server.crt"
   fi
 fi
+
+# ------------------- 5.5 persistent Next build cache, OUTSIDE the release ---
+# web/.next/cache is a webpack/Next build cache: measured 2026-09-10 on the
+# live prod release, it is 1.5 GB of that release's 3.1 GB, it is never read
+# at runtime, and because every deploy creates a fresh release directory it
+# is rebuilt from cold every time. Pointing it at ONE per-slot directory
+# under $ROOT/shared buys two things: a release directory stops carrying it
+# (~1.6 GB instead of ~3.1 GB — twelve failed deploys at 3.1 GB apiece took
+# the VPS root filesystem to 100% on 2026-09-10), and consecutive builds on
+# a slot reuse a warm cache instead of starting cold.
+#
+# INTERIM, deliberately: the owner has approved building in CI and shipping
+# an artifact, after which the box never runs `npm ci`/`next build` at all
+# and the incremental-build half of this is moot. The release-size half
+# survives that change; this is the cheap measure that helps until then.
+#
+# WHY PRUNING CANNOT REACH IT (the reason this is safe, not just tidy):
+#   - step 12 below and vps-disk-hygiene.sh's prune_slot() both `rm -rf` a
+#     RELEASE DIRECTORY. `rm -r` descends with FTS_PHYSICAL — it unlinks a
+#     symlink it meets, it never follows one — so the shared target is not
+#     reachable from inside a release being pruned.
+#   - neither pruner can see the target as a release either: both only ever
+#     consider entries under $ROOT/releases (or $ROOT/releases-<slot>), and
+#     vps-disk-hygiene.sh additionally requires each candidate's basename to
+#     match RELEASE_NAME_RE (vps-disk-hygiene.sh:382-387). $ROOT/shared/
+#     next-cache/<slot> is under neither directory and matches neither name.
+#   Both are covered by cases 2.6a-2.6f in scripts/tests/deploy-linux.test.sh.
+next_cache_guard() {
+  local target="$1"
+  case "$target" in
+    "") echo "FATAL: next build cache: refusing an empty target path" >&2; return 1 ;;
+    *..*) echo "FATAL: next build cache: refusing '$target' — contains '..'" >&2; return 1 ;;
+  esac
+  # Must resolve INSIDE the deploy root, same shape as safe_rm_venv_dir's
+  # prefix guard: anything else is refused rather than created.
+  case "$target" in
+    "$ROOT"/shared/next-cache/?*) return 0 ;;
+    *) echo "FATAL: next build cache: refusing '$target' — not under $ROOT/shared/next-cache/" >&2; return 1 ;;
+  esac
+}
+
+# Every rm below goes through this: only ever the one path built from
+# $RELEASE_DIR, so a collapsed variable can never widen it.
+safe_rm_next_cache_link() {
+  local link="$1"
+  case "$link" in
+    "$RELEASE_DIR"/web/.next/cache) rm -rf "$link" ;;
+    *) echo "FATAL: next build cache: refusing to remove '$link'" >&2; return 1 ;;
+  esac
+}
+
+link_next_build_cache() {
+  local target="$NEXT_CACHE_DIR"
+  local link="$RELEASE_DIR/web/.next/cache"
+  next_cache_guard "$target" || return 1
+  mkdir -p "$target"
+  mkdir -p "$RELEASE_DIR/web/.next"
+  # A REAL directory sitting at $link would make `ln -sfn` drop the link
+  # inside it instead of at it. It cannot exist today (the release is a
+  # `git archive` export and .next is gitignored) but a future reordering
+  # that builds first would create one.
+  if [ -e "$link" ] && [ ! -L "$link" ]; then
+    safe_rm_next_cache_link "$link" || return 1
+  fi
+  if ln -sfn "$target" "$link" 2>/dev/null && [ -L "$link" ]; then
+    log "Next build cache: $link -> $target (shared per slot, survives release pruning)"
+    return 0
+  fi
+  # No native symlink support (the Windows dev box under MSYS: `ln -s`
+  # silently COPIES the target directory). Leave the release building its
+  # own cache rather than a copy of the shared one masquerading as a link.
+  safe_rm_next_cache_link "$link" || return 1
+  log "[emulated] Next build cache NOT linked (no native symlink support here); target would be $target"
+  return 0
+}
+
+link_next_build_cache || fatal "could not prepare the Next build cache for $RELEASE_NAME — 'current' was NOT touched."
 
 # --------------------------------- 6. build (env sourced BEFORE build, per-release)
 build_release() {
