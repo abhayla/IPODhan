@@ -1765,3 +1765,33 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   bench both lanes prove their work on. The same words appear in this lane's contract only inside the shared-duty
   DESCRIPTION of a duty lane A owns and builds; lane B builds none of it, so the correction costs this lane nothing
   beyond never repeating the wrong sentence in a worker brief.
+
+- **2026-09-10 12:10 IST [lane B] s3 CRITICAL fix landed (`26dd474a`), rebased onto `6c31d995`; Tier A round 2 dispatched.**
+  The gate can now fail, which was the whole question: reversing `layerOrder` flips the real run from PASS to
+  `FAIL exit 1`, naming `anchor-investors-scraper.ts -> document-store.ts` and
+  `data-consolidation-service.ts -> normalization-engine.ts`. Map widened 52 -> 109 mapped files (85 entries, still
+  file-level globs rather than one wrong broad blob), `coverageFloor` raised to 109, a both-endpoints-mapped edge
+  count of **49** now printed and guarded at zero, first-match-wins pinned by a test, identities on the ignore
+  counts, 17 tests green. `config/module-boundary-baseline.json` ships with `edges: []` because the builder found no
+  real upward edge and printed all 49 by identity before concluding it.
+  **The supervisor's own concern, now round 2's first priority: 47 of those 49 edges are `web/lib/repositories/*`
+  SAME-MODULE edges, and a same-module edge can never fail.** A module importing itself is always legal, so the
+  number that measures this gate's real power is the count of edges between two DIFFERENT modules - and by the
+  builder's own figures that may be as low as 2. A floor of "49 edges evaluated" that 47 unfailable edges can
+  satisfy is round 1's finding one level up: a guard satisfiable by things that cannot trip it. Round 2 must compute
+  the split itself, print the cross-module edges by identity, and rule on whether the summary must guard on the
+  CROSS-MODULE count instead.
+  Round 2 is also told to challenge two exclusions that were each accepted separately and may be load-bearing
+  together: orchestrator files left unmapped as "genuinely mixed", and `repositories/` accepted in round 1. Those are
+  plausibly the files most likely to violate layering, and excluding both could remove exactly the interesting edges.
+  It must also spot-check six of the 85 map entries against the design's module table - `scraper/src/utils/**`
+  mapped to `read-side` is specifically suspect, since section 7.6 gives `read-side` "what the reader sees", not
+  general utilities. A file in the wrong module either invents violations or hides real ones.
+  Rebase done the squash-safe way (`merge-base` then `rebase --onto`): `origin/main ^HEAD` empty, diff exactly the
+  four files, two commits. The sibling gate merged an hour ago was re-run inside this worktree and exits 0 with this
+  branch's new test file present, so the R-142/143/144 declarations do not break main.
+- **2026-09-10 12:10 IST [lane B] The traceability check is already earning its place on real data.** Its mode-2 reporting line now
+  says: `R-160 claimed by docs/design/build-cards/item-22-document-handling-and-download-limits.md, no test declares
+  it`. Item 22 is this lane's NEXT item, so that is a real, specific piece of work surfaced by the machinery rather
+  than by someone reading 3,000 lines - which is exactly what the item was built for. Carried into item 22's slice
+  plan.

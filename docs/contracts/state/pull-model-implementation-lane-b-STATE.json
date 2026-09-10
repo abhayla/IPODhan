@@ -68,10 +68,10 @@
           "title": "module-boundary import check (R-142..R-144)",
           "status": "IN-REVIEW",
           "pr": null,
-          "sha": null,
+          "sha": "26dd474a",
           "tier": "A",
-          "reviewRounds": 1,
-          "reviewVerdict": "MERGE NO - CRITICAL: zero both-endpoints-mapped edges, gate cannot fail; fix round dispatched with a shrink-only violation baseline"
+          "reviewRounds": 2,
+          "reviewVerdict": "round 1 CRITICAL (gate could not fail) -> fix 26dd474a -> round 2 in flight on the same-module-edge concern"
         },
         {
           "k": "s4",
@@ -244,5 +244,8 @@
       "verdict": "FALSE - cause was a masked exit code in the builder's own command; Node v22.20.0 exits 1 on failure and pr-gate invokes the runner bare at 16 sites",
       "note": "held from the peer lane until measured; a relayed guess would have sent lane A chasing a defect that does not exist"
     }
+  ],
+  "carriedIntoLaterItems": [
+    "item 22: the traceability check reports R-160 claimed by the item-22 card with no test declaring it - fold into item 22's slice plan"
   ]
 }
