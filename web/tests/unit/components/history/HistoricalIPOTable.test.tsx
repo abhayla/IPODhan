@@ -180,4 +180,19 @@ describe('HistoricalIPOTable', () => {
     const listingDateHeader = screen.getByText(/Listing date/i);
     expect(listingDateHeader).toBeDefined();
   });
+
+  it('item 2 slice 3a fix round: renders a null segment as an em dash, never as "Mainboard"', () => {
+    const unknownSegmentIPO: HistoricalIPO = {
+      ...mockIPOs[0],
+      id: '3',
+      companyName: 'Unknown Segment Co',
+      slug: 'unknown-segment-co',
+      segment: null,
+    };
+    renderWithProvider(<HistoricalIPOTable ipos={[unknownSegmentIPO]} />);
+
+    expect(screen.getByText('Unknown Segment Co')).toBeDefined();
+    expect(screen.getByText(/—\s*·/)).toBeDefined();
+    expect(screen.queryByText(/^Mainboard/)).toBeNull();
+  });
 });

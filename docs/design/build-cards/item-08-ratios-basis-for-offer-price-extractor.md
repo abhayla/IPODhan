@@ -67,6 +67,115 @@ byte-identical in section layout to a PBA, or only usually — the design does n
 recommends building against `extract_price_band_ad` first and falling back to a dedicated parser
 only where the two live fixtures (below) disagree.
 
+## RE-CUT, 2026-09-10: this card's source document cannot be read, and the item is two items
+
+Everything above assumes the `RATIOS_BASIS_ISSUE_PRICE` filing is text that a parser can read, and
+recommends routing it to `extract_price_band_ad`. **I downloaded the real filings and that assumption
+is false.** The card is not wrong about the code paths; it is wrong about the document.
+
+### What was measured
+
+Both live NSE ratios archives were downloaded while their links were up:
+
+| Archive | Contents | Text found |
+|---|---|---|
+| `RATIOS_ARCIL` | 10 members, newspaper pages, image scans | **zero** occurrences of `ratio`, `turnover`, `peer` or `eps` as text |
+| `RATIOS_VINOD` | 1 member, 6 pages | **zero**, same |
+
+They are photographs of newspaper pages. The numbers are pixels. **No parser could ever have read
+them**, and routing them to `extract_price_band_ad` would have produced a green extractor that
+sources nothing — a run, a success line, and zero rows. That is the exact "hollow observable" shape
+this run has hit repeatedly, and it would have been discovered only after the code shipped.
+
+`extract_price_band_ad` itself is not implicated: a genuine `PRICE_BAND_AD` row is a different
+artifact. Only the ratios archive is images.
+
+### The readable source is the prospectus, and it was measured too
+
+Four live RHPs were downloaded (~2,400 pages, ~8.1M characters): PRASOLCHEM 634pp, GLASSWALL 621pp,
+KANOHAR 552pp, KARAMTARA 577pp.
+
+| Field | Present as text |
+|---|---|
+| peer comparison table | **4 of 4** |
+| promoters WACA | **4 of 4** |
+| `inventory_turnover` printed | 3 of 4 |
+| `current_ratio` printed | 1 of 4 |
+| `quick_ratio` printed | **0 of 4** — and absent under *acid test*, *acid-test*, *liquid ratio*, *liquidity ratio* and *stock turnover* too |
+
+So the item splits cleanly, and the split is what the measurement says rather than a preference.
+
+### Item 8a — peers and WACA, buildable now
+
+**Measured 2026-09-10 on staging (#545): 8a is not an improvement to a working path — it is the only
+path that will ever write these tables from a prospectus.**
+
+| | |
+|---|---|
+| documents `COMPLETED` on staging | 83 |
+| of those, IPOs with any `peer_companies` row | **0** |
+| last eight completed extractions producing promoters | **1** — and it was a `PRICE_BAND_AD` |
+| all four RHPs and three DRHPs in that window | **0 promoters, 0 peers** |
+| `peer_companies`' 321 rows | all created 2026-06-17 between 14:17 and 14:22 — one backfill |
+| IPOs holding peers that also have a completed extraction | **0** |
+
+Reading a prospectus has never filled in a peer table or a promoter row. `extract_price_band_ad` parses
+both; `extract_rhp`, which is what RHP and DRHP take, does not. The path reports success either way,
+which is why it went unnoticed.
+
+**The evidence is already on staging and costs nothing to re-use:** 33 completed RHPs and 25 completed
+DRHPs. A fix can be proven against real documents that are already downloaded, stored and marked
+extracted — no new fetch, no new cycle.
+
+Extract `peer_companies.*` and `promoters.waca` from the RHP/prospectus, not from the ratios filing.
+Both are present as text in every document sampled. `filing-persister.ts` already writes both
+correctly (lines 1360–1404 and 1681–1717, verified) — this is an extraction change, not a write-path
+change.
+
+**Fixtures, chosen because they were the strongest of the four:** PRASOLCHEM (5 of 6 fields, ratio
+table at pp 442–443) and KARAMTARA (peer table on pp 68/135/136/137/141, WACA on pp 109/110/147/149/517).
+
+### Item 8b — derive the three ratios, do not hunt for them printed
+
+The ratios are mostly not printed. **Every input needed to calculate them is text in all four
+documents** — this is 4 of 4, above the 3-of-4 bar the earlier decision set:
+
+```
+current ratio      = current assets / current liabilities
+quick ratio        = (current assets - inventories) / current liabilities
+inventory turnover = cost of materials consumed (or COGS) / average inventories
+```
+
+Page numbers where the inputs appear as text:
+
+| Issuer | Current assets | Current liabilities | Inventories | COGS / materials | Multi-year |
+|---|---|---|---|---|---|
+| PRASOLCHEM | 17, 94, 383 | 17, 95, 383 | 35, 36, 61, 74, 94, 97 | 97, 384, 423, 460 | 94, 383 |
+| KARAMTARA | 18, 50, 252 | 18, 50, 74, 138, 252 | 57, 58, 74, 75, 76 | 36, 278, 401 | 50, 252 |
+| GLASSWALL | 82, 337, 384 | 83, 337, 384 | 38, 82, 86, 168, 186 | 278, 416 | 82, 337 |
+| KANOHAR | 73, 147, 148 | 73, 147, 148 | 16, 26, 27, 31, 37 | 45, 74, 402, 404 | 73, 147, 148 |
+
+This follows design principle 3 — calculate what can be calculated rather than ask the source for it.
+
+**The oracle is mandatory, not optional.** PRASOLCHEM prints its own current ratio and inventory
+turnover on pp 442–443. The derivation must reproduce those two numbers on that issuer before it is
+allowed to write anything for any issuer. A derivation with no independent check is another green
+that measures nothing, and this item has already produced one of those on paper.
+
+### What this re-cut removes from the owner's queue
+
+The earlier reading of this card raised "where do the three ratios come from, or are they dropped?"
+as an owner decision. **It is not one.** The inputs are present in 4 of 4 documents, so they are
+derived, and nothing goes to the owner.
+
+### What stays true from the original card
+
+- No schema change: `financial_data.currentRatio/.quickRatio/.inventoryTurnover` already exist
+  (schema.ts 567–569), as do the peer and promoter tables and columns.
+- No priority-matrix change: those entries belong to items 2 and 3.
+- The zip handling is already generic and needs nothing added (see the section above) — that finding
+  stands; what changed is that unwrapping the zip yields images, not text.
+
 ## Schema
 
 No schema change. Every target column already exists (see Files table).

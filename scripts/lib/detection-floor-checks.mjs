@@ -141,6 +141,46 @@ export function checkIssueSizeSharesConsistency(row) {
   return null;
 }
 
+/**
+ * Item 14 slice 4: `checkIssueSizeSharesConsistency` returns null BOTH for a row
+ * it examined and found clean AND for a row it could not examine at all. That
+ * conflation is why the check could report "0 violation(s)" while looking at
+ * 24 of 277 production rows (8.7%) - and while skipping the exact two rows
+ * `c_issue_size_floor` was failing on. This predicate is the missing half: it
+ * says whether the row carries the data the check needs.
+ */
+export function issueSizeConsistencyExaminable(row) {
+  const size = toNumber(row.issueSize);
+  const shares = toNumber(row.sharesOffered);
+  const price = toNumber(row.priceRangeMax);
+  return size !== null && size > 0 && shares !== null && shares > 0 && price !== null && price > 0;
+}
+
+/**
+ * Runs the consistency check over a population and reports COVERAGE alongside
+ * the verdict. A scan that examined nothing returns UNVERIFIABLE, never PASS -
+ * an unexaminable population is the audit being blind, not the data being clean.
+ */
+export function summariseIssueSizeConsistency(rows) {
+  const violations = [];
+  let examined = 0;
+  for (const row of rows) {
+    if (!issueSizeConsistencyExaminable(row)) continue;
+    examined++;
+    const v = checkIssueSizeSharesConsistency(row);
+    if (v) violations.push({ row, message: v });
+  }
+  const total = rows.length;
+  const skipped = total - examined;
+  const status = examined === 0 ? 'UNVERIFIABLE' : violations.length === 0 ? 'PASS' : 'FAIL';
+  const coverage = `examined ${examined} of ${total} row(s), ${skipped} skipped (no shares_offered / issue_size / price_range_max)`;
+  const detail =
+    examined === 0
+      ? `${coverage} — nothing could be checked, so this is NOT a pass`
+      : `${violations.length} violation(s); ${coverage}`;
+  return { status, examined, skipped, total, violations, detail };
+}
+
 // ---- (d): lot x band SEBI window + corporate-action shape ------------------
 
 export function checkLotBandSebiWindow(row) {
@@ -434,6 +474,19 @@ export function checkSegmentPopulatedForIpo(row) {
     return `offering_type=IPO row "${row.companyName}" has a ${shown} segment — segment is not nullable in intent for real IPOs`;
   }
   return null;
+}
+
+// ---- (d, segment provenance): a non-NULL segment with no field_sources row
+// for it — the "asserted, not sourced" shape the binary-test write bug (lane
+// C item 2 slice 3b) produced. Distinct from checkSegmentPopulatedForIpo
+// above (which measures SHARE — is segment populated at all); this measures
+// PRESENCE OF PROVENANCE for whatever value is stored, on every offering
+// type, not just IPO — a sourced value has a field_sources row, a guessed
+// one does not, and that absence is exactly what this predicate flags.
+export function checkSegmentHasProvenance(row) {
+  if (row.segment === null || row.segment === undefined) return null;
+  if (row.hasSegmentProvenance) return null;
+  return `"${row.companyName}" [${row.offeringType}] carries segment=${row.segment} with no field_sources row for segment — a value with no record of who said it`;
 }
 
 // ---- T-335 fix round 1 (checker T-335C blockers) ------------------------------

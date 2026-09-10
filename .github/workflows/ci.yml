@@ -22,6 +22,25 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # Item 1 slice s3b (clause-8 CI hardening): web unit/E2E steps below no
+      # longer carry continue-on-error, so a web integration-test step needs a
+      # real database to run against. Pattern copied from pr-gate.yml's
+      # scraper-document-integration job (postgres:16 + drizzle-kit migrate,
+      # never db:push) rather than invented fresh.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ipodhan_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -50,11 +69,72 @@ jobs:
         working-directory: ./web
 
       - name: Run unit tests
-        run: npx vitest run --reporter=basic --no-isolate
+        # 2026-09-10: run EXACTLY what pr-gate runs. This step previously used a raw
+        # `npx vitest run --no-isolate`, which shares one worker across every test file;
+        # something in the suite tears `window` down for its successors, so 90 of 187
+        # files failed. Measured on the same files minutes apart: with --no-isolate
+        # 664 failed / 483 passed; without it 4 failed / 1143 passed (those 4 did NOT
+        # reproduce on a re-run - unstable, see #446). continue-on-error
+        # hid this until #464 removed it. One suite, one command.
+        run: npm run test:unit
         working-directory: ./web
-        continue-on-error: true  # TODO: Fix Redis mocking in tests
         env:
           NODE_OPTIONS: '--max-old-space-size=6144'
+
+      - name: Replay the journal from empty (item 1 slice s3b)
+        # Same shape as pr-gate.yml's scraper-document-integration job: prove
+        # the JOURNAL builds the schema, never db:push (that would paper over
+        # drift a replay-from-empty is specifically meant to expose).
+        working-directory: ./web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+        run: npx drizzle-kit migrate
+
+      - name: Run integration tests
+        # Item 1 slice s3d/s3e. Runs the npm script, not a raw `npx vitest` - the same
+        # one-suite-one-command rule #474 established for the unit step; the extra
+        # reporter flags are appended after `--`. Emits BOTH the default reporter
+        # (readable log) and the JSON report the baseline checker below consumes.
+        #
+        # THE DECISION MOVED. This step's exit code is no longer the gate; the checker
+        # is. That is why continue-on-error is set - without it the step fails on the
+        # known failures, the run stops, and the checker is SKIPPED, so the gate could
+        # only ever run on an already-green suite. NOT a rollback of #464: #464 removed
+        # the flag where nothing else judged the result; here the checker does, and it
+        # fails the run on a NEW failure. Remove this line only by moving the decision
+        # back here too.
+        #
+        # working-directory and env are load-bearing: s3d dropped them and the step
+        # crashed at repo root with 'Could not resolve vitest.integration.config.ts',
+        # wrote no report, and continue-on-error showed it as success. The checker's
+        # fail-closed-on-missing-report is what caught it.
+        run: npm run test:integration -- --reporter=default --reporter=json --outputFile=$RUNNER_TEMP/web-integration.json
+        working-directory: ./web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+          REDIS_URL: redis://localhost:6379
+        continue-on-error: true
+      - name: Upload web integration JSON report
+        # Uploaded even when the suite fails (if: always()) — that is precisely when the
+        # report is most needed, to derive/update config/web-integration-baseline.json.
+        # continue-on-error so an artifact-upload hiccup never fails the run — same
+        # reasoning as the other three upload-artifact steps in this workflow.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-integration-report
+          path: ${{ runner.temp }}/web-integration.json
+          retention-days: 14
+        continue-on-error: true
+
+      - name: Check web integration baseline (shrink-only gate)
+        if: always()
+        # Item 1 slice s3d. No continue-on-error — this IS the gate: a NEW failing file
+        # not in config/web-integration-baseline.json fails the run; a baseline entry
+        # that is no longer failing also fails the run (stale-entry guard, matches
+        # scripts/check-write-ratchet.mjs's model) until deliberately regenerated with
+        # --update. See config/web-integration-baseline.json's _comment for the full rule.
+        run: node scripts/check-web-integration-baseline.mjs --report=$RUNNER_TEMP/web-integration.json
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
@@ -63,7 +143,6 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
         working-directory: ./web
-        continue-on-error: true  # E2E tests require database - run in staging environment
         env:
           REDIS_URL: redis://localhost:6379
 

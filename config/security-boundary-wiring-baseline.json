@@ -1,0 +1,4 @@
+{
+  "_why": "SHRINK-ONLY. Security boundaries that are registered but not yet wired, each naming the slice that will wire it. check-security-boundary-wired.mjs FAILS on any unwired boundary NOT listed here, and ALSO fails when a listed one becomes wired — a fixed entry must be deleted, so the list can only get shorter. Adding an entry is a deliberate act in a file whose name says what it means. HISTORY: registrar-document-allowlist was the first and only entry, added when item 20 slice 6 landed and removed by item 22 slice 7 in the same change that wired it. The gate FAILED this branch until the entry was deleted - the ratchet caught it locally before CI did, which is exactly what it is for.",
+  "unwired": []
+}

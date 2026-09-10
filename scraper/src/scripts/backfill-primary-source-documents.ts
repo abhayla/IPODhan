@@ -75,6 +75,7 @@ export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?
   let iposWithDocs = 0;
   let docsUpserted = 0;
   let skippedForBudget = 0;
+  let skippedUnknownSegment = 0;
   for (let i = 0; i < rows.length; i++) {
     if (isBudgetExhausted(startedAtMs, budgetMs)) {
       skippedForBudget = rows.length - i;
@@ -85,6 +86,15 @@ export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?
       break;
     }
     const row = rows[i];
+    // Item 2 slice 3a: a null/unknown segment MUST NOT silently default to
+    // the mainboard 'EQ' series — a real SME IPO would be queried against
+    // the wrong NSE series (fetches the wrong data or none). Skip rather
+    // than guess; the row is retried once segment is known.
+    if (row.segment !== 'SME' && row.segment !== 'MAINBOARD') {
+      skippedUnknownSegment++;
+      logger.warn({ symbol: row.symbol, ipoId: row.id }, '[primary-doc-backfill] segment unknown — skipping rather than guessing EQ series');
+      continue;
+    }
     const series: 'EQ' | 'SME' = row.segment === 'SME' ? 'SME' : 'EQ';
     try {
       const issueInfo = await withTimeout(fetchNSEIssueInfo(row.symbol, series), perFetchTimeoutMs, `fetchNSEIssueInfo(${row.symbol})`);
@@ -114,7 +124,7 @@ export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?
     }
   }
 
-  logger.info({ execute, iposWithDocs, docsUpserted, skippedForBudget }, `[primary-doc-backfill] done`);
+  logger.info({ execute, iposWithDocs, docsUpserted, skippedForBudget, skippedUnknownSegment }, `[primary-doc-backfill] done`);
 
   const cov = await db.execute(sql`
     SELECT count(DISTINCT d.ipo_id)::int AS ipos, count(*)::int AS docs,

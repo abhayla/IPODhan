@@ -653,6 +653,31 @@ export const documents = pgTable(
     extractionError: text('extraction_error'), // Error message if extraction failed
     retryCount: integer('retry_count').default(0).notNull(), // Number of extraction attempts
 
+    // OD-32 (item 18): this document's PDF was purged while its text had never
+    // been extracted, so the bytes are gone and nothing was kept. Recorded
+    // rather than inferred, because the alternative is a document row that
+    // simply has no text and no way to tell "never extracted" from "extracted
+    // and empty" from "purged before we got to it".
+    purgedUnread: boolean('purged_unread').default(false).notNull(),
+
+    /**
+     * Item 22 slice 4. NSE and BSE sometimes publish one filing as several PDFs
+     * ("Part 1 of 3"), and every exchange gives a filing its own stable id.
+     *
+     * Both are NULLABLE and neither has a default, deliberately. `1` as a
+     * default for partNumber would make every one of the existing rows claim to
+     * be part one of a multi-part filing - a value nobody measured, reading as
+     * though somebody had. NULL means "this document is the whole thing", which
+     * is true of nearly all of them.
+     *
+     * partNumber is NOT sequenceNumber. sequenceNumber distinguishes an
+     * addendum from the original document; partNumber splits ONE document
+     * across several files. Conflating them would make "page 118 of part 2"
+     * point at the wrong page in a three-part RHP.
+     */
+    partNumber: integer('part_number'),
+    exchangeDocumentId: varchar('exchange_document_id', { length: 255 }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -674,6 +699,43 @@ export const documents = pgTable(
 
     // Keep URL unique globally to prevent exact duplicates
     uniqueUrl: unique('unique_url').on(table.url),
+  })
+);
+
+// ==================== TABLE 5a: DOCUMENT_PAGES (OD-32, item 18) ====================
+
+/**
+ * Extracted text, one row per PAGE of a stored document.
+ *
+ * Why this table exists: OD-32 deletes a stored PDF on a new schedule. That is
+ * only safe if the text taken out of it outlives it — otherwise the purge
+ * destroys the only copy, and OD-32's own answer to the counter-case ("re-run
+ * on the stored text") has nothing to run on. So this lands BEFORE any change
+ * to the purge schedule, never alongside it.
+ *
+ * Why per page rather than one JSON blob on `documents`: a page-numbered
+ * citation is what the re-read loop cites, and a partial re-extraction can
+ * replace only the pages that changed instead of rewriting one large column.
+ *
+ * No backfill for documents purged under the OLD rule: their bytes are already
+ * gone, so there is nothing to extract. Those rows read as "PDF unavailable,
+ * never extracted" rather than being guessed into existence.
+ */
+export const documentPages = pgTable(
+  'document_pages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    pageNumber: integer('page_number').notNull(),
+    text: text('text').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // One row per page of a document; a re-extraction upserts, never duplicates.
+    uniquePagePerDocument: unique('unique_page_per_document').on(table.documentId, table.pageNumber),
+    documentIdIdx: index('idx_document_pages_document_id').on(table.documentId),
   })
 );
 
@@ -1408,6 +1470,13 @@ export const fieldSources = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     tableName: varchar('table_name', { length: 100 }).notNull(), // e.g., 'ipos', 'financial_data'
+    // Natural key of the row within tableName. '' for every table with exactly one row per
+    // IPO (ipos, ipo_details, anchor_investors, financial_data). Non-empty for tables that
+    // can hold multiple rows per IPO (e.g. financial_statements: '2024:RESTATED'). Never
+    // null — a nullable column can't sit inside a unique constraint the way an empty string
+    // can (two NULLs are not equal under a unique index; two '' are), which is exactly why
+    // '' is the singleton sentinel, not null.
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
     fieldName: varchar('field_name', { length: 100 }).notNull(), // e.g., 'issueSize', 'revenue_fy2024'
 
     // Source tracking
@@ -1433,14 +1502,19 @@ export const fieldSources = pgTable(
     fieldNameIdx: index('idx_field_sources_field_name').on(table.fieldName),
     sourceIdx: index('idx_field_sources_source').on(table.source),
 
-    // Composite index for common queries
+    // Composite index for common queries — WIDENED to include rowKey (was ipoId, tableName,
+    // fieldName): two child rows of the same table (e.g. two fiscal years) each need their
+    // own provenance-lookup path.
     ipoTableFieldIdx: index('idx_field_sources_ipo_table_field').on(
       table.ipoId,
       table.tableName,
+      table.rowKey,
       table.fieldName
     ),
 
-    // Unique constraint: one source record per field per IPO
+    // Unique constraint: one source record per field per IPO. A row-key-scoped version of
+    // this constraint is deferred to a later slice — this slice ships the rowKey column and
+    // the widened lookup index only.
     uniqueFieldPerIpo: unique('unique_field_source_per_ipo').on(
       table.ipoId,
       table.tableName,
@@ -1460,6 +1534,9 @@ export const dataConflicts = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     tableName: varchar('table_name', { length: 100 }).notNull(),
+    // Same row_key convention as field_sources (see that table's comment) — '' for singleton
+    // tables, non-empty natural key for tables with multiple rows per IPO.
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
     fieldName: varchar('field_name', { length: 100 }).notNull(),
 
     // Conflicting sources
@@ -1497,6 +1574,14 @@ export const dataConflicts = pgTable(
     ipoUnresolvedIdx: index('idx_data_conflicts_ipo_unresolved').on(
       table.ipoId,
       table.resolvedAt
+    ),
+
+    // Open-conflicts-for-this-row index — no unique constraint exists on this table today so
+    // none is added, but the row-scoped lookup needs its own index scan path.
+    ipoTableRowIdx: index('idx_data_conflicts_ipo_table_row').on(
+      table.ipoId,
+      table.tableName,
+      table.rowKey
     ),
   })
 );
@@ -1953,8 +2038,20 @@ export const ipoRiskFactors = pgTable(
     ipoId: uuid('ipo_id')
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
+    // Item 1 slice s6: DISPLAY ORDER ONLY. Re-derived from array position on
+    // every write and no longer load-bearing for identity — that is
+    // `headingHash` below.
     seq: integer('seq').notNull(),
     heading: varchar('heading', { length: 500 }).notNull(),
+    // Item 1 slice s6 (row key): first 16 hex chars of sha256 over the
+    // normalized heading — `headingHashForRiskFactor`, packages/shared/src/
+    // utils/risk-factor-heading-key.ts, the ONE implementation. Keeps the
+    // `''` DEFAULT until the gated file E2 is applied per slot (same shape
+    // and same reason as `normalizedName` on promoters/peers/intermediaries,
+    // slice s2): the default is what makes the journaled ADD COLUMN safe on
+    // the ~2130 pre-existing rows that have no hash yet. E2 drops it, so a
+    // caller can no longer omit the identity key.
+    headingHash: varchar('heading_hash', { length: 32 }).notNull().default(''),
     body: text('body'),
     kpis: jsonb('kpis'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -1962,7 +2059,13 @@ export const ipoRiskFactors = pgTable(
   },
   (table) => ({
     ipoIdIdx: index('idx_ipo_risk_factors_ipo_id').on(table.ipoId),
-    uniqueIpoSeq: unique('unique_ipo_risk_factors_ipo_seq').on(table.ipoId, table.seq),
+    // Item 1 slice s6: identity is the heading's content, NOT the position.
+    // The old `unique_ipo_risk_factors_ipo_seq` is dropped by the gated file
+    // E2 in the same reviewed step that adds this one.
+    uniqueIpoHeadingHash: unique('unique_ipo_risk_factors_ipo_heading_hash').on(
+      table.ipoId,
+      table.headingHash
+    ),
   })
 );
 

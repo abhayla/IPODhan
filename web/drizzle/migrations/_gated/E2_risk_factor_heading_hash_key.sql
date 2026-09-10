@@ -1,0 +1,80 @@
+-- ============================================================================
+-- GATED / UNAPPLIED — item 1 slice s6: re-key `ipo_risk_factors` from the
+-- positional `(ipo_id, seq)` to the content-derived `(ipo_id, heading_hash)`.
+-- DO NOT run without Abhay's approval (§GATE) and DO NOT add this file to
+-- meta/_journal.json — see this directory's README entry 11.
+--
+-- APPLY ORDER (per slot, never skip a step):
+--   1. Deploy the release carrying journaled migration
+--      `20260910121813_cooing_manta` — it adds `heading_hash varchar(32)
+--      NOT NULL DEFAULT ''`. Safe unattended; every existing row gets ''.
+--   2. Backfill the hash:  cd scraper &&
+--        npx tsx scripts/repair-risk-factor-heading-hash.ts --backfill
+--        npx tsx scripts/repair-risk-factor-heading-hash.ts --backfill --apply
+--      Re-run until it reports 0 rows still at ''.
+--   3. Delete the duplicates (same tool, second phase):
+--        npx tsx scripts/repair-risk-factor-heading-hash.ts --dedupe
+--        npx tsx scripts/repair-risk-factor-heading-hash.ts --dedupe --apply
+--      Surplus rows sharing (ipo_id, heading_hash) go; LOWEST seq survives.
+--      Re-run until it reports 0 surplus rows.
+--   4. PRECHECK — both MUST read 0 (see §8d for the copy-paste command):
+--        SELECT count(*) FROM ipo_risk_factors WHERE heading_hash = '';
+--        SELECT coalesce(sum(n-1),0) FROM (SELECT count(*) n FROM
+--          ipo_risk_factors GROUP BY ipo_id, heading_hash HAVING count(*)>1) d;
+--   5. Apply this file.
+--   6. Verify: npx tsx scripts/assert-row-key-constraints.ts "$DATABASE_URL"
+--
+-- IF THE PRECHECK IS NON-ZERO: do NOT apply this file. A non-zero first count
+-- means the backfill (step 2) has not finished on this slot; a non-zero second
+-- count means the repair (step 3) has not. Go back to that step, re-run it with
+-- --apply, and re-run the precheck.
+--
+-- ESCAPE CONDITION (do not loop forever). Two states are NOT fixable by
+-- re-running, and re-running them loops without end:
+--   (a) a row whose `heading` is whitespace-only. `headingHashForRiskFactor`
+--       returns null for it by design (no content, no identity), so the
+--       backfill reports it under `nullKey` and NEVER writes a hash - the
+--       first count stays non-zero however many times you re-run. Compare the
+--       first count with the backfill's `nullKey` length: if they are equal,
+--       the backfill IS finished; fix or delete those rows by hand, then
+--       re-run the precheck. Zero such rows on either slot on 2026-09-10.
+--   (b) a group the repair tool reported as CONFLICT (rows carrying differing
+--       non-null body/kpis). The tool deliberately refuses those and exits
+--       non-zero; the second count stays non-zero until a human resolves them.
+-- In both cases the fix is a human decision, not another --apply. Applying first hits a duplicate-key
+-- violation on the very first ADD CONSTRAINT and the migration dies mid-flight
+-- — the exact hazard the column-then-backfill-then-constraint order exists to
+-- avoid (E1 header, slice s2).
+--
+-- MEASURED COLLISIONS, PER SLOT (2026-09-10). Row counts differ per slot -
+-- quote the slot with every number.
+--
+-- STAGING (ipodhan_staging): 2748 rows / 34 IPOs; 7 groups, 21 rows,
+-- 14 surplus, 6 IPOs — prasol-chemicals-ltd (x6),
+-- hy-tech-engineers-ltd (x5), pranav-constructions-ltd, ss-retail-ltd,
+-- sumax-engineering-ltd, vinod-texworld-ltd (x2, twice). Every group is
+-- byte-identical rows differing ONLY in `seq`: distinct_bodies=1,
+-- distinct_kpis=1, max_body_len=0. Collapsing them loses no fact. This is NOT
+-- the E1 `ipo_intermediaries` case, where 5 collisions were one bank
+-- legitimately holding two roles and a 2-column key would have rejected
+-- correct data. The duplicate emission itself is an extractor defect, filed
+-- separately — the write path's de-duplication is a guard, not the cure.
+--
+-- PRODUCTION (ipodhan): 2440 rows; 7 groups, 17 surplus rows. Same shape -
+-- zero lossy groups (no group in which a row carrying content would be the
+-- one deleted). The staging and production numbers are NOT interchangeable;
+-- the "~2130 rows" figure this file used to carry was a staging-only estimate
+-- and understated production by ~300 rows.
+--
+-- WHY DROP DEFAULT IS BUNDLED HERE (same reason as E1): the `''` default is
+-- what makes `headingHash` omittable in Drizzle's Insert type. Today no caller
+-- can omit it — `IpoRiskFactorInsert` does not carry the field at all, and
+-- `replaceForIpo` derives it via `headingHashForRiskFactor` — so dropping the
+-- default should be a no-op. A silent journal entry running unattended on
+-- every deploy is the wrong place to discover an uncovered call site exists.
+-- ============================================================================
+
+ALTER TABLE "ipo_risk_factors" DROP CONSTRAINT "unique_ipo_risk_factors_ipo_seq";
+ALTER TABLE "ipo_risk_factors" ADD CONSTRAINT "unique_ipo_risk_factors_ipo_heading_hash" UNIQUE("ipo_id","heading_hash");
+
+ALTER TABLE "ipo_risk_factors" ALTER COLUMN "heading_hash" DROP DEFAULT;

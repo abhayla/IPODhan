@@ -12,7 +12,6 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator-v2.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator-v2.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator-v2.js';
-import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
@@ -23,6 +22,7 @@ import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
 import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
+import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
 import {
   runDocumentCycle,
   runDocumentPurge,
@@ -47,6 +47,7 @@ import { checkDeployDrift, getMainShaFromOrigin, getServedShaForSlot } from './s
 import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { FEATURE_FLAGS, validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
+import { loadFieldManifest } from './config/field-manifest-loader.js';
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
@@ -91,6 +92,7 @@ export const STEP_NAMES = [
   'pruneScraperLogs',
   'pruneDataConflicts',
   'dataQualityWatchdog',
+  'pageRevalidation',
   'heartbeat',
 ] as const;
 export type StepName = typeof STEP_NAMES[number];
@@ -182,7 +184,7 @@ const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 /** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */
 const DISCOVERY_LAST_RUN_KEY = 'due-step:last-discovery';
 
-/** Aggregator refresh (Moneycontrol/Chittorgarh) cadence: at most once per day. */
+/** Aggregator refresh (Chittorgarh) cadence: at most once per day. */
 const AGGREGATOR_INTERVAL_MINUTES = 24 * 60;
 
 /**
@@ -234,7 +236,7 @@ async function countIposByStatus(statuses: readonly ('UPCOMING' | 'OPEN' | 'CLOS
  *       so it is NOT duplicated here
  *   (c) live data (subscription refresh + GMP + demand graph) only during
  *       market hours, and only for OPEN IPOs
- *   (d) aggregator refresh (Moneycontrol, Chittorgarh) only for
+ *   (d) aggregator refresh (Chittorgarh) only for
  *       UPCOMING/OPEN IPOs, at most once/day
  * Only called when `source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER`.
  * The caller (`main()`) owns the whole-cycle lock (`CYCLE_LOCK_RESOURCE`) and
@@ -370,7 +372,7 @@ async function runDueStepCycle(
   // throw between the two skipped aggregators for the next 24 hours.
   const aggregatorsDue = await isCatchUpCadenceDue(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
   if (!aggregatorsDue) {
-    logger.info('Due-step cycle: aggregator refresh (Moneycontrol/Chittorgarh) not due yet (< 24h since last run) — skipped');
+    logger.info('Due-step cycle: aggregator refresh (Chittorgarh) not due yet (< 24h since last run) — skipped');
   } else {
     let candidateCount = 0;
     try {
@@ -385,10 +387,13 @@ async function runDueStepCycle(
     if (candidateCount === 0) {
       logger.info('Due-step cycle: aggregator cadence due, but zero UPCOMING/OPEN IPOs — skipped (zero network calls)');
     } else {
-      logger.info({ candidateCount }, 'Due-step cycle: aggregator cadence due — running Moneycontrol + Chittorgarh for UPCOMING/OPEN IPOs');
-      const mcOk = await runCycleStep('aggregator:MONEYCONTROL', () => runMoneycontrolScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));
+      // Item 16: Moneycontrol is retired. The aggregator branch itself stays —
+      // it still runs Chittorgarh on the same cadence; only the Moneycontrol
+      // call inside it goes. This is the call site that actually fires in
+      // production, because prod runs the due-step scheduler.
+      logger.info({ candidateCount }, 'Due-step cycle: aggregator cadence due — running Chittorgarh for UPCOMING/OPEN IPOs');
       const cgOk = await runCycleStep('aggregator:CHITTORGARH', () => runChittorgarhScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));
-      if (mcOk && cgOk) {
+      if (cgOk) {
         await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
       } else {
         logger.warn('Due-step cycle: aggregator refresh did not fully succeed — cadence key NOT stamped, it will retry next cycle');
@@ -448,17 +453,49 @@ export function assertRequiredEnvForCycle(source: string, env: NodeJS.ProcessEnv
 }
 
 /**
+ * Item 2 slice 4 — validate `scraper/config/field-manifest.json` at process
+ * start, BEFORE `main()` runs (see the CLI guard at the bottom of this file).
+ *
+ * Class this closes: configuration that is read at runtime but never
+ * validated, so a malformed file is discovered by a wrong result rather than
+ * a loud failure. Nothing consumes the manifest yet (item 3 wires the field
+ * priority matrix to it), so with `ENABLE_FIELD_MANIFEST` at its default of
+ * `false` this is a pure no-op — `loadFieldManifest()` is never even called.
+ * Once the flag is on, `loadFieldManifest()` throws SYNCHRONOUSLY on a
+ * malformed manifest; the CLI guard has no try/catch, so that throw reaches
+ * Node's default uncaught-exception handler (process exits non-zero) before
+ * the `main();` statement that follows it ever runs — before ANY cycle-start
+ * log line is emitted, not just before the process eventually exits.
+ *
+ * `manifestPath` is an optional override so unit tests can point at a
+ * temp-file fixture without touching the real
+ * `scraper/config/field-manifest.json` — same pattern `loadFieldManifest`
+ * itself already uses. `enabled` defaults to the real `FEATURE_FLAGS` value
+ * (what production reads) but can be passed explicitly by tests — the same
+ * explicit-override-with-a-real-default shape `assertRequiredEnvForCycle`
+ * above already uses for `env`, so a test can flip the flag without
+ * `vi.resetModules()` + re-importing this whole module (which FEATURE_FLAGS
+ * bakes to a boolean once, at first import, per module instance).
+ */
+export function validateFieldManifestAtStartup(
+  manifestPath?: string,
+  enabled: boolean = FEATURE_FLAGS.ENABLE_FIELD_MANIFEST
+): void {
+  if (!enabled) return;
+  loadFieldManifest(manifestPath);
+}
+
+/**
  * CLI entry point for IPO scrapers
- * Supports NSE, BSE, Moneycontrol, Chittorgarh, GMP, API fallback, and combined scraping via --source flag
+ * Supports NSE, BSE, Chittorgarh, GMP, API fallback, and combined scraping via --source flag
  * Usage:
  *   npm start                         (defaults to NSE)
  *   npm run start:bse                 (BSE only)
- *   npm run start:moneycontrol        (Moneycontrol only)
  *   npm run start:chittorgarh         (Chittorgarh only)
  *   npm run start:gmp                 (Investorgain GMP only)
  *   npm run start:fallback            (IPO Alerts API fallback)
  *   npm run start:api                 (alias for fallback)
- *   npm run start:all                 (NSE + BSE + Moneycontrol + Chittorgarh + API fallback + GMP sequentially)
+ *   npm run start:all                 (NSE + BSE + Chittorgarh + API fallback + GMP sequentially)
  */
 export async function main() {
   // S-02 §5: declared OUTSIDE the try block so the outer catch (unhandled
@@ -491,6 +528,20 @@ export async function main() {
   try {
     // Parse CLI arguments
     const args = process.argv.slice(2);
+
+    // --smoke-import: prove the ENTIRE production import graph loads under the
+    // real ESM runtime, then exit before any DB, network or scrape work.
+    // Reaching this line means every module reachable from this entry point
+    // evaluated its top level successfully. This is the only check that can
+    // catch a CommonJS global (__dirname/__filename/require) left at module
+    // scope: vitest transforms modules to CJS and shims those globals, and
+    // `tsx -e` shims them too, so both report green on code that crashes the
+    // moment pm2 runs `tsx src/index.ts` (2026-09-10, download-allowlist-loader).
+    if (args.includes('--smoke-import')) {
+      console.log('smoke-import: OK - production import graph loaded under ESM');
+      return;
+    }
+
     const source = args.find(arg => arg.startsWith('--source='))?.split('=')[1] || 'nse';
 
     logger.info({ source }, 'IPO Scraper CLI started');
@@ -532,8 +583,11 @@ export async function main() {
     logger.info(getFeatureStatus(), 'Feature flag status at scraper startup');
 
     // Validate source
-    if (!['nse', 'bse', 'moneycontrol', 'chittorgarh', 'gmp', 'fallback', 'api', 'all'].includes(source)) {
-      logger.error({ source }, 'Invalid source. Must be: nse, bse, moneycontrol, chittorgarh, gmp, fallback, api, or all');
+    // Item 16: 'moneycontrol' is no longer a valid source. Left OUT of the
+    // allow-list rather than special-cased, so it fails through the same
+    // unrecognised-value path as any other bad string.
+    if (!['nse', 'bse', 'chittorgarh', 'gmp', 'fallback', 'api', 'all'].includes(source)) {
+      logger.error({ source }, 'Invalid source. Must be: nse, bse, chittorgarh, gmp, fallback, api, or all');
       process.exit(1);
     }
 
@@ -699,33 +753,6 @@ export async function main() {
       );
     }
 
-    // Run Moneycontrol scraper
-    if (source === 'moneycontrol' || runsLegacyAllPath) {
-      logger.info('Running Moneycontrol scraper');
-      const moneycontrolResult = await runMoneycontrolScraper();
-
-      combinedResult.success = combinedResult.success && moneycontrolResult.success;
-      combinedResult.iposProcessed += moneycontrolResult.iposProcessed;
-      combinedResult.iposInserted += moneycontrolResult.iposInserted;
-      combinedResult.iposUpdated += moneycontrolResult.iposUpdated;
-      combinedResult.iposFailed += moneycontrolResult.iposFailed;
-      // T-309: Moneycontrol now reports segment counts too — was previously BSE-only.
-      combinedResult.smeCount += moneycontrolResult.smeCount;
-      combinedResult.mainboardCount += moneycontrolResult.mainboardCount;
-      combinedResult.errors.push(...moneycontrolResult.errors);
-
-      logger.info(
-        {
-          success: moneycontrolResult.success,
-          iposProcessed: moneycontrolResult.iposProcessed,
-          iposInserted: moneycontrolResult.iposInserted,
-          iposUpdated: moneycontrolResult.iposUpdated,
-          iposFailed: moneycontrolResult.iposFailed
-        },
-        'Moneycontrol scraper completed'
-      );
-    }
-
     // Run Chittorgarh scraper
     if (source === 'chittorgarh' || runsLegacyAllPath) {
       logger.info('Running Chittorgarh scraper');
@@ -840,6 +867,15 @@ export async function main() {
       // BaseScraperOrchestrator.run() itself, not here. Non-fatal, same
       // pattern as the other post-scrape side effects above.
       await runStep(cycleId, 'dataQualityWatchdog', triggerDataQualityWatchdog);
+      // Item 21 slice 3 (OD-40). Placed after every step that can still WRITE
+      // to an IPO, and before the heartbeat, which only reports. This step
+      // DRAINS the touched-slug set, so running it earlier would refresh the
+      // pages of a cycle that had not finished writing and leave the later
+      // writes to wait out their timer - the exact delay it exists to remove.
+      // (First draft put it second in the chain while its own comment claimed
+      // it was last; the comment was right and the placement was wrong.)
+      await runStep(cycleId, 'pageRevalidation', triggerPageRevalidation);
+
       // T-194: job-completion heartbeat -- proves this cron cycle reached the
       // end of the pipeline (not that every source succeeded; source-level
       // failures are reported separately via AlertingService/notifyOwner).
@@ -1386,5 +1422,9 @@ async function pruneDataConflicts(): Promise<StepResult> {
 // trigger a live scrape; matches the pattern used by
 // scrapers/listing-performance-updater.ts and the scripts/ CLIs).
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Item 2 slice 4: MUST run before main() — see validateFieldManifestAtStartup's
+  // doc comment. A malformed manifest (flag ON) throws synchronously here and
+  // main() never runs, so no cycle-start log line is ever emitted.
+  validateFieldManifestAtStartup();
   main();
 }

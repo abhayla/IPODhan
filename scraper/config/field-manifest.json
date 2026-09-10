@@ -1,0 +1,382 @@
+{
+  "version": 1,
+  "generatedFrom": "docs/design/field-source-resolution.spec.mjs",
+  "fields": {
+    "ipos.issue_size": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "documentSection": "wp-c-extraction-contract.md §A5+A6 — PBA cover + \"The Offer\", and the table \"details of the Fresh Issue and post-issue market capitalisation\"",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the PBA prints the total offer size at the cap (fresh + OFS)"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE detail payload carries a share-count-derived total"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG list API field 'Total Issue Amount (Incl. Firm reservations) (Rs.cr.)' reads the printed total directly, not shares x price (field-priority-matrix.ts:415-421, T-453 comment)"
+        },
+        "NSE": {
+          "capable": false,
+          "reason": "NSE computes (sharesOffered/netOffer) x price, excluding the OFS portion — it cannot print the total (field-priority-matrix.ts:406-412, T-453). The CURRENT field-priority-matrix.ts issueSize entry still lists NSE (rank 4, below CHITTORGARH) — item 3 removes it to match this manifest."
+        },
+        "MONEYCONTROL": {
+          "capable": false,
+          "reason": "OD-3 retires Moneycontrol as a scheduled source"
+        }
+      },
+      "na": [],
+      "unit": "crore"
+    },
+    "ipo_details.fresh_issue": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "documentSection": "wp-c-extraction-contract.md §A — PBA cover + \"The Offer\"",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the PBA prints the fresh-issue rupee amount separately from the OFS amount"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE detail payload carries a fresh-issue figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG list API carries the fresh-issue line item"
+        },
+        "NSE": {
+          "capable": false,
+          "reason": "same T-453 reasoning as ipos.issue_size — no printed fresh/OFS split"
+        },
+        "MONEYCONTROL": {
+          "capable": false,
+          "reason": "OD-3 retires Moneycontrol as a scheduled source"
+        }
+      },
+      "na": [
+        "OFS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_statements.revenue": {
+      "class": "D",
+      "documentType": "RHP",
+      "documentSection": "wp-c-extraction-contract.md §C1-C2 — \"Restated Consolidated Statement of Profit and Loss\" (falls back to \"Summary of Financial Information\")",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH",
+          "MONEYCONTROL"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH",
+          "MONEYCONTROL"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH",
+          "MONEYCONTROL"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the RHP prints the full restated 3-5 year revenue series"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG's 'financialTable' (chittorgarh-detail-fields.ts, getTableById 'financialTable') DOES carry a restated per-fiscal-year revenue/total-income/EBITDA/PAT series — field-source-resolution.spec.mjs:122-124 corrects an earlier draft's wrong claim that no website publishes this"
+        },
+        "MONEYCONTROL": {
+          "capable": true,
+          "reason": "historically ranked rank 3 in field-source-resolution.spec.mjs:130 — SEE CONTRADICTION flagged in the design card (OD-3 retires Moneycontrol scheduling; card leaves the capability true pending owner decision C-1)"
+        },
+        "NSE": {
+          "capable": false,
+          "reason": "§2.3.5: NSE's API returns bidding and demand data only — no financial fields"
+        },
+        "BSE": {
+          "capable": false,
+          "reason": "no BSE financials endpoint carries a restated series"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "ipo_details.ofs_issue": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "documentSection": "wp-c-extraction-contract.md §A6 — PBA cover + \"The Offer\" (offer-for-sale rupee amount)",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the PBA prints the offer-for-sale rupee amount separately from the fresh-issue amount"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE detail payload carries an OFS figure alongside the fresh-issue figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG list API carries the offer-for-sale line item"
+        },
+        "NSE": {
+          "capable": false,
+          "reason": "same T-453 reasoning as ipos.issue_size — NSE computes offer value from shares×price with no printed fresh/OFS split"
+        },
+        "MONEYCONTROL": {
+          "capable": false,
+          "reason": "OD-3 retires Moneycontrol as a scheduled source"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "NCD"
+      ],
+      "unit": "crore"
+    },
+    "ipo_details.min_investment": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "documentSection": "wp-c-extraction-contract.md §A13 — derived minimum retail investment amount (lot size × cap price)",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the PBA states the lot size and price band the minimum investment is derived from — spec (field-source-resolution.spec.mjs:78) tags it neverPopulated: no second publisher prints this display value separately"
+        }
+      },
+      "na": [],
+      "unit": "rupee"
+    },
+    "subscriptions.total_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE's bidding-detail API returns the aggregate subscription multiple across all investor categories live during the bid window"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE's bidding-detail API returns the same live figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG mirrors the exchange live subscription figures during the bid window"
+        },
+        "DOC": {
+          "capable": false,
+          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.retail_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE's bidding-detail API returns the retail-category subscription multiple live during the bid window"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE's bidding-detail API returns the same live figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG mirrors the exchange live subscription figures during the bid window"
+        },
+        "DOC": {
+          "capable": false,
+          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.qib_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE's bidding-detail API returns the QIB-category subscription multiple live during the bid window"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE's bidding-detail API returns the same live figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG mirrors the exchange live subscription figures during the bid window"
+        },
+        "DOC": {
+          "capable": false,
+          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.nii_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE's bidding-detail API returns the NII-category subscription multiple live during the bid window"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE's bidding-detail API returns the same live figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG mirrors the exchange live subscription figures during the bid window"
+        },
+        "DOC": {
+          "capable": false,
+          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "listing_performance.listing_price": {
+      "class": "M",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE publishes the actual listing-day traded price"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE publishes the actual listing-day traded price"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG mirrors the exchange listing-day price"
+        },
+        "DOC": {
+          "capable": false,
+          "reason": "listing price is post-listing market data — no filing document carries it (spec field-source-resolution.spec.mjs:245)"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    }
+  }
+}

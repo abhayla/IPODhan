@@ -335,15 +335,19 @@ export interface BSEApiSummary {
 
 /**
  * Reduce an API scrape result into the orchestrator's ScrapedData shape plus
- * segment counts. A null/blank segment counts as MAINBOARD (the BSE IPO board
- * default). Subscriptions captured in Stage C are carried through unchanged.
+ * segment counts. Item 2 slice 3a: a null/blank segment (BSE's JSON API
+ * carries no segment field — see the `segment: undefined` comment above)
+ * counts in NEITHER bucket now — it used to be silently folded into
+ * mainboardCount, hiding how many rows have no known board at all. The
+ * logged `mainboard + sme` will legitimately be less than `ipos.length`;
+ * that gap IS the signal.
  */
 export function summarizeBSEApiResult(result: BSEApiScrapeResult): BSEApiSummary {
   let smeCount = 0;
   let mainboardCount = 0;
   for (const ipo of result.ipos) {
     if (ipo.segment === 'SME') smeCount++;
-    else mainboardCount++;
+    else if (ipo.segment === 'MAINBOARD') mainboardCount++;
   }
   return { ipos: result.ipos, subscriptions: result.subscriptions, smeCount, mainboardCount };
 }

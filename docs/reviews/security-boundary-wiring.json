@@ -1,0 +1,27 @@
+{
+  "_why": "A security control with no caller is not a control. Three shipped that way in one week (see scripts/ci/check-security-boundary-wired.mjs). This registry names the boundaries whose WIRING is checked mechanically, not just whose behaviour is unit-tested. Add an entry when a slice introduces a function or parameter whose whole purpose is to refuse something.",
+  "boundaries": [
+    {
+      "id": "resolved-address-refusal",
+      "export": "isResolvedAddressPrivate",
+      "module": "scraper/src/services/company-host-source.ts",
+      "rule": "referenced-somewhere",
+      "why": "the DNS-rebinding refusal. Shipped in #487 with zero callers, so a hostname that looks public and resolves to 127.0.0.1 or 169.254.169.254 was fetched normally for a full day."
+    },
+    {
+      "id": "registrar-document-allowlist",
+      "export": "isTrustedDocumentHost",
+      "module": "scraper/src/services/company-host-source.ts",
+      "rule": "min-args",
+      "minArgs": 2,
+      "why": "the second parameter carries the registrar host set. Both call sites pass one argument, so the set is always the empty default and a document served by a legitimate registrar is still refused. A caller count cannot see this: the function IS called."
+    },
+    {
+      "id": "slot-aware-flag-default",
+      "export": "slotAwareFlagDefault",
+      "module": "scraper/src/config/feature-flags.ts",
+      "rule": "referenced-somewhere",
+      "why": "shipped in #476 with zero production callers, so every flag added afterwards was OFF on staging and any staging proof that depended on one would have come back empty."
+    }
+  ]
+}

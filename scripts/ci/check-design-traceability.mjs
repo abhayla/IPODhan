@@ -53,14 +53,17 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const MODE2_ENFORCE = process.env.DESIGN_TRACEABILITY_MODE2_ENFORCE === 'true' ? true : false;
 
 function parseArgs(argv) {
-  const opts = { rules: null, cards: null, unclaimed: null, tests: [], base: null };
+  const opts = { rules: null, cards: null, unclaimed: null, tests: [], base: null, baseGiven: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--rules') opts.rules = argv[++i];
     else if (a === '--cards') opts.cards = argv[++i];
     else if (a === '--unclaimed') opts.unclaimed = argv[++i];
     else if (a === '--tests') opts.tests.push(argv[++i]);
-    else if (a === '--base') opts.base = argv[++i];
+    else if (a === '--base') {
+      opts.baseGiven = true;
+      opts.base = argv[++i];
+    }
   }
   return opts;
 }
@@ -97,6 +100,7 @@ function resolveOptions(argv) {
     requestedTestRoots,
     testRoots,
     base: parsed.base,
+    baseGiven: parsed.baseGiven,
   };
 }
 
@@ -327,9 +331,20 @@ function computeHashDrift({ base, rulesPath, rules, cardClaims, testDeclarations
 }
 
 function main() {
-  const { rulesPath, cardsDir, unclaimedPath, requestedTestRoots, testRoots, base } = resolveOptions(
+  const { rulesPath, cardsDir, unclaimedPath, requestedTestRoots, testRoots, base, baseGiven } = resolveOptions(
     process.argv.slice(2)
   );
+
+  // Self-guard, --base side: `--base` present with no value (empty string,
+  // or as the final argv token) must not fall back to mode 4's ordinary
+  // SKIPPED path — that path means "no comparison was requested", and here
+  // one was. An unquoted `${{ github.event.pull_request.base.sha }}`
+  // expanding to nothing (e.g. the workflow's `on:` trigger set grows to
+  // include a push/workflow_dispatch event where base.sha is unset) must
+  // fail loudly, not silently skip the drift check it was invoked for.
+  if (baseGiven && !base) {
+    fail2('--base was given with no ref value — the comparison was requested and cannot silently be skipped');
+  }
 
   // Self-guard, test-root side (MAJOR 1 fix): a renamed/moved/missing test
   // root must not silently disarm mode 3 (bad rule-id declarations) by

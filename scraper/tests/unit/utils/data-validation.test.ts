@@ -301,3 +301,68 @@ describe('validateIPOData — Rule 8 NON_IPO_TRUST_SHAPE (P2-2, T-277)', () => {
     expect(result.errors.map((e) => e.rule)).not.toContain('NON_IPO_TRUST_SHAPE');
   });
 });
+
+describe('validateIPOData — item 2 slice 3a: segment-conditional gap-width rule never guesses MAINBOARD', () => {
+  it('a null segment skips LISTING_DATE_GAP_TOO_WIDE rather than applying the MAINBOARD 12-day rule', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Unknown Segment Co',
+        offeringType: 'IPO',
+        segment: null,
+        closeDate: '2026-01-01',
+        // 15 days after close: exceeds BOTH the SME 6-day AND MAINBOARD
+        // 12-day thresholds. With segment unknown, the check must not
+        // silently apply either threshold — it must skip entirely.
+        listingDate: '2026-01-16',
+      },
+      'TEST'
+    );
+    const rules = [...result.errors, ...result.warnings].map((e) => e.rule);
+    expect(rules).not.toContain('LISTING_DATE_GAP_TOO_WIDE');
+  });
+
+  it('a known SME segment still applies the stricter 6-day rule', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'SME Co',
+        offeringType: 'IPO',
+        segment: 'SME',
+        closeDate: '2026-01-01',
+        listingDate: '2026-01-09', // 8 days > 6-day SME limit
+      },
+      'TEST'
+    );
+    const rules = [...result.errors, ...result.warnings].map((e) => e.rule);
+    expect(rules).toContain('LISTING_DATE_GAP_TOO_WIDE');
+  });
+
+  it('a known MAINBOARD segment still applies the 12-day rule', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Mainboard Co',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+        closeDate: '2026-01-01',
+        listingDate: '2026-01-20', // 19 days > 12-day MAINBOARD limit
+      },
+      'TEST'
+    );
+    const rules = [...result.errors, ...result.warnings].map((e) => e.rule);
+    expect(rules).toContain('LISTING_DATE_GAP_TOO_WIDE');
+  });
+
+  it('LISTING_DATE_BEFORE_CLOSE still fires with an unknown segment (segment-independent rule)', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Unknown Segment Co 2',
+        offeringType: 'IPO',
+        segment: null,
+        closeDate: '2026-01-10',
+        listingDate: '2026-01-05', // before close
+      },
+      'TEST'
+    );
+    const rules = [...result.errors, ...result.warnings].map((e) => e.rule);
+    expect(rules).toContain('LISTING_DATE_BEFORE_CLOSE');
+  });
+});

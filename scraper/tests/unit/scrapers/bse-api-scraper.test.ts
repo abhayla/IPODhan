@@ -19,6 +19,7 @@ import {
   type BSESubscriptionRow,
 } from '../../../src/scrapers/bse-api-scraper.js';
 import { validateIPOData, validateSubscriptionData } from '../../../src/utils/validators.js';
+import { checkIssueSizeSegmentFloor, ISSUE_SIZE_FLOOR_RUPEES } from '../../../../scripts/lib/detection-floor-checks.mjs';
 
 /** Real-shaped fixtures from the live BSE JSON API (Susan Electricals, IPO_NO 7770). */
 const LIST_ROW: BSEListRow = {
@@ -296,11 +297,13 @@ describe('summarizeBSEApiResult — orchestrator ScrapedData shape + segment cou
     expect(s.subscriptions).toHaveLength(1);
   });
 
-  it('a null/blank segment counts as MAINBOARD (BSE IPO board default)', () => {
+  it('item 2 slice 3a: a null/blank segment counts in NEITHER bucket — never silently folded into MAINBOARD', () => {
     const result: BSEApiScrapeResult = { ipos: [{ companyName: 'Y', segment: null } as any], subscriptions: [], errors: [] };
     const s = summarizeBSEApiResult(result);
-    expect(s.mainboardCount).toBe(1);
+    expect(s.mainboardCount).toBe(0);
     expect(s.smeCount).toBe(0);
+    // The gap between total ipos and mainboard+sme IS the "unknown segment" signal.
+    expect(s.ipos).toHaveLength(1);
   });
 });
 
@@ -339,5 +342,94 @@ describe('scrapeBSEViaAPI — fetch list + detail, map only IR_flag=IPO', () => 
     // Stage C: subscription captured for the genuine IPO (not the excluded takeover)
     expect(res.subscriptions.length).toBe(1);
     expect(res.subscriptions[0].totalSubscription).toBeCloseTo(191.98, 2);
+  });
+});
+
+// Item 14 slice 1 — lock the BSE extractor's issue_size output to the
+// independent nightly detection floor check (scripts/lib/detection-floor-checks.mjs).
+// The "share count stored as issue_size rupees" class was fixed once on the
+// BSE write path in Aug 2026 and RECURRED on a different write path in Sep
+// 2026 (W-177). This does not fix a defect — the alignment currently holds —
+// it locks it so the third recurrence (a future write path, or a drifting
+// detection constant/registry doc) trips a red test instead of sailing
+// through unnoticed. Item 1 is about to add more write paths that call
+// computeBSEIssueSize-shaped math; this is the guard rail for all of them.
+
+describe('item 14 slice 1 — BSE issue_size vs the independent floor check (recurrence guard)', () => {
+  it('a genuine small SME issue clears the SME floor (no false positive)', () => {
+    // Smallest plausible real SME IPO: SEBI's SME issue-size floor is Rs1 Cr;
+    // real small SME issues on BSE SME run roughly Rs3-10 Cr. 12,00,000 shares
+    // (12 lakh — a small but real SME lot count) at a Rs30 floor price gives
+    // Rs3.6 Cr, comfortably a genuine SME issue and comfortably above the
+    // Rs1,00,00,000 floor — the floor check must NOT flag it.
+    const shares = 12_00_000;
+    const priceFloor = 30;
+    const issueSize = computeBSEIssueSize(shares, priceFloor);
+    expect(issueSize).toBe(3_60_00_000); // Rs3.6 Cr
+    const violation = checkIssueSizeSegmentFloor({ issueSize, segment: 'SME' });
+    expect(violation).toBeNull();
+  });
+
+  it('a genuine small MAINBOARD issue clears the MAINBOARD floor (no false positive)', () => {
+    // Smallest plausible real mainboard IPO: the floor is Rs10 Cr; real small
+    // mainboard book-built issues run roughly Rs12-50 Cr at the low end.
+    // 50,00,000 shares (50 lakh) at a Rs25 floor price gives Rs12.5 Cr —
+    // a genuine small mainboard issue, just above the Rs10,00,00,000 floor.
+    const shares = 50_00_000;
+    const priceFloor = 25;
+    const issueSize = computeBSEIssueSize(shares, priceFloor);
+    expect(issueSize).toBe(12_50_00_000); // Rs12.5 Cr
+    const violation = checkIssueSizeSegmentFloor({ issueSize, segment: 'MAINBOARD' });
+    expect(violation).toBeNull();
+  });
+
+  it('a raw share count stored where rupees belong still trips the floor check for both segments', () => {
+    // The actual defect class: computeBSEIssueSize NOT applied — the raw
+    // share count (SUSAN ELECTRICALS' real 4,019,000 shares, from DETAIL_ROW
+    // above) sitting directly in issue_size. Far below either floor.
+    const rawShareCount = 4_019_000;
+    expect(checkIssueSizeSegmentFloor({ issueSize: rawShareCount, segment: 'SME' })).not.toBeNull();
+    expect(checkIssueSizeSegmentFloor({ issueSize: rawShareCount, segment: 'MAINBOARD' })).not.toBeNull();
+  });
+
+  it('the REAL mapper output (not a recomputed value) clears the floor check — the recurrence was in a caller, not the helper', () => {
+    // W-177 recurred in a caller that failed to invoke computeBSEIssueSize —
+    // the helper itself was never broken. Proving helper output alone (the
+    // three tests above) would have missed that recurrence entirely. This
+    // test feeds mapBSEToScrapedIPO's OWN returned issueSize straight into
+    // the detector, so a future caller that drops/bypasses the conversion
+    // trips this test even if computeBSEIssueSize stays perfectly correct.
+    //
+    // mapBSEToScrapedIPO deliberately leaves `segment` undefined (BSE's JSON
+    // API can't tell SME from MAINBOARD — see the assertion a few tests up),
+    // so there is no ipo.segment to read here. Susan Electricals' real lot
+    // economics (Rs127 price x 1000-share market lot = Rs1,27,000/lot, far
+    // above the ~Rs14-15k mainboard retail-lot norm) match a real SME issue,
+    // so this asserts against the SME floor — the STRICTER of the two
+    // (Rs1 Cr vs Rs10 Cr) — as the segment this fixture actually represents.
+    const ipo = mapBSEToScrapedIPO(LIST_ROW, DETAIL_ROW);
+    const violation = checkIssueSizeSegmentFloor({ issueSize: ipo.issueSize, segment: 'SME' });
+    expect(violation).toBeNull();
+  });
+
+  it('the detection-checks registry prose agrees with the ISSUE_SIZE_FLOOR_RUPEES constants', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const registryPath = resolve(here, '../../../../docs/reviews/detection-checks/c_issue_size_floor.json');
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
+    const prose: string = registry.failThreshold;
+
+    const mainboardMatch = prose.match(/Rs([\d,]+)\s+for\s+MAINBOARD/);
+    const smeMatch = prose.match(/Rs([\d,]+)\s+for\s+SME/);
+    expect(mainboardMatch).not.toBeNull();
+    expect(smeMatch).not.toBeNull();
+
+    const proseMainboard = Number(mainboardMatch![1].replace(/,/g, ''));
+    const proseSme = Number(smeMatch![1].replace(/,/g, ''));
+
+    expect(proseMainboard).toBe(ISSUE_SIZE_FLOOR_RUPEES.MAINBOARD);
+    expect(proseSme).toBe(ISSUE_SIZE_FLOOR_RUPEES.SME);
   });
 });

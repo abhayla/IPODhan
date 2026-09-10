@@ -255,6 +255,12 @@ export function validateIPOData(
 
     if (Number.isFinite(closeDate.getTime()) && Number.isFinite(listingDate.getTime())) {
       const gapDays = (listingDate.getTime() - closeDate.getTime()) / (1000 * 60 * 60 * 24);
+      // Item 2 slice 3a: an unknown segment MUST NOT silently take the
+      // MAINBOARD 12-day rule (a genuine SME row would then be held to the
+      // wrong, looser threshold). LISTING_DATE_BEFORE_CLOSE is segment-
+      // independent and always applies; the segment-conditional gap-width
+      // check is explicitly skipped (not guessed) when segment is unknown.
+      const segmentKnown = data.segment === 'SME' || data.segment === 'MAINBOARD';
       const maxGapDays = data.segment === 'SME' ? 6 : 12;
 
       if (gapDays <= 0) {
@@ -264,12 +270,12 @@ export function validateIPOData(
           severity: 'WARNING',
           message: `Listing date (${listingDate.toISOString().split('T')[0]}) is not after close date (${closeDate.toISOString().split('T')[0]}).`,
         });
-      } else if (gapDays > maxGapDays) {
+      } else if (segmentKnown && gapDays > maxGapDays) {
         warnings.push({
           field: 'dates',
           rule: 'LISTING_DATE_GAP_TOO_WIDE',
           severity: 'WARNING',
-          message: `Listing date is ${gapDays} days after close date (typical: up to ${maxGapDays} for ${data.segment ?? 'MAINBOARD'}).`,
+          message: `Listing date is ${gapDays} days after close date (typical: up to ${maxGapDays} for ${data.segment}).`,
         });
       }
     }

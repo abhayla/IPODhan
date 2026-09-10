@@ -27,7 +27,11 @@ describe('backfill-normalized-name — needsRepair key computation (R-158, Tier 
     const c = needsRepair({ currentNormalizedName: '', nameValue: 'abc india', id: 'row-c' });
     expect(a.recomputed).toBe(b.recomputed);
     expect(b.recomputed).toBe(c.recomputed);
-    expect(a.recomputed).toBe('abc india');
+    // Item 12 slice B: the key SHORTENED to 'abc' because a TRAILING country
+    // token is now dropped. The PROPERTY this test exists to prove is the two
+    // assertions ABOVE - all three spellings fold to ONE value - and they are
+    // untouched. Only the literal moved.
+    expect(a.recomputed).toBe('abc');
   });
 
   it('folds a person name regardless of case and trailing whitespace', () => {
@@ -69,7 +73,9 @@ describe('backfill-normalized-name — needsRepair key computation (R-158, Tier 
       const backfillResult = needsRepair({ currentNormalizedName: '', nameValue: rawName, id: 'row-a' });
       const writePathKey = rowKeyForName(rawName);
       expect(backfillResult.recomputed).toBe(writePathKey);
-      expect(backfillResult.recomputed).toBe('abc india');
+      // Same shortening. The PROPERTY here is the assertion above: the
+      // backfill's key equals the write path's key. That still holds.
+      expect(backfillResult.recomputed).toBe('abc');
     });
   });
 

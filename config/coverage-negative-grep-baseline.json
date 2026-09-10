@@ -28,8 +28,6 @@
     "REQUIRED_FIELD_MISSING",
     "CLOSE_DATE_BEFORE_OPEN",
     "IPO_DURATION_LONG",
-    "LISTING_DATE_BEFORE_CLOSE",
-    "LISTING_DATE_GAP_TOO_WIDE",
     "POSSIBLE_TEST_DATA"
   ],
   "scraperPriorityMatrixFields": [
@@ -38,9 +36,6 @@
     "profit_fy1",
     "profit_fy2",
     "profit_fy3",
-    "ebitdaFy2022",
-    "roe_percentage",
-    "roce_percentage",
-    "pb_ratio"
+    "ebitdaFy2022"
   ]
 }

@@ -207,6 +207,24 @@ describe('moneycontrol-scraper', () => {
       expect(result.ipos[0].segment).toBe('SME');
     });
 
+    it('item 2 slice 3a: a blank category cell yields unknown segment, never a defaulted MAINBOARD', async () => {
+      mockBrowserExtraction([rawIpo({ category: '' })]);
+
+      const result = await scrapeMoneycontrolIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].segment).toBeNull();
+    });
+
+    it('item 2 slice 3a: a populated category cell without SME is a positive MAINBOARD signal', async () => {
+      mockBrowserExtraction([rawIpo({ category: 'MAINBOARD' })]);
+
+      const result = await scrapeMoneycontrolIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].segment).toBe('MAINBOARD');
+    });
+
     it('should handle scraping errors gracefully', async () => {
       vi.spyOn(browser, 'launchBrowser').mockRejectedValue(new Error('Network error'));
 

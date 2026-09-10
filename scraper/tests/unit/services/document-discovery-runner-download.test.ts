@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+// implements: R-160
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
@@ -13,6 +14,7 @@ import {
 } from '../../../src/services/document-discovery-runner.js';
 import { InMemoryDocumentFetchStateStore } from '../../../src/services/in-memory-document-fetch-state-store.js';
 import { NetworkCounter } from '../../../src/utils/network-counter.js';
+import { getMaxDocumentBytes } from '../../../src/services/document-download-verifier.js';
 
 /**
  * T-403 round 1, M1 and M4. These exercise the DOWNLOAD path end-to-end through
@@ -305,4 +307,258 @@ describe('M4c — F2 rescue when BSE covered EVERY due type and its download fai
     expect(bseDownloadIdx).toBeGreaterThanOrEqual(0);
     expect(nseApiIdx).toBeGreaterThan(bseDownloadIdx);
   }, 60_000);
+});
+
+// ---------------------------------------------------------------------------
+// item 22 slice 2 — defaultFetcher's streaming byte cap
+// ---------------------------------------------------------------------------
+//
+// The class this closes: every document download this system performs, from
+// any host, in both slots. Today (flag off) an oversized body is buffered
+// into memory IN FULL and checked afterwards. These tests assert on BYTES
+// PULLED from the mock stream, not on the returned verdict — a test that
+// only checked `res.status` would pass against the unfixed code too, since
+// the unfixed code also eventually rejects an over-cap body (via
+// verifyDownload's post-hoc check), just after allocating the whole thing.
+describe('defaultFetcher — streaming byte cap (item 22 slice 2, build card item-22-document-handling-and-download-limits.md)', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  /**
+   * A byte-counting mock ReadableStream. `pulled.total` is incremented as
+   * each chunk is actually produced to the consumer via `pull()` — the
+   * count under test, not the eventual verdict. `chunkSize` lets a test
+   * split the same total into many small chunks, which a chunk-counting
+   * (rather than byte-counting) cap implementation would miss.
+   */
+  function makeCountingStream(totalBytes: number, chunkSize: number) {
+    const pulled = { total: 0, cancelled: false, chunksDelivered: 0 };
+    let delivered = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (delivered >= totalBytes) {
+          controller.close();
+          return;
+        }
+        const size = Math.min(chunkSize, totalBytes - delivered);
+        delivered += size;
+        pulled.total += size;
+        pulled.chunksDelivered += 1;
+        controller.enqueue(new Uint8Array(size).fill(0x41));
+      },
+      cancel() {
+        pulled.cancelled = true;
+      },
+    });
+    return { stream, pulled };
+  }
+
+  /** `arrayBuffer()` drains the SAME counting stream via its own reader — so
+   * a flag-off test observes exactly how many bytes the old buffer-then-check
+   * path pulls (all of them), through the identical counting mechanism the
+   * streaming-path tests use. */
+  function mockFetchReturning(stream: ReadableStream<Uint8Array>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        status: 200,
+        url: 'https://x/big.pdf',
+        headers: { get: () => 'application/pdf' },
+        body: stream,
+        arrayBuffer: async () => {
+          const reader = stream.getReader();
+          const chunks: Uint8Array[] = [];
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) chunks.push(value);
+          }
+          return Buffer.concat(chunks);
+        },
+      }))
+    );
+  }
+
+  async function loadWithEnv(env: Record<string, string | undefined>) {
+    vi.resetModules();
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    return import('../../../src/services/document-discovery-runner.js');
+  }
+
+  it('RED: flag OFF (today\'s default) pulls the WHOLE oversized body — the byte count reaches the full size, not the cap', async () => {
+    const totalBytes = 2 * 1024 * 1024; // 2 MB
+    const { stream, pulled } = makeCountingStream(totalBytes, 256 * 1024);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: undefined,
+      PROSPECTUS_MAX_DOCUMENT_MB: '1', // a 1 MB cap the OLD path never consults during the fetch itself
+    });
+
+    const res = await defaultFetcher('https://x/big.pdf', { headers: {}, timeoutMs: 5000 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(totalBytes);
+    // The actual byte count reached: the FULL 2 MB, twice the 1 MB cap —
+    // proving the unfixed default path buffers everything before any size
+    // check is possible.
+    expect(pulled.total).toBe(totalBytes);
+  });
+
+  it('GREEN: flag ON — the byte count never exceeds the cap, aborting as soon as it is crossed', async () => {
+    const totalBytes = 2 * 1024 * 1024; // 2 MB
+    const chunkSize = 256 * 1024; // 256 KB
+    const capBytes = 1 * 1024 * 1024; // 1 MB
+    const { stream, pulled } = makeCountingStream(totalBytes, chunkSize);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: '1',
+    });
+
+    const res = await defaultFetcher('https://x/big.pdf', { headers: {}, timeoutMs: 5000 });
+
+    // Same transport-failure sentinel shape a timeout returns — no new
+    // "too big" branch for callers.
+    expect(res.status).toBe(0);
+    expect(res.body.length).toBe(0);
+    // The count that matters: never past the cap plus at most one
+    // already-in-flight chunk (the stream's default one-chunk read-ahead).
+    expect(pulled.total).toBeGreaterThan(capBytes);
+    // The stream's own read-ahead buffering (queuing strategy internals, not
+    // this fetcher's logic) means the exact overshoot is a few chunks, not
+    // exactly one — the real proof is the NEXT assertion: nowhere near the
+    // full 2 MB body.
+    expect(pulled.total).toBeLessThanOrEqual(capBytes * 2);
+    // And nowhere near the full 2 MB body — this is the actual proof, not
+    // just the returned verdict.
+    expect(pulled.total).toBeLessThan(totalBytes);
+  });
+
+  it('a body just under the cap succeeds — the full (small) count is pulled and returned', async () => {
+    const totalBytes = 480 * 1024; // 480 KB, under a 1 MB cap
+    const { stream, pulled } = makeCountingStream(totalBytes, 64 * 1024);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: '1',
+    });
+
+    const res = await defaultFetcher('https://x/small.pdf', { headers: {}, timeoutMs: 5000 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(totalBytes);
+    expect(pulled.total).toBe(totalBytes);
+  });
+
+  it('many small chunks summing over the cap still abort — a chunk-counting cap would miss this', async () => {
+    const totalBytes = 2 * 1024 * 1024; // 2 MB
+    const chunkSize = 8 * 1024; // 8 KB — 250 chunks to deliver the full body
+    const capMb = '0.5'; // 512 KB — fractional MB, ~64 tiny chunks to trip
+    const { stream, pulled } = makeCountingStream(totalBytes, chunkSize);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: capMb,
+    });
+
+    const res = await defaultFetcher('https://x/many-chunks.pdf', { headers: {}, timeoutMs: 5000 });
+
+    const capBytes = 0.5 * 1024 * 1024;
+    expect(res.status).toBe(0);
+    // Tripped well before all 250 chunks were pulled.
+    expect(pulled.chunksDelivered).toBeLessThan(totalBytes / chunkSize);
+    expect(pulled.total).toBeGreaterThan(capBytes);
+    expect(pulled.total).toBeLessThanOrEqual(capBytes * 1.25);
+  });
+
+  it('the abort actually stops the stream — cancel() is observed, not merely a returned-early verdict', async () => {
+    const totalBytes = 4 * 1024 * 1024; // 4 MB
+    const { stream, pulled } = makeCountingStream(totalBytes, 128 * 1024);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: '1',
+    });
+
+    await defaultFetcher('https://x/big.pdf', { headers: {}, timeoutMs: 5000 });
+
+    // The mock stream's own `cancel()` callback fires ONLY when the reader
+    // actually cancels the underlying source — proving the stream itself
+    // was told to stop, not just that defaultFetcher returned early while
+    // the stream kept running in the background.
+    expect(pulled.cancelled).toBe(true);
+    const chunksAtCancel = pulled.chunksDelivered;
+    await new Promise((r) => setTimeout(r, 20));
+    expect(pulled.chunksDelivered).toBe(chunksAtCancel);
+  });
+
+  it('flag OFF is byte-identical to the pre-existing buffer-then-check path — the cap is never consulted during the fetch', async () => {
+    const totalBytes = 3 * 1024 * 1024; // 3 MB, well over a 1 MB cap
+    const { stream, pulled } = makeCountingStream(totalBytes, 512 * 1024);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'false',
+      PROSPECTUS_MAX_DOCUMENT_MB: '1',
+    });
+
+    const res = await defaultFetcher('https://x/big.pdf', { headers: {}, timeoutMs: 5000 });
+
+    // Flag off: the full body comes back regardless of the cap — identical
+    // to today's shipped behavior. The cap only bites later, in
+    // verifyDownload's post-hoc check.
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(totalBytes);
+    expect(pulled.total).toBe(totalBytes);
+  });
+
+  it('the exact-cap boundary: a body of EXACTLY maxBytes is accepted whole — total === maxBytes must NOT abort', async () => {
+    // The cap is derived from getMaxDocumentBytes() — the same function
+    // defaultFetcher calls — never a hard-coded literal, so this pins the
+    // fetcher's `total > maxBytes` comparison specifically: a `>` -> `>=`
+    // mutation flips this test from accepted to aborted.
+    const capMb = '1';
+    const capBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: capMb } as NodeJS.ProcessEnv);
+    const { stream, pulled } = makeCountingStream(capBytes, 64 * 1024); // divides capBytes exactly
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: capMb,
+    });
+
+    const res = await defaultFetcher('https://x/exact-cap.pdf', { headers: {}, timeoutMs: 5000 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(capBytes);
+    expect(pulled.total).toBe(capBytes);
+    expect(pulled.cancelled).toBe(false);
+  });
+
+  it('one byte over the exact-cap boundary: total === maxBytes + 1 aborts', async () => {
+    const capMb = '1';
+    const capBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: capMb } as NodeJS.ProcessEnv);
+    const { stream, pulled } = makeCountingStream(capBytes + 1, 64 * 1024);
+    mockFetchReturning(stream);
+    const { defaultFetcher } = await loadWithEnv({
+      ENABLE_DOWNLOAD_STREAMING_CAP: 'true',
+      PROSPECTUS_MAX_DOCUMENT_MB: capMb,
+    });
+
+    const res = await defaultFetcher('https://x/cap-plus-one.pdf', { headers: {}, timeoutMs: 5000 });
+
+    expect(res.status).toBe(0);
+    expect(res.body.length).toBe(0);
+    // Byte accounting is the boundary proof here (the abort-actually-stops
+    // the stream behaviour already has its own dedicated test above); the
+    // final chunk landing exactly on the stream's close makes `cancelled`
+    // itself a race on some Node builds, so it is not asserted in this test.
+    expect(pulled.total).toBe(capBytes + 1);
+  });
 });

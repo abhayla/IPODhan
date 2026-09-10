@@ -34,7 +34,16 @@ export async function runSubscriptionBackfill(opts: { execute?: boolean } = {}):
   logger.info({ count: rows.length }, '[sub-backfill] candidate OPEN IPOs');
 
   let populated = 0;
+  let skippedUnknownSegment = 0;
   for (const row of rows) {
+    // Item 2 slice 3a: a null/unknown segment MUST NOT silently default to
+    // the mainboard 'EQ' series — a real SME IPO would be queried against
+    // the wrong NSE series. Skip rather than guess; retried once known.
+    if (row.segment !== 'SME' && row.segment !== 'MAINBOARD') {
+      skippedUnknownSegment++;
+      logger.warn({ symbol: row.symbol, ipoId: row.id }, '[sub-backfill] segment unknown — skipping rather than guessing EQ series');
+      continue;
+    }
     const series: 'EQ' | 'SME' = row.segment === 'SME' ? 'SME' : 'EQ';
     try {
       const detail = await fetchIPODetail(row.symbol, series);
@@ -55,7 +64,7 @@ export async function runSubscriptionBackfill(opts: { execute?: boolean } = {}):
     }
   }
 
-  logger.info({ execute, populated }, `[sub-backfill] done (${execute ? 'wrote' : 'would write'} subscription for ${populated} IPOs)`);
+  logger.info({ execute, populated, skippedUnknownSegment }, `[sub-backfill] done (${execute ? 'wrote' : 'would write'} subscription for ${populated} IPOs, ${skippedUnknownSegment} skipped for unknown segment)`);
 
   const cov = await db.execute(sql`
     SELECT count(DISTINCT s.ipo_id)::int AS ipos FROM subscriptions s

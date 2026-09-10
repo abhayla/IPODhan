@@ -22,6 +22,7 @@
  *   - promoters:          unique_promoters_ipo_id_normalized_name
  *   - peer_companies:     unique_peer_companies_ipo_id_normalized_name
  *   - ipo_intermediaries: unique_ipo_intermediaries_ipo_id_role_normalized_name
+ *   - ipo_risk_factors:   unique_ipo_risk_factors_ipo_heading_hash (E2, slice s6)
  * and reports, per slot, which of the three exist and which are missing.
  * READ-ONLY — this script never writes to the database.
  *
@@ -43,6 +44,10 @@
  * why, right above the reference.
  */
 
+// Item 1 slice s14 -- FIRST import on purpose. ESM evaluates imported modules in
+// source order, so this runs (and prints which checkout @ipodhan/shared resolves
+// to) before any module below can read the wrong tree.
+import './lib/alias-preflight-auto.mjs';
 import { Client } from 'pg';
 
 export interface ExpectedConstraint {
@@ -67,6 +72,14 @@ export const EXPECTED_ROW_KEY_CONSTRAINTS: ExpectedConstraint[] = [
     tableName: 'ipo_intermediaries',
     constraintName: 'unique_ipo_intermediaries_ipo_id_role_normalized_name',
     columns: ['ipo_id', 'role', 'normalized_name'],
+  },
+  // Item 1 slice s6, gated file E2 (docs/ops/prod-ops-recipes.md §8d). Without
+  // this entry §8d step 6 would tell an operator to "verify" with a tool that
+  // never looks at the constraint they just applied.
+  {
+    tableName: 'ipo_risk_factors',
+    constraintName: 'unique_ipo_risk_factors_ipo_heading_hash',
+    columns: ['ipo_id', 'heading_hash'],
   },
 ];
 

@@ -30,8 +30,27 @@ import type { DocumentType } from './document-types.js';
 /** Minimum plausible size for a real filing. The BSE error page is 164 bytes. */
 export const MIN_DOCUMENT_BYTES = 50 * 1024;
 
-/** Hard ceiling (matrix F20 — zip bombs / pathological scans). */
-export const MAX_DOCUMENT_BYTES = 150 * 1024 * 1024;
+/**
+ * Hard ceiling (matrix F20 — zip bombs / pathological scans). Lowered from
+ * 150 MB to 100 MB per the item-22 build card's probe measurement.
+ * Overridable via `PROSPECTUS_MAX_DOCUMENT_MB` (see {@link getMaxDocumentBytes}) —
+ * a config change, not a redeploy, matching `PROSPECTUS_STORE_MAX_GB`'s pattern
+ * in `document-store.ts`.
+ */
+export const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024;
+
+const DEFAULT_MAX_DOCUMENT_MB = 100;
+
+/**
+ * The effective document byte cap: `PROSPECTUS_MAX_DOCUMENT_MB` when set to a
+ * finite positive number, `MAX_DOCUMENT_BYTES` (100 MB) otherwise. Read by
+ * both `verifyDownload`'s post-hoc size check and `defaultFetcher`'s
+ * streaming cap so the two never disagree.
+ */
+export function getMaxDocumentBytes(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.PROSPECTUS_MAX_DOCUMENT_MB);
+  return (Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_DOCUMENT_MB) * 1024 * 1024;
+}
 
 
 /** Fuzzy threshold for the cover-page company-name check (matrix §3 step 4). */
@@ -297,7 +316,7 @@ export function verifyDownload(
     return fail('wrong_content_type', `content-type ${meta.contentType ?? '(absent)'} for ${meta.url}`);
   }
 
-  const maxBytes = options.maxBytes ?? MAX_DOCUMENT_BYTES;
+  const maxBytes = options.maxBytes ?? getMaxDocumentBytes();
   if (body.length > maxBytes) {
     return fail('too_large', `${body.length} bytes exceeds the ${maxBytes}-byte cap`);
   }

@@ -34,9 +34,19 @@ export async function runDemandBackfill(opts: { execute?: boolean } = {}): Promi
 
   let populated = 0;
   let totalPoints = 0;
+  let skippedUnknownSegment = 0;
   for (const row of rows) {
     const symbol: string = row.symbol;
     const ipoId: string = row.id;
+    // Item 2 slice 3a: a null/unknown segment MUST NOT silently default to
+    // the mainboard 'EQ' series — that queries the wrong NSE series entirely
+    // (or none) for a real SME IPO. Skip and count it explicitly rather than
+    // guess; the row is retried once segment is known.
+    if (row.segment !== 'SME' && row.segment !== 'MAINBOARD') {
+      skippedUnknownSegment++;
+      logger.warn({ symbol, ipoId }, '[demand-backfill] segment unknown — skipping rather than guessing EQ series');
+      continue;
+    }
     const series: 'EQ' | 'SME' = row.segment === 'SME' ? 'SME' : 'EQ';
     try {
       const detail = await fetchIPODetail(symbol, series);
@@ -51,7 +61,7 @@ export async function runDemandBackfill(opts: { execute?: boolean } = {}): Promi
     }
   }
 
-  logger.info({ execute, populated, totalPoints }, `[demand-backfill] done (${execute ? 'wrote' : 'would write'} demand for ${populated} IPOs, ${totalPoints} points)`);
+  logger.info({ execute, populated, totalPoints, skippedUnknownSegment }, `[demand-backfill] done (${execute ? 'wrote' : 'would write'} demand for ${populated} IPOs, ${totalPoints} points, ${skippedUnknownSegment} skipped for unknown segment)`);
 
   // Read-back (G-PERSIST)
   const cov = await db.execute(sql`

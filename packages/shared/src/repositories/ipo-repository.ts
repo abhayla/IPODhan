@@ -459,6 +459,53 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * @param symbol - Raw (un-normalized) ticker symbol. Normalized here via
    *   trim + uppercase before comparison (source scrapers vary in case).
    */
+  /**
+   * Item 12 slice D: every LIVE row whose open_date is the given calendar day.
+   *
+   * Used ONLY by the observe-only duplicate-candidate scan in `ipo-identity.ts`.
+   * It is deliberately date-FILTERED rather than "fetch all live rows": a
+   * same-day query returns a handful of rows, where a full live scan would cost
+   * an O(n) fold on EVERY identity resolution — and identity resolution runs on
+   * every scraped record.
+   *
+   * LIVE means the four statuses a duplicate can still do damage in. A LISTED
+   * row pair is a historical artefact for a repair tool; an UPCOMING/OPEN pair
+   * is two rows a scraper is actively writing to.
+   *
+   * Returns `[]` for an absent date rather than querying — same NULL-is-never-a-
+   * key discipline as `findBySymbol`/`findByIsin` above.
+   */
+  async findLiveByOpenDate(openDate: string | Date | null | undefined): Promise<IPO[]> {
+    if (openDate == null) {
+      return [];
+    }
+    const day =
+      openDate instanceof Date
+        ? Number.isNaN(openDate.getTime())
+          ? null
+          : openDate.toISOString().slice(0, 10)
+        : String(openDate).slice(0, 10);
+    if (!day) {
+      return [];
+    }
+
+    try {
+      return await this.db
+        .select()
+        .from(ipos)
+        .where(
+          sql`${ipos.openDate} IS NOT NULL AND ${ipos.openDate}::date = ${day}::date AND ${ipos.status} IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED')`
+        )
+        .orderBy(ipos.id);
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch live IPOs by open date: ${day}`,
+        undefined,
+        error as Error
+      );
+    }
+  }
+
   async findBySymbol(symbol: string | null | undefined, offeringType?: string): Promise<IPO | null> {
     const normalized = symbol?.trim().toUpperCase();
     if (!normalized) {

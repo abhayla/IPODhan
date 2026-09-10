@@ -7,17 +7,50 @@ name: Deploy Linux (Migration M3)
 # minutes (the reason ci.yml/test.yml are manual-only — see their own
 # headers — does not apply here).
 #
-# THE GUARD THIS FILE EXISTS TO ENFORCE: `push` to main NEVER deploys
-# prod. It always deploys staging, no exceptions, no input can override
-# it. The ONLY way to deploy prod is an explicit `workflow_dispatch` run
-# with slot=prod chosen by a human in the Actions tab — that is the M4
-# cutover button, owned by the migration plan's M4 phase, not by this
-# workflow auto-firing.
+# THE GUARD THIS FILE EXISTS TO ENFORCE: no automatic trigger EVER deploys
+# prod. The scheduled staging poll below always deploys staging, no
+# exceptions, no input can override it. The ONLY way to deploy prod is an
+# explicit `workflow_dispatch` run with slot=prod chosen by a human in the
+# Actions tab — that is the M4 cutover button, owned by the migration
+# plan's M4 phase, not by this workflow auto-firing.
 #
 # deploy_tier for the T-242 contract that authored this file is `none` —
 # landing this workflow does not, by itself, deploy anything to prod; only
 # a deliberate workflow_dispatch with slot=prod does, and that is a later
 # migration phase's call, not this PR's.
+#
+# CADENCE (slice s17, 2026-09-10). This workflow used to trigger on every
+# `push` to main, so a burst of merges was a burst of full `npm ci` +
+# `next build` runs on the SAME 2-vCPU box that serves production: 34
+# staging deploys on 2026-09-10, 44 on 09-07, 31 on 09-06 and on 09-03.
+# The `push` trigger is replaced by a 15-minute poll that deploys staging
+# only when main's head differs from the sha staging is actually serving,
+# so merges inside one window collapse into a single deploy. The interval
+# is a recorded decision, not a default: a 60-minute poll would add up to
+# an hour of latency to EVERY staging proof, and contract decision 10
+# requires each of 22 items to be proven on a staging cycle, so proofs are
+# already the bottleneck. See the PR body for the full numbers.
+#
+# This is an INTERIM measure. Item 23 (build in CI, ship an artifact) is
+# the real fix for the box's load — once a deploy is unpack-and-flip
+# rather than install-and-build, its cost collapses and the cadence
+# matters much less.
+#
+# GitHub's `schedule` trigger is best-effort: runs can be delayed, and
+# occasionally dropped, when Actions is under load. A missed tick means
+# staging is up to one more interval behind, never a wrong deploy — the
+# next tick still sees the same sha difference and deploys.
+#
+# PUSH TRIGGER RESTORED (s20, 2026-09-11). The `schedule` trigger above has
+# NEVER fired since it landed at 19:04:54Z (#549) — measured twice, an hour
+# apart, via `gh run list --workflow deploy-linux.yml`: 29 `push` events, 1
+# `workflow_dispatch`, zero `schedule`. Staging had no automatic deploy at
+# all for over an hour. `push` is restored below, exactly as it was before
+# #549 (including the `paths-ignore` list). The `schedule` block is KEPT,
+# not deleted: if GitHub does register it later it is harmless — the
+# `decide` job below compares staging's served sha against main's head, so
+# a late scheduled tick arriving after a push already deployed finds
+# `served == head` and skips. Two triggers, no double deploy.
 
 on:
   push:
@@ -25,6 +58,11 @@ on:
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
+  schedule:
+    # Every 15 minutes. Best-effort, see the CADENCE note above. Has never
+    # actually fired (see PUSH TRIGGER RESTORED above) — kept as a harmless
+    # backstop in case GitHub starts registering it.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       slot:
@@ -37,13 +75,147 @@ on:
         type: string
         default: ''
 
+# One in-flight deploy per SLOT. This expression used to read
+# `github.event_name == 'schedule' && 'staging' || inputs.slot` (from #549,
+# when `push` had been removed). With `push` restored (s20), a push event
+# is neither `schedule` nor a dispatch, so `inputs.slot` is EMPTY on a push
+# and the group would collapse to the bare string "deploy-linux-" — which
+# would NOT serialise a push deploy against a manual `slot=staging`
+# dispatch on the same box, a real double-deploy hazard. The expression now
+# treats BOTH `push` and `schedule` as staging: push -> deploy-linux-staging,
+# schedule -> deploy-linux-staging, dispatch -> deploy-linux-<chosen slot>.
 concurrency:
-  group: deploy-linux-${{ github.event_name == 'push' && 'staging' || inputs.slot }}
+  group: deploy-linux-${{ (github.event_name == 'push' || github.event_name == 'schedule') && 'staging' || inputs.slot }}
   cancel-in-progress: false # never cancel a deploy mid-flight (release dirs are immutable, but a cancelled npm/next build can leave a half-built release)
 
 jobs:
+  # Cheap gate job (no install, no build). It resolves the slot and, on a
+  # scheduled tick, decides whether there is anything to deploy at all. It
+  # runs on every event so `needs.decide` is never "skipped" and the
+  # `deploy` job's `if:` is a plain boolean test.
+  decide:
+    name: Decide (${{ github.event_name == 'schedule' && 'staging (schedule guard)' || inputs.slot }})
+    runs-on: [self-hosted, linux, ipodhan]
+    timeout-minutes: 5
+    outputs:
+      slot: ${{ steps.slot.outputs.slot }}
+      proceed: ${{ steps.gate.outputs.proceed }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the gate below diffs main's head against the served sha
+
+      - name: Resolve deploy slot (schedule -> staging, ALWAYS; no input can change this)
+        id: slot
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "slot=${{ inputs.slot }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "slot=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The poll itself. A workflow_dispatch ALWAYS proceeds - a human asked
+      # for it, and this step must not become a way for a manual deploy
+      # (the only route to prod) to silently no-op.
+      #
+      # On a schedule the question is "does staging already serve main's
+      # head?". The served sha is read from staging's own /api/version on
+      # this box (the same endpoint and port file the deploy's own
+      # verification step uses). Three outcomes:
+      #
+      #   * served == head        -> nothing to deploy, skip.
+      #   * only docs/** or *.md  -> skip. This preserves the behaviour of
+      #     changed since served     the paths-ignore list the old push
+      #                              trigger carried; comparing shas alone
+      #                              would deploy on a docs-only merge. The
+      #                              comparison is always against what is
+      #                              SERVED, never against the previous
+      #                              tick, so a docs-only skip followed by
+      #                              a code merge still deploys BOTH.
+      #   * anything else         -> deploy.
+      #
+      # If /api/version cannot be reached or parsed, or the served sha is
+      # not an object in this clone, the gate DEPLOYS and says so loudly in
+      # the log and the job summary. Rationale (owner call): staging may be
+      # unreachable precisely BECAUSE it needs the new code, and a pipeline
+      # that quietly stops deploying is how a broken staging goes unnoticed
+      # for a day. Erring toward a deploy is recoverable; erring toward
+      # silence is not.
+      - name: Decide whether a scheduled staging deploy is needed
+        id: gate
+        shell: bash
+        env:
+          SLOT: ${{ steps.slot.outputs.slot }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+
+          note() {
+            echo "$1"
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$1" >> "$GITHUB_STEP_SUMMARY"; fi
+          }
+
+          if [ "$EVENT_NAME" != "schedule" ]; then
+            note "Event is '$EVENT_NAME' (not a scheduled poll) - deploying slot '$SLOT' unconditionally."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ROOT="/var/www/ipodhan"
+          PORT_FILE="$ROOT/shared/env/staging/web.env.local"
+          PORT="$(grep -E '^PORT=' "$PORT_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"
+          VERSION_URL="http://127.0.0.1:${PORT:-3000}/api/version"
+          SERVED_SHA="$(curl -fsS --max-time 10 "$VERSION_URL" 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const j=JSON.parse(d);console.log(String((j&&j.data&&j.data.sha)||(j&&j.sha)||""));}catch{console.log("");}});')"
+
+          if [ -z "$SERVED_SHA" ] || [ "$SERVED_SHA" = "unknown" ]; then
+            note "WARNING: could not read the sha staging is serving from $VERSION_URL (unreachable, unparseable, empty, or the literal placeholder 'unknown'). Deploying anyway - staging may be down BECAUSE it needs this code. This line is the alert: if it repeats every tick, staging /api/version is broken and the cadence gate is running blind."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$SERVED_SHA" = "$HEAD_SHA" ]; then
+            note "Staging already serves the head of main ($HEAD_SHA) - no deploy this tick."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git cat-file -e "${SERVED_SHA}^{commit}" 2>/dev/null; then
+            note "WARNING: staging serves $SERVED_SHA, which is not a commit in this clone (force-push, or a dispatch deploy of a ref no longer reachable). Cannot compute the changed-file list, so the docs-only skip cannot be evaluated. Deploying the head of main ($HEAD_SHA)."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED="$(git diff --name-only "$SERVED_SHA" "$HEAD_SHA" 2>/dev/null)"
+          if [ -z "$CHANGED" ]; then
+            note "Staging serves $SERVED_SHA and the head of main is $HEAD_SHA, but no files differ between them - no deploy this tick."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Mirrors the paths-ignore list the old push trigger carried:
+          # '**/*.md' -> any path ending .md at any depth; 'docs/**' -> any
+          # path under docs/.
+          DEPLOYABLE="$(printf '%s\n' "$CHANGED" | grep -vE '(\.md$|^docs/)')"
+          CHANGED_N="$(printf '%s\n' "$CHANGED" | wc -l | tr -d ' ')"
+          if [ -z "$DEPLOYABLE" ]; then
+            note "Only documentation changed between $SERVED_SHA and $HEAD_SHA ($CHANGED_N file(s), all under docs/ or ending .md) - no deploy this tick, same as the old paths-ignore behaviour."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          DEPLOYABLE_N="$(printf '%s\n' "$DEPLOYABLE" | wc -l | tr -d ' ')"
+          note "Staging serves $SERVED_SHA, the head of main is $HEAD_SHA, $DEPLOYABLE_N of $CHANGED_N changed file(s) are deployable - deploying staging."
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
   deploy:
-    name: Deploy (${{ github.event_name == 'push' && 'staging (push guard)' || inputs.slot }})
+    name: Deploy (${{ needs.decide.outputs.slot }})
+    needs: decide
+    if: needs.decide.outputs.proceed == 'true'
     runs-on: [self-hosted, linux, ipodhan]
     timeout-minutes: 30
 
@@ -52,18 +224,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # deploy-linux.sh resolves an arbitrary commit-ish
-
-      - name: Resolve deploy slot (push -> staging, ALWAYS; no input can change this)
-        id: slot
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "slot=staging" >> "$GITHUB_OUTPUT"
-          else
-            echo "slot=${{ inputs.slot }}" >> "$GITHUB_OUTPUT"
-          fi
-
       # W-141 - docs/ops/branching-model.md Rule 1: nothing reaches prod
       # except a commit on a release/prod-<date> branch. This step is the
       # mechanical enforcement of that prose rule - it is NOT bypassable by
@@ -74,7 +234,7 @@ jobs:
       # its unit tests. Staging (push, or an explicit slot=staging dispatch)
       # is unaffected - the script itself no-ops for any non-prod slot.
       - name: Require release/prod-* branch for a prod deploy
-        if: steps.slot.outputs.slot == 'prod'
+        if: needs.decide.outputs.slot == 'prod'
         shell: bash
         # Round 2 (Tier A finding #2): the ref/sha values below MUST reach
         # the script only via `env:`, never interpolated directly into the
@@ -82,7 +242,7 @@ jobs:
         # as `"${{ ... }}"`, can terminate the shell statement early and
         # make the step exit 0 without the gate ever running.
         env:
-          SLOT: ${{ steps.slot.outputs.slot }}
+          SLOT: ${{ needs.decide.outputs.slot }}
           RUN_REF: ${{ github.ref }}
           RUN_SHA: ${{ github.sha }}
           TARGET_REF: ${{ inputs.ref }}
@@ -110,9 +270,9 @@ jobs:
           # deploy-linux.sh's own code, not tee's - a failing deploy still
           # fails this step even though its output is piped through tee.
           if [ -n "${DEPLOY_REF:-}" ]; then
-            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}" "$DEPLOY_REF" 2>&1 | tee "$LOG_FILE"
+            bash scripts/deploy-linux.sh "${{ needs.decide.outputs.slot }}" "$DEPLOY_REF" 2>&1 | tee "$LOG_FILE"
           else
-            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}" 2>&1 | tee "$LOG_FILE"
+            bash scripts/deploy-linux.sh "${{ needs.decide.outputs.slot }}" 2>&1 | tee "$LOG_FILE"
           fi
 
       # T-425: a successful deploy clears any open deploy-failure STATUS row for
@@ -124,14 +284,14 @@ jobs:
         if: success()
         shell: bash
         run: |
-          node scripts/deploy-status.mjs clear --slot "${{ steps.slot.outputs.slot }}" || echo "WARNING: could not clear the deploy-failure STATUS row (non-fatal)." >&2
+          node scripts/deploy-status.mjs clear --slot "${{ needs.decide.outputs.slot }}" || echo "WARNING: could not clear the deploy-failure STATUS row (non-fatal)." >&2
 
       - name: Verify /api/version reflects the deployed SHA
         if: always()
         shell: bash
         run: |
           set -uo pipefail
-          SLOT="${{ steps.slot.outputs.slot }}"
+          SLOT="${{ needs.decide.outputs.slot }}"
           ROOT="/var/www/ipodhan"
           if [ "$SLOT" = "prod" ]; then PORT_FILE="$ROOT/shared/env/prod/web.env.local"; else PORT_FILE="$ROOT/shared/env/$SLOT/web.env.local"; fi
           PORT="$(grep -E '^PORT=' "$PORT_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"
@@ -175,7 +335,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          SLOT="${{ steps.slot.outputs.slot }}"
+          SLOT="${{ needs.decide.outputs.slot }}"
           SHA="${{ inputs.ref != '' && inputs.ref || github.sha }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           LOG_FILE="/tmp/ipodhan-deploy-${{ github.run_id }}.log"

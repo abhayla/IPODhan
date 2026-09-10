@@ -41,6 +41,7 @@
  *     rows. See `resolveIpoRow`'s conflict-detection step below.
  */
 import { logger } from '../logger';
+import { foldCompanyIdentity } from '../utils/company-identity-fold.js';
 import { classifyPrefixBoundary } from './ipo-repository';
 import type { IPORepository } from './ipo-repository';
 import type { IPO, IPOWithRelations } from './types';
@@ -196,11 +197,89 @@ function segmentsConflict(
  * this a second time — a second, independently-timed resolution is exactly
  * how the guard and the write diverged before (§1.4).
  */
+/**
+ * Item 12 slice D — log that two LIVE rows on the same open date fold to one
+ * company identity. OBSERVE ONLY: it never merges, never writes, and its return
+ * value is discarded.
+ *
+ * FLAG, and why not the slot-aware helper: `slotAwareFlagDefault()` returns true
+ * on staging when the variable is unset. This flag uses the plain
+ * `=== 'true'` convention so it is OFF in every slot until someone sets it —
+ * an observe-only feature that silently switches itself on in one slot is how a
+ * "why is this logging" mystery starts.
+ *
+ * WHY open_date FILTERS THE QUERY rather than walking every live row: a same-day
+ * query returns a handful of rows, where a full live scan would cost an O(n)
+ * fold on EVERY identity resolution — and identity resolution runs on every
+ * scraped record.
+ *
+ * SIZED BEFORE IT WAS BUILT (read-only, both slots): staging has 13 candidate
+ * groups over ~30 rows; production has ZERO among 333 live rows. So on prod this
+ * is PREVENTIVE. Read only a prod run and you would think it does nothing; read
+ * only staging and you would think the estate is full of duplicates.
+ *
+ * IT SWALLOWS ITS OWN FAILURES. Every scraper write depends on `resolveIpoRow`;
+ * an observation must never be able to break it.
+ */
+async function logDuplicateCandidates(
+  ipoRepository: IPORepository,
+  identity: IpoIdentity
+): Promise<void> {
+  if (process.env.ENABLE_DISCOVERY_DUPLICATE_CHECK !== 'true') return;
+  const { companyName, openDate } = identity;
+  if (!openDate) return;
+
+  try {
+    const finder = (ipoRepository as { findLiveByOpenDate?: (d: string | Date) => Promise<IPO[]> })
+      .findLiveByOpenDate;
+    // An older caller (or a narrow test double) may not have this method. A
+    // missing observation is fine; a crash in the write path is not.
+    if (typeof finder !== 'function') return;
+
+    const sameDay = await finder.call(ipoRepository, openDate);
+    if (!Array.isArray(sameDay) || sameDay.length < 2) return;
+
+    const key = foldCompanyIdentity(companyName);
+    if (!key) return;
+
+    const matches = sameDay.filter((row) => foldCompanyIdentity(row.companyName) === key);
+    if (matches.length < 2) return;
+
+    // Identities, never a bare count (signal-ownership R1): a reader must be
+    // able to open both rows without running a second query.
+    logger.warn(
+      {
+        foldKey: key,
+        openDate: typeof openDate === 'string' ? openDate : openDate.toISOString().slice(0, 10),
+        slugs: matches.map((r) => r.slug),
+        ids: matches.map((r) => r.id),
+        companyNames: matches.map((r) => r.companyName),
+      },
+      'duplicate_candidate: two or more LIVE rows share an open date and fold to one company identity — not merged, not written, flagged for a human'
+    );
+  } catch (error) {
+    logger.debug(
+      { error: (error as Error).message },
+      'duplicate_candidate scan failed — identity resolution is unaffected'
+    );
+  }
+}
+
 export async function resolveIpoRow(
   ipoRepository: IPORepository,
   identity: IpoIdentity
 ): Promise<IPO | IPOWithRelations | null> {
   const { companyName, normalizedName, slug, isin, symbol, openDate, priceRangeMin, segment, offeringType } = identity;
+
+  // Item 12 slice D: OBSERVE duplicate candidates. Deliberately placed HERE,
+  // before the tier chain, and awaited for its side effect only — it reads
+  // nothing the tiers produce and feeds nothing back, so it CANNOT change which
+  // row this function returns no matter what it finds or how it fails. Putting
+  // it after the chain would have meant threading it past three separate
+  // `return` statements, and the first thing to go wrong there is a return that
+  // skips it.
+  await logDuplicateCandidates(ipoRepository, identity);
+
   // T-403 Tier-A review (item 4): tracks whether the accepted `nameMatch`
   // came from the WEAK tier 3b prefix-with-corroboration path, so the
   // key/name conflict check below can prefer the higher-confidence key

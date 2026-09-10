@@ -178,29 +178,64 @@ function parseChittorgarhAmount(amountStr: string): number {
  * @param listingAt - "BSE, NSE" or "NSE SME" or "BSE SME"
  * @returns {exchange, segment}
  */
-function parseListingInfo(listingAt: string): {
-  exchange: 'NSE' | 'BSE' | 'BOTH';
-  segment: 'MAINBOARD' | 'SME';
+export function parseListingInfo(listingAt: string): {
+  exchange: 'NSE' | 'BSE' | 'BOTH' | undefined;
+  segment: 'MAINBOARD' | 'SME' | null;
 } {
-  const normalized = listingAt.toUpperCase().trim();
+  const normalized = (listingAt || '').toUpperCase().trim();
 
+  // Item 2 slice 3a: a blank/missing "Listing at" cell carries no board
+  // signal at all -- it must yield unknown for BOTH fields, never a
+  // defaulted MAINBOARD/BOTH (the class this slice fixes). `listingExchange`
+  // uses `undefined` for unknown (its zod schema is .optional(), not
+  // .nullable() -- see validators.ts); `segment` uses `null` per its schema.
+  if (!normalized) {
+    return { exchange: undefined, segment: null };
+  }
+
+  // Item 2 slice 3a fix round: a non-blank cell is not automatically a
+  // positive board signal -- a typo'd board name or unrelated junk text
+  // containing neither the word "NSE" nor the word "BSE" must yield unknown
+  // for BOTH fields too, not a defaulted MAINBOARD/BOTH guess. Only the
+  // literal word "NSE" or "BSE" is treated as a genuine signal here.
+  //
+  // Round 3 (word-boundary): `includes('NSE')` / `includes('BSE')` matched
+  // as an unanchored substring, so junk text like "Nonsense" or "Absent"
+  // falsely produced a positive MAINBOARD signal -- exactly the "junk text
+  // asserts a board" shape this slice exists to kill. Match the board word
+  // on a word boundary instead.
+  const hasBSE = /\bBSE\b/.test(normalized);
+  const hasNSE = /\bNSE\b/.test(normalized);
+
+  if (!hasBSE && !hasNSE) {
+    return { exchange: undefined, segment: null };
+  }
+
+  // A populated "Listing at" naming an actual board without "SME"/"EMERGE"
+  // is a genuine positive MAINBOARD signal (the field literally states the
+  // board).
   let segment: 'MAINBOARD' | 'SME' = 'MAINBOARD';
-  let exchange: 'NSE' | 'BSE' | 'BOTH' = 'BOTH';
+  let exchange: 'NSE' | 'BSE' | 'BOTH';
 
-  // Determine segment
-  if (normalized.includes('SME')) {
+  // Determine segment. "EMERGE" is recognised alongside "SME" because it is
+  // NSE's real SME platform name -- the same convention the authoritative
+  // NSE API path already uses (nse-api-client.ts transformIPOData: `series
+  // === 'SME' || platform.includes('SME') || platform.includes('EMERGE')`).
+  // This only runs once a genuine board word (NSE/BSE) has already been
+  // matched above, so a bare "Emerge" with no board word still falls into
+  // the unknown branch above -- only "<board> Emerge ..." resolves to SME.
+  if (normalized.includes('SME') || normalized.includes('EMERGE')) {
     segment = 'SME';
   }
 
-  // Determine exchange
-  const hasBSE = normalized.includes('BSE');
-  const hasNSE = normalized.includes('NSE');
-
+  // Determine exchange -- a board word was matched above, so exactly one
+  // of these three branches always applies; BOTH is a genuine signal here
+  // (both words present), never a default.
   if (hasBSE && hasNSE) {
     exchange = 'BOTH';
   } else if (hasNSE) {
     exchange = 'NSE';
-  } else if (hasBSE) {
+  } else {
     exchange = 'BSE';
   }
 

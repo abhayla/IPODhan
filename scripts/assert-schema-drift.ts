@@ -57,6 +57,10 @@
  *     between deploys.
  */
 
+// Item 1 slice s14 -- FIRST import on purpose. ESM evaluates imported modules in
+// source order, so this runs (and prints which checkout @ipodhan/shared resolves
+// to) before any module below can read the wrong tree.
+import './lib/alias-preflight-auto.mjs';
 import { Client } from 'pg';
 import * as schema from '@ipodhan/shared/db/schema';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
@@ -69,8 +73,35 @@ export interface ColumnExpectation {
 }
 
 export interface Drift {
-  kind: 'MISSING_TABLE' | 'MISSING_COLUMN' | 'COLUMN_TYPE_MISMATCH' | 'MISSING_MATVIEW';
+  kind:
+    | 'MISSING_TABLE'
+    | 'MISSING_COLUMN'
+    | 'COLUMN_TYPE_MISMATCH'
+    | 'MISSING_MATVIEW'
+    | 'MISSING_INDEX'
+    | 'INDEX_COLUMN_MISMATCH'
+    | 'MISSING_UNIQUE_CONSTRAINT'
+    | 'UNIQUE_CONSTRAINT_COLUMN_MISMATCH';
   detail: string;
+}
+
+// Item 1 slice s3b (clause 8, part 3): an index/constraint expectation, keyed
+// by NAME but verified by exact ORDERED column list — name-only matching
+// already failed once in this item (a constraint recreated under the right
+// name on the wrong columns reported OK; see assert-row-key-constraints.ts,
+// which this follows the same approach as).
+export interface IndexExpectation {
+  tableName: string;
+  indexName: string;
+  /** Column names, in the exact order the index covers them. */
+  columns: string[];
+}
+
+export interface UniqueConstraintExpectation {
+  tableName: string;
+  constraintName: string;
+  /** Column names, in the exact order the constraint covers them. */
+  columns: string[];
 }
 
 export interface MatviewExpectation {
@@ -101,11 +132,10 @@ export const EXPECTED_MATVIEWS: MatviewExpectation[] = [
 //
 // Production ALREADY has the widened types (verified 2026-09-02: prod
 // gmp_records/listing_performance are numeric(10,2)/numeric(7,2), matching
-// schema.ts) via a historical out-of-band change — so this registry does
-// NOT affect prod's deploy gate or the nightly audit, both of which call
-// this script bare (no ignoreGatedTypeDrift) and therefore still see and
-// FAIL on drift here the moment it's real on THAT environment. It exists
-// only so the T-405 "replay the journal from empty" CI job — which,
+// schema.ts) via a historical out-of-band change — so on a slot where that
+// out-of-band change already landed, no drift is even generated here and
+// this registry never matters. It exists only so the T-405 "replay the
+// journal from empty" CI job — which,
 // correctly, gets the narrow pre-widen types because a type change cannot
 // be journaled — has a way to say "yes, that specific, already-known,
 // already-approved-elsewhere gap, nothing else" instead of being permanently
@@ -145,6 +175,91 @@ export function isKnownGatedDrift(d: Drift): boolean {
   return KNOWN_GATED_TYPE_DRIFT.some(
     (g) =>
       d.detail === `"${g.tableName}.${g.columnName}" expects ${g.expected}, live column is ${g.actual}`
+  );
+}
+// KNOWN_GATED_INDEX_DRIFT is EMPTY and should normally stay that way.
+//
+// It exists for one narrow case: a schema object that is deliberately applied to a
+// slot BY HAND, out of the migration journal, so schema.ts and the live database
+// legitimately disagree for a while. #464 used it for exactly one entry - the
+// field_sources index that slice s3 widened on ipodhan_test ahead of its own merge -
+// and slice s3 removed that entry here, because s3 is the change that made schema.ts
+// and the index agree again.
+//
+// If you add an entry: it is suppressed ONLY under SCHEMA_DRIFT_IGNORE_GATED=1, which
+// is set in exactly one place (pr-gate.yml). deploy-linux.sh and the nightly audit call
+// this script bare and still fail on it. Matching is exact, so a DIFFERENT mismatch on
+// the same object still fails rather than being swallowed. And
+// scripts/tests/known-gated-registry-invalidation.test.ts will fail the moment your
+// entry stops matching what schema.ts declares, so the entry cannot outlive its reason.
+export const KNOWN_GATED_INDEX_DRIFT: { tableName: string; indexName: string; expectedColumns: string; actualColumns: string }[] = [
+  // EMPTIED by item 01 slice s3, which is the change the previous entry was
+  // waiting for: schema.ts now declares row_key on idx_field_sources_ipo_table_field,
+  // so schema.ts and the live index agree and there is no drift left to tolerate.
+  // known-gated-registry-invalidation.test.ts FAILED this PR until the entry was
+  // removed - which is exactly what that guard exists to do. It replaced a comment
+  // saying 'remove this when s3 merges' with a test that would not let s3 merge.
+];
+
+/**
+ * Exact-match predicate for KNOWN_GATED_INDEX_DRIFT, same discipline as
+ * isKnownGatedDrift(): all fields must match verbatim, so a DIFFERENT
+ * mismatch on the same index still fails instead of being swallowed.
+ */
+// field_sources/data_conflicts.idx_field_sources_ipo_table_field aside, the
+// three row-key UNIQUE constraints schema.ts declares (promoters,
+// peer_companies, ipo_intermediaries) are DELIBERATELY kept out of the
+// migration journal — web/drizzle/migrations/_gated/E1_row_key_unique_constraints.sql
+// applies them BY HAND, per slot, after a normalized_name backfill (see that
+// file's header and assert-row-key-constraints.ts, the existing dedicated
+// verifier for this exact gap). Until an operator hand-applies the gated
+// file on a given slot, checkUniqueConstraints() correctly sees "declared in
+// schema.ts, missing live" — real information, but not THIS slice's gap to
+// close. assert-row-key-constraints.ts CAN verify that hand-apply step, but
+// it is wired only as the npm script `audit:row-key-constraints` — no
+// workflow, deploy script or cron currently calls it, so today nothing runs
+// it on a schedule; treat it as a manual check an operator runs after
+// hand-applying the gated file, not as standing coverage. Gated the same way
+// as KNOWN_GATED_TYPE_DRIFT/KNOWN_GATED_INDEX_DRIFT above.
+//
+// #464, item 1 slice s10 (2026-09-10): a slot that legitimately has NOT yet
+// had the gated file hand-applied is the EXPECTED state, not a broken one —
+// a bare deploy-linux.sh call blocked every staging deploy on exactly these
+// three entries for 10 consecutive runs. deploy-linux.sh now calls this
+// script WITH SCHEMA_DRIFT_IGNORE_GATED=1, so it no longer fails on a slot
+// that never got the gated file applied; it still fails on anything NOT in
+// this registry (a real, undeclared gap). The nightly audit still calls
+// this script bare and keeps reporting these three as open work per slot —
+// that is unchanged and intentional.
+export const KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT: { tableName: string; constraintName: string }[] = [
+  { tableName: 'promoters', constraintName: 'unique_promoters_ipo_id_normalized_name' },
+  { tableName: 'peer_companies', constraintName: 'unique_peer_companies_ipo_id_normalized_name' },
+  { tableName: 'ipo_intermediaries', constraintName: 'unique_ipo_intermediaries_ipo_id_role_normalized_name' },
+  // Item 1 slice s6: the risk-factor re-key from positional `seq` to
+  // `heading_hash`. schema.ts declares this constraint, but its DDL lives in
+  // web/drizzle/migrations/_gated/E2_risk_factor_heading_hash_key.sql and is
+  // deliberately OUT of meta/_journal.json - a journaled DROP+ADD would run
+  // unattended against ~2130 rows still holding the '' default and fail on the
+  // second one, killing the release mid-deploy. So a journal-replayed database
+  // legitimately lacks it until an operator applies the gated file per slot
+  // (docs/ops/prod-ops-recipes.md section 8d). Same reason as the three E1
+  // entries above. Remove this entry once every slot has E2 applied.
+  { tableName: 'ipo_risk_factors', constraintName: 'unique_ipo_risk_factors_ipo_heading_hash' },
+];
+
+export function isKnownGatedUniqueConstraintDrift(d: Drift): boolean {
+  if (d.kind !== 'MISSING_UNIQUE_CONSTRAINT') return false;
+  return KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT.some(
+    (g) => d.detail === `"${g.tableName}.${g.constraintName}" is declared in schema.ts but does not exist on the live database`
+  );
+}
+
+export function isKnownGatedIndexDrift(d: Drift): boolean {
+  if (d.kind !== 'INDEX_COLUMN_MISMATCH') return false;
+  return KNOWN_GATED_INDEX_DRIFT.some(
+    (g) =>
+      d.detail ===
+      `"${g.tableName}.${g.indexName}" expects columns (${g.expectedColumns}), live index covers (${g.actualColumns})`
   );
 }
 
@@ -304,6 +419,166 @@ export async function checkMatviews(
   return drifts;
 }
 
+// ==================== INDEX / UNIQUE CONSTRAINT DRIFT (item 1 slice s3b) ====================
+// checkColumns() above compares column SHAPE only — it has zero occurrences
+// of "index"/"constraint". A reviewer set schema.ts to a knowingly-wrong
+// five-column index, ran no migration, and this script exited 0 saying the
+// live database matched, because nothing here looked at pg_index at all.
+// These two functions close that gap, following assert-row-key-constraints.ts's
+// approach: match by NAME, verify by exact ORDERED column list (never by
+// name alone, and never by unordered set — a reordered composite index
+// serves different queries).
+
+export function collectExpectedIndexes(): IndexExpectation[] {
+  const expectations: IndexExpectation[] = [];
+  for (const value of Object.values(schema)) {
+    if (!is(value, PgTable)) continue;
+    const cfg = getTableConfig(value as PgTable);
+    for (const idx of cfg.indexes) {
+      const name = idx.config.name;
+      if (!name) continue; // unnamed indexes aren't addressable by name; skip rather than guess
+      const columns = idx.config.columns
+        .map((c) => ('name' in c ? (c as { name?: string }).name : undefined))
+        .filter((n): n is string => typeof n === 'string');
+      if (columns.length === 0) continue; // expression/SQL-only index — no plain column list to compare
+      expectations.push({ tableName: cfg.name, indexName: name, columns });
+    }
+  }
+  return expectations;
+}
+
+export function collectExpectedUniqueConstraints(): UniqueConstraintExpectation[] {
+  const expectations: UniqueConstraintExpectation[] = [];
+  for (const value of Object.values(schema)) {
+    if (!is(value, PgTable)) continue;
+    const cfg = getTableConfig(value as PgTable);
+    for (const uc of cfg.uniqueConstraints) {
+      const name = uc.getName();
+      if (!name) continue;
+      expectations.push({ tableName: cfg.name, constraintName: name, columns: uc.columns.map((c) => c.name) });
+    }
+  }
+  return expectations;
+}
+
+/**
+ * Checks every named index schema.ts declares against pg_index on the live
+ * database, ordered by column position (unnest(indkey) WITH ORDINALITY,
+ * mirroring assert-row-key-constraints.ts's ordinal_position read for
+ * constraints). Only checks indexes the SSOT declares — an extra live index
+ * schema.ts never named is not this check's business, same asymmetry as
+ * checkColumns() only checking SSOT-declared columns.
+ */
+export async function checkIndexes(client: Client): Promise<Drift[]> {
+  const expectations = collectExpectedIndexes();
+  if (expectations.length === 0) return [];
+
+  const tableNames = [...new Set(expectations.map((e) => e.tableName))];
+  const { rows } = await client.query<{ table_name: string; index_name: string; column_name: string }>(
+    `SELECT t.relname AS table_name, i.relname AS index_name, a.attname AS column_name
+     FROM pg_index ix
+     JOIN pg_class t ON t.oid = ix.indrelid
+     JOIN pg_class i ON i.oid = ix.indexrelid
+     JOIN pg_namespace n ON n.oid = t.relnamespace
+     CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS x(attnum, n)
+     JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum
+     WHERE n.nspname = 'public' AND t.relname = ANY($1::text[])
+     ORDER BY t.relname, i.relname, x.n`,
+    [tableNames]
+  );
+
+  const liveIndexes = new Map<string, { tableName: string; columns: string[] }>();
+  for (const row of rows) {
+    let entry = liveIndexes.get(row.index_name);
+    if (!entry) {
+      entry = { tableName: row.table_name, columns: [] };
+      liveIndexes.set(row.index_name, entry);
+    }
+    entry.columns.push(row.column_name);
+  }
+
+  const drifts: Drift[] = [];
+  for (const expected of expectations) {
+    const live = liveIndexes.get(expected.indexName);
+    if (!live) {
+      drifts.push({
+        kind: 'MISSING_INDEX',
+        detail: `"${expected.tableName}.${expected.indexName}" is declared in schema.ts but does not exist on the live database`,
+      });
+      continue;
+    }
+    const columnsMatch =
+      live.columns.length === expected.columns.length && live.columns.every((c, i) => c === expected.columns[i]);
+    if (!columnsMatch) {
+      drifts.push({
+        kind: 'INDEX_COLUMN_MISMATCH',
+        detail: `"${expected.tableName}.${expected.indexName}" expects columns (${expected.columns.join(', ')}), live index covers (${live.columns.join(', ')})`,
+      });
+    }
+  }
+  return drifts;
+}
+
+/**
+ * Same idea as checkIndexes(), for UNIQUE constraints declared via unique()
+ * in schema.ts, checked against information_schema (constraint_type =
+ * 'UNIQUE') the same way assert-row-key-constraints.ts does.
+ */
+export async function checkUniqueConstraints(client: Client): Promise<Drift[]> {
+  const expectations = collectExpectedUniqueConstraints();
+  if (expectations.length === 0) return [];
+
+  const names = expectations.map((e) => e.constraintName);
+  const { rows } = await client.query<{
+    constraint_name: string;
+    table_name: string;
+    column_name: string;
+  }>(
+    `SELECT tc.constraint_name, tc.table_name, kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON kcu.constraint_name = tc.constraint_name
+      AND kcu.constraint_schema = tc.constraint_schema
+      AND kcu.table_schema = tc.table_schema
+     WHERE tc.table_schema = 'public'
+       AND tc.constraint_type = 'UNIQUE'
+       AND tc.constraint_name = ANY($1::text[])
+     ORDER BY tc.constraint_name, kcu.ordinal_position`,
+    [names]
+  );
+
+  const liveConstraints = new Map<string, { tableName: string; columns: string[] }>();
+  for (const row of rows) {
+    let entry = liveConstraints.get(row.constraint_name);
+    if (!entry) {
+      entry = { tableName: row.table_name, columns: [] };
+      liveConstraints.set(row.constraint_name, entry);
+    }
+    entry.columns.push(row.column_name);
+  }
+
+  const drifts: Drift[] = [];
+  for (const expected of expectations) {
+    const live = liveConstraints.get(expected.constraintName);
+    if (!live) {
+      drifts.push({
+        kind: 'MISSING_UNIQUE_CONSTRAINT',
+        detail: `"${expected.tableName}.${expected.constraintName}" is declared in schema.ts but does not exist on the live database`,
+      });
+      continue;
+    }
+    const columnsMatch =
+      live.columns.length === expected.columns.length && live.columns.every((c, i) => c === expected.columns[i]);
+    if (!columnsMatch) {
+      drifts.push({
+        kind: 'UNIQUE_CONSTRAINT_COLUMN_MISMATCH',
+        detail: `"${expected.tableName}.${expected.constraintName}" expects columns (${expected.columns.join(', ')}), live constraint covers (${live.columns.join(', ')})`,
+      });
+    }
+  }
+  return drifts;
+}
+
 /**
  * Resolves connection config the same way scripts/audit-ipo-coverage.mjs
  * does: a CLI arg or DATABASE_URL wins outright; otherwise fall back to the
@@ -340,23 +615,31 @@ async function main() {
   }
 
   try {
-    const [columnDrifts, matviewDrifts] = await Promise.all([
+    const [columnDrifts, matviewDrifts, indexDrifts, uniqueConstraintDrifts] = await Promise.all([
       checkColumns(client),
       checkMatviews(client),
+      checkIndexes(client),
+      checkUniqueConstraints(client),
     ]);
 
-    // SCHEMA_DRIFT_IGNORE_GATED=1 is set ONLY by the T-405 "replay the journal
-    // from empty" CI job (pr-gate.yml scraper-document-integration), never by
-    // deploy-linux.sh or the nightly audit — see KNOWN_GATED_TYPE_DRIFT above
-    // for why. Filtering happens here, at the CLI/exit-code boundary, so
-    // checkColumns() itself keeps reporting the full truth for every other
-    // caller (the self-test included).
+    // SCHEMA_DRIFT_IGNORE_GATED=1 is set by the T-405 "replay the journal
+    // from empty" CI job (pr-gate.yml scraper-document-integration) AND, as
+    // of #464 (item 1 slice s10), by scripts/deploy-linux.sh's migration
+    // step — a bare deploy call fails forever on a slot that has not yet had
+    // the E1 gated file hand-applied, which is expected, not broken (see
+    // KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT above). The nightly audit still
+    // calls this script bare and is unaffected. Filtering happens here, at
+    // the CLI/exit-code boundary, so checkColumns() itself keeps reporting
+    // the full truth for every other caller (the self-test included).
     const ignoreGated = process.env.SCHEMA_DRIFT_IGNORE_GATED === '1';
-    const knownGated = ignoreGated ? [...columnDrifts, ...matviewDrifts].filter(isKnownGatedDrift) : [];
-    const allDrifts = [...columnDrifts, ...matviewDrifts].filter((d) => !knownGated.includes(d));
+    const combined = [...columnDrifts, ...matviewDrifts, ...indexDrifts, ...uniqueConstraintDrifts];
+    const knownGated = ignoreGated
+      ? combined.filter((d) => isKnownGatedDrift(d) || isKnownGatedIndexDrift(d) || isKnownGatedUniqueConstraintDrift(d))
+      : [];
+    const allDrifts = combined.filter((d) => !knownGated.includes(d));
 
     if (knownGated.length > 0) {
-      console.log(`INFO: ${knownGated.length} known-gated type drift finding(s) ignored (SCHEMA_DRIFT_IGNORE_GATED=1):`);
+      console.log(`INFO: ${knownGated.length} known-gated drift finding(s) ignored (SCHEMA_DRIFT_IGNORE_GATED=1):`);
       for (const drift of knownGated) {
         console.log(`  [${drift.kind}] ${drift.detail}`);
       }
