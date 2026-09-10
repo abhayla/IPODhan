@@ -173,9 +173,29 @@
   },
   "adoptedPractices": [
     "pre-PR: git diff --name-only origin/main HEAD | grep '^web/' - a hit requires the clause-8 local integration run and a ci.yml dispatch, and the slice waits for lane A's web duty to merge",
-    "items 18 and 22: run db:generate, confirm the new _journal.json entry exists and is not future-dated (5 min skew tolerance), and have the verifier diff schema.ts against the generated SQL before the PR opens"
+    "items 18 and 22: run db:generate, confirm the new _journal.json entry exists and is not future-dated (5 min skew tolerance), and have the verifier diff schema.ts against the generated SQL before the PR opens",
+    "read `date` in a Bash call immediately before every Artifact board write and paste that exact value; the board document carries a timestampSource field (DEFECT-B02)",
+    "Stage 0 acceptance enumerates the four contract artefacts (ledger line, tracker section, STATE.json, PROGRESS log) and confirms each by ls, not by recollection (DEFECT-B03)"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief."
+  ],
+  "defects": [
+    {
+      "id": "DEFECT-B02",
+      "at": "2026-09-10 11:29 IST",
+      "what": "two board writes carried hand-typed timestamps; the second was 26 minutes ahead of the real clock",
+      "foundBy": "lane A supervisor tick",
+      "class": "estimated timestamps (recurrence of the 2026-09-05 80-minute drift)",
+      "mechanism": "read date immediately before every board write; timestampSource field on the board document"
+    },
+    {
+      "id": "DEFECT-B03",
+      "at": "2026-09-10 11:29 IST",
+      "what": "the contract-required PROGRESS log was never created at Stage 0",
+      "foundBy": "lane A supervisor tick",
+      "class": "a contract artefact skipped because acceptance was checked from recollection",
+      "mechanism": "Stage 0 acceptance enumerates all four artefacts and confirms each by ls"
+    }
   ]
 }
