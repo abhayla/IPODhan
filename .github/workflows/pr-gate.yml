@@ -258,6 +258,24 @@ jobs:
         # other cheap gates rather than after the suites.
         run: node scripts/ci/check-security-boundary-wired.mjs
 
+      - name: Migration snapshot-chain self-test
+        # 14 cases, all mutations: a fork, a duplicate id, a dangling head, a
+        # cycle, a parent with a higher journal idx, and the two shapes that must
+        # NOT fire (a snapshot with no journal entry, a journal entry with no
+        # snapshot - both are real and legitimate in this repository). The last
+        # two replay the 2026-09-10 collision with its real ids, broken and fixed.
+        run: node --test scripts/ci/tests/check-migration-snapshot-chain.test.mjs
+
+      - name: Migration snapshots form one straight chain
+        # 2026-09-10: 20260910043758_salty_shen (idx 36) and
+        # 20260910121813_cooing_manta (idx 37) both claimed parent 02d8a6d4 - the
+        # second was generated from a branch cut before the first landed. Both
+        # merged green. `npm run db:generate` then refused to run for EVERYONE,
+        # and the head snapshot had lost row_key, so the next generated migration
+        # would have emitted DROP COLUMN row_key on a freshly backfilled column.
+        # Needs no install, so it runs here with the other cheap gates.
+        run: node scripts/ci/check-migration-snapshot-chain.mjs
+
       - name: ESM module-scope globals self-test (item 20 / slice 5)
         # Drives the real check against fixture trees: the mutations that prove
         # it can FAIL and the zero-files floor that proves it cannot pass on an

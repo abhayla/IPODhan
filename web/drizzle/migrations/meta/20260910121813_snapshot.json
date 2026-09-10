@@ -1,6 +1,6 @@
 {
   "id": "8553716d-b9e3-43ae-9068-01aab12dc7fa",
-  "prevId": "02d8a6d4-7d50-42e7-8244-3b7ec386625a",
+  "prevId": "1912f30f-97c1-40cc-8fbc-dd95286e1cc4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -741,6 +741,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "row_key": {
+          "name": "row_key",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "field_name": {
           "name": "field_name",
           "type": "varchar(100)",
@@ -914,6 +921,33 @@
             },
             {
               "expression": "resolved_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_data_conflicts_ipo_table_row": {
+          "name": "idx_data_conflicts_ipo_table_row",
+          "columns": [
+            {
+              "expression": "ipo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "table_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "row_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1854,6 +1888,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "row_key": {
+          "name": "row_key",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "field_name": {
           "name": "field_name",
           "type": "varchar(100)",
@@ -1986,6 +2027,12 @@
             },
             {
               "expression": "table_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "row_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3821,13 +3868,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "heading_hash": {
-          "name": "heading_hash",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
         "body": {
           "name": "body",
           "type": "text",
@@ -3853,6 +3893,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "heading_hash": {
+          "name": "heading_hash",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         }
       },
       "indexes": {
