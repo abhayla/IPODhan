@@ -487,3 +487,20 @@ one tool's count is not.
 
 **Measured result:** 50 stale -> 0, second dry run 0, exit 0.
 
+**Reading the proof's timestamps — the 10 minutes you can skip.** On staging the
+marker instants `assert-repair-held` prints look ~5h30m in the FUTURE against the
+newest row you can query (e.g. marker `18:07:11.771Z` vs newest `scraper_logs`
+`12:37:11.771Z` — identical milliseconds, +5:30 apart). That is the known
+stored-timestamp skew, NOT a broken proof: staging labels rows about 5.5 hours
+behind real time. Confirm it in 90 seconds instead of theorising — read
+`MAX(scraper_logs.created_at)` three times 45s apart and watch it move in real
+time (measured 2026-09-10: 12:46:30 -> 12:48:28 within 50 real seconds).
+
+**What `--cycles N` does and does not prove.** It proves the repair SURVIVED N
+cycles. It does NOT prove N cycles exercised the repaired write path. For a
+child-table repair those are different claims and the second is the one the
+defect-fix contract wants: on 2026-09-10 both cycles advanced only the
+`scraper_logs` marker while `promoters` / `ipo_intermediaries` / `peer_companies`
+had not been written since the previous day. Always name, in the proof line, the
+write path that actually ran.
+
