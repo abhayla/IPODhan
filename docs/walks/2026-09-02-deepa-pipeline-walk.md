@@ -3002,3 +3002,19 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   The rule that comes out of it is narrower and more useful than "probe it": **probe under the same
   runner as the proof you are trying to defend.** A probe run under a different resolver measures a
   different program.
+
+- 2026-09-10 20:27 IST **[lane B] I spent ten hours excluding three tests by name instead of asking whether the
+  problem already had a tool.** Those three repository tests failed in my worktree all day with
+  "Compared values have no visual difference". I diagnosed it correctly this morning as a dual module
+  instance from the junctioned `node_modules`, then simply excluded them from every suite result I
+  reported — for ten hours, in every message.
+  `wt-link-modules.ps1` has existed since 2026-09-09 and its header describes this defect precisely:
+  *"the worktree's edited packages/shared/src/db/schema.ts was invisible to vitest, whose alias table
+  redirects only two specific specifiers."* One command: 937 entries linked, 3 workspace packages
+  re-pointed. The vitest probe flipped from MAIN CHECKOUT to THIS WORKTREE, and the three tests now
+  pass — 3 files, 14 tests, green.
+  The lesson is not about junctions. **A correct diagnosis is not the same as a fix, and a workaround
+  I can carry indefinitely is the thing most likely to stop me looking for one.** I knew exactly what
+  was wrong and used that knowledge to explain the failure away in ten consecutive reports rather than
+  to search for the fifteen-line tool that already solved it. Checking for an existing tool belongs
+  BEFORE the workaround, not after someone else mentions it.
