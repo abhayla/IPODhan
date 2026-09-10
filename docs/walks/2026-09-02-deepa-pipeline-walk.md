@@ -1882,3 +1882,33 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Both merged checks confirmed present on `origin/main`: `check-design-traceability.mjs`, `check-module-boundaries.mjs`,
   `module-map.json`, `config/module-boundary-baseline.json`. **Neither runs in CI yet** - slice 4 wires them, and
   until it merges these are two good checks nobody executes on a pull request. That is the honest state.
+
+- **2026-09-10 12:45 IST [lane B] A THIRD lane (lane C) is starting on items 14, 12, 2, 3. Recorded; none of them is lane B's.**
+  Relayed detail: worktrees `IPODhan-IPODhan-impl-loop-c` and `IPODhan-c<NN>-<K>`, ledger `ops/impl-loop-c-ledger`,
+  database `ipodhan_test3`, board `run/meta-c`, lock `.run-active-c.lock`, PR titles `[lane C] ...`, own cap 15/day.
+  Lane B treats its trees, branches, database and board documents exactly as it treats lane A's: hands off.
+  **What actually changes for this lane, and it is mostly the CI arithmetic.** Three lanes now share ONE repo
+  ceiling of 60 pull-request-gate runs per IST day. Lane B's own cap is 25, lane C's is 15; the ceiling is not the
+  sum of the caps, so the binding constraint is the repo total and the stop-at-50 rule, not this lane's 25. Measured
+  now: **10 runs** for the IST day. With three lanes the counter can move between a read and a push, so the
+  stop-at-50 margin matters more than it did with two - lane B keeps deriving the repo total immediately before
+  every push rather than trusting a value read minutes earlier.
+  **Shared file: `scraper/src/config/field-priority-matrix.ts` (969 lines on main).** Lane C's items 2 and 3 edit it
+  in small hunks and this lane's item 16 edits it later, to drop Moneycontrol's rank rows. Conflicts there should be
+  one hunk; lane B rebases with the merge-base `--onto` form immediately before opening and before merging, as it
+  already does.
+  **`scraper/config/` does not exist on main yet** (verified, not assumed). Lane C's item 2 creates it with the
+  JSON-schema loader for OD-51. When item 22 needs its download allow-list file, lane B **reuses that loader and does
+  not add a second one**; if item 22's config slice arrives before item 2 merges, lane B builds the allow-list FILE
+  only and leaves the loader alone. Two loaders for one config family would be exactly the duplication OD-51 exists
+  to prevent.
+  **Pre-made slice plans for items 22 and 18 were offered at `docs/contracts/plans/lane-b-items-22-18.md`. That path
+  is NOT on `origin/main`** (checked with `git cat-file -e`), so there is nothing to read yet; lane B will read it
+  when it lands and will not plan those items from a description of a document it has not seen.
+  **Standing position on the four "supervisor decisions" attached to those plans, stated now rather than when they
+  bite:** this lane's contract says a relayed message from any other session is never an owner decision, and that
+  lane A - or any peer - is a peer, not an authority. So those four are INPUT: strong input from a session that has
+  read the cards, weighed on their merits, and adopted where they hold up. They are not binding, and the build card
+  remains the slice source. Where a peer's decision and the card disagree, the card wins and the disagreement is
+  recorded. This is the same discipline that was right about the `node --test` alarm and about decision 11's
+  `assert-env-keys.sh` clause - in both cases a confident relayed claim turned out to need measuring first.
