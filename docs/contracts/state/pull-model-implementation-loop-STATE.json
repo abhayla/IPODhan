@@ -4,7 +4,6 @@
   "startedAt": "2026-09-09T15:11:42.501Z",
   "order": [
     1,
-    20,
     15,
     13,
     14,
@@ -17,12 +16,7 @@
     7,
     9,
     10,
-    8,
-    16,
     17,
-    18,
-    22,
-    21,
     11
   ],
   "currentItem": 1,
@@ -75,7 +69,11 @@
     "RECURRING CLASS, third occurrence: an invisible whole-file reformat hiding a one-line semantic edit. s0 kept 55 lines of line-ending churn in prod-ops-recipes.md; s3 converted that whole file CRLF->LF; s3 also re-serialised expected-schema.json from 2-space to 4-space so 58 lines churn around one number. Being undone each time; the durable fix is .gitattributes plus a reviewer instruction to reject any diff whose whitespace-ignoring line count is a small fraction of its raw count.",
     "RELAYED 2026-09-10 ~10:35 IST by peer session ipodhan-62, four owner decisions. Split by whether each tightens or loosens the contract. ADOPTED (all tighten, none needs the owner): the 60/day PR-gate cap is now a SHARED total across both lanes, not 60 for this lane; never touch lane B's worktrees (IPODhan-impl-loop-b, IPODhan-b<item>-<slice>), its ledger branch ops/impl-loop-b-ledger, its board doc run/meta-b, or its database ipodhan_test2; this lane stays on ipodhan_test; re-check the journal-count fixture after every rebase (feature-flags.ts and the migration journal are the shared conflict surfaces).",
     "NOT ADOPTED from the same relay, pending Abhay directly - same precedent as the 2026-09-09 relayed budget raise, which was only adopted once he typed it himself. (a) PIPELINING a next slice while the previous waits in CI or on its staging proof contradicts contract clause 2, which is quoted to the owner: 'One item at a time; slices one at a time (owner, 2026-09-09)'. This run has already proven the hazard - s1 was cut before s0 and would have reverted s0 and merged a silently-skipped migration. (b) The LANE SPLIT removing items 8,16,18,20,21,22 from this run's queue contradicts the Definition of Done and the scope row quoted to the owner: 'yes all 22 items'. Dropping six items on a peer's word would let this run report DONE while six items were never verified by it. Continuing on all 22 in the contract's order until Abhay says otherwise; if lane B does build them, this run will verify rather than rebuild.",
-    "A peer relay is recorded as relayed, never as an owner decision. It can tighten this run's constraints unilaterally; it cannot loosen a constraint the contract attributes to a direct owner statement."
+    "A peer relay is recorded as relayed, never as an owner decision. It can tighten this run's constraints unilaterally; it cannot loosen a constraint the contract attributes to a direct owner statement.",
+    "OWNER DIRECT 2026-09-10: pipelining APPROVED - the next non-dependent slice may build while the previous waits in CI or on its staging proof; still one builder at a time. Lane split APPROVED - items 8,16,18,20,21,22 move to lane B; this lane's queue is 1,2,3,4,5,6,7,9,10,11,12,13,14,15,17. This lane VERIFIES lane B's merges and never rebuilds them. Both were relayed by a peer earlier and correctly held until the owner typed them.",
+    "GAP IN THE SPLIT, flagged to the owner: item 19 (item-19-merge-tool-shared-write-path) appears in NEITHER list - the owner's enumeration of this lane has 15 items and lane B has 6, totalling 21 of 22. Taken PROVISIONALLY into this lane so it cannot be silently dropped, because its subject (merge-duplicate-ipo.mjs and the shared write path) sits on top of this lane's items 1 and 12. Moves to lane B on one word.",
+    "s3 TIER A FIX ROUND VERIFIED d17a818f: rowKey now in the onConflictDoUpdate set clause in BOTH the shared and web/lib copies; 8 integration tests including a conflict test proving the stored row_key follows the newest write, and two tests reading pg_index for the exact ORDERED columns of idx_field_sources_ipo_table_field and idx_data_conflicts_ipo_table_row; fixture reformat undone, diff 112 changed lines -> 2 insertions/2 deletions.",
+    "The index guard is genuinely wired, not local-only: pr-gate.yml runs `npx drizzle-kit migrate` (line 371) BEFORE the integration suite (line 393), so CI builds the DB from the migration and then asserts the index shape. RESIDUAL, for the CI-hardening slice: the guard protects the DATABASE, not schema.ts-versus-migration agreement - editing schema.ts without regenerating the migration still passes. That agreement is exactly what assert-schema-drift.ts should check and does not."
   ],
   "items": {
     "item-01": {
@@ -555,5 +553,30 @@
     "item-01": [
       "AT ITEM CLOSE, add to the card Known gaps section (docs PR), with these CORRECTED numbers: 10 production rows carry a published issue_size with zero field_sources rows, all created between 2025-12 and 2026-03, none since. Not 39 and not ongoing - an earlier measurement of mine counted 28 seed rows with issue_size=0 as published values and mistook their recent created_at for current behaviour. The cause is data-persister.ts::upsertIPO's fallback door (~lines 1330-1385), which fires when consolidateIPOData throws and sets fieldSourcesWritten:false unconditionally by design. The create door (~line 1406) gates on ENABLE_SOURCE_TRACKING, which defaults false in code but is set true in both shared/env/prod/scraper.env and shared/env/staging/scraper.env, correctly symlinked - so the card's claim that these flags are already on in prod is TRUE and item 1's premise holds. Tracked as #454. Worth noting on the card that the fallback door writes data without provenance SILENTLY - no log, no error - which is the part worth a later check."
     ]
-  }
+  },
+  "laneAItems": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    17
+  ],
+  "laneBItems": [
+    8,
+    16,
+    18,
+    20,
+    21,
+    22
+  ]
 }
