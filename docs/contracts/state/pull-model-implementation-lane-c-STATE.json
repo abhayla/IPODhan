@@ -96,6 +96,13 @@
           ],
           "heldReason": "A repair that cannot source its value writes nothing. BSE has no segment field (bse-api-scraper.ts:287-292), so segment cannot be sourced from the source that wrote these rows. Held until #482 gives segment an honest source.",
           "branchPreserved": "fix/pm-c-item14-s2-bse-issue-size-residue @ e4a855b8 pushed to origin before its worktree was removed - the tool is the investigator that PROVED the two rows correct and will be re-scoped for #482, so losing it would mean rebuilding the sourcing logic."
+        },
+        {
+          "id": "14-S4",
+          "status": "PR-OPEN",
+          "pr": 554,
+          "tier": "A",
+          "title": "c_issue_size_consistency reports its coverage and never passes on zero examined"
         }
       ],
       "prs": [
@@ -1489,7 +1496,13 @@
     "2026-09-11 00:23 IST ITEM 14 PASSING HALF IS NEARLY VACUOUS, and I found it by asking whether the PASS could have failed. c_issue_size_consistency reports PASS while examining 24 of 277 production IPO rows - 8.7%. It skips 91% because sharesOffered comes from a subquery on subscriptions and is NULL for them. Staging: 24 of 323.",
     "2026-09-11 00:23 IST AND IT SKIPS THE TWO ROWS IN QUESTION. NIRBHAY and PIYUSH both have sharesOffered NULL, so the consistency check never looked at them. Item 14 proof recipe therefore pairs a check that FAILS on two rows with a check that PASSES having never examined those two rows - and the recipe treats both as evidence.",
     "2026-09-11 00:23 IST THE DETAIL LINE SAYS \"0 violation(s)\" AND NOTHING ELSE - no examined count, no coverage. A reader cannot tell 0-of-277-clean from 0-of-24-looked-at. That is the scan-that-examined-nothing class sitting inside the proof item 14 depends on, and it is the same class I built the NOT_YET_BACKFILLED distinction for in 12-C2 this evening.",
-    "2026-09-11 00:23 IST THIS ONE IS BUILDABLE: no external source, no owner decision, lane C own area (14-S1 was a floor-check alignment). Make the check report its examined count and return UNVERIFIABLE rather than PASS when coverage is below a threshold. Recording it before building so the finding survives even if the build does not."
+    "2026-09-11 00:23 IST THIS ONE IS BUILDABLE: no external source, no owner decision, lane C own area (14-S1 was a floor-check alignment). Make the check report its examined count and return UNVERIFIABLE rather than PASS when coverage is below a threshold. Recording it before building so the finding survives even if the build does not.",
+    "2026-09-11 00:29 IST 14-S4 BUILT AND OPENED AS #554, and it exists because I asked whether item 14 PASSING check could have failed. It could not, meaningfully: c_issue_size_consistency reported a bare \"0 violation(s)\" while examining 24 of 277 production rows and skipping the exact two rows the floor check was failing on.",
+    "2026-09-11 00:29 IST THE FIX makes coverage part of the verdict. issueSizeConsistencyExaminable is the missing half of the predicate (the old one returned null for BOTH clean and unexaminable, which is why the caller could not tell them apart), and summariseIssueSizeConsistency returns status plus examined, skipped and total. Examining NOTHING is UNVERIFIABLE, never PASS.",
+    "2026-09-11 00:29 IST REAL-DATA PROOF TAKEN PRE-MERGE against staging. Before: \"0 violation(s)\". After: \"0 violation(s); examined 24 of 323 row(s), 299 skipped (no shares_offered / issue_size / price_range_max)\". 7 new tests red-first, existing detection-floor self-test still green, registry check exit 0.",
+    "2026-09-11 00:29 IST THREE MUTATIONS PROVED RED, each by a before/after count rather than by trusting sed: PASS instead of UNVERIFIABLE on zero examined (2 tests red BY NAME), everything counted as examinable (3 red), coverage text removed (3 red). A FOURTH mutation failed to apply and my harness reported it as MEANINGLESS rather than as a pass - worth recording, because a silently-unapplied mutation is a false green and that exact thing bit me earlier tonight.",
+    "2026-09-11 00:29 IST HONEST EFFECT ON ITEM 14: this arguably moves it FURTHER from done, because one of the two checks its proof recipe depends on turns out to have been weaker than it read. That is the right direction. The item is not closer to a DONE line and its proof is now honest rather than flattering.",
+    "2026-09-11 00:29 IST WHAT IT DELIBERATELY DOES NOT DO: fix the underlying gap. 91% of IPO rows carry no shares_offered, which is a data-population problem with a different owner. This makes the gap VISIBLE instead of absorbed into a PASS. Inventing a coverage threshold would be policy I have no basis for."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
