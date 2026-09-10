@@ -2818,3 +2818,20 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   ones. So: a check that passed while measuring the wrong thing, then a check that failed while
   measuring the wrong thing. Both are the class this run keeps producing — **the question is never
   "did it go green", it is "what did it actually evaluate".**
+
+- 2026-09-10 18:10 IST **[lane B] A proof I was about to read would have proved nothing.** The supervisor's
+  earlier claim that lane A's slot-aware flag helper unblocked my flag conversion was withdrawn, and
+  I measured the corrected version rather than taking either: `slotAwareFlagDefault` IS on main (#476)
+  but has **zero production call sites** — all 56 grep hits are its own definition, its tests and
+  comments. Both flags this run introduced still read `process.env.X === 'true'`, so both are OFF on
+  staging after the next deploy.
+  The consequence is not cosmetic. #468's staging proof is "read the cycle line and see the rotation
+  counter move". With the flag off, that counter cannot move, so the proof would have come back empty
+  and I would have had to read it as "the fix does nothing" or, worse, quietly as "proof obtained".
+  It is the same failure as every other one today: a measurement whose result was fixed before it ran.
+  Queued for after 00:00 IST as a Tier B slice: convert both flags to `slotAwareFlagDefault(...)` with
+  the four-case test per flag, BEFORE either staging proof is read. Decision 28's "never convert"
+  covers flags that existed before this run began and may carry a prod value of unknown spelling;
+  these two have never been deployed, so they are exactly what the helper exists for. No hand-set
+  server env value — the run never edits server env files, and a hand-set value is invisible to the
+  next person who reads it.
