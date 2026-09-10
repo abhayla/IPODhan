@@ -200,12 +200,16 @@
     {
       "at": "2026-09-10T22:54:02.514Z",
       "what": "Item 22 NOT advanced by #586: the CODE half of #582 is fixed, the DATA half is not - Hy-Tech Engineers still carries the corrupted URL (1 of 36), a data write waiting on the owner. 22-5/22-6 still blocked on a new shared dependency plus a real encrypted filing. Noted on the issue so the auto-close does not imply completion."
+    },
+    {
+      "at": "2026-09-10T22:57:43.433Z",
+      "what": "SPIKE ANSWERED (#592). ONE fact explains every symptom: the page is ROTATED 90 DEGREES. extract_tables rows are printed COLUMNS (the transposed symptom); word characters are stored reversed (the mirrored symptom). One rotation seen twice, not two defects. page.rotation is 0 and no /Rotate entry - baked into the text matrix, no metadata reveals it. VALIDATED RECIPE: group words by x0, order by top, reverse each word characters, reverse the token sequence. Recovers all six peers plus the issuer row and the divider, and every figure matches the pypdf text layer read independently - that cross-check is what makes it proof rather than plausible output. LIMITATION stated on the card: company names truncated (Bharat Heavy, not Bharat Heavy Electricals Limited) because the fixed x bucket splits the name column; every NUMERIC column is complete. Discriminator is the divider row, not the issuer name."
     }
   ],
   "items": {
     "8": {
       "status": "PREMISE_SETTLED_FIXTURES_MERGED",
-      "slices": "8-pre MERGED (#580), 8a-1 MERGED (#587, 08126361). 8a-1b (cell fixtures) then 8a-2 (header-mapped parser) next. 8b READY.",
+      "slices": "8-pre MERGED (#580), 8a-1 MERGED (#587). Input constraints merged (#590); rotation recipe open (#592). 8a-1b fixtures then 8a-2 parser next.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -645,7 +649,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T22:54:02.514Z",
+  "lastStateWriteAt": "2026-09-10T22:57:43.433Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 2,
