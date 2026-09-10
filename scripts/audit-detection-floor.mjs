@@ -1454,14 +1454,15 @@ async function checkP() {
     `${totals.doc} document-sourced vs ${totals.web} website-sourced rows in the last ${DOC_PROVENANCE_WINDOW_DAYS} days = ${pct.toFixed(1)}% — ${perField}`);
 }
 
-// ---- (q): per-row provenance on the multi-row child tables (item 1 slice s8)
+// ---- (q): per-row provenance on the child tables (item 1 slice s8, F-101)
 // field_sources.row_key defaults to '' — a writer that forgets to pass it
 // writes FY2023's and FY2024's provenance to the SAME key, silently naming the
-// wrong row. Only an independent read can see that. The all-'' state (today's
-// state: no caller keys rows yet) reports UNVERIFIABLE, never PASS — see the
-// header of scripts/lib/row-key-coverage-checks.mjs for the argument.
+// wrong row. Only an independent read can see that. A pair with NO
+// field_sources rows at all reports UNVERIFIABLE (no writer has touched it
+// yet); a pair whose field_sources rows exist but are all unresolved ('')
+// FAILs — see the header of scripts/lib/row-key-coverage-checks.mjs.
 const ROW_KEY_COVERAGE_NAME =
-  `every (ipo, child table) pair with MORE THAN ONE row in ${ROW_KEYED_CHILD_TABLES.join('/')} has a field_sources row for each of its row_keys`;
+  `every (ipo, child table) pair in ${ROW_KEYED_CHILD_TABLES.join('/')} has a field_sources row for each of its row_keys`;
 
 async function checkQ_rowKeyCoverage() {
   let result;
