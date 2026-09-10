@@ -1614,3 +1614,20 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   whether the new env seam can be used to WEAKEN the check in CI; and whether the new summary line's declaration
   count and root list are actually TRUE, checked by grepping the named roots independently. A summary line that
   reports a wrong number is worse than no summary line.
+
+- **2026-09-10 11:37 IST [lane B] MEASUREMENT DEFECT-B04, caught by this lane's own tick: the contract's lane-B PR counter is wrong.**
+  Contract decision 9 says to count this lane's pull requests with
+  `gh pr list --state all --limit 100 --search "[lane B]"`. Run at 11:36 IST it returned **1 open PR** - and that PR
+  is **#459, lane A's**, on branch `feat/pm-item01-s3-row-key-provenance`. GitHub's search does not treat `[lane B]`
+  as a literal; it tokenises it and matched a lane A title. Lane B has opened **zero** pull requests and its branch
+  `feat/pm-b-item20-s1-traceability-check` is not on `origin` at all (`git ls-remote` returns nothing).
+  Impact if it had gone unnoticed: this lane's CI budget is capped at 25 pull-request-gate runs a day and the count
+  drives when it stops pushing. A counter that silently includes the OTHER lane's pull requests would have burned
+  this lane's budget on work it did not do - and the same wrongness in the other direction (a title that does not
+  tokenise as expected) would have under-counted and pushed past the cap. This is the fourth measurement defect this
+  project has recorded in two days; all four share one root cause: **a command whose output was believed without a
+  sanity check that it measured what it claimed to measure.**
+  Correction adopted, effective now: count this lane's pull requests **by branch prefix, which is deterministic** -
+  `gh pr list --state all --limit 200 --json number,headRefName --jq '[.[] | select(.headRefName | startswith("feat/pm-b-item") or startswith("fix/pm-b-item"))] | length'`. Measured that way, lane B has opened 0. The repo-wide
+  pull-request-gate count for the IST day, measured with the `>= 18:30Z` cutoff and `--limit 100` as the contract
+  requires, is recorded beside it. The contract's own text is wrong here and is corrected at the next docs PR.
