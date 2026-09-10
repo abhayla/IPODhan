@@ -70,8 +70,8 @@
           "pr": null,
           "sha": "26dd474a",
           "tier": "A",
-          "reviewRounds": 2,
-          "reviewVerdict": "round 1 CRITICAL (gate could not fail) -> fix 26dd474a -> round 2 in flight on the same-module-edge concern"
+          "reviewRounds": 3,
+          "reviewVerdict": "round 2 MERGE NO - CRITICAL resolver blind to .js->.ts (2 of 83 cross-module edges); round 3 fix in flight; a FOURTH round defers the slice per contract"
         },
         {
           "k": "s4",
