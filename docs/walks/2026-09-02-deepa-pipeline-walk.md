@@ -2517,3 +2517,28 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   behaviours the mechanism implements before relying on it -- that question is exactly the class this lane
   found three times today (#461, the module-boundary gate evaluating zero edges, mode 4 skipping silently).
   Cost of the whole hold: nil. It lasted about twenty minutes and item 21 is last in the queue.
+
+- **2026-09-10 15:56 IST [lane B] 22-1 fix round: the IPv6 bypass is closed for the CLASS, and a near-miss nearly undid it.**
+  The mutation that SURVIVED round 1 -- deleting the IPv4-mapped branch entirely -- now turns 4 tests red. Every
+  spelling of an embedded IPv4 address is refused and each has its own test: expanded hex
+  (0:0:0:0:0:ffff:7f00:1), compressed (::ffff:7f00:1), dotted (::ffff:127.0.0.1), uppercase
+  (::FFFF:127.0.0.1), IPv4-compatible (::127.0.0.1), unspecified (::), and NAT64 with a private embedded
+  address (64:ff9b::7f00:1). Public counterparts are tested too (::ffff:8.8.8.8, 64:ff9b::808:808) so the fix
+  cannot pass by refusing everything -- an over-refusing guard is a different defect with the same green tests.
+  NAT64 reasoning is sound and stated: the last 32 bits are the real destination, so a private embedded
+  address is refused and a public one allowed, matching how the traffic actually routes.
+  A malformed lookup entry now REFUSES instead of throwing a TypeError at the caller, and the lookup has a
+  5-second deadline justified against the runner existing FETCH_TIMEOUT_MS of 20 seconds -- 25 percent of the
+  fetch budget for a pre-check, leaving 15 seconds for the request itself. A number argued from an existing
+  constant rather than picked.
+- **2026-09-10 15:56 IST [lane B] DEFECT-B14, a near-miss the builder caught and reported: `git checkout -- <file>` silently
+  reverted the entire uncommitted security fix back to the VULNERABLE original.** It was used to undo a
+  mutation, but it restores from HEAD -- and HEAD still held the pre-fix code. The builder noticed only via a
+  stray unrelated-looking failure (`ip.split is not a function`), reapplied the fix from scratch, and switched
+  to file-copy restore for the rest of the round.
+  Two things worth keeping. First, this is exactly why every brief in this lane says **never edit committed
+  files in place, mutate a copy in the scratch directory** -- the rule was there and was not followed, and the
+  hazard it exists to prevent arrived within the hour. Second, the failure was caught by a test that looked
+  like noise, not by the restore step itself: a silent revert produces symptoms far from its cause. Brief line
+  strengthened: **never `git checkout --` in a worktree holding uncommitted work; restore a mutated file by
+  copying back the pre-mutation copy, and verify with `diff` before continuing.**
