@@ -88,6 +88,18 @@
     {
       "at": "2026-09-10T21:00:35.000Z",
       "what": "Item 21 slice 3b opened as PR #576. Defect of ours found by a proof read: the revalidation step returns skipped on an empty drain WITHOUT logging, so a quiet cycle and a step that never ran leave the same blank. One logger.info with sent:0 and the reason. Mutation-checked: deleting it turns the new test red (1 failed | 10 passed), restoring it green (11 passed). Detection change: docs/reviews/failure-classes/silent-skip-indistinguishable-from-not-run.json, which also names the unswept remainder - other steps returning skipped have not been checked."
+    },
+    {
+      "at": "2026-09-10T21:07:02.551Z",
+      "what": "Item 21 slice 3b MERGED as #576, squash bb2c93c7, six checks green; branch deleted separately after state=MERGED. Closes the silent-skip defect; does not pay 21-3 proof."
+    },
+    {
+      "at": "2026-09-10T21:07:02.551Z",
+      "what": "8a binding constraint written on docs/design/build-cards/item-08-ratios-basis-for-offer-price-extractor.md BEFORE any code, per ruling: header-mapped never positional, three heading wordings, four-issuer column table, six universal columns, 1-8 peer rows, placeholders are valid, and a column-swap test that only a positional reader fails. Design gates reproduced locally: check-build-cards exit 0, check-design-consistency 23/23."
+    },
+    {
+      "at": "2026-09-10T21:07:02.551Z",
+      "what": "Ledger is TRACKED from 2026-09-11 02:4x. Lane A #571 merged as dac257b6; verified by exit code (check-ignore -q exits 1) and git status -uall, not by check-ignore -v output which prints the negation rule and reads as still-ignored. First tracked commit e2776742, 408 lines that had existed only on this laptop."
     }
   ],
   "items": {
@@ -121,7 +133,7 @@
     },
     "21": {
       "status": "BLOCKED-DEPENDENCY(lane A item 5)",
-      "slices": "5 of 6 merged",
+      "slices": "6 branches: 21-0 #537, 21-1 #539, 21-2 #542, 21-2b #544, 21-3 #557, 21-3b #576 (bb2c93c7). 21-4 blocked on lane A item 5.",
       "why": "the provenance line reads ipo_field_plan.verify_due_at. Contract test run at 01:43 on 2026-09-11: `git show origin/main:packages/shared/src/db/schema.ts | grep -c ipoFieldPlan` returns 0, and the contract's PR search shows no item 5 slice merged. The contract authorises this closure explicitly (decision 3).",
       "trigger": "that grep returning non-zero"
     },
@@ -532,7 +544,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T21:00:35.000Z",
+  "lastStateWriteAt": "2026-09-10T21:07:02.551Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 0,
