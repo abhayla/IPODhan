@@ -235,8 +235,9 @@
         {
           "id": "2-S4",
           "tier": "A",
-          "status": "PLANNED",
-          "title": "validate the manifest at process start, before main()"
+          "status": "BUILT_HELD",
+          "title": "validate the manifest at process start, before main()",
+          "commit": "fa7f37f8"
         },
         {
           "id": "2-S5",
@@ -475,7 +476,11 @@
     "2026-09-10 18:00 IST NO STATE TRANSITION IN THIS TURN, so no board write - the board was current at 17:58 and nothing merged, started or finished since. My four-artefact rule binds on TRANSITIONS; writing an unchanged board every turn would be noise, and noise is how a panel stops being read. Stating the distinction so it is a rule rather than an exception I made up when convenient.",
     "2026-09-10 18:11 IST MIGRATION-IDX RULE CHECKED AGAINST MY OWN HELD BRANCHES, and none is affected: measured from each branch MERGE-BASE, 2-S5 changes 2 files and 14-S2 changes 2 files, with ZERO under drizzle/migrations, _journal.json or expected-schema.json. 2-S4 is building and touches none either. So lane C has no held migration branch and no stale idx to renumber after midnight.",
     "2026-09-10 18:11 IST I ALMOST MIS-MEASURED IT THE SAME WAY TWICE. My first check used git diff origin/main <branch> and reported FOUR migration files on each held branch - alarming and wrong. Those are files MAIN gained while the branches sat held; diffing a stale branch against main shows the other lanes work as differences. Correct form is git diff <merge-base> <branch>, which shows what the BRANCH changed. Same trap that made a slice look like it deleted four of lane B files earlier today, and I walked into it again from the opposite direction - reading main additions as mine.",
-    "2026-09-10 18:11 IST ADOPTED FOR THE MIDNIGHT QUEUE even though it does not bite me: git merge-tree --write-tree --messages origin/main <branch> checks a held branch against current main WITHOUT spending an Actions run. With three lanes merging in sequence after the reset and only a 50-run stop, a check that costs zero CI is worth more than one that is merely correct. If any later slice of mine adds a migration, its idx comes from main at merge time, not from its base."
+    "2026-09-10 18:11 IST ADOPTED FOR THE MIDNIGHT QUEUE even though it does not bite me: git merge-tree --write-tree --messages origin/main <branch> checks a held branch against current main WITHOUT spending an Actions run. With three lanes merging in sequence after the reset and only a 50-run stop, a check that costs zero CI is worth more than one that is merely correct. If any later slice of mine adds a migration, its idx comes from main at merge time, not from its base.",
+    "2026-09-10 18:13 IST 2-S4 BUILT (fa7f37f8) and HELD. MY BRIEF WAS WRONG and the builder caught it by checking rather than complying - the fourth time today. I told it to use lane A slot-aware helper for ENABLE_FIELD_MANIFEST. It read the helper and the card and refused: slotAwareFlagDefault returns process.env.DEPLOY_SLOT === staging when the var is UNSET, i.e. it defaults the flag ON in staging, while the card says default FALSE in every slot precisely because nothing consumes the manifest yet. Following my instruction would have silently enabled untested validation on staging.",
+    "2026-09-10 18:13 IST VERIFIED THE CLAIM MYSELF at feature-flags.ts:69-71 - if (explicit === undefined) return process.env.DEPLOY_SLOT === staging. Exactly as reported. The builder also noted the helper has NO consumer flags yet, so the sibling I told it to copy does not exist. And the pre-made plan row says 2-S3 is GATED on lane A helper, which contradicts the card; the contract says the card wins, and the builder followed the card. Both my brief and the plan were wrong; only the card and the code were right.",
+    "2026-09-10 18:13 IST GENERALISED FOR EVERY LANE, because this will bite someone else: slotAwareFlagDefault is NOT a neutral wrapper. It exists for flags you WANT on in staging first, and using it for a flag specified as default-false-everywhere INVERTS the intent. It is the mirror of lane A own finding this morning - that a prod env spelling a value as 1 or TRUE would fall through to the slot default and silently turn a feature OFF. Same helper, same silent-wrong-default class, opposite direction. Added as a standing brief line.",
+    "2026-09-10 18:13 IST THE ORDERING ASSERTION IS THE RIGHT SHAPE and worth keeping as a pattern: the slice proves a malformed manifest stops the process BEFORE any cycle work, using two complementary checks - a behavioural test with a logger spy asserting the throw happens first and the cycle-start line is never emitted, plus a source-order test reading index.ts and asserting the validation call appears before main() inside the real guard. A test that only checked a non-zero exit code would pass even if validation ran after the first cycle had begun."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -558,6 +563,7 @@
     "Revert a mutation from a .bak copy taken BEFORE applying it - never git checkout --, which a PreToolUse hook now blocks and which has discarded uncommitted work twice.",
     "FOUR artefacts move together or none do: progress log + STATE.json + board (write_db) + ledger commit, all in ONE turn.",
     "Never wrap a git command in bash -c to get past a guard - the discard guard documents bash -c as out of scope, so wrapping is an accidental bypass, not a workaround.",
-    "A slice with a generated migration takes its journal idx from origin/main AT MERGE TIME, never from its base; re-check a held migration branch with git merge-tree --write-tree --messages origin/main <branch> (no Actions run) immediately before its PR opens."
+    "A slice with a generated migration takes its journal idx from origin/main AT MERGE TIME, never from its base; re-check a held migration branch with git merge-tree --write-tree --messages origin/main <branch> (no Actions run) immediately before its PR opens.",
+    "slotAwareFlagDefault is for flags you WANT on in staging first - an UNSET var returns true when DEPLOY_SLOT=staging. Never use it for a flag specified as default-false in every slot; use the plain process.env.X === true pattern."
   ]
 }
