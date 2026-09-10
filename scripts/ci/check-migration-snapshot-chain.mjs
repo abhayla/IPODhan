@@ -18,13 +18,22 @@
  *      migration can be created in this repository until the chain is straight.
  *   2. The head snapshot no longer describes the real schema. cooing_manta's
  *      snapshot has no `row_key` on field_sources or data_conflicts, because it
- *      was generated before that column existed. Had drizzle generated against
- *      it instead of refusing, the next migration would have emitted
- *      `ALTER TABLE field_sources DROP COLUMN row_key` — silently dropping a
- *      column that had just been added and backfilled.
+ *      was generated before that column existed. drizzle generates by diffing
+ *      schema.ts (desired) against the head snapshot (believed current), so the
+ *      next migration generated from that head would try to reconcile a column
+ *      schema.ts has and the snapshot does not — i.e. emit `ADD COLUMN row_key`
+ *      with no IF NOT EXISTS, which fails on every slot that already has the
+ *      column. A broken deploy on all slots, not silent data loss.
  *
- * So a broken chain is not a tidiness problem. It is a data-loss generator that
- * happens to be failing loudly today.
+ *      CORRECTION, recorded rather than edited away: this docblock first said
+ *      the migration would emit DROP COLUMN, and a reviewer caught it. That was
+ *      a consequence nobody had run — the same class this whole evening's
+ *      corrections were about. The severity is deploy-blocking, not data-losing.
+ *      The exact SQL is being confirmed by generating against a scratch copy of
+ *      pre-fix main; the direction above follows from how drizzle diffs.
+ *
+ * So a broken chain is not a tidiness problem. It stops every lane from creating
+ * a migration, and the head it leaves behind misdescribes the database.
  *
  * Four rules, all mechanical:
  *

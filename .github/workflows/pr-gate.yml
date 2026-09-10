@@ -271,8 +271,10 @@ jobs:
         # 20260910121813_cooing_manta (idx 37) both claimed parent 02d8a6d4 - the
         # second was generated from a branch cut before the first landed. Both
         # merged green. `npm run db:generate` then refused to run for EVERYONE,
-        # and the head snapshot had lost row_key, so the next generated migration
-        # would have emitted DROP COLUMN row_key on a freshly backfilled column.
+        # and the head snapshot had lost row_key, so a migration generated from
+        # that head would have tried to ADD a column every slot already has -
+        # a broken deploy everywhere. (First written up as DROP COLUMN; a
+        # reviewer corrected it. drizzle diffs schema.ts against the head.)
         # Needs no install, so it runs here with the other cheap gates.
         run: node scripts/ci/check-migration-snapshot-chain.mjs
 
