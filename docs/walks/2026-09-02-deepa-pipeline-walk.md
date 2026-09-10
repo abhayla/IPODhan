@@ -1567,3 +1567,31 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
      four §0.2/§0.3 artefacts enumerated, each confirmed to EXIST by `ls`, not by recollection.
   Both were found by the peer lane's 30-minute tick reading this lane's own outputs. That is the mechanism working
   as designed - but the honest reading is that this run's self-checks did not catch either one.
+
+- **2026-09-10 11:31 IST [lane B] Item 20 s1 Tier A review: MERGE NO - 2 MAJOR, 2 MINOR. Fix round dispatched at half budget.**
+  The reviewer reproduced the baseline itself (6/6, real repo `166 rules, 166 claimed, 0 orphans`, exit 0) and then
+  mutation-tested six guards in a scratch copy, leaving the worktree provably clean. Five mutations turned the suite
+  RED - mode-1 orphan detection, mode-3 unknown-id detection, the zero-live-rules guard, the exit-code mapping, and
+  the `retired` filter both ways. **One stayed GREEN, and it is the one that matters most.**
+  - **MAJOR 1, a check that can pass while scanning nothing.** `defaultTestRoots()` and the `--tests` path both end
+    in `.filter(existsSync)` with no floor. Run with `--tests <nonexistent>` the check printed
+    `1 rules, 1 claimed, 0 orphans ... PASS` and exited 0, while the control run on the SAME fixture caught `R-777`
+    and exited 1. Concretely: rename or move `scraper/tests` and failure mode 3 goes blind for every rule id in the
+    repository, in both lanes, with CI still green and nothing in the output naming which roots were scanned. This
+    is the identical class the zero-live-rules self-guard already prevents on the rules input - the item's whole
+    reason for existing, missed on the other side of the same check.
+  - **MAJOR 2, the fix for this morning's own bug has no test.** Reverting the heading anchor to `indexOf` in a
+    scratch copy left the self-test **6/6 GREEN** while the real repository went to `162 claimed, 4 orphans`, exit 1.
+    A regression that has already happened once today, and that would block every merge in the repository, was
+    guarded by nothing. This is exactly why Tier A requires mutation on every guard: the builder fixed the bug and
+    believed the fix, and the belief was untested.
+  - MINOR 3: the `IMPLEMENTS_TAG` fixture workaround is ruled acceptable for slice 1 - its failure is LOUD (an
+    inlined `R-999` makes the real run exit 1), and the only silent variant weakens mode 2, which is reporting-only
+    until build item 6. The structural fix (an opt-out marker or an excluded `__fixtures__/` segment) lands with the
+    mode-2 flip. Recorded so it is not lost.
+  - MINOR 4: not yet wired into `pr-gate.yml` (that is slice 4, correctly deferred), and `MODE2_ENFORCE` has no test
+    exercising `true`.
+  Fix round dispatched, `sonnet`, 30 min / 60 calls: a test-root floor exiting 2, the scanned roots and declaration
+  count on the summary line, a fixture card whose PROSE mentions the heading above the real heading (RED with
+  `indexOf`, green with the anchor), and a test for the enforcing path of mode 2 without changing its shipped value.
+  The brief requires the builder to prove BOTH new guards by mutation itself.
