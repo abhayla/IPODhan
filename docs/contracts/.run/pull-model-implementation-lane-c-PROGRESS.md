@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 02:40 IST** — written in the SAME turn as the board, the state file and the ledger commit. All four or none. — written in the SAME command as the ledger commit below it. Local only
+**Last refreshed: 2026-09-11 02:44 IST** — written in the SAME turn as the board, the state file and the ledger commit. All four or none. — written in the SAME command as the ledger commit below it. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -512,3 +512,20 @@ reads a file, takes `process.env.DATABASE_URL`, skips when unset, reads no table
 string `env.local` appears twice, BOTH IN COMMENTS saying it must never do that, because
 I built it in 12-B to REPLACE the tunnel-reading one. A grep-based check would flag the
 FIX as the defect - the same shape as a check keying on a field nothing populates.
+
+## 2026-09-11 02:44 IST - 2-S7 third commit; one to go
+
+`e7a45c88` **collectIssueTypesFromReport**, pure: takes records the scraper has ALREADY
+parsed plus an anchor-stripper, returns (companyName, issueType) pairs. Composes with the
+existing loop rather than changing its shape. 43 files / 528 tests green.
+
+**It drops what it cannot read rather than defaulting it**, for a specific reason:
+`issue_type` feeds a check that EXEMPTS FIXED_PRICE, so a wrong value there SILENCES a
+defect instead of merely being wrong. Two mutations prove it.
+
+**One commit left:** match by identity fold, call `fillIssueTypeIfNull`, write the
+`field_sources` row only when rowCount = 1. That is the one that touches the database.
+
+**Correction to my own commit message** on `e7a45c88`: it says 538 tests; the real number
+is 528. Recorded rather than amended - a number in a commit message is exactly what nobody
+re-checks, which is how the 3-versus-13 error survived six hours.
