@@ -211,7 +211,9 @@
     "worker briefs name the scratch directory explicitly and require its removal to be confirmed as the worker's last action (DEFECT-B06)",
     "item 18: if its migration adds a gated index or constraint, register it in the documented SCHEMA_DRIFT_IGNORE_GATED list; never widen the suppression",
     "assert-schema-drift.test.ts and known-gated-type-drift.test.ts are UNWIRED until PR #464 - their green is not evidence",
-    "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr merge; non-empty output triggers a JUDGEMENT, not an automatic rebase. Rebase only when main moved in a way that changes the result: a new CI gate landed (this branch's greens describe a gate set that no longer exists) or main changed code this slice touches. Proved by merge-tree that a behind branch does NOT delete main's newer files; a reflexive force-push cancels an in-flight run and spends the shared ceiling."
+    "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr merge; non-empty output triggers a JUDGEMENT, not an automatic rebase. Rebase only when main moved in a way that changes the result: a new CI gate landed (this branch's greens describe a gate set that no longer exists) or main changed code this slice touches. Proved by merge-tree that a behind branch does NOT delete main's newer files; a reflexive force-push cancels an in-flight run and spends the shared ceiling.",
+    "supervision tick: enumerate EVERY process older than 20 minutes and subtract a known-good allowlist, printing the allowlist; never filter by process name",
+    "a 'process killed' report from a tool or worker is a claim - verify by PID before recording it closed"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -257,7 +259,8 @@
       "what": "an orphaned background shell from the finished slice-3 builder ran a whole-filesystem find for ~90 minutes, deferring the run's goal evaluation",
       "foundBy": "the harness goal check-in listing it as live background work",
       "class": "a worker's 'done' report does not mean its processes are done; and an unnamed scratch directory sends workers hunting on a box where Git Bash /tmp and Windows /tmp differ",
-      "mechanism": "every remaining brief names the scratch directory explicitly (the session scratchpad, visible to both Git Bash and Windows tools) and requires the worker's last action to confirm its removal"
+      "mechanism": "every remaining brief names the scratch directory explicitly (the session scratchpad, visible to both Git Bash and Windows tools) and requires the worker's last action to confirm its removal; stray checks enumerate EVERY process over 20 minutes and subtract a known-good allowlist rather than filtering by name; a 'killed' report is a claim to verify by PID; kill by PID never pkill -f; no find rooted at /",
+      "correction": "the TaskStop call returned success but the OS process survived; lane A killed PID 23796 after 99 minutes. The harness's 'stopped' describes its task record, not the process tree. Verified 13:5x IST: zero find/grep/xargs at any age."
     },
     {
       "id": "DEFECT-B07",
