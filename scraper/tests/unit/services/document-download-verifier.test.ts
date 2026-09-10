@@ -199,13 +199,13 @@ describe('verifyDownload — matrix §3', () => {
     // this pins verifyDownload's `body.length > maxBytes` comparison
     // specifically: a `>` -> `>=` mutation here flips this from accepted to
     // too_large.
-    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '0.2' } as NodeJS.ProcessEnv);
+    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '1' } as NodeJS.ProcessEnv);
     const r = verifyDownload(fakePdf(maxBytes), PDF_META, { maxBytes });
     expect(r.ok).toBe(true);
   });
 
   it('T33c one byte over the exact-cap boundary: body.length === maxBytes + 1 is REFUSED as too_large', () => {
-    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '0.2' } as NodeJS.ProcessEnv);
+    const maxBytes = getMaxDocumentBytes({ PROSPECTUS_MAX_DOCUMENT_MB: '1' } as NodeJS.ProcessEnv);
     const r = verifyDownload(fakePdf(maxBytes + 1), PDF_META, { maxBytes });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('too_large');
