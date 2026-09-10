@@ -440,7 +440,7 @@ export function refusalOutcomeOr(status: number, existing: string): string {
   return status === STATUS_REFUSED_RESOLVED_PRIVATE ? 'refused:resolved_private_address' : existing;
 }
 
-function hostnameOf(url: string): string | null {
+export function hostnameOf(url: string): string | null {
   try {
     return new URL(url).hostname;
   } catch {
@@ -921,7 +921,11 @@ export class DocumentDiscoveryRunner {
         },
         'OD-37 download refusal: host REFUSED because its address could not be resolved (fail-closed)'
       );
-      this.resolvedPrivateHosts.set(host, true);
+      // Deliberately NOT cached. A resolver ERROR is a transient fault, not a
+      // verdict about the host: caching it blackholes that host for the whole
+      // cycle on one blip. A real "resolves private" answer IS cached below,
+      // because that is a stable fact. Fail-closed still applies to THIS
+      // request; the next one asks again.
       return true;
     }
 
@@ -1122,7 +1126,12 @@ export class DocumentDiscoveryRunner {
         source: 'NSE',
         http: res.status,
         ms,
-        outcome: refusalOutcomeOr(res.status, 'http_error'),
+        // The fallback must be this site's ORIGINAL expression, not a flat
+        // 'http_error': main classified a timeout here and the F3/F6 coverage
+        // logic matches these strings exactly. Flattening it turned every NSE
+        // timeout into an HTTP error — the same reclassification defect this
+        // helper was narrowed to avoid, reintroduced in the other direction.
+        outcome: refusalOutcomeOr(res.status, res.status === 0 ? 'timeout' : 'http_error'),
         url,
       });
       if (attempt < NSE_RETRY_BACKOFF_MS.length - 1) {

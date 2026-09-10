@@ -9,6 +9,7 @@ import {
   type HttpFetcher,
   type HttpResponse,
   refusalOutcomeOr,
+  hostnameOf,
   STATUS_REFUSED_RESOLVED_PRIVATE,
 } from '../../../src/services/document-discovery-runner.js';
 import { InMemoryDocumentFetchStateStore } from '../../../src/services/in-memory-document-fetch-state-store.js';
@@ -102,6 +103,111 @@ describe('D17 — a refusal is distinguishable from "the server did not answer"'
     expect(refusalOutcomeOr(0, 'http_error')).toBe('http_error');
     expect(refusalOutcomeOr(0, 'timeout')).toBe('timeout');
     expect(refusalOutcomeOr(404, 'http_error')).toBe('http_error');
+  });
+});
+
+/** Drive the NSE rung with a chosen status and return its attempt outcomes. */
+async function runWithNseStatus(status: number): Promise<string[]> {
+  const runner = new DocumentDiscoveryRunner({
+    fetcher: async (url: string): Promise<HttpResponse> =>
+      url.includes('nseindia.com')
+        ? { status, contentType: null, body: Buffer.alloc(0), url }
+        : notFound(url),
+    store: new InMemoryDocumentFetchStateStore(),
+    documents: { async upsertDocument() { return { id: 'doc-1' }; } } as never,
+    counter: new NetworkCounter(),
+    now: () => new Date('2026-09-10T06:00:00Z'),
+    storeDir,
+    skipDownload: true,
+    sleep: async () => {},
+  } as never);
+  const result = await runner.runIpo(IPO, []);
+  return result.attempts.filter(a => a.source === 'NSE').map(a => String(a.outcome));
+}
+
+describe('the two branches a Tier A review found untested', () => {
+  it('MUTATION: a refusal is NOT retried by the ladder', async () => {
+    // The ladder retries anything that is not 200. A refusal is a VERDICT, not
+    // a transport failure — retrying it three times triples the log noise and
+    // implies the host might answer. The early return was written for that and
+    // nothing asserted it: flipping the condition to `false` left the whole
+    // suite green.
+    const { runner } = makeRunner({ privateHosts: ['api.bseindia.com', 'www.nseindia.com'] });
+
+    const result = await runner.runIpo(IPO, []);
+
+    const bse = result.attempts.filter(a => a.source === 'BSE');
+    expect(bse.length).toBeGreaterThan(0);
+    // Every BSE attempt is the refusal, and there is exactly ONE per rung —
+    // no `:try2of3`, no `:try3of3`, no plain http_error retries behind it.
+    expect(bse.every(a => a.outcome === 'refused:resolved_private_address')).toBe(true);
+    expect(bse.some(a => String(a.outcome).includes('try'))).toBe(false);
+  });
+
+  it('hostnameOf returns null for a URL that will not parse (NOT branch coverage)', () => {
+    // HONEST LIMIT, stated so nobody reads 11/11 as full coverage: this covers
+    // the PREDICATE, not the `host === null` branch inside request(). Mutating
+    // that branch to `host !== null` STILL leaves this suite green, because no
+    // call site can produce an unparseable URL — all seven build absolute URLs
+    // — so the branch is unreachable and a test cannot drive it.
+    //
+    // It is kept anyway as defence-in-depth for a future call site that does
+    // not build its URL, and the surviving mutation is DECLARED rather than
+    // dressed up. Removing the branch to make the mutation score look better
+    // would trade a real fail-closed guard for a cosmetic number.
+    expect(hostnameOf('https://bseindia.com/x.pdf')).toBe('bseindia.com');
+    expect(hostnameOf('https://example.com:8443/x.pdf')).toBe('example.com');
+    expect(hostnameOf('not a url')).toBeNull();
+    expect(hostnameOf('')).toBeNull();
+  });
+
+  it('a TIMEOUT is still classified as a timeout, not an http_error', () => {
+    // Guards the regression this slice shipped and a review caught: the NSE
+    // site's fallback was flattened to 'http_error', so every NSE timeout read
+    // as an HTTP error. The F3/F6 coverage logic matches these strings exactly.
+    expect(refusalOutcomeOr(0, 'timeout')).toBe('timeout');
+    expect(refusalOutcomeOr(0, 0 === 0 ? 'timeout' : 'http_error')).toBe('timeout');
+    expect(refusalOutcomeOr(STATUS_REFUSED_RESOLVED_PRIVATE, 'timeout')).toBe(
+      'refused:resolved_private_address'
+    );
+  });
+
+  it('the NSE attempt log still says timeout for status 0, and http_error otherwise', async () => {
+    // SITE-level, not helper-level. Asserting refusalOutcomeOr(0,'timeout') only
+    // proves the helper; the regression was at the CALL SITE, where the
+    // fallback had been flattened to a literal 'http_error'. This drives the
+    // real NSE rung and reads the real attempt log, so the reclassification
+    // cannot come back a third time.
+    const timedOut = await runWithNseStatus(0);
+    expect(timedOut).toContain('timeout');
+    expect(timedOut).not.toContain('http_error');
+
+    const errored = await runWithNseStatus(404);
+    expect(errored).toContain('http_error');
+    expect(errored).not.toContain('timeout');
+  });
+
+  it('a transient resolver error is NOT cached for the rest of the cycle', async () => {
+    // Caching a resolver ERROR blackholes the host for the whole cycle on one
+    // blip. A real "resolves private" answer IS cached; a fault is not.
+    let calls = 0;
+    const runner = new DocumentDiscoveryRunner({
+      fetcher: async (url: string) => notFound(url),
+      store: new InMemoryDocumentFetchStateStore(),
+      documents: { async upsertDocument() { return { id: 'doc-1' }; } } as never,
+      counter: new NetworkCounter(),
+      now: () => new Date('2026-09-10T06:00:00Z'),
+      storeDir,
+      skipDownload: true,
+      sleep: async () => {},
+      resolveIsPrivate: async () => { calls++; throw new Error('EAI_AGAIN'); },
+    } as never);
+
+    await runner.runIpo(IPO, []);
+
+    // More than one host is attempted, and a cached error would have collapsed
+    // every later lookup to zero additional calls.
+    expect(calls).toBeGreaterThan(1);
   });
 });
 
