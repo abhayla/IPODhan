@@ -50,6 +50,8 @@ import {
 } from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
+import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
+import { loadValidationRules } from '../config/validation-rules-loader.js';
 
 /**
  * Result of field consolidation
@@ -136,6 +138,19 @@ export interface ConsolidateIPODataInput {
    * price-band advertisement's band purely by being written later.
    */
   docType?: string;
+  /**
+   * Item 4 (OD-21), card fork C-2 resolved as the card recommends: offering
+   * type and document identity are properties of the ROW being consolidated,
+   * not of an individual field, so they are threaded ONCE per row here rather
+   * than onto every one of the ~15 `consolidateField` params objects.
+   * `offeringType` falls back to `incomingData`/`existingData` when a caller
+   * has not been updated; the two document fields stay null until a caller
+   * supplies them (both columns are nullable by design — a class-T/X/M field
+   * can fail a rule with no document behind it at all).
+   */
+  offeringType?: string;
+  incomingDocumentId?: string | null;
+  incomingDocumentSha256?: string | null;
 }
 
 /**
@@ -626,8 +641,55 @@ export class DataConsolidationService {
     // W-145 round 2: OPTIONAL. `listing_performance.exchange` is the strongest
     // evidence for which single board an SME issue actually listed on. Omitted
     // (tests, callers without the repo) simply drops that evidence tier.
-    private listingPerformanceRepository?: { findByIPO(ipoId: string): Promise<any> }
+    private listingPerformanceRepository?: { findByIPO(ipoId: string): Promise<any> },
+    /**
+     * Item 4 (OD-21). OPTIONAL — omitted (tests, callers without the repo)
+     * means the gate cannot record anything, so it does not run at all rather
+     * than dropping values it could not account for.
+     */
+    private fieldExtractionFailuresRepository?: {
+      recordFailure(input: Record<string, any>): Promise<any>;
+      markResolved(ipoId: string, tableName: string, fieldName: string, rowKey?: string): Promise<number>;
+    },
+    /**
+     * Item 4 (OD-21). OPTIONAL trading-holiday calendar, ISO `YYYY-MM-DD`.
+     * `undefined` means "not supplied": a working-day assertion then returns
+     * NO_RULE_APPLIES and the value is KEPT, never judged against a calendar
+     * this process does not have.
+     */
+    private tradingHolidays?: ReadonlySet<string>
   ) {}
+
+  /**
+   * Rules are read ONCE per process, not once per field. A malformed file has
+   * already failed the process at startup (`validateValidationRulesAtStartup`
+   * in index.ts), so a throw here can only mean the file changed under a
+   * running process — logged once and treated as "no rules", which KEEPS
+   * every value rather than dropping values against a rule set that failed to
+   * load. Losing the gate is recoverable; blanking fields is not.
+   */
+  private validationRulesCache: ValidationRule[] | null = null;
+
+  private getValidationRules(): ValidationRule[] {
+    if (this.validationRulesCache) return this.validationRulesCache;
+    try {
+      this.validationRulesCache = loadValidationRules();
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        '[DataConsolidation] item 4: validation rules failed to load at write time — gate disabled for this process, values are KEPT'
+      );
+      this.validationRulesCache = [];
+    }
+    return this.validationRulesCache;
+  }
+
+  /** Row-level context for the item-4 gate, set once per consolidateIPOData call. */
+  private currentValidationContext: {
+    offeringType: string;
+    documentId: string | null;
+    documentSha256: string | null;
+  } = { offeringType: 'ALL', documentId: null, documentSha256: null };
 
   /**
    * Consolidate IPO data from multiple sources
@@ -640,6 +702,21 @@ export class DataConsolidationService {
 
     // Set shadow mode for this consolidation (defaults to false for production)
     this.currentShadowMode = input.shadowMode ?? false;
+
+    // Item 4 (OD-21): row-level validation context (fork C-2, row-level).
+    this.currentValidationContext = {
+      offeringType: String(
+        input.offeringType ??
+          input.incomingData?.offeringType ??
+          input.existingData?.offeringType ??
+          // NOT 'IPO': an unknown offering type must match no offering-scoped
+          // rule at all, so the value is KEPT. Guessing 'IPO' would judge an
+          // NCD's face_value by the equity enum and drop a correct value.
+          'UNKNOWN'
+      ),
+      documentId: input.incomingDocumentId ?? null,
+      documentSha256: input.incomingDocumentSha256 ?? null,
+    };
 
     // Check if consolidation is enabled
     if (
@@ -1084,6 +1161,100 @@ export class DataConsolidationService {
     // W-16b: the stored value as it exists on the row, whether or not it has a
     // `field_sources` row to prove where it came from.
     const storedValue = existingValue ?? params.existingRowValue;
+
+    // ==================== Item 4 (OD-21): per-field validation gate ====================
+    // Runs on the INCOMING value only: the stored value already passed this
+    // same gate on a previous cycle, or predates the gate. No all-at-once
+    // backfill sweep is in scope for this item.
+    //
+    // Three outcomes, and only ONE of them drops anything:
+    //   FAIL            -> this field alone is dropped and recorded with its
+    //                      cause; every other field on the same document is
+    //                      untouched, because this function runs per field.
+    //   NO_RULE_APPLIES -> KEPT. A value the current rule set was never
+    //                      written to judge is not a failed value.
+    //   PASS            -> falls through unchanged.
+    if (
+      FEATURE_FLAGS.ENABLE_FIELD_EXTRACTION_VALIDATION &&
+      this.fieldExtractionFailuresRepository
+    ) {
+      const columnName = toColumnName(fieldName);
+      const outcome = validateFieldValue({
+        table: tableName,
+        column: columnName,
+        value: incomingValue,
+        offeringType: this.currentValidationContext.offeringType,
+        segment: params.segment ?? params.incomingDates?.segment ?? params.heldDates?.segment ?? null,
+        // The row's OWN relevant date, never "today" — this is what makes a
+        // 2022 backlog row judged by the 2022-era rule. For a date field it is
+        // the value under test itself (a listing date decides which T+n regime
+        // governs its own gap check); otherwise the row's listing/open date.
+        asOfDate: resolveAsOfDate(columnName, incomingValue, params),
+        rules: this.getValidationRules(),
+        row: {
+          open_date: params.incomingDates?.openDate ?? params.heldDates?.openDate ?? null,
+          close_date: params.incomingDates?.closeDate ?? params.heldDates?.closeDate ?? null,
+          listing_date: params.incomingDates?.listingDate ?? params.heldDates?.listingDate ?? null,
+        },
+        holidays: this.tradingHolidays ?? null,
+      });
+
+      if (outcome.status === 'FAIL') {
+        try {
+          await this.fieldExtractionFailuresRepository.recordFailure({
+            ipoId,
+            tableName,
+            fieldName,
+            rowKey,
+            documentId: this.currentValidationContext.documentId,
+            documentSha256: this.currentValidationContext.documentSha256,
+            ruleId: outcome.ruleId,
+            rankAttempted: incomingSource,
+            extractedValue: String(incomingValue).slice(0, 2000),
+            cause: outcome.cause,
+          });
+        } catch (error) {
+          // Recording is best-effort; a logging failure must not turn a
+          // dropped field into a written bad value OR abort the document.
+          logger.error(
+            {
+              ipoId,
+              tableName,
+              fieldName,
+              ruleId: outcome.ruleId,
+              cause: outcome.cause,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            '[DataConsolidation] item 4: could not record a field-extraction failure'
+          );
+        }
+
+        return {
+          fieldName,
+          finalValue: storedValue ?? null,
+          chosenSource: existingSource || incomingSource,
+          hadConflict: false,
+          rejectedSources: [
+            {
+              source: incomingSource,
+              value: incomingValue,
+              reason: `VALIDATION_RULE_FAILED:${outcome.ruleId}`,
+            },
+          ],
+        };
+      }
+
+      if (outcome.status === 'PASS') {
+        // A later rank finally produced a value this rule accepts — close the
+        // open failure rows for this exact field so the unresolved index is a
+        // list of things still wrong, not a history of everything ever tried.
+        try {
+          await this.fieldExtractionFailuresRepository.markResolved(ipoId, tableName, fieldName, rowKey);
+        } catch {
+          // non-fatal; the row simply stays open until the next passing write
+        }
+      }
+    }
 
     // Normalize both values for comparison
     const normalizedIncoming = normalize(fieldName, incomingValue, rules);
@@ -2454,3 +2625,47 @@ export type {
   FieldConsolidationResult,
   ConflictInfo,
 };
+
+/**
+ * camelCase JS field name -> snake_case DB column name. `validation-rules.json`
+ * is keyed on DB column names exactly like `field-manifest.json`, not on the JS
+ * name, so the gate converts before looking a rule up.
+ */
+export function toColumnName(fieldName: string): string {
+  return fieldName.replace(/([A-Z])/g, '_$1').toLowerCase();
+}
+
+/**
+ * The date the rule set is evaluated AS OF for one field. Never "today":
+ * a rule correct in 2026 is wrong on a 2022 row (F-10).
+ */
+function resolveAsOfDate(
+  columnName: string,
+  incomingValue: any,
+  params: { incomingDates?: any; heldDates?: any; scrapedAt?: Date }
+): Date | null {
+  // A date column is judged as of its own value — a listing date decides which
+  // T+n regime governs its own gap check.
+  if (columnName.endsWith('_date')) {
+    const own = coerceDate(incomingValue);
+    if (own) return own;
+  }
+  return (
+    coerceDate(params.incomingDates?.listingDate) ??
+    coerceDate(params.heldDates?.listingDate) ??
+    coerceDate(params.incomingDates?.openDate) ??
+    coerceDate(params.heldDates?.openDate) ??
+    coerceDate(params.scrapedAt) ??
+    null
+  );
+}
+
+function coerceDate(value: any): Date | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}

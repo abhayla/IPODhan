@@ -442,6 +442,21 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_FIELD_MANIFEST: process.env.ENABLE_FIELD_MANIFEST === 'true',
 
+  /**
+   * Item 4 (OD-21) — per-field validation before the write. OFF:
+   * `consolidateField` behaves exactly as today (the gate never runs, no
+   * `field_extraction_failures` row is ever written). ON: every incoming
+   * field value is judged by the date-scoped, offering-type-scoped rule that
+   * covers it; a failing field is dropped ON ITS OWN and recorded with its
+   * cause, while every other field on the same document still writes.
+   *
+   * Default `false` in EVERY slot at merge time — this is a Tier A write-path
+   * change and defect-fix-contract.md requires the staging proof before the
+   * behaviour is live anywhere. Flipped on staging by hand once the proof is
+   * read. Module-load-time flag, so a flip needs a process restart.
+   */
+  ENABLE_FIELD_EXTRACTION_VALIDATION: process.env.ENABLE_FIELD_EXTRACTION_VALIDATION === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
   // T-297 D9 / #193: this file is the SSOT for which flags gate live logic
   // in prod. `// LIVE-GATE` on a *_PERCENTAGE field and `// PROD-REQUIRED-TRUE`

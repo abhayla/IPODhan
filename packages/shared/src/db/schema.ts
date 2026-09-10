@@ -1592,6 +1592,54 @@ export const dataConflicts = pgTable(
   })
 );
 
+// ==================== TABLE 22b: FIELD_EXTRACTION_FAILURES (OD-21) ====================
+// One row per field that a validation rule rejected before it could be
+// written. Distinct from `data_conflicts` (which logs two DIFFERENT sources
+// disagreeing on a value both consider valid) — this table logs a single
+// source's value failing a rule outright, regardless of whether anything
+// else disagrees with it.
+
+export const fieldExtractionFailures = pgTable(
+  'field_extraction_failures',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    tableName: varchar('table_name', { length: 100 }).notNull(),
+    fieldName: varchar('field_name', { length: 100 }).notNull(),
+    // Item 1's row_key. NOT NULL with an empty-string sentinel, exactly as items 1 and 5 define it
+    // (F-78: a nullable row_key would silently break the field_sources join — `NULL = ''` is false).
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
+
+    documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
+    // nullable: a class-T/X/M field (e.g. `status`, real-time subscription
+    // numbers) can fail a rule with no document behind the value at all.
+    documentSha256: char('document_sha256', { length: 64 }),
+
+    ruleId: varchar('rule_id', { length: 100 }).notNull(), // matches validation-rules.json's `id`
+    rankAttempted: scraperSourceEnum('rank_attempted').notNull(), // which source produced the rejected value
+    extractedValue: text('extracted_value'), // truncated to 2,000 chars at the write site, never reshaped
+    cause: text('cause').notNull(), // plain words — signal-ownership.md R6, never null
+
+    occurredAt: timestamp('occurred_at').defaultNow().notNull(),
+    // Set when a later rank (or a later cycle) supplies a value for the SAME
+    // (ipoId, tableName, fieldName, rowKey) that passes validation — the row
+    // is kept, never deleted, so the history of what was tried is provable.
+    resolvedAt: timestamp('resolved_at'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_field_extraction_failures_ipo_id').on(table.ipoId),
+    fieldNameIdx: index('idx_field_extraction_failures_field_name').on(table.fieldName),
+    ruleIdIdx: index('idx_field_extraction_failures_rule_id').on(table.ruleId),
+    unresolvedIdx: index('idx_field_extraction_failures_unresolved')
+      .on(table.ipoId, table.tableName, table.fieldName)
+      .where(isNull(table.resolvedAt)),
+  })
+);
+
 // ==================== TABLE 23: IPO_SLUG_REDIRECTS (P3-1, T-278) ====================
 // A permanent redirect from a retired IPO slug (name pollution cleanup, dedup merge,
 // admin correction) to the IPO's current slug, so an old bookmarked/indexed URL 301s
@@ -1788,6 +1836,11 @@ export const dataConflictsRelations = relations(dataConflicts, ({ one }) => ({
     fields: [dataConflicts.ipoId],
     references: [ipos.id],
   }),
+}));
+
+export const fieldExtractionFailuresRelations = relations(fieldExtractionFailures, ({ one }) => ({
+  ipo: one(ipos, { fields: [fieldExtractionFailures.ipoId], references: [ipos.id] }),
+  document: one(documents, { fields: [fieldExtractionFailures.documentId], references: [documents.id] }),
 }));
 
 // ==================== T-428 WP C-1: filing-field tables ====================

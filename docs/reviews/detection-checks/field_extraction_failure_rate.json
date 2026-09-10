@@ -1,0 +1,10 @@
+{
+  "id": "field_extraction_failure_rate",
+  "findingClass": "a validation rule is rejecting real values at a rate that means the RULE is wrong, not the data (or a source has started emitting a whole field wrongly)",
+  "round7Findings": [],
+  "failThreshold": "REPORT-ONLY at ship time. The design does not say what rate is 'too many' and no number is invented here: every rule with >0 failures in the last 24h is reported; nothing is a hard fail. The owner sets a real threshold once a few nights of real data exist to calibrate against.",
+  "severity": "P2",
+  "unverifiableWhen": "the field_extraction_failures table does not exist yet on the slot being audited (the item-4 migration has not been applied there)",
+  "section": "notCoveredByThisManifest",
+  "notCoveredReason": "This check runs in its own script, scripts/audit-field-extraction-failures.mjs, not in scripts/audit-detection-floor.mjs — there is no record('field_extraction_failure_rate') call in the floor audit, so listing it under 'checks' would read as wider floor coverage than the floor actually has (T-487 paper-check rule). It moves to 'checks' when the floor audit absorbs it and a threshold exists."
+}
