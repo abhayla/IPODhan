@@ -1116,3 +1116,30 @@ What a reader of ipodhan.com would notice: nothing yet.
 What is needed from you: nothing.
 
 Automated check-runs: **29 used today of a shared 60**, fifteen mine, no current failures of mine.
+
+**2026-09-10 16:37 IST — tick. Item 1: previous 38%, now 46%.** Six of thirteen slices merged.
+
+What landed: the safeguard you asked for. From now on the build keeps a list of the website tests that
+are already broken, and a change is refused when it breaks something *new* — not because twenty-six
+things were already broken before anyone looked. The list can only ever get shorter, and your condition
+that the release cut requires it empty is enforced by that: an entry cannot be quietly kept once its
+file is fixed.
+
+The list is still empty, deliberately. A build run is going now that produces the machine-readable
+report naming the twenty-six. Until it finishes, the safeguard treats every failure as new — strict
+rather than permissive, which is the safe direction to be wrong in.
+
+What went wrong, and it is mine: I told the other stream that a punctuation mark was the cause of a
+false alarm in a new safety check. It was not. I tested their competing explanation instead of defending
+mine and found the real cause was a line break, with the punctuation irrelevant. That mattered on a
+timer — they had already decided to change the punctuation handling *because I said so*, and shipping
+only that would have left my exact case still failing while looking fixed. Corrected before it shipped.
+
+Two slices sit finished and waiting for the list to be filled: the row-level provenance work, and the
+feature-flag defaults that another work stream also needs.
+
+What a reader of ipodhan.com would notice: still nothing. Everything so far is groundwork.
+
+What is needed from you: nothing.
+
+Automated check-runs: **33 used today of a shared 60** — eighteen mine. No current failures of mine.
