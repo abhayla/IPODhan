@@ -214,10 +214,14 @@ export const KNOWN_GATED_INDEX_DRIFT: { tableName: string; indexName: string; ex
 // verifier for this exact gap). Until an operator hand-applies the gated
 // file on a given slot, checkUniqueConstraints() correctly sees "declared in
 // schema.ts, missing live" — real information, but not THIS slice's gap to
-// close (assert-row-key-constraints.ts already owns verifying that hand-apply
-// step). Gated the same way as KNOWN_GATED_TYPE_DRIFT/KNOWN_GATED_INDEX_DRIFT
-// above so deploy-linux.sh and the nightly audit (which call this script bare)
-// still see and fail on a slot that never got the gated file applied.
+// close. assert-row-key-constraints.ts CAN verify that hand-apply step, but
+// it is wired only as the npm script `audit:row-key-constraints` — no
+// workflow, deploy script or cron currently calls it, so today nothing runs
+// it on a schedule; treat it as a manual check an operator runs after
+// hand-applying the gated file, not as standing coverage. Gated the same way
+// as KNOWN_GATED_TYPE_DRIFT/KNOWN_GATED_INDEX_DRIFT above so deploy-linux.sh
+// and the nightly audit (which call this script bare) still see and fail on
+// a slot that never got the gated file applied.
 export const KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT: { tableName: string; constraintName: string }[] = [
   { tableName: 'promoters', constraintName: 'unique_promoters_ipo_id_normalized_name' },
   { tableName: 'peer_companies', constraintName: 'unique_peer_companies_ipo_id_normalized_name' },
