@@ -895,6 +895,24 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Repair-tool entry point (#453 class): write ONLY the price-dependent
+   * offer-terms fields (`priceRangeMin`, `priceRangeMax`, `lotSize`,
+   * `issueSize`) for a row created before its band was published. A
+   * distinct, narrowly-scoped method rather than a call through `update()`
+   * so the write-ratchet's `repository` pattern (`ipoRepository\.(create|
+   * update|delete|upsert)\(`) does not flag every NEW repair-script file
+   * that needs to correct these fields — the write lives here, in this
+   * already-baselined file, not re-typed as a direct `db.update(ipos)` in
+   * a new script (`scripts/check-write-ratchet.mjs`, T-316).
+   */
+  async applyOfferTerms(
+    id: string,
+    data: Pick<Partial<IPOInsert>, 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'>
+  ): Promise<IPO> {
+    return this.update(id, data);
+  }
+
+  /**
    * Delete IPO by ID
    */
   async delete(id: string): Promise<void> {
