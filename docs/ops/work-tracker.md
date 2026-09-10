@@ -715,3 +715,26 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   release, and a decision on whether the download size limit should stay at 150MB rather than the
   100MB I set. Everything else is waiting on the test server accepting new code again, which another
   lane is fixing.
+
+- 2026-09-10 18:08 IST — **Item 20 went backwards on purpose: 100% (4 of 4) at 17:48, now 67% (4 of 6).**
+  Nothing was un-merged. I reopened it because I found I had filed a new repo-wide code check under
+  the wrong item, and moving it here added two more pieces to this item's list. The four original
+  pieces are still merged and still running.
+  **What a reader of ipodhan.com would notice: still nothing.** Everything this lane has shipped today
+  is machinery — checks that run when we change code, and limits on what the scraper may download.
+  No page changed. The one thing that would have been very visible was the scraper failing to start,
+  which is fixed and never reached the live site.
+  **What went wrong: three more mistakes, all mine, and all the same shape.** My first attempt at
+  moving a check earlier in the pipeline silently moved seven unrelated checks into a different job —
+  and the file was still valid, so my validity check said it was fine. Validity is not correctness.
+  The replacement check I wrote to catch that then raised a false alarm of its own, because it read
+  the comparison text in the wrong character encoding and mangled every name containing a dash. And
+  earlier I corrupted a line of the contract with a careless find-and-replace. All three found and
+  fixed; the pattern I keep hitting is a check that runs, goes green or red, and measures the wrong
+  thing.
+  **I also asked you a question that was already answered** — whether the download limit should stay
+  at 150MB. You decided 100MB on 9 September and the code already carries it. That was my error, it is
+  withdrawn from the board, and I have re-read the rule that forbids it.
+  **What is needed from you: one thing, and not today.** A practice run of undoing a release, when the
+  download-safety item closes. Two pieces are built and waiting for the daily CI allowance to reset at
+  midnight; the rest waits on the test server accepting new code, which another lane is fixing.
