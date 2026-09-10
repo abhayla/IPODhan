@@ -355,6 +355,14 @@
           "pr": 500,
           "sha": "c15c7eb3",
           "title": "populate the web-integration shrink-only baseline from the first real CI report (#486)"
+        },
+        {
+          "k": "s8b",
+          "status": "PLANNED",
+          "tier": "B",
+          "pr": null,
+          "sha": null,
+          "title": "guard: stored normalized_name and heading_hash must re-compute to themselves under the current normaliser (#506)"
         }
       ],
       "prs": [
@@ -680,7 +688,9 @@
     501,
     502,
     503,
-    504
+    504,
+    505,
+    506
   ],
   "prGateRunsToday": 49,
   "prGateBudgetClaimedRaise": {
@@ -808,5 +818,6 @@
       "session": "lane A",
       "verbatim": "Delta 1 section 1 approved: plan slices at 250 to 400 lines, apply review tiers as the list says, later review rounds read only the changed lines. Split into smaller pieces stands as the 400-line cap, not smaller than that."
     }
-  ]
+  ],
+  "crossLaneMergeOrder": "lane C 12-B/12-C -> same slice re-runs backfill-normalized-name.ts on promoters, peer_companies, ipo_intermediaries AND the ipos column -> same slice re-runs the duplicate scan under the new normaliser before E1 is applied anywhere (baseline 0/0/5 under the old one) -> lane A writer slices s5b, s7a, s7b. Lane A s4, s6, s8 are order-free. E1's apply step is gated on steps 2 and 3 landing on staging."
 }

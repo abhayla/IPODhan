@@ -224,3 +224,48 @@ this session were reproduced by the goal session directly, on the argument that 
 is cheaper to run than to dispatch. That argument is real but it is not what the contract says,
 and reproducing one's own claim is exactly the blind spot `independent-test-verification.md`
 exists to close. Recorded rather than quietly continued.
+
+---
+
+## 11. A stored value derived by a pure function is a cache of that function
+
+Not a contract contradiction — a class the contract does not name, found when lane C proposed a
+merge ordering for a change to `packages/shared/src/utils/company-name-normalizer.ts`.
+
+The ordering question ("which slice merges first") hid the real one ("what happens to the rows
+already on disk"). `normalized_name` is **persisted** on `promoters`, `peer_companies` and
+`ipo_intermediaries`, and slice s2's gated E1 file adds UNIQUE constraints keyed on the stored
+value. Change the function and every stored key was computed by a function that no longer exists,
+while new writes use the new one. Two failures follow, and the second is the dangerous one:
+
+1. A row stored as `abc ltd` and re-scraped as `abc limited` gets a different key, so the duplicate
+   the constraint exists to block inserts cleanly. The table looks constrained and is not.
+2. Two rows that normalised *differently* before may normalise *identically* after. Once E1 is
+   applied, the next extraction touching that IPO fails mid-write with a duplicate-key violation —
+   a user-visible write outage on an OPEN IPO, appearing on whichever IPO is scraped next rather
+   than on the one whose data motivated the change.
+
+**Proposed sentence:** *a normaliser change that does not re-key the stored column is an incomplete
+fix.* More generally: any stored value derived by a pure function is a cache of that function, and
+the slice that changes the function owns re-computing the cache and re-measuring any constraint
+built on it, in the same slice — never as a follow-up.
+
+**Ordering adopted across lanes:** 12-B/12-C → same slice re-runs `backfill-normalized-name.ts` on
+the three child tables **and** the `ipos` column (`ipo-repository.ts` carries 22 `normalizedName`
+references — duplicate-IPO detection moves too) → same slice re-runs the duplicate scan under the
+new function before E1 is applied anywhere, with identities if the count exceeds the 0/0/5 baseline
+measured under the old one → then item 1's writer slices s5b, s7a, s7b. E1's apply step is gated on
+steps 2 and 3 landing on staging.
+
+**Room, if it is used:** E1 is unapplied on every slot (measured read-only on `ipodhan_staging`,
+17:09 IST 2026-09-10 — all three constraints absent, `normalized_name` present). Nothing is locked
+in yet; the hazard is applying E1 *before* the re-backfill.
+
+**Next instance of the same class, already in flight:** `heading_hash` on `ipo_risk_factors`
+(item 1 slice s6, built and held), derived from `normalizeHeading`. It ships with a gated E2
+constraint keyed on the stored hash, so it inherits this rule from day one.
+
+**Detection, filed as #506's recommended upgrade:** a test that re-computes a sample of stored
+`normalized_name` values under the current function and asserts they match. Cheap, and it fails the
+moment a normaliser change lands without a re-backfill. Being built as item 1 slice **s8b** rather
+than left as a recommendation.
