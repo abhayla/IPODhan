@@ -406,7 +406,7 @@ export async function checkMatviews(
 // name alone, and never by unordered set — a reordered composite index
 // serves different queries).
 
-function collectExpectedIndexes(): IndexExpectation[] {
+export function collectExpectedIndexes(): IndexExpectation[] {
   const expectations: IndexExpectation[] = [];
   for (const value of Object.values(schema)) {
     if (!is(value, PgTable)) continue;
@@ -424,7 +424,7 @@ function collectExpectedIndexes(): IndexExpectation[] {
   return expectations;
 }
 
-function collectExpectedUniqueConstraints(): UniqueConstraintExpectation[] {
+export function collectExpectedUniqueConstraints(): UniqueConstraintExpectation[] {
   const expectations: UniqueConstraintExpectation[] = [];
   for (const value of Object.values(schema)) {
     if (!is(value, PgTable)) continue;
