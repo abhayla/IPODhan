@@ -1070,3 +1070,22 @@ on my own and not merging around it.
 What a reader of ipodhan.com would notice: nothing yet.
 
 Automated check-runs: **29 used today of a shared 60** — fifteen mine. No current failures of mine.
+
+**2026-09-10 15:1x IST — two decisions from Abhay, recorded verbatim.**
+
+1. "Web integration failures: baseline the 26 failing files by name in a shrink-only list, gate
+   web-touching slices on no new failures, schedule the fixes as lane A slices by error class, and the
+   release cut requires the list empty."
+2. "Delta 1 section 1 approved: plan slices at 250 to 400 lines, apply review tiers as the list says,
+   later review rounds read only the changed lines. Split into smaller pieces stands as the 400-line
+   cap, not smaller than that."
+
+The second one resolves a conflict I had been holding: I read his earlier instruction to split work into
+smaller pieces as contradicting the larger slice size, and he has now said that instruction meant the
+400-line cap. The hold is lifted.
+
+One honest caveat on the first. The names of the twenty-six files are not yet knowable. The build's log
+does not mark which files failed — a search of it returns all forty-four, the twenty-six failing and the
+eighteen passing together — so writing that list today would silently mark eighteen healthy files as
+allowed to fail. The list has to come from a machine-readable report produced by the build itself. If the
+mechanism is ready before that report exists, it ships with an empty list and a note, not a guess.
