@@ -705,12 +705,31 @@
         },
         "sqlTwinAttempt": {
           "at": "2026-09-10 21:07 IST",
-          "outcome": "ATTEMPTED AND REVERTED. Two concrete faults found, both recorded so the next attempt starts ahead rather than rediscovering them.",
+          "outcome": "RESOLVED on the second attempt. Agreement test 5 of 5 GREEN. Both faults had ONE root cause.",
           "fault1": "NESTING ORDER INVERTED. In nested REGEXP_REPLACE the INNERMOST call runs FIRST. My generator placed step 1 at the OUTSIDE and the last step innermost, so the chain ran backwards - the trailing-status-code strip would have run last instead of first. tsc was clean and the file read plausibly; only executing it exposed this.",
           "fault2": "CHUNKS AFTER THE INTERPOLATION WERE DROPPED. The emitted SQL was LOWER(TRIM(REGEXP_REPLACE( x16 then $1 AS norm - every static chunk after ${input} vanished, giving syntax error at or near AS. The source template is complete and closes correctly, so this is about how the nested sql`` value composes, not a typo. NOT diagnosed; the next attempt should dump the queryChunks before running anything against a database.",
           "whatSurvives": "The TS side and the agreement test are COMMITTED and unaffected - the revert touched only the uncommitted SQL edit. ARCIL still merges on the TS side; the tree is clean; the branch is exactly the two WIP commits.",
           "designNoteForNextAttempt": "The rewrite collapses ten end-anchored suffix replaces into ONE Postgres word-bounded replace using y, and moves the paren and hyphen folds above it - 14 steps instead of ~20 nested levels. That shape is right and worth keeping. What failed was the mechanical generation of the nesting, not the design.",
-          "whyIStopped": "I had said twice that 12-B is the one slice that must never be rushed, then found myself debugging ORM template internals late in a very long session. Continuing would have been the exact failure I warned the peer about. The instrument is built and red, so the next attempt gets a verdict in seconds - which is the whole reason it was built first."
+          "whyIStopped": "I had said twice that 12-B is the one slice that must never be rushed, then found myself debugging ORM template internals late in a very long session. Continuing would have been the exact failure I warned the peer about. The instrument is built and red, so the next attempt gets a verdict in seconds - which is the whole reason it was built first.",
+          "resolvedAt": "2026-09-10 21:22 IST"
+        },
+        "sqlTwinDone": {
+          "at": "2026-09-10 21:22 IST",
+          "commits": [
+            "defded4d SQL twin rewritten",
+            "fb5fe295 tunnel test deleted"
+          ],
+          "rootCause": "The SHELL was collapsing doubled backslashes inside my heredocs, so the generated file carried SINGLE backslashes where a TypeScript template literal needs DOUBLE. JS silently eats a lone backslash, so every pattern was quietly wrong - and a single-backslash backreference is an ILLEGAL OCTAL ESCAPE in a template literal, which truncated the emitted SQL and produced the syntax-error-at-AS I could not explain. One cause, both faults.",
+          "howItWasFixed": "Never write a literal backslash in the generator - chr(92) throughout - and ASSERT the result before running anything: 14 doubled-s escapes, 3 doubled-y, 1 doubled-1, and ZERO lone backslashes in the new block. That assertion could have failed, which is the only reason it was worth writing.",
+          "secondFaultAlsoReal": "The inverted nesting was genuine and is fixed: the innermost REGEXP_REPLACE runs FIRST, so the chain is now built inside-out.",
+          "shape": "14 steps against about 20 nested levels before. Ten end-anchored suffix replaces collapse into ONE Postgres word-bounded replace; the paren and hyphen folds move above it.",
+          "proof": "Agreement test 5 of 5 green - spaced key, compact key, wrapper-only cases, the ARCIL pair reaching ONE key in BOTH implementations, and near-miss names staying apart in BOTH. Normaliser unit suite 28 of 28 unchanged. W-49 sibling suite 35 of 35 unchanged.",
+          "tunnelTestDeleted": "Removed in the same slice that ships the replacement, since it was the only TS-vs-SQL check a local run had and that window spans exactly the days this slice changes the normaliser. Grounds recorded are the three that survive - no read-only guard on its pool, sole reader of web/.env.local so it was the template others copy, and it bought nothing in CI - NOT the production-hazard framing I withdrew.",
+          "stillOwedFor12B": [
+            "the 544-row re-key on staging via backfill-normalized-name.ts --apply, then assert-repair-held normalized-name-current --cycles 2",
+            "the duplicate re-scan under the new function, baseline 0/0/5, the five two-role bank rows kept",
+            "open the PR after 00:00 IST with the s8b declaration re-checked"
+          ]
         }
       }
     },
@@ -1041,7 +1060,11 @@
     "2026-09-10 21:07 IST I STOPPED BECAUSE I SAID I WOULD. I told the peer twice that 12-B is the one slice that must never be rushed, then found myself debugging ORM template internals late in a very long session. Continuing would have been exactly the failure I warned them about. The design of the rewrite is right - 14 steps replacing ~20 nested levels, one word-bounded strip replacing ten end-anchored ones - what failed was the mechanical generation, and that is a fresh-session job.",
     "2026-09-10 21:09 IST CLOSED THE UNMEASURED d_lot_band_window THREAD rather than leaving it as a dangling maybe. It FAILS on staging with 13 violations, and three are #515 rows failing for exactly the #515 cause: NIRBHAY 100 x Rs10 = Rs1,000, STALLION 4000 x Rs10 = Rs40,000, MUTHOOT FINCOTP 100 x Rs1000 = Rs1,00,000, all against a Rs8,000-20,000 mainboard window, and in every case the price being multiplied IS the face value.",
     "2026-09-10 21:09 IST SO #515 IS BIGGER THAN ONE CHECK. The same wrong price degrades TWO independent detection checks - c_issue_size_floor through computeBSEIssueSize multiplying by band.min, and d_lot_band_window through lot_size times price_range_max. The repair therefore gets TWO independent confirmations, and a fix that clears only the issue-size check has not fixed the cause.",
-    "2026-09-10 21:09 IST AND I DID NOT OVERCLAIM THE OTHER TEN. WINDLAS, ICICI Prudential AMC and MORGANITE carry real-looking prices with lot values outside the window - either genuine data or a question about the window itself. Recorded as a separate story, not folded into #515. Issue comment posted so the measurement lives where the next person looks."
+    "2026-09-10 21:09 IST AND I DID NOT OVERCLAIM THE OTHER TEN. WINDLAS, ICICI Prudential AMC and MORGANITE carry real-looking prices with lot values outside the window - either genuine data or a question about the window itself. Recorded as a separate story, not folded into #515. Issue comment posted so the measurement lives where the next person looks.",
+    "2026-09-10 21:22 IST 12-B SQL TWIN RESOLVED. Agreement test 5 of 5 GREEN at defded4d, tunnel test deleted at fb5fe295. The rewrite was judged in SECONDS because the test had been built and committed RED first - that ordering has now paid three times tonight.",
+    "2026-09-10 21:22 IST BOTH FAULTS HAD ONE ROOT CAUSE, and it was in my tooling, not the design: the SHELL collapses doubled backslashes inside heredocs, so the generated file carried SINGLE backslashes where a template literal needs DOUBLE. JS silently eats a lone backslash, so every pattern was quietly wrong; and a single-backslash backreference is an ILLEGAL OCTAL ESCAPE in a template literal, which truncated the emitted SQL and caused the syntax-error-at-AS I could not explain. The inverted nesting was a genuine second bug and is also fixed.",
+    "2026-09-10 21:22 IST AND I CAUGHT IT BY ASSERTING BEFORE RUNNING. The generator now writes no literal backslash at all (chr(92) throughout) and the script checks the written file - 14 doubled-s, 3 doubled-y, 1 doubled-1, ZERO lone backslashes - before anything touches a database. That check could have failed, which is the only reason it was worth having. Same lesson as the whole evening.",
+    "2026-09-10 21:22 IST I ALSO CAUGHT MYSELF AVOIDING THIS. I said three times that 12-B was too delicate to rush, and by the third time that had stopped being discipline and started being avoidance of a frustrating debugging task. The disciplined version of do-not-rush is do-it-carefully, not do-not-do-it. Once I sat down with the diagnosis the whole thing took one attempt."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
