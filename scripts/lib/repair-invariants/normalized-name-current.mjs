@@ -44,7 +44,31 @@ try {
   deriveLoadError = e;
 }
 
-/** @typedef {{table: string, id: string, ipoId: string, name: string, stored: string, recomputed: string|null}} ViolationDetail */
+/**
+ * TWO OUTCOMES, deliberately distinguished.
+ *
+ * STALE is the real defect: a key that is populated but disagrees with what the
+ * current derive computes. That is one finding per row, named, because each row
+ * is separately wrong.
+ *
+ * NOT_YET_BACKFILLED is a KNOWN TRANSIENT: a table where every row still holds
+ * the column default and not one row holds a computed key. That is what a slot
+ * looks like between the `NOT NULL DEFAULT ''` migration and the backfill that
+ * follows it. Reporting 531 findings for it is technically true and practically
+ * useless - a check that screams during a planned migration step is a check
+ * people learn to ignore, and then it is ignored on the night it is right.
+ *
+ * IT STILL FAILS. This is the part that matters and it is easy to get wrong:
+ * NOT_YET_BACKFILLED reports ONE finding per table, never zero. If it returned
+ * zero, a backfill that silently never ran would read as a clean gate - the
+ * exact hole this invariant exists to close. One line, not silence; and not 531.
+ *
+ * A table with NO rows is not "un-backfilled" - nothing is waiting.
+ */
+export const OUTCOME_STALE = 'STALE';
+export const OUTCOME_NOT_YET_BACKFILLED = 'NOT_YET_BACKFILLED';
+
+/** @typedef {{table: string, outcome: string, id?: string, ipoId?: string, name?: string, stored?: string, recomputed?: string|null, rowCount?: number}} ViolationDetail */
 
 const TABLES = [
   { table: 'promoters', nameCol: 'name' },
@@ -52,20 +76,35 @@ const TABLES = [
   { table: 'ipo_intermediaries', nameCol: 'name' },
 ];
 
-async function staleRows(pool, table, nameCol) {
+async function tableFindings(pool, table, nameCol) {
   const { rows } = await pool.query(
     `SELECT id, ipo_id, ${nameCol} AS name_value, normalized_name FROM ${table}`
   );
-  const out = [];
+  if (rows.length === 0) return [];
+
+  const stale = [];
+  let anyComputedKeyPresent = false;
+  let waitingOnBackfill = 0;
+
   for (const r of rows) {
     const recomputed = rowKeyForName(r.name_value);
     const stored = r.normalized_name ?? '';
     // The documented no-identity pair: blank name -> null key, column holds ''.
+    // Never a finding, and never evidence either way about the backfill.
     if (recomputed === null && stored === '') continue;
-    if (stored === recomputed) continue;
-    out.push({ table, id: r.id, ipoId: r.ipo_id, name: r.name_value, stored, recomputed });
+    if (stored === recomputed) { anyComputedKeyPresent = true; continue; }
+    if (stored === '') waitingOnBackfill += 1;
+    stale.push({ table, outcome: OUTCOME_STALE, id: r.id, ipoId: r.ipo_id, name: r.name_value, stored, recomputed });
   }
-  return out;
+
+  // Every row that could carry a key is still holding the default, and not one
+  // row anywhere on this table holds a computed key: this is the migration
+  // window, not drift. Collapse to a single finding that says which step is
+  // missing - but a finding, so the gate still fails.
+  if (!anyComputedKeyPresent && waitingOnBackfill === stale.length && stale.length > 0) {
+    return [{ table, outcome: OUTCOME_NOT_YET_BACKFILLED, rowCount: waitingOnBackfill }];
+  }
+  return stale;
 }
 
 /**
@@ -80,7 +119,7 @@ export default async function normalizedNameCurrentInvariant(pool) {
   }
   const details = [];
   for (const { table, nameCol } of TABLES) {
-    details.push(...(await staleRows(pool, table, nameCol)));
+    details.push(...(await tableFindings(pool, table, nameCol)));
   }
   return { count: details.length, details };
 }
@@ -112,9 +151,15 @@ if (isMainModule) {
     const { count, details } = await normalizedNameCurrentInvariant(pool);
     // Identities, never a bare count (signal-ownership R1).
     for (const d of details) {
-      console.error(
-        `  VIOLATION (stale): ${d.table} id=${d.id} ipo_id=${d.ipoId} name="${d.name}" stored="${d.stored}" recomputed="${d.recomputed}"`
-      );
+      if (d.outcome === OUTCOME_NOT_YET_BACKFILLED) {
+        console.error(
+          `  NOT-YET-BACKFILLED: ${d.table} — all ${d.rowCount} row(s) still hold the column default and none holds a computed key. Step 2 (the backfill) has not run on this slot.`
+        );
+      } else {
+        console.error(
+          `  VIOLATION (stale): ${d.table} id=${d.id} ipo_id=${d.ipoId} name="${d.name}" stored="${d.stored}" recomputed="${d.recomputed}"`
+        );
+      }
     }
     if (!count) console.error('  ok: every stored normalized_name equals the current rowKeyForName of its row name');
     console.log(String(count));
