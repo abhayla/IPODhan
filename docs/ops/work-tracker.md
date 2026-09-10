@@ -759,3 +759,20 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   not mine, and another lane is sending you the exact command. Two follow-up fixes belong in our work,
   not yours: prune the old folder when a deploy FAILS, not only when it succeeds; and check the
   number daily rather than weekly.
+
+- 2026-09-10 20:02 IST — **Merging resumed after you cleared the disk. Item 20 is back to 100% (5 of 5).**
+  The first piece is live: three safety checks that used to show a grey "skipped" when something else
+  failed earlier now show a red "failed" instead. Grey looks like "not applicable"; red looks like
+  "this broke". I proved it in the real pipeline run rather than trusting a green tick.
+  Item 22 is at 3 of 8 merged with a fourth in review — the one that closes a genuine security hole:
+  a web address that looks like a normal public site but secretly points back inside our own network
+  was being fetched normally on every request the scraper makes. The check for it was written and
+  merged this morning and nothing was calling it.
+  **What went wrong: two more of mine, both about how badly a small mistake could have hurt.** My
+  first attempt at the registrar work made a routine database read able to stop the ENTIRE document
+  pipeline if it failed — a momentary database hiccup would have halted all document collection,
+  which is far worse than the thing I was trying to improve. The tests caught it. Then a second line
+  of the same code was still outside the safety net and would have done the same. Both fixed; it now
+  quietly carries on with the old behaviour if that read fails.
+  **What is needed from you: nothing.** Two pieces are held until the daily pipeline allowance resets
+  at midnight, on purpose — three teams share it and I asked for three slots rather than five.
