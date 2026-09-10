@@ -898,3 +898,31 @@ What a reader of ipodhan.com would notice: nothing yet.
 
 Automated check-runs: **10 used today of a shared 60** — five mine, five the other stream's, none
 failed (one of theirs is still running).
+
+**2026-09-10 12:58 IST — tick. The test-pipeline fix is green and one review away from landing.** Item 1:
+**38%**, five of thirteen slices merged, unchanged.
+
+The fix that makes the automated build able to fail is submitted and all five of its checks pass. It is
+having one focused second review before it merges, because everything it touches becomes the base that
+all three work streams build on, and because its first review found two real faults — including, with
+some irony, that the safety check I demanded to replace a forgettable note was itself connected to
+nothing and would never have run.
+
+Once it merges, two finished slices stop waiting and the automated build gets dispatched for the first
+time against a real database, which settles an open question: 193 of 292 website tests fail on my
+laptop, and the suspicion is that this is the remote-database connection rather than the tests. That
+suspicion is untested. If they also fail against a proper local database, that is a genuine problem and
+comes to you rather than being explained away.
+
+Nothing went wrong this half hour. Two things were caught before they could: the seventh slice's fault
+that would have refused every deploy is fixed and re-measured by me rather than taken on trust — the
+relevant test suite went from 21 failures to none — and the second work stream merged twice more while
+my work was under review, which would have deleted their files had I not re-checked immediately before
+submitting. That check has now caught the same thing three times today.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: still the one decision from earlier — whether to change the top-level database
+password after a worker printed it into its own log.
+
+Automated check-runs: **11 used today of a shared 60** — six mine, five the other stream's, none failed.
