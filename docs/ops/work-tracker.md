@@ -776,3 +776,21 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   quietly carries on with the old behaviour if that read fails.
   **What is needed from you: nothing.** Two pieces are held until the daily pipeline allowance resets
   at midnight, on purpose — three teams share it and I asked for three slots rather than five.
+
+- 2026-09-10 20:06 IST — **Item 20: 100% at 17:48, then 67% when I reopened it, now 83% (5 of 6).**
+  The percentage moved backwards earlier today because I found I had filed a new repo-wide check under
+  the wrong item and had to add two pieces here. Five are merged; the sixth is deliberately waiting.
+  **What a reader of ipodhan.com would notice: nothing, again.** Everything merged today is machinery.
+  No page changed, no number on the site changed. The work that WOULD have been visible was the
+  scraper failing to start, which I fixed before it reached anywhere real.
+  **What went wrong this stretch: two of mine, and both were about how far a small mistake could
+  reach.** Building the registrar work I made a routine database read able to stop the entire document
+  pipeline if it ever failed — a momentary hiccup would have halted all document collection, which is
+  much worse than the improvement I was making. Twenty-eight tests caught it. Then a second line of the
+  same code was still outside the safety net and would have done the same thing. Both fixed. Separately
+  I nearly had a reviewer trample five files of unfinished work because I pointed it at the same folder
+  I was working in; I caught that with seconds to spare and have written down the rule.
+  **What is needed from you: still nothing.** One thing remains owed for later — a practice run of
+  undoing a release, when the download-safety item closes. Two pieces wait until midnight on purpose:
+  three teams share a daily pipeline allowance, and I asked for three slots rather than five so the
+  others keep room and one slot stays free in case the main branch breaks.
