@@ -40,6 +40,7 @@ import type {
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { upsertIPO } from './data-persister.js';
 import { rowKeyForName } from '@ipodhan/shared/utils/company-name-normalizer';
+import { headingHashForRiskFactor } from '@ipodhan/shared/utils/risk-factor-heading-key';
 import {
   checkCrossDocumentAgreement,
   expandWithheldMetrics,
@@ -788,6 +789,108 @@ export async function persistFilingExtraction(
       return false;
     }
     return true;
+  };
+
+  /**
+   * Item 1 slice s7a — route one whole-row-replace table's rows through the
+   * consolidated child writer, then hand the SAME row objects to the same
+   * repository method that wrote them before this slice.
+   *
+   * The repositories are not reimplemented here on purpose. `replacePromoters`,
+   * `IpoRiskFactorsRepository.replaceForIpo` (which also mints `headingHash`,
+   * drops duplicates and re-derives `seq`), `IpoIntermediariesRepository
+   * .replaceForIpo` and `PeerCompanyRepository.replaceForIpo` each carry
+   * delete-then-insert INSIDE one transaction, cache invalidation, and their own
+   * de-duplication rule. This helper only DECIDES values and writes provenance;
+   * re-deriving any of that inside the writer is how a silent data change ships.
+   *
+   * Three deliberate behaviours:
+   *  - flag OFF (or `apply` false): returns immediately, so the repository call
+   *    below is byte-identical to the pre-slice write.
+   *  - no consolidator injected, or the consolidation throws: the row is still
+   *    written, unresolved, and the reason is recorded. A wiring defect must
+   *    cost provenance, never data.
+   *  - a row the consolidator SKIPS is still written, unresolved, and named in
+   *    `skipped_failed_check` — dropping it from a whole-set replace would
+   *    delete a promoter/peer from the live page, which loses strictly more.
+   *
+   * `identity` fields are offered for provenance but never merged back: they
+   * are what the row key is computed from, so accepting a resolved value for
+   * one would desync the row from the key its provenance was filed under.
+   */
+  const consolidateChildRows = async (
+    tableName: ChildConsolidationTable,
+    entries: { rowKey: string; row: Record<string, unknown> }[],
+    provenanceFields: readonly string[],
+    mergeableFields: readonly string[],
+    duplicateWins: 'first' | 'last' = 'last'
+  ): Promise<void> => {
+    if (!apply) return;
+    if (!FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) return;
+    if (entries.length === 0) return;
+    if (!deps.childRowConsolidator) {
+      logger.error(
+        { ipoId, tableName, rows: entries.length },
+        '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
+      );
+      return;
+    }
+
+    // One consolidation input per DISTINCT row key, matching the repository's
+    // own de-duplication rule so provenance describes the row that survives.
+    const byKey = new Map<string, Record<string, unknown>>();
+    for (const entry of entries) {
+      if (duplicateWins === 'last' || !byKey.has(entry.rowKey)) byKey.set(entry.rowKey, entry.row);
+    }
+    const inputs: ChildRowInput[] = [...byKey.entries()].map(([rowKey, row]) => ({
+      rowKey,
+      data: Object.fromEntries(
+        provenanceFields.filter((field) => field in row).map((field) => [field, row[field]])
+      ),
+    }));
+
+    let resolved: ConsolidatedChildRowsResult;
+    try {
+      resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+        ipoId,
+        tableName,
+        inputs,
+        source,
+        options.docType
+      );
+    } catch (error) {
+      const cause = (error as { cause?: { message?: string } } | undefined)?.cause?.message;
+      logger.error(
+        { err: error, cause, ipoId, tableName, rows: inputs.length },
+        '[FilingPersister] child-row consolidation failed — writing the rows unresolved'
+      );
+      skippedFailedCheck.push(
+        `${tableName} (consolidation failed: ${(error as Error)?.message ?? 'unknown'}${
+          cause ? ` <- ${cause}` : ''
+        }; ${inputs.length} rows written unresolved)`
+      );
+      return;
+    }
+
+    const decidedByKey = new Map(resolved.rows.map((row) => [row.rowKey, row]));
+    for (const entry of entries) {
+      const decided = decidedByKey.get(entry.rowKey);
+      if (!decided || decided.skipped) {
+        skippedFailedCheck.push(
+          `${tableName} ${entry.rowKey} (consolidation skipped: ${
+            decided?.skipReason ?? 'NO_RESULT'
+          }; row written unresolved)`
+        );
+        continue;
+      }
+      for (const field of mergeableFields) {
+        if (!(field in decided.consolidatedData)) continue;
+        const value = decided.consolidatedData[field];
+        // `undefined` would blank a value this extraction did carry.
+        if (value === undefined) continue;
+        entry.row[field] = value;
+      }
+    }
   };
 
   /**
@@ -1810,6 +1913,18 @@ export async function persistFilingExtraction(
     }));
     if (await replaceAllowed('promoters', { name: null, sharesHeld: null, waca: null })) {
       if (apply) {
+        // Item 1 slice s7a. Row key = `rowKeyForName(name)`, matching
+        // `unique_promoters_ipo_id_normalized_name` on (ipo_id, normalized_name).
+        // `name` is provenanced but never merged back — it IS the key.
+        await consolidateChildRows(
+          'promoters',
+          rows.map((row, i) => ({
+            rowKey: namesWithKeys[i].key as string,
+            row: row as unknown as Record<string, unknown>,
+          })),
+          ['name', 'sharesHeld', 'waca', 'wacaLastYear', 'isPromoterGroup'],
+          ['sharesHeld', 'waca', 'wacaLastYear', 'isPromoterGroup']
+        );
         await deps.promoters.replacePromoters(ipoId, rows);
         await trackField('promoters', 'rows');
       }
@@ -1958,6 +2073,24 @@ export async function persistFilingExtraction(
       })
     ) {
       if (apply) {
+        // Item 1 slice s7a. Row key = `headingHashForRiskFactor(heading)`,
+        // matching `unique_ipo_risk_factors_ipo_heading_hash` — NOT `seq`,
+        // which slice s6 demoted to display order. The hash is taken over the
+        // ALREADY-TRUNCATED heading, exactly as the repository takes it, so the
+        // audit key and the written key cannot disagree. First-wins on a
+        // duplicate key mirrors `prepareRiskFactorRows`.
+        await consolidateChildRows(
+          'ipo_risk_factors',
+          riskRows
+            .map((row) => ({
+              rowKey: headingHashForRiskFactor(row.heading),
+              row: row as unknown as Record<string, unknown>,
+            }))
+            .filter((e): e is { rowKey: string; row: Record<string, unknown> } => e.rowKey !== null),
+          ['heading', 'body', 'kpis'],
+          ['body', 'kpis'],
+          'first'
+        );
         await deps.riskFactors.replaceForIpo(ipoId, riskRows);
         await trackField('ipo_risk_factors', 'rows');
       }
@@ -2103,6 +2236,20 @@ export async function persistFilingExtraction(
             normalizedName: key as string,
           })
         );
+        // Item 1 slice s7a. Row key = `role:rowKeyForName(name)`, matching
+        // `unique_ipo_intermediaries_ipo_id_role_normalized_name`. Role alone
+        // collides — a mainboard issue carries several BRLMs under one role —
+        // so dropping it from the key would file every BRLM's provenance on one
+        // row. Both key halves are provenanced and neither is merged back.
+        await consolidateChildRows(
+          'ipo_intermediaries',
+          intermediariesWithKey.map((row, i) => ({
+            rowKey: `${row.role}:${intermediariesWithKeys[i].key as string}`,
+            row: row as unknown as Record<string, unknown>,
+          })),
+          ['name', 'role', 'sebiRegNo', 'contactPerson', 'phone', 'email', 'grievanceEmail'],
+          ['sebiRegNo', 'contactPerson', 'phone', 'email', 'grievanceEmail']
+        );
         await deps.intermediaries.replaceForIpo(ipoId, intermediariesWithKey);
         await trackField('ipo_intermediaries', 'rows');
       }
@@ -2179,6 +2326,20 @@ export async function persistFilingExtraction(
         })
       ) {
         if (apply) {
+          // Item 1 slice s7a. Row key = `rowKeyForName(companyName)`, matching
+          // `unique_peer_companies_ipo_id_normalized_name`. `dataSource` and
+          // `lastUpdated` are write metadata, not facts about the peer, so they
+          // are neither provenanced nor resolvable. Last-wins on a duplicate key
+          // mirrors `PeerCompanyRepository.replaceForIpo`.
+          await consolidateChildRows(
+            'peer_companies',
+            peerRows.map((row) => ({
+              rowKey: row.normalizedName,
+              row: row as unknown as Record<string, unknown>,
+            })),
+            ['companyName', 'isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio'],
+            ['isListed', 'peRatio', 'eps', 'dilutedEps', 'ronw', 'nav', 'pbvRatio']
+          );
           await deps.peerCompanies.replaceForIpo(ipoId, peerRows);
           await trackField('peer_companies', 'rows');
         }
