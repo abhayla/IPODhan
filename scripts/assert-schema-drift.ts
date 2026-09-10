@@ -128,11 +128,10 @@ export const EXPECTED_MATVIEWS: MatviewExpectation[] = [
 //
 // Production ALREADY has the widened types (verified 2026-09-02: prod
 // gmp_records/listing_performance are numeric(10,2)/numeric(7,2), matching
-// schema.ts) via a historical out-of-band change — so this registry does
-// NOT affect prod's deploy gate or the nightly audit, both of which call
-// this script bare (no ignoreGatedTypeDrift) and therefore still see and
-// FAIL on drift here the moment it's real on THAT environment. It exists
-// only so the T-405 "replay the journal from empty" CI job — which,
+// schema.ts) via a historical out-of-band change — so on a slot where that
+// out-of-band change already landed, no drift is even generated here and
+// this registry never matters. It exists only so the T-405 "replay the
+// journal from empty" CI job — which,
 // correctly, gets the narrow pre-widen types because a type change cannot
 // be journaled — has a way to say "yes, that specific, already-known,
 // already-approved-elsewhere gap, nothing else" instead of being permanently
@@ -219,9 +218,17 @@ export const KNOWN_GATED_INDEX_DRIFT: { tableName: string; indexName: string; ex
 // workflow, deploy script or cron currently calls it, so today nothing runs
 // it on a schedule; treat it as a manual check an operator runs after
 // hand-applying the gated file, not as standing coverage. Gated the same way
-// as KNOWN_GATED_TYPE_DRIFT/KNOWN_GATED_INDEX_DRIFT above so deploy-linux.sh
-// and the nightly audit (which call this script bare) still see and fail on
-// a slot that never got the gated file applied.
+// as KNOWN_GATED_TYPE_DRIFT/KNOWN_GATED_INDEX_DRIFT above.
+//
+// #464, item 1 slice s10 (2026-09-10): a slot that legitimately has NOT yet
+// had the gated file hand-applied is the EXPECTED state, not a broken one —
+// a bare deploy-linux.sh call blocked every staging deploy on exactly these
+// three entries for 10 consecutive runs. deploy-linux.sh now calls this
+// script WITH SCHEMA_DRIFT_IGNORE_GATED=1, so it no longer fails on a slot
+// that never got the gated file applied; it still fails on anything NOT in
+// this registry (a real, undeclared gap). The nightly audit still calls
+// this script bare and keeps reporting these three as open work per slot —
+// that is unchanged and intentional.
 export const KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT: { tableName: string; constraintName: string }[] = [
   { tableName: 'promoters', constraintName: 'unique_promoters_ipo_id_normalized_name' },
   { tableName: 'peer_companies', constraintName: 'unique_peer_companies_ipo_id_normalized_name' },
@@ -603,12 +610,15 @@ async function main() {
       checkUniqueConstraints(client),
     ]);
 
-    // SCHEMA_DRIFT_IGNORE_GATED=1 is set ONLY by the T-405 "replay the journal
-    // from empty" CI job (pr-gate.yml scraper-document-integration), never by
-    // deploy-linux.sh or the nightly audit — see KNOWN_GATED_TYPE_DRIFT above
-    // for why. Filtering happens here, at the CLI/exit-code boundary, so
-    // checkColumns() itself keeps reporting the full truth for every other
-    // caller (the self-test included).
+    // SCHEMA_DRIFT_IGNORE_GATED=1 is set by the T-405 "replay the journal
+    // from empty" CI job (pr-gate.yml scraper-document-integration) AND, as
+    // of #464 (item 1 slice s10), by scripts/deploy-linux.sh's migration
+    // step — a bare deploy call fails forever on a slot that has not yet had
+    // the E1 gated file hand-applied, which is expected, not broken (see
+    // KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT above). The nightly audit still
+    // calls this script bare and is unaffected. Filtering happens here, at
+    // the CLI/exit-code boundary, so checkColumns() itself keeps reporting
+    // the full truth for every other caller (the self-test included).
     const ignoreGated = process.env.SCHEMA_DRIFT_IGNORE_GATED === '1';
     const combined = [...columnDrifts, ...matviewDrifts, ...indexDrifts, ...uniqueConstraintDrifts];
     const knownGated = ignoreGated

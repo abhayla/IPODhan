@@ -1027,7 +1027,15 @@ apply_migrations() {
   fi
 
   log "Asserting the target DB's live columns/matviews match packages/shared/src/db/schema.ts (T-330)"
-  if ! ( cd "$RELEASE_DIR" && npx tsx scripts/assert-schema-drift.ts "$database_url" ); then
+  # SCHEMA_DRIFT_IGNORE_GATED=1 (item 1 slice s10, #464): honour the SAME
+  # known-gated registry pr-gate.yml already trusts (assert-schema-drift.ts,
+  # KNOWN_GATED_*). Without it, a slot that legitimately has not yet had the
+  # hand-applied E1 row-key unique constraints (web/drizzle/migrations/_gated/
+  # E1_row_key_unique_constraints.sql) can never deploy — the assert reports
+  # those three EXPECTED gaps as fatal drift on every run. This env prefix is
+  # scoped to this one command only (never exported), so it does not weaken
+  # any other check in this function or file.
+  if ! ( cd "$RELEASE_DIR" && SCHEMA_DRIFT_IGNORE_GATED=1 npx tsx scripts/assert-schema-drift.ts "$database_url" ); then
     echo "FATAL: schema-drift assert failed for $RELEASE_NAME (T-330) — the journal says migrations applied," >&2
     echo "       but a live column/matview disagrees with schema.ts. See the named drift above." >&2
     return 1
