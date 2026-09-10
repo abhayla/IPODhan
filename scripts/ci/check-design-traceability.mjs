@@ -17,7 +17,8 @@
 //   0 - clean (or only reporting-mode findings — see MODE2_ENFORCE below)
 //   1 - a broken link in the chain (mode 1 or mode 3 finding)
 //   2 - the check itself failed (bad input, missing file, unparseable JSON,
-//       or the self-guard: zero live rules is a FAIL, never a pass)
+//       or a self-guard: zero live rules, or zero surviving test roots, is
+//       a FAIL, never a pass)
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
@@ -31,7 +32,11 @@ const REPO_ROOT = join(__dirname, '..', '..');
 // exist for the pull-model write paths (see the card's "Feature flag"
 // section). Flip this one constant to true at that release to make it
 // enforcing (exit 1 on a finding) instead of exit 0.
-const MODE2_ENFORCE = false;
+// Test seam for the currently-unreachable enforcing path (MAJOR 2 fix): the
+// shipped default stays false until build item 6, exactly as above — this
+// env override exists only so a test can exercise MODE2_ENFORCE=true without
+// restructuring the module or changing the shipped constant.
+const MODE2_ENFORCE = process.env.DESIGN_TRACEABILITY_MODE2_ENFORCE === 'true' ? true : false;
 
 function parseArgs(argv) {
   const opts = { rules: null, cards: null, unclaimed: null, tests: [] };
@@ -65,11 +70,14 @@ function defaultTestRoots() {
 
 function resolveOptions(argv) {
   const parsed = parseArgs(argv);
+  const requestedTestRoots = parsed.tests.length ? parsed.tests : defaultTestRoots();
+  const testRoots = requestedTestRoots.filter((r) => existsSync(r));
   return {
     rulesPath: parsed.rules || join(REPO_ROOT, 'docs', 'design', 'rules.json'),
     cardsDir: parsed.cards || join(REPO_ROOT, 'docs', 'design', 'build-cards'),
     unclaimedPath: parsed.unclaimed || join(REPO_ROOT, 'docs', 'design', 'rules-unclaimed.json'),
-    testRoots: parsed.tests.length ? parsed.tests.filter((r) => existsSync(r)) : defaultTestRoots(),
+    requestedTestRoots,
+    testRoots,
   };
 }
 
@@ -195,7 +203,22 @@ function loadTestDeclarations(testRoots) {
 }
 
 function main() {
-  const { rulesPath, cardsDir, unclaimedPath, testRoots } = resolveOptions(process.argv.slice(2));
+  const { rulesPath, cardsDir, unclaimedPath, requestedTestRoots, testRoots } = resolveOptions(
+    process.argv.slice(2)
+  );
+
+  // Self-guard, test-root side (MAJOR 1 fix): a renamed/moved/missing test
+  // root must not silently disarm mode 3 (bad rule-id declarations) by
+  // walking zero directories. Mirrors the zero-live-rules self-guard below —
+  // a check that scans nothing is not a clean pass. Name every root it
+  // looked for so a reader can see WHICH roots were requested vs found
+  // (signal-ownership.md R1 — identities, not just counts).
+  if (testRoots.length === 0) {
+    fail2(
+      `zero test roots exist out of ${requestedTestRoots.length} requested — a check that scans nothing is not a ` +
+        `clean pass. Requested: ${requestedTestRoots.join(', ') || '(none)'}`
+    );
+  }
 
   const rules = loadRules(rulesPath);
   const liveIds = rules.filter((r) => !r.retired).map((r) => r.id);
@@ -254,8 +277,11 @@ function main() {
   }
 
   const claimedLiveCount = liveIds.filter((id) => cardClaims.has(id) || declaredUnclaimed.has(id)).length;
+  const declarationCount = [...testDeclarations.values()].reduce((n, files) => n + files.length, 0);
+  const scannedRoots = testRoots.map((r) => relative(REPO_ROOT, r).split('\\').join('/')).join(', ');
   console.log(
-    `check-design-traceability: ${liveIds.length} rules, ${claimedLiveCount} claimed, ${orphans.length} orphans`
+    `check-design-traceability: ${liveIds.length} rules, ${claimedLiveCount} claimed, ${orphans.length} orphans, ` +
+      `${declarationCount} test declaration(s) found, test roots scanned: ${scannedRoots}`
   );
   for (const line of lines) console.log(line);
 
