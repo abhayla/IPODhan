@@ -23,6 +23,7 @@ const pair = (companyName: string, issueType: 'BOOK_BUILDING' | 'FIXED_PRICE' = 
 function deps(over: Partial<Parameters<typeof fillIssueTypesFromReport>[1]> = {}) {
   return {
     resolveIpoId: vi.fn(async () => 'ipo-1'),
+    ensureDetailsRow: vi.fn(async () => false),
     fillIssueTypeIfNull: vi.fn(async () => true),
     trackFieldUpdate: vi.fn(async () => {}),
     logger: { warn: vi.fn() },
@@ -95,6 +96,54 @@ describe('fillIssueTypesFromReport — provenance follows a real write', () => {
     const s = await fillIssueTypesFromReport([], d as never);
     expect(s).toMatchObject({ candidates: 0, matched: 0, filled: 0 });
     expect(d.resolveIpoId).not.toHaveBeenCalled();
+  });
+});
+
+describe('the identity row is created before the fill, and counted apart from it', () => {
+  it('creates the row FIRST, then fills - 182 of 183 IPOs have no ipo_details row', async () => {
+    const order: string[] = [];
+    const d = deps({
+      ensureDetailsRow: vi.fn(async () => { order.push('create'); return true; }),
+      fillIssueTypeIfNull: vi.fn(async () => { order.push('fill'); return true; }),
+    });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd')], d);
+    expect(order).toEqual(['create', 'fill']);
+    expect(s.rowsCreated).toBe(1);
+    expect(s.filled).toBe(1);
+  });
+
+  it('a CREATED row is not a FILLED value - the counters never merge', async () => {
+    // The row came into existence; the column stayed as it was. Reporting that
+    // as a fill claims this run set a value it did not.
+    const d = deps({
+      ensureDetailsRow: vi.fn(async () => true),
+      fillIssueTypeIfNull: vi.fn(async () => false),
+    });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd')], d);
+    expect(s.rowsCreated).toBe(1);
+    expect(s.filled).toBe(0);
+    expect(s.alreadySet).toBe(1);
+    expect(d.trackFieldUpdate).not.toHaveBeenCalled();
+  });
+
+  it('an existing row is not re-counted as created', async () => {
+    const d = deps({ ensureDetailsRow: vi.fn(async () => false) });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd')], d);
+    expect(s.rowsCreated).toBe(0);
+    expect(s.filled).toBe(1);
+  });
+
+  it('a creation failure counts as failed and never reaches the write', async () => {
+    const fill = vi.fn(async () => true);
+    const d = deps({
+      ensureDetailsRow: vi.fn(async () => { throw new Error('insert blew up'); }),
+      fillIssueTypeIfNull: fill,
+    });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd')], d);
+    expect(s.failed).toBe(1);
+    expect(s.rowsCreated).toBe(0);
+    expect(fill).not.toHaveBeenCalled();
+    expect(d.trackFieldUpdate).not.toHaveBeenCalled();
   });
 });
 

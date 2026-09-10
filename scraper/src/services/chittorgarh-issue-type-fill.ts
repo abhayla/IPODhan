@@ -24,6 +24,14 @@ export const REPORT82_CONFIDENCE = BASE_SOURCE_CONFIDENCE.CHITTORGARH;
 export interface IssueTypeFillDeps {
   /** Resolve a report name to a stored IPO id. Returns null when it matches none. */
   resolveIpoId(companyName: string): Promise<string | null>;
+  /**
+   * Create the `ipo_details` identity row when the IPO has none. True when it
+   * created one. REQUIRED in practice, not optional decoration: 182 of the 183
+   * fillable IPOs have no `ipo_details` row at all, so an UPDATE-only fill
+   * reaches exactly ONE of them. Must be INSERT .. ON CONFLICT DO NOTHING, so a
+   * repeat cycle never touches an existing row's data_source.
+   */
+  ensureDetailsRow(ipoId: string): Promise<boolean>;
   /** The guarded writer: fills only when issue_type IS NULL; true when it filled. */
   fillIssueTypeIfNull(ipoId: string, issueType: string): Promise<boolean>;
   /** Provenance. Called ONLY after a real write. */
@@ -49,6 +57,12 @@ export interface IssueTypeFillSummary {
   alreadySet: number;
   /** No stored row for that name. */
   unmatched: number;
+  /**
+   * Identity rows CREATED. Deliberately separate from `filled`: creating a row
+   * and filling a value are different claims, and a counter that merges them
+   * would report a successful fill for a row that only came into existence.
+   */
+  rowsCreated: number;
   /** Rows whose write threw; counted, never swallowed silently. */
   failed: number;
 }
@@ -58,7 +72,8 @@ export async function fillIssueTypesFromReport(
   deps: IssueTypeFillDeps
 ): Promise<IssueTypeFillSummary> {
   const summary: IssueTypeFillSummary = {
-    candidates: pairs.length, matched: 0, filled: 0, alreadySet: 0, unmatched: 0, failed: 0,
+    candidates: pairs.length, matched: 0, filled: 0, alreadySet: 0, unmatched: 0,
+    rowsCreated: 0, failed: 0,
   };
 
   for (const pair of pairs) {
@@ -74,6 +89,9 @@ export async function fillIssueTypesFromReport(
     summary.matched++;
 
     try {
+      // Create the identity row FIRST when it is missing, or the UPDATE below
+      // has no row to touch. Counted on its own line - never as a fill.
+      if (await deps.ensureDetailsRow(ipoId)) summary.rowsCreated++;
       const wrote = await deps.fillIssueTypeIfNull(ipoId, pair.issueType);
       if (!wrote) { summary.alreadySet++; continue; }
       summary.filled++;
