@@ -85,12 +85,13 @@
  */
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { pageRowsFromExtraction, type DocumentPageRow } from './document-page-text.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { db, getRedisClient, DocumentRepository } from '@ipodhan/shared';
-import { documents as documentsTable } from '@ipodhan/shared/db/schema';
+import { documents as documentsTable, documentPages as documentPagesTable } from '@ipodhan/shared/db/schema';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import logger from '../utils/logger.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -980,6 +981,15 @@ export interface AutoPersistDeps {
     retryCount?: number;
     /** Round 3 (MAJOR-1): busy-revert-only override, see `ExtractionStatePatchContext.updatedAt`. */
     updatedAt?: Date;
+    /**
+     * Item 18 slice 1b. The per-page text to store BEFORE this document is
+     * marked COMPLETED. Written first and deliberately: the later purge keys on
+     * pages-STORED, so the rows must exist before the status that will make the
+     * PDF eligible for deletion. Empty or absent is normal - a scanned document
+     * has no text - and simply means nothing is stored, which is exactly what
+     * tells the purge to leave that PDF alone.
+     */
+    pageRows?: DocumentPageRow[];
   }) => Promise<void>;
   /** Stamp `document_fetch_state.extracted_at` + `extractor_version`. */
   setFetchStateExtracted: (args: {
@@ -1073,7 +1083,7 @@ export function buildAutoPersistDeps(
     runAnchorPersist: (args) => runAnchorAutoPersist(args, persisterDeps, redis),
     persistFiling: persistFilingExtraction,
     persisterDeps,
-    async setDocumentExtractionState({ documentId, status, error, retryCount, updatedAt }) {
+    async setDocumentExtractionState({ documentId, status, error, retryCount, updatedAt, pageRows }) {
       // Round 4: the REAL writer. It does not compute the patch itself — it
       // hands `buildExtractionStatePatch` (the ONE pure function every status
       // write goes through) the same args the caller already decided, and
@@ -1084,6 +1094,15 @@ export function buildAutoPersistDeps(
       // increment/reset arithmetic lives at the call site (`processPendingFilings`),
       // never here. `updatedAt`, when given, overrides the real "now" —
       // round 3 (MAJOR-1) busy-revert only.
+      // Item 18 slice 1b: the text lands BEFORE the status that will one day
+      // make this PDF deletable. Order is the whole guarantee - if the insert
+      // fails, COMPLETED is never written, so a later purge keyed on
+      // pages-stored can never find a document it thinks is safe to delete.
+      // onConflictDoNothing because a re-extraction of the same document must
+      // not abort on the (document_id, page_number) unique constraint.
+      if (status === 'COMPLETED' && pageRows && pageRows.length > 0) {
+        await db.insert(documentPagesTable).values(pageRows as never).onConflictDoNothing();
+      }
       const patch = buildExtractionStatePatch(status as ExtractionStatus, { error, retryCount, updatedAt }, new Date());
       const rows = await db
         .update(documentsTable)
@@ -1949,7 +1968,16 @@ export async function processPendingFilings(
     // must not carry that history into its next unrelated extraction attempt
     // (e.g. after a future EXTRACTOR_VERSION bump).
     await deps
-      .setDocumentExtractionState({ documentId: doc.id, status: 'COMPLETED', error: null, retryCount: 0 })
+      .setDocumentExtractionState({
+        documentId: doc.id,
+        status: 'COMPLETED',
+        error: null,
+        retryCount: 0,
+        // Item 18 slice 1b. An empty list here is normal and meaningful: a
+        // scanned filing yields no text, nothing is stored, and the purge must
+        // therefore never delete its PDF.
+        pageRows: pageRowsFromExtraction(doc.id, extraction as never),
+      })
       .catch(() => undefined);
     const stateId = stateIdByDocType.get(docType);
     if (stateId) {

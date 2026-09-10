@@ -18,10 +18,25 @@
 import { logger } from '../utils/logger.js';
 import { drainTouched } from './touched-ipos-tracker.js';
 
-export interface StepResult {
-  status: 'ok' | 'skipped' | 'failed';
-  reason?: string;
-}
+/**
+ * MUST match index.ts's `StepResult` exactly - it is a DISCRIMINATED UNION where
+ * `reason` is REQUIRED on skipped and failed, and the two types meet at
+ * `runStep(cycleId, step, fn)`.
+ *
+ * My first version declared `reason?: string` on all three, which is looser and
+ * therefore not assignable: `{ status: 'skipped' }` satisfies the loose shape
+ * and not the real one. It merged in #557 because nothing type-checks
+ * `scraper/` - CLAUDE.md says so plainly ("Nothing type-checks scraper/ or
+ * packages/shared/ at commit time"), and `tsc --noEmit` there is red with 94
+ * other pre-existing errors, so one more was invisible.
+ *
+ * Not imported from index.ts on purpose: index.ts imports THIS module, so an
+ * import back would be circular. Duplicated with the constraint stated instead.
+ */
+export type StepResult =
+  | { status: 'ok'; reason?: string }
+  | { status: 'skipped'; reason: string }
+  | { status: 'failed'; reason: string };
 
 export interface RevalidationTriggerDeps {
   env?: { WEB_INTERNAL_URL?: string; ADMIN_API_TOKEN?: string };
