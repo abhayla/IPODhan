@@ -17,11 +17,22 @@
  *     Chittorgarh's own host.
  *
  * Pure: every function takes already-fetched HTML. Fetching is the runner's.
+ * Two exceptions, both item 22 (OD-37): `isResolvedAddressPrivate` does its
+ * own DNS lookup (a resolved-address check cannot be pure — the whole point
+ * is to see what the name ACTUALLY resolves to, not trust the string), and
+ * `loadRegistrarDocumentHosts` does its own DB read (cached per cycle, the
+ * same pattern `document-discovery-runner.ts`'s `boardCache` uses).
  */
 
 import * as cheerio from 'cheerio';
+import { lookup } from 'node:dns/promises';
+import { eq } from 'drizzle-orm';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import * as schema from '@ipodhan/shared/db/schema';
+import { registrars } from '@ipodhan/shared/db/schema';
 import { classifyByTitle, fileNameFromUrl } from './document-classifier.js';
 import type { DocumentType } from './document-types.js';
+import { loadDownloadAllowlist } from '../config/download-allowlist-loader.js';
 
 /** Investor-page paths to try, in order. Capped at 3 GETs (R12). */
 export const COMPANY_INVESTOR_PATHS = ['/investors', '/investor-relations', '/ipo'] as const;
@@ -237,6 +248,74 @@ const PRIVATE_HOST_PATTERNS = [
 ];
 
 /**
+ * IPv4 address in a private/loopback/link-local/unspecified range.
+ * Mirrors `PRIVATE_HOST_PATTERNS`' ranges but against a resolved octet
+ * quad, not a hostname string. A quad that fails to parse is treated as
+ * private (fail closed — item 22, OD-37).
+ */
+function isPrivateIPv4Address(ip: string): boolean {
+  const octets = ip.split('.').map((p) => Number(p));
+  if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) {
+    return true;
+  }
+  const [a, b] = octets;
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 127) return true; // 127.0.0.0/8 loopback
+  if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  return false;
+}
+
+/**
+ * IPv6 address in a loopback/link-local/unique-local range.
+ * `fc00::/7` (unique-local) and `fe80::/10` (link-local) checked on the
+ * first 16-bit group; `::ffff:a.b.c.d` (IPv4-mapped) defers to the IPv4
+ * check on the embedded address. An address this cannot parse is treated
+ * as private (fail closed).
+ */
+function isPrivateIPv6Address(ip: string): boolean {
+  const normalized = ip.toLowerCase();
+  if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') return true;
+
+  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isPrivateIPv4Address(mapped[1]);
+
+  const firstGroup = normalized.split(':')[0] ?? '';
+  const value = firstGroup === '' ? 0 : parseInt(firstGroup, 16);
+  if (Number.isNaN(value)) return true;
+  if (value >= 0xfe80 && value <= 0xfebf) return true; // fe80::/10 link-local
+  if (value >= 0xfc00 && value <= 0xfdff) return true; // fc00::/7 unique-local
+  return false;
+}
+
+/**
+ * NEW (item 22, OD-37) — closes the DNS-rebinding gap `PRIVATE_HOST_PATTERNS`
+ * leaves open: a hostname whose NAME looks public but RESOLVES to a private
+ * address. Resolves every A/AAAA record (`{ all: true }` — a rebinding attack
+ * can hide the malicious address behind a legitimate first answer) and
+ * refuses if ANY resolved address is private/loopback/link-local/unique-local.
+ *
+ * Fails CLOSED: a lookup that throws (NXDOMAIN, timeout, a malformed
+ * hostname) is treated as private/refused, never as "couldn't check, allow
+ * it" — the caller is refusing a network request either way, so an
+ * unresolvable host must refuse the same as a resolvable-but-private one.
+ */
+export async function isResolvedAddressPrivate(hostname: string): Promise<boolean> {
+  let addresses: Array<{ address: string; family: number }>;
+  try {
+    addresses = await lookup(hostname, { all: true });
+  } catch {
+    return true;
+  }
+  if (addresses.length === 0) return true;
+  return addresses.some(({ address, family }) =>
+    family === 6 ? isPrivateIPv6Address(address) : isPrivateIPv4Address(address)
+  );
+}
+
+/**
  * Normalise a stored website value into an origin we can safely fetch.
  *
  * Refuses anything that is not plain http(s), any private/loopback/link-local
@@ -332,12 +411,14 @@ export function parseCompanyHostLinks(html: string, pageUrl: string): CompanyHos
  * covered by their parent domains, and a redundant entry in an allowlist is
  * worse than no entry: it invites the reader to believe the list is exhaustive
  * and to add a subdomain rather than trust the suffix rule.
+ *
+ * Item 22 (OD-37): this is now DATA, `scraper/config/download-allowlist.json`,
+ * read once through `loadValidatedConfig` (OD-51) — not a literal array in
+ * code. The registrars are layered on top separately at call time
+ * (`loadRegistrarDocumentHosts`, below) because they are a DB table, not a
+ * file this loader owns.
  */
-export const TRUSTED_DOCUMENT_HOSTS = [
-  'bseindia.com',
-  'nseindia.com',
-  'sebi.gov.in',
-];
+export const TRUSTED_DOCUMENT_HOSTS: readonly string[] = loadDownloadAllowlist().hosts;
 
 /**
  * Hosts the link VERIFIER may be pointed at (M-b).
@@ -365,22 +446,119 @@ export function isVerifierUrl(value: string | null | undefined): boolean {
 }
 
 /**
- * Is this URL on an exchange or SEBI host?
+ * Is this URL on an exchange, SEBI, or a registrar's own host?
  *
  * M-1: the `host.includes(h)` arm this used to carry made the allowlist
  * meaningless — `bseindia.com.attacker.net` contains "bseindia.com" and passed.
  * Matching is now exact or a true DNS-suffix match, and the scheme must be
  * https/http, so a crafted hostname cannot smuggle a download past the verifier.
+ *
+ * Item 22 (OD-37): `registrarHosts` is the injected registrar-host set
+ * (`loadRegistrarDocumentHosts`, below), kept as a caller-supplied argument
+ * so this stays a pure, synchronous, unit-testable check rather than doing
+ * its own DB read. Defaults to empty so every existing caller (the
+ * Chittorgarh verifier, the company-host store check) keeps working
+ * unchanged until it is updated to pass a real registrar set.
  */
-export function isTrustedDocumentHost(url: string): boolean {
+export function isTrustedDocumentHost(
+  url: string,
+  registrarHosts: ReadonlySet<string> = new Set()
+): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
     const host = parsed.hostname.toLowerCase();
-    return TRUSTED_DOCUMENT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+    const matchesSuffix = (h: string) => host === h || host.endsWith(`.${h}`);
+    if (TRUSTED_DOCUMENT_HOSTS.some(matchesSuffix)) return true;
+    for (const h of registrarHosts) {
+      if (matchesSuffix(h)) return true;
+    }
+    return false;
   } catch {
     return false;
   }
+}
+
+/**
+ * A registrar website, parsed the same reject-non-http(s)/reject-private-
+ * string-host way `normalizeCompanyUrl` parses a company website — but
+ * WITHOUT `normalizeCompanyUrl`'s `NON_ISSUER_DOMAINS` rejection, because
+ * that list names exactly the RTA domains (linkintime, bigshareonline,
+ * kfintech, ...) a registrar row's `website` legitimately points at. Reusing
+ * `normalizeCompanyUrl` here would exclude every real registrar host.
+ */
+function parseRegistrarWebsiteHost(value: string | null | undefined): string | null {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const raw = value.trim();
+  // A scheme prefix (letters/digits/+/- only, no dot — a real bare hostname
+  // never has a colon this early since a dot always precedes it, e.g.
+  // "linkintime.co.in:8080"). A value that already names a scheme other than
+  // http(s) (mailto:, ftp:, javascript:, ...) is rejected OUTRIGHT here,
+  // before it ever reaches `new URL()`. Blindly prepending "https://" in
+  // front of an unrecognised scheme (the naive approach) does not make the
+  // protocol check below meaningful —
+  // `new URL("https://" + "mailto:x@linkintime.co.in")` parses to protocol
+  // https, hostname "linkintime.co.in" (the scheme+user became userinfo), so
+  // a non-http(s) value can slip through disguised as a legitimate host.
+  const hasScheme = /^[a-z][a-z0-9+-]*:/i.test(raw);
+  if (hasScheme && !/^https?:\/\//i.test(raw)) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(hasScheme ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  const host = parsed.hostname.toLowerCase();
+  if (!host.includes('.')) return null;
+  if (PRIVATE_HOST_PATTERNS.some((re) => re.test(host))) return null;
+  return host;
+}
+
+interface RegistrarHostsCacheEntry {
+  hosts: Set<string>;
+}
+
+/**
+ * Cached across calls within one cycle — the registrar list changes rarely,
+ * so a DB read per document fetch is the wrong cost. Same cache-per-cycle
+ * shape `document-discovery-runner.ts`'s `boardCache` uses; a fresh cycle
+ * calls `resetRegistrarDocumentHostsCache()` first (the runner's own
+ * per-cycle reset point — not wired here, item 22 is this function only).
+ */
+let registrarHostsCache: RegistrarHostsCacheEntry | null = null;
+
+/** Cycle boundary: drop the cached registrar-host set so the next call re-reads it. */
+export function resetRegistrarDocumentHostsCache(): void {
+  registrarHostsCache = null;
+}
+
+/**
+ * NEW (item 22, OD-37). Reads `registrars` where `active = true`, parses
+ * each `website` through `parseRegistrarWebsiteHost` (rejects non-http(s)
+ * and private-string hosts — a bad data-entry row cannot smuggle a private
+ * host into the download allow-list), and returns the resulting hostname
+ * set. Cached until `resetRegistrarDocumentHostsCache()` is called.
+ */
+export async function loadRegistrarDocumentHosts(
+  db: NodePgDatabase<typeof schema>
+): Promise<Set<string>> {
+  if (registrarHostsCache) return registrarHostsCache.hosts;
+
+  const rows = await db
+    .select({ website: registrars.website })
+    .from(registrars)
+    .where(eq(registrars.active, true));
+
+  const hosts = new Set<string>();
+  for (const row of rows) {
+    const host = parseRegistrarWebsiteHost(row.website);
+    if (host) hosts.add(host);
+  }
+
+  registrarHostsCache = { hosts };
+  return hosts;
 }
 
 /**

@@ -1,4 +1,6 @@
-import { describe, it, expect } from 'vitest';
+// implements: R-160
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   extractWebsiteFromCoverText,
   normalizeCompanyUrl,
@@ -6,9 +8,18 @@ import {
   parseCompanyHostLinks,
   extractVerifierLinks,
   isTrustedDocumentHost,
+  isResolvedAddressPrivate,
+  loadRegistrarDocumentHosts,
+  resetRegistrarDocumentHostsCache,
   COMPANY_INVESTOR_PATHS,
   MAX_COMPANY_HOST_FETCHES,
 } from '../../../src/services/company-host-source.js';
+
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn(),
+}));
+
+import { lookup } from 'node:dns/promises';
 
 /**
  * T-403 G2 — the company-host rung and the Chittorgarh link verifier.
@@ -143,5 +154,142 @@ describe('Chittorgarh is a VERIFIER, never a source', () => {
     expect(isTrustedDocumentHost('https://www.chittorgarh.com/a.pdf')).toBe(false);
     expect(isTrustedDocumentHost('https://example.com/a.pdf')).toBe(false);
     expect(isTrustedDocumentHost('not a url')).toBe(false);
+  });
+
+  it('isTrustedDocumentHost admits an injected registrar host, not a stranger', () => {
+    const registrarHosts = new Set(['linkintime.co.in']);
+    expect(isTrustedDocumentHost('https://linkintime.co.in/ipo/allotment.pdf', registrarHosts)).toBe(
+      true
+    );
+    expect(
+      isTrustedDocumentHost('https://sub.linkintime.co.in/ipo/allotment.pdf', registrarHosts)
+    ).toBe(true);
+    expect(isTrustedDocumentHost('https://example.com/a.pdf', registrarHosts)).toBe(false);
+    // Exchanges still admitted even with a registrar set injected.
+    expect(
+      isTrustedDocumentHost('https://nsearchives.nseindia.com/a.zip', registrarHosts)
+    ).toBe(true);
+  });
+});
+
+describe('isResolvedAddressPrivate — DNS-rebinding-safe host refusal (item 22, OD-37)', () => {
+  beforeEach(() => {
+    vi.mocked(lookup).mockReset();
+  });
+
+  it('refuses a public-looking name that resolves to a private IPv4 address', async () => {
+    vi.mocked(lookup).mockResolvedValue([{ address: '127.0.0.1', family: 4 }] as never);
+    expect(await isResolvedAddressPrivate('public-looking.example')).toBe(true);
+  });
+
+  it('checks EVERY resolved address, not just the first (all: true)', async () => {
+    vi.mocked(lookup).mockResolvedValue([
+      { address: '8.8.8.8', family: 4 },
+      { address: '10.0.0.5', family: 4 },
+    ] as never);
+    expect(await isResolvedAddressPrivate('mixed.example')).toBe(true);
+    expect(lookup).toHaveBeenCalledWith('mixed.example', { all: true });
+  });
+
+  it('admits a name that resolves only to public addresses', async () => {
+    vi.mocked(lookup).mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as never);
+    expect(await isResolvedAddressPrivate('public.example')).toBe(false);
+  });
+
+  it('refuses an IPv6 unique-local resolution (fc00::/7)', async () => {
+    vi.mocked(lookup).mockResolvedValue([
+      { address: 'fd12:3456:789a:1::1', family: 6 },
+    ] as never);
+    expect(await isResolvedAddressPrivate('unique-local.example')).toBe(true);
+  });
+
+  it('refuses an IPv6 link-local resolution (fe80::/10)', async () => {
+    vi.mocked(lookup).mockResolvedValue([{ address: 'fe80::1', family: 6 }] as never);
+    expect(await isResolvedAddressPrivate('link-local.example')).toBe(true);
+  });
+
+  it('admits a public IPv6 resolution', async () => {
+    vi.mocked(lookup).mockResolvedValue([
+      { address: '2606:4700:4700::1111', family: 6 },
+    ] as never);
+    expect(await isResolvedAddressPrivate('public-v6.example')).toBe(false);
+  });
+
+  it('FAILS CLOSED — a lookup that throws is refused, not allowed', async () => {
+    vi.mocked(lookup).mockRejectedValue(new Error('ENOTFOUND'));
+    expect(await isResolvedAddressPrivate('unresolvable.example')).toBe(true);
+  });
+});
+
+describe('loadRegistrarDocumentHosts — registrar hosts as data, cached per cycle', () => {
+  beforeEach(() => {
+    resetRegistrarDocumentHostsCache();
+  });
+
+  function mockDb(rows: Array<{ website: string | null }>) {
+    return {
+      select: () => ({
+        from: () => ({
+          where: async () => rows,
+        }),
+      }),
+    } as never;
+  }
+
+  it('excludes a non-http(s) website', async () => {
+    const hosts = await loadRegistrarDocumentHosts(
+      mockDb([{ website: 'ftp://linkintime.co.in' }])
+    );
+    expect(hosts.size).toBe(0);
+  });
+
+  it('excludes a non-http(s) scheme even when it would otherwise parse to a real-looking host', async () => {
+    // "mailto:x@host" naively prepended with "https://" parses to a valid
+    // https URL whose hostname is the real host (the scheme+user become
+    // userinfo) — this is the actual class of value the protocol check
+    // must catch, not just a scheme that fails to parse at all.
+    resetRegistrarDocumentHostsCache();
+    const hosts = await loadRegistrarDocumentHosts(
+      mockDb([{ website: 'mailto:helpdesk@linkintime.co.in' }])
+    );
+    expect(hosts.size).toBe(0);
+  });
+
+  it('excludes a private-string host', async () => {
+    resetRegistrarDocumentHostsCache();
+    const hosts = await loadRegistrarDocumentHosts(mockDb([{ website: 'http://10.0.0.5' }]));
+    expect(hosts.size).toBe(0);
+  });
+
+  it('includes a well-formed registrar website', async () => {
+    resetRegistrarDocumentHostsCache();
+    const hosts = await loadRegistrarDocumentHosts(
+      mockDb([{ website: 'https://linkintime.co.in' }])
+    );
+    expect(hosts.has('linkintime.co.in')).toBe(true);
+  });
+
+  it('refreshes on the next cycle rather than serving the first cycle forever', async () => {
+    resetRegistrarDocumentHostsCache();
+    const first = await loadRegistrarDocumentHosts(
+      mockDb([{ website: 'https://linkintime.co.in' }])
+    );
+    expect(first.has('linkintime.co.in')).toBe(true);
+
+    // Same cache, no reset — a second registrar added mid-cycle must NOT
+    // appear yet (still serving the cached set).
+    const stillCached = await loadRegistrarDocumentHosts(
+      mockDb([{ website: 'https://bigshareonline.com' }])
+    );
+    expect(stillCached.has('linkintime.co.in')).toBe(true);
+    expect(stillCached.has('bigshareonline.com')).toBe(false);
+
+    // New cycle: reset, then the new DB state is read fresh.
+    resetRegistrarDocumentHostsCache();
+    const secondCycle = await loadRegistrarDocumentHosts(
+      mockDb([{ website: 'https://bigshareonline.com' }])
+    );
+    expect(secondCycle.has('bigshareonline.com')).toBe(true);
+    expect(secondCycle.has('linkintime.co.in')).toBe(false);
   });
 });
