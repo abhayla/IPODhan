@@ -1,7 +1,10 @@
+import { foldCompanyIdentity } from '@ipodhan/shared/utils/company-identity-fold';
 import { describe, it, expect, vi } from 'vitest';
 import {
   fillIssueTypesFromReport,
   REPORT82_CONFIDENCE,
+  buildFoldedIndex,
+  resolveByFoldedName,
 } from '../../../src/services/chittorgarh-issue-type-fill.js';
 import { BASE_SOURCE_CONFIDENCE } from '../../../src/config/source-confidence.js';
 
@@ -92,5 +95,65 @@ describe('fillIssueTypesFromReport — provenance follows a real write', () => {
     const s = await fillIssueTypesFromReport([], d as never);
     expect(s).toMatchObject({ candidates: 0, matched: 0, filled: 0 });
     expect(d.resolveIpoId).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveByFoldedName - one match or nothing', () => {
+  // The repo's REAL identity fold, imported, never re-implemented. A resolver
+  // tested against a hand-rolled regex proves nothing about the fold the rest
+  // of the system actually uses.
+  const fold = foldCompanyIdentity;
+
+  const idx = (rows: Array<{ id: string; companyName: string }>) =>
+    buildFoldedIndex(rows, fold);
+
+  it('resolves the long stored name from the report short name', () => {
+    // The 2026-09-09 duplicate case, from the other direction.
+    const i = idx([{ id: 'arcil', companyName: 'ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED' }]);
+    expect(resolveByFoldedName('Asset Reconstruction Co.(India) Ltd.', i, fold)).toBe('arcil');
+  });
+
+  it('REFUSES when two stored rows fold to the same key - never picks one', () => {
+    // Staging really holds 13 such groups. Picking would write a sourced value
+    // onto the wrong company; #562 is the live example of that policy failing.
+    const i = idx([
+      { id: 'a', companyName: 'Indo-MIM Limited' },
+      { id: 'b', companyName: 'INDO MIM LTD' },
+    ]);
+    expect(foldCompanyIdentity('Indo-MIM Limited')).toBe(foldCompanyIdentity('INDO MIM LTD'));
+    expect(resolveByFoldedName('Indo MIM Ltd.', i, fold)).toBeNull();
+  });
+
+  it('returns null for a name no stored row folds to', () => {
+    const i = idx([{ id: 'a', companyName: 'Atharva Polyplast Limited' }]);
+    // A near-miss the fold deliberately keeps apart.
+    expect(resolveByFoldedName('Atharva Polymers Limited', i, fold)).toBeNull();
+  });
+
+  it('returns null when the name folds to nothing rather than matching a blank key', () => {
+    // 'India Company Limited' is ALL non-identity words - it folds to ''.
+    expect(foldCompanyIdentity('India Company Limited')).toBe('');
+    const i = idx([{ id: 'a', companyName: 'Vikran Engineering Ltd' }]);
+    expect(resolveByFoldedName('India Company Limited', i, fold)).toBeNull();
+    expect(resolveByFoldedName('', i, fold)).toBeNull();
+  });
+
+  it('refuses a blank key even when the index HAS one, not relying on the builder', () => {
+    // buildFoldedIndex never stores '', so this guard is invisible through it.
+    // But `index` is any ReadonlyMap: a caller assembling one another way could
+    // hand in a '' key, and it would then match EVERY unfoldable name at once.
+    // The mutation that removed this guard survived until this test existed.
+    const hostile = new Map<string, string[]>([['', ['wrong-company']]]);
+    expect(resolveByFoldedName('India Company Limited', hostile, fold)).toBeNull();
+    expect(resolveByFoldedName('', hostile, fold)).toBeNull();
+  });
+
+  it('a candidate whose name folds to nothing never enters the index', () => {
+    const i = idx([
+      { id: 'junk', companyName: 'India Company Limited' },
+      { id: 'real', companyName: 'Coal India Limited' },
+    ]);
+    expect(i.has('')).toBe(false);
+    expect(resolveByFoldedName('Coal India Ltd', i, fold)).toBe('real');
   });
 });
