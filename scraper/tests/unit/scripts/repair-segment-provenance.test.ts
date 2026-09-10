@@ -29,12 +29,13 @@ describe('decideSegmentProvenance', () => {
     expect(d.reason.toLowerCase()).toContain('offering_type=ofs');
   });
 
-  it('an IPO row with no source decides NULL-with-reason, not a guess back to the stored value', () => {
+  it('an IPO row with no source is REPORTED only — never written, never cleared to NULL', () => {
     const d = decideSegmentProvenance(row({ offeringType: 'IPO', segment: 'MAINBOARD' }));
-    expect(d.action).toBe('no-source-no-guess');
-    expect(d.newSegment).toBeNull();
-    expect(d.touch).toBe(true);
+    expect(d.action).toBe('report-unprovenanced-ipo');
+    expect(d.touch).toBe(false);
+    expect(d.newSegment).toBe('MAINBOARD');
     expect(d.reason.toLowerCase()).toContain('no source');
+    expect(d.reason.toLowerCase()).toContain('reported');
   });
 
   it('an IPO row WITH a verified source decides that sourced value', () => {

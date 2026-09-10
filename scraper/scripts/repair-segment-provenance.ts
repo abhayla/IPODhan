@@ -16,18 +16,27 @@
  * The two populations, and the honest split (per `schema.ts:278` —
  * "segment ... nullable for RIGHTS/InvITs/REITs" — segment is an IPO-board
  * concept):
- *   1. Non-IPO rows (any offering_type other than 'IPO'): `segment` is
- *      cleared to NULL. No external source is needed — a buyback/OFS/
- *      tender/NCD/rights issue has no IPO board by definition. A
- *      `field_sources` row records the reason.
+ *   1. Non-IPO rows (any offering_type other than 'IPO'): `segment` IS
+ *      MEANINGLESS, not merely unsourced — a buyback/OFS/tender/NCD/rights
+ *      issue has no IPO board by definition. These are the ONLY rows this
+ *      tool writes: cleared to NULL, with a `field_sources` row recording
+ *      the reason.
  *   2. IPO rows: a real, manually-verified source is attempted via
  *      `VERIFIED_IPO_SEGMENT_SOURCES` below (populated per-slug once an
  *      operator has checked NSE/BSE for that specific company — the
  *      `listing_exchanges` field cannot answer this: it names the EXCHANGE
  *      (BSE/NSE), not the BOARD, and BSE runs both a mainboard and BSE SME).
- *      Empty by default. Whatever is not in that map STAYS NULL with the
- *      reason recorded — "no source states it" is a SUCCESSFUL outcome,
- *      never an inferred guess.
+ *      Empty by default. An IPO row NOT in that map is left COMPLETELY
+ *      UNTOUCHED and only REPORTED (`report-unprovenanced-ipo`) — a
+ *      sourced value and a guessed value are NOT indistinguishable, because
+ *      the database already distinguishes them: a sourced value has a
+ *      `field_sources` row, a guessed one does not, and that is exactly the
+ *      query this tool runs. Clearing these labels to NULL would destroy
+ *      probably-correct information (measured on staging: 33 of 62
+ *      candidates are genuine IPO rows) to express something the missing
+ *      provenance row already expresses. The gap left open by "we don't
+ *      have a source for this label" is closed by the `d_segment_provenance`
+ *      nightly detection check below, never by erasing the label.
  *
  * `offering_type` is re-checked PER ROW from the live query, never trusted
  * from an aggregate count — it is itself a stored (and occasionally wrong)
@@ -62,7 +71,8 @@ export type SegmentValue = 'MAINBOARD' | 'SME' | null;
  * NSE/BSE by an operator (never inferred from `listing_exchanges`, lot
  * economics, or a scraper default). Empty by default — populate a slug here
  * ONLY after independently confirming the board with a real source; every
- * IPO row not listed here stays NULL with `no-source-no-guess` recorded.
+ * IPO row not listed here is left untouched and REPORTED
+ * (`report-unprovenanced-ipo`) — never cleared, never guessed.
  */
 export const VERIFIED_IPO_SEGMENT_SOURCES: Record<string, SegmentValue> = {};
 
@@ -81,7 +91,7 @@ export type SegmentRepairAction =
   | 'skip-has-provenance'
   | 'clear-non-ipo'
   | 'apply-sourced'
-  | 'no-source-no-guess';
+  | 'report-unprovenanced-ipo';
 
 export interface SegmentRepairDecision {
   action: SegmentRepairAction;
@@ -132,12 +142,14 @@ export function decideSegmentProvenance(row: SegmentProvenanceRow): SegmentRepai
     };
   }
   return {
-    action: 'no-source-no-guess',
-    touch: true,
-    newSegment: null,
+    action: 'report-unprovenanced-ipo',
+    touch: false,
+    newSegment: row.segment,
     reason:
       'no source states this IPO row\'s segment (no field_sources provenance, no verified entry in ' +
-      'VERIFIED_IPO_SEGMENT_SOURCES) — cleared to NULL rather than guessed; NULL is a successful outcome here, not a failure',
+      'VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a ' +
+      'probably-correct label to express something the missing provenance row already expresses; the ' +
+      'gap is closed by the d_segment_provenance detection check, not by guessing or by erasing',
   };
 }
 
@@ -186,22 +198,25 @@ async function main() {
       sourcedSegment,
     });
     decisions.push({ row, decision });
+    const label = decision.touch
+      ? `WOULD-WRITE segment=${row.segment} -> ${decision.newSegment ?? 'NULL'}`
+      : `REPORTED (no write)  segment stays ${row.segment}`;
     console.log(
-      `  - ${row.companyName} [${row.offeringType}, ${row.status}] segment=${row.segment} -> ` +
-        `${decision.newSegment ?? 'NULL'} (${decision.action}): ${decision.reason}`
+      `  - ${row.companyName} [${row.offeringType}, ${row.status}] ${label} (${decision.action}): ${decision.reason}`
     );
   }
 
   const toTouch = decisions.filter((d) => d.decision.touch);
+  const toReport = decisions.filter((d) => !d.decision.touch && d.decision.action === 'report-unprovenanced-ipo');
   const byAction = toTouch.reduce<Record<string, number>>((acc, d) => {
     acc[d.decision.action] = (acc[d.decision.action] ?? 0) + 1;
     return acc;
   }, {});
 
-  console.log(`\nrows to write: ${toTouch.length} of ${candidates.length} candidates`);
-  console.log(`by action: ${JSON.stringify(byAction)}`);
+  console.log(`\nrows that WOULD BE WRITTEN: ${toTouch.length} of ${candidates.length} candidates`);
+  console.log(`by write action: ${JSON.stringify(byAction)}`);
   console.log(
-    `rows left NULL-unsourced (no-source-no-guess): ${decisions.filter((d) => d.decision.action === 'no-source-no-guess').length}`
+    `rows REPORTED ONLY, never written (report-unprovenanced-ipo — unsourced IPO labels left as-is): ${toReport.length}`
   );
 
   if (!APPLY) {

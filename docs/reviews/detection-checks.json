@@ -69,6 +69,15 @@
       "unverifiableWhen": "never — always runs against the ipos table"
     },
     {
+      "id": "d_segment_provenance",
+      "findingClass": "ipos.segment is non-NULL with NO field_sources row for the segment field — a value with no record of who said it (the binary-test write bug, lane C item 2 slice 3b: 'not detected as SME' was asserted as MAINBOARD with no source)",
+      "round7Findings": [],
+      "failThreshold": "any ipos row with segment IS NOT NULL and no field_sources row (table_name='ipos', field_name='segment') for that ipo_id",
+      "severity": "P2",
+      "unverifiableWhen": "never — always runs against the ipos and field_sources tables",
+      "note": "Closes the detection gap left after scripts/repair-segment-provenance.ts repaired the existing 41-62 rows: that tool clears segment ONLY for non-IPO offering types (segment is meaningless there) and REPORTS-only for unsourced IPO rows (clearing a probably-correct label would destroy real information the missing provenance row already expresses). This check is what stops the gap from reopening on the next write path that skips field_sources — measured missing on 2026-09-10: no existing check asserts provenance PRESENCE (checkSegmentPopulatedForIpo measures SHARE; g_provenance_lineage in audit-ipo-coverage.mjs measures a declining-ceiling ratchet on lineage generally, not this specific field/table pair)."
+    },
+    {
       "id": "e_route_sweep",
       "findingClass": "a public API route 5xxs, or leaks SQL/stack-trace text in its response body",
       "round7Findings": [

@@ -17,6 +17,7 @@ import {
   checkIssueSizeSharesConsistency,
   checkLotBandSebiWindow,
   checkCorporateActionShape,
+  checkSegmentHasProvenance,
   classifyRouteResponse,
   classifyConflictNoiseRatio,
   checkFreshnessPerType,
@@ -161,6 +162,23 @@ test('(d) FAILS on a KWALITY-WALLS-shaped corporate-action typed as IPO', () => 
 test('(d) PASSES a genuine fixed-price SME IPO outside the corporate-action window shape', () => {
   const row = { offeringType: 'IPO', priceRangeMin: 100, priceRangeMax: 100, lotSize: 1200, windowDays: 3 };
   assert.equal(checkCorporateActionShape(row), null);
+});
+
+// ---- (d) segment provenance (lane C item 2 slice 3b) ------------------------
+
+test('(d) FAILS on a non-NULL segment with no field_sources row for it (the write-bug shape)', () => {
+  const row = { companyName: 'Example Co', offeringType: 'MAINBOARD', segment: 'MAINBOARD', hasSegmentProvenance: false };
+  assert.ok(checkSegmentHasProvenance(row) !== null);
+});
+
+test('(d) PASSES a non-NULL segment that carries a field_sources row', () => {
+  const row = { companyName: 'Example Co', offeringType: 'IPO', segment: 'MAINBOARD', hasSegmentProvenance: true };
+  assert.equal(checkSegmentHasProvenance(row), null);
+});
+
+test('(d) PASSES a NULL segment regardless of provenance (nothing to source)', () => {
+  const row = { companyName: 'Example Co', offeringType: 'RIGHTS', segment: null, hasSegmentProvenance: false };
+  assert.equal(checkSegmentHasProvenance(row), null);
 });
 
 // ---- (e) route sweep ---------------------------------------------------------

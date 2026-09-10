@@ -58,7 +58,7 @@ import {
   classifyRouteResponse, classifyConflictNoiseRatio, checkFreshnessPerType,
   checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
-  checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
+  checkSegmentPopulatedForIpo, checkSegmentHasProvenance, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS, normalizeCompanyKey,
   findLotDisagreements, findMinApplicationDisagreements,
   buildRunPayloads, evaluateCronExecutable,
@@ -435,6 +435,34 @@ async function checkD() {
     `${lotOffenders.length} violation(s)` + (lotOffenders.length ? `: ${lotOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
   record('d_corporate_action_shape', 'no offering_type=IPO row matches the corporate-action shape', shapeOffenders.length === 0 ? 'PASS' : 'FAIL',
     `${shapeOffenders.length} violation(s)` + (shapeOffenders.length ? `: ${shapeOffenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
+// ---- (d, segment provenance): a non-NULL ipos.segment with no field_sources
+// row for that field is a value with no record of who said it — exactly the
+// class the binary-test write bug (lane C item 2 slice 3b) produced. The
+// repair tool (scripts/repair-segment-provenance.ts) closes the EXISTING
+// rows; this check is what stops the gap from silently reopening — measured
+// missing on 2026-09-10 (no existing check asserts provenance PRESENCE; the
+// checks above measure share and lineage, never absence).
+async function checkD_segmentProvenance() {
+  const rows = await q(
+    `SELECT i.id, i.company_name AS "companyName", i.offering_type AS "offeringType", i.segment,
+            EXISTS (
+              SELECT 1 FROM field_sources fs
+               WHERE fs.ipo_id = i.id AND fs.table_name = 'ipos' AND fs.field_name = 'segment'
+            ) AS "hasSegmentProvenance"
+       FROM ipos i
+      WHERE i.segment IS NOT NULL`
+  );
+  const offenders = [];
+  for (const r of rows) {
+    const v = checkSegmentHasProvenance(r);
+    if (v) { offenders.push(v); notify('d_segment_provenance', 'P2', r.id, `ipos.segment set with no field_sources provenance row: ${r.companyName}`, v); }
+  }
+  record('d_segment_provenance', 'every ipos row with segment IS NOT NULL carries a field_sources row for segment',
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    `${offenders.length} row(s) with segment set but no recorded source` +
+      (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
 // ---- (e): every web/app/api/** route, enumerated from the filesystem -------
@@ -1425,6 +1453,7 @@ async function main() {
   await checkA_B();
   await checkC();
   await checkD();
+  await checkD_segmentProvenance();
   await checkE();
   await checkE_unknownSlug404();
   await checkF();
