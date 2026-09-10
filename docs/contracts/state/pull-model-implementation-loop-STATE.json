@@ -256,11 +256,10 @@
         {
           "k": "s4",
           "title": "rowKey through consolidateField, trackFieldSource, ConflictInfo, open-conflict lookups",
-          "status": "WORKTREE-READY-NOT-DISPATCHED",
+          "status": "BUILDING",
           "pr": null,
           "sha": null,
-          "tier": "A",
-          "note": "Worktree IPODhan-IPODhan-s01-s4 exists, linked with wt-link-modules.ps1 and marker-probed OK. No builder was ever dispatched - the P0 disk incident intervened. Recorded BUILDING in error for ~2h."
+          "tier": "A"
         },
         {
           "k": "s5a",
