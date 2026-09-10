@@ -1016,3 +1016,31 @@ What is needed from you: nothing.
 Automated check-runs: **22 used today of a shared 60** — eleven mine, eleven the other streams'. Two
 failures, both understood: mine was the safety net doing its job, and the other stream's was their own
 build-card check.
+
+**2026-09-10 14:34 IST — tick. The build can now fail honestly, and is being asked to.** Item 1: **38%**,
+five of thirteen slices merged, unchanged.
+
+The fix that makes the automated build run the website's tests the same way every other check does is
+merged. I have just asked it to run against the real database for the first time. That run answers a
+question that has been open since this morning: 193 of 292 website tests fail on my laptop, and the
+suspicion is that it is the remote-database connection rather than the tests. If they pass in the build,
+the suspicion is probably right and I will record it as probable rather than proven. If they fail there
+too, that is real and it comes to you.
+
+Two slices are finished, checked and waiting on that answer: the row-level provenance work and the
+feature-flag defaults. The second matters to another work stream as well — their own change cannot be
+proven until it lands.
+
+**What is needed from you: one line.** The other stream merged a change to the shared work contract.
+Most of it is corrections from today's mistakes, which I have adopted. But three parts speed things up
+by making each piece of work bigger and reviewing later rounds more lightly, and they are recorded as
+approved by you saying "go with your recommendation". Two problems with that. Your instruction quoted in
+my own contract says to split work into *smaller* pieces, so this reverses it. And nine of today's
+detailed reviews found real faults — including one that would have refused every deploy — so today is a
+poor day to review less. Tell me either way and I will apply it immediately.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+Automated check-runs: **27 used today of a shared 60** — fifteen mine, twelve the other streams'. No
+current failures of mine; the one showing against my work is the earlier run of a check that has since
+gone green after I fixed what it caught.
