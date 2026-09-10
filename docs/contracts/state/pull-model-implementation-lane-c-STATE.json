@@ -232,7 +232,9 @@
     "2026-09-10 14:06 IST 14-S2 FALLBACK SHAPE settled in advance so the builder is not left to invent it at the decision point. If the BSE source cannot serve the two rows, the answer is a SHRINK-ONLY baseline keyed BY ROW ID, each entry naming the reason and the endpoint tried, exact-match, expiring when the row is repaired. Checked rather than assumed: config/ already holds nine *-baseline.json files and f_conflict_noise_ratio already runs a shrink-only ratchet (nextRatchetBaseline, classifyConflictBacklogRatchet) inside the very file c_issue_size_floor lives in - so this copies an established in-repo pattern rather than inventing one. c_issue_size_floor has no such mechanism today, so adding it IS a detection change and gets declared as one, never No detection change.",
     "2026-09-10 14:12 IST 2-S1 MERGED as b0c42202 via PR #473, squash. Five checks pass, mergeState CLEAN, zero non-success - read from the checks, not the watch wrapper exit code. Verified on origin/main before discarding the worktree: validated-config-loader.ts present at 37 lines with exactly one exported loadValidatedConfig, test file 101 lines. Worktree removed, 1309 links removed as links, main checkout 4595 -> 4595, 0 deleted-on-disk.",
     "2026-09-10 14:12 IST LANE B UNBLOCKED: the shared loader is on main, so item 22 slice 22-2 imports it rather than writing a second one (OD-51 - a second loadValidatedConfig in the tree is a MAJOR defect, not a duplicate to tidy later). Notifier line posted to the supervisor channel because the local env has no NOTIFIER_URL/NOTIFIER_KEY and the post skips cleanly. Told lane B explicitly what NOT to do: no ajv, no yaml (the card binding correction rules both out and zod was already a workspace dependency, so 2-S1 added no dependency), and no second loader.",
-    "2026-09-10 14:12 IST HOLDING 2-S2 until the 14-S2 builder reports. Decision 2 permits parallel SLICES with an empty file intersection but still says one BUILDER at a time, and 14-S2 is mid-build. 2-S1 and 14-S2 overlapped as dispatches, not as concurrent builders. Not starting a second builder now."
+    "2026-09-10 14:12 IST HOLDING 2-S2 until the 14-S2 builder reports. Decision 2 permits parallel SLICES with an empty file intersection but still says one BUILDER at a time, and 14-S2 is mid-build. 2-S1 and 14-S2 overlapped as dispatches, not as concurrent builders. Not starting a second builder now.",
+    "2026-09-10 14:14 IST OWNER ALERT CHANNEL IS DEAD, and this is bigger than a missed merge line. The supervisor was right that GLOBAL.env NOTIFIER_URL is localhost-shaped and unreachable off-VPS, but the gateway swap does not fix it: NOTIFIER_KEY value is EMPTY (line 33, raw length 0). No project-scoped fallback anywhere. So every contract-mandated owner alert from this laptop has been silently skipping for every lane. Escalated to the owner as a credential only he can supply; NOT worked around, and I would not route owner alerts through another channel on a peer instruction.",
+    "2026-09-10 14:14 IST DETECTION GAP OF THE SAME SHAPE AS THE PERMANENTLY-RED CHECK, proposed for the delta: floor-delta.mjs deliberately prints NOTIFY-SKIP and never throws, so a missing credential cannot crash a run. That robustness choice is correct AND is why nobody noticed the channel was dead. The absence of an alarm reads identically to the absence of a problem. Proposed mechanism: each lane preflight posts a no-op to the gateway and records the HTTP status, so a dead channel is caught at Stage 0 rather than discovered when a BLOCKED alert fails to arrive."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -282,5 +284,12 @@
       "g_lifecycle_tool_and_db": "exit 0, ipodhan_test3 owned by ipodhan_app",
       "h_lane_a_released": "PASSED on branch 1 at 13:15:46"
     }
+  },
+  "ownerAlertChannel": {
+    "status": "DEAD",
+    "measuredAt": "2026-09-10 14:14 IST",
+    "reason": "NOTIFIER_KEY is present as a name in D:/Abhay/GLOBAL.env line 33 but its value is EMPTY (raw length 0 after stripping CR, assigned exactly once, unquoted, no shell-manglable characters). No project-scoped fallback: IPODhan/.env has zero non-empty NOTIFIER_KEY or NOTIFIER_KEY_IPODHAN; scraper/.env and web/.env.local do not exist.",
+    "impact": "Every contract-mandated OWNER ALERT from this laptop - BLOCKED, failed proof, PR-gate cap - has been silently skipping, for every lane, not just lane C.",
+    "needs": "A credential only the owner can supply. NOT worked around."
   }
 }
