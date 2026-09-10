@@ -157,7 +157,7 @@
         {
           "id": "2-S3a",
           "tier": "A",
-          "status": "IN_CI",
+          "status": "MERGED",
           "issue": 482,
           "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD",
           "definitionOfDone": "Reader audit is INSIDE the DoD, not optional: every reader of segment (bse-api-scraper.ts:338 count, web filters, audit predicates) handles NULL explicitly, or the slice is not mergeable. If that pushes past 400 lines, the readers become 2-S3a-prime and the WRITE-PATH change waits for it - surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change.",
@@ -201,7 +201,8 @@
           },
           "round3Commit": "8266fb0a",
           "pr": 490,
-          "finalCommit": "8266fb0a (rebased)"
+          "finalCommit": "8266fb0a (rebased)",
+          "mergeSha": "2fd8a43b"
         },
         {
           "id": "2-S3b",
@@ -237,7 +238,8 @@
       ],
       "mergeShas": [
         "b0c42202",
-        "4e188187"
+        "4e188187",
+        "2fd8a43b"
       ],
       "proof": {
         "status": "OWED",
@@ -284,7 +286,7 @@
     }
   },
   "prGate": {
-    "laneCRunsToday": 4,
+    "laneCRunsToday": 5,
     "repoRunsTodayAtPreflight": 17,
     "laneCDailyCap": 15,
     "repoStopAt": 50
@@ -398,7 +400,10 @@
     "2026-09-10 17:05 IST A CORRELATION WORTH HANDING BACK: the FIRST failing staging deploy (08:11:23) is #464 own merge - \"feat(ci): make the CI gate able to fail, and teach schema drift about indexes\". The last success (07:40:31) is the merge immediately before it. That is consistent with the supervisor hypothesis that #464 drift assert broke the deploy path, and it narrows the search to one commit. Stating it as a correlation, not a cause - I have not read the failing deploy log, and today has already produced four wrong claims from exactly this kind of confident-looking inference.",
     "2026-09-10 17:05 IST #493 FILED AGAINST MY OWN MERGED CODE. field-manifest-loader.ts (mine, PR #483) uses __dirname at module scope in a package declaring type: module, and never defines it - unlike index.ts:9 and feature-flags.ts:16 which both do. Its two imports are also extensionless where the repo convention is explicit .js. Importing it in real ESM throws ReferenceError. Found by sweeping for __dirname after lane B reported the identical class in its own new loader.",
     "2026-09-10 17:05 IST WHY 8 GREEN UNIT TESTS COULD NOT SEE #493, which is the part worth keeping: vitest transform SUPPLIES __dirname and resolves extensionless specifiers, so the tests pass forever while the module is unimportable by the actual runtime. The test environment is not the runtime environment. Impact today is NIL - nothing imports the loader yet, by design - but it detonates on 2-S4, which is my own next slice and whose whole job is to import it at process start. A landmine in my own path.",
-    "2026-09-10 17:07 IST MY OWN MEASUREMENT ERROR, caught before it cost anything: I have been counting CI failures with jq select(.conclusion != \"SUCCESS\" and .conclusion != null). A PENDING check carries an EMPTY STRING conclusion, not null, so that filter counts every in-flight check as a failure. It reported 2 non-success on #490 when nothing had failed. Correct form: select(.status == \"COMPLETED\" and .conclusion != \"SUCCESS\"). Same class as gating on grepped text instead of an exit code - I gated on the wrong property and got a confident wrong number. Added as a standing brief line."
+    "2026-09-10 17:07 IST MY OWN MEASUREMENT ERROR, caught before it cost anything: I have been counting CI failures with jq select(.conclusion != \"SUCCESS\" and .conclusion != null). A PENDING check carries an EMPTY STRING conclusion, not null, so that filter counts every in-flight check as a failure. It reported 2 non-success on #490 when nothing had failed. Correct form: select(.status == \"COMPLETED\" and .conclusion != \"SUCCESS\"). Same class as gating on grepped text instead of an exit code - I gated on the wrong property and got a confident wrong number. Added as a standing brief line.",
+    "2026-09-10 17:14 IST 2-S3a MERGED as 2fd8a43b via PR #490. Three items of item 2 now on main. Verified after merge: word-boundary matching present, EMERGE recognised, baseline at 12 entries. Worktree removed, 1309 links removed as links, main checkout 4614 -> 4614, 0 deleted-on-disk.",
+    "2026-09-10 17:14 IST MY PROCESS ERROR, no harm done but the gate was defeated: I ran the merge-gate HARD STOP (git log --oneline origin/main ^HEAD must be empty) and gh pr merge in the SAME command, so I never read the check before acting. The branch WAS behind - lane B dcc8193a (#492) had landed - and the hard stop existed precisely to catch that. Verified afterwards that nothing was lost: dcc8193a is an ancestor of main, lane B work intact, my changes present. Correct because git merges from the merge-base, not because my process worked.",
+    "2026-09-10 17:14 IST THE LESSON IS THE SHAPE, and it is the same one running through this whole day: a check that does not gate is decorative. Batching a hard stop with the action it guards is the same class as a permanently-red detection check, an alert that 400s in silence, a progress log that exists but is stale, and a CI query that counts pending as failed. The check RAN and was CORRECT and changed nothing, because nothing read it before acting. Standing brief line added: a hard stop runs as its own command and its output is read before the gated action."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -476,6 +481,7 @@
     "A blocked find means search under the worktree root; do NOT use the FIND_ROOT_GUARD_ALLOW bypass.",
     "Use DISTINCT heredoc delimiters (never nested EOF) - a heredoc body containing another unterminated start marker can false-block the find guard.",
     "Prefix MSYS_NO_PATHCONV=1 on any git show/cat-file/ls-tree with a <ref>:<path>, and sanity-check with a line count before believing a zero.",
-    "Gate CI on: status == COMPLETED AND conclusion != SUCCESS. A pending check has an EMPTY-STRING conclusion, not null, so a null-test counts it as a failure."
+    "Gate CI on: status == COMPLETED AND conclusion != SUCCESS. A pending check has an EMPTY-STRING conclusion, not null, so a null-test counts it as a failure.",
+    "A hard-stop check runs as its OWN command and its output is READ before the gated action. Batching check+action in one command makes the gate decorative."
   ]
 }
