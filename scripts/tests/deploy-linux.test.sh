@@ -311,15 +311,34 @@ fi
 # --- same isolation technique as cases 9b/9c/9d. ---------------------------
 CLEANUP_FN="$(sed -n '/^cleanup_failed_release_dir()/,/^}/p' "$DEPLOY_SCRIPT")"
 RESOLVE_LINK_FN="$(sed -n '/^resolve_link_target()/,/^}/p' "$DEPLOY_SCRIPT")"
-if [ -z "$CLEANUP_FN" ] || [ -z "$RESOLVE_LINK_FN" ]; then
-  fail "case 33d: could not extract cleanup_failed_release_dir()/resolve_link_target() from $DEPLOY_SCRIPT - renamed?"
+# Round-2 MAJOR: the cleanup now also consults collect_live_release_dirs(), so
+# the function-level harness must carry it. Extracting it here ALSO proves it is
+# defined ABOVE cleanup_failed_release_dir() in the script - if it slides back
+# below the EXIT trap's reach, the trap would call an undefined function.
+COLLECT_LIVE_FN="$(sed -n '/^collect_live_release_dirs()/,/^}/p' "$DEPLOY_SCRIPT")"
+COLLECT_LINE="$(grep -n '^collect_live_release_dirs()' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+CLEANUP_LINE="$(grep -n '^cleanup_failed_release_dir()' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+TRAP_LINE="$(grep -n '^trap on_deploy_exit EXIT' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+if [ -n "$COLLECT_LINE" ] && [ -n "$CLEANUP_LINE" ] && [ "$COLLECT_LINE" -lt "$CLEANUP_LINE" ]; then
+  pass "case 33d: collect_live_release_dirs() is defined ABOVE cleanup_failed_release_dir() (line $COLLECT_LINE < $CLEANUP_LINE)"
+else
+  fail "case 33d: collect_live_release_dirs() must be defined before cleanup_failed_release_dir() (collect=$COLLECT_LINE cleanup=$CLEANUP_LINE)"
+fi
+if [ -n "$TRAP_LINE" ] && [ -n "$COLLECT_LINE" ] && [ "$COLLECT_LINE" -gt "$TRAP_LINE" ]; then
+  pass "case 33d: collect_live_release_dirs() is defined after the EXIT trap is armed, so an abort between the two is covered by the RELEASE_DIR_CREATED=0 guard"
+fi
+if [ -z "$CLEANUP_FN" ] || [ -z "$RESOLVE_LINK_FN" ] || [ -z "$COLLECT_LIVE_FN" ]; then
+  fail "case 33d: could not extract cleanup_failed_release_dir()/resolve_link_target()/collect_live_release_dirs() from $DEPLOY_SCRIPT - renamed?"
 else
   CL_ROOT="$(mktemp -d)"
   mkdir -p "$CL_ROOT/releases/20260910-101112-abc1234"
   : > "$CL_ROOT/releases/20260910-101112-abc1234/marker"
   (
     eval "$RESOLVE_LINK_FN"
+    eval "$COLLECT_LIVE_FN"
     eval "$CLEANUP_FN"
+    DRY_RUN=1
+    DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
     log() { echo "==> $*"; }
     warn() { echo "WARN: $*" >&2; }
     ROOT="$CL_ROOT"
@@ -345,7 +364,10 @@ else
   # second call is a no-op (double-cleanup guard).
   (
     eval "$RESOLVE_LINK_FN"
+    eval "$COLLECT_LIVE_FN"
     eval "$CLEANUP_FN"
+    DRY_RUN=1
+    DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
     log() { echo "==> $*"; }
     warn() { echo "WARN: $*" >&2; }
     ROOT="$CL_ROOT"
@@ -380,11 +402,20 @@ else
   : > /tmp/deploy-test-33d3.log
   OUTSIDE33="$(mktemp -d)"
   : > "$OUTSIDE33/keepme"
-  for BAD in "$OUTSIDE33" "$CL_ROOT/releases/../releases" "$CL_ROOT/releases/not-a-release"; do
+  # Round-2 MINOR-1: the first three paths ALL fail the <stamp>-<sha> basename
+  # regex, so the regex alone caught every one of them and the containment check
+  # and the '..' branch were never exercised - mutating either away left the
+  # suite green. The last two carry a PERFECTLY VALID release basename, so the
+  # regex passes and only the containment / '..' branch can refuse them.
+  for BAD in "$OUTSIDE33" "$CL_ROOT/releases/../releases" "$CL_ROOT/releases/not-a-release" \
+             "$OUTSIDE33/20260910-101112-abc1234" "$CL_ROOT/releases/../20260910-101112-abc1234"; do
     mkdir -p "$BAD" 2>/dev/null || true
     (
       eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
       eval "$CLEANUP_FN"
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
       log() { echo "==> $*"; }
       warn() { echo "WARN: $*" >&2; }
       ROOT="$CL_ROOT"
@@ -400,12 +431,124 @@ else
     fi
   done
   if [ "$GUARD_FAILED33" -eq 0 ]; then
-    pass "case 33d: the cleanup refuses a path outside RELEASES_DIR, a '..' path, and a non-release name"
+    pass "case 33d: the cleanup refuses a path outside RELEASES_DIR (bad name AND valid name), a '..' path (bad name AND valid name), and a non-release name"
   else
     fail "case 33d: the cleanup removed at least one path it must refuse - see /tmp/deploy-test-33d3.log"
   fi
   rm -rf "$CL_ROOT" "$OUTSIDE33"
 fi
+
+# --- Case 33f: round-2 MAJOR - a directory pm2 is STILL RUNNING OUT OF is --
+# --- never removed, even when `current` says otherwise. The rollback branch -
+# --- flips `current` back to the previous release (deploy-linux.sh) and only -
+# --- THEN moves pm2 off the new directory; anything that dies in between - a -
+# --- DEPLOYED_SHA write failing on the full root filesystem this whole slice -
+# --- exists for - leaves `current` on the PREVIOUS release while pm2 web is --
+# --- still serving out of THIS one. Checking `current` alone deletes a live --
+# --- release dir and 502s the site. Driven at function level for the same ---
+# --- reason as 33d (the release name is a runtime timestamp).---------------
+# DEPLOY_DRYRUN_PM2_RELEASE_DIRS is collect_live_release_dirs()'s dry-run knob
+# and carries RELEASE DIRS (the real path applies `dirname` to each pm2 cwd, so
+# a live cwd of <rel>/web arrives here as <rel>) - same contract case 4 uses.
+if [ -n "$CLEANUP_FN" ] && [ -n "$COLLECT_LIVE_FN" ]; then
+  run_cleanup_33f() {
+    # $1 = value for DEPLOY_DRYRUN_PM2_RELEASE_DIRS, $2 = log file
+    local pm2dirs="$1" logf="$2"
+    F_ROOT="$(mktemp -d)"
+    mkdir -p "$F_ROOT/releases/20260910-090000-prev111" "$F_ROOT/releases/20260910-101112-abc1234"
+    : > "$F_ROOT/releases/20260910-101112-abc1234/marker"
+    # `current` points at the PREVIOUS release - the rollback already flipped.
+    printf '%s\n' "$F_ROOT/releases/20260910-090000-prev111" > "$F_ROOT/current"
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
+      eval "$CLEANUP_FN"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS="${pm2dirs//@ROOT@/$F_ROOT}"
+      ROOT="$F_ROOT"
+      RELEASES_DIR="$F_ROOT/releases"
+      RELEASE_DIR="$F_ROOT/releases/20260910-101112-abc1234"
+      RELEASE_DIR_CREATED=1
+      RELEASE_DIR_CLEANUP_DONE=0
+      DEPLOY_ROLLED_BACK=0
+      cleanup_failed_release_dir
+    ) >"$logf" 2>&1
+  }
+
+  run_cleanup_33f "@ROOT@/releases/20260910-101112-abc1234" /tmp/deploy-test-33f.log
+  if [ -f "$F_ROOT/releases/20260910-101112-abc1234/marker" ]; then
+    pass "case 33f: a release dir a live pm2 process is running out of SURVIVES the failed-deploy cleanup, even though 'current' points elsewhere"
+  else
+    fail "case 33f: the cleanup deleted a release dir a live pm2 process was still serving from (the 502 class)"
+    cat /tmp/deploy-test-33f.log
+  fi
+  if grep -q "^==> cleanup: keeping 20260910-101112-abc1234 - a live pm2 process is still running out of it" /tmp/deploy-test-33f.log; then
+    pass "case 33f: the skip names its reason (a live pm2 process), not just 'kept'"
+  else
+    fail "case 33f: expected a 'cleanup: keeping ... a live pm2 process is still running out of it' line"
+    cat /tmp/deploy-test-33f.log
+  fi
+  rm -rf "$F_ROOT"
+
+  # Non-vacuous companion: identical inputs with NO live pm2 process -> removed.
+  # Without this, case 33f above would still pass if the cleanup never removed
+  # anything at all.
+  run_cleanup_33f "" /tmp/deploy-test-33f2.log
+  if [ ! -d "$F_ROOT/releases/20260910-101112-abc1234" ]; then
+    pass "case 33f: with no live pm2 process the SAME dir is removed (the pm2 guard is what saved it, not inertia)"
+  else
+    fail "case 33f: the cleanup kept a dir that nothing was serving - 33f's PASS is vacuous"
+    cat /tmp/deploy-test-33f2.log
+  fi
+  if [ -d "$F_ROOT/releases/20260910-090000-prev111" ]; then
+    pass "case 33f: the PREVIOUS release 'current' points at is untouched either way"
+  else
+    fail "case 33f: the cleanup removed the previous release"
+  fi
+  rm -rf "$F_ROOT"
+fi
+
+# --- Case 33g: round-2 MINOR-4 - on AUTO-ROLLBACK the release dir is KEPT ---
+# --- (the deploy just told the operator to investigate), and the keep is ----
+# --- LOUD: the path and its size are logged so an operator knows there is ---
+# --- both something to look at and something to remove. End-to-end, because -
+# --- the flag is set on the real rollback branch. --------------------------
+ROOT33G="$(fresh_root)"
+DEPLOY_ROOT="$ROOT33G" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33g-1.log 2>&1 \
+  || { fail "case 33g: seed deploy failed"; cat /tmp/deploy-test-33g-1.log; }
+GOOD33G="$(current_target "$ROOT33G/current")"
+BEFORE33G="$(count_releases "$ROOT33G/releases")"
+sleep 1.1
+DEPLOY_ROOT="$ROOT33G" DEPLOY_DRYRUN_VERSION_MISMATCH=1 \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33g-2.log 2>&1
+RC33G=$?
+AFTER33G="$(count_releases "$ROOT33G/releases")"
+if [ "$RC33G" -ne 0 ] && grep -q "AUTO-ROLLBACK" /tmp/deploy-test-33g-2.log; then
+  pass "case 33g: the run rolled back and exited non-zero (rc=$RC33G)"
+else
+  fail "case 33g: expected a non-zero AUTO-ROLLBACK run (rc=$RC33G)"
+  cat /tmp/deploy-test-33g-2.log
+fi
+if [ "$AFTER33G" = "$((BEFORE33G + 1))" ]; then
+  pass "case 33g: the rolled-back release dir is KEPT for investigation (count $BEFORE33G -> $AFTER33G)"
+else
+  fail "case 33g: expected the rolled-back release dir to survive (before=$BEFORE33G after=$AFTER33G)"
+  ls -1 "$ROOT33G/releases"
+fi
+if grep -q "^==> cleanup: KEEPING .* MB) for investigation - this deploy rolled back; remove it when you are done$" /tmp/deploy-test-33g-2.log; then
+  pass "case 33g: the keep is logged loudly with the path and its size"
+else
+  fail "case 33g: expected the 'cleanup: KEEPING <path> (<N> MB) for investigation' line"
+  grep "cleanup: " /tmp/deploy-test-33g-2.log
+fi
+if [ "$(current_target "$ROOT33G/current")" = "$GOOD33G" ]; then
+  pass "case 33g: 'current' is back on the last good release"
+else
+  fail "case 33g: 'current' did not roll back (expected=$GOOD33G)"
+fi
+unset DEPLOY_ROOT
 
 # --- Case 33e: the SUCCESS path is unchanged - no cleanup, no new output ---
 ROOT33E="$(fresh_root)"

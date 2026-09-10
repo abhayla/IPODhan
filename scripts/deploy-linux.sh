@@ -305,6 +305,9 @@ RELEASE_DIR="$RELEASES_DIR/$RELEASE_NAME"
 # whoever is investigating them.
 RELEASE_DIR_CREATED=0
 RELEASE_DIR_CLEANUP_DONE=0
+# Item 01: set to 1 by the auto-rollback branch so the cleanup KEEPS (and loudly
+# names) the directory the operator has just been told to investigate.
+DEPLOY_ROLLED_BACK=0
 
 log "Deploying $SHORT_SHA to slot '$SLOT' as release $RELEASE_NAME under $ROOT (dry_run=$DRY_RUN)"
 
@@ -746,6 +749,53 @@ atomic_flip_current() {
   fi
 }
 
+# T-262: pruning must never delete a release that is still LIVE somewhere —
+# not just "this slot's `current`". A release stays live if (a) ANY slot's
+# `current`/`current-<slot>` link still points at it, or (b) a running
+# `ipodhan-*` pm2 process's actual cwd is still inside it. (b) is what the
+# 2026-08-22 staging 502 chain hit: `current-staging` had already flipped
+# forward, but the live process — left pinned to the old release by
+# `pm2 reload`'s stale-pin bug (see restart_pm2's comment) — was still
+# serving out of a directory that no longer matched `current`, and prune
+# deleted it out from under the live process because it only ever checked
+# `current`. restart_pm2 is now delete+start (fixing (b) going forward),
+# but this check stays as defense in depth against ANY other way a live
+# process's cwd could drift from the current-link.
+collect_live_release_dirs() {
+  local link target
+  for link in "$ROOT"/current "$ROOT"/current-*; do
+    [ -L "$link" ] || [ -f "$link" ] || continue
+    target="$(resolve_link_target "$link")"
+    [ -n "$target" ] && printf '%s\n' "$target"
+  done
+
+  if (( DRY_RUN )); then
+    if [ -n "${DEPLOY_DRYRUN_PM2_RELEASE_DIRS:-}" ]; then
+      local d
+      local IFS=':'
+      for d in $DEPLOY_DRYRUN_PM2_RELEASE_DIRS; do
+        printf '%s\n' "$d"
+      done
+    fi
+    return 0
+  fi
+
+  pm2 jlist 2>/dev/null | node -e '
+    const apps = JSON.parse(require("fs").readFileSync(0, "utf8"));
+    for (const a of apps) {
+      const name = a && a.name;
+      const cwd = a && a.pm2_env && a.pm2_env.pm_cwd;
+      if (name && cwd && name.indexOf("ipodhan-") === 0) {
+        process.stdout.write(cwd + "\n");
+      }
+    }
+  ' 2>/dev/null | while IFS= read -r cwd; do
+    if [ -n "$cwd" ]; then
+      dirname "$cwd"
+    fi
+  done || true
+}
+
 # --------------------------------------- 2.9 failed-deploy release-dir cleanup
 # Item 01. Before this, ANY failure after the release directory was created
 # left that directory behind - populated to ~3.1GB by `npm ci`/`next build` -
@@ -761,23 +811,49 @@ atomic_flip_current() {
 # Four guards, each for a specific way this can go wrong:
 #   1. only a directory THIS invocation created (RELEASE_DIR_CREATED) - a retry
 #      against a pre-existing dir must not delete the previous attempt.
-#   2. never the directory ANY slot's current link resolves to - compared on
-#      CANONICAL paths (`readlink -f` on both sides, the way
-#      vps-disk-hygiene.sh's prune_slot() does it) so a trailing slash or a
-#      symlinked component cannot desync the comparison. A deploy that fails
-#      AFTER the flip must not delete what is being served.
+#   2. never a directory that is still LIVE - which is NOT the same question as
+#      "is it `current`". Two independent readings, both compared on CANONICAL
+#      paths (`readlink -f` on both sides, the way vps-disk-hygiene.sh's
+#      prune_slot() does it) so a trailing slash or a symlinked component
+#      cannot desync the comparison:
+#        2a. ANY slot's current link resolves to it.
+#        2b. ANY running `ipodhan-*` pm2 process has its cwd inside it
+#            (collect_live_release_dirs(), hoisted above this function for
+#            exactly this reason - the EXIT trap fires long before step 12).
+#      2b is not belt-and-braces. The rollback branch flips `current` BACK to
+#      the previous release and only THEN moves pm2 off the new directory; a
+#      failure in the two statements between those steps - a DEPLOYED_SHA write
+#      failing on a full root filesystem, i.e. precisely the condition this
+#      cleanup exists for - leaves `current` pointing at the previous release
+#      while pm2 web is still serving out of THIS one. Checking `current` alone
+#      would delete a live release dir and 502 the site. Step 12's prune learned
+#      the same lesson from the 2026-08-22 staging 502; this is the same guard
+#      on the error path.
+#      Divergence from the sibling, deliberate: when `current` cannot be resolved
+#      at all (missing / dangling / empty marker), vps-disk-hygiene.sh's
+#      prune_slot() SKIPS the whole slot "to avoid pruning blind", whereas this
+#      cleanup still deletes. That is safe here and not an oversight: guard 1 has
+#      already confined the target to the single directory THIS invocation
+#      created moments ago, so there is no blind set to prune - prune_slot has to
+#      choose among N directories it did not create, this has exactly one it did.
 #   3. refuse any path that is not a <stamp>-<sha> release dir directly under
 #      $RELEASES_DIR - same shape as vps-disk-hygiene.sh's
-#      safe_rm_release_dir(). That function is NOT reused here: it lives in a
-#      separate top-level script that acquires a /var/lock single-flight lock
-#      and runs its own main() unless HYGIENE_SOURCED is set, and it is guarded
-#      by ITS $ROOT rather than this script's $RELEASES_DIR - sourcing it from
-#      a deploy would couple the deploy's error path to the hygiene cron's
-#      locking. The check is replicated instead, and both are covered by their
-#      own suites.
+#      safe_rm_release_dir(). That function is NOT reused here, and the reason is
+#      NOT its /var/lock single-flight lock or its main() - `HYGIENE_SOURCED=1`
+#      skips both (vps-disk-hygiene.sh:98, :424). The real blocker is that
+#      sourcing it unconditionally assigns ROOT, KEEP_PROD and MODE and defines
+#      log(), report() and may_delete() at top level, every one of which this
+#      deploy already owns with different meanings - sourcing would clobber the
+#      deploy's own state from inside its error path. The check is replicated
+#      instead, and both copies are covered by their own suites.
 #   4. run at most once (RELEASE_DIR_CLEANUP_DONE).
+# One deliberate NON-removal: on the auto-rollback path the directory is KEPT,
+# because the deploy tells the operator to "Investigate before re-deploying" and
+# guard 1's own rationale is that a failed attempt's artifacts may be under
+# investigation. It is kept LOUDLY - the path and its size are logged - because a
+# silent 3.1GB keep is how the disk filled in the first place.
 # Every removal is logged with the path and the space it freed, so the next
-# disk investigation has a trail; a skip is logged too.
+# disk investigation has a trail; every skip is logged with its reason.
 cleanup_failed_release_dir() {
   if [ "$RELEASE_DIR_CLEANUP_DONE" -eq 1 ]; then
     return 0
@@ -787,7 +863,7 @@ cleanup_failed_release_dir() {
     return 0
   fi
 
-  local dir="$RELEASE_DIR" base canon_dir link target canon_target kb mb
+  local dir="$RELEASE_DIR" base canon_dir link target canon_target live canon_live kb mb
   case "$dir" in
     "") warn "cleanup: refusing to remove an empty release-dir path"; return 0 ;;
     */) warn "cleanup: refusing to remove '$dir' - trailing slash not allowed"; return 0 ;;
@@ -803,6 +879,8 @@ cleanup_failed_release_dir() {
   [ -d "$dir" ] || return 0
 
   canon_dir="$(readlink -f "$dir" 2>/dev/null || printf '%s' "$dir")"
+
+  # Guard 2a: any slot's current link.
   for link in "$ROOT"/current "$ROOT"/current-*; do
     [ -L "$link" ] || [ -f "$link" ] || continue
     target="$(resolve_link_target "$link")"
@@ -814,12 +892,36 @@ cleanup_failed_release_dir() {
     fi
   done
 
+  # Guard 2b: any running pm2 process's cwd, whatever `current` says. This is
+  # the rollback window - `current` already flipped back, pm2 not yet moved off.
+  while IFS= read -r live; do
+    [ -n "$live" ] || continue
+    canon_live="$(readlink -f "$live" 2>/dev/null || printf '%s' "$live")"
+    if [ "$canon_live" = "$canon_dir" ]; then
+      log "cleanup: keeping $base - a live pm2 process is still running out of it; a failed deploy never removes the release being served"
+      return 0
+    fi
+  done < <(collect_live_release_dirs)
+
   kb="$(du -sk "$dir" 2>/dev/null | cut -f1 || true)"
   case "$kb" in
     ''|*[!0-9]*) kb=0 ;;
   esac
   mb=$(( kb / 1024 ))
-  rm -rf "${RELEASES_DIR:?}/${base:?}"
+
+  # The deliberate non-removal: this deploy rolled back and told the operator to
+  # investigate, so the build it rolled back FROM is evidence, not garbage.
+  if [ "${DEPLOY_ROLLED_BACK:-0}" -eq 1 ]; then
+    log "cleanup: KEEPING $dir (${mb} MB) for investigation - this deploy rolled back; remove it when you are done"
+    return 0
+  fi
+
+  # Round 2 MINOR-2: remove the path the guards above actually validated. It used
+  # to remove a RECONSTRUCTED "$RELEASES_DIR/$base", which agreed with $dir only
+  # because RELEASE_DIR is never reassigned - and which silently redirected the
+  # containment guard's own test inputs back inside $RELEASES_DIR, hiding whether
+  # that guard worked at all.
+  rm -rf "${dir:?}"
   log "cleanup: removed the release dir this failed deploy created: $dir (freed ${mb} MB / ${kb} KB) - nothing served it"
 }
 
@@ -1740,6 +1842,9 @@ if ! verify_public_health; then
   echo "ERROR: post-flip verification failed for $RELEASE_NAME." >&2
   if [ -n "$PREVIOUS_RELEASE" ]; then
     log "AUTO-ROLLBACK to $PREVIOUS_RELEASE"
+    # Set BEFORE the flip: everything from here on can die on a full disk, and
+    # the EXIT cleanup must know this was a rollback however far it got.
+    DEPLOY_ROLLED_BACK=1
     atomic_flip_current "$PREVIOUS_RELEASE"
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
@@ -1770,52 +1875,9 @@ else
   log "pm2 process list saved (boot-restore points at $RELEASE_NAME)"
 fi
 
-# T-262: pruning must never delete a release that is still LIVE somewhere —
-# not just "this slot's `current`". A release stays live if (a) ANY slot's
-# `current`/`current-<slot>` link still points at it, or (b) a running
-# `ipodhan-*` pm2 process's actual cwd is still inside it. (b) is what the
-# 2026-08-22 staging 502 chain hit: `current-staging` had already flipped
-# forward, but the live process — left pinned to the old release by
-# `pm2 reload`'s stale-pin bug (see restart_pm2's comment) — was still
-# serving out of a directory that no longer matched `current`, and prune
-# deleted it out from under the live process because it only ever checked
-# `current`. restart_pm2 is now delete+start (fixing (b) going forward),
-# but this check stays as defense in depth against ANY other way a live
-# process's cwd could drift from the current-link.
-collect_live_release_dirs() {
-  local link target
-  for link in "$ROOT"/current "$ROOT"/current-*; do
-    [ -L "$link" ] || [ -f "$link" ] || continue
-    target="$(resolve_link_target "$link")"
-    [ -n "$target" ] && printf '%s\n' "$target"
-  done
-
-  if (( DRY_RUN )); then
-    if [ -n "${DEPLOY_DRYRUN_PM2_RELEASE_DIRS:-}" ]; then
-      local d
-      local IFS=':'
-      for d in $DEPLOY_DRYRUN_PM2_RELEASE_DIRS; do
-        printf '%s\n' "$d"
-      done
-    fi
-    return 0
-  fi
-
-  pm2 jlist 2>/dev/null | node -e '
-    const apps = JSON.parse(require("fs").readFileSync(0, "utf8"));
-    for (const a of apps) {
-      const name = a && a.name;
-      const cwd = a && a.pm2_env && a.pm2_env.pm_cwd;
-      if (name && cwd && name.indexOf("ipodhan-") === 0) {
-        process.stdout.write(cwd + "\n");
-      }
-    }
-  ' 2>/dev/null | while IFS= read -r cwd; do
-    if [ -n "$cwd" ]; then
-      dirname "$cwd"
-    fi
-  done || true
-}
+# T-262 / item 01: collect_live_release_dirs() is defined up at section 2.9,
+# above cleanup_failed_release_dir(), because the EXIT trap can fire long
+# before this point and that cleanup needs the same live-process reading.
 
 log "Pruning old releases (keeping the newest $KEEP_RELEASES)"
 CUR="$(read_current_link || true)"
