@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 03:39 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 04:02 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -801,3 +801,77 @@ below, and a current file with a stale marker reports a working lane as quiet. M
 note blaming the tick's pattern is **withdrawn**.
 
 **Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 04:02 IST — Tier A review FAILED #569; eight of nine findings closed (d1856237)
+
+I dispatched an independent adversarial review because the repo forbids the author being
+sole verifier of a scraper write path. It failed the PR. **It was right, and it earned its
+cost several times over.**
+
+### The worst finding was mine, and it gated my own proof
+
+The cycle step failed only on `abortedReason`. So a cycle in which **every** write threw —
+`ipodhan_app` lacking UPDATE on `ipo_details`, say — returned `failed=231, filled=0,
+success:true`. A cycle that wrote nothing and one that wrote 180 rows produced the **same
+verdict**. The staging proof this step exists to support **could not have failed for the
+claim it supports**.
+
+I had applied "a permanently broken call must not read as a clean cycle" to the *fetch* and
+not to the *writes* — one level down in my own file, hours after writing that sentence into
+its header.
+
+### The second worst was my reasoning, not my code
+
+I argued that because `ipo_details` has no priority engine, `WHERE issue_type IS NULL` was
+the entire defence, and wrote that claim into three files and the PR body. ADMIN's analogue
+for this table is `filterProtectedFields`. Worse than an omission: **an admin lock clears the
+field to NULL**, so the guard I was most confident about fires in the attacker's favour. An
+admin who deletes a wrong value and locks the IPO would have had it written straight back,
+with sourced provenance, and no signal.
+
+### I had the evidence for a third and didn't read it
+
+The ambiguity refusal was one-sided — stored-side collisions refused, report-side ignored. My
+own expected-delta measurement printed **196 matched, 195 distinct**. The collision was
+sitting in a table I produced and did not interrogate.
+
+### The repo's own ratchet caught a bug I wrote — the happiest finding of the night
+
+My first `openDateFromRecord` used `new Date(raw).toISOString().slice(0,10)`.
+`date-tz-parse-ratchet.test.ts` flags exactly that chain, and it is right: on this IST
+machine a date string with no UTC marker parses **local** and renders back a **day earlier**
+— so the guard I added to prevent wrong matches would have caused them. Someone built that
+ratchet after the class bit them, and it caught the next instance with no human in the loop.
+
+### A trap in my own harness
+
+My background command ran the suite **then** the smoke import, so the wrapper reported
+"exit code 0" while two test files were red. Only the explicit `FULL_UNIT_EXIT=` line caught
+it. Same shape as the ANSI grep earlier: the summary answered a different question than the
+one asked.
+
+### Flagged, not fixed
+
+The `data_source='CHITTORGARH'` stamp on created rows is cosmetic but untrue for rows later
+filled from a DRHP. And the page-size contradiction is **guarded, not resolved** — two files
+still assert opposite things about report 82.
+
+### Evidence
+
+298 files / **3709 passed** / 9 skipped, exit 0, zero FAIL markers. `--smoke-import` OK.
+`tsc` 94 pre-existing, none in changed files. **14 mutations** across the slice, all killed.
+
+### The headline number was wrong and is now measured
+
+The card's "+182 / +183" was inherited, not measured. Read-only against staging with the real
+fold and the live 231-row report: **+179 rows, +180 values**, 9 ambiguous, 26 unmatched, 16
+already set. All 22 existing values are **DRHP-sourced** and 16 of the report-named IPOs
+already have one — so the number that must not move is `issueType` provenance not sourced
+CHITTORGARH: **22 before, 22 after**.
+
+Collision count settled at **13** (my Postgres re-check said 14; the JS run with the real fold
+listed 13). Almost all are exact duplicate names — the class item 12 repairs.
+
+**Nothing has written a database row. Item 2 has no DONE line; items 14, 12 and 3 have none.
+Item 3 is still with the owner.**
