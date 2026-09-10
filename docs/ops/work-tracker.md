@@ -631,3 +631,13 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   format that Windows tools cannot read. Both times it showed up as a silent zero rather than an error.
   **Nothing needs you today.** One thing will at item close: a rollback rehearsal, turning the new download
   limits off for one cycle to prove the old path still works.
+- **2026-09-10 15:37 IST - item 22 first piece is being built: refusing downloads from hosts that only look public.**
+  Today the check reads the hostname. A name that looks like an ordinary website but actually points at an
+  address inside the network would pass. The fix looks up where the name really points and refuses private,
+  loopback and link-local addresses -- every address it resolves to, not just the first -- and refuses rather
+  than allows when the lookup fails. The trusted-host list also stops being written into the code and becomes
+  a settings file, with registrar addresses read from your own registrar table.
+  Nothing went wrong this round. An earlier decision about how web test failures are handled was verified
+  against your typed words rather than a summary, and adopted; one caveat is recorded, that the list of known
+  failures may start empty, and an empty list is only useful if it makes the build fail rather than pass.
+  **Nothing needs you today.** One thing will at the close of this item: a rollback rehearsal.
