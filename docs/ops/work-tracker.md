@@ -834,3 +834,35 @@ What a reader of ipodhan.com would notice: nothing yet.
 What is needed from you: nothing.
 
 Automated check-runs: **8 used today of a shared 60**, five of them mine, none failed.
+
+**2026-09-10 12:02 IST — tick. A green tick mark went stale while I watched it.** Item 1: **38%**,
+five of thirteen slices merged, unchanged.
+
+The sixth slice showed all five checks passed this morning. The other work stream then merged a change
+that adds a **sixth** check to every submission. That new check has never run on my slice, so its row
+of green ticks now describes a set of checks that no longer exists. Nothing broke; the evidence simply
+expired. I only noticed because I had written down, an hour earlier, that I would re-check it rather
+than trust the earlier result — which is the only reason it did not get merged on stale evidence.
+
+I am not spending a check-run to refresh it on its own. The slice has to be brought up to date with
+the other stream's work before merging anyway, and the test-pipeline fix will land first, so one
+refresh at the end covers all three: the new check, the up-to-date code, and a pipeline that can
+actually fail.
+
+What went wrong, and it was mine: the seventh slice failed review on a serious fault that came from
+the work contract rather than the code. The contract told it to make a setting compulsory in the
+server's configuration files. That setting is not written in those files at all — the deploy process
+supplies it automatically. Demanding it in the files would have made every deploy refuse to start,
+including the automatic one that publishes to the test site, which is where the evidence for all this
+work comes from. It is being corrected, and the person who wrote that contract line has agreed it was
+wrong and is amending it.
+
+Also fixed in the same pass: an operator turning a flag off with `0` instead of `false` would have had
+it silently stay on.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: nothing.
+
+Automated check-runs: **9 used today of a shared 60** — five mine, four the other stream's, none
+failed.
