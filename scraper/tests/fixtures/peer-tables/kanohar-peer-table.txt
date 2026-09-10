@@ -1,0 +1,93 @@
+<<<PAGE 156>>>
+ 
+ 
+ 
+152 
+Period ended NAV per Equity Share (₹) 
+- At the Floor Price [●]^ 
+- At the Cap Price [●]^ 
+- At the Offer Price [●]# 
+* As certified by Pawan Shubham & Co., Chartered Accountants, with firm registration number 011573C, pursuant to their certificate dated September 2, 2026. 
+^ To be computed after finalisation of the Price Band. 
+# To be finalised upon determination of the Offer Price and updated in the Prospectus. 
+Notes: 
+1. NAV per Equity Share represents net worth as at the end of the Fiscal, as restated, divided by the number of Equity Shares ou tstanding at the end 
+of the year, adjusted for the split and bonus of Equity Shares, as applicable. 
+ 
+ 
+ 
+(The remainder of this page has intentionally been left blank) 
+<<<PAGE 157>>>
+ 
+ 
+ 
+153 
+8. Comparison of key accounting ratios with listed industry peers  
+The peer group of our Company has been determined on the basis of companies listed on Indian stock exchanges, whose business profile is comparable to our businesses in terms of our 
+size, scale and our business model^:  
+Name of the company Revenue from 
+operations for 
+Fiscal 2026 (in ₹ 
+million) 
+Face value 
+per equity 
+share (₹) 
+Closing price as 
+on August 13, 
+2026 per Equity 
+Share 
+P/E ratio P/B ratio EPS (Basic) 
+(₹) 
+EPS (Diluted) 
+(₹) 
+RoNW (%) EV / Operating 
+EBITDA(8) 
+NAV (₹ per 
+equity share) (at offer 
+price) 
+(at offer 
+price) 
+Kanohar Electricals 
+Limited 
+6,538.39 2 N.A. [●]* [●]* 17.43 17.43 34.80 [●]* 50.09 
+Listed peers 
+Hitachi Energy India 
+Limited 
+ 81,477.10  2 35,360.00 159.55  30.44  221.63 221.63  19.08   106.34  1,161.56  
+Bharat Heavy 
+Electricals Limited 
+ 3,37,821.80  2 420.00  91.30  5.60  4.60   4.60   6.13   47.58  74.99  
+Schneider Electric 
+Infrastructure Limited 
+ 28,906.30  2 1,379.00 155.12  44.96  8.89 8.89  28.98   88.25  30.67  
+CG Power and Industrial 
+Solutions Limited 
+ 1,24,179.50  2 886.00 114.77  18.42  7.72 7.71  15.82   75.92  48.11  
+Transformers & 
+Rectifiers (India) 
+Limited 
+ 25,088.00  1 292.00 32.19  5.68  9.07 9.07  17.64   20.75  51.39  
+GE Vernova T&D India 
+Limited 
+ 62,063.10  2 4,304.00 89.37  100.40  48.16 48.16  45.85   156.96  42.87  
+^  As certified by Pawan Shubham & Co., Chartered Accountants, with firm registration number 011573C, pursuant to their certificate dated September 2, 2026. 
+* To be finalised upon determination of the Offer Price and updated in the Prospectus. 
+Notes: 
+1. Figures for listed peers have been provided by our Company. ICA have verified the numbers from the published financials of th e respective company for FY 2025-26 and calculated the mathematical accuracy for P/E, P/B, 
+EPS (Basic), EPS (Diluted), RONW and NAV . The ICA has also placed their reliance on the CARE Report as produced before them by our Company to trace the information m entioned for the peers. The CARE Report is 
+available on the website of our Company at https://www.kanohar.com/IPO.  
+2. Figures of our Company are derived from Restated Financial Information for the year ended March 31, 2026. 
+3. P/E ratio has been calculated as closing price as on August 13, 2026 divided by basic EPS as on March 31, 2026 for listed peers. 
+4. P/B ratio has been calculated as closing price as on August 13, 2026 divided by book value per share as on March 31, 2026 for listed peers. Book value per share is calculated by dividing the net worth as on March 31, 2026 
+by outstanding number of equity shares. 
+5. Net worth means the aggregate value of the paid up share capital of the respective company and all reserves created out of profits and securities premium account and debit or credit balance of profit and loss account, after 
+deducting the aggregate value of the accumulated losses, miscellaneous expenditure not written off, as per the restated balance sheet, but does not include reserves created out of revaluation of assets, capital reserve, foreign 
+currency translation reserve, write-back of depreciation as at year end., Figures for net worth of the Company have been derived from as per the Restated Financial Information. Figures for calculating the net worth of listed 
+peers have been taken from published annual reports as available on NSE (at www.nseindia.com) for the financial year ended March 31, 2026. 
+6. Return on Net Worth (%) = Net profit after tax, as restated / Net worth as restated as at year end. 
+7. Net Asset Value per equity share represents net worth as at the end of the financial year, as restated, divided by the number of equity shares outstanding at the end of the year, adjusted for split/bonus, as applicable. 
+8. EV/Operating EBIDTA is calculated as EV divided by the Operating EBITDA, where (1) EV = Sum of market capitalisation and total debt less cash and cash equivalents. Market capitalisation is calculated on closing price 
+of peer set on August 13, 2026 multiplied by closing number of shares as on March 31, 2026. Total debt includes long term and short -term borrowings. Figures for total debt and cash and cash equivalents have been taken 
+from published annual reports as available on NSE (at www.nseindia.com) for the financial year ended March 31, 2026, and (2) Operating EBITDA = Gross profit reduced by employee benefit expenses and other expenses. 
+Gross profit is calculated as revenue from operations reduced by COGS. COGS is calculated as sum of cost of material consumed, purchase of stock in trade and changes in inventories. Figures for Operating EBITDA have 
+been taken from published annual reports as available on the website of NSE for the financial year ended March 31, 2026. 

@@ -1,0 +1,181 @@
+<<<PAGE 206>>>
+ 
+201 
+Particulars Basic EPS (in ₹) Diluted EPS (in ₹) Weight 
+Financial Year ended March 31, 2025 7.51 7.51 2 
+Financial Year ended March 31, 2024 3.13 3.13 1 
+Weighted Average 10.19 10.19   
+Notes: 
+1) Basic EPS (₹) = Net Profit/(loss) for the year attributable to equity shareholders of the Company divided by total weighted 
+average number of equity shares outstanding at the end of the year. 
+2) Diluted EPS (₹) = Net Profit/(loss) for the year attributable to equity shareholders of the Company divided by total weighted 
+average potential number of equity shares outstanding at the end of the year.  
+3) Basic and diluted earnings per share are computed in accordance with Indian Accounting Standard 33‘Earnings per Share’, 
+notified accounting standard by the Companies (Indian Accounting Standards) Rules of 2015 (as amended). 
+4) Weighted average number of shares is the number of Equity Shares outstanding at the beginning of the period adjusted by 
+the number of shares issued during the period multiplied by the time weighting factor. The time-weighting factor is the number 
+of days for which the Equity Shares are outstanding as a proportion of total number of days during the period. 
+ 
+2. PRICE/ EARNING (P/E) RATIO IN RELATION TO THE PRICE BAND OF ₹[●] TO ₹[●] PER EQUITY 
+SHARE: 
+ 
+Particulars P/E at the Floor Price (no. of 
+times)* 
+P/E at the Cap Price (no. of 
+times)* 
+Based on Basic EPS for Financial Year  ended March 
+31, 2026 
+[●] [●] 
+Based on Diluted EPS for Financial Year  ended March 
+31, 2026 
+[●] [●] 
+* To be updated in the Prospectus. 
+3. INDUSTRY PEER GROUP P/E RATIO*  
+ 
+Particulars P/E Industry P/E Name of peer company 
+Highest 206.68 Yasho Industries Limited 
+Lowest 17.12 Excel Industries Limited 
+Average 61.74 NA 
+(1) The highest and lowest industry P/E shown above is based on the peer set provided below under “6. Comparison of 
+Accounting Ratios with Listed Industry Peers”.  
+(2) The industry average has been calculated as the arithmetic average P/E of the peer set provided below.   
+(3) P/E figures for the peer are computed based on closing market price as on August 28, 2026 on BSE, divided by Diluted 
+EPS (on consolidated basis) based on the financial results declared by the peers available on website of 
+www.bseindia.com for the Financial Year ending March 31, 2026. 
+ 
+4. RETURN ON NET WORTH (“RoNW”):  
+ 
+Particulars RoNW (%) Weight 
+Financial Year 2026 18.53% 3 
+Financial Year 2025 11.86% 2 
+Financial Year 2024 5.56% 1 
+Weighted Average 14.15% - 
+Notes: 
+(1) Return on Net Worth (%) = Net profit / (loss) after Tax for the year as divided by Equity attributable to the owners of t he 
+Company, as at the end of the year. 
+(2) Net Worth means the aggregate value of the paid up share capital of the Company and all reserves created out of profits 
+and securities premium account and credit balance of profit and loss account, after deducting the aggregate value of the 
+accumulated losses, deferred expenditure and miscellaneous expenditure not written off, as per Restated Financial Information 
+of Assets and Liabilities of the Company but does not include reserves created out of revaluation of assets, write -back of 
+depreciation and amalgamation as at the end of the year.  
+(3) Weighted average = Aggregate of financial year -wise weighted Net Worth divided by the aggregate of weights i.e. ((Net 
+Worth x Weight) for each financial year)/(Total of weights). 
+ 
+5. NET ASSET VALUE (“NAV”) PER EQUITY SHARE AS PER LAST BALANCE SHEET:  
+ 
+NAV per Equity Share   NAV per Equity Shares (₹) 
+As on March 31, 2026 77.33 
+After the Offer*   
+<<<PAGE 207>>>
+ 
+202 
+NAV per Equity Share   NAV per Equity Shares (₹) 
+- At Floor Price [●] 
+- At Cap Price [●] 
+Offer Price [●] 
+Notes:  
+*To be updated after determination of the Price Band. Offer Price per Equity Share will be determined on conclusion of the 
+Book Building Process and this is not derived from Restated Financial Information. 
+(1) Net Asset Value per Equity Share = Net-worth of the Company divided by weighted average numbers of equity shares 
+outstanding during the year. 
+(2) Net Worth means the aggregate value of the paid up share capital of the Company and all reserves created out of profits 
+and securities premium account and credit balance of profit and loss account, after deducting the aggregate value of the 
+accumulated losses, deferred expenditure and miscellaneous expenditure not written off, as per Restated Consolidated 
+Financial Information of Assets and Liabilities of the Company but does not include reserves created out of revaluation of 
+assets, write-back of depreciation and amalgamation as at the end of the year. 
+ 
+6. Comparison of Accounting Ratios with Listed Industry Peers  
+ 
+Name of 
+Company 
+Face 
+Value  
+Revenue 
+from 
+operations 
+for Fiscal 
+2026 (in ₹ 
+million) 
+Total 
+Income 
+for Fiscal 
+2026 (in ₹ 
+million) 
+EPS as on March 
+31, 2026 
+NAV as 
+on 
+March 
+31, 2026 
+P/E 
+(Diluted) 
+as on 
+August 
+28, 2026 
+P/E 
+(Basic) 
+as on 
+August 
+28, 
+2026 
+RONW 
+(%) as on 
+March 31, 
+2026 
+(₹ per 
+share) 
+  
+(₹ per share) (₹ per 
+share) 
+Basic Diluted 
+ 
+Prasol 
+Chemicals 
+Limited 
+2 12,325.93 12,378.45 14.33 14.33 77.33 
+  
+ [●] [●] 18.53% 
+Peer Group: 
+Aarti 
+Industries 
+Limited 
+5 82,860.00  82,910.00  11.56  11.55  164.27  46.79 46.75 7.04%  
+Atul 
+Limited 
+10 62,735.40 64,764.40 230.25 230.25 2,136.46 28.04 28.04 10.95% 
+Laxmi 
+Organic 
+Industries 
+Limited 
+2 28,466.67 28,619.72 2.87 2.86 71.66 59.95 59.74 4.00%  
+Vinati 
+Organic 
+Limited 
+1 22,268.90 22,795.30 42.80 42.80 304.99 30.95 30.95 14.03% 
+Privi 
+Speciality 
+Chemicals 
+Limited 
+10 25,636.86 25,829.21 81.08 81.08 368.79 42.67  42.67 21.99% 
+Yasho 
+Industries 
+Limited 
+10 8,300.28 8,313.14 20.95 20.95 368.18 206.68 206.68 5.69% 
+Excel 
+Industries 
+Limited 
+5  10,945.22 11,218.47 60.19 60.19 1,354.74 17.12 17.12 4.44% 
+Source: 
+Note: Financial Information of the Peer group companies has been sourced from the consolidated financial statements for the 
+year ended March 31, 2026 as disclosed on the website of the Stock Exchanges. 
+(1) Basic EPS has been calculated as the Net Profit/(loss) for the year attributable to equity shareholders of the Company 
+divided by total weighted average number of equity shares outstanding as on March 31, 2026. 
+(2) Diluted EPS refers to the Diluted EPS sourced from the consolidated financial statements of the respective peer group 
+companies for the year ended March 31, 2026.  
+(3) NAV is computed as the closing Net Worth divided by the closing outstanding number of equity shares as on March 31, 
+2026. 
+(4) P/E Ratio has been computed based on the closing market price of equity shares on BSE on August 28, 2026, divided by 
+the Diluted EPS provided under Note 1 above. 
+(5) Net Worth has been calculated as the aggregate value of the paid up share capital of the Company and all reserves created 
+out of profits and securities premium account and credit balance of profit and loss account, after deducting the aggregate 
+value of the accumulated losses, deferred expenditure and miscellaneous expenditure not written off, as per Restated Financial 

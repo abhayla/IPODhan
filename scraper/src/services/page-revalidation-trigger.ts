@@ -59,6 +59,13 @@ export async function triggerPageRevalidation(
   if (slugs.length === 0) {
     // Most cycles change nothing. Posting an empty list every 30 minutes is a
     // request that can only ever be a no-op.
+    //
+    // LOGGED, not returned silently. Without this line a quiet cycle and a step
+    // that never ran are the same absence in the log, so "no revalidation line"
+    // could not be read as evidence either way — which is exactly what happened
+    // on the 20:45:02Z staging cycle of 2026-09-10, where the missing line cost
+    // a proof read (signal-ownership R6: a gate prints its reason).
+    logger.info({ sent: 0, reason: 'no IPO was written this cycle' }, 'Page revalidation skipped');
     return { status: 'skipped', reason: 'no IPO was written this cycle' };
   }
 

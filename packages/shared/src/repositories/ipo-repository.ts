@@ -1155,6 +1155,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     }
 
     // --- apply, all or nothing -----------------------------------------------------------------
+    // CORRECT FOR NOW, NOT CORRECT IN GENERAL: keyed on (ipoId, tableName) and
+    // mapped by fieldName alone, so two sibling rows of one table would collapse
+    // into one map entry. Every row_key is '' today; the moment slice s5b writes
+    // real keys this reads an arbitrary sibling. Which key a merge should carry
+    // is a design question owned by s5b/s7a/s7b — do not guess it here.
     const keepProvRows = await this.db
       .select({ fieldName: fieldSources.fieldName, source: fieldSources.source })
       .from(fieldSources)
@@ -1187,7 +1192,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             updatedBy: 'merge-duplicate-ipo',
           })
           .onConflictDoUpdate({
-            target: [fieldSources.ipoId, fieldSources.tableName, fieldSources.fieldName],
+            // MUST mirror unique_field_source_per_ipo (item 1 slice s18:
+            // ipo_id, table_name, row_key, field_name). Postgres needs an
+            // arbiter index matching this list EXACTLY; the only unique index
+            // on the table is the 4-column one, so a 3-column target here is
+            // 42P10 on the first write — inside this transaction, which would
+            // roll the value write back with it. rowKey is omitted from
+            // .values() above, so it defaults to '' and behaviour is unchanged.
+            target: [fieldSources.ipoId, fieldSources.tableName, fieldSources.rowKey, fieldSources.fieldName],
             set: {
               source: p.source as (typeof fieldSources.$inferInsert)['source'],
               confidence: p.confidence,

@@ -22,6 +22,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { recordTouched, drainTouched } from '../../../src/services/touched-ipos-tracker.js';
 import { triggerPageRevalidation } from '../../../src/services/page-revalidation-trigger.js';
+import { logger } from '../../../src/utils/logger.js';
 
 function fakeFetch(impl?: (url: string, init: RequestInit) => unknown) {
   const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -67,6 +68,27 @@ describe('triggerPageRevalidation', () => {
     const r = await triggerPageRevalidation({ env: ENV, fetchImpl: f.fn });
     expect(f.calls).toHaveLength(0);
     expect(r.status).toBe('skipped');
+  });
+
+  // Slice 3b. Sending nothing is correct; saying nothing is not. Until this
+  // line existed, a cycle that touched no IPO and a step that never ran left
+  // the SAME absence in the log, so "no revalidation line" was unreadable as
+  // evidence either way. That cost a real proof read on the 20:45:02Z staging
+  // cycle of 2026-09-10 (signal-ownership R6: a gate prints its reason).
+  it('SAYS it sent nothing, so a quiet cycle is not mistaken for a step that never ran', async () => {
+    const spy = vi.spyOn(logger, 'info').mockImplementation((() => undefined) as never);
+    try {
+      const f = fakeFetch();
+      await triggerPageRevalidation({ env: ENV, fetchImpl: f.fn });
+      const line = spy.mock.calls.find((c) => String(c[1]).includes('Page revalidation skipped'));
+      expect(line, 'the empty-drain path must emit exactly one readable line').toBeDefined();
+      expect((line?.[0] as { sent?: number; reason?: string }).sent).toBe(0);
+      expect((line?.[0] as { sent?: number; reason?: string }).reason).toBe(
+        'no IPO was written this cycle'
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('carries the same Bearer auth as its sibling step', async () => {

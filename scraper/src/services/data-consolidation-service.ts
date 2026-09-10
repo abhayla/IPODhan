@@ -69,6 +69,21 @@ export interface FieldConsolidationResult {
 }
 
 /**
+ * Item 15 (F-49 / W-106): the four-way split behind the single `valueChanged`
+ * boolean, so a re-ask that writes because `valueActuallyChanged` ALONE
+ * decided it (same source, value genuinely different after normalization) is
+ * countable separately from a write decided by a different/higher-priority
+ * source. Without the split, a healthy PULL-NOOP ratio and a
+ * `valueActuallyChanged` that has never once decided anything look identical.
+ */
+export interface NoopSuppressionCounts {
+  writtenNoExisting: number; // !existingValueFromMap
+  writtenDifferentSource: number; // hadDifferentSource
+  writtenSameSourceChanged: number; // valueActuallyChanged alone decided it
+  suppressedNoop: number; // existingValueFromMap && !valueChanged
+}
+
+/**
  * Result of full IPO data consolidation
  */
 export interface ConsolidationResult {
@@ -88,6 +103,10 @@ export interface ConsolidationResult {
     error: string;
   }>;
   performanceMs: number;
+  // Item 15: only populated on the main consolidateIPOData path (the loop that
+  // computes valueActuallyChanged) — undefined on the fallback/degenerate/
+  // widen-band paths, which decide writes on different logic entirely.
+  noopSuppression?: NoopSuppressionCounts;
 }
 
 /**
@@ -641,6 +660,12 @@ export class DataConsolidationService {
       consolidatedData: {},
       errors: [],
       performanceMs: 0,
+      noopSuppression: {
+        writtenNoExisting: 0,
+        writtenDifferentSource: 0,
+        writtenSameSourceChanged: 0,
+        suppressedNoop: 0,
+      },
     };
 
     try {
@@ -953,6 +978,22 @@ export class DataConsolidationService {
           const valueChanged = !existingValueFromMap || (choseIncoming && (hadDifferentSource || valueActuallyChanged));
           if (valueChanged) {
             result.fieldsUpdated++;
+          }
+          // Item 15 (F-49 / W-106): split the single valueChanged write into
+          // WHY it wrote, so "valueActuallyChanged alone decided it" (same
+          // source, genuinely different value) is countable separately from
+          // a write a different/higher-priority source would have caused
+          // anyway. `valueChanged` itself is unchanged — this only counts.
+          if (result.noopSuppression) {
+            if (!existingValueFromMap) {
+              result.noopSuppression.writtenNoExisting++;
+            } else if (!valueChanged) {
+              result.noopSuppression.suppressedNoop++;
+            } else if (hadDifferentSource) {
+              result.noopSuppression.writtenDifferentSource++;
+            } else {
+              result.noopSuppression.writtenSameSourceChanged++;
+            }
           }
         } catch (error) {
           result.errors.push({

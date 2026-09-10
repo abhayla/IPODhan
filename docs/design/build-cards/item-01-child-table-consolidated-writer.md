@@ -74,10 +74,9 @@ export const fieldSources = pgTable(
     ipoTableFieldIdx: index('idx_field_sources_ipo_table_field').on(
       table.ipoId, table.tableName, table.rowKey, table.fieldName
     ),
-    // WIDENED. Was `unique_field_source_per_ipo` on (ipoId, tableName, fieldName);
-    // renamed because its meaning changed, not just its columns — a rename with no
-    // column change is a silent trap for a migration that only ALTERs.
-    uniqueFieldPerRow: unique('unique_field_source_per_ipo_row').on(
+    // WIDENED. Was `unique_field_source_per_ipo` on (ipoId, tableName, fieldName).
+    // NAME KEPT — see "Reversal: the constraint is NOT renamed" below.
+    uniqueFieldPerIpo: unique('unique_field_source_per_ipo').on(
       table.ipoId, table.tableName, table.rowKey, table.fieldName
     ),
   })
@@ -102,12 +101,24 @@ export const dataConflicts = pgTable(
 );
 ```
 
+### Reversal: the constraint is NOT renamed (decided 2026-09-11, slice s18)
+
+This card originally specified the widened constraint as `unique_field_source_per_ipo_row`,
+reasoning that a constraint whose meaning changed but whose name did not is a trap for the next
+migration that only ALTERs. That rename is **reversed**: slice s18 widened the columns and KEPT
+the name `unique_field_source_per_ipo`. Two reasons. First, the name is referenced by migrations
+0027 and 0038 and by the ops recipes, so renaming adds a second identifier to keep in sync
+against a benefit that is purely nominal. Second, the trap the card feared is already covered:
+`scripts/assert-schema-drift.ts` looks constraints up BY NAME but compares them on the exact
+ORDERED column list, so a stale reader of a constraint whose meaning moved under it gets a loud
+drift failure, not a silent one. The name is stable; the column list is what is verified.
+
 Generated migration (`npm run db:generate`, run from `web/`) will emit, in shape:
 
 ```sql
 ALTER TABLE "field_sources" ADD COLUMN "row_key" varchar(200) DEFAULT '' NOT NULL;
 ALTER TABLE "field_sources" DROP CONSTRAINT "unique_field_source_per_ipo";
-ALTER TABLE "field_sources" ADD CONSTRAINT "unique_field_source_per_ipo_row"
+ALTER TABLE "field_sources" ADD CONSTRAINT "unique_field_source_per_ipo"
   UNIQUE ("ipo_id","table_name","row_key","field_name");
 CREATE INDEX "idx_field_sources_ipo_table_field" ON "field_sources"
   ("ipo_id","table_name","row_key","field_name");  -- replaces the 3-column version

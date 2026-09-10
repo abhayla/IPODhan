@@ -1512,12 +1512,18 @@ export const fieldSources = pgTable(
       table.fieldName
     ),
 
-    // Unique constraint: one source record per field per IPO. A row-key-scoped version of
-    // this constraint is deferred to a later slice — this slice ships the rowKey column and
-    // the widened lookup index only.
+    // Unique constraint: one source record per field per ROW per IPO. Widened from
+    // (ipoId, tableName, fieldName) in item 1 slice s18 — under the 3-column key, two rows
+    // of one child table (two fiscal years, two promoters) writing the same field for one
+    // IPO collided, and trackFieldUpdate's ON CONFLICT `set` clause replaced source,
+    // confidence and dataLineage: row B destroyed row A's provenance. Adding a column to a
+    // unique key strictly WEAKENS it, so no existing row can violate the widened form.
+    // The repository's ON CONFLICT target must stay in lockstep with this list — a mismatch
+    // is Postgres 42P10 on the first write, not a silent bug.
     uniqueFieldPerIpo: unique('unique_field_source_per_ipo').on(
       table.ipoId,
       table.tableName,
+      table.rowKey,
       table.fieldName
     ),
   })

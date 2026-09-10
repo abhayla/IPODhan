@@ -2802,6 +2802,67 @@ FAKERC30
 fi
 
 
+# --- Case 34: every deploy PRINTS the release size and the shared Next cache
+# --- size (item 23 S1). s16 moved the build cache out of the release dir on a
+# --- size claim the deploy never measured; DoD 1 of item 23 needs a `du -sh`
+# --- of the release on every deploy so the artifact threshold has real
+# --- build-mode numbers to be set against.
+ROOT34="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT34"
+unset DEPLOY_FAIL_BUILD 2>/dev/null || true
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-34.log 2>&1; then
+  if grep -q '^==> Release size: ' /tmp/deploy-test-34.log; then
+    pass "case 34: the deploy prints a labelled release size"
+  else
+    fail "case 34: no 'Release size:' line in the deploy log"
+    grep -i size /tmp/deploy-test-34.log || true
+  fi
+  if grep -q '^==> Next build cache size: ' /tmp/deploy-test-34.log; then
+    pass "case 34: the deploy prints the shared Next cache size separately"
+  else
+    fail "case 34: no 'Next build cache size:' line in the deploy log"
+  fi
+  if grep -q '^==> Release size: size unavailable' /tmp/deploy-test-34.log; then
+    fail "case 34: release size came back unavailable on a healthy run (du should have worked)"
+  else
+    pass "case 34: the release size is a real measurement, not the fallback"
+  fi
+else
+  fail "case 34: dry-run deploy exited non-zero"
+  cat /tmp/deploy-test-34.log
+fi
+unset DEPLOY_ROOT
+
+# --- Case 34b (mutation): a BROKEN `du` must not fail the deploy — it prints
+# --- an honest "size unavailable: <reason>" and the deploy still succeeds.
+# --- A deploy must never die measuring itself.
+ROOT34B="$(fresh_root)"
+DU_STUB_DIR="$(fresh_root)/broken-du"
+mkdir -p "$DU_STUB_DIR"
+printf '#!/bin/sh
+exit 1
+' > "$DU_STUB_DIR/du"
+chmod +x "$DU_STUB_DIR/du"
+export DEPLOY_ROOT="$ROOT34B"
+if PATH="$DU_STUB_DIR:$PATH" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-34b.log 2>&1; then
+  if grep -q '^==> Release size: size unavailable: du exited ' /tmp/deploy-test-34b.log; then
+    pass "case 34b: a failing du prints an honest 'size unavailable: <reason>' line"
+  else
+    fail "case 34b: expected an honest size-unavailable line when du fails"
+    grep -i size /tmp/deploy-test-34b.log || true
+  fi
+  TARGET34B="$(current_target "$ROOT34B/current")"
+  if [ -n "$TARGET34B" ] && [ -d "$TARGET34B" ]; then
+    pass "case 34b: the deploy still completed and flipped 'current' with du broken"
+  else
+    fail "case 34b: 'current' did not resolve to a release dir after a du failure"
+  fi
+else
+  fail "case 34b: a failing du KILLED the deploy — the measurement must never be fatal"
+  cat /tmp/deploy-test-34b.log
+fi
+unset DEPLOY_ROOT
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
