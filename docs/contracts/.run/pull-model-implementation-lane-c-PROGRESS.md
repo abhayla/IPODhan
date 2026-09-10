@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 04:02 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 04:24 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -875,3 +875,66 @@ listed 13). Almost all are exact duplicate names — the class item 12 repairs.
 
 **Nothing has written a database row. Item 2 has no DONE line; items 14, 12 and 3 have none.
 Item 3 is still with the owner.**
+
+
+## 2026-09-11 04:24 IST - round 2 found a HIGH my own fix introduced; price-band collapse filed (#589)
+
+### I created a retry storm while fixing a retry suppression
+
+Round 2 of the Tier A review confirmed seven of nine round-1 findings closed, and found a
+**HIGH that my round-1 fix introduced.**
+
+I gated the **shared** aggregator cadence key on `cgOk && fillOk`. That key gates the whole
+aggregator branch. So **one** failed row out of 231 - a single transient deadlock - left it
+un-stamped and re-ran the Chittorgarh **scrape** and the report fetch on every 30-minute
+wake: roughly **48 times a day** against a third-party source.
+
+And it was dated, not hypothetical. `CURRENT_YEAR` is read from the clock, so at midnight on
+**1 Jan 2027** the report URL flips to a financial year with a handful of rows, falls below
+the row floor I had just added, aborts, and hammers for weeks.
+
+**I fixed a one-day retry suppression by inventing a permanent retry storm.** The fill now has
+its own cadence key; each step stamps on its own result. Restoring the coupling turns the
+wiring test red.
+
+### Four more from round 2
+
+- **The verdict could still report success with zero rows written.** All-`dateMismatch` or
+  all-`blockedByAdmin` would read clean - so the proof still could not fail for the write
+  claim, on the very path my new guard added.
+- **`reportAmbiguous` counted two disjoint populations**, and the review *proved* the second
+  can only be the agreeing case. An operator reading `1` would conclude the source
+  contradicted itself when it agreed. Split, with a log.
+- **The admin probe was fabricating an audit record.** A refusal files `attemptedValue`, so a
+  hardcoded `BOOK_BUILDING` filed a false record every cycle for a locked IPO whose real
+  value is `FIXED_PRICE`. A correct refusal paired with a false record is worse than none.
+- **The counter identity broke** when only `trackFieldUpdate` throws - `filled++` then
+  `failed++`, failing the step for a row that *was* written.
+
+Round 2 also **confirmed the two tests I edited were not weakened** - the thing I most
+suspected in my own work, and the reason I asked it to check specifically. One became
+stricter; the other kept its assertions and fixed an unrealistic mock.
+
+### Separately: item 14's blocker re-tested, and a bigger defect found
+
+14-S3 is **genuinely** blocked (NSE past-issues, 1,431 records, tested against three sources).
+But two of item 14's three failing rows carry the **#515** face-value shape, not item 14's own
+class.
+
+Measuring further: **268 of 343** priced rows have a collapsed band. Where report 82 states
+the method, band-collapse is **wrong on 157 of 211 (74.4%)**, always in the same direction -
+a book-built issue stored with one price. Under SEBI ICDR that cannot be right. **Filed as
+#589**, with both caveats stated rather than letting the number stand bare.
+
+The `floor === cap` trap is **real but unsprung**: all 22 stored `issue_type` values are
+BOOK_BUILDING, zero FIXED_PRICE. And I checked a consequence of my own PR before being told -
+filling BOOK_BUILDING does *not* make the degenerate-band check noisier, because NULL already
+flags.
+
+### Evidence
+
+298 files / **3715 passed** / 9 skipped, exit 0, zero FAIL markers. `--smoke-import` OK.
+`tsc` 94 pre-existing, none in changed files. Commit `c32932fc` pushed.
+
+**Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines. Item 3 is with
+the owner.**
