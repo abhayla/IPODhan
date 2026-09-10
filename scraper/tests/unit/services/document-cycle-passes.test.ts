@@ -108,7 +108,10 @@ vi.mock('../../../src/services/document-store.js', () => ({
   getMaxRetentionDays: () => 30,
 }));
 
-const FEATURE_FLAGS: { ENABLE_FILING_AUTO_PERSIST: boolean } = { ENABLE_FILING_AUTO_PERSIST: true };
+const FEATURE_FLAGS: { ENABLE_FILING_AUTO_PERSIST: boolean; ENABLE_UPCOMING_DISCOVERY_RESERVATION: boolean } = {
+  ENABLE_FILING_AUTO_PERSIST: true,
+  ENABLE_UPCOMING_DISCOVERY_RESERVATION: false,
+};
 vi.mock('../../../src/config/feature-flags.js', () => ({ FEATURE_FLAGS }));
 
 vi.mock('../../../src/services/step-ledger.js', () => ({
@@ -510,6 +513,115 @@ describe('W-136 — up to listedCap LISTED slots are reserved when the budget tr
 function daysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 }
+
+/**
+ * #468 — a rank-2 UPCOMING/PRE_OPEN slot is reserved when the budget trips,
+ * mirroring the W-124 purge reservation and the W-136 LISTED reservation.
+ *
+ * RCA: `runDocumentCycle` reserves a guaranteed slot for the rank-4 purge
+ * candidate (W-124) and up to `listedCap` rank-3 LISTED candidates (W-136)
+ * when `CYCLE_BUDGET.DISCOVERY_MS` trips mid-walk, but reserves nothing for
+ * rank-2 UPCOMING/PRE_OPEN — so a full OPEN+CLOSED backlog that alone
+ * consumes the budget starves every UPCOMING row indefinitely (observed:
+ * Manika Plastech, ~48-96 production cycles with zero
+ * `document_fetch_state` rows).
+ *
+ * These tests fail on the pre-fix code (red) with the flag on: budgetMs=0
+ * means the live backlog (OPEN candidates) gets zero slots, and with no
+ * rank-2 reservation, runIpo is never called for the UPCOMING candidate.
+ */
+describe('#468 — one UPCOMING/PRE_OPEN slot is reserved when the budget trips, mirroring the purge/LISTED reservations', () => {
+  beforeEach(() => {
+    FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION = true;
+    // Map each candidate row's own status straight to its stage (identity),
+    // so OPEN/UPCOMING rows fed by `candidateRow(id, status)` reach the real
+    // rank-0/rank-2 branches instead of the file's default fixed 'PRE_OPEN'
+    // stage (see the W-136 block above for the same pattern).
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+  });
+
+  it('with budgetMs=0 (the OPEN backlog alone exhausts the budget), the UPCOMING candidate is still processed (ensureRow reached)', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('open-1', 'OPEN'), candidateRow('open-2', 'OPEN'), candidateRow('upcoming-1', 'UPCOMING')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toContain('upcoming-1');
+    expect(summary.upcomingReserved).toBe(1);
+    expect(summary.upcomingProcessedAfterBudget).toBe(1);
+  });
+
+  it('with no UPCOMING candidate present, the reservation makes no extra call (no regression to the purge/LISTED reservations)', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('open-1', 'OPEN'), candidateRow('open-2', 'OPEN')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    expect(runIpoMock).not.toHaveBeenCalled();
+    expect(summary.upcomingReserved).toBe(0);
+    expect(summary.upcomingProcessedAfterBudget).toBe(0);
+  });
+
+  it('an UPCOMING candidate reached BEFORE the budget trips is processed normally, with no double-processing', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('upcoming-1', 'UPCOMING'), candidateRow('open-1', 'OPEN')],
+    });
+
+    // rank order puts open-1 (rank 0) before upcoming-1 (rank 2) in the real
+    // walk, so drive budgetMs high enough that both are reached in the
+    // normal walk before any trip.
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed.filter((id) => id === 'upcoming-1')).toHaveLength(1);
+    expect(idsProcessed).toContain('open-1');
+  });
+
+  it('budget does not trip -> upcomingReserved/upcomingProcessedAfterBudget stay 0, behavior unchanged', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('upcoming-1', 'UPCOMING')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(summary.budgetExhausted).toBe(false);
+    expect(summary.upcomingReserved).toBe(0);
+    expect(summary.upcomingProcessedAfterBudget).toBe(0);
+  });
+
+  it('flag OFF — the UPCOMING candidate is NOT reserved (regression guard: a flag left off does not fix the class)', async () => {
+    FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION = false;
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('open-1', 'OPEN'), candidateRow('upcoming-1', 'UPCOMING')],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).not.toContain('upcoming-1');
+    expect(summary.upcomingReserved).toBe(0);
+  });
+
+  it('multiple UPCOMING candidates present -> only the soonest-opening one (walk order) wins the single reserved slot', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [
+        candidateRow('open-1', 'OPEN'),
+        { ...candidateRow('upcoming-far', 'UPCOMING'), open_date: daysAgo(-30) },
+        { ...candidateRow('upcoming-soon', 'UPCOMING'), open_date: daysAgo(-2) },
+      ],
+    });
+
+    const summary = await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toContain('upcoming-soon');
+    expect(idsProcessed).not.toContain('upcoming-far');
+    expect(summary.upcomingReserved).toBe(1);
+  });
+});
 
 describe('W-124 round 2 — MAJOR-1: a complete LISTED row is excluded from every pass', () => {
   function listedRow(id: string, listingDate: string) {

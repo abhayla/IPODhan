@@ -250,6 +250,17 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_NSE_OFS: process.env.ENABLE_NSE_OFS === 'true',
 
+  /**
+   * #468: gates the rank-2 (UPCOMING/PRE_OPEN) discovery-budget reservation
+   * in `runDocumentCycle` (`scraper/src/services/document-cycle.ts`) that
+   * mirrors the existing rank-3 (LISTED, W-136) and rank-4 (purge, W-124)
+   * reservations. Scheduler work-selection change — default OFF, per the
+   * parent contract's default for this class of change. A flag left off
+   * does NOT fix the underlying starvation; the owner must set this to
+   * 'true' (staging first, then prod) for the fix to take effect.
+   */
+  ENABLE_UPCOMING_DISCOVERY_RESERVATION: process.env.ENABLE_UPCOMING_DISCOVERY_RESERVATION === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
   // T-297 D9 / #193: this file is the SSOT for which flags gate live logic
   // in prod. `// LIVE-GATE` on a *_PERCENTAGE field and `// PROD-REQUIRED-TRUE`

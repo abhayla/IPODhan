@@ -178,6 +178,28 @@ export const PURGE_RESERVE_MS = 2 * 60 * 1000;
  */
 export const RESERVATION_CEILING_MS = 3 * 60 * 1000;
 
+/**
+ * #468: guaranteed rank-2 (UPCOMING/PRE_OPEN) slots reserved when the
+ * discovery budget trips, mirroring the rank-4 purge reservation (W-124) and
+ * the rank-3 LISTED reservation (W-136) below. RCA: before this, only ranks
+ * 3 and 4 had a reservation — a full OPEN+CLOSED (rank 0/1) backlog alone
+ * could burn the whole `budgetMs` every cycle, and the loop would `break`
+ * before ever reaching rank 2, starving every UPCOMING row indefinitely
+ * (observed: Manika Plastech, ~48-96 production cycles with zero
+ * `document_fetch_state` rows).
+ *
+ * `1`, not a `listedCap`-style multi-row cap: UPCOMING/PRE_OPEN is a live,
+ * time-sensitive tier (an IPO opening tomorrow, not a backlog to work
+ * through like LISTED backfill) — same urgency class as the single purge
+ * slot, which also guarantees exactly one candidate per cycle regardless of
+ * how many rank-4 rows are queued. The candidates within this tier are
+ * already ordered soonest-`open_date`-first (`CANDIDATE_IPOS_SQL` /
+ * `orderAndCapCandidates`'s rank-2 tie-break), so the single slot always
+ * goes to the most urgent (soonest-opening) UPCOMING row — the one the
+ * defect argues matters most to never starve.
+ */
+export const UPCOMING_RESERVE_SLOTS = 1;
+
 /** `DOCUMENT_CYCLE_WAKE_BUDGET_MS` env override, default `DEFAULT_WAKE_BUDGET_MS`. */
 export function getWakeBudgetMs(): number {
   const raw = process.env.DOCUMENT_CYCLE_WAKE_BUDGET_MS;
@@ -259,6 +281,25 @@ export interface DocumentCycleSummary {
    */
   listedProcessedAfterBudget: number;
   /**
+   * #468: rank-2 (UPCOMING/PRE_OPEN) slots reserved this cycle when the
+   * budget tripped before rank 2 was reached — mirrors `purgeReserved` /
+   * `listedReserved`. `min(UPCOMING_RESERVE_SLOTS, unprocessed rank-2
+   * candidates at the trip point)`. Only non-zero when
+   * `ENABLE_UPCOMING_DISCOVERY_RESERVATION` is on.
+   */
+  upcomingReserved: number;
+  /**
+   * #468: rank-2 candidates that WOULD have been reserved but were skipped
+   * because the shared reservation deadline (same one W-136's LISTED
+   * reservation uses) was already reached.
+   */
+  upcomingReservedSkippedByDeadline: number;
+  /**
+   * #468: rank-2 candidates actually processed via the post-budget-trip
+   * reservation (a subset of `upcomingReserved`).
+   */
+  upcomingProcessedAfterBudget: number;
+  /**
    * Cadence D-13: CLOSED/LISTED/WITHDRAWN candidates skipped this cycle
    * because a calendar gate (Sunday/Saturday/NSE holiday) made only
    * UPCOMING/PRE_OPEN/OPEN candidates eligible for network work. 0 on an
@@ -295,7 +336,12 @@ export function summarize(
     processedAfterBudget?: number;
     reservedSkippedByDeadline?: number;
   } = { cap: 0, deferred: 0 },
-  calendarInfo: { skipped: number; reason: CalendarGateReason | null } = { skipped: 0, reason: null }
+  calendarInfo: { skipped: number; reason: CalendarGateReason | null } = { skipped: 0, reason: null },
+  upcomingInfo: {
+    reserved?: number;
+    processedAfterBudget?: number;
+    reservedSkippedByDeadline?: number;
+  } = {}
 ): DocumentCycleSummary {
   return {
     ipos: results.length,
@@ -316,6 +362,9 @@ export function summarize(
     listedReserved: listedInfo.reserved ?? 0,
     listedProcessedAfterBudget: listedInfo.processedAfterBudget ?? 0,
     listedReservedSkippedByDeadline: listedInfo.reservedSkippedByDeadline ?? 0,
+    upcomingReserved: upcomingInfo.reserved ?? 0,
+    upcomingProcessedAfterBudget: upcomingInfo.processedAfterBudget ?? 0,
+    upcomingReservedSkippedByDeadline: upcomingInfo.reservedSkippedByDeadline ?? 0,
     calendarSkipped: calendarInfo.skipped,
     calendarGateReason: calendarInfo.reason,
   };
@@ -1140,6 +1189,9 @@ export async function runDocumentCycle(
     let listedReserved = 0;
     let listedProcessedAfterBudget = 0;
     let listedReservedSkippedByDeadline = 0;
+    let upcomingReserved = 0;
+    let upcomingProcessedAfterBudget = 0;
+    let upcomingReservedSkippedByDeadline = 0;
 
     for (let i = 0; i < candidates.length; i++) {
       const ipo = candidates[i];
@@ -1194,6 +1246,37 @@ export async function runDocumentCycle(
           listedProcessedAfterBudget++;
         }
 
+        // #468: mirror the purge/LISTED reservations for rank-2
+        // (UPCOMING/PRE_OPEN) candidates. Without this, a full OPEN+CLOSED
+        // (rank 0/1) backlog burns the whole budget every cycle, rank 2
+        // never gets a `runIpo` call, and `document_fetch_state` never gets
+        // a row for it — the Manika Plastech starvation this fixes. Reserve
+        // up to `UPCOMING_RESERVE_SLOTS` rank-2 candidates — from the trip
+        // point onward, in walk order (already soonest-`open_date`-first,
+        // per `CANDIDATE_IPOS_SQL` / `orderAndCapCandidates`) — that have
+        // not already been processed this cycle; independent of, and can
+        // fire alongside, the purge and LISTED reservations. Gated behind
+        // `ENABLE_UPCOMING_DISCOVERY_RESERVATION` (default off in prod) —
+        // this changes scheduler work-selection behaviour, per the parent
+        // contract's default.
+        // `lifecycleRank(c) === 2` is the UPCOMING/PRE_OPEN rank (see
+        // `lifecycleRank`'s switch above).
+        if (FEATURE_FLAGS.ENABLE_UPCOMING_DISCOVERY_RESERVATION) {
+          const remainingUpcoming = candidates
+            .slice(i)
+            .filter((c) => lifecycleRank(c) === 2 && !processedIds.has(c.id));
+          upcomingReserved = Math.min(UPCOMING_RESERVE_SLOTS, remainingUpcoming.length);
+          for (const upcomingCandidate of remainingUpcoming.slice(0, UPCOMING_RESERVE_SLOTS)) {
+            if (now() >= reservationDeadline) {
+              upcomingReservedSkippedByDeadline++;
+              continue;
+            }
+            await processCandidate(upcomingCandidate);
+            processedIds.add(upcomingCandidate.id);
+            upcomingProcessedAfterBudget++;
+          }
+        }
+
         budgetExhausted = true;
         logger.warn(
           {
@@ -1205,8 +1288,11 @@ export async function runDocumentCycle(
             listedReserved,
             listedProcessedAfterBudget,
             listedReservedSkippedByDeadline,
+            upcomingReserved,
+            upcomingProcessedAfterBudget,
+            upcomingReservedSkippedByDeadline,
           },
-          'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot and up to listedCap LISTED slots are reserved regardless of budget'
+          'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot, up to listedCap LISTED slots, and (when ENABLE_UPCOMING_DISCOVERY_RESERVATION is on) an UPCOMING slot are reserved regardless of budget'
         );
         break;
       }
@@ -1336,7 +1422,12 @@ export async function runDocumentCycle(
         processedAfterBudget: listedProcessedAfterBudget,
         reservedSkippedByDeadline: listedReservedSkippedByDeadline,
       },
-      { skipped: calendarSkipped, reason: calendarGate.reason }
+      { skipped: calendarSkipped, reason: calendarGate.reason },
+      {
+        reserved: upcomingReserved,
+        processedAfterBudget: upcomingProcessedAfterBudget,
+        reservedSkippedByDeadline: upcomingReservedSkippedByDeadline,
+      }
     );
 
     // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
