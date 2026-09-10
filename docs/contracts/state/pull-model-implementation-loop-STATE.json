@@ -185,7 +185,12 @@
     "WORKAROUND in use meanwhile: this ledger and the progress log now describe refused commands in prose rather than backticks. Not unregistering the guard over it - it is net positive and I would rather work around punctuation than return to a brief line that failed three times.",
     "s3d MERGED 2026-09-10 16:36 IST via PR #485 after Tier A round 2 PASS (diff-only). Verified on main: ci.yml carries the gate, pr-gate carries the checker's own 20 tests. Worktree removed with the integrity proof - 1309 junction links removed AS LINKS, main checkout tracked 4602 before and after, schema.ts present. Then dispatched ci.yml on main for the report that populates the baseline (#486).",
     "MY BACKTICK DIAGNOSIS WAS WRONG and I caught it by testing the supervisor's competing theory instead of defending mine: a heredoc containing a plain multi-line string with a newline before the phrase and NO backticks anywhere is still refused. The cause is a newline, semicolon or pipe splitting the text into a segment that begins with the phrase; both of my original examples happened to have backticks AND newlines and I blamed the punctuation I could see. Told them explicitly not to ship the backtick demotion as the fix for my report - it would have looked closed while my exact case still failed, because the report that prompted it named backticks. The string-and-heredoc blanking is what actually closes it; my no-backtick case is now their named acceptance test.",
-    "NEXT DETERMINISTIC GUARD proposed and accepted for delta 2, and I argued it should outrank the loop-body gap: the MSYS path-form defect. A `git show ref:path` mangled into `ref;path` returns a fatal error, and a downstream count reads that as zero. Three occurrences today, all mine. It is worse than a rooted find - a find hangs visibly, while this answers your question with a confident wrong number. I read three such zeros as evidence that two shared duties were already done and nearly reported it."
+    "NEXT DETERMINISTIC GUARD proposed and accepted for delta 2, and I argued it should outrank the loop-body gap: the MSYS path-form defect. A `git show ref:path` mangled into `ref;path` returns a fatal error, and a downstream count reads that as zero. Three occurrences today, all mine. It is worse than a rooted find - a find hangs visibly, while this answers your question with a confident wrong number. I read three such zeros as evidence that two shared duties were already done and nearly reported it.",
+    "SELF-INFLICTED REGRESSION reached main and my own gate caught it, 2026-09-10 16:57 IST. My duplicate-removal edit in s3d deleted three load-bearing lines from ci.yml's integration step - working-directory: ./web, DATABASE_URL, REDIS_URL - because the edit removed everything between the run line and the next step, not just the duplicated comment. Effect on the first dispatched run: the step ran at repo root, crashed with 'Could not resolve vitest.integration.config.ts' before a single test, wrote no report, and continue-on-error showed it as SUCCESS. The checker failed with 'report file not found' - the fail-closed behaviour Tier A round 1 forced me to add. Without that round the gate would have exited 0 on a missing file and reported clean over a suite that never ran. Fix is PR #489.",
+    "s3d ALSO reintroduced `npx vitest run --config ...` for the integration step - the exact one-suite-two-commands divergence #474 removed from the unit step, where it cost 90 of 187 files. I reviewed that diff twice and missed it both times. #489 returns it to `npm run test:integration -- <flags>`.",
+    "VERIFICATION TOOK FOUR ATTEMPTS AND THE FIRST THREE WERE INVALID: they returned 'no file' because the fresh worktree had no node_modules, so vitest resolved from an npx cache and never started. Had I stopped at the first I would have concluded the fix was wrong and hunted a second bug that does not exist. Fourth attempt, in a tree that has node_modules: 861-byte report, valid JSON, populated testResults. New standing brief line: confirm node_modules resolves in a fresh worktree BEFORE reporting any test result from it.",
+    "PIPELINING: slice s9 dispatched while s3 (#459) and s5a (#476) wait on the baseline. Chosen because almost every other remaining item-1 slice depends on one of those two - s4 and s8 on s3's row_key, s5b on s5a's helper, s6 would put a second migration in flight against s3's journal entry. s9 is independent and is a prerequisite for items 15 and 6.",
+    "DELIBERATELY NOT REBASING the two held PRs: s3 is 8 behind with 15 files reading as deletions, s5a is 7 behind with 13. Rebasing now would burn CI runs on PRs that cannot merge until the baseline populates, and main will move again before they can. One rebase each, at the merge gate."
   ],
   "items": {
     "item-01": {
@@ -311,6 +316,19 @@
           "tier": "A",
           "pr": 485,
           "title": "shrink-only baseline gate for the web integration suite (owner decision 2026-09-10)"
+        },
+        {
+          "k": "s3e",
+          "status": "IN-CI",
+          "tier": "A",
+          "pr": 489,
+          "title": "restore working-directory and env dropped from the ci.yml integration step"
+        },
+        {
+          "k": "s9",
+          "status": "BUILDING",
+          "tier": "A",
+          "title": "wire or retire the tz-case suite (#478) so decision 8 stops naming an unrunnable command"
         }
       ],
       "prs": [
