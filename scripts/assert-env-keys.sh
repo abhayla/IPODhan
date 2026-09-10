@@ -59,6 +59,17 @@ WEB_REQUIRED_KEYS=(
   # human reading shared/env/<SLOT>/web.env.local sees the TZ contract
   # explicitly instead of it living only inside deploy-linux.sh.
   TZ
+  # item 01 slice s5a: same belt-and-braces contract as TZ above.
+  # DEPLOY_SLOT is what actually reaches the running pm2 process
+  # (`DEPLOY_SLOT="$SLOT" pm2 start ...` in deploy-linux.sh's restart_pm2/
+  # resume_scraper/rollback paths) — required here too so a human reading
+  # shared/env/<SLOT>/web.env.local sees the slot contract explicitly, and
+  # so this script fails loudly if a slot's hand-provisioned env file is
+  # ever missing it. VALUE is not enforced by this check (only presence);
+  # slotAwareFlagDefault() in web/lib/config/feature-flags.ts and
+  # scraper/src/config/feature-flags.ts is what actually branches on the
+  # VALUE at runtime.
+  DEPLOY_SLOT
 )
 
 SCRAPER_REQUIRED_KEYS=(
@@ -98,6 +109,11 @@ SCRAPER_REQUIRED_KEYS=(
   # date-parse fix no longer DEPENDS on this value (belt-and-braces, not the
   # only guard).
   TZ
+  # item 01 slice s5a: same belt-and-braces contract as TZ above and as
+  # WEB_REQUIRED_KEYS' DEPLOY_SLOT entry — required here too so this script
+  # fails loudly if the scraper slot's env file is ever missing it. VALUE is
+  # not enforced by this check.
+  DEPLOY_SLOT
 )
 
 MISSING=()

@@ -678,7 +678,7 @@ resume_scraper() {
   # runs — the TZ=UTC prefix was never the problem; the line never executed.
   # In production SCRAPER_CRON is always set well before this function is
   # ever called, so the fallback here is dead weight on the real deploy path.
-  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
@@ -1390,7 +1390,7 @@ restart_pm2() {
   # ecosystem.config.js's TZ:'UTC' is dead config here (deploy-linux.sh never
   # reads it) and is retired/documented as historical, not wired.
   pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/web" && TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+  ( cd "$RELEASE_DIR/web" && TZ=UTC DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
       -i "$instances" -- start )
   # Scraper is delete+start (not reload) on every deploy — it is a one-shot
   # fork process, not a long-lived server (pm2-scheduled-one-shot-scraper.md).
@@ -1403,7 +1403,7 @@ restart_pm2() {
   # W-178 round 2: see resume_scraper()'s comment above — default-expand
   # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
   # abort on an unbound variable under `set -u` before pm2 ever runs.
-  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
@@ -1435,7 +1435,7 @@ rollback_start_web() {
   # T-327 P2-7: TZ=UTC explicit here too, so a rollback never leaves the
   # web app running without an explicit process TZ.
   pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-  ( cd "$PREVIOUS_RELEASE/web" && TZ=UTC pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+  ( cd "$PREVIOUS_RELEASE/web" && TZ=UTC DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
       -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
     || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
   pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."

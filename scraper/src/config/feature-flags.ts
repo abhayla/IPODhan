@@ -17,8 +17,39 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '..', '..', '.env') });
 
 /**
+ * Slot-aware feature-flag default (item 01 slice s5a).
+ *
+ * Resolves a flag's default from `DEPLOY_SLOT` so staging can default ON
+ * without anyone editing a server env file, while prod stays OFF with no
+ * action required:
+ * - `DEPLOY_SLOT=staging` and no explicit value for `envVarName` -> true
+ * - any other slot value, OR `DEPLOY_SLOT` unset/missing -> false (this is
+ *   the case that protects production — the safe answer is the fallback,
+ *   not something every slot has to opt into)
+ * - an explicit `true`/`false` on the flag's OWN env var always wins over
+ *   the slot default, in either direction (e.g. forcing a flag on for a
+ *   one-off prod test, or off on staging to isolate a regression)
+ *
+ * This does not change the default of any existing flag below — none of them
+ * call this helper. It exists for flags that opt in explicitly.
+ */
+export function slotAwareFlagDefault(envVarName: string): boolean {
+  const explicit = process.env[envVarName];
+  if (explicit === 'true') return true;
+  if (explicit === 'false') return false;
+  return process.env.DEPLOY_SLOT === 'staging';
+}
+
+/**
  * Feature flag configuration
- * All flags default to false/0 for safety
+ * All flags default to false/0 for safety.
+ *
+ * REVIEWED EXCEPTION (item 01 slice s5a, T-item01-s5a): a flag that explicitly
+ * reads its default via `slotAwareFlagDefault()` below may default ON for the
+ * `staging` deploy slot instead of false. This is opt-in per flag (nothing
+ * above is rewired by this slice) and the fallback for prod, local, and any
+ * unset/unknown slot is still false — the safety default this comment
+ * describes is unchanged for every flag that does not call the helper.
  */
 export const FEATURE_FLAGS = {
   // ==================== CORE FEATURES ====================
