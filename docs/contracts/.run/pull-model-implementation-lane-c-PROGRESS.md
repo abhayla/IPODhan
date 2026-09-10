@@ -654,3 +654,72 @@ unlabelled grey chip counting 0. Every lane reads low. One-line fix, but I will 
 
 **Nothing has written a database row. Items 14, 2, 12 and 3 have zero DONE lines between
 them.**
+
+## 2026-09-11 03:30 IST — 2-S7 commit 8: the wiring, and #569 leaves draft
+
+Until this commit the five pieces below it **had no caller at all.**
+
+`chittorgarh-issue-type-job.ts` is the composition root: fetch report 82, map Pricing
+Method, build the folded index over **every** stored IPO, fill. The index holds every
+stored IPO and not only the fillable ones on purpose — leaving an already-filled twin out
+would turn a colliding name into a clean single match and land the value on the wrong
+company.
+
+**The job refuses a zero-row report.** The endpoint answers HTTP 200 with an empty list
+when the request is malformed — every page size but 10 does exactly that. Report 82 lists
+a whole financial year and is never legitimately empty, so the job aborts and the cycle
+step reports `success: false`. Treating "no rows" as "nothing to do" would let a
+permanently broken call read as a clean cycle forever — the same silent-zero shape as the
+page size that caused it.
+
+The call site is its own labelled step next to the Chittorgarh scrape, in the branch that
+actually fires in production. It runs **regardless** of the scrape's own result: writing
+`ipos` and reading a Pricing Method off the same response are independent, so a partial
+scrape is no reason to drop a field that response already carried.
+
+### Two mistakes in this pass, both caught before damage
+
+1. My multi-line patch anchor failed because `index.ts` is CRLF and I wrote `\n`. Worth
+   recording *why* I missed it: `cat -A` printed only `$` and never rendered the `^M` —
+   the tool I reached for to check line endings is the one that hid them. Python answered
+   correctly. The script asserted before writing, so the file was never touched.
+2. I wrote a check that echoed "(none above = clean)" unconditionally, directly beneath a
+   grep that **had** found a real error in my own file. A check whose output does not
+   depend on its finding is not a check.
+
+### And one I nearly shipped
+
+I had put `db as never`, `redis as never` into the call site as defensive casts.
+`never` is assignable to everything, so those three arguments were **entirely
+unchecked** — if `db.execute` returned a different shape, nothing would have told me.
+That is precisely the silent-wrong-answer class this run keeps finding, written by my own
+hand. I removed them to see what `tsc` said: clean without them, total unchanged at 94.
+The casts were never needed and were actively suppressing type checking.
+
+### Evidence
+
+Full scraper unit suite **298 files / 3696 passed / 9 skipped, exit 0**, zero FAIL markers.
+`--smoke-import` OK. `tsc` 94 pre-existing errors in untouched files, **zero** in the
+eight files this slice changes. Branch merges cleanly into `origin/main`.
+
+Nine mutations across the slice, each proved applied and gated on exit codes. One survived
+on first run and exposed a genuinely untested guard.
+
+### #569 is out of draft
+
+Body carries the RCA, the class as a data filter, the null-guard safety argument with the
+matrix correction, all eight commits, both findings, the mutation list, the detection entry,
+and the proof named as **owed**. Contract item 5 timing applies: staging deploys from
+`main`, so the merge is *how* the proof is obtained and the **release cut** is the gate
+that requires it. First four CI checks green, including the Detection-Change Gate.
+
+### Still owed, not rounded up
+
+**Nothing has written a database row.** The three staging numbers remain unmeasured:
+`ipo_details` rows before/after (expect **+182**), non-null `issue_type` before/after
+(expect **+183**), and the count of `issue_type` provenance rows **not** sourced
+CHITTORGARH held unchanged — the overwrite refutation. Zero-conflict re-measured *after*
+the write.
+
+**Item 2 has no DONE line. Items 14, 12 and 3 have none either. Item 3 is still with the
+owner.**
