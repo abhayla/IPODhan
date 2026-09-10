@@ -330,6 +330,14 @@ jobs:
         run: npx vitest run --config vitest.config.ts tests/unit/pipeline-stages
         working-directory: ./scraper
 
+      - name: Scraper import smoke (real ESM runtime)
+        # Loads the ENTIRE production import graph through the real entry
+        # point, the same way pm2 runs it, then exits before any DB, network
+        # or scrape work. Seconds of runtime. This is the only check in the
+        # gate that evaluates production modules under the real module system.
+        run: npx tsx src/index.ts --smoke-import
+        working-directory: ./scraper
+
   python-tests:
     name: Scraper Python Extractor Tests (W-159)
     runs-on: ubuntu-latest

@@ -1,8 +1,13 @@
-import { join } from 'path';
-import { loadValidatedConfig } from './validated-config-loader';
-import { fieldManifestSchema, type FieldManifest } from './field-manifest-schema';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { loadValidatedConfig } from './validated-config-loader.js';
+import { fieldManifestSchema, type FieldManifest } from './field-manifest-schema.js';
 
-const DEFAULT_MANIFEST_PATH = join(__dirname, '..', '..', '..', 'scraper', 'config', 'field-manifest.json');
+// `scraper` is "type": "module", so __dirname does NOT exist at module scope.
+// It must be derived from import.meta.url. See scripts/ci/check-esm-module-globals.mjs.
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+
+const DEFAULT_MANIFEST_PATH = join(MODULE_DIR, '..', '..', '..', 'scraper', 'config', 'field-manifest.json');
 
 /**
  * Reads and validates scraper/config/field-manifest.json via the shared
