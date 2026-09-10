@@ -641,3 +641,13 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   against your typed words rather than a summary, and adopted; one caveat is recorded, that the list of known
   failures may start empty, and an empty list is only useful if it makes the build fail rather than pass.
   **Nothing needs you today.** One thing will at the close of this item: a rollback rehearsal.
+- **2026-09-10 15:59 IST - the download-safety work is in its second review.** The first review refused it and was right: the
+  check that stops downloads reaching addresses inside your network blocked one way of writing a disguised
+  address and allowed another spelling of the very same address. Worse, the line doing that check had no test
+  at all -- deleting it entirely left every test passing. Both are fixed, every spelling now has its own test,
+  and the second review is hunting for a form nobody has thought of yet, starting with the cloud metadata
+  address that is the usual target of this kind of attack.
+  One near-miss, caught and reported by the worker: a routine cleanup command silently threw away the whole
+  security fix and restored the vulnerable version. It surfaced as an unrelated-looking test failure. The rule
+  that would have prevented it already existed and was not followed; it is now a hard prohibition.
+  A reader of ipodhan.com sees nothing from this. **Nothing needs you today.**
