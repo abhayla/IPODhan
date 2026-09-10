@@ -96,6 +96,14 @@ export interface ConsolidationResult {
 export interface ConsolidateIPODataInput {
   ipoId: string;
   tableName: string;
+  /**
+   * Natural key of the row within `tableName`. `''` (the default) for every table with
+   * exactly one row per IPO — `ipos`, `ipo_details`, `anchor_investors`, `financial_data`.
+   * Non-empty for tables that hold several rows per IPO (`financial_statements`:
+   * `'2024:RESTATED'`, `peer_companies`: the peer's normalized name). See schema.ts's
+   * `field_sources.rowKey` comment for the per-table convention.
+   */
+  rowKey?: string;
   incomingData: Record<string, any>;
   source: ScraperSource;
   existingData?: Record<string, any>;
@@ -117,6 +125,8 @@ export interface ConsolidateIPODataInput {
 interface ConflictInfo {
   ipoId: string;
   tableName: string;
+  /** Natural key of the conflicting row within `tableName`; `''` for singleton tables. */
+  rowKey?: string;
   fieldName: string;
   existingValue: any;
   existingSource: ScraperSource;
@@ -654,7 +664,13 @@ export class DataConsolidationService {
         { value: any; source: ScraperSource; updatedAt?: Date; docType?: string }
       >();
       for (const fieldSource of existingFieldSources) {
-        if (fieldSource.tableName === input.tableName) {
+        // s4: provenance is per ROW, not per table. Without the row-key match a second
+        // child row (FY2023 next to FY2024) reads the FIRST row's source as its own
+        // existing value and can be 'kept' against a value it never held.
+        if (
+          fieldSource.tableName === input.tableName &&
+          (fieldSource.rowKey ?? '') === (input.rowKey ?? '')
+        ) {
           const key = fieldSource.fieldName;
           existingSourceMap.set(key, {
             // Use value from field source (stored in DB) or fall back to existingData parameter
@@ -718,6 +734,8 @@ export class DataConsolidationService {
         await this.trackFieldSource({
           ipoId: input.ipoId,
           tableName: input.tableName,
+          // Price band lives on the singleton `ipos` row — '' forever.
+          rowKey: input.rowKey ?? '',
           fieldName,
           value: input.incomingData[fieldName],
           source: input.source,
@@ -757,6 +775,8 @@ export class DataConsolidationService {
           await this.logConflict({
             ipoId: input.ipoId,
             tableName: input.tableName,
+            // issueSize is an `ipos` column — singleton, '' forever.
+            rowKey: input.rowKey ?? '',
             fieldName,
             existingValue,
             existingSource,
@@ -866,6 +886,7 @@ export class DataConsolidationService {
           const fieldResult = await this.consolidateField({
             ipoId: input.ipoId,
             tableName: input.tableName,
+            rowKey: input.rowKey ?? '',
             fieldName,
             incomingValue,
             incomingSource: input.source,
@@ -983,6 +1004,8 @@ export class DataConsolidationService {
   private async consolidateField(params: {
     ipoId: string;
     tableName: string;
+    /** Natural key of the child row; `''` (default) for singleton tables. */
+    rowKey?: string;
     fieldName: string;
     incomingValue: any;
     incomingSource: ScraperSource;
@@ -1013,6 +1036,7 @@ export class DataConsolidationService {
       existingValue,
       existingSource,
     } = params;
+    const rowKey = params.rowKey ?? '';
 
     const rules = getFieldRules(fieldName);
 
@@ -1124,6 +1148,9 @@ export class DataConsolidationService {
         await this.trackFieldSource({
           ipoId,
           tableName,
+          // Generic path (any table, any field): a child row supplies its own key
+          // once the consolidated child writer lands (slices s5b/s7a/s7b).
+          rowKey,
           fieldName,
           value: storedValue,
           source: incomingSource,
@@ -1161,6 +1188,8 @@ export class DataConsolidationService {
       await this.trackFieldSource({
         ipoId,
         tableName,
+        // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
+        rowKey,
         fieldName,
         value: incomingValue,
         source: incomingSource,
@@ -1217,6 +1246,8 @@ export class DataConsolidationService {
             await this.trackFieldSource({
               ipoId,
               tableName,
+              // `listingExchanges` is an `ipos` column — singleton, '' forever.
+              rowKey,
               fieldName,
               value: [collapsed.exchange],
               source: existingSource || incomingSource,
@@ -1235,6 +1266,7 @@ export class DataConsolidationService {
                 for (const row of openRows) {
                   if (
                     row.tableName === tableName &&
+                    (row.rowKey ?? '') === rowKey &&
                     row.fieldName === fieldName &&
                     row.resolutionReason === SME_SINGLE_EXCHANGE_CONFLICT_REASON
                   ) {
@@ -1276,6 +1308,7 @@ export class DataConsolidationService {
             await this.logConflict({
               ipoId,
               tableName,
+              rowKey,
               fieldName,
               existingValue: storedValue,
               existingSource: existingSource || incomingSource,
@@ -1314,6 +1347,8 @@ export class DataConsolidationService {
             await this.trackFieldSource({
               ipoId,
               tableName,
+              // Set-valued fields are `ipos` columns — singleton, '' forever.
+              rowKey,
               fieldName,
               value: storedValue,
               source: incomingSource,
@@ -1341,6 +1376,7 @@ export class DataConsolidationService {
             await this.logConflict({
               ipoId,
               tableName,
+              rowKey,
               fieldName,
               existingValue: storedValue,
               existingSource: existingSource || incomingSource,
@@ -1374,6 +1410,8 @@ export class DataConsolidationService {
         await this.trackFieldSource({
           ipoId,
           tableName,
+          // Set-valued fields are `ipos` columns — singleton, '' forever.
+          rowKey,
           fieldName,
           value: merged,
           source: existingSource || incomingSource,
@@ -1398,6 +1436,8 @@ export class DataConsolidationService {
       await this.trackFieldSource({
         ipoId,
         tableName,
+        // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
+        rowKey,
         fieldName,
         value: incomingValue, // Track original value, not normalized
         source: incomingSource,
@@ -1422,6 +1462,7 @@ export class DataConsolidationService {
           await this.dataConflictsRepository.autoResolveConverged(
             ipoId,
             tableName,
+            rowKey,
             fieldName
           );
         } catch (error) {
@@ -1446,6 +1487,8 @@ export class DataConsolidationService {
         await this.trackFieldSource({
           ipoId,
           tableName,
+          // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
+          rowKey,
           fieldName,
           value: existingValue,
           source: existingSource,
@@ -1480,6 +1523,7 @@ export class DataConsolidationService {
     const conflict = await this.resolveConflict({
       ipoId,
       tableName,
+      rowKey,
       fieldName,
       existingValue,
       existingValueNormalized: normalizedExisting,
@@ -1513,6 +1557,8 @@ export class DataConsolidationService {
   private async resolveHighValueHoldEscape(params: {
     ipoId: string;
     tableName: string;
+    /** Natural key of the row whose held value is under review; `''` for singletons. */
+    rowKey?: string;
     fieldName: string;
     incomingValue: any;
     incomingSource: ScraperSource;
@@ -1532,6 +1578,7 @@ export class DataConsolidationService {
     incomingDates: { openDate: any; closeDate: any; listingDate: any; segment: any };
   }): Promise<{ chosenValue: any; chosenSource: ScraperSource; resolutionReason: string } | null> {
     const { ipoId, tableName, fieldName, incomingValue, incomingSource, rules, heldDates, incomingDates } = params;
+    const rowKey = params.rowKey ?? '';
 
     // MAJOR-3: both escapes require the incoming source to be a primary
     // exchange — an aggregator (CHITTORGARH/MONEYCONTROL/etc.) can never
@@ -1553,6 +1600,9 @@ export class DataConsolidationService {
         const priorAgreement = openConflicts.find(
           (row: any) =>
             row.tableName === tableName &&
+            // s4: an open row belonging to a DIFFERENT child row is not this row's
+            // dispute — matching it would release a held value on someone else's evidence.
+            (row.rowKey ?? '') === rowKey &&
             row.fieldName === fieldName &&
             // Mutation-gap guard (round 2): MUST be the OTHER exchange, never
             // the SAME source repeating itself (NSE proposing X twice is not
@@ -1621,7 +1671,12 @@ export class DataConsolidationService {
         if (!this.currentShadowMode) {
           try {
             const openConflicts = (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
-            const ownRow = openConflicts.find((row: any) => row.tableName === tableName && row.fieldName === fieldName);
+            const ownRow = openConflicts.find(
+              (row: any) =>
+                row.tableName === tableName &&
+                (row.rowKey ?? '') === rowKey &&
+                row.fieldName === fieldName
+            );
             if (ownRow) {
               await this.dataConflictsRepository.resolveConflict(ownRow.id, {
                 resolvedSource: incomingSource,
@@ -1651,6 +1706,8 @@ export class DataConsolidationService {
   private async resolveConflict(params: {
     ipoId: string;
     tableName: string;
+    /** Natural key of the conflicting row; `''` for singleton tables. */
+    rowKey?: string;
     fieldName: string;
     existingValue: any; // Original value
     existingValueNormalized: any; // Normalized for comparison
@@ -1684,6 +1741,7 @@ export class DataConsolidationService {
       incomingDocType,
       ipoStatus,
     } = params;
+    const rowKey = params.rowKey ?? '';
 
     let chosenSource: ScraperSource;
     let chosenValue: any;
@@ -1737,6 +1795,7 @@ export class DataConsolidationService {
         : await this.resolveHighValueHoldEscape({
             ipoId,
             tableName,
+            rowKey,
             fieldName,
             incomingValue,
             incomingSource,
@@ -2030,6 +2089,7 @@ export class DataConsolidationService {
       await this.logConflict({
         ipoId,
         tableName,
+        rowKey,
         fieldName,
         existingValue,
         existingSource,
@@ -2059,6 +2119,8 @@ export class DataConsolidationService {
       await this.trackFieldSource({
         ipoId,
         tableName,
+        // Generic path — real key arrives with the child writer (s5b/s7a/s7b).
+        rowKey,
         fieldName,
         value: chosenValue,
         source: chosenSource,
@@ -2093,6 +2155,8 @@ export class DataConsolidationService {
   private async trackFieldSource(params: {
     ipoId: string;
     tableName: string;
+    /** Natural key of the row this fact belongs to; `''` (default) for singleton tables. */
+    rowKey?: string;
     fieldName: string;
     value: any;
     source: ScraperSource;
@@ -2139,6 +2203,7 @@ export class DataConsolidationService {
           conflicts: params.conflicts,
           confirmations: params.confirmations,
         }),
+        rowKey: params.rowKey ?? '',
         previousValue: params.previousValue !== undefined
           ? serializeFieldValue(params.previousValue)
           : undefined,
@@ -2169,6 +2234,7 @@ export class DataConsolidationService {
       // left data_conflicts unbounded with resolved_at never set).
       await this.dataConflictsRepository.upsertConflict({
         ipoId: conflict.ipoId,
+        rowKey: conflict.rowKey ?? '',
         tableName: conflict.tableName,
         fieldName: conflict.fieldName,
         source1: conflict.existingSource,
