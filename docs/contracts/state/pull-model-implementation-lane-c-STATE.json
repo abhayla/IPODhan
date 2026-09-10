@@ -207,11 +207,11 @@
         {
           "id": "2-S3b",
           "tier": "A",
-          "status": "BUILT_HELD_DESIGN_CORRECTED",
+          "status": "BUILT_HELD",
           "issue": 482,
           "title": "repair-segment-provenance.ts re-sources the 41 unprovenanced rows, leaves unsourceable ones NULL with the reason in provenance",
           "firstStep": "SOURCE PROOF with a real fixture showing a field that STATES segment, BEFORE any repair code. \"No source states it\" is a SUCCESSFUL outcome and ends 2-S3b as NULL-with-reason for the 41 rows.",
-          "commit": "4a3d8a5b",
+          "commit": "5f26f964",
           "dryRun": {
             "db": "ipodhan_staging",
             "totalWithSegment": 370,
@@ -222,7 +222,17 @@
             "applied": false
           },
           "designCorrection": "Do NOT clear the 33 IPO rows. Clear only the 29 non-IPO rows where segment is meaningless. Add a detection check counting a non-null segment with NO field_sources row.",
-          "rulingApproved": "2026-09-10 18:28 IST - clear only the 29 non-IPO rows, leave the 33 IPO labels, add a shrink-only presence check."
+          "rulingApproved": "2026-09-10 18:28 IST - clear only the 29 non-IPO rows, leave the 33 IPO labels, add a shrink-only presence check.",
+          "dryRunCorrected": {
+            "wouldWrite": 29,
+            "reportedOnly": 33,
+            "ipoRowsTouched": 0
+          },
+          "detectionCheck": {
+            "id": "d_segment_provenance",
+            "section": "checks",
+            "why": "a record() call is actually wired into audit-detection-floor.mjs, not merely designed - a check specified before its record() exists belongs in notCoveredByThisManifest or it is a paper check"
+          }
         },
         {
           "id": "2-S3c",
@@ -559,7 +569,10 @@
     "2026-09-10 18:25 IST CROSS-LANE OBLIGATION RECORDED so it is not discovered late: 12-B and 12-C must land BEFORE lane A item 1 writer slices, or lane A rebases onto them. Item 1 READS company-name-normalizer as its row-key function while item 12 CHANGES it. The merge gets announced in the ledger so lane A re-runs its row-key tests. This is the same shape as the config-loader race I flagged this morning - cheaper to raise before the work than to reconcile after.",
     "2026-09-10 18:28 IST REVISED 2-S3b DESIGN APPROVED, with one condition that catches the half I MISSED. My revision left the 33 IPO guesses live and merely counted. The supervisor point is correct and I had not made it: a guess that stays live still STEERS the four write paths I fixed in 2fd8a43b for those rows - it selects which NSE series is queried and which plausibility floor applies. So the count must shrink through SOURCING, not only through time. Counting a live guess is visibility, not repair.",
     "2026-09-10 18:28 IST 2-S3b SPLIT INTO TWO HALVES rather than disrupting a running builder mid-round. First half (in flight): clear the 29 meaningless non-IPO rows, report the 33, add the presence check. Second half (2-S3b2, PLANNED): source the 33 - source agrees, write provenance and leave the label; source disagrees, correct the label with provenance; no source states it, leave the label and let the nightly count carry it. That last outcome stays a SUCCESS, not a failure.",
-    "2026-09-10 18:28 IST 2-S3b2 IS BLOCKED ON THE ONE THING NOBODY HAS VERIFIED ALL DAY: that ANY source actually states segment. I flagged this as unverified when the repair was first scoped and it is still unverified. listing_exchanges is NOT it - populated on all 41 prod rows, but it says BSE or NSE, the EXCHANGE, and BSE runs both a main board and BSE SME. So 2-S3b2 first step is a REAL FIXTURE from NSE listing data or the Chittorgarh report showing a field that states the board. If none does, the honest end state is 33 labels left alone with the nightly count carrying them - and that is a legitimate finish, not a failure to be worked around."
+    "2026-09-10 18:28 IST 2-S3b2 IS BLOCKED ON THE ONE THING NOBODY HAS VERIFIED ALL DAY: that ANY source actually states segment. I flagged this as unverified when the repair was first scoped and it is still unverified. listing_exchanges is NOT it - populated on all 41 prod rows, but it says BSE or NSE, the EXCHANGE, and BSE runs both a main board and BSE SME. So 2-S3b2 first step is a REAL FIXTURE from NSE listing data or the Chittorgarh report showing a field that states the board. If none does, the honest end state is 33 labels left alone with the nightly count carrying them - and that is a legitimate finish, not a failure to be worked around.",
+    "2026-09-10 18:37 IST 2-S3b FIX ROUND DONE (5f26f964) and it implements the corrected design exactly. Staging dry run: 370 rows carry a segment, 308 already have provenance, 29 WOULD BE WRITTEN (clear-non-ipo), 33 REPORTED ONLY - zero IPO rows touched. The decision was renamed no-source-no-guess to report-unprovenanced-ipo and changed to touch:false, and the summary now prints rows that WOULD BE WRITTEN separately from rows REPORTED ONLY, never written, so the output cannot be misread as a pending write.",
+    "2026-09-10 18:37 IST THE NEW CHECK IS WIRED, NOT PAPER: d_segment_provenance has a pure predicate checkSegmentHasProvenance in detection-floor-checks.mjs AND a real record() call in audit-detection-floor.mjs, which is why it belongs in section checks rather than notCoveredByThisManifest. The builder made that call itself and explained the reasoning - a check registered in checks without a live record() call fails audit-detection-floor.test.mjs case 79 and reads as wider coverage than the floor actually has. Tests: vitest 6/6, node:test 118/118, both mutations red-then-green with .bak restore and diff confirmation.",
+    "2026-09-10 18:37 IST ITEM 2 IS FULLY BUILT: four slices merged, three built and held for the 00:00 budget reset (2-S3b, 2-S4, 2-S5), and one planned and honestly blocked (2-S3b2, waiting on a real fixture proving any source publishes segment). Nothing further can ship today - the repo sits at 48 of a 50 stop with the last runs reserved for another lane approved work and for a red main."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
