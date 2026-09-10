@@ -46,10 +46,26 @@ describe('issue-type fill is wired into the due-step cycle', () => {
     expect(src).toMatch(/success:\s*false/);
   });
 
-  it('the cadence key is not stamped when the fill failed', () => {
-    // Stamping on the scrape alone suppressed the fill's retry for a full day -
-    // the opposite of the discipline every other branch follows.
-    expect(src).toContain('cgOk && fillOk');
+  it('the fill has its OWN cadence key, so a failed fill cannot un-stamp the scrape', () => {
+    // My first fix gated the SHARED aggregator key on `cgOk && fillOk`. One
+    // failed row out of 231 then left the branch un-stamped and re-ran the
+    // Chittorgarh SCRAPE and the report fetch on every 30-minute wake - ~48x a
+    // day against a third-party source, and dated: on 1 Jan 2027 the new
+    // financial year's report drops below the row floor and it runs for weeks.
+    // Round 2 caught it. Separate keys, each stamped on its own result.
+    expect(src).toContain('ISSUE_TYPE_FILL_CADENCE_KEY');
+    // Assert on the STATEMENT, not the string: the comment above the new
+    // cadence key quotes the old expression to explain why it went.
+    expect(src).not.toMatch(/if \(cgOk && fillOk\)/);
+    expect(src).toMatch(/if \(fillDue && fillOk\)/);
+    expect(src).toMatch(/if \(cgOk\) \{/);
+  });
+
+  it('the verdict also fails when rows matched but NOTHING was written', () => {
+    // All-dateMismatch or all-blockedByAdmin would otherwise report clean while
+    // zero rows were touched - the proof could not fail for the write claim.
+    expect(src).toContain('result.filled === 0');
+    expect(src).toContain('result.alreadySet === 0');
   });
 
   it('passes the admin protection filter into the job', () => {

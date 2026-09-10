@@ -107,6 +107,17 @@ describe('collectIssueTypesFromReport — pure, and it drops what it cannot read
     );
   });
 
+  it('a Pricing Method of "constructor" or "__proto__" yields null, not a prototype member', () => {
+    // The lookup maps are plain objects unless built with Object.create(null),
+    // and `?? null` only catches nullish - so `o['constructor']` returned a
+    // FUNCTION and flowed on as an issueType. Round 1 of the review found it;
+    // this test stops a refactor back to an object literal.
+    for (const hostile of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty']) {
+      expect(issueTypeFromPricingMethod(hostile)).toBeNull();
+      expect(issueCategoryToSegment(hostile)).toBeNull();
+    }
+  });
+
   it('reads the open date WITHOUT reparsing it, so IST never shifts the day', () => {
     // `new Date('2026-09-18T00:00:00.000Z').toISOString().slice(0,10)` happens to
     // be right; `new Date('2026-09-18')` on a +05:30 machine is not. The first

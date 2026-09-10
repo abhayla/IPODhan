@@ -157,7 +157,58 @@ describe('guards a Tier A review found missing', () => {
     );
     expect(s.filled).toBe(1);
     expect(s.alreadySet).toBe(0);
-    expect(s.reportAmbiguous).toBe(1);
+    // Counted as a DUPLICATE, not as ambiguity. Reporting reportAmbiguous here
+    // would tell an operator the source contradicted itself when it agreed.
+    expect(s.duplicateResolved).toBe(1);
+    expect(s.reportAmbiguous).toBe(0);
+  });
+
+  it('the probe asks about the value it would actually write', async () => {
+    // A refusal files an admin notification carrying attemptedValue. Probing
+    // with a hardcoded type would file a lie every cycle for a locked IPO.
+    const d = deps();
+    await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd', 'FIXED_PRICE')], d);
+    expect((d as never as { isWriteAllowed: { mock: { calls: unknown[][] } } })
+      .isWriteAllowed.mock.calls[0]).toEqual(['ipo-1', 'FIXED_PRICE']);
+  });
+
+  it('a written row whose PROVENANCE write throws is not double-counted as failed', async () => {
+    // filled++ then failed++ for one pair would break the identity the summary
+    // implies AND fail the cycle step for a row that was actually written.
+    const d = deps({ trackFieldUpdate: vi.fn(async () => { throw new Error('field_sources down'); }) });
+    const s = await fillIssueTypesFromReport([pair('Quanto Agroworld Ltd')], d);
+    expect(s.filled).toBe(1);
+    expect(s.failed).toBe(0);
+    expect(d.logger.warn).toHaveBeenCalled();
+  });
+
+  it('counts every outcome exactly once - the summary identity holds', async () => {
+    const d = deps({
+      resolveIpoId: vi.fn()
+        .mockResolvedValueOnce('a')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('c'),
+      isWriteAllowed: vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false),
+    });
+    const s = await fillIssueTypesFromReport(
+      [pair('Alpha Ltd'), pair('Beta Ltd'), pair('Gamma Ltd')],
+      d
+    );
+    const sum = s.unmatched + s.reportAmbiguous + s.duplicateResolved + s.dateMismatch
+      + s.blockedByAdmin + s.failed + s.filled + s.alreadySet;
+    expect(sum).toBe(s.candidates);
+  });
+
+  it('counts a report row with no readable date, so a source format change is visible', async () => {
+    // If the source stops emitting ISO dates, openDate becomes null for every
+    // row, the temporal check fails open by design, and without this counter the
+    // summary would look identical to a healthy run.
+    const d = deps();
+    const s = await fillIssueTypesFromReport(
+      [pair('Quanto Agroworld Ltd', 'BOOK_BUILDING', null)],
+      d
+    );
+    expect(s.noReportDate).toBe(1);
   });
 
   it('OPEN DATE disagreement refuses - a name match is not an identity match', async () => {

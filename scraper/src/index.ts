@@ -205,6 +205,24 @@ const API_FALLBACK_INTERVAL_MINUTES = 24 * 60;
 const AGGREGATOR_CADENCE_KEY = 'due-step-aggregators';
 
 /**
+ * Item 2 slice 7 gets its OWN cadence key, deliberately.
+ *
+ * It shares the aggregator's 24-hour interval but NOT its key. Round 2 of the
+ * Tier A review caught the reason: I had gated the shared aggregator stamp on
+ * `cgOk && fillOk`, so ONE failed row out of 231 - a single transient deadlock -
+ * left the whole branch un-stamped and re-ran the Chittorgarh SCRAPE and the
+ * report fetch on every 30-minute wake, roughly 48 times a day against a
+ * third-party source. Worse, it was dated: on 1 Jan 2027 CURRENT_YEAR flips, the
+ * new financial year's report drops below the row floor, and the hammering would
+ * have run for weeks. Fixing a one-day retry suppression by inventing a
+ * permanent retry storm is a bad trade.
+ *
+ * Separate keys give each step the retry discipline it actually needs: the
+ * scrape stamps on its own result, the fill stamps on its own.
+ */
+const ISSUE_TYPE_FILL_CADENCE_KEY = 'due-step-issue-type-fill';
+
+/**
  * Round-3 H2: what a due-step cycle reports back to `main()`. Round 1 swallowed
  * every failure inside the cycle (each step had its own `catch` that only
  * logged) and returned void, so a cycle in which NSE threw still exited 0 —
@@ -407,7 +425,13 @@ async function runDueStepCycle(
       // priority engine), and it runs regardless of `cgOk`: the scrape writing
       // `ipos` and the report publishing an issue type are independent, so a
       // partial scrape is no reason to drop a field the same response carried.
-      const fillOk = await runCycleStep('aggregator:CHITTORGARH_ISSUE_TYPE', async () => {
+      const fillDue = await isCatchUpCadenceDue(
+        redis,
+        ISSUE_TYPE_FILL_CADENCE_KEY,
+        AGGREGATOR_INTERVAL_MINUTES,
+        now
+      );
+      const fillOk = !fillDue ? true : await runCycleStep('aggregator:CHITTORGARH_ISSUE_TYPE', async () => {
         const result = await runIssueTypeFillJob(
           makeIssueTypeJobDeps(
             db,
@@ -436,15 +460,29 @@ async function runDueStepCycle(
         if (!result.abortedReason && result.candidates > 0 && result.matched === 0) {
           reasons.push(`0 of ${result.candidates} report rows matched any stored IPO`);
         }
+        // MATCHED BUT WROTE NOTHING is the blind spot round 2 found. If every
+        // match is refused - all dateMismatch because the two open-date
+        // populations diverge, or all blockedByAdmin from a protection-cache
+        // anomaly - the step would otherwise report clean while zero rows were
+        // touched, and the staging proof could not fail for the write claim.
+        if (!result.abortedReason && result.matched > 0 && result.filled === 0 && result.alreadySet === 0) {
+          reasons.push(
+            `${result.matched} row(s) matched but NONE were written or already set ` +
+            `(dateMismatch=${result.dateMismatch}, blockedByAdmin=${result.blockedByAdmin})`
+          );
+        }
         if (reasons.length === 0) return { success: true };
         logger.warn({ ...result }, 'Due-step cycle: issue-type fill did not fully succeed');
         return { success: false, errors: reasons.map((r) => `issue-type fill: ${r}`) };
       });
 
-      // The cadence key covers BOTH aggregator steps. Stamping it when the fill
-      // failed would suppress its retry for a full day - the opposite of the
-      // discipline the other branches follow.
-      if (cgOk && fillOk) {
+      // Each step stamps its OWN key on its OWN result. A failed fill must not
+      // suppress its own retry (the original bug), and must not un-stamp the
+      // scrape either (the retry storm that fix created).
+      if (fillDue && fillOk) {
+        await markCatchUpCadenceRan(redis, ISSUE_TYPE_FILL_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
+      }
+      if (cgOk) {
         await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
       } else {
         logger.warn('Due-step cycle: aggregator refresh did not fully succeed — cadence key NOT stamped, it will retry next cycle');

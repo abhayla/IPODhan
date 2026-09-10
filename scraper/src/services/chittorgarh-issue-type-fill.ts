@@ -34,7 +34,10 @@ export interface IssueTypeFillDeps {
   /** The SAME fold the index was built with - used to detect report-side collisions. */
   foldKey(companyName: string): string;
   /** The stored row's open date as ISO yyyy-mm-dd, or null when we hold none. */
-  storedOpenDate?(ipoId: string): Promise<string | null>;
+  /** REQUIRED, not optional: an optional guard is one a future caller disables
+   *  by omission, with no type error and no signal. Return null when we hold no
+   *  date - the check then cannot run, which `noReportDate` makes visible. */
+  storedOpenDate(ipoId: string): Promise<string | null>;
   /**
    * Create the `ipo_details` identity row when the IPO has none. True when it
    * created one. REQUIRED in practice, not optional decoration: 182 of the 183
@@ -54,7 +57,7 @@ export interface IssueTypeFillDeps {
    * which makes `issue_type IS NULL` TRUE - and the next cycle writes the value
    * straight back with sourced provenance and no signal to the admin.
    */
-  isWriteAllowed(ipoId: string): Promise<boolean>;
+  isWriteAllowed(ipoId: string, issueType: string): Promise<boolean>;
   ensureDetailsRow(ipoId: string): Promise<boolean>;
   /** The guarded writer: fills only when issue_type IS NULL; true when it filled. */
   fillIssueTypeIfNull(ipoId: string, issueType: string): Promise<boolean>;
@@ -89,8 +92,27 @@ export interface IssueTypeFillSummary {
   rowsCreated: number;
   /** Refused because an admin locked the IPO or protected the field. */
   blockedByAdmin: number;
-  /** Refused because two REPORT rows fold together and disagree. */
+  /**
+   * Refused because two REPORT rows fold together and DISAGREE on the type.
+   * Only ever the disagreeing population - see `duplicateResolved` for the
+   * agreeing one. Round 2 of the review caught these two being merged into one
+   * number, which made an operator read "the source contradicted itself" from a
+   * count that was in fact benign duplication.
+   */
   reportAmbiguous: number;
+  /**
+   * Two DIFFERENT report rows that AGREE and resolve to the same stored IPO.
+   * The first wrote it; this counts the rest. Benign, but counted and logged
+   * rather than folded into alreadySet, which would report agreement with the
+   * database when it is agreement with another report row.
+   */
+  duplicateResolved: number;
+  /**
+   * The report row carried no parseable open date, so the temporal check could
+   * not run. Counted so a silent format change on the source is visible: if this
+   * jumps to the row count, the guard has gone inert.
+   */
+  noReportDate: number;
   /** Refused because the report's open date disagrees with the stored row. */
   dateMismatch: number;
   /** Rows whose write threw; counted, never swallowed silently. */
@@ -103,7 +125,8 @@ export async function fillIssueTypesFromReport(
 ): Promise<IssueTypeFillSummary> {
   const summary: IssueTypeFillSummary = {
     candidates: pairs.length, matched: 0, filled: 0, alreadySet: 0, unmatched: 0,
-    rowsCreated: 0, blockedByAdmin: 0, reportAmbiguous: 0, dateMismatch: 0, failed: 0,
+    rowsCreated: 0, blockedByAdmin: 0, reportAmbiguous: 0, duplicateResolved: 0,
+    noReportDate: 0, dateMismatch: 0, failed: 0,
   };
 
   // REPORT-SIDE AMBIGUITY, refused before anything is resolved.
@@ -127,7 +150,11 @@ export async function fillIssueTypesFromReport(
     [...byKey.entries()].filter(([, v]) => v.size > 1).map(([k]) => k)
   );
 
-  const writtenIds = new Set<string>();
+  // ATTEMPTED, not written: an id lands here before the date, admin and write
+  // steps, so a row whose write throws is not retried by a later duplicate in
+  // the same run. Next cycle retries it; naming it `writtenIds` would have
+  // claimed more than it does.
+  const attemptedIds = new Set<string>();
 
   for (const pair of pairs) {
     if (conflictedKeys.has(deps.foldKey(pair.companyName))) {
@@ -149,17 +176,28 @@ export async function fillIssueTypesFromReport(
     if (!ipoId) { summary.unmatched++; continue; }
     summary.matched++;
 
-    // Two DIFFERENT report rows resolving to one stored IPO: the first already
-    // wrote it. Counting the second as `alreadySet` would report agreement.
-    if (writtenIds.has(ipoId)) { summary.reportAmbiguous++; continue; }
-    writtenIds.add(ipoId);
+    // Two DIFFERENT report rows resolving to one stored IPO. They necessarily
+    // AGREE - a disagreeing pair shares a fold key and was refused by the
+    // pre-pass above - so this is benign duplication, counted on its own line
+    // and logged. Folding it into `alreadySet` would report agreement with the
+    // DATABASE when it is agreement with another report row.
+    if (attemptedIds.has(ipoId)) {
+      summary.duplicateResolved++;
+      deps.logger?.warn(
+        { ipoId, companyName: pair.companyName },
+        'issue-type fill: a second report row resolves to an IPO already handled this run'
+      );
+      continue;
+    }
+    attemptedIds.add(ipoId);
 
     // A name match is not an identity match. When BOTH sides carry an open date
     // and they disagree, this is a different issue of the same company - a
     // refile, or an older issue whose name folds identically. Refuse rather than
     // write this year's pricing method onto a previous issue's row. When either
     // side has no date the check cannot run and is not invented.
-    const storedOpen = deps.storedOpenDate ? await deps.storedOpenDate(ipoId) : null;
+    if (!pair.openDate) summary.noReportDate++;
+    const storedOpen = await deps.storedOpenDate(ipoId);
     if (pair.openDate && storedOpen && pair.openDate !== storedOpen) {
       summary.dateMismatch++;
       deps.logger?.warn(
@@ -173,7 +211,7 @@ export async function fillIssueTypesFromReport(
     // issue_type NULL and therefore makes the NULL guard USELESS as a defence.
     let allowed = false;
     try {
-      allowed = await deps.isWriteAllowed(ipoId);
+      allowed = await deps.isWriteAllowed(ipoId, pair.issueType);
     } catch (err) {
       summary.failed++;
       deps.logger?.warn({ ipoId, err }, 'issue-type fill: protection check failed - refusing the write');
@@ -181,6 +219,7 @@ export async function fillIssueTypesFromReport(
     }
     if (!allowed) { summary.blockedByAdmin++; continue; }
 
+    let wrote_ = false;
     try {
       // Create the identity row FIRST when it is missing, or the UPDATE below
       // has no row to touch. Counted on its own line - never as a fill.
@@ -188,6 +227,7 @@ export async function fillIssueTypesFromReport(
       const wrote = await deps.fillIssueTypeIfNull(ipoId, pair.issueType);
       if (!wrote) { summary.alreadySet++; continue; }
       summary.filled++;
+      wrote_ = true;
       // Provenance follows the write, never precedes it: a row written for a
       // no-op would claim a source for a value this run did not set.
       await deps.trackFieldUpdate({
@@ -200,8 +240,22 @@ export async function fillIssueTypesFromReport(
         updatedBy: 'CHITTORGARH_ISSUE_TYPE_FILL',
       });
     } catch (err) {
-      summary.failed++;
-      deps.logger?.warn({ ipoId, companyName: pair.companyName, err }, 'issue-type fill: write failed');
+      // If the ROW was written and only provenance tracking threw, the pair has
+      // already been counted as `filled`. Counting it as `failed` too would
+      // break the identity the summary implies -
+      // candidates == unmatched + reportAmbiguous + duplicateResolved +
+      // dateMismatch + blockedByAdmin + failed + filled + alreadySet -
+      // and would fail the cycle step for a row that WAS written. Round 2
+      // caught this; it is logged distinctly instead.
+      if (wrote_) {
+        deps.logger?.warn(
+          { ipoId, companyName: pair.companyName, err },
+          'issue-type fill: the value was written but its provenance row was NOT - provenance is now behind the data'
+        );
+      } else {
+        summary.failed++;
+        deps.logger?.warn({ ipoId, companyName: pair.companyName, err }, 'issue-type fill: write failed');
+      }
     }
   }
 

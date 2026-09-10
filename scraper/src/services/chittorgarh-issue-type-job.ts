@@ -36,7 +36,7 @@ export interface IssueTypeJobDeps {
   /** Every stored IPO the report could name. Read once; matching is in memory. */
   loadCandidates(): Promise<Array<MatchCandidate & { openDate: string | null }>>;
   /** ADMIN protection: false when the IPO is locked or the field is protected. */
-  isWriteAllowed(ipoId: string): Promise<boolean>;
+  isWriteAllowed(ipoId: string, issueType: string): Promise<boolean>;
   ensureDetailsRow(ipoId: string, source: string): Promise<boolean>;
   fillIssueTypeIfNull(ipoId: string, issueType: string): Promise<boolean>;
   trackFieldUpdate(row: {
@@ -100,7 +100,8 @@ export async function fetchReport82(): Promise<ReadonlyArray<Record<string, unkn
 export async function runIssueTypeFillJob(deps: IssueTypeJobDeps): Promise<IssueTypeJobResult> {
   const empty: IssueTypeFillSummary = {
     candidates: 0, matched: 0, filled: 0, alreadySet: 0, unmatched: 0, rowsCreated: 0,
-    blockedByAdmin: 0, reportAmbiguous: 0, dateMismatch: 0, failed: 0,
+    blockedByAdmin: 0, reportAmbiguous: 0, duplicateResolved: 0, noReportDate: 0,
+    dateMismatch: 0, failed: 0,
   };
 
   const records = await deps.fetchReport();
@@ -165,10 +166,17 @@ export function makeIssueTypeJobDeps(
 ): IssueTypeJobDeps {
   return {
     fetchReport: fetchReport82,
-    async isWriteAllowed(ipoId) {
+    async isWriteAllowed(ipoId, issueType) {
       // The admin layer every other ipo_details write door passes through. A
       // locked IPO returns an EMPTY `filtered`, which is the refusal.
-      const res = await protectionFilter(ipoId, 'ipo_details', { issueType: 'BOOK_BUILDING' }, 'CHITTORGARH');
+      //
+      // Probe with the REAL value, not a hardcoded one. A refusal writes an
+      // admin notification carrying `attemptedValue`, so probing with a
+      // hardcoded 'BOOK_BUILDING' would file "CHITTORGARH attempted to write
+      // BOOK_BUILDING" every cycle for a locked IPO whose actual report value is
+      // FIXED_PRICE - a refusal that is correct paired with an audit record that
+      // is a lie. Round 2 of the review caught it.
+      const res = await protectionFilter(ipoId, 'ipo_details', { issueType }, 'CHITTORGARH');
       return Object.keys(res?.filtered ?? {}).length > 0;
     },
     async loadCandidates() {
