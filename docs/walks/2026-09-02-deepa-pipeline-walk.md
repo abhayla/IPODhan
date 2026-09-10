@@ -2565,3 +2565,14 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   migration run on the wrong state. Cost: one retry. Recorded because three occurrences in one day is a habit,
   not an accident, and the mechanism now applies to the supervisor own commands, not just to briefs: **every
   path handed to powershell, git, node or gh is Windows-form, and $HOME is never used in such a command.**
+
+- **2026-09-10 16:30 IST [lane B] 22-2 dispatched: the download size cap becomes real.** Today `defaultFetcher` calls
+  `arrayBuffer()` and the size is checked AFTER the whole body is in memory -- so a 10 GB response is a 10 GB
+  allocation before anything refuses it. The class is not large PDFs; it is any response whose size is unknown
+  until it has already been read. The slice streams with a running byte count and aborts the moment the cap is
+  passed, drops the cap from 150 MB to the card 100 MB with a PROSPECTUS_MAX_DOCUMENT_MB override, and sits
+  behind ENABLE_DOWNLOAD_STREAMING_CAP default OFF.
+  The crux is in the brief because the plan called it out: **assert on BYTES PULLED, not on the verdict.** The
+  unfixed code ALSO returns `too_large` -- after allocating the whole body -- so a verdict-only test passes
+  against the defect. Same shape as every hollow gate this lane has found today: the observable that looks
+  like proof is not the one that distinguishes fixed from broken.
