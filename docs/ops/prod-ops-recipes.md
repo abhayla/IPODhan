@@ -77,8 +77,7 @@ curl -s -o /dev/null -w '%{http_code}' https://ipodhan.com/
 cd web && npm run test:prod-verify          # laptop, needs >= 2.5 GB free
 npm run audit:data                          # root; expect only the known legacy reds
 # audit:coverage needs a DB: web/.env.local is git-ignored and may be missing on the laptop; supply the tunnel instead:
-#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
-'); DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" npm run audit:data
+#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"'); DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" npm run audit:data
 ```
 Then on the VPS: served sha (section 2), pm2 web x2 online, scraper `stopped` between runs, next cycle
 `extractionFailed 0`, extractor `ni=10`.
@@ -93,6 +92,14 @@ GLOBAL.env; `DATABASE_URL` there points at the firewalled public port and does N
 PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"\r')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" node <script>.cjs [--apply]
 ```
+**Every read script MUST issue `SET TIME ZONE 'UTC';` as its first statement.** The app's own pools set
+`options: '-c timezone=UTC'`; an ad-hoc tunnel session does NOT, and inherits `Asia/Calcutta`. Several
+columns are `timestamp WITHOUT time zone` (`documents.extracted_at` among them), so a `Z`-suffixed
+literal compared against one is silently out by 5h30m. On 2026-09-10 that returned rows whose minimum
+value was EARLIER than the `>` cutoff that selected them — an impossible result, which is the only
+reason it was caught rather than published. The safe pattern is either the `SET TIME ZONE` above or, for
+a one-off reading, no date filtering at all: list the rows and let the ordering speak.
+
 `pg` is hoisted at the repo root (`require('<repo>/node_modules/pg')`, not `web/node_modules`). A repair
 script must: print `current_database()` first, select by slug, refuse on id/cap mismatch, update with
 `WHERE id AND slug AND issue_size = <old>` and `RETURNING`, dry-run by default. Template used 2026-09-06:
@@ -214,8 +221,7 @@ run now fails loudly instead of looking healthy.
 
 ```bash
 # issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
-cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
-')
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432   DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts                     # dry run (staging)
   ... --apply                                                                    # write on staging
   ... --allow-prod            (DATABASE_NAME=ipodhan)                            # prod dry run
@@ -279,7 +285,7 @@ plus a nameless `asset-reconstruction-co-india-ltd`) because the name normaliser
 runs the whole merge in one transaction.
 
 ```bash
-PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
 # 1. rehearse on staging (it usually carries the same pair)
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging"   node scripts/merge-duplicate-ipo.mjs --keep <uuid> --drop <uuid> [--set-issue-size <rupees>]
 #    ... then the same line with --apply
@@ -365,6 +371,87 @@ step 2 (`backfill-normalized-name.ts --apply`) for that table and re-run the pre
 file first fails immediately: every pre-existing `''` row on that table collides on the very first
 `ADD CONSTRAINT` (27 promoters, 326 peer_companies, 178 ipo_intermediaries in prod as of this slice),
 and the migration — and the deploy, if it were journaled — dies mid-flight.
+
+
+### 8c-note. field_sources row_key — deferred to the slice that ships the constraint swap (item 1 slice s3)
+
+Slice s3 added `field_sources.row_key` (column + widened non-unique index) but does NOT ship the
+constraint swap or retarget any upsert's `ON CONFLICT` — see this slice's commit body and
+`docs/design/build-cards/item-01-child-table-consolidated-writer.md` for the re-scope rationale
+(the original F1-gated design created a broken window: `ON CONFLICT` naming a constraint that
+doesn't exist yet before F1 is applied, and two untouched upsert paths breaking the other way once
+it is). For the slice that DOES ship the swap, record here:
+
+- **Four `field_sources` upsert sites must ALL retarget together**, in the same change that swaps
+  the constraint: `packages/shared/src/repositories/field-sources-repository.ts` and its `web/lib/`
+  copy (`trackFieldUpdate`'s `onConflictDoUpdate` target), `packages/shared/src/repositories/
+  ipo-repository.ts:1143` (the duplicate-IPO merge provenance upsert, an owner-run production
+  repair), and `scraper/scripts/lib/repair-tool.ts:222` (the shared upsert every field-repair
+  script uses). Retargeting only the repository copies while the DDL is live reproduces this
+  slice's original finding on the two paths this diff never touches.
+- **`web/scripts/apply-phase0-direct.ts:88` creates the OLD three-column constraint by hand** —
+  a bootstrap run on a fresh slot would recreate the wrong key unless that script is updated in
+  the same change.
+- **A real row key of `''` is indistinguishable from the singleton sentinel.** Nothing today
+  rejects an empty row key for a table known to hold multiple rows per IPO (e.g.
+  `financial_statements`) — the slice that ships the constraint swap must reject `rowKey === ''`
+  for such tables, or a caller that forgets to pass one silently collides with the sentinel
+  convention instead of failing loudly.
+
+### 8d. Risk-factor row key: `(ipo_id, seq)` -> `(ipo_id, heading_hash)` (item 1 slice s6, gated)
+
+`web/drizzle/migrations/_gated/E2_risk_factor_heading_hash_key.sql` is kept OUT of
+`meta/_journal.json` (see its header and `_gated/README.md` entry 11). The journaled migration
+`20260910121813_cooing_manta` ships ONLY the `ALTER TABLE ... ADD COLUMN heading_hash varchar(32)
+NOT NULL DEFAULT ''`, which is safe unattended. The constraint swap is owner-applied per slot, in
+this order, never skipped:
+
+1. **Deploy the column.** Once the release carrying `20260910121813_cooing_manta` is on the slot.
+2. **Backfill the hash.**
+   ```bash
+   cd scraper && npx tsx scripts/repair-risk-factor-heading-hash.ts --backfill          # dry run
+   npx tsx scripts/repair-risk-factor-heading-hash.ts --backfill --apply
+   ```
+   Re-run until it prints `written=0`. Idempotent — a row whose stored hash already matches is
+   not touched.
+3. **Delete the duplicates** (same tool, second phase). Surplus rows sharing
+   `(ipo_id, heading_hash)` go; the LOWEST `seq` survives, so the risk factor as it appeared
+   earliest in the document is the one kept.
+   ```bash
+   npx tsx scripts/repair-risk-factor-heading-hash.ts --dedupe                          # dry run
+   npx tsx scripts/repair-risk-factor-heading-hash.ts --dedupe --apply
+   ```
+   The dry run names every row it would delete (ipo, seq, heading) — read that list before
+   applying. Re-run until it prints `deleted=0`.
+4. **Precheck — BOTH counts MUST read 0:**
+   ```sql
+   SELECT 'blank_hash' AS check, count(*) FROM ipo_risk_factors WHERE heading_hash = ''
+   UNION ALL SELECT 'surplus_duplicates', coalesce(sum(n-1),0) FROM (
+     SELECT count(*) n FROM ipo_risk_factors GROUP BY ipo_id, heading_hash HAVING count(*) > 1) d;
+   ```
+   Run it against the slot through the tunnel (connection recipe: §1 and §8c).
+5. **Apply the gated file** by hand, through the tunnel.
+6. **Verify:** `npx tsx scripts/assert-row-key-constraints.ts "$DATABASE_URL"` against the SAME
+   slot — an operator's memory of having run step 5 is not proof. That tool carries
+   `unique_ipo_risk_factors_ipo_heading_hash` in its expected list, so a slot where step 5 was
+   skipped reports `[MISSING]` and exits 1.
+
+**If the precheck reports a non-zero count:** do NOT apply the gated file. A non-zero
+`blank_hash` means step 2 has not finished on this slot; a non-zero `surplus_duplicates` means
+step 3 has not. Go back to that step, re-run it with `--apply`, and re-run the precheck. Applying
+first hits a duplicate-key violation on the very first `ADD CONSTRAINT` and dies mid-flight —
+the same hazard §8c exists to avoid.
+
+**Measured before proposing the constraint** (`ipodhan_staging`, 2026-09-10, 2748 rows / 34 IPOs):
+7 collision groups, 21 rows, **14 surplus**, 6 IPOs — `prasol-chemicals-ltd` (x6, OPEN),
+`hy-tech-engineers-ltd` (x5, LISTED), `pranav-constructions-ltd`, `ss-retail-ltd` (UPCOMING),
+`sumax-engineering-ltd` (SME), `vinod-texworld-ltd` (x2, twice, OPEN). Every group is
+byte-identical rows differing ONLY in `seq` (`distinct_bodies=1`, `distinct_kpis=1`,
+`max_body_len=0`), so collapsing them loses no fact — unlike §8c's `ipo_intermediaries`, where the
+5 collisions were one bank legitimately holding two roles. The duplicate emission itself is an
+extractor defect (#502, with #503 for table rows scraped into the heading column); the write
+path's de-duplication (`prepareRiskFactorRows`) is a guard against a mid-write constraint
+violation, not the cure.
 
 ## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
 Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`

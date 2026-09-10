@@ -35,27 +35,35 @@ export class MarketHolidayRepository extends BaseRepository {
         return this.executeQuery(
           'findAllMarketHolidays',
           async () => {
-            let query = this.db.select().from(marketHolidays);
+            // Collect filters and apply ONE combined where() — Drizzle's .where()
+            // REPLACES the previous condition rather than ANDing, so calling it
+            // more than once on the same builder silently drops earlier filters.
+            const conditions = [];
 
-            // Apply filters
             if (filters?.year) {
-              query = query.where(eq(marketHolidays.year, filters.year)) as typeof query;
+              conditions.push(eq(marketHolidays.year, filters.year));
             }
 
             if (filters?.exchange && filters.exchange !== 'ALL') {
               // Filter by specific exchange or BOTH
-              const exchangeFilter = or(
-                eq(marketHolidays.exchange, filters.exchange as Exchange),
-                eq(marketHolidays.exchange, 'BOTH')
+              conditions.push(
+                or(
+                  eq(marketHolidays.exchange, filters.exchange as Exchange),
+                  eq(marketHolidays.exchange, 'BOTH')
+                )
               );
-              query = query.where(exchangeFilter) as typeof query;
             }
 
             if (filters?.upcoming) {
               // Get current date in YYYY-MM-DD format
               const today = new Date().toISOString().split('T')[0];
-              query = query.where(gte(marketHolidays.date, today)) as typeof query;
+              conditions.push(gte(marketHolidays.date, today));
             }
+
+            const query = this.db
+              .select()
+              .from(marketHolidays)
+              .where(conditions.length > 0 ? and(...conditions) : undefined);
 
             // Sort by date ascending (chronological order)
             const results = await query.orderBy(asc(marketHolidays.date));

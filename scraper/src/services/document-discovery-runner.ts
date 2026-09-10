@@ -66,6 +66,7 @@ import {
   normalizeCompanyUrl,
   isStorableFromCompanyPage,
   isVerifierUrl,
+  isResolvedAddressPrivate,
 } from './company-host-source.js';
 import {
   planIpoCycle,
@@ -410,6 +411,45 @@ export function resolveFinalOutcome(
 // Injected dependencies
 // ---------------------------------------------------------------------------
 
+/**
+ * OD-37 refusal sentinel. NOT 0: the ladder already uses `status: 0` to mean
+ * "the server did not answer", and the build card names that overload as the
+ * actual gap — today a refusal and a timeout are indistinguishable in the logs.
+ * A negative status cannot collide with any real HTTP code, is never retried
+ * (see requestWithLadder), and reads unambiguously in the attempts array.
+ */
+const EMPTY_REGISTRAR_HOSTS: ReadonlySet<string> = new Set();
+
+export const STATUS_REFUSED_RESOLVED_PRIVATE = -1;
+
+/**
+ * Hostname for the DNS check — deliberately NOT `hostOf` from network-counter,
+ * which returns `URL.host` and therefore INCLUDES the port. Handing
+ * "example.com:8080" to a resolver fails, and because this boundary fails
+ * closed that would silently refuse every URL carrying a port.
+ * Returns null only when the URL will not parse at all.
+ */
+/**
+ * One place that turns a status into an attempt outcome.
+ *
+ * Six call sites classified this independently, and every one of them read the
+ * OD-37 refusal (-1) as `http_error` — the refusal was distinguishable only on
+ * the retry-ladder path and looked like a transport failure everywhere else.
+ * That is the exact "a refusal cannot be told apart from the server not
+ * answering" gap D17 names, so it is fixed once here rather than six times.
+ */
+export function refusalOutcomeOr(status: number, existing: string): string {
+  return status === STATUS_REFUSED_RESOLVED_PRIVATE ? 'refused:resolved_private_address' : existing;
+}
+
+export function hostnameOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 export interface HttpResponse {
   status: number;
   contentType: string | null;
@@ -548,6 +588,21 @@ export interface RunnerDeps {
   storeDir?: string;
   /** Skip writing PDFs to disk (acceptance runs that only prove call counts). */
   skipDownload?: boolean;
+  /**
+   * Resolved-address check for OD-37, injectable so a unit test never makes a
+   * real DNS query. Defaults to the production `isResolvedAddressPrivate`,
+   * which fails CLOSED (an error or an empty answer counts as private) — this
+   * is the network boundary and the boundary refuses when it cannot tell.
+   */
+  resolveIsPrivate?: (hostname: string) => Promise<boolean>;
+
+  /**
+   * OD-37 registrar host set, loaded once per cycle by the caller (it needs a
+   * DB read; the allow-list check itself stays pure and synchronous, which is
+   * what the build card asks for). Absent means an empty set — the behaviour
+   * before slice 22-7, when nothing supplied it at all.
+   */
+  registrarHosts?: ReadonlySet<string>;
   /**
    * Retry backoff sleep, injectable (MIN-4).
    *
@@ -757,6 +812,24 @@ export class DocumentDiscoveryRunner {
   private readonly boardAttempts: FetchAttempt[] = [];
   /** Issuer website learned from a filing cover, so rung 4 costs no extra fetch. */
   private readonly companyUrlByIpo = new Map<string, string>();
+  /**
+   * OD-37 gate. A GETTER, not a field initializer: class fields are evaluated
+   * before the constructor assigns `this.deps`, so reading `this.deps` here as
+   * an initializer throws on construction — it took 35 failing tests in three
+   * unrelated files to say so, and none of them named the cause.
+   */
+  private get resolvedAddressRefusalEnabled(): boolean {
+    return this.deps.resolveIsPrivate !== undefined || FEATURE_FLAGS.ENABLE_RESOLVED_ADDRESS_REFUSAL;
+  }
+
+  /** OD-37 registrar host set for this cycle; empty when the caller supplies none. */
+  private get registrarHosts(): ReadonlySet<string> {
+    return this.deps.registrarHosts ?? EMPTY_REGISTRAR_HOSTS;
+  }
+
+  /** OD-37: one DNS answer per host per cycle (see isHostRefused). */
+  private readonly resolvedPrivateHosts = new Map<string, boolean>();
+
   private boardFetched = false;
 
   constructor(private readonly deps: RunnerDeps) {}
@@ -809,11 +882,19 @@ export class DocumentDiscoveryRunner {
         }
         return res;
       }
+      if (res.status === STATUS_REFUSED_RESOLVED_PRIVATE) {
+        // A refusal is a verdict, not a transport failure: retrying it three
+        // times would triple the log noise and imply the host might answer.
+        // The distinct outcome string is the D17 refusal line — the whole point
+        // is that this can be told apart from "the server did not answer".
+        attempts.push({ source, http: res.status, ms, outcome: 'refused:resolved_private_address', url });
+        return res;
+      }
       attempts.push({
         source,
         http: res.status,
         ms,
-        outcome: `${res.status === 0 ? 'timeout' : 'http_error'}:try${attempt + 1}of${backoff.length}`,
+        outcome: `${refusalOutcomeOr(res.status, res.status === 0 ? 'timeout' : 'http_error')}:try${attempt + 1}of${backoff.length}`,
         url,
       });
       if (attempt < backoff.length - 1) await this.sleep(backoff[attempt]);
@@ -822,6 +903,57 @@ export class DocumentDiscoveryRunner {
   }
 
   /** One counted request. Records the call before returning, success or not. */
+  /**
+   * One DNS answer per host per cycle, not one per request.
+   *
+   * The ladder retries three times and several rungs share a host, so a lookup
+   * per request would add up to a 5 s DNS timeout to every retry of every rung.
+   * The refusal is logged the FIRST time a host is refused, with its cause —
+   * D17 asks for a refusal that can be told apart from "the server did not
+   * answer", which the `status: 0` timeout sentinel cannot express.
+   */
+  private async isHostRefused(host: string, url: string, ipoKey?: string): Promise<boolean> {
+    const cached = this.resolvedPrivateHosts.get(host);
+    if (cached !== undefined) return cached;
+
+    const check = this.deps.resolveIsPrivate ?? isResolvedAddressPrivate;
+    let refused: boolean;
+    try {
+      refused = await check(host);
+    } catch (err) {
+      // Fail CLOSED, and say why: a resolver that throws is not evidence the
+      // address is public. Carrying the cause matters — signal-ownership R6:
+      // a failure that cannot be classified from its log line is a defect of
+      // the logger.
+      refused = true;
+      logger.warn(
+        {
+          host,
+          url,
+          ipoKey,
+          cause: err instanceof Error ? err.message : String(err),
+          reason: 'resolver_error',
+        },
+        'OD-37 download refusal: host REFUSED because its address could not be resolved (fail-closed)'
+      );
+      // Deliberately NOT cached. A resolver ERROR is a transient fault, not a
+      // verdict about the host: caching it blackholes that host for the whole
+      // cycle on one blip. A real "resolves private" answer IS cached below,
+      // because that is a stable fact. Fail-closed still applies to THIS
+      // request; the next one asks again.
+      return true;
+    }
+
+    this.resolvedPrivateHosts.set(host, refused);
+    if (refused) {
+      logger.warn(
+        { host, url, ipoKey, reason: 'resolved_private_address' },
+        'OD-37 download refusal: host REFUSED because it resolves to a private, loopback, link-local or metadata address'
+      );
+    }
+    return refused;
+  }
+
   private async request(
     url: string,
     headers: Record<string, string>,
@@ -829,6 +961,27 @@ export class DocumentDiscoveryRunner {
     timeoutMs: number = FETCH_TIMEOUT_MS,
     post?: { method: 'POST'; body: string }
   ): Promise<HttpResponse> {
+    // OD-37. Every rung reaches the network through here, so this is the one
+    // place the resolved-address refusal has to live. PRIVATE_HOST_PATTERNS in
+    // company-host-source.ts is a hostname-STRING check on the company-website
+    // rung only; it cannot see a name that looks public and RESOLVES to
+    // 127.0.0.1 or to 169.254.169.254. `isResolvedAddressPrivate` was written
+    // for that in slice 22-1 and had no caller until now.
+    const host = hostnameOf(url);
+    // A URL that will not parse is refused, not waved through: this boundary
+    // fails closed, and "we could not tell" is not "it is safe".
+    // Flag OFF is byte-identical to the pre-flag path: no DNS query is made at
+    // all, so an unresolvable host still fails the way it always did rather
+    // than becoming a refusal.
+    if (this.resolvedAddressRefusalEnabled && (host === null || (await this.isHostRefused(host, url, ipoKey)))) {
+      return {
+        status: STATUS_REFUSED_RESOLVED_PRIVATE,
+        contentType: null,
+        body: Buffer.alloc(0),
+        url,
+      };
+    }
+
     const started = Date.now();
     const res = await this.deps.fetcher(url, { headers, timeoutMs, ...(post ?? {}) });
     this.deps.counter.record({
@@ -927,7 +1080,7 @@ export class DocumentDiscoveryRunner {
       BSE_RETRY_BACKOFF_MS
     );
     if (res.status !== 200) {
-      attempts.push({ source: 'BSE', http: res.status, ms: Date.now() - started, outcome: 'http_error', url });
+      attempts.push({ source: 'BSE', http: res.status, ms: Date.now() - started, outcome: refusalOutcomeOr(res.status, 'http_error'), url });
       return null;
     }
     try {
@@ -988,7 +1141,12 @@ export class DocumentDiscoveryRunner {
         source: 'NSE',
         http: res.status,
         ms,
-        outcome: res.status === 0 ? 'timeout' : 'http_error',
+        // The fallback must be this site's ORIGINAL expression, not a flat
+        // 'http_error': main classified a timeout here and the F3/F6 coverage
+        // logic matches these strings exactly. Flattening it turned every NSE
+        // timeout into an HTTP error — the same reclassification defect this
+        // helper was narrowed to avoid, reintroduced in the other direction.
+        outcome: refusalOutcomeOr(res.status, res.status === 0 ? 'timeout' : 'http_error'),
         url,
       });
       if (attempt < NSE_RETRY_BACKOFF_MS.length - 1) {
@@ -1488,7 +1646,7 @@ export class DocumentDiscoveryRunner {
         source: 'COMPANY',
         http: res.status,
         ms: Date.now() - started,
-        outcome: 'http_error',
+        outcome: refusalOutcomeOr(res.status, 'http_error'),
         url: pageUrl,
       });
     }
@@ -1536,7 +1694,7 @@ export class DocumentDiscoveryRunner {
           // investor page routinely links documents parked on a CDN or a
           // merchant bank; the owner's rule is issuer-or-exchange only, and it
           // applies on THIS rung too.
-          isStorableFromCompanyPage(l.url, companyUrl)
+          isStorableFromCompanyPage(l.url, companyUrl, this.registrarHosts)
       );
       attempts.push({
         source: 'COMPANY',
@@ -1626,7 +1784,7 @@ export class DocumentDiscoveryRunner {
           source: 'VERIFIER',
           http: res.status,
           ms: Date.now() - started,
-          outcome: 'http_error',
+          outcome: refusalOutcomeOr(res.status, 'http_error'),
           url: verifierUrl,
         });
       }
@@ -1637,7 +1795,7 @@ export class DocumentDiscoveryRunner {
     }
     const answer = page.evidence;
 
-    const links = extractVerifierLinks(page.html, verifierUrl, triedUrls).filter(
+    const links = extractVerifierLinks(page.html, verifierUrl, triedUrls, this.registrarHosts).filter(
       (l) => l.docType === docType
     );
     attempts.push({

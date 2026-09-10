@@ -706,8 +706,16 @@ export async function loadRegistrarDocumentHosts(
  * never store a filing from a third party, on ANY rung. Without this the
  * company rung was the one hole in that rule.
  */
-export function isStorableFromCompanyPage(url: string, companyOrigin: string): boolean {
-  if (isTrustedDocumentHost(url)) return true;
+export function isStorableFromCompanyPage(
+  url: string,
+  companyOrigin: string,
+  // OD-37: the registrar host set. Defaulted so existing callers keep their
+  // exact behaviour, but the RUNNER now supplies it — until slice 22-7 nothing
+  // did, so a filing served by a legitimate registrar was refused here even
+  // though `isTrustedDocumentHost` had been able to accept one since 22-1.
+  registrarHosts: ReadonlySet<string> = new Set()
+): boolean {
+  if (isTrustedDocumentHost(url, registrarHosts)) return true;
   try {
     const link = new URL(url);
     if (link.protocol !== 'https:' && link.protocol !== 'http:') return false;
@@ -732,10 +740,12 @@ export function isStorableFromCompanyPage(url: string, companyOrigin: string): b
 export function extractVerifierLinks(
   html: string,
   pageUrl: string,
-  alreadyTried: Iterable<string>
+  alreadyTried: Iterable<string>,
+  /** OD-37 registrar host set; see isStorableFromCompanyPage. */
+  registrarHosts: ReadonlySet<string> = new Set()
 ): CompanyHostLink[] {
   const tried = new Set(alreadyTried);
   return parseCompanyHostLinks(html, pageUrl).filter(
-    (link) => isTrustedDocumentHost(link.url) && !tried.has(link.url)
+    (link) => isTrustedDocumentHost(link.url, registrarHosts) && !tried.has(link.url)
   );
 }

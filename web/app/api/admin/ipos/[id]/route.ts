@@ -17,6 +17,7 @@ import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { getIPOBySlugKey, getIPOByIdKey, getIPODetailKey } from '@/lib/cache/cache-keys';
+import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { logger } from '@/lib/logger';
 
@@ -293,10 +294,12 @@ export async function PATCH(
     const updatedIPO = await ipoRepository.update(id, updateData);
 
     // Invalidate cache
-    await redis.del(getIPOBySlugKey(existingIPO.slug));
-    await redis.del(getIPOByIdKey(id));
+    // One helper for both the exact-name keys and the pattern-matched ones.
+    // The previous last line was `redis.del('ipo:list:*')`, and DEL matches key
+    // names literally - it deleted a key nothing creates and returned 0, while
+    // every real `ipo:list:<filterHash>` key survived the edit (#538).
     await redis.del(getIPODetailKey(existingIPO.slug));
-    await redis.del('ipo:list:*');
+    await invalidateIPOCaches(redis, id, existingIPO.slug);
 
     const duration = Date.now() - startTime;
     requestLogger.info(

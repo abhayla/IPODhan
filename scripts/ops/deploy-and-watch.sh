@@ -76,9 +76,10 @@ echo "==> dispatching: gh workflow run $WORKFLOW --ref $REF -f slot=prod -f ref=
 gh workflow run "$WORKFLOW" --ref "$REF" -f slot=prod -f ref="$SHA" \
   || die "gh workflow run failed to dispatch" 1
 
-# Round 2: --workflow deploy-linux.yml runs on EVERY push to main too (staging
-# auto-deploy), so an unscoped --limit 1 can pick up a staging run that lands
-# in the same seconds as this prod dispatch. Scope to this exact ref + a
+# Round 2: --workflow deploy-linux.yml also fires on its own for staging (a
+# 15-minute scheduled poll since slice s17; every push to main before that),
+# so an unscoped --limit 1 can pick up a staging run that lands in the same
+# seconds as this prod dispatch. Scope to this exact ref + a
 # workflow_dispatch event, and require createdAt >= the dispatch timestamp
 # recorded just above, so a race never watches the wrong run.
 echo "==> resolving run id (scoped to ref=$REF, event=workflow_dispatch, createdAt >= $DISPATCH_TS)"

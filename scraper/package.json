@@ -5,7 +5,6 @@
   "scripts": {
     "start": "tsx --tsconfig tsx.tsconfig.json src/index.ts",
     "start:bse": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=bse",
-    "start:moneycontrol": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=moneycontrol",
     "start:chittorgarh": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=chittorgarh",
     "start:gmp": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=gmp",
     "start:fallback": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=fallback",
@@ -28,6 +27,7 @@
     "type-check:scripts": "tsc -p tsconfig.scripts.json",
     "test": "vitest",
     "test:unit": "vitest --config vitest.config.ts",
+    "test:tzcase": "vitest run --config vitest.config.ts tests/unit/scripts/backfill-gmp-historical-callsite-tz.test.ts",
     "test:integration": "vitest run -c vitest.integration.config.ts",
     "test:e2e": "vitest --config vitest.e2e.config.ts",
     "test:load": "vitest --run --config vitest.load.config.ts",

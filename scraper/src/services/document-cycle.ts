@@ -34,12 +34,17 @@ import {
   type IpoRunResult,
 } from './document-discovery-runner.js';
 import { NetworkCounter } from '../utils/network-counter.js';
-import { isVerifierUrl } from './company-host-source.js';
+import {
+  isVerifierUrl,
+  loadRegistrarDocumentHosts,
+  resetRegistrarDocumentHostsCache,
+} from './company-host-source.js';
 import { deriveLifecycleStage } from '../scheduler/stage-reconciler.js';
 import { isInLiveWindow, CYCLE_BUDGET, planIpoCycle, type IssueShape } from './document-state-machine.js';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import {
   decidePurge,
+  everyDocumentPastItsOwnWindow,
   purgeIpoDocuments,
   getRetentionDays,
   getMaxRetentionDays,
@@ -1067,11 +1072,45 @@ export async function runDocumentCycle(
   // end of the function) leaked the lock for its full 45-minute TTL, since
   // nothing between those two points ran under a finally.
   try {
+    // OD-37 slice 22-7: load the registrar host set ONCE for this cycle and
+    // hand it to the runner. The allow-list check stays pure and synchronous;
+    // the DB read happens here, at the cycle boundary, exactly once.
+    //
+    // Until this call existed, `isTrustedDocumentHost` was invoked with one
+    // argument everywhere, so its `registrarHosts` parameter only ever took its
+    // own empty default and a filing served by a legitimate registrar was
+    // refused — even though the loader, the cache and the parameter had all
+    // been built and merged.
+    let registrarHosts: ReadonlySet<string> = new Set();
+    try {
+      // The reset belongs INSIDE the guard too: it is part of the same optional
+      // step, and leaving it outside meant a failure there still took the whole
+      // cycle down — which is exactly what this guard exists to prevent.
+      resetRegistrarDocumentHostsCache();
+      registrarHosts = await loadRegistrarDocumentHosts(db as never);
+      logger.info(
+        { registrarHostCount: registrarHosts.size },
+        'OD-37: registrar document host allow-list loaded for this cycle'
+      );
+    } catch (err) {
+      // Degrade to an empty set, never take the cycle down with it. An empty
+      // set is exactly the behaviour before this slice: registrar-hosted
+      // documents are refused, nothing else changes. Making this read fatal
+      // would mean a transient registrars query failure stops ALL document
+      // discovery — strictly worse than not widening the allow-list, and the
+      // first version of this slice did precisely that (34 tests said so).
+      logger.warn(
+        { cause: err instanceof Error ? err.message : String(err) },
+        'OD-37: registrar host allow-list could not be read — continuing with an EMPTY set, so registrar-hosted documents are refused this cycle (pre-slice-22-7 behaviour), and discovery is NOT stopped'
+      );
+    }
+
     const runner = new DocumentDiscoveryRunner({
       fetcher: defaultFetcher,
       store,
       documents,
       counter,
+      registrarHosts,
     });
 
     const { candidates: allCandidates, listedCap, listedDeferred, listedComplete, listedEnriched, listedSkippedUnenriched } =
@@ -1583,9 +1622,41 @@ export const PURGE_CANDIDATES_SQL = `
            i.status,
            count(s.id) FILTER (
              WHERE s.state NOT IN ('EXTRACTED', 'NOT_APPLICABLE')
-           )::int AS unread_count
+           )::int AS unread_count,
+           -- Item 18 slice 2. Documents this IPO has marked COMPLETED that
+           -- stored NO page text. Their bytes are the only copy we hold, so any
+           -- non-zero count here vetoes the purge for the whole IPO.
+           --
+           -- Measured 2026-09-10: NSE's ratios archives are newspaper
+           -- PHOTOGRAPHS - extraction runs, reports COMPLETED, and stores
+           -- nothing. Without this the purge would delete exactly those files.
+           --
+           -- Counted with a correlated NOT EXISTS rather than another LEFT JOIN:
+           -- joining document_pages would multiply the rows this GROUP BY
+           -- counts and corrupt unread_count beside it.
+           count(DISTINCT d.id) FILTER (
+             WHERE d.extraction_status = 'COMPLETED'
+               AND NOT EXISTS (
+                 SELECT 1 FROM document_pages p WHERE p.document_id = d.id
+               )
+           )::int AS textless_count,
+           -- Item 18 slice 2b. Every document's OWN extraction clock, so the
+           -- retention window can be each document's rather than the IPO's.
+           --
+           -- The contract defines item 18 as "PDF deleted seven days after its
+           -- LAST SUCCESSFUL EXTRACTION"; the close-date anchor belonged to
+           -- neither document on a two-document IPO. Aggregated as a min so one
+           -- recently-read document holds the whole directory, and counted
+           -- separately so a NULL (never extracted) is distinguishable from an
+           -- old timestamp - reading NULL as old is how an unread file gets
+           -- deleted before anything read it.
+           min(d.extracted_at) FILTER (WHERE d.extracted_at IS NOT NULL) AS newest_extracted_at,
+           max(d.extracted_at) FILTER (WHERE d.extracted_at IS NOT NULL) AS latest_extracted_at,
+           count(d.id)::int AS document_count,
+           count(d.id) FILTER (WHERE d.extracted_at IS NULL)::int AS unextracted_count
       FROM ipos i
       LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
+      LEFT JOIN documents d ON d.ipo_id = i.id
      WHERE i.offering_type = 'IPO'
        AND i.close_date IS NOT NULL
        AND (
@@ -1622,10 +1693,36 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
       closeDate: row.close_date as Date | null,
       withdrawn: status === 'WITHDRAWN' || status === 'POSTPONED',
       allDocumentsRead: Number(row.unread_count ?? 0) === 0,
+      // Item 18 slice 2: supplied, so the veto is live rather than a parameter
+      // nothing passes. An unwired guard is the class item 20's gate exists for.
+      textlessCount: Number(row.textless_count ?? 0),
       retentionDays,
       maxRetentionDays,
     });
     if (!decision.purge) continue;
+
+    // Item 18 slice 2b. An ADDITIONAL constraint, never a loosening: the old
+    // arms have already said purge, and this asks whether every document is
+    // ALSO past its own retention window.
+    //
+    // Built from the aggregates rather than a second query: `latest_extracted_at`
+    // is the most recent successful extraction on this IPO, so if THAT is past
+    // the window every earlier one is too; `unextracted_count > 0` means at
+    // least one document never extracted at all, whose clock has not started.
+    // Passing a synthetic null for that case is what makes the helper refuse.
+    const unextracted = Number(row.unextracted_count ?? 0);
+    const perDocument = unextracted > 0
+      ? [{ extractedAt: null as Date | null }]
+      : Number(row.document_count ?? 0) === 0
+        ? []
+        : [{ extractedAt: (row.latest_extracted_at as Date | string | null) ?? null }];
+    if (!everyDocumentPastItsOwnWindow(perDocument, retentionDays)) {
+      logger.info(
+        { ipoId: String(row.id), unextracted, latest: row.latest_extracted_at },
+        'Purge held: a document is still inside its own retention window (item 18 s2b)'
+      );
+      continue;
+    }
 
     summary.candidates++;
     const purge = await purgeIpoDocuments(String(row.id));

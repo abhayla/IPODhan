@@ -17,8 +17,83 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '..', '..', '.env') });
 
 /**
+ * Slot-aware feature-flag default (item 01 slice s5a).
+ *
+ * Resolves a flag's default from `DEPLOY_SLOT` so staging can default ON
+ * without anyone editing a server env file, while prod stays OFF with no
+ * action required:
+ * - `DEPLOY_SLOT=staging` and the env var is genuinely UNSET (`undefined`)
+ *   -> true
+ * - any other slot value, OR `DEPLOY_SLOT` unset/missing -> false (this is
+ *   the case that protects production — the safe answer is the fallback,
+ *   not something every slot has to opt into)
+ * - an explicit value on the flag's OWN env var always wins over the slot
+ *   default, in either direction (e.g. forcing a flag on for a one-off prod
+ *   test, or off on staging to isolate a regression)
+ *
+ * `undefined` vs explicitly-empty are NOT the same thing and must not be
+ * treated the same. `undefined` means the operator never set this var — that
+ * is the only case that falls through to the slot default. An explicit but
+ * EMPTY value (`FLAG=`, or whitespace-only) is what a deploy template
+ * produces when `FLAG=${SOMEVAR}` is written but `SOMEVAR` never expanded —
+ * a template bug, not an operator choosing "use the default". Silently
+ * turning that into ON on staging is the same silent-wrong-direction hazard
+ * an unrecognised spelling is, so it is treated exactly like one: warn and
+ * fail closed to `false`, never the slot default.
+ *
+ * Every OTHER flag in this file (the ENABLE_* assignments below) uses the
+ * strict `process.env.X === 'true'` convention — exact string, no other
+ * spelling recognised, no logging. This helper does NOT reuse that as-is:
+ * it is the one place an operator's raw env spelling decides which of TWO
+ * live defaults (staging-ON vs prod-OFF) a flag takes, so an unrecognised
+ * spelling is a real hazard in BOTH directions — `FLAG=0` on staging must
+ * not silently stay ON, and `FLAG=1`/`TRUE`/`yes` on prod must not silently
+ * fall through to OFF. Recognised spellings (case-insensitive, trimmed):
+ *   truthy: true, 1, yes, on
+ *   falsy:  false, 0, no, off
+ * Anything else — including empty/whitespace-only — is logged (flag name +
+ * raw value) and resolved to `false` — the fail-closed safe value, NEVER the
+ * slot default — so a typo (or an unexpanded template variable) is visible
+ * in the logs instead of silently picking a live behaviour.
+ * This widening is scoped to this opt-in helper only; the plain `=== 'true'`
+ * flags above are untouched.
+ */
+const SLOT_AWARE_TRUTHY = new Set(['true', '1', 'yes', 'on']);
+const SLOT_AWARE_FALSY = new Set(['false', '0', 'no', 'off']);
+
+export function slotAwareFlagDefault(envVarName: string): boolean {
+  const explicit = process.env[envVarName];
+  // Only a genuinely UNSET var (`undefined`) falls through to the slot
+  // default. An explicit empty string is handled below, identically to an
+  // unrecognised value — see the doc comment above.
+  if (explicit === undefined) {
+    return process.env.DEPLOY_SLOT === 'staging';
+  }
+  const normalized = explicit.trim().toLowerCase();
+  if (normalized === '') {
+    console.warn(
+      `slotAwareFlagDefault: ${envVarName} is explicitly set but empty — treating as unrecognised (fail-closed to false), not the slot default. This usually means a deploy-template variable (e.g. FLAG=\${SOMEVAR}) that did not expand — fix the template.`
+    );
+    return false;
+  }
+  if (SLOT_AWARE_TRUTHY.has(normalized)) return true;
+  if (SLOT_AWARE_FALSY.has(normalized)) return false;
+  console.warn(
+    `slotAwareFlagDefault: unrecognised value ${envVarName}=${explicit} — treating as false (fail-closed), not the slot default.`
+  );
+  return false;
+}
+
+/**
  * Feature flag configuration
- * All flags default to false/0 for safety
+ * All flags default to false/0 for safety.
+ *
+ * REVIEWED EXCEPTION (item 01 slice s5a, T-item01-s5a): a flag that explicitly
+ * reads its default via `slotAwareFlagDefault()` below may default ON for the
+ * `staging` deploy slot instead of false. This is opt-in per flag (nothing
+ * above is rewired by this slice) and the fallback for prod, local, and any
+ * unset/unknown slot is still false — the safety default this comment
+ * describes is unchanged for every flag that does not call the helper.
  */
 export const FEATURE_FLAGS = {
   // ==================== CORE FEATURES ====================
@@ -36,6 +111,38 @@ export const FEATURE_FLAGS = {
    * Default: false (Phase 0 foundation)
    */
   ENABLE_CONFLICT_DETECTION: process.env.ENABLE_CONFLICT_DETECTION === 'true',
+
+  /**
+   * Item 12 slice D: log LIVE rows that fold to one company identity on the
+   * same open date. OBSERVE ONLY - never merges, never writes, and cannot
+   * change which row resolveIpoRow returns.
+   *
+   * Plain `=== 'true'` on purpose, NOT slotAwareFlagDefault(): that helper
+   * returns true on staging when unset, and this must be OFF in every slot
+   * until someone sets it. Read by packages/shared (which cannot import this
+   * file); this entry is the discoverable registration.
+   */
+  ENABLE_DISCOVERY_DUPLICATE_CHECK: process.env.ENABLE_DISCOVERY_DUPLICATE_CHECK === 'true',
+
+  /**
+   * Item 12 slice E: bind a GMP list row to an IPO by EXACT normalized name
+   * when several IPOs share the same open+close dates, instead of accepting
+   * the best character-similarity guess above 0.6.
+   *
+   * Measured before it was built: the similarity path is not a rare fallback
+   * - 194 of 333 production rows (58%) sit in a shared date window. Against
+   * the 29 real records in the captured fixture, exact name binds 24 to ONE
+   * row with ZERO ambiguities, so exact name is already unique wherever it
+   * matches and the 0.6 threshold can only add wrong answers.
+   *
+   * Cost while OFF-to-ON: four records (Jindal Supreme, Steamhouse, Asset
+   * Reconstruction, Glass Wall Systems) stop binding until their stored names
+   * align with the source's shorter form.
+   *
+   * Plain `=== 'true'`, NOT slotAwareFlagDefault(): this changes what gets
+   * WRITTEN, so it must be off in every slot until someone turns it on.
+   */
+  ENABLE_STRICT_LIST_BINDING: process.env.ENABLE_STRICT_LIST_BINDING === 'true',
 
   /**
    * Enable data consolidation service
@@ -259,7 +366,12 @@ export const FEATURE_FLAGS = {
    * does NOT fix the underlying starvation; the owner must set this to
    * 'true' (staging first, then prod) for the fix to take effect.
    */
-  ENABLE_UPCOMING_DISCOVERY_RESERVATION: process.env.ENABLE_UPCOMING_DISCOVERY_RESERVATION === 'true',
+  // s0d: converted from `=== 'true'` to the slot-aware default. This flag was
+  // introduced by this run and has never been deployed, so decision 28's
+  // "never convert" (which protects pre-existing flags that may carry a prod
+  // env value of unknown spelling) does not apply. It was OFF on staging,
+  // which would have made its own staging proof measure a disabled feature.
+  ENABLE_UPCOMING_DISCOVERY_RESERVATION: slotAwareFlagDefault('ENABLE_UPCOMING_DISCOVERY_RESERVATION'),
 
   /**
    * Item 22 slice 2: gates `defaultFetcher`'s streaming rewrite
@@ -270,7 +382,45 @@ export const FEATURE_FLAGS = {
    * the item-22 build card's Staging proof section); flag OFF is
    * byte-identical to the pre-existing buffer-then-check path.
    */
+  // s0d deliberately did NOT convert this one, and the reason is a real
+  // ordering constraint rather than caution: slot-aware means ON in staging,
+  // and when the cap trips today `defaultFetcher` returns `status: 0` — the
+  // SAME shape a timeout returns, by explicit design ("no caller needs a new
+  // branch for too-big versus timed-out"). Switching the cap on in staging
+  // before that refusal is distinguishable would make every over-size refusal
+  // read as a timeout in the attempt log, which is precisely the D17 gap the
+  // item-22 card names. It converts in the slice that gives the over-cap
+  // refusal its own status, alongside `refused:resolved_private_address`.
   ENABLE_DOWNLOAD_STREAMING_CAP: process.env.ENABLE_DOWNLOAD_STREAMING_CAP === 'true',
+
+  /**
+   * OD-37 item 22 slice 3: refuse a host whose RESOLVED address is private,
+   * loopback, link-local or the cloud metadata address, on EVERY fetch rung.
+   *
+   * Gated because it changes behaviour at the network boundary in a way that
+   * can stop discovery: the check fails CLOSED, so a DNS failure REFUSES the
+   * host rather than letting the fetch attempt and fail normally. That is the
+   * right posture for a security boundary and the wrong thing to switch on
+   * everywhere untested — a resolver blip would read as "every source failed".
+   *
+   * Uses `slotAwareFlagDefault` (item 01 slice s5a) rather than `=== 'true'`:
+   * this flag has never been deployed, so it is exactly what that helper is
+   * for. It defaults ON in staging, where the refusal log can be READ, and OFF
+   * everywhere else until that reading exists.
+   */
+  ENABLE_RESOLVED_ADDRESS_REFUSAL: slotAwareFlagDefault('ENABLE_RESOLVED_ADDRESS_REFUSAL'),
+
+  /**
+   * Item 2 slice 4: gates whether the CLI entry point (the guard at the
+   * bottom of `scraper/src/index.ts`) validates `scraper/config/field-manifest.json`
+   * at process start. Default: false (Phase 0 — plain `process.env.X === 'true'`
+   * pattern, matching `ENABLE_DATA_CONSOLIDATION` above, per the item-02 build
+   * card's own text). Nothing reads the manifest yet (item 3 wires the matrix
+   * to it) so a malformed file is harmless while this stays off; it exists so
+   * item 3 can flip it once there is something to protect. Flag OFF is a
+   * pure no-op — the loader import never even runs `loadFieldManifest()`.
+   */
+  ENABLE_FIELD_MANIFEST: process.env.ENABLE_FIELD_MANIFEST === 'true',
 
   // ==================== ROLLOUT CONTROLS ====================
   // T-297 D9 / #193: this file is the SSOT for which flags gate live logic

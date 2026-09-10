@@ -9,6 +9,8 @@
  * from data already fetched, what the merge plan should be.
  */
 
+import { foldCompanyIdentity } from './company-identity-fold.js';
+
 /** One row of `information_schema` foreign-key metadata: child references parent via col. */
 export interface FkEdge {
   child: string;
@@ -22,17 +24,13 @@ export interface FkEdge {
  * missing at the time (F-55: "Company" vs "Co." never collided). Kept
  * independent of that normaliser so a future change to it does not silently
  * change what this repair tool considers "the same company".
+ *
+ * Item 12 slice A moved the body to `./company-identity-fold` so the fold has
+ * ONE TypeScript home. This alias stays because it is the name every existing
+ * consumer imports; it is the same function, not a wrapper, so there is no
+ * behaviour change and no second place for the logic to drift to.
  */
-export function foldCompanyName(name: string | null | undefined): string {
-  return String(name ?? '')
-    .toLowerCase()
-    .replace(/[.,()&'"-]/g, ' ')
-    .replace(
-      /\b(private|pvt|limited|ltd|company|co|corporation|corp|incorporated|inc|and|the|of|india|indian)\b/g,
-      ' '
-    )
-    .replace(/\s+/g, '');
-}
+export const foldCompanyName = foldCompanyIdentity;
 
 /** `field_sources.field_name` is camelCase (listingDate, bseIpoNo), not the snake_case column name. */
 export function columnToCamelCase(column: string): string {

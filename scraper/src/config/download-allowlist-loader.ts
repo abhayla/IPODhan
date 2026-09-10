@@ -1,9 +1,14 @@
-import { join } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { loadValidatedConfig } from './validated-config-loader.js';
 import { downloadAllowlistSchema, type DownloadAllowlist } from './download-allowlist-schema.js';
 
+// `scraper` is "type": "module", so __dirname does NOT exist at module scope.
+// It must be derived from import.meta.url. See scripts/ci/check-esm-module-globals.mjs.
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+
 const DEFAULT_ALLOWLIST_PATH = join(
-  __dirname,
+  MODULE_DIR,
   '..',
   '..',
   '..',

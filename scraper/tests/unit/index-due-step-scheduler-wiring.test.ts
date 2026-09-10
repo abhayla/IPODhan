@@ -155,6 +155,39 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     vi.resetModules();
   });
 
+  describe('item 16 — --source=moneycontrol is no longer a valid CLI value', () => {
+    it('rejects it through the SAME unrecognised-value path as any other bad string', async () => {
+      process.argv = [...originalArgv.slice(0, 2), '--source=moneycontrol'];
+      const { main } = await import('../../src/index.js');
+      await main();
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      // and it never reaches the scraper it used to name
+      expect(runMoneycontrolScraperMock).not.toHaveBeenCalled();
+    });
+
+    it('a genuinely unknown source behaves identically — the rejection is not special-cased', async () => {
+      // If 'moneycontrol' were special-cased rather than simply absent from the
+      // allow-list, these two would diverge and the retirement would be a
+      // branch someone could re-enable by accident.
+      process.argv = [...originalArgv.slice(0, 2), '--source=not-a-real-source'];
+      const { main } = await import('../../src/index.js');
+      await main();
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('a source that IS still valid is not rejected', async () => {
+      // Guards the obvious over-correction: trimming the allow-list must not
+      // take a live source out with it.
+      process.argv = [...originalArgv.slice(0, 2), '--source=chittorgarh'];
+      const { main } = await import('../../src/index.js');
+      await main();
+
+      expect(exitSpy).not.toHaveBeenCalledWith(1);
+    });
+  });
+
   describe('flag OFF (default) — legacy path is UNCHANGED', () => {
     it('never touches the due-step lock or runDemandBackfill; runs every source unconditionally', async () => {
       delete process.env.ENABLE_DUE_STEP_SCHEDULER;
@@ -165,7 +198,11 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       expect(runDemandBackfillMock).not.toHaveBeenCalled();
       expect(runNSEScraperMock).toHaveBeenCalledTimes(1);
       expect(runBSEScraperMock).toHaveBeenCalledTimes(1);
-      expect(runMoneycontrolScraperMock).toHaveBeenCalledTimes(1);
+      // Item 16: Moneycontrol is retired. The legacy `--source=all` fallback is
+      // not how prod runs, but it is still reachable from a local run and must
+      // stop reaching Moneycontrol too — otherwise "retired" means "retired on
+      // the path we happened to look at".
+      expect(runMoneycontrolScraperMock).not.toHaveBeenCalled();
       expect(runChittorgarhScraperMock).toHaveBeenCalledTimes(1);
       expect(runInvestorgainGMPScraperMock).toHaveBeenCalledTimes(1);
       expect(runIPOAlertsFallbackMock).toHaveBeenCalledTimes(1);
@@ -266,13 +303,16 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       expect(runChittorgarhScraperMock).not.toHaveBeenCalled();
     });
 
-    it('aggregators: cadence due + UPCOMING/OPEN IPOs present -> Moneycontrol+Chittorgarh restricted to UPCOMING/OPEN', async () => {
+    it('aggregators: cadence due + UPCOMING/OPEN IPOs present -> Chittorgarh runs restricted, Moneycontrol NEVER', async () => {
       isCatchUpCadenceDueMock.mockResolvedValue(true);
       dbCountRowsMock.mockResolvedValue([{ c: 5 }]);
       const { main } = await import('../../src/index.js');
       await main();
-      expect(runMoneycontrolScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['UPCOMING', 'OPEN'] });
+      // Item 16: this is the call site that actually fires in production, since
+      // prod runs the due-step scheduler. Chittorgarh keeps the aggregator
+      // branch; only the Moneycontrol call inside it goes.
       expect(runChittorgarhScraperMock).toHaveBeenCalledWith({ allowedStatuses: ['UPCOMING', 'OPEN'] });
+      expect(runMoneycontrolScraperMock).not.toHaveBeenCalled();
     });
 
 

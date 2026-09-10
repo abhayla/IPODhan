@@ -150,6 +150,228 @@ else
   fail "case 2.5: expected \"current' was NOT touched\" message not found in output"
 fi
 
+# --- Case 2.6: item 1 (s16) — web/.next/cache lives in ONE per-slot dir ----
+# --- under $ROOT/shared, not inside the release. 1.5 GB of a 3.1 GB       --
+# --- release was a build cache never read at runtime; twelve failed       --
+# --- deploys at 3.1 GB apiece filled the VPS root filesystem 2026-09-10.  --
+#
+# Placed here (early) deliberately: this suite dies partway through case 30
+# onward on the Windows dev box (a pre-existing `grep -P` locale problem),
+# so a case appended at the end would never run locally.
+#
+# `ln -s` on the Windows dev box under MSYS silently COPIES instead of
+# linking, so every assertion below is written to be meaningful either way:
+# the subject is always the SHARED TARGET, which lives outside the release
+# tree in both shapes. Where a real symlink exists, the stronger claim (rm
+# unlinks the symlink and does not descend into it) is asserted too.
+SYMLINKS_OK=0
+SLPROBE="$(mktemp -d)"
+mkdir -p "$SLPROBE/t"
+if ln -sfn "$SLPROBE/t" "$SLPROBE/l" 2>/dev/null && [ -L "$SLPROBE/l" ]; then
+  SYMLINKS_OK=1
+fi
+rm -rf "$SLPROBE"
+echo "note: native symlink support in this environment: SYMLINKS_OK=$SYMLINKS_OK"
+
+# --- Case 2.6a: the cache target is created before the build, outside the --
+# --- release, and the release's web/.next/cache points at it. -------------
+ROOT26="$(fresh_root)"
+CACHE26="$ROOT26/shared/next-cache/staging"
+if [ -e "$CACHE26" ]; then
+  fail "case 2.6a: precondition — $CACHE26 already exists in a fresh root"
+fi
+DEPLOY_ROOT="$ROOT26" bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-26a.log 2>&1
+RC26A=$?
+if [ "$RC26A" -ne 0 ]; then
+  fail "case 2.6a: staging dry-run deploy exited $RC26A"
+  cat /tmp/deploy-test-26a.log
+fi
+if [ -d "$CACHE26" ]; then
+  pass "case 2.6a: per-slot cache target created when absent ($CACHE26)"
+else
+  fail "case 2.6a: cache target $CACHE26 was not created"
+fi
+# Read the target the SCRIPT actually chose out of its own log rather than
+# re-asserting the constant above — a change that moved the cache back
+# inside the release tree would otherwise pass this case untouched.
+LOGGED26="$(grep -o "$ROOT26[^ ]*" /tmp/deploy-test-26a.log | grep 'next-cache' | head -1)"
+if [ -z "$LOGGED26" ]; then
+  fail "case 2.6a: the deploy log names no cache target under $ROOT26"
+else
+  case "$LOGGED26" in
+    "$ROOT26"/releases*) fail "case 2.6a: the chosen cache target sits under the releases tree ($LOGGED26)" ;;
+    "$ROOT26"/shared/*) pass "case 2.6a: the chosen cache target ($LOGGED26) is under shared/, outside every releases directory" ;;
+    *) fail "case 2.6a: the chosen cache target is neither under shared/ nor recognisable ($LOGGED26)" ;;
+  esac
+fi
+
+# Ordering: the cache must be wired BEFORE the build, or the build creates
+# its own cache inside the release and the whole point is lost.
+CACHE_LINE26="$(grep -n '^==> .*Next build cache' /tmp/deploy-test-26a.log | head -1 | cut -d: -f1)"
+BUILD_LINE26="$(grep -n '^==> Building release' /tmp/deploy-test-26a.log | head -1 | cut -d: -f1)"
+if [ -n "$CACHE_LINE26" ] && [ -n "$BUILD_LINE26" ] && [ "$CACHE_LINE26" -lt "$BUILD_LINE26" ]; then
+  pass "case 2.6a: cache wired at line $CACHE_LINE26, before the build at line $BUILD_LINE26"
+else
+  fail "case 2.6a: expected the cache line before the build line (cache=$CACHE_LINE26 build=$BUILD_LINE26)"
+fi
+
+REL26="$(current_target "$ROOT26/current-staging")"
+if [ "$SYMLINKS_OK" -eq 1 ]; then
+  if [ -L "$REL26/web/.next/cache" ] && [ "$(readlink "$REL26/web/.next/cache")" = "$CACHE26" ]; then
+    pass "case 2.6a: release web/.next/cache is a symlink to $CACHE26"
+  else
+    fail "case 2.6a: release web/.next/cache is not a symlink to the shared target"
+  fi
+else
+  if grep -q 'emulated. Next build cache NOT linked' /tmp/deploy-test-26a.log; then
+    pass "case 2.6a: no native symlinks here — the script declined to link rather than COPY the shared cache in"
+  else
+    fail "case 2.6a: expected the emulated-no-symlink line on a filesystem without native symlinks"
+  fi
+fi
+
+# --- Case 2.6b: a second deploy REUSES the existing target, never --------
+# --- clobbers what is already cached in it. -------------------------------
+printf 'warm\n' > "$CACHE26/sentinel-2.6b"
+sleep 1.1
+DEPLOY_ROOT="$ROOT26" bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-26b.log 2>&1
+if [ -f "$CACHE26/sentinel-2.6b" ]; then
+  pass "case 2.6b: an existing cache directory is reused, its contents intact"
+else
+  fail "case 2.6b: the second deploy destroyed the existing cache contents"
+fi
+
+# --- Case 2.6c: retention pruning does NOT reach the shared target -------
+# --- (the whole-deploy proof: KEEP=1 across three deploys). ---------------
+ROOT26C="$(fresh_root)"
+CACHE26C="$ROOT26C/shared/next-cache/prod"
+for i in 1 2 3; do
+  DEPLOY_ROOT="$ROOT26C" DEPLOY_KEEP_RELEASES=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force \
+    >/tmp/deploy-test-26c-$i.log 2>&1 || fail "case 2.6c: deploy #$i failed"
+  printf 'warm\n' > "$CACHE26C/sentinel-2.6c"
+  sleep 1.1
+done
+# shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric
+COUNT26C="$(ls -1 "$ROOT26C/releases" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$COUNT26C" -le 1 ]; then
+  pass "case 2.6c: prune ran (kept $COUNT26C release)"
+else
+  fail "case 2.6c: prune did not run as expected (kept $COUNT26C releases) — the rest of this case proves nothing"
+fi
+if [ -f "$CACHE26C/sentinel-2.6c" ] && [ -d "$CACHE26C" ]; then
+  pass "case 2.6c: the shared cache target survived the release prune"
+else
+  fail "case 2.6c: the release prune destroyed the shared cache target"
+fi
+
+# --- Case 2.6d: the rm form itself — `rm -rf dir` AND `rm -rf dir/` on a --
+# --- release containing the cache link must leave the target intact. ------
+# The trailing-slash form is the one where the answer could differ, so it is
+# asserted separately rather than assumed to behave like the bare form.
+for FORM in "bare" "trailing-slash"; do
+  RMROOT="$(fresh_root)"
+  RMTGT="$RMROOT/shared/next-cache/prod"
+  RMREL="$RMROOT/releases/20260910-120000-abcdef1"
+  mkdir -p "$RMTGT" "$RMREL/web/.next"
+  printf 'warm\n' > "$RMTGT/sentinel"
+  LINKED=0
+  if ln -sfn "$RMTGT" "$RMREL/web/.next/cache" 2>/dev/null && [ -L "$RMREL/web/.next/cache" ]; then
+    LINKED=1
+  fi
+  if [ "$FORM" = "bare" ]; then
+    rm -rf "${RMREL:?}"
+  else
+    rm -rf "${RMREL:?}/"
+  fi
+  if [ -d "$RMREL" ]; then
+    fail "case 2.6d ($FORM): the release directory was not removed"
+  fi
+  if [ -f "$RMTGT/sentinel" ]; then
+    if [ "$LINKED" -eq 1 ]; then
+      pass "case 2.6d ($FORM): rm -rf on the release unlinked the symlink and did NOT descend into the shared target"
+    else
+      pass "case 2.6d ($FORM): shared target intact after rm -rf on the release (no native symlink here — proves the target is out of the release tree, not the non-descent property)"
+    fi
+  else
+    fail "case 2.6d ($FORM): rm -rf on the release DESTROYED the shared cache target — retention pruning follows the link"
+  fi
+  rm -rf "$RMROOT"
+done
+
+# --- Case 2.6e: prod and staging never share a cache. A shared one would --
+# --- bake one slot's NEXT_PUBLIC_* values into the other slot's build. ----
+ROOT26E="$(fresh_root)"
+DEPLOY_ROOT="$ROOT26E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-26e-prod.log 2>&1
+sleep 1.1
+DEPLOY_ROOT="$ROOT26E" bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-26e-stg.log 2>&1
+PTGT="$(grep -o '[^ ]*shared/next-cache/prod' /tmp/deploy-test-26e-prod.log | head -1)"
+STGT="$(grep -o '[^ ]*shared/next-cache/staging' /tmp/deploy-test-26e-stg.log | head -1)"
+if [ -n "$PTGT" ] && [ -n "$STGT" ] && [ "$PTGT" != "$STGT" ] \
+   && [ -d "$ROOT26E/shared/next-cache/prod" ] && [ -d "$ROOT26E/shared/next-cache/staging" ]; then
+  pass "case 2.6e: prod and staging resolve to different cache targets ($PTGT vs $STGT)"
+else
+  fail "case 2.6e: prod and staging did not resolve to distinct per-slot cache targets (prod='$PTGT' staging='$STGT')"
+fi
+
+# --- Case 2.6f: the target-path guard refuses anything outside the -------
+# --- deploy root, and refuses BEFORE creating it or touching 'current'. ---
+ROOT26F="$(fresh_root)"
+OUTSIDE26F="$(fresh_root)/not-the-deploy-root/next-cache"
+DEPLOY_ROOT="$ROOT26F" DEPLOY_TEST_NEXT_CACHE_DIR="$OUTSIDE26F" \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-26f.log 2>&1
+RC26F=$?
+if [ "$RC26F" -ne 0 ]; then
+  pass "case 2.6f: an out-of-root cache target aborts the deploy (exit $RC26F)"
+else
+  fail "case 2.6f: an out-of-root cache target was ACCEPTED (exit 0)"
+fi
+if grep -q 'not under .*shared/next-cache/' /tmp/deploy-test-26f.log; then
+  pass "case 2.6f: the refusal names the path and why"
+else
+  fail "case 2.6f: expected a 'not under .../shared/next-cache/' refusal in the log"
+fi
+if [ -e "$OUTSIDE26F" ]; then
+  fail "case 2.6f: the out-of-root target was CREATED before the guard refused it"
+else
+  pass "case 2.6f: the out-of-root target was never created"
+fi
+if [ -e "$ROOT26F/current" ]; then
+  fail "case 2.6f: 'current' was flipped despite the refused cache target"
+else
+  pass "case 2.6f: 'current' untouched by the refused cache target"
+fi
+
+# --- Case 2.6g: a '..' traversal in the target is refused even when the ---
+# --- prefix matches (the same hole safe_rm_venv_dir closed in W-111 r3). --
+ROOT26G="$(fresh_root)"
+DEPLOY_ROOT="$ROOT26G" DEPLOY_TEST_NEXT_CACHE_DIR="$ROOT26G/shared/next-cache/../../../escaped" \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-26g.log 2>&1
+RC26G=$?
+if [ "$RC26G" -ne 0 ] && grep -q "contains " /tmp/deploy-test-26g.log; then
+  pass "case 2.6g: a '..' traversal in the cache target is refused"
+else
+  fail "case 2.6g: expected a '..' refusal (exit $RC26G)"
+fi
+
+# --- Case 2.6h: SOURCE-level — vps-disk-hygiene.sh's prune_slot() can -----
+# --- only consider entries under $releases_dir whose basename matches -----
+# --- RELEASE_NAME_RE, so shared/next-cache/<slot> is structurally out of --
+# --- its reach. A future change widening that glob would silently put the -
+# --- shared cache back in range, and only a source assertion catches it. --
+HYGIENE26="$SCRIPT_DIR/../vps-disk-hygiene.sh"
+if [ ! -f "$HYGIENE26" ]; then
+  fail "case 2.6h: $HYGIENE26 not found — has the hygiene script moved?"
+else
+  PRUNE_BODY26="$(awk '/^prune_slot\(\) \{/,/^\}/' "$HYGIENE26")"
+  if emitn "$PRUNE_BODY26" | grep -q 'for d in "\$releases_dir"/\*' \
+     && emitn "$PRUNE_BODY26" | grep -q 'RELEASE_NAME_RE' \
+     && ! emitn "$PRUNE_BODY26" | grep -q 'shared'; then
+    pass "case 2.6h: prune_slot() only walks \$releases_dir/* filtered by RELEASE_NAME_RE — never \$ROOT/shared"
+  else
+    fail "case 2.6h: prune_slot() no longer looks the way this change relies on — re-check that the shared cache is out of its reach"
+  fi
+fi
+
 # --- Case 3: a second clean deploy succeeds after the broken one ------------
 if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-3.log 2>&1; then
   pass "case 3: second clean deploy after a broken build succeeds"
@@ -194,6 +416,382 @@ if [ -n "$CUR_TARGET5" ] && [ -d "$CUR_TARGET5" ]; then
 else
   fail "case 5: 'current' points at a PRUNED (or missing) release ($CUR_TARGET5)"
 fi
+
+# --- Case 33: item 01 - a FAILED deploy must not leave its release dir -----
+# --- behind. Twelve failed staging deploys on 2026-09-10 left 15 dirs ------
+# --- totalling 47GB and filled the VPS root filesystem; the prune in -------
+# --- step 12 only ever runs on the success path. ---------------------------
+unset DEPLOY_ROOT DEPLOY_KEEP_RELEASES DEPLOY_FAIL_BUILD DEPLOY_FAIL_PREFLIGHT DEPLOY_DRYRUN_VERSION_MISMATCH 2>/dev/null || true
+
+count_releases() {
+  # shellcheck disable=SC2012  # release dir names are timestamp-sha, plain alphanumeric
+  ls -1 "$1" 2>/dev/null | wc -l | tr -d ' '
+}
+
+ROOT33="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT33"
+export DEPLOY_MUTEX_MAX_WAIT_SECONDS=2
+export DEPLOY_MUTEX_POLL_SECONDS=1
+
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33-seed.log 2>&1; then
+  :
+else
+  fail "case 33: seed deploy failed"
+  cat /tmp/deploy-test-33-seed.log
+fi
+CUR33="$(current_target "$ROOT33/current")"
+BEFORE33="$(count_releases "$ROOT33/releases")"
+
+# --- Case 33a: failure AFTER the release dir is created (the build gate) ---
+sleep 1.1 # distinct second-resolution release stamp
+DEPLOY_FAIL_BUILD=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33a.log 2>&1
+RC33A=$?
+AFTER33A="$(count_releases "$ROOT33/releases")"
+if [ "$RC33A" -ne 0 ]; then
+  pass "case 33a: a build failure after the release dir exists still exits non-zero (rc=$RC33A)"
+else
+  fail "case 33a: a build failure exited 0"
+fi
+if [ "$AFTER33A" = "$BEFORE33" ]; then
+  pass "case 33a: the failed deploy left NO orphaned release dir (count still $AFTER33A)"
+else
+  fail "case 33a: release dir count grew after a failed deploy (before=$BEFORE33 after=$AFTER33A)"
+  ls -1 "$ROOT33/releases"
+fi
+if grep -q "^==> cleanup: removed the release dir this failed deploy created:" /tmp/deploy-test-33a.log; then
+  pass "case 33a: the removal is logged with its path"
+else
+  fail "case 33a: no 'cleanup: removed the release dir' line in the deploy log"
+fi
+if grep -q "freed .* MB / .* KB" /tmp/deploy-test-33a.log; then
+  pass "case 33a: the cleanup line names how much disk it freed"
+else
+  fail "case 33a: the cleanup line does not report freed space"
+fi
+# T-321 must survive: the deploy still NAMES its failure before exiting.
+if grep -q "^FATAL: " /tmp/deploy-test-33a.log; then
+  pass "case 33a: T-321 intact - the failure is still named on stderr before the exit"
+else
+  fail "case 33a: T-321 regression - no FATAL line printed by the failed deploy"
+fi
+if [ "$(current_target "$ROOT33/current")" = "$CUR33" ] && [ -d "$CUR33" ]; then
+  pass "case 33a: 'current' still resolves to the same live release dir"
+else
+  fail "case 33a: 'current' moved or its target vanished (was=$CUR33)"
+fi
+
+# --- Case 33b: failure BEFORE the release dir is created (T-406 preflight) -
+# The preflight runs 200+ lines ahead of the mkdir, so this abort allocates
+# nothing - and the cleanup must stay completely silent, not log a no-op.
+BEFORE33B="$(count_releases "$ROOT33/releases")"
+sleep 1.1
+DEPLOY_FAIL_PREFLIGHT=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33b.log 2>&1
+RC33B=$?
+AFTER33B="$(count_releases "$ROOT33/releases")"
+if [ "$RC33B" -ne 0 ] && [ "$AFTER33B" = "$BEFORE33B" ]; then
+  pass "case 33b: a pre-mkdir failure removes nothing (count still $AFTER33B)"
+else
+  fail "case 33b: pre-mkdir failure changed the release count (rc=$RC33B before=$BEFORE33B after=$AFTER33B)"
+fi
+if grep -q "^==> cleanup: " /tmp/deploy-test-33b.log; then
+  fail "case 33b: spurious cleanup log line on a failure that created nothing"
+  grep "cleanup: " /tmp/deploy-test-33b.log
+else
+  pass "case 33b: no spurious cleanup line when no release dir was created"
+fi
+
+# --- Case 33c: failure AFTER the 'current' flip - the SERVED directory -----
+# --- must survive. A fresh root with no previous release takes the --------
+# --- "No previous release to roll back to - fix forward" branch, which -----
+# --- exits 1 with 'current' still pointing at the new release. -------------
+ROOT33C="$(fresh_root)"
+DEPLOY_ROOT="$ROOT33C" DEPLOY_DRYRUN_VERSION_MISMATCH=1 \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33c.log 2>&1
+RC33C=$?
+SERVED33C="$(current_target "$ROOT33C/current")"
+CANON_SERVED33C="$(readlink -f "$SERVED33C" 2>/dev/null || printf '%s' "$SERVED33C")"
+if [ "$RC33C" -ne 0 ]; then
+  pass "case 33c: a post-flip verification failure exits non-zero (rc=$RC33C)"
+else
+  fail "case 33c: post-flip failure exited 0"
+fi
+if [ -n "$SERVED33C" ] && [ -d "$CANON_SERVED33C" ]; then
+  pass "case 33c: the directory 'current' resolves to still exists after the failed deploy ($CANON_SERVED33C)"
+else
+  fail "case 33c: the SERVED release dir was deleted by the failed-deploy cleanup (current=$SERVED33C)"
+  ls -1 "$ROOT33C/releases" 2>/dev/null
+fi
+if grep -q "^==> cleanup: keeping .* still resolves to it" /tmp/deploy-test-33c.log; then
+  pass "case 33c: the cleanup logged that it kept the served release"
+else
+  fail "case 33c: expected a 'cleanup: keeping ... still resolves to it' line"
+fi
+
+# --- Case 33d: a PRE-EXISTING release dir this invocation did NOT create ---
+# --- is never removed. Driven at function level (the release name is a ----
+# --- runtime timestamp, so pre-creating it end-to-end would be a race) - ---
+# --- same isolation technique as cases 9b/9c/9d. ---------------------------
+CLEANUP_FN="$(sed -n '/^cleanup_failed_release_dir()/,/^}/p' "$DEPLOY_SCRIPT")"
+RESOLVE_LINK_FN="$(sed -n '/^resolve_link_target()/,/^}/p' "$DEPLOY_SCRIPT")"
+# Round-2 MAJOR: the cleanup now also consults collect_live_release_dirs(), so
+# the function-level harness must carry it. Extracting it here ALSO proves it is
+# defined ABOVE cleanup_failed_release_dir() in the script - if it slides back
+# below the EXIT trap's reach, the trap would call an undefined function.
+COLLECT_LIVE_FN="$(sed -n '/^collect_live_release_dirs()/,/^}/p' "$DEPLOY_SCRIPT")"
+COLLECT_LINE="$(grep -n '^collect_live_release_dirs()' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+CLEANUP_LINE="$(grep -n '^cleanup_failed_release_dir()' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+TRAP_LINE="$(grep -n '^trap on_deploy_exit EXIT' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+if [ -n "$COLLECT_LINE" ] && [ -n "$CLEANUP_LINE" ] && [ "$COLLECT_LINE" -lt "$CLEANUP_LINE" ]; then
+  pass "case 33d: collect_live_release_dirs() is defined ABOVE cleanup_failed_release_dir() (line $COLLECT_LINE < $CLEANUP_LINE)"
+else
+  fail "case 33d: collect_live_release_dirs() must be defined before cleanup_failed_release_dir() (collect=$COLLECT_LINE cleanup=$CLEANUP_LINE)"
+fi
+if [ -n "$TRAP_LINE" ] && [ -n "$COLLECT_LINE" ] && [ "$COLLECT_LINE" -gt "$TRAP_LINE" ]; then
+  pass "case 33d: collect_live_release_dirs() is defined after the EXIT trap is armed, so an abort between the two is covered by the RELEASE_DIR_CREATED=0 guard"
+fi
+if [ -z "$CLEANUP_FN" ] || [ -z "$RESOLVE_LINK_FN" ] || [ -z "$COLLECT_LIVE_FN" ]; then
+  fail "case 33d: could not extract cleanup_failed_release_dir()/resolve_link_target()/collect_live_release_dirs() from $DEPLOY_SCRIPT - renamed?"
+else
+  CL_ROOT="$(mktemp -d)"
+  mkdir -p "$CL_ROOT/releases/20260910-101112-abc1234"
+  : > "$CL_ROOT/releases/20260910-101112-abc1234/marker"
+  (
+    eval "$RESOLVE_LINK_FN"
+    eval "$COLLECT_LIVE_FN"
+    eval "$CLEANUP_FN"
+    DRY_RUN=1
+    DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    ROOT="$CL_ROOT"
+    RELEASES_DIR="$CL_ROOT/releases"
+    RELEASE_DIR="$CL_ROOT/releases/20260910-101112-abc1234"
+    RELEASE_DIR_CREATED=0
+    RELEASE_DIR_CLEANUP_DONE=0
+    cleanup_failed_release_dir
+  ) >/tmp/deploy-test-33d.log 2>&1
+  if [ -d "$CL_ROOT/releases/20260910-101112-abc1234" ]; then
+    pass "case 33d: a pre-existing release dir (RELEASE_DIR_CREATED=0) is NOT removed"
+  else
+    fail "case 33d: the cleanup deleted a release dir this invocation did not create"
+  fi
+  if grep -q "cleanup: " /tmp/deploy-test-33d.log; then
+    fail "case 33d: spurious cleanup log line for a dir this invocation did not create"
+  else
+    pass "case 33d: no log line for a dir this invocation did not create"
+  fi
+
+  # Same function, RELEASE_DIR_CREATED=1 -> it IS removed (proves the harness
+  # can observe a removal at all, so the PASS above is not vacuous), and a
+  # second call is a no-op (double-cleanup guard).
+  (
+    eval "$RESOLVE_LINK_FN"
+    eval "$COLLECT_LIVE_FN"
+    eval "$CLEANUP_FN"
+    DRY_RUN=1
+    DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    ROOT="$CL_ROOT"
+    RELEASES_DIR="$CL_ROOT/releases"
+    RELEASE_DIR="$CL_ROOT/releases/20260910-101112-abc1234"
+    RELEASE_DIR_CREATED=1
+    RELEASE_DIR_CLEANUP_DONE=0
+    cleanup_failed_release_dir
+    # The cleanup runs AT MOST ONCE per invocation. Re-create the directory
+    # between the two calls so the `[ -d ]` existence check cannot stand in
+    # for the RELEASE_DIR_CLEANUP_DONE flag: only the flag can stop the
+    # second call from removing a directory that exists again.
+    mkdir -p "$RELEASE_DIR"
+    : > "$RELEASE_DIR/recreated"
+    cleanup_failed_release_dir
+  ) >/tmp/deploy-test-33d2.log 2>&1
+  if [ -f "$CL_ROOT/releases/20260910-101112-abc1234/recreated" ]; then
+    pass "case 33d: RELEASE_DIR_CREATED=1 removed the dir, and the second call left the re-created dir alone (double-cleanup guard)"
+  else
+    fail "case 33d: the second cleanup call removed a re-created dir - RELEASE_DIR_CLEANUP_DONE is not holding"
+  fi
+  REMOVED_LINES33D="$(grep -c "cleanup: removed the release dir" /tmp/deploy-test-33d2.log || true)"
+  if [ "$REMOVED_LINES33D" = "1" ]; then
+    pass "case 33d: two calls remove and log exactly once (non-vacuous: the first call did remove it)"
+  else
+    fail "case 33d: expected exactly 1 removal line from two calls, got $REMOVED_LINES33D"
+  fi
+
+  # Path guards: nothing outside $RELEASES_DIR, nothing containing '..',
+  # nothing whose basename is not a <stamp>-<sha> release name.
+  GUARD_FAILED33=0
+  : > /tmp/deploy-test-33d3.log
+  OUTSIDE33="$(mktemp -d)"
+  : > "$OUTSIDE33/keepme"
+  # Round-2 MINOR-1: the first three paths ALL fail the <stamp>-<sha> basename
+  # regex, so the regex alone caught every one of them and the containment check
+  # and the '..' branch were never exercised - mutating either away left the
+  # suite green. The last two carry a PERFECTLY VALID release basename, so the
+  # regex passes and only the containment / '..' branch can refuse them.
+  for BAD in "$OUTSIDE33" "$CL_ROOT/releases/../releases" "$CL_ROOT/releases/not-a-release" \
+             "$OUTSIDE33/20260910-101112-abc1234" "$CL_ROOT/releases/../20260910-101112-abc1234"; do
+    mkdir -p "$BAD" 2>/dev/null || true
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
+      eval "$CLEANUP_FN"
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS=""
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      ROOT="$CL_ROOT"
+      RELEASES_DIR="$CL_ROOT/releases"
+      RELEASE_DIR="$BAD"
+      RELEASE_DIR_CREATED=1
+      RELEASE_DIR_CLEANUP_DONE=0
+      cleanup_failed_release_dir
+    ) >>/tmp/deploy-test-33d3.log 2>&1
+    if [ ! -d "$BAD" ]; then
+      GUARD_FAILED33=1
+      echo "  (cleanup removed a path it must refuse: $BAD)"
+    fi
+  done
+  if [ "$GUARD_FAILED33" -eq 0 ]; then
+    pass "case 33d: the cleanup refuses a path outside RELEASES_DIR (bad name AND valid name), a '..' path (bad name AND valid name), and a non-release name"
+  else
+    fail "case 33d: the cleanup removed at least one path it must refuse - see /tmp/deploy-test-33d3.log"
+  fi
+  rm -rf "$CL_ROOT" "$OUTSIDE33"
+fi
+
+# --- Case 33f: round-2 MAJOR - a directory pm2 is STILL RUNNING OUT OF is --
+# --- never removed, even when `current` says otherwise. The rollback branch -
+# --- flips `current` back to the previous release (deploy-linux.sh) and only -
+# --- THEN moves pm2 off the new directory; anything that dies in between - a -
+# --- DEPLOYED_SHA write failing on the full root filesystem this whole slice -
+# --- exists for - leaves `current` on the PREVIOUS release while pm2 web is --
+# --- still serving out of THIS one. Checking `current` alone deletes a live --
+# --- release dir and 502s the site. Driven at function level for the same ---
+# --- reason as 33d (the release name is a runtime timestamp).---------------
+# DEPLOY_DRYRUN_PM2_RELEASE_DIRS is collect_live_release_dirs()'s dry-run knob
+# and carries RELEASE DIRS (the real path applies `dirname` to each pm2 cwd, so
+# a live cwd of <rel>/web arrives here as <rel>) - same contract case 4 uses.
+if [ -n "$CLEANUP_FN" ] && [ -n "$COLLECT_LIVE_FN" ]; then
+  run_cleanup_33f() {
+    # $1 = value for DEPLOY_DRYRUN_PM2_RELEASE_DIRS, $2 = log file
+    local pm2dirs="$1" logf="$2"
+    F_ROOT="$(mktemp -d)"
+    mkdir -p "$F_ROOT/releases/20260910-090000-prev111" "$F_ROOT/releases/20260910-101112-abc1234"
+    : > "$F_ROOT/releases/20260910-101112-abc1234/marker"
+    # `current` points at the PREVIOUS release - the rollback already flipped.
+    printf '%s\n' "$F_ROOT/releases/20260910-090000-prev111" > "$F_ROOT/current"
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$COLLECT_LIVE_FN"
+      eval "$CLEANUP_FN"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      DRY_RUN=1
+      DEPLOY_DRYRUN_PM2_RELEASE_DIRS="${pm2dirs//@ROOT@/$F_ROOT}"
+      ROOT="$F_ROOT"
+      RELEASES_DIR="$F_ROOT/releases"
+      RELEASE_DIR="$F_ROOT/releases/20260910-101112-abc1234"
+      RELEASE_DIR_CREATED=1
+      RELEASE_DIR_CLEANUP_DONE=0
+      DEPLOY_ROLLED_BACK=0
+      cleanup_failed_release_dir
+    ) >"$logf" 2>&1
+  }
+
+  run_cleanup_33f "@ROOT@/releases/20260910-101112-abc1234" /tmp/deploy-test-33f.log
+  if [ -f "$F_ROOT/releases/20260910-101112-abc1234/marker" ]; then
+    pass "case 33f: a release dir a live pm2 process is running out of SURVIVES the failed-deploy cleanup, even though 'current' points elsewhere"
+  else
+    fail "case 33f: the cleanup deleted a release dir a live pm2 process was still serving from (the 502 class)"
+    cat /tmp/deploy-test-33f.log
+  fi
+  if grep -q "^==> cleanup: keeping 20260910-101112-abc1234 - a live pm2 process is still running out of it" /tmp/deploy-test-33f.log; then
+    pass "case 33f: the skip names its reason (a live pm2 process), not just 'kept'"
+  else
+    fail "case 33f: expected a 'cleanup: keeping ... a live pm2 process is still running out of it' line"
+    cat /tmp/deploy-test-33f.log
+  fi
+  rm -rf "$F_ROOT"
+
+  # Non-vacuous companion: identical inputs with NO live pm2 process -> removed.
+  # Without this, case 33f above would still pass if the cleanup never removed
+  # anything at all.
+  run_cleanup_33f "" /tmp/deploy-test-33f2.log
+  if [ ! -d "$F_ROOT/releases/20260910-101112-abc1234" ]; then
+    pass "case 33f: with no live pm2 process the SAME dir is removed (the pm2 guard is what saved it, not inertia)"
+  else
+    fail "case 33f: the cleanup kept a dir that nothing was serving - 33f's PASS is vacuous"
+    cat /tmp/deploy-test-33f2.log
+  fi
+  if [ -d "$F_ROOT/releases/20260910-090000-prev111" ]; then
+    pass "case 33f: the PREVIOUS release 'current' points at is untouched either way"
+  else
+    fail "case 33f: the cleanup removed the previous release"
+  fi
+  rm -rf "$F_ROOT"
+fi
+
+# --- Case 33g: round-2 MINOR-4 - on AUTO-ROLLBACK the release dir is KEPT ---
+# --- (the deploy just told the operator to investigate), and the keep is ----
+# --- LOUD: the path and its size are logged so an operator knows there is ---
+# --- both something to look at and something to remove. End-to-end, because -
+# --- the flag is set on the real rollback branch. --------------------------
+ROOT33G="$(fresh_root)"
+DEPLOY_ROOT="$ROOT33G" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33g-1.log 2>&1 \
+  || { fail "case 33g: seed deploy failed"; cat /tmp/deploy-test-33g-1.log; }
+GOOD33G="$(current_target "$ROOT33G/current")"
+BEFORE33G="$(count_releases "$ROOT33G/releases")"
+sleep 1.1
+DEPLOY_ROOT="$ROOT33G" DEPLOY_DRYRUN_VERSION_MISMATCH=1 \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33g-2.log 2>&1
+RC33G=$?
+AFTER33G="$(count_releases "$ROOT33G/releases")"
+if [ "$RC33G" -ne 0 ] && grep -q "AUTO-ROLLBACK" /tmp/deploy-test-33g-2.log; then
+  pass "case 33g: the run rolled back and exited non-zero (rc=$RC33G)"
+else
+  fail "case 33g: expected a non-zero AUTO-ROLLBACK run (rc=$RC33G)"
+  cat /tmp/deploy-test-33g-2.log
+fi
+if [ "$AFTER33G" = "$((BEFORE33G + 1))" ]; then
+  pass "case 33g: the rolled-back release dir is KEPT for investigation (count $BEFORE33G -> $AFTER33G)"
+else
+  fail "case 33g: expected the rolled-back release dir to survive (before=$BEFORE33G after=$AFTER33G)"
+  ls -1 "$ROOT33G/releases"
+fi
+if grep -q "^==> cleanup: KEEPING .* MB) for investigation - this deploy rolled back; remove it when you are done$" /tmp/deploy-test-33g-2.log; then
+  pass "case 33g: the keep is logged loudly with the path and its size"
+else
+  fail "case 33g: expected the 'cleanup: KEEPING <path> (<N> MB) for investigation' line"
+  grep "cleanup: " /tmp/deploy-test-33g-2.log
+fi
+if [ "$(current_target "$ROOT33G/current")" = "$GOOD33G" ]; then
+  pass "case 33g: 'current' is back on the last good release"
+else
+  fail "case 33g: 'current' did not roll back (expected=$GOOD33G)"
+fi
+unset DEPLOY_ROOT
+
+# --- Case 33e: the SUCCESS path is unchanged - no cleanup, no new output ---
+ROOT33E="$(fresh_root)"
+if DEPLOY_ROOT="$ROOT33E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33e.log 2>&1; then
+  if grep -q "^==> cleanup: " /tmp/deploy-test-33e.log; then
+    fail "case 33e: a SUCCESSFUL deploy emitted a cleanup line"
+    grep "cleanup: " /tmp/deploy-test-33e.log
+  else
+    pass "case 33e: a successful deploy runs no cleanup and logs no cleanup line"
+  fi
+  T33E="$(current_target "$ROOT33E/current")"
+  if [ -n "$T33E" ] && [ -d "$T33E" ]; then
+    pass "case 33e: a successful deploy still leaves 'current' pointing at its release dir"
+  else
+    fail "case 33e: successful deploy left 'current' broken ($T33E)"
+  fi
+else
+  fail "case 33e: the clean success-path deploy exited non-zero"
+  cat /tmp/deploy-test-33e.log
+fi
+unset DEPLOY_ROOT DEPLOY_MUTEX_MAX_WAIT_SECONDS DEPLOY_MUTEX_POLL_SECONDS 2>/dev/null || true
 
 # --- Case 6: the scraper mutex refuses to build while a cycle is in flight --
 ROOT6="$(fresh_root)"
@@ -457,12 +1055,15 @@ fi
 # --- (not the script source) to a file, run the REAL (DRY_RUN=0) start path
 # --- against fixture release dirs, and assert TZ=UTC actually reached the
 # --- pm2 process — proving runtime behavior, not just the source text.
+# item 01 slice s5a: also records DEPLOY_SLOT the same way, so cases 9b/9c/9d
+# prove DEPLOY_SLOT reaches the pm2 process at runtime, not just that the
+# source line mentions it.
 fake_pm2_recorder() {
   local dir="$1"
   cat > "$dir/pm2" <<'EOSCRIPT'
 #!/usr/bin/env bash
 if [ "$1" = "start" ]; then
-  { printf 'ARGV: %s\n' "$*"; printf 'TZ=%s\n' "${TZ:-<unset>}"; } >> "$PM2_CALL_LOG"
+  { printf 'ARGV: %s\n' "$*"; printf 'TZ=%s\n' "${TZ:-<unset>}"; printf 'DEPLOY_SLOT=%s\n' "${DEPLOY_SLOT:-<unset>}"; } >> "$PM2_CALL_LOG"
 fi
 exit 0
 EOSCRIPT
@@ -499,18 +1100,20 @@ else
     PM2_SCRAPER_APP="ipodhan-scraper"
     DEPLOY_WEB_INSTANCES=2
     PYTHON_BIN_PATH="/tmp/fake-venv-9b/bin/python"
+    SLOT="staging" # item 01 slice s5a: restart_pm2() reads $SLOT for DEPLOY_SLOT="$SLOT"
     PATH="$FAKEBIN9B:$PATH"
     export PM2_CALL_LOG="$CALLLOG9B"
     restart_pm2
   ) >/tmp/deploy-test-9b.log 2>&1
 
   TZ_COUNT9B="$(grep -c '^TZ=UTC$' "$CALLLOG9B" 2>/dev/null || echo 0)"
-  if [ "$TZ_COUNT9B" = "2" ] \
+  SLOT_COUNT9B="$(grep -c '^DEPLOY_SLOT=staging$' "$CALLLOG9B" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9B" = "2" ] && [ "$SLOT_COUNT9B" = "2" ] \
     && grep -q -- "--name ipodhan-web" "$CALLLOG9B" \
     && grep -q -- "--name ipodhan-scraper" "$CALLLOG9B"; then
-    pass "case 9b: restart_pm2() REAL (non-dry-run) path sets TZ=UTC on both the web and scraper pm2 start (deploy-linux.sh:530,537)"
+    pass "case 9b: restart_pm2() REAL (non-dry-run) path sets TZ=UTC and DEPLOY_SLOT on both the web and scraper pm2 start (deploy-linux.sh:530,537)"
   else
-    fail "case 9b: restart_pm2() REAL path did not set TZ=UTC on both real pm2 start invocations (tz_count=$TZ_COUNT9B)"
+    fail "case 9b: restart_pm2() REAL path did not set TZ=UTC/DEPLOY_SLOT on both real pm2 start invocations (tz_count=$TZ_COUNT9B, slot_count=$SLOT_COUNT9B)"
     cat "$CALLLOG9B" 2>/dev/null
     cat /tmp/deploy-test-9b.log
   fi
@@ -542,16 +1145,18 @@ else
     SCRAPER_RESUME_TARGET="new"
     PM2_SCRAPER_APP="ipodhan-scraper"
     PYTHON_BIN_PATH="/tmp/fake-venv-9c/bin/python"
+    SLOT="staging" # item 01 slice s5a: resume_scraper() reads $SLOT for DEPLOY_SLOT="$SLOT"
     PATH="$FAKEBIN9C:$PATH"
     export PM2_CALL_LOG="$CALLLOG9C"
     resume_scraper
   ) >/tmp/deploy-test-9c.log 2>&1
 
   TZ_COUNT9C="$(grep -c '^TZ=UTC$' "$CALLLOG9C" 2>/dev/null || echo 0)"
-  if [ "$TZ_COUNT9C" = "1" ] && grep -q -- "--name ipodhan-scraper" "$CALLLOG9C"; then
-    pass "case 9c: resume_scraper() REAL (non-dry-run) path sets TZ=UTC on the scraper pm2 start (deploy-linux.sh:308)"
+  SLOT_COUNT9C="$(grep -c '^DEPLOY_SLOT=staging$' "$CALLLOG9C" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9C" = "1" ] && [ "$SLOT_COUNT9C" = "1" ] && grep -q -- "--name ipodhan-scraper" "$CALLLOG9C"; then
+    pass "case 9c: resume_scraper() REAL (non-dry-run) path sets TZ=UTC and DEPLOY_SLOT on the scraper pm2 start (deploy-linux.sh:308)"
   else
-    fail "case 9c: resume_scraper() REAL path did not set TZ=UTC on the scraper pm2 start (tz_count=$TZ_COUNT9C)"
+    fail "case 9c: resume_scraper() REAL path did not set TZ=UTC/DEPLOY_SLOT on the scraper pm2 start (tz_count=$TZ_COUNT9C, slot_count=$SLOT_COUNT9C)"
     cat "$CALLLOG9C" 2>/dev/null
     cat /tmp/deploy-test-9c.log
   fi
@@ -583,16 +1188,18 @@ else
     PREVIOUS_RELEASE="$REL9D"
     PM2_WEB_APP="ipodhan-web"
     DEPLOY_WEB_INSTANCES=2
+    SLOT="staging" # item 01 slice s5a: rollback_start_web() reads $SLOT for DEPLOY_SLOT="$SLOT"
     PATH="$FAKEBIN9D:$PATH"
     export PM2_CALL_LOG="$CALLLOG9D"
     rollback_start_web
   ) >/tmp/deploy-test-9d.log 2>&1
 
   TZ_COUNT9D="$(grep -c '^TZ=UTC$' "$CALLLOG9D" 2>/dev/null || echo 0)"
-  if [ "$TZ_COUNT9D" = "1" ] && grep -q -- "--name ipodhan-web" "$CALLLOG9D"; then
-    pass "case 9d: rollback_start_web() REAL (non-dry-run) path sets TZ=UTC on the rollback web pm2 start"
+  SLOT_COUNT9D="$(grep -c '^DEPLOY_SLOT=staging$' "$CALLLOG9D" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9D" = "1" ] && [ "$SLOT_COUNT9D" = "1" ] && grep -q -- "--name ipodhan-web" "$CALLLOG9D"; then
+    pass "case 9d: rollback_start_web() REAL (non-dry-run) path sets TZ=UTC and DEPLOY_SLOT on the rollback web pm2 start"
   else
-    fail "case 9d: rollback_start_web() REAL path did not set TZ=UTC on the rollback web pm2 start (tz_count=$TZ_COUNT9D)"
+    fail "case 9d: rollback_start_web() REAL path did not set TZ=UTC/DEPLOY_SLOT on the rollback web pm2 start (tz_count=$TZ_COUNT9D, slot_count=$SLOT_COUNT9D)"
     cat "$CALLLOG9D" 2>/dev/null
     cat /tmp/deploy-test-9d.log
   fi
@@ -2193,6 +2800,7 @@ FAKERC30
 
   rm -rf "$FAKEBIN30" "$ENVDIR30"
 fi
+
 
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"

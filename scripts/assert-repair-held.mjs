@@ -45,6 +45,10 @@
 //       marker never advanced within the timeout (scraper never touched
 //       live data in the window, so N cycles were never observed — this
 //       proves nothing either way, it is not a silent pass).
+// Item 1 slice s14 -- FIRST import on purpose. ESM evaluates imported modules in
+// source order, so this runs (and prints which checkout @ipodhan/shared resolves
+// to) before any module below can read the wrong tree.
+import './lib/alias-preflight-auto.mjs';
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve, isAbsolute } from 'node:path';
