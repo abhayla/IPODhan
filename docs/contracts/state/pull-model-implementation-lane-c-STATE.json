@@ -242,10 +242,11 @@
         {
           "id": "2-fix-493",
           "tier": "B",
-          "status": "IN_CI",
+          "status": "CLOSED_SUPERSEDED",
           "pr": 494,
           "issue": 493,
-          "title": "field-manifest-loader importable under real ESM + shrink-only class guard"
+          "title": "field-manifest-loader importable under real ESM + shrink-only class guard",
+          "supersededBy": "lane B #496"
         }
       ],
       "prs": [
@@ -425,7 +426,10 @@
     "2026-09-10 17:23 IST #493 FIX IS PR #494. My own merged file made importable under real ESM, plus a static guard for the CLASS and a shrink-only baseline. Lane C 6 of 15 PR-gate runs.",
     "2026-09-10 17:23 IST THE DYNAMIC TEST WAS TRIED AND REJECTED ON EVIDENCE, which is the useful part: tsx POLYFILLS __dirname itself, so a tsx-based import test would have HIDDEN the very bug it was written to catch; bare node --experimental-strip-types got further and correctly flagged the missing .js extensions, but cannot resolve ./validated-config-loader.js because scraper has no dist/ and no build step, and Node ESM will not swap .js for .ts. Adding a build step to make one test work is out of scope for a Tier B fix. So the guard is static - and strictly better in one way, since it catches the whole class rather than one file.",
     "2026-09-10 17:23 IST THE BASELINE IS SHRINK-ONLY IN BOTH DIRECTIONS and that is deliberate: a NEW offender fails the gate, and a STALE entry - a listed file that no longer offends - ALSO fails, forcing its removal. So when lane B fixes download-allowlist-loader.ts the test goes red until the entry is deleted. That is the difference between a ratchet and a suppression list, and it is the same mechanism that caught my stale coverage entries on #490 two hours ago.",
-    "2026-09-10 17:23 IST MY REBASE HARD STOP WORKED THIS TIME BECAUSE I READ IT: ran it as its OWN command, saw the branch was 1 behind (my own 2fd8a43b), rebased, re-checked to 0, and only then opened the PR. Two hours ago I batched that same check with gh pr merge and never read it - the branch was behind and the gate did nothing. Same check, opposite outcome, decided entirely by whether its output was consumed before acting."
+    "2026-09-10 17:23 IST MY REBASE HARD STOP WORKED THIS TIME BECAUSE I READ IT: ran it as its OWN command, saw the branch was 1 behind (my own 2fd8a43b), rebased, re-checked to 0, and only then opened the PR. Two hours ago I batched that same check with gh pr merge and never read it - the branch was behind and the gate did nothing. Same check, opposite outcome, decided entirely by whether its output was consumed before acting.",
+    "2026-09-10 17:27 IST CLOSED MY OWN PR #494 in favour of lane B #496, which supersedes it entirely - verified their fix to MY file before deciding rather than taking the relay. Theirs is slightly BETTER than mine: it uses a distinct MODULE_DIR constant instead of shadowing __dirname to imitate CJS, adds the .js extensions, and keeps the path expression byte-identical. It also fixes BOTH offenders (mine could only fix my own file) and wires its guard into pr-gate as a CI gate rather than a vitest unit test.",
+    "2026-09-10 17:27 IST THE DECIDING ARGUMENT WAS MY OWN, APPLIED TO MYSELF. Keeping #494 open would have landed a SECOND static scan for the same class, plus a baseline listing nothing, plus a merge conflict on field-manifest-loader.ts. That is exactly the \"one implementation; a second copy is a defect\" principle (OD-51) I argued for the config loader this morning - and it does not stop applying because the duplicate is mine and already green. My baseline existed ONLY because I could not fix another lane file; with #496 fixing both, zero offenders remain and a zero-tolerance check beats a check plus an exclusion list.",
+    "2026-09-10 17:27 IST DEPLOY DIAGNOSIS RECORDED (lane A owns it): the staging failures are the drift assert reporting four real missing objects on the staging DB - lane A #455 constraints and the slug index. So it is a genuine schema drift, not a broken assert. My correlation earlier (first failure is #464 own merge) was right about the trigger and silent about the cause; the cause is that #464 TAUGHT the assert to see index and constraint drift, and staging genuinely has some. The check is correct and the data is wrong - the opposite of what a red gate usually means. Proofs stay OWED until staging serves a post-#464 sha."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
