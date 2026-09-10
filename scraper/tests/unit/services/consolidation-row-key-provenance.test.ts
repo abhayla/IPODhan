@@ -508,4 +508,180 @@ describe('slice s4 — row key threaded through consolidation provenance', () =>
       expect.objectContaining({ resolutionReason: 'DATE_INVARIANT_OVERRIDE_HELD_VALUE' })
     );
   });
+  /**
+   * s4 round 2 (MINOR-3) — the `''`-versus-keyed and prefix directions.
+   *
+   * Every guard test above compares ROW-A against ROW-B: two non-empty, mutually
+   * non-prefixing keys. That leaves two weakenings of the four row-key
+   * comparisons green, both of which a reviewer's mutation run confirmed:
+   *
+   *   1. `(row.rowKey ?? '').startsWith(rowKey)` (or the reverse) — passes,
+   *      because 'ROW-A' and 'ROW-B' do not prefix one another.
+   *   2. `!a || !b || a === b` ("compare only when both are non-empty") — passes,
+   *      because neither side is ever `''` in those tests.
+   *
+   * Weakening 2 is not academic: it IS the migration state. Every `data_conflicts`
+   * row written before this slice carries `''`, so the FIRST keyed consolidation
+   * after the writer slices land reads exactly `'' vs 'peer:abcdef'`. Under that
+   * weakening a legacy IPO-wide dispute would release a child row's held value on
+   * evidence that was never about it.
+   *
+   * The consequence asserted is the one that matters: the held value stays HELD
+   * and the dispute stays OPEN. Asserting only that a `.find()` missed would pass
+   * for the wrong reason.
+   */
+  function heldConflictRow(id: string, rowKey: string) {
+    return {
+      id,
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey,
+      fieldName: 'openDate',
+      source1: 'CHITTORGARH',
+      value1: '2026-12-09',
+      source2: 'NSE',
+      value2: '2026-09-08',
+      resolvedSource: 'CHITTORGARH',
+      resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+      severity: 'CRITICAL',
+      adminNote: null,
+      resolvedAt: null,
+      resolvedBy: null,
+      detectedAt: new Date(),
+      createdAt: new Date(),
+    };
+  }
+
+  const HELD_EXISTING = {
+    status: 'UPCOMING',
+    openDate: '2026-12-09',
+    closeDate: '2026-12-12',
+    listingDate: '2026-09-16',
+    segment: 'MAINBOARD',
+  };
+
+  /**
+   * Drives the real public entry point with `consolidationRowKey` while the only
+   * open conflict row carries `storedConflictRowKey`. The field_sources row always
+   * carries the consolidation's OWN key, so the HOLD path is genuinely reached and
+   * the row-key comparison on the conflict lookup is the only variable.
+   */
+  async function consolidateAgainstStoredConflict(opts: {
+    storedConflictRowKey: string;
+    consolidationRowKey: string;
+  }) {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow({
+        tableName: 'ipos',
+        rowKey: opts.consolidationRowKey,
+        fieldName: 'openDate',
+        source: 'CHITTORGARH',
+        value: '2026-12-09',
+      }),
+    ] as any);
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([
+      heldConflictRow('conflict-stored', opts.storedConflictRowKey),
+    ] as any);
+
+    const result = await service.consolidateIPOData({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey: opts.consolidationRowKey,
+      // BSE agreeing with the stored NSE value is what would trigger the
+      // consensus escape, IF the stored row were this row's dispute.
+      incomingData: { openDate: '2026-09-08' },
+      source: 'BSE',
+      existingData: HELD_EXISTING,
+      scrapedAt: new Date('2026-09-05T00:05:00Z'),
+    });
+
+    return result.fieldResults.find((f) => f.fieldName === 'openDate')!;
+  }
+
+  function expectStillHeld(field: { finalValue: any; conflictReason?: string }) {
+    // The consequence: the held CHITTORGARH value survives...
+    expect(field.finalValue).toBe('2026-12-09');
+    // ...the escape did not fire...
+    expect(field.conflictReason).not.toBe('EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE');
+    // ...and the stored dispute is still open for a human to adjudicate.
+    expect(mockConflictsRepo.resolveConflict).not.toHaveBeenCalled();
+  }
+
+  it('a legacy empty-key conflict row is NOT matched by a consolidation carrying a real row key', async () => {
+    const field = await consolidateAgainstStoredConflict({
+      storedConflictRowKey: '',
+      consolidationRowKey: 'peer:abcdef',
+    });
+    expectStillHeld(field);
+  });
+
+  it('a keyed conflict row is NOT matched by an IPO-wide consolidation carrying the empty key', async () => {
+    const field = await consolidateAgainstStoredConflict({
+      storedConflictRowKey: 'peer:abcdef',
+      consolidationRowKey: '',
+    });
+    expectStillHeld(field);
+  });
+
+  it('a conflict row whose key is a PREFIX of this row key is not matched', async () => {
+    const field = await consolidateAgainstStoredConflict({
+      storedConflictRowKey: 'peer:abc',
+      consolidationRowKey: 'peer:abcdef',
+    });
+    expectStillHeld(field);
+  });
+
+  it('a conflict row whose key this row key is a prefix OF is not matched', async () => {
+    const field = await consolidateAgainstStoredConflict({
+      storedConflictRowKey: 'peer:abcdef',
+      consolidationRowKey: 'peer:abc',
+    });
+    expectStillHeld(field);
+  });
+
+  it('control: an exactly-equal key still releases the held value, so the four guards above are not vacuous', async () => {
+    const field = await consolidateAgainstStoredConflict({
+      storedConflictRowKey: 'peer:abcdef',
+      consolidationRowKey: 'peer:abcdef',
+    });
+    expect(field.finalValue).toBe('2026-09-08');
+    expect(field.conflictReason).toBe('EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE');
+    expect(mockConflictsRepo.resolveConflict).toHaveBeenCalledWith(
+      'conflict-stored',
+      expect.objectContaining({ resolutionReason: 'EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE' })
+    );
+  });
+
+  it('the HOLD audit-trail row a child-row consolidation writes carries that row key', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow({
+        tableName: 'ipos',
+        rowKey: 'peer:abcdef',
+        fieldName: 'openDate',
+        source: 'CHITTORGARH',
+        value: '2026-12-09',
+      }),
+    ] as any);
+    vi.mocked(mockConflictsRepo.findUnresolvedForIPO).mockResolvedValue([] as any);
+
+    await service.consolidateIPOData({
+      ipoId: IPO_ID,
+      tableName: 'ipos',
+      rowKey: 'peer:abcdef',
+      incomingData: { openDate: '2026-09-08' },
+      source: 'BSE',
+      existingData: HELD_EXISTING,
+      scrapedAt: new Date('2026-09-05T00:05:00Z'),
+    });
+
+    // Written under `''`, this row is invisible to the keyed reads above and the
+    // escape never fires again for this child row.
+    expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rowKey: 'peer:abcdef',
+        fieldName: 'openDate',
+        resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+      })
+    );
+  });
 });

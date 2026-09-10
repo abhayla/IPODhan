@@ -1861,6 +1861,12 @@ export class DataConsolidationService {
             const conflictResult = await this.dataConflictsRepository.upsertConflict({
               ipoId,
               tableName,
+              // s4 round 2 (MAJOR-1): THIS is the row `resolveHighValueHoldEscape`
+              // reads back, and both of its lookups now match on the row key.
+              // Writing it under `''` while the reads carry a real key makes both
+              // escape paths permanently inert for child rows — silently: the held
+              // value simply never releases.
+              rowKey,
               fieldName,
               source1: existingSource,
               value1: existingValue === null || existingValue === undefined ? null : serializeFieldValue(existingValue),
@@ -1938,6 +1944,9 @@ export class DataConsolidationService {
           await this.dataConflictsRepository.upsertConflict({
             ipoId,
             tableName,
+            // s4 round 2 (MAJOR-1): a TERMINAL_STATUS_KEPT dispute belongs to the
+            // row it was raised on, not to the whole IPO.
+            rowKey,
             fieldName,
             source1: existingSource,
             value1: existingValue === null || existingValue === undefined ? null : String(existingValue),
