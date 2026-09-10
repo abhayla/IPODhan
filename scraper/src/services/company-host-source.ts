@@ -334,17 +334,19 @@ function ipv4FromGroups(g6: number, g7: number): string {
 
 /**
  * IPv6 address in a loopback/link-local/unique-local range, OR one that
- * EMBEDS an IPv4 address in a private range — however the embedding or the
- * address itself is spelled. Parses to 8 canonical groups first (see
- * `parseIPv6Groups`), so expanded hex, `::`-compressed, and dotted-tail
- * forms of the same bits are all classified identically.
+ * EMBEDS an IPv4 address in a private range, for the specific embedding
+ * forms listed below — not every spelling of an embedded address, only
+ * these three prefixes, however THEY are spelled. Parses to 8 canonical
+ * groups first (see `parseIPv6Groups`), so expanded hex, `::`-compressed,
+ * and dotted-tail forms of a COVERED embedding are all classified
+ * identically.
  *
  * Embeddings checked, each by testing the embedded IPv4 with
  * `isPrivateIPv4Address` (item 22 round 2, MAJOR-1):
  *   - IPv4-mapped `::ffff:a.b.c.d` (groups 0-4 zero, group 5 = 0xffff) —
  *     RFC 4291 §2.5.5.2, the form a dual-stack resolver hands back for an
  *     IPv4-only name; this is the class the reviewer's mutation proved has
- *     no test at all.
+ *     no test at all (now covered by the metadata-address tests below).
  *   - IPv4-compatible `::a.b.c.d` (groups 0-5 zero, deprecated by RFC 4291
  *     but still parsed by Node's resolver) — same embedding, no `ffff`
  *     marker; refused on the same embedded-address check. `::` itself
@@ -355,6 +357,20 @@ function ipv4FromGroups(g6: number, g7: number): string {
  *     IPv4 destination, so a translated request to a private address is
  *     refused the same as a direct one. A NAT64-embedded PUBLIC address is
  *     allowed, matching how the translator would actually route it.
+ *
+ * NOT covered (item 22 round 3, reviewer MINOR — deliberately, not an
+ * oversight; each needs an intermediary this process does not have to turn
+ * into an actual loopback hit, so the risk is judged lower than the three
+ * above):
+ *   - `::ffff:0:a.b.c.d` — the IPv4-translated prefix `64:ff9b:1::/48`'s
+ *     sibling, `::ffff:0:0:0/96` (SIIT, RFC 6052 §2.1's 5-group variant);
+ *     only reachable if a SIIT box is translating for this resolver.
+ *   - `64:ff9b:1::/48` — RFC 8215 LOCAL-USE NAT64; only `64:ff9b::/96`
+ *     (the well-known prefix above) is handled, not an operator-chosen
+ *     local one, since without knowing the operator's prefix this process
+ *     cannot tell a local-use NAT64 address from an ordinary public one.
+ *   - `2002::/16` — 6to4; only reachable through a 6to4 relay/tunnel this
+ *     host would have to be configured to use.
  *
  * An address this cannot parse is treated as private (fail closed).
  */
@@ -411,15 +427,22 @@ const DNS_LOOKUP_TIMEOUT_MS = 5_000;
 
 export async function isResolvedAddressPrivate(hostname: string): Promise<boolean> {
   let addresses: Array<{ address: string; family: number }>;
+  let timer: ReturnType<typeof setTimeout>;
   try {
     addresses = await Promise.race([
       lookup(hostname, { all: true }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('dns lookup timed out')), DNS_LOOKUP_TIMEOUT_MS)
-      ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('dns lookup timed out')), DNS_LOOKUP_TIMEOUT_MS);
+      }),
     ]);
   } catch {
     return true;
+  } finally {
+    // Both outcomes race the same timer; a won lookup otherwise leaves it
+    // pending and holds the event loop open for up to DNS_LOOKUP_TIMEOUT_MS
+    // after this function has already returned (a one-shot scraper run
+    // would idle at exit rather than exiting immediately).
+    clearTimeout(timer!);
   }
   if (addresses.length === 0) return true;
   return addresses.some(({ address, family }) => {

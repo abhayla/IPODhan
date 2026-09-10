@@ -215,6 +215,13 @@ describe('isResolvedAddressPrivate — DNS-rebinding-safe host refusal (item 22,
     expect(await isResolvedAddressPrivate('public-v6.example')).toBe(false);
   });
 
+  it('admits a PUBLIC IPv6 resolution written as a fully-expanded 8-group form (MINOR-3 — only the under-refusal direction was tested before)', async () => {
+    vi.mocked(lookup).mockResolvedValue([
+      { address: '2606:4700:0000:0000:0000:0000:0000:1111', family: 6 },
+    ] as never);
+    expect(await isResolvedAddressPrivate('public-v6-expanded.example')).toBe(false);
+  });
+
   it('FAILS CLOSED — a lookup that throws is refused, not allowed', async () => {
     vi.mocked(lookup).mockRejectedValue(new Error('ENOTFOUND'));
     expect(await isResolvedAddressPrivate('unresolvable.example')).toBe(true);
@@ -278,6 +285,29 @@ describe('isResolvedAddressPrivate — DNS-rebinding-safe host refusal (item 22,
         { address: '64:ff9b::808:808', family: 6 },
       ] as never);
       expect(await isResolvedAddressPrivate('nat64-public.example')).toBe(false);
+    });
+  });
+
+  describe('cloud metadata address (169.254.169.254) — CRITICAL-1: correct today, unguarded until now', () => {
+    it('refuses the metadata address as a bare family-4 answer', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '169.254.169.254', family: 4 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('metadata-v4.example')).toBe(true);
+    });
+
+    it('refuses the metadata address IPv4-mapped, compressed hex (::ffff:169.254.169.254)', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '::ffff:169.254.169.254', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('metadata-mapped-compressed.example')).toBe(true);
+    });
+
+    it('refuses the metadata address IPv4-mapped, fully expanded hex (0:0:0:0:0:ffff:a9fe:a9fe)', async () => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '0:0:0:0:0:ffff:a9fe:a9fe', family: 6 },
+      ] as never);
+      expect(await isResolvedAddressPrivate('metadata-mapped-expanded.example')).toBe(true);
     });
   });
 
