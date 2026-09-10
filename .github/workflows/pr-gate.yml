@@ -45,7 +45,17 @@ jobs:
 
     steps:
       - name: Checkout code
+        # fetch-depth: 0 (full history) — the design-traceability gate below
+        # runs `git show <base>:docs/design/rules.json` and `git diff
+        # <base>...HEAD` against the pull request's base commit (item 20
+        # mode 4). actions/checkout defaults to a depth-1 shallow clone of
+        # only the PR merge commit, so the base commit is absent locally and
+        # both git calls fail with "unknown revision" — turning the gate
+        # into an unconditional exit 2 on every PR. Full history avoids that
+        # without hand-rolling a second fetch of just the base sha.
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -168,6 +178,48 @@ jobs:
         # config/fixture-provenance-baseline.json. See
         # scraper/tests/fixtures/PROVENANCE.md.
         run: node scripts/ci/require-fixture-provenance.mjs
+
+      - name: Design traceability self-test (item 20 / OD-52)
+        # Mutation-proof: scripts/ci/tests/check-design-traceability.test.mjs
+        # drives the real check-design-traceability.mjs binary against fixture
+        # trees, red-then-green per failure mode, so a weakened or deleted
+        # failure mode turns this red before the gate below can silently stop
+        # catching that class. Runs before npm ci (Node builtins only), same
+        # idiom as the repair-tool module lint self-test above.
+        run: node --test scripts/ci/tests/check-design-traceability.test.mjs
+
+      - name: Design traceability (OD-52)
+        # A pull request fails when a design rule has no build item, a build
+        # item's rule has no test, a test names a rule that does not exist, or
+        # a rule's wording changes without its card and test being touched in
+        # the same change (docs/design/build-cards/item-20-design-traceability-check.md).
+        # --base resolves to the pull request's base commit so mode 4 (hash
+        # drift vs base) actually runs instead of printing its SKIPPED line;
+        # the checkout step above fetches full history so that base commit is
+        # present locally for the `git show`/`git diff` calls this makes.
+        run: node scripts/ci/check-design-traceability.mjs --base ${{ github.event.pull_request.base.sha }}
+
+      - name: Module boundaries self-test (item 20 / §7.6)
+        # Mutation-proof: scripts/ci/tests/check-module-boundaries.test.mjs
+        # drives the real check-module-boundaries.mjs binary against fixture
+        # trees with a known upward import edge, so a weakened or deleted rule
+        # turns this red before the gate below can silently stop catching it.
+        run: node --test scripts/ci/tests/check-module-boundaries.test.mjs
+
+      - name: Module boundaries (§7.6)
+        # A lower layer (discovery -> download -> extraction -> validation ->
+        # consolidation -> plan -> walk -> verification -> re-read -> read-side)
+        # never imports a higher one. Baseline is shrink-only —
+        # config/module-boundary-baseline.json.
+        run: node scripts/ci/check-module-boundaries.mjs
+
+      - name: Design consistency gate (docs/design/check-design-consistency.mjs)
+        # The only check in the repository that catches a build card claiming
+        # a retired or unknown rule id (prints "N card(s) claim a retired or
+        # unknown rule id"); it ran in no workflow before this slice, so that
+        # class was caught by nothing. Assigned to this gate step by a review
+        # finding during item 20 slice 4 (design-traceability CI wiring).
+        run: node docs/design/check-design-consistency.mjs --gate
 
       - name: Install dependencies
         run: npm ci
