@@ -256,8 +256,8 @@
         {
           "k": "s4",
           "title": "rowKey through consolidateField, trackFieldSource, ConflictInfo, open-conflict lookups",
-          "status": "BUILDING",
-          "pr": null,
+          "status": "TIER-A-FIX-ROUND",
+          "pr": 518,
           "sha": null,
           "tier": "A"
         },
@@ -275,7 +275,8 @@
           "status": "PLANNED",
           "pr": null,
           "sha": null,
-          "tier": "A"
+          "tier": "A",
+          "blocker": "HARD ORDERING BLOCKER, verified by the Tier A review of #518: trackFieldUpdate's onConflictDoUpdate targets (ipoId, tableName, fieldName) with set: { rowKey, source, confidence, dataLineage, ... } at field-sources-repository.ts:191-225. So a second row key does not merely overwrite rowKey - it REPLACES source, confidence and dataLineage too. Two child rows would silently DESTROY each other's provenance, not merely mislabel it. The row-key-scoped unique constraint must land BEFORE any caller passes a non-empty key. Not 'with', not 'soon after'."
         },
         {
           "k": "s6",
