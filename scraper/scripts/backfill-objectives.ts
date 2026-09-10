@@ -15,11 +15,38 @@
  */
 
 import { db, getRedisClient, IPORepository, DocumentRepository } from '@ipodhan/shared';
+import { pathToFileURL } from 'node:url';
 import { logger } from '../src/utils/logger.js';
 import { scrapeIPOObjectives } from '../src/scrapers/objectives-scraper.js';
 import { updateIPOObjectives } from '../src/services/data-persister.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, and, isNotNull, inArray, sql, isNull } from 'drizzle-orm';
+
+/**
+ * #488 — collects the IPO filter conditions for one combined `where(and(...))`
+ * call. Drizzle's `.where()` REPLACES the previous condition rather than
+ * ANDing it, so calling it more than once on the same builder (the base
+ * document-type/url filter, status and ipoId can all co-occur, e.g.
+ * `--status=OPEN` alongside a run that also names `--ipo-id=<uuid>`) used to
+ * silently drop the earlier filters. Exported so it can be unit-tested
+ * without running the script's `main()`.
+ */
+export function buildObjectivesIposConditions(args: { status?: string; ipoId?: string }) {
+  const conditions = [
+    inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
+    isNotNull(schema.documents.documentUrl),
+  ];
+
+  if (args.status) {
+    conditions.push(eq(schema.ipos.status, args.status as any));
+  }
+
+  if (args.ipoId) {
+    conditions.push(eq(schema.ipos.id, args.ipoId));
+  }
+
+  return conditions;
+}
 
 /**
  * Parse command-line arguments
@@ -89,12 +116,7 @@ async function main() {
       })
       .from(schema.documents)
       .innerJoin(schema.ipos, eq(schema.documents.ipoId, schema.ipos.id))
-      .where(
-        and(
-          inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
-          isNotNull(schema.documents.documentUrl)
-        )
-      )
+      .where(and(...buildObjectivesIposConditions(args)))
       .groupBy(
         schema.documents.ipoId,
         schema.ipos.companyName,
@@ -103,27 +125,6 @@ async function main() {
         schema.ipos.objectives
       )
       .$dynamic();
-
-    // Apply filters
-    if (args.status) {
-      iposQuery = iposQuery.where(
-        and(
-          eq(schema.ipos.status, args.status as any),
-          inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
-          isNotNull(schema.documents.documentUrl)
-        )
-      );
-    }
-
-    if (args.ipoId) {
-      iposQuery = iposQuery.where(
-        and(
-          eq(schema.ipos.id, args.ipoId),
-          inArray(schema.documents.documentType, ['DRHP', 'RHP', 'PROSPECTUS']),
-          isNotNull(schema.documents.documentUrl)
-        )
-      );
-    }
 
     if (args.limit) {
       iposQuery = iposQuery.limit(args.limit);
@@ -241,13 +242,17 @@ async function main() {
   }
 }
 
-// Run the backfill
-main()
-  .then(() => {
-    logger.info('[Backfill Objectives] Script finished successfully');
-    process.exit(0);
-  })
-  .catch((error) => {
-    logger.error('[Backfill Objectives] Script failed:', error);
-    process.exit(1);
-  });
+// Auto-run if this is the main module (guards against side effects on
+// import, e.g. from a unit test importing buildObjectivesIposConditions).
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main()
+    .then(() => {
+      logger.info('[Backfill Objectives] Script finished successfully');
+      process.exit(0);
+    })
+    .catch((error) => {
+      logger.error('[Backfill Objectives] Script failed:', error);
+      process.exit(1);
+    });
+}

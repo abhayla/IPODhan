@@ -20,6 +20,7 @@
  */
 
 import dotenv from 'dotenv';
+import { pathToFileURL } from 'node:url';
 
 // Load environment variables
 dotenv.config();
@@ -28,13 +29,44 @@ import { runIPOReviewsJob } from '../src/jobs/ipo-reviews-job.js';
 import { db } from '@ipodhan/shared';
 import { logger } from '../src/utils/logger.js';
 import * as schema from '@ipodhan/shared/db/schema';
-import { eq, or } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 
 interface BackfillOptions {
   limit?: number;
   force?: boolean;
   status?: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
   segment?: 'MAINBOARD' | 'SME';
+}
+
+/**
+ * #488 — collects the IPO filter conditions for one combined `where(and(...))`
+ * call. Drizzle's `.where()` REPLACES the previous condition rather than
+ * ANDing it, so calling it more than once on the same builder (status/default
+ * + segment can co-occur, e.g. `--status=OPEN --segment=MAINBOARD`) used to
+ * silently drop the earlier filter. Exported so it can be unit-tested without
+ * running the script's `main()`.
+ */
+export function buildIpoReviewsConditions(options: Pick<BackfillOptions, 'status' | 'segment'>) {
+  const conditions = [];
+
+  if (options.status) {
+    conditions.push(eq(schema.ipos.status, options.status));
+  } else {
+    // Default: Only OPEN, CLOSED, LISTED (skip UPCOMING - no reviews yet)
+    conditions.push(
+      or(
+        eq(schema.ipos.status, 'OPEN'),
+        eq(schema.ipos.status, 'CLOSED'),
+        eq(schema.ipos.status, 'LISTED')
+      )
+    );
+  }
+
+  if (options.segment) {
+    conditions.push(eq(schema.ipos.segment, options.segment));
+  }
+
+  return conditions;
 }
 
 async function parseArgs(): Promise<BackfillOptions> {
@@ -80,23 +112,7 @@ async function main() {
       })
       .from(schema.ipos);
 
-    // Apply filters
-    if (options.status) {
-      query = query.where(eq(schema.ipos.status, options.status));
-    } else {
-      // Default: Only OPEN, CLOSED, LISTED (skip UPCOMING - no reviews yet)
-      query = query.where(
-        or(
-          eq(schema.ipos.status, 'OPEN'),
-          eq(schema.ipos.status, 'CLOSED'),
-          eq(schema.ipos.status, 'LISTED')
-        )
-      );
-    }
-
-    if (options.segment) {
-      query = query.where(eq(schema.ipos.segment, options.segment));
-    }
+    query = query.where(and(...buildIpoReviewsConditions(options)));
 
     if (options.limit) {
       query = query.limit(options.limit);
@@ -162,12 +178,16 @@ async function main() {
   }
 }
 
-// Run the script
-main()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('Unhandled error:', error);
-    process.exit(1);
-  });
+// Auto-run if this is the main module (guards against side effects on import,
+// e.g. from a unit test importing buildIpoReviewsConditions).
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Unhandled error:', error);
+      process.exit(1);
+    });
+}

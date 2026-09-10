@@ -224,6 +224,24 @@ jobs:
         # config/module-boundary-baseline.json.
         run: node scripts/ci/check-module-boundaries.mjs
 
+      - name: Drizzle where-chaining self-test (#488)
+        # Mutation-proof: scripts/ci/tests/check-drizzle-where-chaining.test.mjs
+        # drives the real check-drizzle-where-chaining.mjs binary against
+        # fixtures copied from the pre-fix shape of the known-defect files
+        # (registrar-repository.ts, market-holiday-repository.ts,
+        # backfill-ipo-reviews.ts), so a weakened or deleted rule turns this
+        # red before the gate below can silently stop catching it.
+        run: node --test scripts/ci/tests/check-drizzle-where-chaining.test.mjs
+
+      - name: Drizzle where-chaining (#488)
+        # Drizzle's .where() REPLACES the previous where clause rather than
+        # ANDing it — a variable re-assigned from .where() more than once on
+        # a path where both calls can run silently drops the earlier filter
+        # (a registrar search with activeOnly=true returning inactive rows;
+        # a holiday query filtered by year+exchange returning the wrong set).
+        # Fix: collect conditions into an array, apply ONE where(and(...)).
+        run: node scripts/ci/check-drizzle-where-chaining.mjs
+
       - name: Design consistency gate (docs/design/check-design-consistency.mjs)
         # The only check in the repository that catches a build card claiming
         # a retired or unknown rule id (prints "N card(s) claim a retired or

@@ -6,7 +6,7 @@
  * Story 5.3: Registrar Directory - Added search functionality
  */
 
-import { eq, or, ilike, asc } from 'drizzle-orm';
+import { and, eq, or, ilike, asc } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
 import { registrars } from '../db';
 import type { Registrar } from '../db/types';
@@ -140,15 +140,11 @@ export class RegistrarRepository extends BaseRepository {
               ilike(registrars.shortName, searchPattern)
             );
 
-            let query = this.db.select().from(registrars);
+            const whereCondition = activeOnly
+              ? and(eq(registrars.active, true), nameCondition)
+              : nameCondition;
 
-            if (activeOnly) {
-              // Combine both active filter and name search
-              query = query.where(eq(registrars.active, true)) as typeof query;
-              query = query.where(nameCondition) as typeof query;
-            } else {
-              query = query.where(nameCondition) as typeof query;
-            }
+            const query = this.db.select().from(registrars).where(whereCondition);
 
             const rows = await query.orderBy(asc(registrars.name));
             // Graceful degrade (T-300): hide the CTA when inactive/unhealthy.

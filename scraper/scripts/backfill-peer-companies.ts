@@ -20,6 +20,7 @@
  */
 
 import dotenv from 'dotenv';
+import { pathToFileURL } from 'node:url';
 
 // Load environment variables
 dotenv.config();
@@ -28,13 +29,35 @@ import { runPeerCompaniesJob } from '../src/jobs/peer-companies-job.js';
 import { db } from '@ipodhan/shared';
 import { logger } from '../src/utils/logger.js';
 import * as schema from '@ipodhan/shared/db/schema';
-import { isNull, not, inArray, eq } from 'drizzle-orm';
+import { and, isNull, not, inArray, eq } from 'drizzle-orm';
 
 interface BackfillOptions {
   limit?: number;
   force?: boolean;
   status?: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
   sector?: string;
+}
+
+/**
+ * #488 — collects the IPO filter conditions for one combined `where(and(...))`
+ * call. Drizzle's `.where()` REPLACES the previous condition rather than
+ * ANDing it, so calling it more than once on the same builder (the base
+ * sector-not-null filter, status and sector can all co-occur, e.g.
+ * `--status=OPEN --sector=FMCG`) used to silently drop the earlier filters.
+ * Exported so it can be unit-tested without running the script's `main()`.
+ */
+export function buildPeerCompaniesConditions(options: Pick<BackfillOptions, 'status' | 'sector'>) {
+  const conditions = [not(isNull(schema.ipos.sector))]; // Only IPOs with valid sector
+
+  if (options.status) {
+    conditions.push(eq(schema.ipos.status, options.status));
+  }
+
+  if (options.sector) {
+    conditions.push(eq(schema.ipos.sector, options.sector));
+  }
+
+  return conditions;
 }
 
 async function parseArgs(): Promise<BackfillOptions> {
@@ -70,7 +93,7 @@ async function main() {
     // db is already imported from @ipodhan/shared
 
     // Get IPOs to process
-    let query = db
+    const query = db
       .select({
         id: schema.ipos.id,
         companyName: schema.ipos.companyName,
@@ -78,16 +101,7 @@ async function main() {
         status: schema.ipos.status,
       })
       .from(schema.ipos)
-      .where(not(isNull(schema.ipos.sector))); // Only IPOs with valid sector
-
-    // Apply filters
-    if (options.status) {
-      query = query.where(eq(schema.ipos.status, options.status));
-    }
-
-    if (options.sector) {
-      query = query.where(eq(schema.ipos.sector, options.sector));
-    }
+      .where(and(...buildPeerCompaniesConditions(options)));
 
     const ipos = await query;
 
@@ -173,4 +187,9 @@ async function main() {
   }
 }
 
-main();
+// Auto-run if this is the main module (guards against side effects on import,
+// e.g. from a unit test importing buildPeerCompaniesConditions).
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main();
+}
