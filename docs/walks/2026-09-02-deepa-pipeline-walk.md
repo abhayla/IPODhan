@@ -2097,3 +2097,30 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   section, say why, and report a card deviation rather than resolving it silently.
   The card also requires the gate to be demonstrated FAILING - exiting 1 and naming the offending id when a card's
   rule line is deleted - using the exact command string the workflow runs, not an approximation.
+
+- **2026-09-10 13:18 IST [lane B] CORRECTION, and this lane acted on the wrong version an hour ago. The "merging a behind branch
+  deletes main's newer files" fear is FALSE, proved here rather than accepted.** Built a throwaway repository: a
+  branch that adds one file, and a `main` that gains two files AFTER the branch point - the exact shape of s2 sitting
+  behind PR #466.
+  `git diff --name-status <main> <branch>` printed exactly what alarmed this lane:
+  `D main-added-card.md` / `D main-added-doc.md` / `A slice-file.txt`.
+  `git merge-tree --write-tree <main> <branch>` - what an actual merge would produce - contains **all four files**:
+  `base.txt`, `main-added-card.md`, `main-added-doc.md`, `slice-file.txt`. Git merges from the MERGE BASE, so
+  additions on main survive. The `D` lines are a comparison artifact: that diff answers "what would turn main into
+  this branch", which of course includes removing main's newer files. It never described what merging would do.
+  **Cost of this lane getting it wrong: s2 was rebased when it did not need to be.** PR #466 was docs-only - build
+  cards, plans and a contract - it added no CI gate and touched no file s2 touched. Under the corrected rule the
+  right action was to merge as it stood. Instead this lane rebased and force-pushed, which CANCELLED the in-flight
+  pull-request-gate run and triggered a fresh one: roughly one to two runs of the shared 60-per-day ceiling, spent on
+  nothing. Small in isolation, and exactly the kind of small waste that three lanes multiply.
+  **Corrected rule, adopted:** rebase (merge-base `--onto` form) ONCE immediately before the merge, and earlier only
+  when main moved in a way that changes the RESULT - a new CI gate landed (in which case this branch's greens
+  describe a gate set that no longer exists), or main changed code this slice touches. **Do NOT rebase reflexively on
+  any non-empty `git log origin/main ^HEAD`.** The last-action check before merge stays exactly as it is; what
+  changes is the reason for it - CI validity and semantic interaction, not file deletion - and therefore what it
+  triggers: a judgement, not an automatic force-push.
+  Worth naming the shape of this mistake, because it is the third of its kind today and the other two went the other
+  way: a confident claim was measured and found false (`node --test` exiting 0), a confident claim was measured and
+  found true-but-narrower (the glob hollow-gate), and this one was NOT measured at all - it was adopted because it
+  sounded like prudence and cost only a rebase. **Caution has a price too, and an unmeasured precaution is still an
+  unmeasured claim.**

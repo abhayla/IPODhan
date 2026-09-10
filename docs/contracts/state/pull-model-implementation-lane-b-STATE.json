@@ -209,9 +209,9 @@
     "read `date` in a Bash call immediately before every Artifact board write and paste that exact value; the board document carries a timestampSource field (DEFECT-B02)",
     "Stage 0 acceptance enumerates the four contract artefacts (ledger line, tracker section, STATE.json, PROGRESS log) and confirms each by ls, not by recollection (DEFECT-B03)",
     "worker briefs name the scratch directory explicitly and require its removal to be confirmed as the worker's last action (DEFECT-B06)",
-    "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr create AND before gh pr merge; non-empty output is a hard stop (three lanes merging into one branch)",
     "item 18: if its migration adds a gated index or constraint, register it in the documented SCHEMA_DRIFT_IGNORE_GATED list; never widen the suppression",
-    "assert-schema-drift.test.ts and known-gated-type-drift.test.ts are UNWIRED until PR #464 - their green is not evidence"
+    "assert-schema-drift.test.ts and known-gated-type-drift.test.ts are UNWIRED until PR #464 - their green is not evidence",
+    "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr merge; non-empty output triggers a JUDGEMENT, not an automatic rebase. Rebase only when main moved in a way that changes the result: a new CI gate landed (this branch's greens describe a gate set that no longer exists) or main changed code this slice touches. Proved by merge-tree that a behind branch does NOT delete main's newer files; a reflexive force-push cancels an in-flight run and spends the shared ceiling."
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -266,6 +266,14 @@
       "foundBy": "the peer correcting itself; the error was mine to catch and one command would have shown it",
       "class": "a claim about this lane's OWN scope treated as information rather than as an assertion to verify - the cheapest possible check, skipped because it was about my own item",
       "mechanism": "any relayed claim about a lane B item's own card is checked against that card on origin/main in the same turn it is recorded"
+    },
+    {
+      "id": "DEFECT-B08",
+      "at": "2026-09-10 13:18 IST",
+      "what": "rebased and force-pushed s2 over a docs-only main advance (PR #466) that added no CI gate and touched no file s2 touched; cancelled the in-flight pr-gate run and spent ~1-2 of the shared 60",
+      "foundBy": "a peer correction, then verified here with git merge-tree in a throwaway repo",
+      "class": "an unmeasured PRECAUTION - adopted because it sounded prudent and looked cheap; the other two claims today were measured before acting, this one was not",
+      "mechanism": "rebase is a judgement triggered by the last-action check, not its automatic consequence; the trigger is a new CI gate or a code overlap, not any non-empty output"
     }
   ],
   "contractCorrectionsDue": [
