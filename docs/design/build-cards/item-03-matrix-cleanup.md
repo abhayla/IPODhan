@@ -1,5 +1,12 @@
 # Item 3 — matrix cleanup
 
+> **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
+> 1. The repair tool is `scraper/scripts/repair-*.ts` (an `.mjs` name evades `scripts/ci/require-repair-tool-module.mjs`), via `openRepairDb`, dry-run default, staging `--apply` only.
+> 2. The Files row names `data_conflicts` but the SQL reads `field_sources`; the SQL is right. The tool and its test target `field_sources`.
+> 3. Dead-key count re-measured on 2026-09-10: 77 keys in the matrix, 27 underscored dead keys. The deletion slice asserts exactly those 27 by name in its test.
+> 4. This item starts only after item 2 has merged (ranks are configuration first, then the matrix shrinks). Lane C owns every `field-priority-matrix.ts` hunk; item 16 (lane B) does not edit it.
+
+
 **PROVISIONAL on C-1 (new fork this card opens — see "What I found beyond the brief" under
 Interfaces).** Everything else in this card is unconditional.
 
