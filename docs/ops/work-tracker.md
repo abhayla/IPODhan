@@ -868,3 +868,32 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   Replaced with the actual rule: every remaining entry names the piece of work that will close it.
   **What is needed from you: nothing.** Still owed for later: a practice run of undoing a release,
   and two test-server readings I have not yet taken.
+
+- 2026-09-11 00:03 IST — **Item 20 from 86% to 100% (7 of 7 merged and proven). Item 16 also done. Twenty pieces merged tonight.**
+  Both of the items that can finish tonight have finished. The seventh check catches a mistake that
+  once stopped the site's data collector from starting at all — and three separate test tools had
+  reported that mistake as fine, because none of them was running the file the way the live server
+  does.
+  **What a reader of ipodhan.com would notice.** Nothing yet, but two things now on their way are
+  real. Documents hosted on registrars' own sites — Link Intime, KFin, Bigshare — have been silently
+  refused for weeks and will now be fetched, which over time means more filled-in fields on IPO
+  pages. And a correction made by the collector will show up on the page in the same half hour
+  instead of sitting behind two separate fifteen-minute timers.
+  **What went wrong, and tonight's is worth reading properly.** I read the test server directly and
+  measured what our document reading actually produces. It looks perfectly healthy: 83 documents
+  processed successfully, the most recent this morning. And across all 83 it has produced ZERO peer
+  company rows. The peer rows we do have were all written inside a five-minute window on 17 June —
+  a one-off backfill — and not one of those IPOs has ever had a document processed. Of the last
+  eight documents processed, only one produced anything at all, and it was a newspaper price-band
+  advert; all four prospectuses produced nothing. So reading a prospectus has never filled in
+  promoter or peer-company details, and nobody noticed because the process reports success either
+  way. That is now filed, and it turns the peers-and-promoters work from a nice-to-have into the
+  only thing that would ever fill those in.
+  **I also broke the shared branch once tonight, with a documentation-only change**, and caught a
+  bad measurement of my own before publishing it — a query that silently returned impossible results
+  because a database column stores times without a timezone. Both are written down where the work is
+  rather than smoothed over, and the second one produced a one-line fix so the next person does not
+  hit it.
+  **What is needed from you: nothing tonight.** One decision is worth your time when you have it:
+  whether the shared branch should refuse changes that have not passed their checks. It currently
+  has no protection at all, which is how two broken changes got in tonight.
