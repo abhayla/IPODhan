@@ -1203,3 +1203,5 @@ would have aimed the fix at the wrong thing.
 What a reader of ipodhan.com would notice: nothing — the live site is untouched and was never at risk.
 
 Automated check-runs: **37 of a shared 60**, twenty-two mine, no current failures of mine.
+
+- 2026-09-10 17:33 IST — Two fixes landed. The deploy script now reads the list of database changes we deliberately hold back, so a deploy no longer refuses to run just because those held-back items are missing (#495). And the integration-test step in CI is working again — an earlier change of mine had quietly dropped the three settings it needs, so the step was crashing before it ran a single test and CI was reporting that crash as a pass (#489). Anything read from that step before today is worthless. A third fix is up for review (#498): the timezone test suite that our own rules require has never actually run, because the command written down for it cannot pass; it now has a command that works and a named step in the PR gate.
