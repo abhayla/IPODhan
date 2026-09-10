@@ -59,8 +59,25 @@ The four failure modes, which are the whole contract:
    tests it.
 3. **A test declares an id that is not live** — a typo, or an id retired when its rule was reworded.
 4. **A rule's hash changed and neither its owning card nor a test that names it is in the diff.**
-   This is the mode that earns the check: somebody improves a sentence in the design six weeks from
-   now and nothing notices that the code no longer matches it.
+   **Corrected 2026-09-10, proven on real data during build (lane B, slice 2).** Mode 4 is a BACKSTOP
+   against `rules.json` being edited by hand, resolved by a merge, or written by a changed generator.
+   It is NOT what catches an edited design sentence, and the earlier claim that it was "the mode that
+   earns the check" was wrong. `generate-rule-index.mjs:158` matches previous rules **by hash**
+   (`new Map(prev.rules.map(r => [r.hash, r]))`), so editing a sentence RETIRES the old id and MINTS a
+   new one - it never produces the same-id/different-hash state mode 4 waits for. Measured: editing one
+   line of the design and running the generator gave `SAME ID / DIFFERENT HASH: []`, `NEWLY RETIRED:
+   ["R-153"]`, `NEW IDS: ["R-181"]`. **The sentence-edit case is caught by mode 1** - the new id is live
+   and claimed by no card, so the pull request fails (`MODE 1 - 1 live rule(s) claimed by no build card
+   ... R-181`, exit 1). Mode 4 still earns its place: `rules.json` is a committed, hand-editable file and
+   mode 4 is the only arm that would see it drift.
+
+   **Known gap, found the same day and not closed by this item.** When a sentence edit retires an id, the
+   card that claimed it is left claiming a RETIRED id, and NO arm of this check catches that: mode 1 is
+   live-only, mode 2 skips non-live ids, mode 3 is test-side, mode 4 filters retired. It IS caught by
+   `docs/design/check-design-consistency.mjs` D19 (`1 card(s) claim a retired or unknown rule id`), but
+   only under `--gate`, and neither script is wired into any workflow today - so at the time of writing it
+   is caught by nothing that runs. Wiring D19 belongs with slice 4's CI wiring.
+
 
 `node scripts/ci/check-module-boundaries.mjs` — exit 0 / 1 / 2, same shape. It maps each source file
 to one of the ten modules in §7.6 by path, builds the import graph, and fails on an edge that points

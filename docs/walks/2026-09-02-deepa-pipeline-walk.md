@@ -2003,3 +2003,35 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   before `gh pr merge`, with non-empty output a HARD STOP. This lane already ran that check both times - but not
   always as the last action, which is the part that matters when three lanes are merging into one branch. Adopted as
   written.
+
+- **2026-09-10 12:55 IST [lane B] s2 Tier A: MERGE YES conditional - and the reviewer proved the BUILD CARD was wrong, not the code.**
+  It settled the question empirically instead of reasoning about it: `generate-rule-index.mjs:158` matches previous
+  rules with `new Map(prev.rules.map(r => [r.hash, r]))` - by hash, with no id or position fallback. It then edited
+  one real line of the design (line 448, "recomputed after their inputs settle" -> "recomputed once their inputs
+  settle"), ran the generator, and measured: `SAME ID / DIFFERENT HASH: []`, `NEWLY RETIRED: ["R-153"]`,
+  `NEW IDS: ["R-181"]`. Mode 4's trigger condition is unreachable through the documented workflow. The builder's
+  claim was correct.
+  **The supervisor's reading was also confirmed: the card's INTENT is served, by mode 1.** In the same clone the
+  check printed `MODE 1 - 1 live rule(s) claimed by no build card ... R-181`, exit 1. A sentence edit does fail the
+  pull request - just not by the arm the card credits. So mode 4 is a BACKSTOP (for `rules.json` edited by hand, by
+  a merge resolution, or by a future generator change), it is worth merging, and the defect is the card's wording.
+  **The named gap is real, and worse than suspected: nothing that RUNS catches it.** With `R-153` retired,
+  `item-02-field-manifest-and-priority-config.md` still claimed it, and the traceability check mentions `R-153`
+  **zero** times - mode 1 is live-only, mode 2 `continue`s on non-live ids, mode 3 is test-side, mode 4 filters
+  retired. `check-design-consistency.mjs` D19 DOES catch it (`1 card(s) claim a retired or unknown rule id (R-153)`)
+  but only exits 1 under `--gate`, and a grep over `.github/workflows/` shows **neither script is wired into any
+  workflow**. So today the case the card cares most about is caught by nothing that runs. Wiring D19 goes to slice 4.
+  **MAJOR 1, the third instance of one pattern in a single item: mode 4's skip is completely silent.** With no
+  `--base`, a grep of stdout and stderr for `MODE 4|base|skip` returns zero matches and the run exits 0 -
+  indistinguishable from a run that compared and found nothing. If slice 4 gets the `--base` wiring wrong, mode 4
+  never runs and nobody is told. Fix dispatched: always print `MODE 4 - SKIPPED (no --base given): hash drift was
+  NOT compared`, with a test that goes red if the line is removed. The reviewer judged `--base` opt-in itself
+  CORRECT - an unconditional default would exit 2 on every mode-1/2/3 fixture, which are not git repositories - so
+  the defect is the silence, not the design.
+  Ten of ten mutations RED, including all four pre-existing arms and both older self-guards; pre-existing tests
+  intact (+249/-2, the two removed lines a header comment).
+  **Card amended in the same turn, per contract decision 1** (where implementation and card disagree, the card is
+  corrected in the same slice). `item-20`'s mode-4 paragraph now states plainly that the earlier rationale was wrong,
+  cites the generator line and the measured before/after, names mode 1 as what actually catches a sentence edit, and
+  records the retired-id gap with its owner. `check-build-cards.mjs` and `check-design-consistency.mjs --gate` both
+  still exit 0 after the edit.
