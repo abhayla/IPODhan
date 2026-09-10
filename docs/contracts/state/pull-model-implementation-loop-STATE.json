@@ -169,10 +169,10 @@
     "Integration failure classes: 53 'Connection is closed' (redis), 36 'Failed query: insert into', 30 'Failed to create IPO', 26 'expected 0 to be greater than 0' (downstream of the failed inserts), 24 'TypeError: db.select.mockReturnValue is not a function'. That last one is the most diagnostic and is NOT infrastructure - a test expected db to be a mock and got the real client. It points the same way the unit suite did: shared state and ordering, not the database.",
     "RULED OUT before reporting, the thing I would most expect to have got wrong myself: ci.yml declares BOTH services (redis:7-alpine, postgres:16) and its integration step's env block is byte-identical to pr-gate's passing one - same DATABASE_URL, same REDIS_URL. So services exist and the step is told where they are. Unit step and journal replay both SUCCEEDED, so #474 fixed what it claimed and #464's wiring is sound.",
     "OWNER DECIDED 2026-09-10 15:18 IST on the web integration failures: baseline the failing files BY NAME in a shrink-only list, gate web-touching slices on NO NEW failures, schedule the fixes as lane A slices BY ERROR CLASS, and the release cut requires the list EMPTY. Building as slice s3d. Following the repo's existing shrink-only convention exactly (config/write-ratchet-baseline.json + scripts/check-write-ratchet.mjs), whose discipline is stricter than I would have designed: a NEW entry fails, AND a baseline entry that no longer fails also fails until regenerated, so a stale entry cannot be reused as cover.",
-    "OWNER APPROVED delta 1 §1 2026-09-10 15:18 IST directly in this session: slices planned at 250-400 changed lines, review tiers applied as the list says rather than upward, later review rounds read only the changed lines. He also resolved my objection explicitly - 'split into smaller pieces stands as the 400-line cap, not smaller than that'. That was the entire basis of my hold (his contract-quoted line reads 'split each item further into very smaller items'), so the hold is lifted and §1 applies from item 15's Stage 1a per the delta's own adoption clause.",
+    "OWNER APPROVED delta 1 \u00c2\u00a71 2026-09-10 15:18 IST directly in this session: slices planned at 250-400 changed lines, review tiers applied as the list says rather than upward, later review rounds read only the changed lines. He also resolved my objection explicitly - 'split into smaller pieces stands as the 400-line cap, not smaller than that'. That was the entire basis of my hold (his contract-quoted line reads 'split each item further into very smaller items'), so the hold is lifted and \u00c2\u00a71 applies from item 15's Stage 1a per the delta's own adoption clause.",
     "TRAP CAUGHT BEFORE USE, and it would have inverted the gate: I tried to derive the 26 failing files by grepping the CI log and got 44 - the ENTIRE suite - because `gh run view --log-failed` marks all 132 file mentions with the same character and carries no FAIL/PASS markers. Baselining that list would have grandfathered the 18 PASSING files as allowed-to-fail. The list must come from a machine-readable vitest JSON report, and it must be generated in CI: locally through the tunnel 40 of 44 fail, in CI 26 of 44 fail, and the gate runs in CI. Briefed the builder to leave the baseline EMPTY with a TODO rather than guess a list of 26 if it cannot obtain a real CI report.",
     "OWNER-TYPED LINES recorded VERBATIM in ownerTypedLines 2026-09-10 15:19 IST so lanes B and C can verify them from origin/ops/impl-loop-ledger rather than from a relay. Lane B was right to hold the baseline decision: my pushed head predated it. CAVEAT lanes must know: the owner's phrase 'the 26 failing files by name' cannot yet be honoured literally - the names are NOT derivable from the CI console log (it carries no FAIL/PASS markers, so a grep returns all 44 files, 26 failing plus 18 passing). The list must come from a vitest JSON report generated IN CI, since locally through the tunnel 40 of 44 fail while in CI 26 of 44 do. If the mechanism ships before a real CI report exists, the baseline ships EMPTY with a TODO rather than a guessed list of 26 - an empty honest list is recoverable, a wrong list of 26 is a gate that lies while looking authoritative.",
-    "PROGRESS LOG WAS 16 HOURS STALE, caught by a supervisor tick, not by me. docs/contracts/.run/pull-model-implementation-loop-PROGRESS.md's last entry was 2026-09-09 23:01 while my ledger committed at 15:19 today. Backfilled 2026-09-10 15:29 IST with 39 entries reconstructed from STATE.json notes whose timestamps were READ FROM `date` at the time, not re-estimated, and the block is marked as backfilled so it is never mistaken for live writing. ROOT CAUSE: I kept STATE.json, the tracker and the board current and treated those as 'the record', while §0.3 names the PROGRESS log specifically - and it is the artefact a supervisor tick reads FIRST. It is also gitignored (.gitignore:354), so it is local-only and no push ever surfaced its staleness. Three current artefacts hid one dead one. Writing it at every transition from here; a lane whose ledger commits within the hour while its log is older than an hour is now reported to the owner as stale.",
+    "PROGRESS LOG WAS 16 HOURS STALE, caught by a supervisor tick, not by me. docs/contracts/.run/pull-model-implementation-loop-PROGRESS.md's last entry was 2026-09-09 23:01 while my ledger committed at 15:19 today. Backfilled 2026-09-10 15:29 IST with 39 entries reconstructed from STATE.json notes whose timestamps were READ FROM `date` at the time, not re-estimated, and the block is marked as backfilled so it is never mistaken for live writing. ROOT CAUSE: I kept STATE.json, the tracker and the board current and treated those as 'the record', while \u00c2\u00a70.3 names the PROGRESS log specifically - and it is the artefact a supervisor tick reads FIRST. It is also gitignored (.gitignore:354), so it is local-only and no push ever surfaced its staleness. Three current artefacts hid one dead one. Writing it at every transition from here; a lane whose ledger commits within the hour while its log is older than an hour is now reported to the owner as stale.",
     "s3d PR #485 opened 2026-09-10 15:39 IST. THE GATE WAS DEAD ON ARRIVAL and I caught it by reading the diff, not in review: `Run integration tests` had no continue-on-error, so on the 26 known failures the step fails, the run stops, and the checker step is SKIPPED - the gate could only ever execute on an already-green suite. It would have reviewed clean: checker exists, 14/14 tests, both failure modes demonstrated, wired into ci.yml. It simply could never run. Fixed by moving the decision to the checker (suite gets continue-on-error, checker gets if: always()). NOT a rollback of #464 - #464 removed the flag where NOTHING judged the result; here the checker does - and the comment says so at the line so nobody deletes it as a helpful cleanup.",
     "s3d TIER A ROUND 1 CRITICAL, one level above the defect I caught myself: the gate is wired only into ci.yml, which is `workflow_dispatch:`-only BY DESIGN - its own header records that auto-running 'consumed GitHub-hosted Actions minutes on every change and tripped the account billing block'. pr-gate, the only PR-triggered workflow, has zero references to it. So no web-touching slice in any lane is blocked automatically. NOT moving it to pr-gate: the web integration suite needs postgres and redis services and running that per-PR is exactly the cost that caused the block. Enforcement stays procedural (clause 8: dispatch ci.yml on the branch, wait for success), and the baseline's _comment now says so plainly so nobody believes the gate blocks a PR.",
     "s3d ROUND 1 MAJOR that was straightforwardly my miss: pr-gate runs `node --test` 19 times for the sibling checkers (write-ratchet, typecheck-exclude, detection-floor) and ZERO times for mine, so the checker's own tests never ran on a PR. Fixed. Also fixed: a report with zero test files PASSED the gate (a broken config or bad glob would have gone green) - now fails closed; toPosix gated on the host's path.sep so a Windows-produced report read on Linux was not normalised - now unconditional; an uncaught throw printed a raw stack instead of a reasoned exit line (signal-ownership R6); and the dead-on-arrival class itself was untested - six new cases cover missing, empty, malformed, no-testResults-key and empty-testResults.",
@@ -193,7 +193,8 @@
     "DELIBERATELY NOT REBASING the two held PRs: s3 is 8 behind with 15 files reading as deletions, s5a is 7 behind with 13. Rebasing now would burn CI runs on PRs that cannot merge until the baseline populates, and main will move again before they can. One rebase each, at the merge gate.",
     "STAGING DOWN ALL DAY, first failure is my #464 merge (c6a4c9c4, 08:11:23Z); ten consecutive push-triggered deploys failed, every one at the schema-drift assert. deploy-linux.sh line ~1030 calls the checker BARE while pr-gate sets SCHEMA_DRIFT_IGNORE_GATED=1 at one line. #464 taught that checker to see indexes and constraints, so the bare call started failing on gated items. My own #464 comment said bare callers failing on gated items 'is intended' - it is not: it makes any slot without the hand-applied gated DDL permanently undeployable. s10 fixes the call and the false comment.",
     "MEASURED on ipodhan_staging read-only 2026-09-10 17:09 IST: idx_ipos_slug ABSENT, all three E1 unique constraints ABSENT, normalized_name PRESENT on promoters/peer_companies/ipo_intermediaries. So the column shipped via #445/#448 but the gated constraints were never hand-applied to staging - which is the EXPECTED gated state, not a fault. Only idx_ipos_slug is a genuine fault.",
-    "CORRECTED A RELAYED DIAGNOSIS: I was told 'the gated-registry flag is NOT the cause: those four are not in the allowlist'. Three of the four ARE - KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT names all three constraints and isKnownGatedUniqueConstraintDrift matches the deploy log's detail string verbatim. Accepting that would have produced a fix aimed at the wrong thing; correcting it means two fixes, one mine and one the owner's."
+    "CORRECTED A RELAYED DIAGNOSIS: I was told 'the gated-registry flag is NOT the cause: those four are not in the allowlist'. Three of the four ARE - KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT names all three constraints and isKnownGatedUniqueConstraintDrift matches the deploy log's detail string verbatim. Accepting that would have produced a fix aimed at the wrong thing; correcting it means two fixes, one mine and one the owner's.",
+    "2026-09-10: the owner's '26 failing web integration files' figure is WITHDRAWN as a measurement. It came from a ci.yml run whose integration step was crashing at repo root with no DATABASE_URL/REDIS_URL (my s3d regression, fixed by #489/d8ad025d). The shrink-only baseline mechanism itself stands unchanged and still ships files: [] \u2014 it populates only from a report produced after d8ad025d. Confirmed with lane C, which is telling the owner the number is withdrawn."
   ],
   "items": {
     "item-01": {
@@ -322,22 +323,27 @@
         },
         {
           "k": "s3e",
-          "status": "IN-CI",
+          "status": "MERGED",
           "tier": "A",
           "pr": 489,
-          "title": "restore working-directory and env dropped from the ci.yml integration step"
+          "title": "restore working-directory and env dropped from the ci.yml integration step",
+          "sha": "d8ad025d"
         },
         {
           "k": "s9",
-          "status": "BUILDING",
+          "status": "IN-REVIEW",
           "tier": "A",
-          "title": "wire or retire the tz-case suite (#478) so decision 8 stops naming an unrunnable command"
+          "title": "wire or retire the tz-case suite (#478) so decision 8 stops naming an unrunnable command",
+          "pr": 498,
+          "sha": null
         },
         {
           "k": "s10",
-          "status": "BUILDING",
+          "status": "MERGED",
           "tier": "A",
-          "title": "deploy path honours the gated-drift registry (#464 defect that blocked ten staging deploys)"
+          "title": "deploy path honours the gated-drift registry (#464 defect that blocked ten staging deploys)",
+          "pr": 495,
+          "sha": "ee8cec23"
         }
       ],
       "prs": [
@@ -345,14 +351,18 @@
         445,
         448,
         450,
-        455
+        455,
+        489,
+        495
       ],
       "mergeShas": [
         "6797fdab",
         "ae7832db",
         "cf232595",
         "6c225917",
-        "bd94e536"
+        "bd94e536",
+        "d8ad025d",
+        "ee8cec23"
       ],
       "proof": {
         "status": "OWED",
