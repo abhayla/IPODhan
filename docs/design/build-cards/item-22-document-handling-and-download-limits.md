@@ -1,5 +1,12 @@
 # Item 22 — Document handling and download limits (OD-36, OD-37)
 
+> **Architect correction, 2026-09-10 (binding; this block wins over the text below where they differ).**
+> 1. Multi-part filings: ONE `documents` row per download (the container URL / zip), never one row per part. `unique_url` and `unique_doc_per_ipo` stay. Each part's extraction record carries `partNumber` and the part's own sha256 (OD-36's "part number in provenance"); the parent row is COMPLETED only when every part extracted. No product-shape change, so no O-nn.
+> 2. No new dependency: `pdf-lib` is not in the tree and no decision names it; use the present `pdf-parse`.
+> 3. `scraper/config/` (NEW) does not exist yet. Its JSON-schema loader (OD-51) is item 2's (lane C). If this item's allow-list slice arrives first, it adds the allow-list FILE only and reuses the loader when it lands; never a second loader.
+> 4. The flag slice waits for lane A's slot-aware helper PR and rebases onto it; the helper applies to NEW flags only.
+
+
 ## Purpose
 
 Every document download this system makes — from NSE, BSE, SEBI, the registrars, or an issuer's
