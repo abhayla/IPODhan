@@ -94,7 +94,8 @@
           "heldPending": [
             "#482"
           ],
-          "heldReason": "A repair that cannot source its value writes nothing. BSE has no segment field (bse-api-scraper.ts:287-292), so segment cannot be sourced from the source that wrote these rows. Held until #482 gives segment an honest source."
+          "heldReason": "A repair that cannot source its value writes nothing. BSE has no segment field (bse-api-scraper.ts:287-292), so segment cannot be sourced from the source that wrote these rows. Held until #482 gives segment an honest source.",
+          "branchPreserved": "fix/pm-c-item14-s2-bse-issue-size-residue @ e4a855b8 pushed to origin before its worktree was removed - the tool is the investigator that PROVED the two rows correct and will be re-scoped for #482, so losing it would mean rebuilding the sourcing logic."
         }
       ],
       "prs": [
@@ -145,12 +146,13 @@
         {
           "id": "2-S2",
           "tier": "B",
-          "status": "IN_REVIEW",
+          "status": "MERGED",
           "files": 4,
           "lines": 390,
           "tests": 8,
           "note": "manifest + zod schema + capability cross-check",
-          "pr": 483
+          "pr": 483,
+          "mergeSha": "4e188187"
         },
         {
           "id": "2-S3a",
@@ -199,7 +201,8 @@
         483
       ],
       "mergeShas": [
-        "b0c42202"
+        "b0c42202",
+        "4e188187"
       ],
       "proof": {
         "status": "OWED",
@@ -314,7 +317,9 @@
     "2026-09-10 14:43 IST CHITTORGARH IS A PLAUSIBLE re-sourcing source but NOT a proven one: it derives segment from a listingAt string (\"BSE SME\", \"NSE, BSE\"), so when that field is POPULATED, SME in it is a genuine source assertion - its defect is narrower, only the empty/unparseable case. Whether listingAt is actually populated for the 41 historical rows is UNCHECKED and I am not assuming it. 2-S3b proves it against a real fixture first.",
     "2026-09-10 14:45 IST 2-S2 PR #483 OPENED. 8 tests, exit 0, 4 files +390/-0. Verifier PASS at Tier B with all four mutations reproduced independently PLUS a fifth of its own: replacing loadFieldManifest with a bare JSON.parse fails 7 of 8 tests, so nothing passes vacuously. Lane C 3 of 15 PR-gate runs; repo 27 of a 50 stop.",
     "2026-09-10 14:45 IST DIVERGENCE DECIDED BY ME, declared in the PR body rather than absorbed. The verifier caught that one capability reason string is paraphrased, not verbatim: the card says \"SEE CONTRADICTION below\", the shipped JSON names the contradiction (OD-3 retires Moneycontrol scheduling; owner decision C-1 pending). KEPT deliberately - \"below\" is a pointer into the card prose, and lifted into a standalone JSON file it points at NOTHING, sending a reader after text that does not exist. Every other field of every row matches the card verbatim, checked field by field by the reviewer including all other reason strings.",
-    "2026-09-10 14:45 IST 2-S1 GAP CLOSED HERE as planned, not forgotten: nested key paths were implemented but untested in 2-S1 and declared as a known gap in its PR. 2-S2 proves them against the REAL nested manifest rather than an invented fixture - observed renderings fields.<key>.rank.MAINBOARD.1 and fields.<key>.capability.BSE.capable. Deferring a test to where the real data exists, and writing the deferral down, worked."
+    "2026-09-10 14:45 IST 2-S1 GAP CLOSED HERE as planned, not forgotten: nested key paths were implemented but untested in 2-S1 and declared as a known gap in its PR. 2-S2 proves them against the REAL nested manifest rather than an invented fixture - observed renderings fields.<key>.rank.MAINBOARD.1 and fields.<key>.capability.BSE.capable. Deferring a test to where the real data exists, and writing the deferral down, worked.",
+    "2026-09-10 14:52 IST 2-S2 MERGED as 4e188187 via PR #483, squash. Five checks pass, mergeState CLEAN, zero non-success - read from the checks. Verified on origin/main before discarding: manifest 63 lines with all three fields (ipos.issue_size, ipo_details.fresh_issue, financial_statements.revenue), version 1, generatedFrom the spec; loader 35, schema 75, test 217. Worktree removed, 1309 links removed as links, main checkout 4602 -> 4602, 0 deleted-on-disk. Item 2 now has the loader AND the manifest on main.",
+    "2026-09-10 14:52 IST HELD WORK PRESERVED BEFORE ITS TREE DIED. 14-S2 is held indefinitely pending #482, so under worktree lifecycle R2 its tree should not sit around - but its commit existed only locally, and -Discard would have taken it. Pushed fix/pm-c-item14-s2-bse-issue-size-residue @ e4a855b8 to origin FIRST, confirmed the ref, then removed the tree. That tool is the investigator that proved both rows already correct; rebuilding its BSE sourcing logic later would be pure waste. Lane C now has exactly one worktree, the coordination tree."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
