@@ -310,6 +310,6 @@
     "scraper/config/ (does NOT exist on main, verified): lane C item 2 creates the JSON-schema loader for OD-51; lane B item 22 reuses that loader, never adds a second; if item 22 arrives first, build the allow-list FILE only"
   ],
   "carriedInputs": [
-    "Offered slice plans for items 22 and 18 at docs/contracts/plans/lane-b-items-22-18.md - NOT on origin/main as of 2026-09-10 12:45 IST; read when it lands. Its four attached 'supervisor decisions' are peer INPUT, weighed on merit, not binding; the build card remains the slice source."
+    "Items 22 and 18: the four architect decisions land as an 'Architect correction 2026-09-10' block AMENDING the build cards themselves (Tier C docs PR), with the plans under docs/contracts/plans/. Binding via 'the card is the slice source' rather than via a relay. Plan nothing for 22 or 18 until that PR merges; the peer sends the number."
   ]
 }
