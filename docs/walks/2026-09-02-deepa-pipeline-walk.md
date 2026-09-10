@@ -3112,3 +3112,16 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   appends a ledger line ends with the board write in the same turn, and a ledger line without its
   board write is itself a defect line.** The two writes are one action or they drift, and the person
   who pays for the drift is the one who cannot see the work.
+
+- 2026-09-10 22:25 IST **[lane B] The wiring gate is live on main** (PR #526, `90337baf`). Proven by its step in
+  the run rather than by a green tick: step 26, *Security boundaries are actually wired*, conclusion
+  success, printing `3 boundary/boundaries checked against 524 source file(s); 1 baselined … PASS`.
+  Three security controls shipped this week doing nothing — `isResolvedAddressPrivate` with zero
+  callers, `slotAwareFlagDefault` with zero production callers, and the registrar allow-list parameter
+  every call site left at its empty default. All three had unit tests and all three passed CI, because
+  **the tests covered the function and nothing covered the wiring.** From this commit, a registered
+  boundary with no caller fails the gate.
+  Its baseline holds exactly one entry, the registrar allow-list, and item 22 slice 7 closes it — so
+  22-7 must now also DELETE that entry, or the shrink-only rule fails the build. That is the mechanism
+  working as designed: the next slice cannot quietly leave the baseline holding a gap that no longer
+  exists.
