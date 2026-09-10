@@ -152,6 +152,18 @@
     {
       "at": "2026-09-10T21:53:09.506Z",
       "what": "18-1b and 18-2 UNMOVED after 19 staging cycles: document_pages still 0, COMPLETED still 83, found 0, extractionBlocked 10, budgetExhausted true. Of 595 purge-held lines, ZERO carry a real timestamp - still the never-extracted arm, exactly as measured. The one named condition (a cycle that completes an extraction) has not occurred; the blocker is the discovery/download step, not this lane code."
+    },
+    {
+      "at": "2026-09-10T22:32:19.392Z",
+      "what": "BOOKKEEPING CORRECTION, not new work, and flagged so the count is not read twice. Item 20 DONE 8-of-8 and item 16 DONE 1-of-1 now have proper ledger lines with proof. The previous item-20 DONE line was written at 13:51 when the item had FOUR slices and it finished with eight; item 16 had no line of its own, only a combined 00:06 line carrying neither item proof and whose 7-of-7 was itself superseded. Every claim re-verified against GitHub (all eight item-20 PRs MERGED; #528 squash 9a958a53) and against main (due-step-cycle.ts has ZERO moneycontrol occurrences; index.ts has three and all three are comments explaining the retirement, no live call site)."
+    },
+    {
+      "at": "2026-09-10T22:32:19.392Z",
+      "what": "#587 (item 8a slice 1, the peer-section locator) failed the Detection-Change Gate, correctly - a new file under scraper/src/services with no detection change. Did NOT use the No-detection-change declaration: recorded the real class instead as docs/reviews/failure-classes/heading-matched-was-a-cross-reference.json. A filing names a section inside a sentence and a phrase-anchored matcher binds to the MENTION, parses the notes above the table, and returns a confident wrong answer without crashing. Hit twice tonight; the second time the wrong wording reached a MERGED build card before the locator tests caught it. Gate reproduced locally after committing: PASS, naming the file."
+    },
+    {
+      "at": "2026-09-10T22:32:19.392Z",
+      "what": "#586 green on all seven and deliberately NOT merged: a Tier A adversarial review is running first. Base rate justifies it - three review rounds on my guard code tonight, three real defects, including a CRITICAL false green I would otherwise have shipped. Laptop memory read myself at 04:01: 2.58 GB free of 15.72, node holding 0.5 GB - above the 2.5 GB floor and HIGHER than a peer 03:53 reading of 1.89, so it is recovering rather than falling. No second builder dispatched regardless."
     }
   ],
   "items": {
@@ -169,8 +181,9 @@
     },
     "16": {
       "status": "DONE",
-      "slices": "1 of 1 merged",
-      "proof": "PR #528 sha 9a958a53; all five checks green on CI run 34504887739; mutation-checked - restoring moneycontrol to the CLI allow-list turns the suite red"
+      "slices": "1 of 1: #528, squash 9a958a53",
+      "why": "Moneycontrol retired from both call sites, not only the one production runs.",
+      "proof": "CI run 34504887739 all five checks green; full scraper suite 275 files / 3491 tests / 0 failures; MUTATION-CHECKED - restoring moneycontrol to the CLI allow-list turns the suite red (1 failed, 27 passed). Verified on main 2026-09-11: due-step-cycle.ts zero occurrences, index.ts three and all comments."
     },
     "18": {
       "status": "DONE",
@@ -180,8 +193,8 @@
     },
     "20": {
       "status": "DONE",
-      "slices": "8 of 8 merged",
-      "proof": "PR #552 sha 0c01a1d2 last; every slice green in CI; the traceability check runs on every PR including lane A's"
+      "slices": "8 of 8: #460, #465, #462, #470, #509 (942051e8), #526 (90337baf), #531 (915178d4), #552 (0c01a1d2) - all confirmed MERGED on GitHub 2026-09-11, not recalled",
+      "proof": "PR gate run on #470 printed MODE 4 - 166 rule id(s) compared; check-design-traceability: PASS; 23/23 consistent. The last slice closed a docs-only skip that exempted the one check whose job is reading the docs; confirmed live afterwards on lane A PR run 34518846828, on someone else change."
     },
     "21": {
       "status": "BLOCKED-DEPENDENCY(lane A item 5)",
@@ -596,7 +609,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T21:53:09.506Z",
+  "lastStateWriteAt": "2026-09-10T22:32:19.392Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 1,

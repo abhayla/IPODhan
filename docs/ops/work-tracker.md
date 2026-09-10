@@ -1026,3 +1026,20 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   thirty-six, and I have written the recipe but not run it, because data corrections wait for your
   word. Otherwise the same two decisions: whether the shared branch should refuse changes that have
   not passed their checks, and whether to approve the new PDF library.
+
+- **2026-09-11 04:02 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  To be clear so it is not counted twice: I wrote a fresh "8 of 8" completion line into the lane log
+  this tick, but that is a CORRECTION of the record, not new work. The old completion line was
+  written when the item had four pieces and it finished with eight, and a second item that finished
+  hours ago had no completion line of its own at all. Both now say what has been true since last
+  night, and I re-checked every claim against GitHub and the live code rather than trusting my own
+  notes. A reader of ipodhan.com would notice nothing today. What went wrong: our own quality gate
+  rejected my newest change because it added code without adding any way to detect the problem it
+  guards against. The gate was right. I deliberately did not use the available "no detection needed"
+  exemption, because this change found a genuine trap worth writing down - a prospectus mentions a
+  table by name inside a footnote, and a reader that searches for the name latches onto the footnote
+  instead of the table, then reads the notes above it and returns a confident wrong answer. I hit
+  that twice tonight, and the second time the wrong wording got as far as an approved plan before my
+  own tests caught it. What is needed from Abhay: nothing new. The three waiting items are unchanged
+  - one data correction (one row of thirty-six, recipe written, not run), whether the shared branch
+  should refuse changes that have not passed their checks, and whether to approve the new PDF library.
