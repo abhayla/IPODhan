@@ -459,7 +459,7 @@
           "pr": null,
           "sha": null,
           "title": "couple the status-board write to the ledger write so the board cannot go stale",
-          "why": "The board sat 95 minutes behind the ledger tonight while the owner reads the board. Both were written by hand as two steps, so one could be done and the other forgotten. A reminder to remember is not a fix.",
+          "why": "The board and the ledger are written as two hand-made steps, so one can be done and the other forgotten. Tonight the board sat 33 minutes behind the ledger (NOT 95 - lane C corrected its own figure, which came from an estimate rather than the clock, and 33 is inside the 60-minute rule). So this is not a breach being papered over; it is a structure that will eventually produce one. The owner reads the board, and the failure mode is silent: a stale board looks exactly like a current one.",
           "plan": [
             "one script appends the ledger/tracker line AND emits the board payload file in the same run",
             "the script prints the exact Artifact call, so the follow-up is mechanical rather than recalled",
