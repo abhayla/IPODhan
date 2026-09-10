@@ -16,7 +16,7 @@
     "name": "ipodhan_test2",
     "drop": "OWED"
   },
-  "prGateRunsSpentByThisLane": 6,
+  "prGateRunsSpentByThisLane": 7,
   "laneCapPerDay": 25,
   "repoCeilingPerDay": 60,
   "repoStopAt": 50,
@@ -124,12 +124,13 @@
         {
           "k": "22-1",
           "title": "resolved-address refusal + allow-list as config (imports lane C loader)",
-          "status": "PLANNED",
-          "pr": null,
-          "sha": null,
+          "status": "MERGED",
+          "pr": 487,
+          "sha": "c3a8071b",
           "tier": "A",
           "lines": 400,
-          "note": "AT the cap - splits rather than merging large if it grows"
+          "note": "AT the cap - splits rather than merging large if it grows",
+          "reviewRounds": 3
         },
         {
           "k": "22-2",
@@ -401,6 +402,14 @@
       "foundBy": "the builder itself, via a stray unrelated-looking test failure, and reported rather than hidden",
       "class": "a restore method that reverts to a state older than the work in progress; the symptom appears far from the cause",
       "mechanism": "never git checkout -- in a worktree holding uncommitted work; restore a mutated file by copying back the pre-mutation copy and verify with diff before continuing"
+    },
+    {
+      "id": "DEFECT-B15",
+      "at": "2026-09-10 16:19 IST",
+      "what": "powershell -File $HOME/.claude/tools/wt-rm.ps1 failed because MSYS_NO_PATHCONV=1 makes $HOME expand to the MSYS form",
+      "foundBy": "the command failing loudly",
+      "class": "THIRD occurrence of the MSYS path-conversion cause today (DEFECT-B01, DEFECT-B13) - and the first where the supervisor broke a rule it had written for workers an hour earlier",
+      "mechanism": "the path rule applies to the supervisor own commands, not just briefs: every path handed to powershell, git, node or gh is Windows-form, and $HOME is never used in such a command"
     }
   ],
   "contractCorrectionsDue": [],
