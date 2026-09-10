@@ -3059,3 +3059,24 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   extractor MUST include a REAL fixture captured from the live source, never a format typed from
   memory."* The fixture requirement is not bureaucracy; it falsified the design before a line of
   code was written.
+
+- 2026-09-10 21:13 IST **[lane B] The RHP re-source works, and the same check disqualified both chosen fixtures.**
+  Told to verify that the "Basis for Offer Price" figures are TEXT in the RHP rather than pixels, I
+  fetched `RHP_ARCIL.zip` through NSE's own ipo-detail API: 9.6MB, two members, **621 pages, 615 with
+  real text, 2,349,952 characters**. Every heading the re-source depends on is there as text —
+  basis for offer price, weighted average cost of acquisition, EPS, price to earnings, net asset
+  value, return on net worth, industry/listed peer. The architect's re-source is sound.
+  Then the same search disqualified the fixture. `current ratio`, `quick ratio` and
+  `inventory turnover` — the three fields item 8 exists to fill — are **NOT in ARCIL's RHP**. ARCIL
+  is an Asset Reconstruction Company: it has no inventory, so those ratios are legitimately absent
+  rather than missing. And section 6 says in as many words: *"There are no listed companies which are
+  comparable in size to the Company... Accordingly, we have not provided a comparison of accounting
+  ratios with listed peers."* No peer table either, because the issuer declined to publish one.
+  So ARCIL can prove the STRUCTURE parses and cannot prove a single VALUE the item targets. The card
+  chose ARCIL and VINOD because an earlier probe happened to fetch those two RATIOS documents — not
+  because they exercise the fields. VINOD, a textile company and the one that WOULD have inventory,
+  now 404s: it has listed and NSE dropped its links.
+  The lesson is about fixture selection, and it is not obvious: **a real fixture is necessary but not
+  sufficient — it also has to be a fixture that can FAIL.** Two genuinely captured, genuinely real
+  documents proved nothing here, because neither issuer publishes the numbers under test. A green
+  extractor test against ARCIL would have meant only that empty input produced empty output.
