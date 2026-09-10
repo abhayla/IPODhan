@@ -48,10 +48,16 @@
   ],
   "items": {
     "8": {
-      "status": "PREMISE_CORRECTED_NOT_STARTED",
-      "slices": "0 merged",
-      "why": "a real 529-page RHP fetched at 01:35 overturned the card premise: the prospectus carries a P/E SUMMARY (Highest/Lowest/Average naming two companies), not a peer table. Eight of the ten peer_companies columns are absent. Filed as #565. Building on the old premise would have written two malformed rows per issuer.",
-      "nextStep": "table-level check on a second issuer before the scope is settled"
+      "status": "PREMISE_SETTLED_ON_TWO_ISSUERS",
+      "slices": "0 merged. 8a and 8b ready; a 3rd/4th-issuer column check recommended first.",
+      "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
+      "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
+      "designConstraints": [
+        "parse by matching column HEADERS, never by position",
+        "drop the issuer own row above the Peer Group / Listed Peers separator",
+        "accept NA# and the pending-price placeholder as valid cells, not parse failures"
+      ],
+      "owed": "column-set check on GLASSWALL and KANOHAR before the header map is written"
     },
     "16": {
       "status": "DONE",
@@ -482,7 +488,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T20:27:28.554Z",
+  "lastStateWriteAt": "2026-09-10T20:41:39.290Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 0,
@@ -493,12 +499,14 @@
     "22": 6
   },
   "stagingProofsOwedAndBlocked": [
-    "18-1 migrate",
-    "18-1b page rows",
-    "18-2 cycle",
-    "21-3 revalidate line",
-    "22-4 migrate",
-    "item 22 #496 and #468"
+    "18-1b page rows (cycle pending)",
+    "18-2 cycle (cycle pending)",
+    "21-3 revalidate line (cycle pending)",
+    "item 22 #496 and #468 (cycle pending)"
   ],
-  "stagingProofsBlockedReason": "UNBLOCKED 2026-09-11 01:5x IST: lane A preflight fix proved on run 34525050492 (OK: no schema drift). The five proofs become obtainable once a deploy carrying each slice has flipped; the push trigger is still lane A next PR, so a deploy currently happens only by dispatch. Read the served sha with a no-cache header - the public /api/version carries s-maxage=31536000 and Cloudflare served a stale sha two minutes after a flip."
+  "stagingProofsBlockedReason": "No longer blocked. Staging deploys were restored (lane A #564) and now fire on every non-docs merge (#567); run 34526518484 flipped staging to 2ad49a4e at 20:33:49Z. The remaining four proofs need a scraper CYCLE, not a deploy; staging scraper cron is 15,45.",
+  "stagingProofsPaid": [
+    "18-1 migrate - deploy run 34526518484, release 20260910-202813-2ad49a4e, chain assert newest applied 1789065238437 >= newest journaled, plus OK: no schema drift",
+    "22-4 migrate - same run; 1789065238437 IS 22-4 migration 20260910183358_small_freak"
+  ]
 }
