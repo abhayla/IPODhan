@@ -171,6 +171,18 @@ export interface PersistFilingSummary {
   skipped_lower_priority_source?: string[];
   /** Statement rows refused because a stored row is in a different unit. */
   skipped_unit_mismatch: string[];
+  /**
+   * F-51: this run's fresh/OFS reconciliation outcome. Carried on the summary
+   * (not only in a log line) so the CALLER can name the IPOs behind any count -
+   * `signal-ownership.md` R1: a number is not a reading.
+   */
+  fresh_ofs_reconciliation?: {
+    ok: boolean;
+    kind: ReconciliationKind;
+    uncheckedReasons: ReconciliationUncheckedReason[];
+    deltaPct: number | null;
+    reason: string | null;
+  };
   /** What actually went to `ipos` via upsertIPO (issueSize et al). */
   ipos_fields: string[];
   applied: boolean;
@@ -302,12 +314,28 @@ export const FRESH_OFS_TOLERANCE = 0.005;
 export type ReconciliationKind =
   /** Checked and agreed, or nothing to check against. */
   | 'ok'
-  /** No comparison base existed: stored issue size null/zero and no stated total. */
+  /** No comparison base existed: see `uncheckedReasons` for WHICH of them. */
   | 'unchecked'
   /** The rupee OFS figure and ofs_shares x priceCap disagree. */
   | 'ofs_form_disagreement'
   /** fresh + OFS does not equal a comparison total. */
   | 'total_mismatch';
+
+/**
+ * Why a pair could not be reconciled. Counted SEPARATELY, never as one
+ * "unchecked" bucket, because they call for different actions:
+ *
+ *  - `stored_null` - this IPO has no issue size on file at all. Nothing is
+ *    wrong; the filing is simply the first source to state one.
+ *  - `stored_zero` - `ipos.issue_size` is 0 (or negative). In this project a
+ *    stored zero is a known CORRUPTION MARKER, not a legitimate total (36 rows
+ *    were repaired from 0 to a real value earlier this year), which is why it
+ *    is no base: reconciling against known-bad data would withhold figures
+ *    that are correct. A row counted here is a row worth REPAIRING.
+ *  - `no_printed_total` - the document itself printed no total either, so the
+ *    only other base was unavailable too.
+ */
+export type ReconciliationUncheckedReason = 'stored_null' | 'stored_zero' | 'no_printed_total';
 
 export interface ReconciliationInput {
   /** extraction.fresh_issue_amount, converted to rupees. */
@@ -318,7 +346,10 @@ export interface ReconciliationInput {
   ofsSharesAtCap: number | null;
   /** ipo_valuation.priceCap, in rupees per share. */
   priceCap: number | null;
-  /** The STORED ipos.issue_size (rupees). Null or <= 0 means "no stored base". */
+  /**
+   * The STORED ipos.issue_size (rupees) AS STORED - pass 0 as 0, never
+   * pre-normalised to null, so `stored_zero` can be told from `stored_null`.
+   */
   storedTotalRupees: number | null;
   /** The total this document itself PRINTS (total_offer_amount_at_cap), rupees. */
   statedTotalRupees: number | null;
@@ -335,6 +366,8 @@ export interface ReconciliationResult {
   deltaPct: number | null;
   /** Which bases were actually compared against ('stated_total', 'stored_issue_size'). */
   basesChecked: string[];
+  /** Non-empty ONLY for kind 'unchecked': which base was missing, and why. */
+  uncheckedReasons: ReconciliationUncheckedReason[];
 }
 
 function crore(v: number): string {
@@ -391,6 +424,7 @@ export function reconcileFreshAndOfs(input: ReconciliationInput): Reconciliation
           `(${crore(ofsFromShares)}): ${(delta * 100).toFixed(2)}% apart`,
         deltaPct: delta * 100,
         basesChecked: [],
+        uncheckedReasons: [],
       };
     }
   }
@@ -406,6 +440,7 @@ export function reconcileFreshAndOfs(input: ReconciliationInput): Reconciliation
       reason: null,
       deltaPct: null,
       basesChecked: [],
+      uncheckedReasons: [],
     };
   }
 
@@ -419,14 +454,20 @@ export function reconcileFreshAndOfs(input: ReconciliationInput): Reconciliation
   }
 
   if (bases.length === 0) {
+    const uncheckedReasons: ReconciliationUncheckedReason[] = [
+      input.storedTotalRupees === null || !Number.isFinite(input.storedTotalRupees)
+        ? 'stored_null'
+        : 'stored_zero',
+      'no_printed_total',
+    ];
     return {
       ok: true,
       kind: 'unchecked',
       ofsRupeesResolved: ofsResolved,
-      reason:
-        'fresh + OFS not reconciled: ipos.issue_size is null/zero and the filing states no total',
+      reason: `fresh + OFS not reconciled: ${uncheckedReasons.join(' + ')}`,
       deltaPct: null,
       basesChecked: [],
+      uncheckedReasons,
     };
   }
 
@@ -444,6 +485,7 @@ export function reconcileFreshAndOfs(input: ReconciliationInput): Reconciliation
           `${base.name} (${crore(base.value)}): ${(delta * 100).toFixed(2)}% apart`,
         deltaPct: delta * 100,
         basesChecked: bases.map((b) => b.name),
+        uncheckedReasons: [],
       };
     }
   }
@@ -455,6 +497,7 @@ export function reconcileFreshAndOfs(input: ReconciliationInput): Reconciliation
     reason: null,
     deltaPct: worst * 100,
     basesChecked: bases.map((b) => b.name),
+    uncheckedReasons: [],
   };
 }
 
@@ -925,10 +968,12 @@ export async function persistFilingExtraction(
   const ofsSharesCount = num(extraction, 'ofs_shares');
   const inRupees = (v: number | null): number | null =>
     v === null || unit === null ? null : toRupees(v, unit);
+  // AS STORED, including a 0: `reconcileFreshAndOfs` needs to tell a missing
+  // issue size (`stored_null`) from the corruption marker (`stored_zero`).
   const storedIssueSizeRupees = ((): number | null => {
     const raw = (existing as { issueSize?: string | number | null }).issueSize;
     const n = raw === null || raw === undefined ? Number.NaN : Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : null;
+    return Number.isFinite(n) ? n : null;
   })();
   const reconciliation = reconcileFreshAndOfs({
     freshRupees: inRupees(freshMn),
@@ -946,6 +991,7 @@ export async function persistFilingExtraction(
     storedIssueSize: storedIssueSizeRupees,
     reconciled: reconciliation.ok,
     kind: reconciliation.kind,
+    uncheckedReasons: reconciliation.uncheckedReasons,
     deltaPct: reconciliation.deltaPct,
     reason: reconciliation.reason,
   };
@@ -2138,6 +2184,13 @@ export async function persistFilingExtraction(
     skipped_protected: [...new Set(skippedProtected)].sort(),
     skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
     ipos_fields: iposFields,
+    fresh_ofs_reconciliation: {
+      ok: reconciliation.ok,
+      kind: reconciliation.kind,
+      uncheckedReasons: reconciliation.uncheckedReasons,
+      deltaPct: reconciliation.deltaPct,
+      reason: reconciliation.reason,
+    },
     applied: apply,
   };
 }

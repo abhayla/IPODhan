@@ -197,19 +197,52 @@ describe('F-51 — fresh + OFS must reconcile with the STORED ipos.issue_size', 
     expect(details.freshIssue).toBe('600000000');
     expect(details.ofsIssue).toBe(String(Math.round(KANOHAR_OFS_CR * CR)));
     expect(summary.skipped_failed_check.some((r) => r.includes('withheld TOGETHER'))).toBe(false);
+    // stored_null, NOT stored_zero: this IPO has no issue size on file at all.
+    expect(summary.fresh_ofs_reconciliation).toMatchObject({
+      kind: 'unchecked',
+      uncheckedReasons: ['stored_null', 'no_printed_total'],
+    });
     expect(loggerMocks.info).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'unchecked', reconciled: true }),
+      expect.objectContaining({
+        kind: 'unchecked',
+        reconciled: true,
+        uncheckedReasons: ['stored_null', 'no_printed_total'],
+      }),
       expect.stringContaining('reconciliation')
     );
   });
 
-  it('treats a stored issue size of ZERO as no base, not as a zero total', async () => {
-    const { details } = await run(
+  it('counts a stored ZERO as stored_zero (the corruption marker), separately from stored_null', async () => {
+    // A zero in ipos.issue_size is known-bad data in this project (36 rows were
+    // repaired from 0 to a real value earlier this year), never a legitimate
+    // total - so it is no base, and it is counted on its own because a row
+    // here is a row worth REPAIRING, unlike a stored_null one.
+    const { details, summary } = await run(
       { fresh_issue_amount: 60, ofs_amount_at_cap: KANOHAR_OFS_CR },
       '0'
     );
     expect(details.freshIssue).toBe('600000000');
     expect(details.ofsIssue).toBe(String(Math.round(KANOHAR_OFS_CR * CR)));
+    expect(summary.fresh_ofs_reconciliation).toMatchObject({
+      kind: 'unchecked',
+      uncheckedReasons: ['stored_zero', 'no_printed_total'],
+    });
+  });
+
+  it('does NOT report no_printed_total when the document printed one (only the stored base was missing)', async () => {
+    const { summary, details } = await run(
+      {
+        fresh_issue_amount: 300,
+        ofs_amount_at_cap: KANOHAR_OFS_CR,
+        total_offer_amount_at_cap: 300 + KANOHAR_OFS_CR,
+      },
+      null
+    );
+    expect(details.freshIssue).toBe('3000000000');
+    expect(summary.fresh_ofs_reconciliation).toMatchObject({
+      kind: 'ok',
+      uncheckedReasons: [],
+    });
   });
 
   it('also reconciles against the total the DOCUMENT prints, alongside the stored one', async () => {

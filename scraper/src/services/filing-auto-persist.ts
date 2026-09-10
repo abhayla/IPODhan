@@ -1987,7 +1987,17 @@ export async function processPendingFilings(
     }
 
     logger.info(
-      { ipoId: ipo.id, company: ipo.companyName, docType, written: summary.written },
+      {
+        ipoId: ipo.id,
+        company: ipo.companyName,
+        docType,
+        written: summary.written,
+        // F-51 / signal-ownership R1: the reconciliation outcome rides on the
+        // line that already NAMES the IPO, so a cycle's "N unchecked" is
+        // always resolvable to WHICH IPOs and WHY (stored_null vs the
+        // stored_zero corruption marker) - never a bare tally.
+        freshOfsReconciliation: summary.fresh_ofs_reconciliation,
+      },
       'Filing extracted and persisted automatically (S-02)'
     );
   }
