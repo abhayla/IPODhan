@@ -245,7 +245,10 @@
   "[2026-09-10T21:20:10+00:00] MY MISDIAGNOSIS OF #570, CORRECTED IN THE OPEN. I reported the CI failure as a probable FLAKE in `document-cycle-passes.test.ts`, 'a file 23-S1 does not touch', 'passes 30/30 against main'. WRONG on both counts. I keyed on `this.db.select is not a function` stderr lines, which are harmless noise MANY files print - they appear identically when that test PASSES. The real failure is `scraper/tests/unit/pipeline-stages/stage-9-runtime-preflight.test.ts`, 7 of 7, reproduced by me on the branch, and it is 23-S1's own.",
   "[2026-09-10T21:20:10+00:00] AND THE FLAKE EXPERIMENT NEVER RAN. My `gh run rerun --failed` on ecc68666 was CANCELLED when the lockfile push superseded it, so the same-commit second run never existed. I had two failures on two different commits and no controlled comparison. The peer's rule - 'the re-run answers the hypothesis only if the second result is read and labelled' - was correct and I did not honour it: I labelled from a run that never completed. That is the lesson, in those words.",
   "[2026-09-10T21:20:10+00:00] THE CLASS BEHIND IT, for delta 3: `scripts/preflight-runtime.sh` has expectation files in TWO workspaces - `scripts/tests/preflight-runtime.test.mjs` (updated, 16/3 -> 20/3) and `scraper/tests/unit/pipeline-stages/stage-9-runtime-preflight.test.ts` (NOT updated), the latter comparing the script's real output against committed verdict fixtures. Change the script's output and one set of expectations moves while the other goes stale silently, out of sight of the person editing. Sent back with an explicit instruction NOT to regenerate fixtures until they match - that makes the test agree with whatever the script now prints, which is how a fixture test stops being a test - plus a sweep for a THIRD consumer before the fix rather than after.",
-  "[2026-09-10T21:20:10+00:00] Worktree lifecycle: s19, s20 and progress-tracked removed (PRs #564, #567, #571 each confirmed MERGED by `gh pr view --json state` BEFORE touching the tree, never on the tool's ancestry signal). Main checkout proven intact after each: tracked 4702 -> 4702, dirty 11 -> 11, deleted-on-disk 0."
+  "[2026-09-10T21:20:10+00:00] Worktree lifecycle: s19, s20 and progress-tracked removed (PRs #564, #567, #571 each confirmed MERGED by `gh pr view --json state` BEFORE touching the tree, never on the tool's ancestry signal). Main checkout proven intact after each: tracked 4702 -> 4702, dirty 11 -> 11, deleted-on-disk 0.",
+  "[2026-09-10T21:45:14+00:00] PEER RULING CHECKED AND PARTLY REJECTED, with evidence. The claim: no remaining slice covers F-73's three tables, so item 1 would read 30/30 complete with revenue/EPS/valuation still on the no-priority direct-upsert path, and a 31st slice must be added tonight. I read the slice list before agreeing: s7b's title is 'call sites: the three direct-upsert sites + anchor-persister', and those three ARE ipo_details:993, financial_statements:1250, ipo_valuation:1316. So the coverage exists and a 31st slice would have duplicated it. NO new slice added; the count stays 30.",
+  "[2026-09-10T21:45:14+00:00] BUT THE UNDERLYING WORRY WAS LEGITIMATE AND THE CAUSE WAS MINE: I scoped s5b to financial_statements alone, which is one of s7b's three, leaving the two slices overlapping ambiguously - s7b could be read as already covered by s5b, and the remaining two tables would fall in the gap. Fixed by making both titles explicit rather than by adding a slice: s5b now says FINANCIAL_STATEMENTS ONLY, s7b now names ipo_details and ipo_valuation directly instead of saying 'three' and leaving a reader to subtract. A count is only honest if each entry says what it covers.",
+  "[2026-09-10T21:45:14+00:00] Merge order agreed with lane C: their #569 first, s5b after, git merge-tree run between the heads anyway rather than asserted. Their PR is small, self-contained and already open; mine is a new write path that will take a review round, so making them wait behind it would be the wrong trade."
  ],
  "items": {
   "item-01": {
@@ -319,13 +322,14 @@
     },
     {
      "k": "s5b",
-     "title": "consolidatedUpsertChildRows on the orchestrator behind ENABLE_CHILD_TABLE_CONSOLIDATION",
+     "title": "consolidatedUpsertChildRows on the orchestrator behind ENABLE_CHILD_TABLE_CONSOLIDATION - FINANCIAL_STATEMENTS ONLY",
      "status": "PLANNED",
      "pr": null,
      "sha": null,
      "tier": "A",
      "blocker": "HARD ORDERING BLOCKER, verified by the Tier A review of #518: trackFieldUpdate's onConflictDoUpdate targets (ipoId, tableName, fieldName) with set: { rowKey, source, confidence, dataLineage, ... } at field-sources-repository.ts:191-225. So a second row key does not merely overwrite rowKey - it REPLACES source, confidence and dataLineage too. Two child rows would silently DESTROY each other's provenance, not merely mislabel it. The row-key-scoped unique constraint must land BEFORE any caller passes a non-empty key. Not 'with', not 'soon after'.",
-     "orderChange": "FINANCIALS FIRST. Measured on staging: 5 of 6 child tables are single-source today (promoters 29, intermediaries 194, risk_factors 2840, financial_data 174 all DRHP; peer_companies 321 all CHITTORGARH), so per-field priority has NOTHING to resolve on them. field_sources already carries ipo_financials rows from FOUR sources (CHITTORGARH 648, NSE 16, DRHP 12, BSE 10). So s5b takes the financials tables first and proves priority resolution against real conflicts; s7a/s7b then take the single-source tables where the proof is provenance rows plus zero change to written values. Value before plumbing; size unchanged."
+     "orderChange": "FINANCIALS FIRST. Measured on staging: 5 of 6 child tables are single-source today (promoters 29, intermediaries 194, risk_factors 2840, financial_data 174 all DRHP; peer_companies 321 all CHITTORGARH), so per-field priority has NOTHING to resolve on them. field_sources already carries ipo_financials rows from FOUR sources (CHITTORGARH 648, NSE 16, DRHP 12, BSE 10). So s5b takes the financials tables first and proves priority resolution against real conflicts; s7a/s7b then take the single-source tables where the proof is provenance rows plus zero change to written values. Value before plumbing; size unchanged.",
+     "scopeNarrowedBy": "I scoped s5b to financial_statements alone. That is ONE of the three direct-upsert sites s7b's title claims. Without this note the two slices overlap ambiguously and s7b could be read as already done."
     },
     {
      "k": "s6",
@@ -351,11 +355,15 @@
     },
     {
      "k": "s7b",
-     "title": "call sites: the three direct-upsert sites + anchor-persister; delete trackField(table,rows)",
+     "title": "call sites: ipo_details and ipo_valuation (the direct-upsert sites s5b did NOT take) + anchor-persister; delete trackField(table,rows)",
      "status": "PLANNED",
      "pr": null,
      "sha": null,
-     "tier": "A"
+     "tier": "A",
+     "scopeMadeExplicit": "[2026-09-10T21:45:14+00:00] Corrected after a peer raised - correctly in spirit, wrongly in fact - that no slice covered F-73's three tables. It DOES: s7b's original title said 'the three direct-upsert sites', which are ipo_details:993, financial_statements:1250 and ipo_valuation:1316. But s5b took financial_statements, so s7b's remaining scope is ipo_details and ipo_valuation, and the title now says so rather than leaving a reader to subtract.",
+     "whyItMatters": "F-73's point: these three are written by a DIFFERENT shape - a direct writable-object upsert - from the five replaceAllowed tables, and were never named for change. They carry the revenue, EPS and valuation numbers. Item 1 reading 'complete' with them still on the no-priority path is the exact failure F-73 named.",
+     "carriesFromLaneC": "[2026-09-10T21:45:14+00:00] When s7b brings ipo_details onto consolidatedUpsertChildRows, lane C's fillIssueTypeIfNull (PR #569, makeIpoDetailsWriter in filing-persist-deps.ts) is NOT removed or duplicated: the Chittorgarh path migrates onto the new writer IN THE SAME SLICE, with an explicit rank for source CHITTORGARH on ipo_details.issueType - below DRHP/RHP/PROSPECTUS/ADMIN, above nothing else today. A null-fill is what you write when there is no rank; it should stop existing the moment there is one. Lane C's ruling, adopted.",
+     "notInScope": "The :924 floor===cap guess and substance-checks.mjs:177's FIXED_PRICE exemption are lane C's follow-on slice. The writers do not touch them."
     },
     {
      "k": "s8",
