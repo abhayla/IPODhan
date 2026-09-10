@@ -567,3 +567,10 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   be listed openly in a file that can only shrink, never hidden. A reader of ipodhan.com would notice nothing from
   any of this yet; it is the machinery that makes the later work provable. One alarm was raised and disproved: the
   test runner is not silently passing failing tests. Nothing needed from you.
+- **2026-09-10 12:37 IST - 25% merged, a second slice one check from landing.** The layering check is in CI. It took three review
+  rounds and the first two refused it: the first version could not fail at all, and the second was blind to the
+  scraper because it could not follow that code's own import style. Fixed, it found **41 real places where a lower
+  part of the system reaches up into a higher one** - all listed openly in a file that can only shrink, none hidden,
+  none fixed here. A fourth slice is building alongside: the one that catches a design sentence being reworded
+  without its code or tests being touched. A reader of ipodhan.com still sees nothing from any of this. Nothing
+  needed from you.
