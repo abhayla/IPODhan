@@ -203,7 +203,11 @@
   "s14 #548 RED on CI, cause identified: its own new test spawns node --experimental-strip-types, a flag that exists only on Node >= 22.6, and pr-gate's unit job pins node-version 20 (pr-gate.yml:63). Green on this laptop (v22.20.0), red on CI forever. Fix dispatched: evaluate the config through tsx (already a devDependency, runs on Node 20) and add a check that no scripts/tests file passes that flag again.",
   "s17 #549 rebased onto main at 0c01a1d2 before merge: it edits pr-gate.yml and main had just gained #552's edit to the same file. merge-tree said clean, but a textually-clean merge of two edits to one workflow is exactly the #522 shape - CI re-run on the real base is the gate.",
   "s17 MERGED e7ef5357 via PR #549, all 5 checks green on a head made current with main first. The deploy-load trio the owner named (s12 orphan cleanup, s16 cache out of release, s17 15-minute staging cadence) is now complete, so item 23 (build in CI, ship an artifact so the production box never runs npm ci or next build) is unblocked - owner approved it for lane A after s17.",
-  "s14 #548 fix pushed bb522f58: the alias-table test now evaluates scraper/vitest.config.ts through tsx instead of node --experimental-strip-types, its pr-gate step moved to AFTER npm ci (tsx needs node_modules), and a new guard fails if any scripts/tests file passes that flag to a subprocess again. The worker reported that pushing would not launch a CI run - that is wrong, pull_request fires on synchronize and a run started on bb522f58. Follow-up dispatched: the guard scans only scripts/tests/ and only matches the flag as a quoted literal, so scripts/ci/tests/ and a NODE_OPTIONS spelling both slip past it."
+  "s14 #548 fix pushed bb522f58: the alias-table test now evaluates scraper/vitest.config.ts through tsx instead of node --experimental-strip-types, its pr-gate step moved to AFTER npm ci (tsx needs node_modules), and a new guard fails if any scripts/tests file passes that flag to a subprocess again. The worker reported that pushing would not launch a CI run - that is wrong, pull_request fires on synchronize and a run started on bb522f58. Follow-up dispatched: the guard scans only scripts/tests/ and only matches the flag as a quoted literal, so scripts/ci/tests/ and a NODE_OPTIONS spelling both slip past it.",
+  "s8 PR #556 OPENED at 3591339f after I reproduced every gate: 27/27 unit, 6/6 parity, 118/0 floor, registry --check 0, and two per-guard mutations run individually on a clean tree (3 and 8 failures). Endorsed the builder's UNVERIFIABLE third state after confirming detection-floor-checks.mjs:775-778 maps it to EXIT_UNVERIFIABLE. TWO defects found in review that the builder did not report: the wrong derivation function, and a drift in the plain-JS normalizer copy that hits ORDINARY names - 'Hy-Tech Engineers Limited' (a real IPO in this database) folds hyphens in the TS SSOT and not in the JS copy. Three SSOT rules were missing. Re-ported rule by rule; all 11 rules now mutated individually and red.",
+  "NINTH instance of the class tonight: normalize-company-name-parity.test.mjs is wired into CI at pr-gate.yml:308, runs in a deliberate Node-22 window, imports both copies, and is green - its twelve-name REAL_NAMES fixture simply contains no hyphenated name, no (India) suffix and no punctuation-only name. Every diverging shape was outside the sample. A sample is not a guard.",
+  "s18 OPENED as a new slice and dispatched Tier A. It is the HARD ORDERING BLOCKER for s5b/s7a/s7b and it was not in the slice list at all - the row-key-scoped unique constraint on field_sources exists nowhere on main. Found while seeding s8's test database.",
+  "MY MISS, recorded because the rule is mine and I broke it: I hand-typed '2026-09-11T02:05:00+05:30' into the board payload instead of reading `date -Iseconds -u`. It was ~85 minutes ahead of the real clock, so the board's freshness strip would have read lane A as fresh no matter what happened - a freshness indicator fed by a typed timestamp cannot ever report stale, which is the same 'runs and measures nothing' class I spent the night finding in other people's checks. A peer session caught it. Corrected to 2026-09-10T19:11:04Z, read from the clock in the same command. Slice s15 is the mechanism; a rule I remember is not a mechanism."
  ],
  "items": {
   "item-01": {
@@ -318,9 +322,9 @@
     {
      "k": "s8",
      "title": "detection check field-sources-row-key-coverage + registry regeneration",
-     "status": "SUPERVISOR-FIX",
-     "pr": null,
-     "sha": null,
+     "status": "PR-OPEN",
+     "pr": 556,
+     "sha": "3591339f",
      "tier": "A"
     },
     {
@@ -495,6 +499,17 @@
      "pr": 549,
      "sha": "e7ef5357",
      "title": "staging deploys on a 15-minute schedule when main differs, not on every push"
+    },
+    {
+     "k": "s18",
+     "title": "widen unique_field_source_per_ipo to include row_key (the hard blocker for s5b/s7a/s7b)",
+     "status": "BUILDING",
+     "pr": null,
+     "sha": null,
+     "tier": "A",
+     "why": "schema.ts:1518 is still the 3-column unique(ipo_id, table_name, field_name) and field-sources-repository.ts:209-225 targets those same three in onConflictDoUpdate with set: { rowKey, source, confidence, dataLineage }. Two child rows of one IPO writing the same field do not merely relabel each other - they REPLACE each other's source, confidence and lineage. The constraint exists nowhere: not in schema.ts, not in _gated/. data_conflicts has indexes only, no unique constraint, so it needs nothing.",
+     "judgement": "Widening a unique key strictly WEAKENS it - every row set satisfying unique(a,b,d) also satisfies unique(a,b,c,d) - so no existing row can violate it, nothing needs repairing first, and a journaled migration is correct rather than a _gated file. The opposite of s6's E2, where a NEW column with a uniform default created real duplicates. The builder was told to TEST that claim on staging read-only rather than take it from me, and to refuse the journaled path if the duplicate-group count is not zero.",
+     "mustBeSameCommit": "the ON CONFLICT target must widen with the constraint or Postgres raises 42P10 on the first write - a broken deploy, not a silent bug"
     }
    ],
    "prs": [
