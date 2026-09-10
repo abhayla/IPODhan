@@ -344,8 +344,7 @@
     }
   },
   "sharedFiles": [
-    "scraper/config/ (does NOT exist on main, verified): lane C item 2 creates the JSON-schema loader for OD-51; lane B item 22 reuses that loader, never adds a second; if item 22 arrives first, build the allow-list FILE only",
-    "scraper/config/ (does NOT exist on main, verified): lane C item 2 owns the JSON-schema loader (OD-51); lane B item 22 adds the allow-list FILE only if it arrives first, and reuses the loader when it lands"
+    "scraper/src/config/validated-config-loader.ts MERGED #473 b0c42202 (verified: exit 0, 37 lines): loadValidatedConfig<T>(configPath, schema: ZodType<T>): T. Item 22 slice 22-2 IMPORTS it and adds only scraper/config/download-allowlist.json plus its zod schema (.strict() owns unknown keys). No second loader, no ajv, no yaml. KNOWN GAP: nested key paths implemented but only flat keys tested until lane C's 2-S2 - if nested error rendering looks wrong, file against item 2, never patch the loader."
   ],
   "carriedInputs": [
     "Items 22 and 18: the four architect decisions land as an 'Architect correction 2026-09-10' block AMENDING the build cards themselves (Tier C docs PR), with the plans under docs/contracts/plans/. Binding via 'the card is the slice source' rather than via a relay. Plan nothing for 22 or 18 until that PR merges; the peer sends the number."
