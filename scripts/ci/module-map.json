@@ -1,0 +1,358 @@
+{
+  "_why": "Item 20 slice 3 (OD-51, section 7.6 of docs/design/data-sourcing-pull-model.md). Maps source files to the ten \u00a77.6 modules so scripts/ci/check-module-boundaries.mjs can enforce the dependency rule (a lower layer never imports a higher one) as DATA, never as code. Grounded in the real tree as of 2026-09-10 by reading scraper/src, packages/shared/src and web/lib, plus the build cards' Module: lines. The repository is NOT organised into these ten directories today (plan and walk in particular do not exist as code yet - they are items later in the build sequence per section 7.1), so this map is deliberately PARTIAL. Adding a new path to a module is a data edit here, never a code change. First match wins, top to bottom.",
+  "layerOrder": [
+    "discovery",
+    "download",
+    "extraction",
+    "validation",
+    "consolidation",
+    "plan",
+    "walk",
+    "verification",
+    "re-read",
+    "read-side"
+  ],
+  "coverageFloor": 109,
+  "entries": [
+    {
+      "glob": "scraper/src/services/document-discovery-runner.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/primary-source-discovery.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/company-host-source.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/document-download-verifier.ts",
+      "module": "download"
+    },
+    {
+      "glob": "scraper/src/services/document-store.ts",
+      "module": "download"
+    },
+    {
+      "glob": "scraper/src/services/bse-party-parser.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/services/nse-party-parser.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/services/pdf-cover-text.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/services/document-classifier.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/anchor-report-parser.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/pipelines/data-validation-pipeline.ts",
+      "module": "validation"
+    },
+    {
+      "glob": "scraper/src/utils/data-validation.ts",
+      "module": "validation"
+    },
+    {
+      "glob": "scraper/src/utils/lot-size-validator.ts",
+      "module": "validation"
+    },
+    {
+      "glob": "scraper/src/utils/validators.ts",
+      "module": "validation"
+    },
+    {
+      "glob": "scraper/src/services/data-consolidation-orchestrator.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/data-consolidation-service.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/data-merger.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/data-persister.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/freshness-monitor.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/cross-source-disagreement-monitor.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/keyless-coverage-monitor.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/deploy-drift-monitor.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/selector-degradation-monitor.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/scraper-failure-tracker.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/scraper-metrics-tracker.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/cross-document-agreement.ts",
+      "module": "re-read"
+    },
+    {
+      "glob": "scraper/src/services/registrar-reresolve.ts",
+      "module": "re-read"
+    },
+    {
+      "glob": "web/lib/repositories/**/*.ts",
+      "module": "read-side"
+    },
+    {
+      "glob": "scraper/src/services/nse-past-issue-matcher.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/ipo-deduplication.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/duplicate-detection-service.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/listing-exchange-resolution.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/sebi-source.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/utils/match-ipo.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/scrapers/nse-equity-master.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/scrapers/nse-isin-scraper.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/scrapers/nse-security-type-scraper.ts",
+      "module": "discovery"
+    },
+    {
+      "glob": "scraper/src/services/in-memory-document-fetch-state-store.ts",
+      "module": "download"
+    },
+    {
+      "glob": "scraper/src/services/document-cycle.ts",
+      "module": "download"
+    },
+    {
+      "glob": "scraper/src/services/document-cycle-calendar-gate.ts",
+      "module": "download"
+    },
+    {
+      "glob": "scraper/src/services/document-state-machine.ts",
+      "module": "download"
+    },
+    {
+      "glob": "scraper/src/utils/browser.ts",
+      "module": "download"
+    },
+    {
+      "glob": "scraper/src/services/normalization-engine.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/utils/document-type-mapper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/utils/date-string-parsing.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/utils/transform-past-ipo.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/anchor-investors-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/bse-api-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/bse-detail-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/bse-document-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/bse-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/chittorgarh-detail-fields.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/chittorgarh-document-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/chittorgarh-listing-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/chittorgarh-rights-debt-adapter.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/chittorgarh-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/financial-data-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/investorgain-gmp-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/ipo-alerts-fallback.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/ipo-reviews-aggregator.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/listing-performance-plan.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/listing-performance-updater.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/moneycontrol-rss.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/moneycontrol-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/nse-api-client.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/nse-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/nse-subscription-parser.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/objectives-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/peer-companies-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/scrapers/rights-debt-enrichment-scraper.ts",
+      "module": "extraction"
+    },
+    {
+      "glob": "scraper/src/utils/detect-offering-type.ts",
+      "module": "validation"
+    },
+    {
+      "glob": "scraper/src/utils/hard-date-source-trust.ts",
+      "module": "validation"
+    },
+    {
+      "glob": "scraper/src/services/ipo-date-plausibility.ts",
+      "module": "validation"
+    },
+    {
+      "glob": "scraper/src/services/anchor-auto-persist.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/anchor-persister.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/filing-auto-persist.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/filing-persister.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/filing-persist-deps.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/listing-reconciliation.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/historical-ipo-assembler.ts",
+      "module": "consolidation"
+    },
+    {
+      "glob": "scraper/src/services/alerting-service.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/owner-notify.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/step-ledger.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/step-ledger-recorders.ts",
+      "module": "verification"
+    },
+    {
+      "glob": "scraper/src/services/bse-detail-monitor.ts",
+      "module": "verification"
+    }
+  ]
+}
