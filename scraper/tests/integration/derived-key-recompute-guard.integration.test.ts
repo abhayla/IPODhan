@@ -10,6 +10,7 @@ import { sql, eq, inArray } from 'drizzle-orm';
 // for the full rationale).
 import * as schema from '../../../packages/shared/src/db/schema';
 import { rowKeyForName } from '../../../packages/shared/src/utils/company-name-normalizer';
+import { headingHashForRiskFactor } from '../../../packages/shared/src/utils/risk-factor-heading-key';
 
 /**
  * Item 1 slice s8b (issue #506) -- derived-key recompute guard.
@@ -37,18 +38,23 @@ import { rowKeyForName } from '../../../packages/shared/src/utils/company-name-n
  * treats `stored === '' && recomputed === null` as OK and fires on every
  * other divergence, junk rows included.
  *
- * NOT registered: `heading_hash` on `ipo_risk_factors` (derived by
- * `normalizeHeading`, packages/shared/src/utils/risk-factor-heading-key.ts).
- * That column and its deriving module ship together in item 1 slice s6
- * (branch feat/pm-item01-s6-risk-factor-heading-key), which is built and
- * held, not merged, as of this slice. Registering the entry now would mean
- * importing a module that does not exist on `main` -- the import itself
- * would fail the build for everyone else on this branch. Add the
- * `ipo_risk_factors` entry to DERIVED_KEY_REGISTRY in the SAME PR that
- * merges s6, not before. (The live `ipodhan_test` database currently has a
- * stray `heading_hash` column from earlier s6 testing on this box -- that is
- * migration-state drift on a shared test DB, not evidence the column is
- * live on `main`; do not key any decision off it.)
+ * Also registered now: `ipo_risk_factors.heading_hash`, derived by
+ * `headingHashForRiskFactor` (NOT the bare `normalizeHeading` --
+ * `headingHashForRiskFactor` is the outer function that additionally
+ * hashes and applies the junk fallback; `packages/shared/src/repositories/
+ * ipo-risk-factors-repository.ts` calls `headingHashForRiskFactor`, never
+ * `normalizeHeading` directly, so that is the function the guard must key
+ * on -- same reasoning as `rowKeyForName` vs bare
+ * `normalizeCompanyNameForMatching` above). `heading` is `.notNull()`
+ * varchar(500) and the write path (`prepareRiskFactorRows`) drops any row
+ * whose `headingHashForRiskFactor(heading)` is `null` (blank/whitespace
+ * heading) BEFORE insert -- so, unlike `normalized_name`, no persisted row
+ * can legitimately pair a "no identity" recomputed `null` with a stored
+ * value. There is no no-identity exemption for this entry: every stored
+ * `heading_hash` that does not match the current function's output on the
+ * current `heading` -- including the `''` default on pre-backfill rows,
+ * whose non-blank `heading` always recomputes to a non-null hash -- is a
+ * real mismatch, not a documented no-identity pairing.
  *
  * To run:
  *   DATABASE_URL=postgresql://ipodhan_app:<pw>@127.0.0.1:15432/ipodhan_test \
@@ -100,6 +106,13 @@ export const DERIVED_KEY_REGISTRY: DerivedKeyEntry[] = [
     sourceColumn: 'name',
     storedColumn: 'normalized_name',
     derive: rowKeyForName,
+  },
+  {
+    label: 'ipo_risk_factors.heading_hash',
+    tableName: 'ipo_risk_factors',
+    sourceColumn: 'heading',
+    storedColumn: 'heading_hash',
+    derive: headingHashForRiskFactor,
   },
 ];
 
@@ -298,6 +311,7 @@ describe.skipIf(!DATABASE_URL)(`derived-key recompute guard (${SKIP_REASON})`, (
       'promoters.normalized_name',
       'peer_companies.normalized_name',
       'ipo_intermediaries.normalized_name',
+      'ipo_risk_factors.heading_hash',
     ]);
   });
 
