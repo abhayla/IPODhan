@@ -76,7 +76,9 @@
     "CORRECTION, my error: item 19 is NOT unassigned. Contract line 50 says docs/contracts/2026-09-DRAFT-merge-tool-shared-write-path.md ALREADY LANDED as PR #433 (5cd6810d, 2026-09-09) and item 19 is DONE at preflight, verify-only; line 83 has Stage 0 mark it so. Verified: 5cd6810d is on main and adds scraper/scripts/repair-merge-duplicate-ipo.ts plus the shared duplicate-ipo-merge utility. STATE already had 19 out of both order and laneAItems, correctly. I read the build-card directory listing and declared a gap without reading my own contract's preflight section. The owner's 15 + lane B's 6 + item 19 done = 22. Lesson: before reporting a gap in a list, check the contract's own preflight/skip clauses.",
     "SHARED ONE-TIME DUTIES across both lanes, adopted (coordination only, loosens nothing). Contract clause 11 'first flag slice': adds the slot-aware helper to scraper feature-flags.ts plus the four-case unit test, exports DEPLOY_SLOT=$SLOT into web and scraper pm2 env in scripts/deploy-linux.sh, adds DEPLOY_SLOT to both required-key lists in scripts/assert-env-keys.sh, and amends .claude/rules/owner-gated-feature-flags.md and the feature-flags.ts header. Contract clause 8 'first web-touching slice': removes continue-on-error from ci.yml's web unit and E2E steps, adds a postgres:16 service with migrations applied, adds a `cd web && npm run test:integration` step. Whichever lane reaches one first does it once; the other rebases onto it.",
     "DO NOT rely on a relayed message to know whether a shared duty is taken - check origin/main directly, it is deterministic: for the flag duty, does scraper/src/config/feature-flags.ts contain the DEPLOY_SLOT helper; for the web duty, does .github/workflows/ci.yml still carry continue-on-error on the web steps. Run that check immediately before starting either duty, in addition to any relay.",
-    "The 'CI-hardening slice' recorded earlier as owed IS the contract clause 8 first-web-touching-slice duty; they are the same work, not two. The .gitattributes fix and the assert-schema-drift index/constraint coverage ride with it."
+    "The 'CI-hardening slice' recorded earlier as owed IS the contract clause 8 first-web-touching-slice duty; they are the same work, not two. The .gitattributes fix and the assert-schema-drift index/constraint coverage ride with it.",
+    "SHARED DUTIES verified UNTAKEN on origin/main at 2026-09-10 10:45 IST: scraper/src/config/feature-flags.ts has no DEPLOY_SLOT helper; .github/workflows/ci.yml is 107 lines with 5 continue-on-error, no postgres service and no test:integration step, exactly as contract clause 8 describes. Both duties are still open for whichever lane reaches them first.",
+    "MEASUREMENT DEFECT 4, same morning as three others: in Git Bash on Windows, `git show origin/main:.github/workflows/ci.yml` is mangled by MSYS path conversion into 'origin\\main;.github\\workflows\\ci.yml' and FAILS, and `grep -c` on the empty output returns 0. I read three of those zeros as evidence that both shared duties were already done. Always export MSYS_NO_PATHCONV=1 and quote the ref:path argument, and sanity-check with a line count before believing a zero. A zero from a command that errored is not a measurement."
   ],
   "items": {
     "item-01": {
@@ -581,5 +583,17 @@
     20,
     21,
     22
-  ]
+  ],
+  "sharedDuties": {
+    "firstFlagSlice": {
+      "taken": false,
+      "checkedAt": "2026-09-10T10:45+05:30",
+      "check": "git show 'origin/main:scraper/src/config/feature-flags.ts' | grep -c DEPLOY_SLOT  -> 0"
+    },
+    "firstWebTouchingSlice": {
+      "taken": false,
+      "checkedAt": "2026-09-10T10:45+05:30",
+      "check": "origin/main .github/workflows/ci.yml is 107 lines, 5 continue-on-error, 0 postgres, 0 test:integration"
+    }
+  }
 }
