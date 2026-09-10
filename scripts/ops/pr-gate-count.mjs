@@ -55,8 +55,15 @@ const result = {
 if (process.argv.includes('--json')) {
   console.log(JSON.stringify(result, null, 2));
 } else {
+  // Self-describing by construction, not by convention: a pasted reading must
+  // say where its stop came from. A tick line saying "4 left" is unusable a day
+  // later when nobody remembers whether the stop was 50, 55 or 58.
+  const stopSource =
+    process.env.PR_GATE_STOP === undefined
+      ? 'defaulted to CAP (PR_GATE_STOP unset)'
+      : `PR_GATE_STOP=${process.env.PR_GATE_STOP}`;
   console.log(`pr-gate runs since IST midnight (${since}): ${used}`);
-  console.log(`  ${result.remainingToStop} to the ${STOP} stop, ${result.remainingToCap} to the ${CAP} cap`);
+  console.log(`  ${result.remainingToStop} to the ${STOP} stop [${stopSource}], ${result.remainingToCap} to the ${CAP} cap`);
   if (nonPr.length > 0) {
     console.log(`  NOTE: ${nonPr.length} run(s) with event != pull_request — the trigger set has changed, re-read pr-gate.yml`);
   }
