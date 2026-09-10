@@ -584,3 +584,10 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   nothing currently running catches that. Fixing it is assigned to the last slice. A reader of ipodhan.com still
   sees nothing from any of this, and the honest position is that none of these checks protects anything until that
   last slice wires them into the pull-request gate. Nothing needed from you.
+- **2026-09-10 13:40 IST - still 75% merged; the last check is being held back by a real bug it found in the tooling.** Three of
+  item 20's four checks are on main. The fourth - the one that switches all of them on - failed its first CI run,
+  correctly: it discovered that a long-standing checker has been giving a false pass on every Windows machine, in all
+  three lanes. Git was reporting three folders as deliberately-ignored when the ignore file never mentions them, so
+  three build documents carried a wrong marker that nobody could see locally. Fixing it took three attempts at the
+  diagnosis: two of us proposed a fix that would have broken the opposite case, and the worker's own objection turned
+  out to be right. A reader of ipodhan.com sees nothing from any of this. Nothing needed from you.
