@@ -1,0 +1,10 @@
+{
+  "id": "c_fresh_ofs_reconciliation",
+  "findingClass": "ipo_details.fresh_issue + ipo_details.ofs_issue does not sum to ipos.issue_size within 0.5% (F-51) - a digit-wrong fresh leg or a mis-parsed OFS row published as the money split",
+  "round7Findings": [],
+  "failThreshold": "|fresh_issue + ofs_issue - issue_size| / issue_size > 0.005, for every row where all three are non-null and issue_size > 0",
+  "severity": "P1",
+  "unverifiableWhen": "issue_size is null or 0, or either leg is null (skipped, not a violation - the write-path gate itself treats a missing base as unchecked)",
+  "note": "Item 13 shipped the WRITE-PATH gate only (scraper/src/services/filing-persister.ts, reconcileFreshAndOfs): a filing extraction can no longer write a non-reconciling pair. This audit check is the independent read-side half and is NOT implemented yet - it has no record('c_fresh_ofs_reconciliation') call in scripts/audit-detection-floor.mjs, so it stays in notCoveredByThisManifest rather than being counted as floor coverage. It is owed because the gate only guards ONE write path: rows written before the gate, and any future writer of ipo_details, are invisible to it. Merging the audit check without a real-data run against staging is the exact failure the defect-fix contract names (an audit check merged unrun crashed the nightly audit for three nights), and this task was barred from every live database.",
+  "section": "notCoveredByThisManifest"
+}
