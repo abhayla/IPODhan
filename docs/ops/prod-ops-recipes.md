@@ -92,6 +92,14 @@ GLOBAL.env; `DATABASE_URL` there points at the firewalled public port and does N
 PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"\r')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" node <script>.cjs [--apply]
 ```
+**Every read script MUST issue `SET TIME ZONE 'UTC';` as its first statement.** The app's own pools set
+`options: '-c timezone=UTC'`; an ad-hoc tunnel session does NOT, and inherits `Asia/Calcutta`. Several
+columns are `timestamp WITHOUT time zone` (`documents.extracted_at` among them), so a `Z`-suffixed
+literal compared against one is silently out by 5h30m. On 2026-09-10 that returned rows whose minimum
+value was EARLIER than the `>` cutoff that selected them — an impossible result, which is the only
+reason it was caught rather than published. The safe pattern is either the `SET TIME ZONE` above or, for
+a one-off reading, no date filtering at all: list the rows and let the ordering speak.
+
 `pg` is hoisted at the repo root (`require('<repo>/node_modules/pg')`, not `web/node_modules`). A repair
 script must: print `current_database()` first, select by slug, refuse on id/cap mismatch, update with
 `WHERE id AND slug AND issue_size = <old>` and `RETURNING`, dry-run by default. Template used 2026-09-06:

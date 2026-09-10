@@ -107,6 +107,26 @@ So the item splits cleanly, and the split is what the measurement says rather th
 
 ### Item 8a — peers and WACA, buildable now
 
+**Measured 2026-09-10 on staging (#545): 8a is not an improvement to a working path — it is the only
+path that will ever write these tables from a prospectus.**
+
+| | |
+|---|---|
+| documents `COMPLETED` on staging | 83 |
+| of those, IPOs with any `peer_companies` row | **0** |
+| last eight completed extractions producing promoters | **1** — and it was a `PRICE_BAND_AD` |
+| all four RHPs and three DRHPs in that window | **0 promoters, 0 peers** |
+| `peer_companies`' 321 rows | all created 2026-06-17 between 14:17 and 14:22 — one backfill |
+| IPOs holding peers that also have a completed extraction | **0** |
+
+Reading a prospectus has never filled in a peer table or a promoter row. `extract_price_band_ad` parses
+both; `extract_rhp`, which is what RHP and DRHP take, does not. The path reports success either way,
+which is why it went unnoticed.
+
+**The evidence is already on staging and costs nothing to re-use:** 33 completed RHPs and 25 completed
+DRHPs. A fix can be proven against real documents that are already downloaded, stored and marked
+extracted — no new fetch, no new cycle.
+
 Extract `peer_companies.*` and `promoters.waca` from the RHP/prospectus, not from the ratios filing.
 Both are present as text in every document sampled. `filing-persister.ts` already writes both
 correctly (lines 1360–1404 and 1681–1717, verified) — this is an extraction change, not a write-path
