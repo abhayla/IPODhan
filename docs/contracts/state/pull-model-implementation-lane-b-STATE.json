@@ -188,6 +188,18 @@
     {
       "at": "2026-09-10T22:48:59.927Z",
       "what": "Cell fixtures extracted and VERIFIED but deliberately NOT committed: two of five held their peers, three did not, and chasing that is what found the reversal. They land once reversal handling is settled, so the committed fixture is the corrected form rather than a mirrored one nobody notices."
+    },
+    {
+      "at": "2026-09-10T22:54:02.514Z",
+      "what": "THIRD correction on the 8a-2 input section, before merge, and it stops short of prescribing a fix. The Kanohar table is also TRANSPOSED (metrics as rows, companies as columns) and whole-cell reversal SCRAMBLES word order: yvaeH detimiL slacirtcelE tarahB -> Bharat Electricals Limited Heavy, actual Bharat Heavy Electricals Limited. Per-token reversal fails too. Not recoverable by any string transformation; needs word COORDINATES or the pypdf text path. Deliberately not prescribed - measured that the simple fix fails, did not measure that either alternative works."
+    },
+    {
+      "at": "2026-09-10T22:54:02.514Z",
+      "what": "#590 MERGED (8e9a6dae): card carries five measured 8a-2 input constraints and no invented mechanism. #586 MERGED (5f7d4b0f): all seven green, every Tier A finding closed. No second review round, on evidence not confidence - the review proved the refusal set byte-identical with 12 probes and company-host-source.ts is UNTOUCHED since (empty diff); later changes are manifest, seam, caching frequency, predicate and tests. The flag-getter change strictly WIDENS when the boundary is on. Re-ran the reviewer surviving mutation myself: it now dies by name."
+    },
+    {
+      "at": "2026-09-10T22:54:02.514Z",
+      "what": "Item 22 NOT advanced by #586: the CODE half of #582 is fixed, the DATA half is not - Hy-Tech Engineers still carries the corrupted URL (1 of 36), a data write waiting on the owner. 22-5/22-6 still blocked on a new shared dependency plus a real encrypted filing. Noted on the issue so the auto-close does not imply completion."
     }
   ],
   "items": {
@@ -633,7 +645,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T22:48:59.927Z",
+  "lastStateWriteAt": "2026-09-10T22:54:02.514Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 2,
@@ -641,7 +653,7 @@
     "18": 4,
     "20": 8,
     "21": 6,
-    "22": 6
+    "22": 8
   },
   "stagingProofsOwedAndBlocked": [
     "18-1b page rows AND 18-2 timestamp arm - ONE condition: a cycle that completes an extraction",
