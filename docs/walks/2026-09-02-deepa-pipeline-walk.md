@@ -1529,3 +1529,21 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
      source is unscannable. **That workaround is a supervisor concern, not an accepted fix:** it depends on nobody
      ever writing the literal again, and the structural problem - a scanner that scans its own fixtures - is
      untouched. It is named explicitly in the Tier A review brief as the first thing to attack.
+
+- **2026-09-10 11:28 IST [lane B] s1 gates REPRODUCED independently; Tier A adversarial review dispatched.**
+  A separate `sonnet` verifier re-ran every gate itself and matched the builder on all of them: self-test 6/6 pass
+  exit 0; `check-design-traceability.mjs` against the REAL repository exit 0, `166 rules, 166 claimed, 0 orphans`;
+  write-ratchet exit 0 (57 files match baseline); `check-design-consistency --gate` exit 0, 23/23; diff exactly the
+  two new files; one commit. It re-created the RED itself by moving the check aside (exit 1, 6/6 fail, genuine
+  child-process failure not a mock), restored the file, re-ran green, and left `git status --short` EMPTY - the
+  clean-environment proof this run now demands of every state-mutating brief. It also confirmed by reading that the
+  self-test drives the real script through `spawnSync` rather than re-implementing it, that the heading anchor is a
+  real anchored regex and that item 19's R-049..R-052 are not reported as orphans, and it proved the zero-live-rules
+  self-guard fires (exit 2, "a check that finds nothing is not a clean pass") using the check's own `--rules` option
+  against a temp fixture, leaving the repository's `rules.json` untouched.
+  **The verifier independently reached the same conclusion as the supervisor on the fixture-scanning workaround:**
+  the `['/', '/', ' implements: '].join('')` trick is held together by a code comment, and nothing stops a future
+  edit that "tidies up" the array-join from silently reintroducing a false rule claim and breaking the gate for every
+  pull request in both lanes. That is finding number one in the Tier A brief, with the structurally sound
+  alternatives named (exclude the check's own test directory, restrict declarations to a header region, or an
+  explicit opt-out marker) and the reviewer asked to rule MAJOR or acceptable-for-slice-1, with the cost.
