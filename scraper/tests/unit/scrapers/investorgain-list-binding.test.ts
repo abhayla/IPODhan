@@ -19,9 +19,17 @@ import { chooseListBinding } from '../../../src/scrapers/investorgain-gmp-orches
  *    point — exact name is already UNIQUE wherever it matches, so the 0.6
  *    threshold is doing worse work than a strict key.
  *
- *  - The cost, by name: Jindal Supreme, Steamhouse, Asset Reconstruction and
- *    Glass Wall Systems stop showing GMP until their names align, because the
- *    source stores a shorter name than we do. That is 4 of 28 real records.
+ *  - CORRECTED 2026-09-10, after this file's own assertion went red on main.
+ *    The original version of this comment claimed Jindal Supreme, Steamhouse,
+ *    Asset Reconstruction and Glass Wall Systems "stop showing GMP until their
+ *    names align". That was reasoned, not measured, and it is FALSE. Probing
+ *    the real normaliser this function calls:
+ *      "Asset Reconstruction"                         -> "asset reconstruction"
+ *      "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED" -> "asset reconstruction"
+ *      "Jindal Supreme"                               -> "jindal supreme"
+ *      "Jindal Supreme India Limited"                 -> "jindal supreme"
+ *    They are EQUAL after normalisation, so they bind. The claimed cost of
+ *    4 of 28 records was invented.
  *
  * NOT FIXED BY WIDENING THE KEY. Binding on `foldCompanyIdentity` would match all
  * four — and would be wrong. That key deliberately strips "india" and belongs to
@@ -57,15 +65,43 @@ describe('chooseListBinding — STRICT: exact name or nothing', () => {
     expect(r.outcome === 'BOUND' && r.via).toBe('exact-name');
   });
 
-  it('is AMBIGUOUS and names BOTH candidates when no name matches exactly', () => {
-    // The measured cost case: the source says "Asset Reconstruction", we store
-    // "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED". Under strict binding that
-    // writes NOTHING rather than guessing — and says which rows it could not
-    // choose between (signal-ownership R1: identities, never a bare count).
+  it('binds the short source name to the long stored name — they normalise equal', () => {
+    // This assertion previously expected AMBIGUOUS and merged RED, because the
+    // branch was tested against a base that did not yet carry slice B. Slice B
+    // drops a trailing country word, so "Asset Reconstruction" and "ASSET
+    // RECONSTRUCTION COMPANY (INDIA) LIMITED" both fold to "asset
+    // reconstruction". They are the same company (ARCIL) and BOUND is the
+    // right answer; the old expectation described a normaliser that no longer
+    // exists.
     const r = chooseListBinding([arcil, manipal], 'Asset Reconstruction', true);
+    expect(r.outcome).toBe('BOUND');
+    expect(r.outcome === 'BOUND' && r.ipoId).toBe('arcil');
+    expect(r.outcome === 'BOUND' && r.via).toBe('exact-name');
+  });
+
+  it('is AMBIGUOUS and names BOTH candidates when NOTHING matches exactly', () => {
+    // The real "writes nothing rather than guessing" case: a source name that
+    // folds to something no candidate folds to. Strict binding refuses and says
+    // which rows it could not choose between (signal-ownership R1: identities,
+    // never a bare count).
+    const r = chooseListBinding([arcil, manipal], 'Quantum Foods', true);
     expect(r.outcome).toBe('AMBIGUOUS');
     expect(r.outcome === 'AMBIGUOUS' && r.candidates.map((c) => c.id)).toEqual(
       expect.arrayContaining(['arcil', 'manipal'])
+    );
+  });
+
+  it('is AMBIGUOUS when TWO Asset Reconstruction rows share the dates — the staging case', () => {
+    // The hazard worth naming: after normalisation "Asset Reconstruction" is a
+    // generic two-word fragment. If a second ARC ever shares both dates, strict
+    // binding must NOT pick one. It does not — two exact matches is AMBIGUOUS,
+    // which is what bounds the fragment risk. `ipodhan_staging` genuinely holds
+    // a second ARCIL row today, so this is a real shape, not a hypothetical.
+    const arcilTwin = { id: 'arcil2', companyName: 'Asset Reconstruction Company India Ltd' };
+    const r = chooseListBinding([arcil, arcilTwin], 'Asset Reconstruction', true);
+    expect(r.outcome).toBe('AMBIGUOUS');
+    expect(r.outcome === 'AMBIGUOUS' && r.candidates.map((c) => c.id)).toEqual(
+      expect.arrayContaining(['arcil', 'arcil2'])
     );
   });
 
