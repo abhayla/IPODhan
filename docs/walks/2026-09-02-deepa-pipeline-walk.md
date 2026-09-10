@@ -2214,3 +2214,14 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   path on every real cycle regardless of whether starvation is occurring.
   Production was deliberately NOT measured (this lane reads staging only), so the prod backlog size and the exact
   per-cycle trip point are recorded as **not measured** rather than estimated.
+
+- **2026-09-10 14:00 IST [lane B] The contract's own decision 9 CORRECTED in the contract file - a debt owed since DEFECT-B04 and
+  unpaid for two hours.** The contract told this run to count its pull requests with
+  `gh pr list --state all --search "[lane B]"`. Measured at 11:36 that returned **1** - and it was lane A's PR #459
+  on `feat/pm-item01-s3-row-key-provenance`, because GitHub tokenises the bracketed string rather than matching it
+  literally. The contract now specifies the deterministic branch-prefix count and carries the reason inline, so the
+  next reader sees why rather than re-deriving it.
+  Worth being straight about the delay: the defect was found at 11:36, the working practice was corrected the same
+  minute, and the CONTRACT TEXT - the thing a future session actually reads - stayed wrong until now. STATE.json's
+  `contractCorrectionsDue` list existed precisely so this would not be forgotten, and it was still the only entry on
+  it. A correction that lives only in a ledger line is a correction the next session will not receive.
