@@ -180,6 +180,14 @@
     {
       "at": "2026-09-10T22:43:56.492Z",
       "what": "FOURTH HOLLOW PROOF OF THE NIGHT, mine, caught within minutes: adding the resolveVerdict seam without adding it to the flag getter left the boundary DISABLED for any test using only that seam, so the resolver was never called and three of my four new tests passed measuring nothing (0 === new Set([]).size). Fixed in the getter; all four now assert the resolver ran at all before asserting how often."
+    },
+    {
+      "at": "2026-09-10T22:48:59.927Z",
+      "what": "CORRECTION of my own 20-minute-old conclusion, third time on this card that two samples did not survive the third. ON KANOHAR pdfplumber returns the peer table CHARACTER-REVERSED (sreep detsiL = Listed peers; 65.161,1 = 1,161.56). Table found, 11x12, correctly column-aligned, every cell mirrored, so Hitachi is ihcatiH. NOT a rotation: no /Rotate, pdfplumber rotation 0, portrait mediabox. Same page: pypdf 4815 chars WITH Hitachi, pdfplumber 4673 WITHOUT. The libraries disagree about CONTENT. Rule completed in #590: cells PLUS a reversal check, signalled by the divider row (Listed peers / Peer Group:) appearing reversed. The failure mode is silent - a parser skipping it finds a table, maps no headers and returns nothing, reading as this-issuer-has-no-peer-table."
+    },
+    {
+      "at": "2026-09-10T22:48:59.927Z",
+      "what": "Cell fixtures extracted and VERIFIED but deliberately NOT committed: two of five held their peers, three did not, and chasing that is what found the reversal. They land once reversal handling is settled, so the committed fixture is the corrected form rather than a mirrored one nobody notices."
     }
   ],
   "items": {
@@ -625,7 +633,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T22:43:56.492Z",
+  "lastStateWriteAt": "2026-09-10T22:48:59.927Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 2,
