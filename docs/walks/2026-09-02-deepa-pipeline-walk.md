@@ -1974,3 +1974,32 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   scratchpad path, which both Git Bash and Windows tools can see), and require the worker's last action to confirm it
   has removed it - the same shape as the existing "a clean tree is not a clean environment" rule that came out of
   lane A's reviewer leaving a mutated database behind.
+
+- **2026-09-10 12:53 IST [lane B] Lane A's web CI duty is PR #464, OPEN, 5 files. Verified, and one carried gap on it is a real risk
+  to this lane's item 21.** Confirmed independently: #464 is open on `feat/pm-item01-s3b-ci-hardening`, and
+  `origin/main`'s `ci.yml` is still 107 lines with 5 `continue-on-error|postgres|test:integration` matches - i.e. the
+  hardening has NOT landed, so every web integration or E2E claim in every lane remains OWED, not proven.
+  **The risk, named now rather than when item 21 arrives: `web test:integration` fails 193 of 292 locally through
+  the tunnel.** The hypothesis on the PR is tunnel pool exhaustion, and it is explicitly UNTESTED. One `ci.yml`
+  dispatch against a local postgres settles it. If it fails there too, then those 193 failures are a real breakage
+  rather than an artefact of running through an SSH tunnel, and clause 8's "wait for a green `ci.yml`" becomes an
+  **owner-level blocker for item 21** - this lane's only web-touching item. Item 21 is last in the queue and also
+  waits on lane A's item 5, so there is slack; but if that dispatch comes back red, the honest position is that item
+  21 cannot close and that is Abhay's call, not something this lane resolves by lowering the bar.
+  What else changes for this lane when #464 lands, all recorded so it is not rediscovered:
+  1. `assert-schema-drift.ts` will detect index and unique-constraint drift by exact ORDERED columns, with 15
+     deliberate gated findings suppressed only under `SCHEMA_DRIFT_IGNORE_GATED=1` (already present on main at
+     `pr-gate.yml:375` and `:385` - verified). **Item 18 adds a migration; if it adds a gated index or constraint it
+     is REGISTERED there, and the suppression is never widened.** Widening a suppression to make a gate quiet is the
+     same class as narrowing a module map to hide a violation - forbidden in this lane for the same reason.
+  2. `pr-gate` gains its first `tsx --test` step. `scripts/tests/assert-schema-drift.test.ts` and
+     `known-gated-type-drift.test.ts` were UNWIRED until now, so **their green means nothing before #464** - a test
+     nothing runs is not evidence. Same family as issue #461.
+  3. `.gitattributes` gains `docs/ops/prod-ops-recipes.md eol=crlf`, which retires this lane's manual
+     `git -c core.autocrlf=false add` workaround for that file once it merges.
+  **Rebase discipline tightened, and this one is a correction to this lane's practice, not just information.** Lane A
+  reports that PRs #460 and #462 each landed mid-review in its lane and made this lane's files show as DELETIONS on
+  its branch. The fix: `git log --oneline origin/main ^HEAD` must be the **LAST** action before `gh pr create` AND
+  before `gh pr merge`, with non-empty output a HARD STOP. This lane already ran that check both times - but not
+  always as the last action, which is the part that matters when three lanes are merging into one branch. Adopted as
+  written.
