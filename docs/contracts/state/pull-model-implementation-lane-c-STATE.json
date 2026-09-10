@@ -157,7 +157,7 @@
         {
           "id": "2-S3a",
           "tier": "A",
-          "status": "TIER_A_ROUND_2",
+          "status": "ROUND_3_FIX",
           "issue": 482,
           "title": "segment manifest entry + historical assembler yields NULL for unknown, never MAINBOARD",
           "definitionOfDone": "Reader audit is INSIDE the DoD, not optional: every reader of segment (bse-api-scraper.ts:338 count, web filters, audit predicates) handles NULL explicitly, or the slice is not mergeable. If that pushes past 400 lines, the readers become 2-S3a-prime and the WRITE-PATH change waits for it - surfacing NULLs to readers that treat them as MAINBOARD is a silent behaviour change.",
@@ -191,7 +191,14 @@
             "majors": 2,
             "minors": 4
           },
-          "fixCommit": "512f7fe6"
+          "fixCommit": "512f7fe6",
+          "round2": {
+            "verdict": "PASS, mergeable at Tier A",
+            "major1": "closed for the class it named, but NARROWED not eliminated",
+            "major2": "closed",
+            "residualMajor": 1,
+            "minors": 3
+          }
         },
         {
           "id": "2-S3b",
@@ -369,7 +376,10 @@
     "2026-09-10 16:30 IST #488 ROUTED AWAY from lane C: the supervisor takes all three unowned defects plus the three unchecked candidates as ONE Tier B class fix from his session, with a new pr-gate check check-drizzle-where-chaining so the shape cannot land again. That is the right answer - a GATE rather than four fixes and a note, which is the same argument I made on #482 and #472. My ipo-reviews-job fix inside 2-S3a stands and his builder is told not to touch that file, so there is no collision.",
     "2026-09-10 16:30 IST 2-S3a TIER A ROUND 2 dispatched, fresh reviewer, not the round 1 one. Round 1 found two MAJORs so R9 permits the second round. Asked explicitly whether each MAJOR is CLOSED or merely NARROWED - the round 1 finding was that the defect survived INSIDE its own fix, so the same question one layer deeper is the highest-value check: does any input still reach a MAINBOARD assertion without a genuine board signal, now that a literal NSE or BSE substring is required. Also asked to prove the web sweep is complete rather than assume it, since MY original scoping missed web/components entirely.",
     "2026-09-10 16:32 IST FIND-ROOT GUARD verified before adopting, not taken on the relay: $HOME/.claude/hooks/find-root-guard.py exists (12074 bytes, executable, 16:31), is registered once in settings.json, and BOTH allowed forms still work here - a rooted path with a real segment (find D:/Abhay/Ventures/.../docs/contracts/.run) exits 0 and returns results, and find . works. So my builders normal usage is unaffected; I checked that rather than assume it, because a silently broken search would derail a worker mid-slice with a confusing symptom. Standing brief line added: a blocked find means search under the worktree root, never the bypass. Known MINOR gap I am NOT relying on: a find inside a loop or conditional body is not caught yet.",
-    "2026-09-10 16:32 IST STANDING BRIEF LINES for this lane now number four, all earned from a real incident today rather than invented: (1) verify against the checker and follow the checker over me if they differ - caught four of my errors; (2) confirm a mutation ACTUALLY APPLIED before reading its result - a round 1 mutation silently no-opd and read as a false green; (3) any background process you start is stopped and confirmed gone by PID, and a tail -f never outlives its command - one orphaned and another lane found it; (4) a blocked find means search under the worktree root, never the bypass."
+    "2026-09-10 16:32 IST STANDING BRIEF LINES for this lane now number four, all earned from a real incident today rather than invented: (1) verify against the checker and follow the checker over me if they differ - caught four of my errors; (2) confirm a mutation ACTUALLY APPLIED before reading its result - a round 1 mutation silently no-opd and read as a false green; (3) any background process you start is stopped and confirmed gone by PID, and a tail -f never outlives its command - one orphaned and another lane found it; (4) a blocked find means search under the worktree root, never the bypass.",
+    "2026-09-10 16:37 IST 2-S3a TIER A ROUND 2: PASS and mergeable, both round 1 MAJORs addressed - but the reviewer was precise where a weaker one would have waved it through: MAJOR 1 is CLOSED FOR THE CLASS IT NAMED YET NARROWED, NOT ELIMINATED. It executed the actual predicate rather than reading it: \"NSE Emerge Platform\" still yields segment=MAINBOARD because the string contains NSE. Bare \"Emerge\" correctly yields null. Also found an unanchored-substring MINOR: \"Nonsense\" -> MAINBOARD/NSE, \"Absent\" -> MAINBOARD/BSE - the exact junk-text-asserts-a-board shape round 1 flagged.",
+    "2026-09-10 16:37 IST I OVERRULED THE REVIEWER FILE-DO-NOT-BLOCK ADVICE, on evidence rather than on my own domain confidence, and this is the THIRD time today the answer was an existing in-repo precedent rather than a new decision. The builder had left \"Emerge\" unrecognised as scope creep, reasoning nothing guarantees it means NSE SME. I did not settle that from what I know about Indian markets - I searched the repo. nse-api-client.ts:510 reads: if (series === SME || platform.includes(SME) || platform.includes(EMERGE)). This codebase ALREADY treats EMERGE as an SME signal at the authoritative NSE path. So recognising it in the Chittorgarh derivation matches an existing convention; it is not a second guess stacked on the fix, which was the builder only objection. Round 3 dispatched to close it plus the word-boundary MINOR.",
+    "2026-09-10 16:37 IST TWO MORE MINORS worth closing rather than filing. (1) I shipped a BEHAVIOUR FIX WITH NO TEST: ipo-reviews-job.ts had its query rewritten by this slice and no test file anywhere references it - a direct miss against defect-fix-contract item 3, and mine to own since I approved the change. Round 3 adds one, or reports honestly that it is not unit-testable without a DB. (2) The round 2 reviewer found the previous builder JUSTIFICATION WAS FALSE: it kept isSME claiming the in-browser counters are used, but extractedData is only ever read as .ipos/.subscriptions so those counters are discarded and isSME is dead. I told round 3 to verify that itself rather than take either of us on trust."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
