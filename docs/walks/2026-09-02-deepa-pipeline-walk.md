@@ -2338,3 +2338,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   **Notifier severities are exactly `P0|P1|P2|info`; anything else is a 400.** The item 20 landing note used `info`
   and returned 202, so no correction is owed - recorded so a future BLOCKED or failed-proof line does not invent a
   severity and get silently rejected.
+
+- **2026-09-10 14:40 IST [lane B] DEFECT-B11, and the owner found it: the board showed lane B IDLE while it was building.**
+  `run/meta-b` said `currentItem: 22`, but `items/item-22` was still `PENDING` with an empty slices array, and the
+  #468 fix slice was attached to no item document at all. The board renders the ITEM documents, so a lane that had
+  been working continuously for an hour displayed as doing nothing. The owner asked why - which is the worst way for
+  a reporting defect to surface, because it costs his attention rather than a check's.
+  Fixed now, timestamp read from `date` in the same step as the write (the DEFECT-B02 mechanism): `items/item-22` is
+  `IN-PROGRESS` with `s0` = the #468 fix at `BUILDING`, sha `c8963977`, the issue number in the slice title. Item
+  22's own slices stay uncut until its Stage 1a, and the note says so rather than implying planning that has not
+  happened.
+  **Root cause, and it is a gap in this run's own model rather than a slip:** the board's schema has documents for
+  the six CONTRACTED items, and this run treated an inter-item fix as belonging to none of them. STATE.json handled
+  it fine - `interItemFixes` was invented for exactly this - so the run knew where the work was and simply never
+  asked whether the OWNER-FACING view could express it. **An internal record that is complete does not make an
+  external view honest.** The two are different artefacts with different audiences, and this run has been careful
+  about the ledger all day while letting the window onto it go stale.
+  Standing rule adopted: **a fix slice that belongs to no contracted item is attached as slice `s0` of the item whose
+  family it is in, with the issue number in its title**, so the board can never show a working lane as idle. Recorded
+  alongside the existing rule that every board write reads its timestamp from `date` in the same step.

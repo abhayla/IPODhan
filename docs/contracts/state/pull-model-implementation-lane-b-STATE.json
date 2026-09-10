@@ -218,7 +218,8 @@
     "any web unit result is recorded as 'green, suite instability open #446' and never as proof, until #446 closes (contract decision 8 forbids re-running to obtain green and calls a fail-then-pass a defect)",
     "before concluding a credential/config/process is ABSENT, enumerate the namespace (e.g. grep every NOTIFIER* name) rather than probing the one name expected - generalises the stray-process enumerate-and-subtract rule beyond processes",
     "process sweep: DETECT by enumeration (every process >20 min minus a known-good allowlist, printed in full, no top-N) but ACT only on positive identification - kill only a process this run started, confirmed by its command line containing the repo path, and never before `Get-NetTCPConnection -State Listen -LocalPort 15432,5432` proves it owns no tunnel. A detection rule is not a kill list.",
-    "Notifier severity must be one of P0|P1|P2|info; anything else returns 400"
+    "Notifier severity must be one of P0|P1|P2|info; anything else returns 400",
+    "a fix slice that belongs to no contracted item is attached as board slice s0 of the item whose family it is in, with the issue number in its title"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -299,6 +300,14 @@
       "class": "two faults: (a) a contract artefact checked off from recollection, same as DEFECT-B03; (b) inferring ABSENCE from a single probe of an expected name instead of enumerating the namespace",
       "mechanism": "the Stage-0 artefact list now includes the Notifier line; the key itself is an OWNER-side gap - GLOBAL.md section 2 line 166 says the validating key lives in /root/notifier/.env on the VPS, so no laptop-side post is possible without the owner placing one",
       "correction": "the key EXISTS as NOTIFIER_KEY_IPODHAN (per-project, length 48); this run probed NOTIFIER_KEY, measured 0 correctly, and wrongly inferred no key exists. Item 20 landing note posted: HTTP 202."
+    },
+    {
+      "id": "DEFECT-B11",
+      "at": "2026-09-10 14:40 IST",
+      "what": "the live board showed lane B idle for about an hour while it was building: run/meta-b said currentItem 22 but items/item-22 was PENDING with no slices, and the #468 fix slice was attached to no item document",
+      "foundBy": "the OWNER asking why lane B showed no in-progress item",
+      "class": "a complete internal record (STATE.json interItemFixes) mistaken for an honest external view; the owner-facing artefact was never asked whether it could express the work",
+      "mechanism": "a fix slice belonging to no contracted item is attached as slice s0 of the item whose family it is in, with the issue number in its title, so a working lane can never render as idle"
     }
   ],
   "contractCorrectionsDue": [],
