@@ -307,6 +307,50 @@
         "status": "OWED",
         "cycle": null,
         "line": null
+      },
+      "planRecut": {
+        "at": "2026-09-10 18:25 IST",
+        "basis": "delta-1 section 1.1 (250-400 line slices), re-cut by TIER and SHARED FILE rather than by line count alone",
+        "was": "7 slices at ~120-220 lines each - all UNDER the new band",
+        "now": [
+          {
+            "id": "12-A",
+            "tier": "B",
+            "lines": "~300",
+            "was": "12-S1 + 12-S3",
+            "why": "Both Tier B and both about the SAME thing: build the one fold function, then prove over real prod+staging names that it does not over-merge. Building a fold without its collision proof is half a slice."
+          },
+          {
+            "id": "12-B",
+            "tier": "A",
+            "lines": "~200",
+            "was": "12-S2 alone",
+            "why": "Deliberately BELOW the band. It changes what binds to what, and the TS normaliser and its SQL twin must move in the same commit. Combining identity-critical work with anything else to hit a line target would raise blast radius to save a PR."
+          },
+          {
+            "id": "12-C",
+            "tier": "A",
+            "lines": "~150",
+            "was": "12-S4 alone",
+            "why": "Deliberately below the band. A repair tool that WRITES rows stays its own slice with its own dry-run evidence; merging it into a code slice would bury a data write inside a code review."
+          },
+          {
+            "id": "12-D",
+            "tier": "A",
+            "lines": "~400",
+            "was": "12-S5 + 12-S6",
+            "why": "Both Tier A, both edit ipo-identity.ts, both behind the same flag. Combining avoids a rebase between two slices touching one file - the collision shape that has cost four rebases across lanes today."
+          },
+          {
+            "id": "12-E",
+            "tier": "A",
+            "lines": "~200",
+            "was": "12-S7 alone",
+            "why": "Different file (investorgain orchestrator) and a different flag. Nothing to pair it with."
+          }
+        ],
+        "crossLaneObligation": "12-B and 12-C must land BEFORE lane A item 1 writer slices, or lane A rebases onto them - item 1 READS company-name-normalizer as its row-key function while item 12 CHANGES it. The merge must be announced in the ledger so lane A re-runs its row-key tests.",
+        "notDone": "Item 3 re-cut still owed at its own Stage 1a."
       }
     },
     "item-03": {
@@ -499,7 +543,11 @@
     "2026-09-10 18:24 IST I CHANGED MY MIND ABOUT MY OWN DESIGN, and the reasoning matters more than the outcome. #482 premise was that a guessed value and a sourced one are indistinguishable. THEY ARE NOT. A sourced value has a field_sources row; a guessed one has none - and I proved that myself this afternoon with the very query that found the 41 rows. So the database ALREADY distinguishes them. What was missing is anything that READS that absence. Clearing 33 probably-correct MAINBOARD labels to NULL would destroy real information in order to express something the missing provenance row already expresses.",
     "2026-09-10 18:24 IST AND THE ALTERNATIVE I FIRST REACHED FOR WAS WORSE, which is why I checked before proposing it. My instinct was to keep the value but write a provenance row marking it inferred. Checked the column: field_sources.source holds real source names - CHITTORGARH 5838, BSE 908, DRHP 726, NSE 238, MONEYCONTROL 221, ADMIN 32. Inventing an INFERRED_LEGACY source would put a fake source in a column that means WHICH SOURCE SAID THIS - precisely the dishonesty this item removes. The ABSENCE of a row is already the correct representation of no source said this.",
     "2026-09-10 18:24 IST REVISED 2-S3b DESIGN: (1) clear ONLY the 29 non-IPO rows, where segment is meaningless rather than merely unsourced - the schema own comment names RIGHTS as carrying no segment; (2) leave the 33 IPO labels alone; (3) add a NEW detection check counting rows with a non-null segment and NO field_sources row for it, so the gap is visible and shrink-only. Verified no such check exists - the provenance checks that do exist (p_document_provenance_share, fixture_provenance, the lineage one) all measure share or lineage, never PRESENCE.",
-    "2026-09-10 18:24 IST COUNTS DIFFER BETWEEN SLOTS AND NEITHER IS WRONG: staging shows 62 candidates and 33 IPOs; production showed 41 and 11. Different snapshots, exactly why the brief told the builder to re-derive rather than echo my numbers. Any repair must therefore be re-measured against the slot it is about to write, never planned from the other slot figures."
+    "2026-09-10 18:24 IST COUNTS DIFFER BETWEEN SLOTS AND NEITHER IS WRONG: staging shows 62 candidates and 33 IPOs; production showed 41 and 11. Different snapshots, exactly why the brief told the builder to re-derive rather than echo my numbers. Any repair must therefore be re-measured against the slot it is about to write, never planned from the other slot figures.",
+    "2026-09-10 18:25 IST ITEM 12 PLAN RE-CUT under delta 1.1: seven slices become FIVE. The delta band is 250-400 lines and every item 12 slice was 120-220, so they consolidate - but I re-cut by TIER and SHARED FILE, not by line count. Merging a Tier B change into a Tier A slice over-reviews it; the reverse under-reviews it. Two slices are deliberately left BELOW the band and the reason is recorded on each rather than padded to hit a target.",
+    "2026-09-10 18:25 IST THE TWO DELIBERATE UNDER-BAND SLICES ARE THE POINT, not an exception: 12-B changes what binds to what and needs its TS normaliser and SQL twin in ONE commit - combining identity-critical work with filler to reach 250 lines would raise blast radius to save a PR. 12-C is a repair tool that WRITES rows; merging it into a code slice would bury a data write inside a code review. A size guideline that pushes either of those the wrong way is being applied against its own purpose.",
+    "2026-09-10 18:25 IST 12-D EXISTS BECAUSE OF A COST WE HAVE ALREADY PAID FOUR TIMES: 12-S5 and 12-S6 both edit ipo-identity.ts behind the same flag. Kept separate they guarantee a rebase between two slices touching one file - the exact collision that cost lane A four rebases today and made a slice appear to delete another lane files. Combining them is worth more than the smaller diffs.",
+    "2026-09-10 18:25 IST CROSS-LANE OBLIGATION RECORDED so it is not discovered late: 12-B and 12-C must land BEFORE lane A item 1 writer slices, or lane A rebases onto them. Item 1 READS company-name-normalizer as its row-key function while item 12 CHANGES it. The merge gets announced in the ledger so lane A re-runs its row-key tests. This is the same shape as the config-loader race I flagged this morning - cheaper to raise before the work than to reconcile after."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
