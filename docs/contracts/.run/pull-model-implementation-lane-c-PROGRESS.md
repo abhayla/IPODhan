@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 04:49 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 04:54 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -988,3 +988,50 @@ in the sentence meant to reassure a reviewer the errors were benign. They are mo
 the merge auto-merged `filing-persister.ts`, which this branch depends on.
 
 **Nothing has written a database row. Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 04:54 IST - 2-S7 MERGED (61391a9c); the staging numbers are finally obtainable
+
+All seven CI checks green, squash-merged, **verified by content not ancestry** - a squash
+merge is not an ancestor of main and that has fooled me before. All three new files present
+on `origin/main`, call site wired once, own cadence key present. Branch deleted only after
+`state=MERGED` was confirmed separately.
+
+**Merging is the proof mechanism, not a shortcut.** The defect-fix contract says that when the
+only real-data bench is staging and staging deploys from `main`, the merge is *how* the proof
+is obtained and the release cut is the gate that requires it. Two independent Tier A rounds ran
+first - I did not merge my own write path on my own verification.
+
+**What the two rounds bought:** nine findings then six. Three were mine in a way that mattered -
+a step verdict that could not fail for the claim it supported, a NULL-guard argument that an
+admin lock inverts, and a retry storm my own fix created. None would have been caught by tests
+I wrote, because each was a hole in what I had decided to test.
+
+### The three numbers, now obtainable for the first time tonight
+
+Before-state captured read-only: `ipo_details` **29** rows; `issue_type` **22 non-null / 7
+null**, all 22 DRHP-sourced; **346** IPOs with no details row. Expected after one cycle:
+**+179 rows, +180 values**, and `issueType` provenance not sourced CHITTORGARH **unchanged at
+22**. If that 22 moves, the guards failed and this gets reverted.
+
+### I corrected #589 less than an hour after filing it
+
+I wrote that the real band was "lost on the way in". I inferred that **we** lost it from the
+fact that **our** band is collapsed - without checking whether the source had a band to lose.
+
+Measured: of report 82's 206 book-built rows, only **18** carry a range and **188** carry a
+single price (Karamtara 254.00, Rentomojo 404.00). The collapse is **upstream**.
+
+That kills report 82 as a repair source (it lacks the band for 91% of book-built rows, and past
+years return five rows each). The **74.4% figure stands** - it compares stored `min=max`
+against the stated method, and neither input changed. Only my causal claim was wrong. And our
+pipeline is *not* exonerated: those columns may come from NSE or BSE.
+
+**The question it opens, untested:** the 18 with a range may simply be the issues still open,
+with the rest replaced by the final cut-off price once discovered. If so, a collapsed band on a
+closed book-built issue is *correct*, and the check is flagging normal data on 268 rows - which
+would make the defect the **check**, and 268 flags of noise that train people to ignore a real
+signal.
+
+**A merge is not a proof. Item 2 has no DONE line. Items 14, 12 and 3 have none. Item 3 is with
+the owner.**
