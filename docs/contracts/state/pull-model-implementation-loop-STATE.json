@@ -214,7 +214,12 @@
   "[2026-09-10T19:18:57+00:00] I proposed one gap in the re-run rule to the peer: clause (2) is one-directional. It catches 'main changed a file my branch changes or imports'. It does not catch main gaining a NEW CALLER of something my branch changes the behaviour of - the branch's own file list and imports are unchanged, so the rule says merge and the merge is red. Suggested widening to include any file main gained that imports a file the branch changed, first level.",
   "[2026-09-10T19:21:21+00:00] s16 PARTIAL PROOF, and the half that is missing named rather than glossed. The first staging deploy carrying s16 is run 34517604059 (staging, ecccc4bd, success, 19:06Z) and its log carries the line: '==> Next build cache: /var/www/ipodhan/releases-staging/20260910-190645-ecccc4bd/web/.next/cache -> /var/www/ipodhan/shared/next-cache/staging (shared per slot, survives release pruning)'. PROVEN: the symlink is created on the real box, is per-slot, and points outside the releases tree. NOT PROVEN: the size claim. The deploy script never prints du -sh, so '3.1GB becomes about 1.6GB' has no measurement behind it on any real deploy, and collecting it would mean a hand visit to the box - the shape of proof that gets collected once and never again. Also NOT yet visible: cache REUSE, since this run built against a cold shared cache (compile 2.1 min); the reuse benefit can only appear on the next deploy that hits a warm one.",
   "[2026-09-10T19:21:21+00:00] Closed that gap structurally instead of by hand: asked the 23-S1 builder (already editing deploy-linux.sh for the Node assert, already running its test suite) to print du -sh of the release dir AND of the shared cache dir on every deploy, wrapped so a failing du can never fail a deploy, with a test case and a mutation proving the honest-fallback line. This is not an extra - item 23's DoD item 1 requires the release size 'measured by du -sh and recorded in the ledger against the threshold S1 sets', and a threshold cannot be set from a number nobody prints. By the time 23-S3 needs a build-mode-versus-artifact-mode size comparison there will be a run of real before-numbers rather than one hand-taken reading.",
-  "[2026-09-10T19:21:21+00:00] Cadence observation for s17: staging deployed at 18:23, 18:31, 18:43, 18:54 and 18:58 - five deploys in 35 minutes, one per push. That is the load s17 exists to remove, measured on the day it merged. s17's own merge (e7ef5357) came after ecccc4bd, so the 15-minute schedule had not taken effect for any run in that list; the first run under the new cadence is the one to read for its proof, and it is not in yet."
+  "[2026-09-10T19:21:21+00:00] Cadence observation for s17: staging deployed at 18:23, 18:31, 18:43, 18:54 and 18:58 - five deploys in 35 minutes, one per push. That is the load s17 exists to remove, measured on the day it merged. s17's own merge (e7ef5357) came after ecccc4bd, so the 15-minute schedule had not taken effect for any run in that list; the first run under the new cadence is the one to read for its proof, and it is not in yet.",
+  "[2026-09-10T19:28:52+00:00] s14 MERGED 042a23b2 via PR #548. Re-run rule applied twice on it: the first green was discarded because main had gained three workflow files and a scripts/ci file (clause 1) and the branch edits pr-gate.yml itself; the second green was checked against main again - main had gained only audit-detection-floor.mjs, detection-floor-checks.mjs and a test, no workflows, and I checked clause (2) in BOTH directions (does the branch import what main changed; does what main changed import anything the branch touched) - both empty. Gates reproduced on the rebased head: alias-table 2/2, no-strip-types guard 1/1, alias-preflight 8/8.",
+  "[2026-09-10T19:28:52+00:00] THE STRONGEST RESULT OF THE NIGHT, and it is a FAILURE. #556's seeded DB test, wired into scraper-document-integration (which replays the journal from empty against a real postgres:16), RAN and went red: 'not ok 6 - seeded junk-named promoter with provenance under its junk: key PASSes / error: duplicate key value violates unique constraint unique_field_source_per_ipo' (run 34520175611). The step was not skipped - its reachability probe printed 'reachable, current_database()=ipodhan_test' first, exactly as briefed. So s18's necessity is no longer a reading of field-sources-repository.ts:209-225; it is a real Postgres refusing a real write on a journal-built schema. #556 now WAITS for s18 and goes green on its own when the constraint widens. A test that refuses to pass is worth more than one shaped around the defect.",
+  "[2026-09-10T19:28:52+00:00] CONSEQUENCE for s18, sent to its builder: the migration must be JOURNALED, not gated, or CI never applies it and #556 stays red forever. If the builder's staging duplicate-group measurement pushes toward a gated file instead, that is a decision for me, not something to work around.",
+  "[2026-09-10T19:28:52+00:00] OPEN FINDING, under investigation, not yet concluded: the same test file reported '# pass 6 # fail 0' on the builder's LOCAL ipodhan_test and fails on CI's journal-replayed schema. Those cannot both describe the same schema. Hypothesis being tested (kill or confirm, not assume): local ipodhan_test has DRIFTED from what the migration journal produces - a constraint widened, dropped or hand-created during an earlier slice - which would mean every local integration result about constraint behaviour on that database has been measuring a schema that exists nowhere else. If it holds it is a bigger finding than the slice that surfaced it. Alternatives to eliminate first: different seeded field names avoiding the collision, leftover rows from a prior local run, or a different database than the builder thinks.",
+  "[2026-09-10T19:28:52+00:00] Worktree lifecycle: six merged trees removed (s12, s4, s16, s17, s14, s3c), main checkout proven intact after each (tracked 4686 -> 4686, deleted-on-disk 0). Three of the six were REFUSED by wt-rm on the 'commits not in main' signal - the known squash-merge false positive - and I did not reach for -Discard on that signal. Proved the content was on main first: s12 by its four distinctive symbols (on_deploy_exit, cleanup_failed_release_dir, RELEASE_DIR_CREATED, RELEASE_DIR_CLEANUP_DONE) present in both files on origin/main, s17 by its cron '*/15 * * * *', s4 by a zero-line diff of its own files. Note the first test I tried was WRONG - 'git diff main..branch' on the branch's files also shows what main gained LATER on those same files, and it reported s12 and s17 as not-on-main when they are."
  ],
  "items": {
   "item-01": {
@@ -329,10 +334,11 @@
     {
      "k": "s8",
      "title": "detection check field-sources-row-key-coverage + registry regeneration",
-     "status": "PR-OPEN",
+     "status": "PR-OPEN-BLOCKED",
      "pr": 556,
-     "sha": "3591339f",
-     "tier": "A"
+     "sha": "2451de12",
+     "tier": "A",
+     "blocker": "waits for s18: its junk-named-promoter PASS case cannot pass while unique_field_source_per_ipo is 3-column"
     },
     {
      "k": "s3b",
@@ -461,10 +467,10 @@
     },
     {
      "k": "s14",
-     "status": "PR-OPEN",
+     "status": "MERGED",
      "tier": "B",
      "pr": 548,
-     "sha": "5e1024e9",
+     "sha": "042a23b2",
      "title": "preflight: refuse to run when @ipodhan/shared resolves outside this checkout (#514, repo side)",
      "order": "tomorrow; repo side of #514. The laptop side (wt-new.ps1 creating the junction) is lane C, Tier A, with the junction-deletion history in the brief - NOT tonight.",
      "plan": [
