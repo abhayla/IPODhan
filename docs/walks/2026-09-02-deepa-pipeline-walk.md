@@ -2886,3 +2886,17 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   across three unrelated files, and not one of them named the cause. A getter fixes it. Worth pairing
   with signal-ownership R6: 35 red tests that cannot be classified from their own output are a defect
   of the diagnostics as much as of the code.
+
+- 2026-09-10 19:37 IST **[lane B] A flag conversion that stopped halfway, on purpose.** Lane A's slot-aware flag
+  helper shipped with no callers, so every flag this run introduced was OFF on staging — including the
+  one #468's staging proof depends on. That proof is "watch the rotation counter move"; with the flag
+  off the counter cannot move, so the proof would have returned empty and read as "the fix does
+  nothing". Converted, with four cases per flag driving the real module.
+  The half I did NOT convert is the more useful record. `ENABLE_DOWNLOAD_STREAMING_CAP` would also
+  have become ON in staging — but when the byte cap trips today, `defaultFetcher` returns `status: 0`,
+  which is the same value a timeout returns, and the code comment says so deliberately ("no caller
+  needs a new branch for too-big versus timed-out"). Switching the cap on before that refusal has its
+  own identity would make every over-size refusal read as a timeout: the exact D17 gap item 22 exists
+  to close. I had already written that constraint down this afternoon and still nearly converted it —
+  what stopped me was reading `defaultFetcher` rather than trusting my own note. The test now asserts
+  the flag stays OFF, so the next reader cannot mistake the guard for an oversight and "finish the job".
