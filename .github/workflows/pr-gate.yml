@@ -104,6 +104,23 @@ jobs:
         # bash, both present on ubuntu-latest).
         run: node --test scripts/tests/preflight-runtime.test.mjs
 
+      - name: Alias-resolution preflight self-tests (item 1 slice s14)
+        # Mutation-proof: drives the real scripts/lib/alias-preflight-auto.mjs
+        # as a subprocess against fabricated checkouts whose workspace link
+        # points inside / outside the tree, so deleting the outside-the-root
+        # check turns this red instead of silently letting a run exercise a
+        # different checkout than the one under test.
+        run: node --test scripts/tests/alias-preflight.test.mjs
+
+      - name: No --experimental-strip-types subprocess in scripts/tests (CI-portability guard)
+        # Mutation-proof: scans scripts/tests/*.{mjs,ts,mts} for that flag
+        # passed as a spawned-process argument, which needs Node >= 22.6 and
+        # is therefore red on every pr-gate run (this job pins Node 20 up to
+        # this point) while staying green on any laptop with a newer Node.
+        # No deps needed (Node builtins only), so it belongs here with the
+        # other pre-install gates rather than after npm ci.
+        run: node --test scripts/tests/no-experimental-strip-types-in-tests.test.mjs
+
       - name: Document-state check self-tests (T-403)
         # Mutation-proof: scripts/tests/document-state-checks.test.mjs imports
         # the real predicates from scripts/lib/document-state-checks.mjs, so
@@ -383,6 +400,21 @@ jobs:
         # gate that evaluates production modules under the real module system.
         run: npx tsx src/index.ts --smoke-import
         working-directory: ./scraper
+
+      - name: scraper vitest alias-table form (item 1 slice s14)
+        # Evaluates scraper/vitest.config.ts and asserts the bare
+        # @ipodhan/shared entry is an ANCHORED regex, not a string key. A
+        # string key also captures @ipodhan/shared/db/schema and rewrites it
+        # to <...>/index.ts/db/schema; reverting to the object form turns
+        # both cases red.
+        #
+        # Runs here, AFTER npm ci and the Node 20 restore above, not with
+        # the other dependency-free pre-install gates: it evaluates the
+        # config via tsx (a scraper devDependency, works on Node 20 — unlike
+        # node's --experimental-strip-types, which needs Node >= 22.6 and
+        # was this check's original, CI-red implementation), so it needs
+        # node_modules to exist first.
+        run: node --test scripts/tests/scraper-vitest-alias-table.test.mjs
 
       - name: Run lint
         run: npm run lint:ci

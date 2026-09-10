@@ -35,6 +35,10 @@
  * `scraper/scripts/{repair,backfill}-*.ts` must import this module or carry a
  * dated `// repair-tool-exempt: <YYYY-MM-DD> <reason>` comment.
  */
+// Item 1 slice s14 -- FIRST import on purpose. ESM evaluates imported modules in
+// source order, so this runs (and prints which checkout @ipodhan/shared resolves
+// to) before any module below can read the wrong tree.
+import '../../../scripts/lib/alias-preflight-auto.mjs';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import fs from 'node:fs';
