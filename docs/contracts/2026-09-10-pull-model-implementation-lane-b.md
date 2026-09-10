@@ -120,3 +120,48 @@ As the parent's report for six items, plus the lane-specific sections named in S
 ## References (load transitively)
 
 The parent's list, plus `scripts/ops/test-db-lifecycle.mjs`, `docs/contracts/state/pull-model-implementation-loop-STATE.json` (lane A, read-only), issue #437.
+
+---
+
+## Declared deviations against this contract
+
+Recorded by the run, in the open, rather than absorbed silently. Nothing here rewrites the Scope
+boundary above; each entry names what crossed it and awaits the owner's or the supervisor's
+ratification. The Scope boundary is not listed under Guardrails (hard stops), so a crossing is a
+recordable deviation, not a stop-the-line — but an unrecorded one would be exactly the
+"quietly widen the scope" failure this contract exists to prevent.
+
+### D-1 — 2026-09-10 17:51 IST — item 22's fix slice touched four files outside item 22's declared scope (#496, MERGED)
+
+Item 22's scope is `scraper/src/services/document-*`, `scraper/src/utils/download*`,
+`scraper/config/download-allowlist*.json` and their tests. PR #496 also touched:
+
+| File | Whose scope it is | Why it was touched | Disposition |
+|---|---|---|---|
+| `scraper/src/config/download-allowlist-loader.ts` | created by slice 22-1; the boundary names the JSON, not the loader | the defect itself | in scope by descent from 22-1; the boundary wording should name the loader |
+| `scraper/src/config/field-manifest-loader.ts` | lane C, item 2 (#483) | second member of the same class — zero importers, so it had never run | **supervisor ratified in writing**, lane C informed |
+| `scraper/src/index.ts` | **item 16** ("source registry") | the `--smoke-import` flag has to live on the real entry point, or the check proves nothing | needs ratification |
+| `.github/workflows/pr-gate.yml` | **item 20** ("one step") | wiring the smoke import | needs ratification; item 20 slice 4 already spent the "one step" allowance |
+
+The defect-fix contract (`.claude/rules/defect-fix-contract.md`, items 2 and 6) requires fixing the
+CLASS and shipping a detection upgrade with the fix. For this defect the class spans two items' files
+and the only honest detection is on the real entry point. Those two requirements and this Scope
+boundary genuinely conflict; the class won. That is the judgement being recorded, not excused.
+
+### D-2 — 2026-09-10 17:51 IST — the static ESM-globals scanner is re-filed from item 22 to ITEM 20
+
+The parked slice (`fix/pm-b-esm-globals-static-gate`: `scripts/ci/check-esm-module-globals.mjs`, its
+15-case mutation suite, and two `pr-gate.yml` steps) was planned as item 22 slice `s0c`. Reading this
+contract shows that is wrong: `scripts/ci/**` and `.github/workflows/pr-gate.yml` are **item 20's**
+declared scope, and item 20 is this lane's CI-gate item. Filing a CI gate under item 22 because the
+defect that motivated it was found there would put a permanent, repo-wide check under a
+download-safety item, where nobody would look for it.
+
+**Re-filed as item 20 slice 5.** It stays inside the declared boundary and lands where a reader would
+expect. It also carries the fix owed from lane A's #498 finding: gate steps placed LAST in a job are
+skipped when an earlier step fails, so a regression turns them grey rather than red — item 20's
+existing gate steps and #496's smoke step both move ahead of the long suites in that slice.
+
+Consequence for Stage sequencing: item 20 is reopened for one slice. It is not a new item, and item 22
+remains the current item, so the "never a second item before the current one is DONE or BLOCKED"
+guardrail is not breached — but the run states plainly that item 20 is no longer closed.
