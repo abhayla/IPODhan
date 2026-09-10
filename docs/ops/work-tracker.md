@@ -897,3 +897,32 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   **What is needed from you: nothing tonight.** One decision is worth your time when you have it:
   whether the shared branch should refuse changes that have not passed their checks. It currently
   has no protection at all, which is how two broken changes got in tonight.
+
+- 2026-09-11 00:38 IST — **Item 20 stays at 100%, but it is now 8 of 8, not 7 of 7 — it grew a slice and finished it.**
+  The percentage did not move and that flatters it. What happened is that item 20 gained an eighth
+  piece it never planned, because I broke the shared branch with a documentation-only change and
+  found that our pipeline skips documentation-only changes — including the one check whose entire
+  job is reading the documentation. So the change most likely to break that check was the only kind
+  guaranteed not to be checked by it. That is now fixed and merged.
+  **What a reader of ipodhan.com would notice.** Still nothing today. But I found something tonight
+  that a reader WOULD feel, and it is the most important thing in this update: half the IPOs
+  currently open for subscription — 10 of 20 — have no filing document at all, and 7 of the 13
+  upcoming ones too. That is where the issue type, face value, lot size and the fresh-versus-offer
+  split come from. Those pages are thinner than they should be right now.
+  **What went wrong, and why nobody spotted it.** Two things, and the second is worse. First: the
+  only way we ever learn a company's website is by reading it off the cover of a filing we have
+  already downloaded — and the step that would go looking on the company's own website is skipped
+  when we have no website. So you need a filing to learn the website, and the website to find the
+  filing. For an IPO with no filing at all, that loop never opens. Second: a nightly check HAS been
+  reporting this correctly every night since 4 September, across 245 records. The morning summary
+  only highlights what is new, and it works out what is new by reading the names a check puts in
+  quotation marks. That whole family of checks quoted no names, so it landed in "same as yesterday"
+  every single night. The check's own written description had predicted precisely this. Fixed and in
+  checks now.
+  **I also got three things wrong myself tonight** and wrote all three down where the work is: I put
+  a search command and its result into a bug report without ever running it (the result was wrong);
+  I broke the shared branch; and a database query gave me impossible numbers because of a
+  five-and-a-half-hour timezone quirk, which I threw away rather than publish.
+  **What is needed from you: nothing tonight.** One decision when you have a moment: whether the
+  shared branch should refuse changes that have not passed their checks. It has no protection at all
+  today, and two changes that were each individually correct broke it only in combination.
