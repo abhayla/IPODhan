@@ -92,19 +92,20 @@ jobs:
 
       - name: Run integration tests
         # Item 1 slice s3d (web-integration shrink-only baseline gate, owner decision
-        # 2026-09-10): emit BOTH the default reporter (readable log, for diagnosis) AND
-        # a machine-readable JSON report (--outputFile). This step still fails loudly on
-        # its own exit code — `npm run test:integration` (== `vitest run`) exits non-zero
-        # on any failing test, and this step carries no continue-on-error — so a NEW
-        # failure fails the run exactly like before. The JSON report is ADDITIONALLY fed
-        # to the shrink-only baseline checker below, which decides whether that failure
-        # is already known (PASS) or new (FAIL, even if this step's own exit somehow
-        # didn't catch it).
+        # 2026-09-10): emit BOTH the default reporter (readable log, for diagnosis) and
+        # a machine-readable JSON report, which the baseline checker below consumes.
+        #
+        # THE DECISION MOVED. This step's own exit code is no longer the gate; the
+        # checker is. That is why continue-on-error is set here - without it the step
+        # fails on the 26 known failures, the run stops, and the checker is SKIPPED,
+        # so the gate could only ever run on an already-green suite: dead on arrival.
+        #
+        # This is NOT a rollback of #464. #464 removed continue-on-error from steps
+        # where NOTHING else judged the result. Here something does, and it fails the
+        # run on a NEW failure. If you remove this line, move the decision back here
+        # too, or the gate stops working silently.
         run: npx vitest run --config vitest.integration.config.ts --reporter=default --reporter=json --outputFile=$RUNNER_TEMP/web-integration.json
-        working-directory: ./web
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
-          REDIS_URL: redis://localhost:6379
+        continue-on-error: true
 
       - name: Upload web integration JSON report
         # Uploaded even when the suite fails (if: always()) — that is precisely when the
@@ -120,6 +121,7 @@ jobs:
         continue-on-error: true
 
       - name: Check web integration baseline (shrink-only gate)
+        if: always()
         # Item 1 slice s3d. No continue-on-error — this IS the gate: a NEW failing file
         # not in config/web-integration-baseline.json fails the run; a baseline entry
         # that is no longer failing also fails the run (stale-entry guard, matches
