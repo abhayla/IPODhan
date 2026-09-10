@@ -2493,3 +2493,27 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   allowed to treat a web green as proof, and why a baseline -- if the owner really did approve it -- is a
   reasonable mechanism rather than a way of hiding red: it is the same shrink-only shape lane B used for the
   41 module-boundary violations, where every entry stays visible and the file can only get smaller.
+
+- **2026-09-10 15:21 IST [lane B] Hold LIFTED on decision 1: the owner-typed lines are verified at a real sha, read directly.**
+  `0f632837` is an ancestor of `origin/ops/impl-loop-ledger`, subject *chore(state): record both owner-typed
+  lines verbatim for cross-lane verification*, dated 2026-09-10T15:19:35+05:30. Read from that sha, not from
+  the relay -- the owner verbatim text is:
+  1. *"Web integration failures: baseline the 26 failing files by name in a shrink-only list, gate
+     web-touching slices on no new failures, schedule the fixes as lane A slices by error class, and the
+     release cut requires the list empty."*
+  2. *"Delta 1 section 1 approved: plan slices at 250 to 400 lines, apply review tiers as the list says, later
+     review rounds read only the changed lines. Split into smaller pieces stands as the 400-line cap, not
+     smaller than that."*
+  Both adopted. Item 21 gate changes from *wait for a green ci.yml* to *no new failure against the baseline*,
+  with the release cut requiring the list EMPTY -- which is the condition that stops a baseline becoming a
+  place to hide red. The second line also settles a reading lane B had right: 400 is a CAP, not a target to
+  shrink below.
+  **But the caveat lane A attached matters more than the decision, and it is a hollow-gate risk.** The 26 file
+  NAMES are not yet known: the failed-run log cannot distinguish pass from fail, so the names must come from a
+  vitest JSON report emitted by CI after the mechanism slice merges. **The first baseline may therefore ship
+  EMPTY.** An empty baseline is safe only if the gate treats every failure as new and fails; it is a hollow
+  gate if it treats an empty list as nothing-to-compare and passes. Lane B will not treat *no new failure* as
+  measurable for web-touching work until the baseline is POPULATED, and will check which of those two
+  behaviours the mechanism implements before relying on it -- that question is exactly the class this lane
+  found three times today (#461, the module-boundary gate evaluating zero edges, mode 4 skipping silently).
+  Cost of the whole hold: nil. It lasted about twenty minutes and item 21 is last in the queue.
