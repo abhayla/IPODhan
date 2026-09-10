@@ -242,6 +242,22 @@ jobs:
         # Fix: collect conditions into an array, apply ONE where(and(...)).
         run: node scripts/ci/check-drizzle-where-chaining.mjs
 
+      - name: Security-boundary wiring self-test (item 20 / slice 6)
+        # 15 cases, most of them mutations: a name only in a comment, a second
+        # declaration of the same function in another module, a comma inside a
+        # string, an empty registry, a zero-file scan, and a baselined entry
+        # that is now wired and must be deleted.
+        run: node --test scripts/ci/tests/check-security-boundary-wired.test.mjs
+
+      - name: Security boundaries are actually wired (item 20 / slice 6)
+        # 2026-09-10: three security controls shipped in one week with nothing
+        # calling them — the DNS-rebinding refusal (#487), the slot-aware flag
+        # default (#476), and the registrar allow-list parameter. All three had
+        # unit tests and all three passed CI. The tests covered the FUNCTION;
+        # nothing covered its WIRING. Needs no install, so it runs here with the
+        # other cheap gates rather than after the suites.
+        run: node scripts/ci/check-security-boundary-wired.mjs
+
       - name: Design consistency gate (docs/design/check-design-consistency.mjs)
         # The only check in the repository that catches a build card claiming
         # a retired or unknown rule id (prints "N card(s) claim a retired or

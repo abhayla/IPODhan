@@ -1,0 +1,11 @@
+{
+  "_why": "SHRINK-ONLY. Security boundaries that are registered but not yet wired, each naming the slice that will wire it. check-security-boundary-wired.mjs FAILS on any unwired boundary NOT listed here, and ALSO fails when a listed one becomes wired — a fixed entry must be deleted, so the list can only get shorter. Adding an entry is a deliberate act in a file whose name says what it means.",
+  "unwired": [
+    {
+      "id": "registrar-document-allowlist",
+      "since": "2026-09-10",
+      "fixedBy": "item 22 slice 7 — thread the registrar host set into the two isTrustedDocumentHost call sites and reset the cache per cycle",
+      "impact": "a document served by a legitimate registrar is still refused, because the second parameter is never supplied and its default is an empty set. loadRegistrarDocumentHosts() and resetRegistrarDocumentHostsCache() already exist and work; nothing calls them."
+    }
+  ]
+}
