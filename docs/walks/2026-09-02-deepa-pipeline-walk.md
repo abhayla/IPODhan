@@ -1677,3 +1677,30 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   stdout from stderr and asserted BOTH - 0 stdout lines AND 0 stderr bytes AND exit 0 - before the removal ran.
   Mechanism adopted for this lane: **any measurement that gates a destructive action captures stdout and stderr
   separately and asserts the exit code; a zero is only believed when stderr is empty and the exit code is 0.**
+
+- **2026-09-10 11:54 IST [lane B] Item 20 slice s3 built (module-boundary check); Tier A review dispatched with a possible REPO-WIDE
+  defect as its first priority.** The builder's own red-evidence line says that with the check script absent,
+  `node --test scripts/ci/tests/check-module-boundaries.test.mjs` reported `# tests 9 / # pass 0 / # fail 9` and
+  **exit 0**. If the test runner genuinely exits 0 while subtests fail, then EVERY CI step in `pr-gate.yml` shaped
+  `node --test <file>` passes with failing tests, and several of this repository's gates - including the migration
+  journal lint, the repair-tool lint and the traceability check merged an hour ago - prove nothing. The sibling slice
+  reported exit 1 for the same situation, so the two reports contradict each other and one of them is wrong.
+  The reviewer must separate two causes empirically: (a) the runner really behaves that way in this Node version, or
+  (b) the builder's command masked the exit code through a pipe or an unchecked `$?` - the false-zero class this
+  project has now hit five times in two days. Cause (a) would be CRITICAL and repo-wide, and lane A would need to be
+  told the same hour. Nothing is relayed to lane A until it is measured, because a relayed guess is worse than
+  silence.
+  Build result otherwise, all CLAIMS pending review: 10/10 tests green; the real repository scans 1257 source files,
+  maps **52**, ignores 1205, resolves 2660 import edges and finds **zero** upward-pointing edges. Coverage is
+  therefore 4%%, and whether that is a real gate or a paper one is the review's second priority - a PASS that reads
+  as "the architecture is clean" when the check has looked at one file in twenty-five would be worse than no check.
+  The `coverageFloor: 52` guard means a later refactor that silently unmaps half the tree fails instead of passing,
+  which is the right shape; the map is JSON so it grows by data edit, not code change (OD-51).
+  Two of the ten modules, `plan` and `walk`, are unmapped because the builder grepped and found that code does not
+  exist yet - those are later build items. The reviewer verifies that claim rather than accepting it. The builder
+  also left `repositories/` unmapped, arguing the design does not clearly make repository files read-side-owned;
+  that is either honest judgement or an evasion that removes the most important edges from the graph, and the review
+  must say which.
+  Honest note on the builder's own diff measurement: `origin/main` advanced under it when s1 merged, so a plain
+  two-ref `git diff origin/main HEAD` wrongly showed the sibling slice's files as this slice's. It noticed and used
+  the merge-base form `origin/main...HEAD`. That is the pipelining hazard the contract warns about, caught correctly.
