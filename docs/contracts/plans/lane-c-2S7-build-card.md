@@ -63,7 +63,40 @@ for item 1's child-table consolidated writer. **#367's matrix entry is the argum
 may** — the field gets priority resolution either way. That is a **review note on the PR**,
 not a blocker, but it is the reviewer's call and it should be raised explicitly in the body.
 
-## The write half — RULED from code 2026-09-11, verified line by line
+## The write half — the first ruling was WRONG; read this section, not the one below it
+
+> **2026-09-11 02:5x — the section that follows was overturned within the hour.** It is kept
+> because the corrections are the useful part, but **do not build rule (1) or rule (3) from
+> it.** `dropOutranked` is NOT a source-priority mechanism for `ipo_details`:
+>
+> - `filing-persister.ts:437` states its purpose outright — *"it ranks the cover headline
+>   below a price band ad (see coverOutrankedByAd)"*. Cover-versus-ad arbitration, nothing more.
+> - `coverOutrankedByAd:600` opens `if (!isCoverHeadline) return false`, and `isCoverHeadline`
+>   (`:597`) is `headline_source === 'PROSPECTUS_COVER'`. For a Chittorgarh read it **never drops**.
+> - `dropOutranked:627` itself opens `if (!isCoverHeadline) return`.
+> - **Both `dropOutranked` (:627) and `filterFields` (:507) are LOCAL CLOSURES inside
+>   `persistFilingExtraction` (:478)** — not callable from a scraper path at all.
+>
+> **So `ipo_details` has NO general source-priority mechanism.** The matrix does not rank it
+> (measured: it governs `ipos` only). `dropOutranked` does not rank it. `filterFields` is
+> admin-protection. Two mechanisms were claimed for this field in one night — one mine, one
+> the planner's — and neither exists.
+>
+> ### Build THIS instead — smaller, and true
+>
+> **Report 82 fills NULLs only and never overwrites.**
+>
+> - `makeIpoDetailsWriter.insertIfMissing` for the identity row (`data_source = CHITTORGARH`).
+> - The `issue_type` write guarded on `issue_type IS NULL`.
+> - A `field_sources` row naming CHITTORGARH and report 82.
+> - **Mutation that must go red:** remove the null guard, and a DRHP-sourced value gets
+>   clobbered. Without that test the guard is a comment.
+>
+> This needs no priority engine and does **not** wait on item 1. Any future write that must
+> OVERWRITE does — and that is the honest version of the "wait for item 1?" question.
+
+### (superseded) The first ruling, kept for its corrections
+
 
 The open question in the section above ("may the Chittorgarh path create `ipo_details`
 rows, or must it wait for item 1?") is **answered: it may**, and the reason is not the
