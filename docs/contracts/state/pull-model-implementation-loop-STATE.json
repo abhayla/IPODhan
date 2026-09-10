@@ -467,6 +467,22 @@
             "the script prints the exact Artifact call, so the follow-up is mechanical rather than recalled",
             "stretch: refuse to append a ledger line when the previous run emitted a payload that was never consumed"
           ]
+        },
+        {
+          "k": "s16",
+          "status": "PLANNED",
+          "tier": "A",
+          "pr": null,
+          "sha": null,
+          "title": "move the Next build cache out of the release (per-slot, under shared/)"
+        },
+        {
+          "k": "s17",
+          "status": "PLANNED",
+          "tier": "A",
+          "pr": null,
+          "sha": null,
+          "title": "staging deploys on a 15-minute schedule when main differs, not on every push"
         }
       ],
       "prs": [
@@ -781,6 +797,18 @@
         "cycle": "n/a - landed 2026-09-09 as PR #433 before this run",
         "line": "verify-only at preflight: scraper/scripts/repair-merge-duplicate-ipo.ts present on main, PR #433 MERGED 2026-09-09T10:40:07Z"
       }
+    },
+    "23": {
+      "item": 23,
+      "card": null,
+      "status": "PENDING",
+      "owner": "lane A",
+      "title": "build in CI and deploy an artifact so the production box never runs npm ci or next build",
+      "approvedBy": "owner, typed 2026-09-10 ~22:1x IST: \"Approved: item 23 ... lane A, after s17\"",
+      "order": "AFTER item 1 slice s17",
+      "noCardYet": "Items 1-22 have build cards under docs/design/build-cards/. Item 23 has none - it needs one written before its slice plan, per Stage 1a. That card is the first unit of work, not the build.",
+      "overlapToStateHonestly": "This partly supersedes s16. s16 moves web/.next/cache (1.5G of a 3.1G release) out of the release: it wins BOTH a smaller release AND faster incremental builds on the box. Once item 23 lands, the box does not build at all, so the build-speed half of s16 becomes moot and only the size half survives - and an artifact would not carry the cache anyway. s16 is still worth doing now: it is a small change that helps tonight, and item 23 is a much larger piece of work. But it should be built as an interim measure, not as permanent architecture, and its PR body should say so.",
+      "alsoAffects": "s17 becomes less load-bearing under item 23: if a deploy is unpack-and-flip rather than npm ci + next build, its CPU cost collapses and the cadence matters much less. s17 still lands first and is still right for the box as it is today."
     }
   },
   "prGateBudgetTonight": 20,
