@@ -457,6 +457,38 @@
           "rule": "12-B re-runs scraper/scripts/backfill-normalized-name.ts UNCHANGED, which already goes through rowKeyForName. Never a SQL UPDATE, never a hand-written re-key. The SQL twin change still ships in the same commit because it serves the query-time paths.",
           "testOwed": "One test asserting a junk-name fixture (punctuation- or digit-only) still yields the junk: key from rowKeyForName AFTER the function change.",
           "whyTheGreenGateLies": "The T-518 TS-vs-SQL parity self-test in pr-gate sits BELOW rowKeyForName, so it compares the normalise step only. It stays green through this change while the junk path is completely uncovered. A green parity run is NOT evidence for the junk path, and 12-B must not cite it as such."
+        },
+        "blankKeyMeasurement": {
+          "at": "2026-09-10 19:02 IST",
+          "how": "read-only, default_transaction_read_only=on, zero writes",
+          "prod": "normalized_name is ABSENT on all three tables in ipodhan. Rows 27/326/178 = 531 - which is exactly where the 531 figure comes from, but the COLUMN IS NOT THERE. E1 on prod is therefore a bigger step than on staging: add column, backfill, then constrain.",
+          "staging": "Column PRESENT on all three. Rows 29/321/194 = 544.",
+          "result": {
+            "promoters": {
+              "total": 29,
+              "blank": 0,
+              "junk": 0,
+              "blankCollisionGroups": 0,
+              "nonBlankDuplicateKeys": 0
+            },
+            "peer_companies": {
+              "total": 321,
+              "blank": 0,
+              "junk": 0,
+              "blankCollisionGroups": 0,
+              "nonBlankDuplicateKeys": 0
+            },
+            "ipo_intermediaries": {
+              "total": 194,
+              "blank": 0,
+              "junk": 0,
+              "blankCollisionGroups": 0,
+              "nonBlankDuplicateKeys": 5
+            }
+          },
+          "answer": "ZERO blank keys on all three tables. There is no blank-key collision on current data, so E1 does NOT need to be a partial unique index to apply. The 0/0/5 baseline reproduces exactly and independently, and the 5 are precisely the two-role banks named: ICICI Bank x2, Kotak Mahindra Bank, Axis Bank, Centrum Broking.",
+          "butNotSafeForever": "Zero today is not zero forever. The column is notNull default empty and rowKeyForName returns null for a blank name, which the backfill SKIPS - so a future blank-name row lands as the empty string. Two of those under one IPO make a plain UNIQUE reject the second write at RUNTIME, mid-extraction. That is a live-write failure, not a migration failure, and no amount of measuring today prevents it.",
+          "recommendation": "PLAIN UNIQUE, not partial - and fix it at the writer instead. rowKeyForName returning null already means the row has no identity and the design says the caller MUST skip writing it. A partial index WHERE normalized_name <> the empty string would silently permit unlimited blank-name rows, which is exactly the duplication E1 exists to stop, just invisible - and it would mask a writer that failed to skip. Better: keep the plain UNIQUE and have item 1 writer assert the skip before the database sees the row, so the failure is early and legible rather than a constraint violation mid-extraction."
         }
       }
     },
@@ -695,7 +727,11 @@
     "2026-09-10 18:54 IST GOTCHA, a false zero I nearly published. `git log origin/main --since=2026-09-10` returned ZERO commits, which would have read as \"no lane has merged today\" - flatly wrong, main took at least a dozen commits today. The refpath guard warns to sanity-check a zero with a line count, and that check is what caught it: total-commits-today came back 0, which is impossible. Re-querying with `-30` and reading the dates gave the real answer. Rule for myself: never report a zero from a filtered query without a companion query that MUST be non-zero. This is the same class as the CI query that counted pending as failed - a filter that silently matches nothing looks exactly like a clean result.",
     "2026-09-10 18:55 IST 12-B CONSTRAINT ADDED, verified before accepting. The stored key is written by rowKeyForName (company-name-normalizer.ts:312), not by normalizeCompanyNameForMatching directly. It has a branch the SQL twin lacks and cannot have: a name that normalises to empty but is not blank becomes junk: plus a sha1 of the trimmed raw. The SQL twin returns the empty string for those. So a SQL-UPDATE re-key would collapse every junk-name row under one IPO to the empty string, collide them under E1, and set s8b firing on all of them.",
     "2026-09-10 18:55 IST RULE for 12-B: the 531-row re-key runs in TypeScript by re-running backfill-normalized-name.ts unchanged - it already imports rowKeyForName at :34 and calls it at :84. Never a SQL UPDATE. The SQL twin change still ships in the same commit; it serves the query-time paths.",
-    "2026-09-10 18:55 IST THE SHARPEST PART, and the bit I would have missed: the T-518 TS-vs-SQL parity self-test in pr-gate sits BELOW rowKeyForName, so it only compares the normalise step. It stays GREEN through this change while the junk path is entirely uncovered. This is the local-green-is-not-proof class again - a passing gate that does not reach the case. 12-B owes its own test asserting a junk-name fixture still yields the junk: key after the change, and must not cite the parity run as coverage."
+    "2026-09-10 18:55 IST THE SHARPEST PART, and the bit I would have missed: the T-518 TS-vs-SQL parity self-test in pr-gate sits BELOW rowKeyForName, so it only compares the normalise step. It stays GREEN through this change while the junk path is entirely uncovered. This is the local-green-is-not-proof class again - a passing gate that does not reach the case. 12-B owes its own test asserting a junk-name fixture still yields the junk: key after the change, and must not cite the parity run as coverage.",
+    "2026-09-10 19:02 IST BLANK-KEY QUESTION ANSWERED by measurement, not opinion. ZERO blank normalized_name rows on all three tables on staging (29/321/194). No blank-key collision exists, so E1 does not need to be a partial unique index to apply.",
+    "2026-09-10 19:02 IST The 0/0/5 baseline reproduced independently here, and the 5 are exactly the two-role banks: ICICI Bank twice, Kotak Mahindra Bank, Axis Bank, Centrum Broking. That is confirmation from a separate query, not agreement by assertion.",
+    "2026-09-10 19:02 IST MATERIAL FINDING lane A should have: normalized_name is ABSENT on all three tables in PRODUCTION. Prod rows are 27/326/178 = 531, which is where the 531 figure comes from - but the column is not there. The s1 migration is applied on staging only. E1 on prod is add-column, backfill, THEN constrain; it is not the same one step it is on staging.",
+    "2026-09-10 19:02 IST MY RECOMMENDATION, and it argues against the partial index: zero today is not zero forever, because the column defaults to empty and the backfill SKIPS a null key, so a future blank-name row lands as empty and a plain UNIQUE rejects the second one at runtime mid-extraction. But a partial index would silently permit unlimited blank-name rows - the exact duplication E1 exists to stop, made invisible - and would mask a writer that failed to skip. rowKeyForName returning null already means the row has no identity and must not be written. So: keep the plain UNIQUE, and have item 1 writer assert the skip before the database sees the row. Fail early and legibly rather than at the constraint."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
