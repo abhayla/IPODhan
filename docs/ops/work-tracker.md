@@ -781,3 +781,29 @@ reviewer deleted part of it and every test still passed. The slice is getting it
 general gap in the drift tool is bigger and goes into a separate hardening slice before item 1 closes.
 
 Automated check-runs: **6 used today of a shared 60**, four of them mine, none failed.
+
+**2026-09-10 10:58 IST — tick. I stopped a worker mid-job.** Item 1: **38%**, five of thirteen slices
+merged, unchanged since 08:58.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What went wrong, two things, both caught by the half-hourly check rather than by anything automatic.
+First, a database command had been sitting stuck for 27 minutes waiting for a confirmation nobody was
+there to type. It was also the wrong command: it copies the schema file straight into the database and
+skips the migration history, which is the exact state this work is trying to keep honest — the
+project's own build file carries a note saying use the other one. I ended the process and stopped the
+worker. The database itself turned out fine: the worker had already rebuilt it correctly before that
+step, so nothing was lost, and I checked rather than assumed.
+
+Second, the review before it had found that the previous fix guarded only one of two identical copies
+of the same file — and the site itself runs the unguarded one. It also found that a test claiming the
+cache had been cleared passed only because the test switched the cache off. Both are now fixed in the
+working copy; what remains is proving each fix by breaking it deliberately and watching the tests fail.
+That is running at half the usual time budget, which is the rule for restarting a stopped job.
+
+There is a third finding I am deliberately not fixing here: nothing in the project catches someone
+editing the schema file without producing the matching migration. A reviewer set a deliberately wrong
+value and the drift check reported everything fine. That is older than this work and belongs to a
+separate hardening job, which must land before item 1 can be called finished.
+
+Automated check-runs: **7 used today of a shared 60**, four of them mine, none failed.
