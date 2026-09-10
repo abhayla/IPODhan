@@ -33,7 +33,7 @@
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve, sep } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 export const ALIAS = '@ipodhan/shared';
 
@@ -44,26 +44,55 @@ function canon(p) {
 }
 
 /**
- * Nearest ancestor of `startDir` holding BOTH `package.json` and `.git`.
+ * True when `dir` holds the package.json of the REPO ROOT.
  *
- * `.git` is a FILE in a linked worktree and a directory in the main
- * checkout, so existence is the test, never `isDirectory()`.
+ * The marker is the `workspaces` field: the root package.json declares it
+ * (`["web", "scraper", "packages/*"]`), and no workspace MEMBER does. Any
+ * package.json would stop the walk at `web/` or `packages/shared/` and hand
+ * back a sub-tree as the checkout root — which is the wrong-tree resolution
+ * this whole module exists to make impossible.
+ */
+function isRepoRoot(dir) {
+  const pkg = join(dir, 'package.json');
+  if (!existsSync(pkg)) return false;
+  try {
+    const parsed = JSON.parse(readFileSync(pkg, 'utf8'));
+    return parsed !== null && typeof parsed === 'object' && parsed.workspaces !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Nearest ancestor of `startDir` whose package.json declares `workspaces`.
+ *
+ * NOT keyed on `.git`. The deploy builds every release directory with
+ * `git archive "$SHA" | tar -x` (scripts/deploy-linux.sh), so a release has
+ * no `.git` at ANY level; a `.git`-keyed root finder threw in every staging
+ * and production deploy from the moment it shipped (2026-09-11, run
+ * 34521965457). The `workspaces` marker is present in every shape this code
+ * runs in — the main checkout, a linked worktree (where `.git` is a file),
+ * and a `.git`-less archive extract.
  *
  * Anchored on a directory INSIDE the checkout (callers pass this module's
  * own location) rather than on `process.cwd()`: cwd is `scraper/` for the
  * repair tools, the repo root for the deploy's schema-drift assert, and
  * anything at all for an ad-hoc run, while the module's own path is
  * definitionally inside the checkout being exercised.
+ *
+ * Finding nothing THROWS. There is deliberately no fallback to cwd and no
+ * default root: a guard that guesses a root cannot prove anything about which
+ * tree was read, which is the only thing it is for.
  */
 export function findCheckoutRoot(startDir) {
   let dir = resolve(startDir);
   for (;;) {
-    if (existsSync(join(dir, 'package.json')) && existsSync(join(dir, '.git'))) return dir;
+    if (isRepoRoot(dir)) return dir;
     const parent = dirname(dir);
     if (parent === dir) {
       throw new Error(
         `alias-preflight: no checkout root above ${startDir} ` +
-          '(looked for a directory holding both package.json and .git)'
+          '(looked for a directory whose package.json declares "workspaces")'
       );
     }
     dir = parent;
