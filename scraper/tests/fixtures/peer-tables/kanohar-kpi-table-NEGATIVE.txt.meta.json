@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/RHP_KANOHAR.zip",
+  "capturedAt": "2026-09-11",
+  "ipoId": "kanohar-electricals",
+  "company": "Kanohar Electricals Limited",
+  "note": "NEGATIVE fixture. RHP pp.160-161, 'Comparison of KPIs with our peers listed in India' - a SECOND peer-shaped table with the same companies and numeric columns. The parser must REJECT this by heading."
+}

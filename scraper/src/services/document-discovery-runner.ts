@@ -66,7 +66,9 @@ import {
   normalizeCompanyUrl,
   isStorableFromCompanyPage,
   isVerifierUrl,
-  isResolvedAddressPrivate,
+  resolveHostVerdict,
+  type HostResolutionVerdict,
+  type HostResolutionReason,
 } from './company-host-source.js';
 import {
   planIpoCycle,
@@ -590,11 +592,20 @@ export interface RunnerDeps {
   skipDownload?: boolean;
   /**
    * Resolved-address check for OD-37, injectable so a unit test never makes a
-   * real DNS query. Defaults to the production `isResolvedAddressPrivate`,
+   * real DNS query. Defaults to the production `resolveHostVerdict`,
    * which fails CLOSED (an error or an empty answer counts as private) — this
    * is the network boundary and the boundary refuses when it cannot tell.
    */
   resolveIsPrivate?: (hostname: string) => Promise<boolean>;
+
+  /**
+   * The same boundary, but able to say WHY — which the boolean seam above
+   * cannot. Wrapping the boolean forced a hardcoded `private_address` reason, so
+   * every test using it took the cacheable branch and could not observe the
+   * reason-dependent behaviour at all. Prefer this seam in new tests; the
+   * boolean one stays for the suites already written against it.
+   */
+  resolveVerdict?: (hostname: string) => Promise<HostResolutionVerdict>;
 
   /**
    * OD-37 registrar host set, loaded once per cycle by the caller (it needs a
@@ -756,6 +767,22 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
 // Runner
 // ---------------------------------------------------------------------------
 
+/**
+ * One message per reason, so the log line SAYS what was established rather than
+ * asserting the same sentence for five different findings (#582).
+ */
+const REFUSAL_MESSAGE: Record<HostResolutionReason, string> = {
+  private_address:
+    'OD-37 download refusal: host REFUSED because it resolves to a private, loopback, link-local or metadata address',
+  dns_unresolvable:
+    'OD-37 download refusal: host REFUSED because it does not resolve at all - check the stored URL before suspecting the network',
+  dns_timeout: 'OD-37 download refusal: host REFUSED because the DNS lookup timed out (fail-closed)',
+  no_addresses: 'OD-37 download refusal: host REFUSED because DNS returned no addresses',
+  malformed_dns_answer:
+    'OD-37 download refusal: host REFUSED because DNS returned a malformed entry (fail-closed)',
+  public_address: 'OD-37: host allowed (public addresses only)',
+};
+
 export class DocumentDiscoveryRunner {
   private boardCache: BseBoardRow[] | null = null;
   /**
@@ -819,7 +846,18 @@ export class DocumentDiscoveryRunner {
    * unrelated files to say so, and none of them named the cause.
    */
   private get resolvedAddressRefusalEnabled(): boolean {
-    return this.deps.resolveIsPrivate !== undefined || FEATURE_FLAGS.ENABLE_RESOLVED_ADDRESS_REFUSAL;
+    // BOTH seams enable it. Adding `resolveVerdict` without adding it here left
+    // the boundary switched OFF for any test that injected only the new seam —
+    // so the refusal never ran, the resolver was never called, and assertions of
+    // the form "asked once per host" were satisfied by ZERO calls. Three of the
+    // four tests written against the new seam passed while measuring nothing.
+    // A seam that silently disables the thing it is meant to exercise is worse
+    // than no seam.
+    return (
+      this.deps.resolveIsPrivate !== undefined ||
+      this.deps.resolveVerdict !== undefined ||
+      FEATURE_FLAGS.ENABLE_RESOLVED_ADDRESS_REFUSAL
+    );
   }
 
   /** OD-37 registrar host set for this cycle; empty when the caller supplies none. */
@@ -916,16 +954,36 @@ export class DocumentDiscoveryRunner {
     const cached = this.resolvedPrivateHosts.get(host);
     if (cached !== undefined) return cached;
 
-    const check = this.deps.resolveIsPrivate ?? isResolvedAddressPrivate;
-    let refused: boolean;
+    // #582. The injected `resolveIsPrivate` seam stays boolean for the tests
+    // that use it; the production path takes the verdict, because a boolean
+    // cannot say WHY. Five different outcomes used to arrive here as `true` and
+    // every one was logged as "resolves to a private address" — including a
+    // hostname that does not resolve at all. On staging that mislabelled a
+    // stored URL corrupted by one character (`www.hy{echengineers.com`) as a
+    // security refusal; the real host resolves to two public addresses.
+    // TWO seams, and the second one exists because of a review finding. The
+    // boolean seam (`resolveIsPrivate`) cannot express a reason, so wrapping it
+    // meant hardcoding `private_address` — which silently sent EVERY runner test
+    // down the cacheable path. The "one lookup per host, not per request" test
+    // then passed only because of that hardcode, while production violated the
+    // very invariant it claims to protect for exactly the hosts this PR is
+    // about. A test that passes for a reason production would not produce is
+    // not a test. `resolveVerdict` lets a test drive any reason; the boolean
+    // seam stays for the suites that already use it.
+    const injectedVerdict = this.deps.resolveVerdict;
+    const injected = this.deps.resolveIsPrivate;
+    let verdict: HostResolutionVerdict;
     try {
-      refused = await check(host);
+      verdict = injectedVerdict
+        ? await injectedVerdict(host)
+        : injected
+          ? { refused: await injected(host), reason: 'private_address', addresses: [] }
+          : await resolveHostVerdict(host);
     } catch (err) {
       // Fail CLOSED, and say why: a resolver that throws is not evidence the
       // address is public. Carrying the cause matters — signal-ownership R6:
       // a failure that cannot be classified from its log line is a defect of
       // the logger.
-      refused = true;
       logger.warn(
         {
           host,
@@ -944,14 +1002,39 @@ export class DocumentDiscoveryRunner {
       return true;
     }
 
-    this.resolvedPrivateHosts.set(host, refused);
-    if (refused) {
+    // WHAT IS CACHED, and the split is deliberate — a review argued it and the
+    // argument is right.
+    //
+    // `dns_unresolvable` is NOT cached. A hostname that does not exist is a fact
+    // about OUR STORED DATA, not about the network, and it is cheap to re-ask:
+    // NXDOMAIN returns fast and the OS caches it. Re-asking per rung means a
+    // corrected URL starts working within the same cycle instead of being
+    // blackholed until the next one. This is the case that started #582.
+    //
+    // `dns_timeout` IS cached. A timeout is the one failure whose retry is
+    // EXPENSIVE — five seconds each, and up to three investor-page rungs share a
+    // host, so not caching it would spend 15s per affected IPO per cycle instead
+    // of 5s. Caching is equally fail-closed and strictly cheaper. I originally
+    // lumped it in with unresolvable; that was wrong for exactly this reason.
+    const isStableVerdict = verdict.reason !== 'dns_unresolvable';
+    if (isStableVerdict) this.resolvedPrivateHosts.set(host, verdict.refused);
+
+    if (verdict.refused) {
       logger.warn(
-        { host, url, ipoKey, reason: 'resolved_private_address' },
-        'OD-37 download refusal: host REFUSED because it resolves to a private, loopback, link-local or metadata address'
+        {
+          host,
+          url,
+          ipoKey,
+          reason: verdict.reason,
+          // The evidence, so a refusal can be audited afterwards instead of
+          // taken on trust. Empty when the lookup failed or answered empty.
+          addresses: verdict.addresses,
+          ...(verdict.cause ? { cause: verdict.cause } : {}),
+        },
+        REFUSAL_MESSAGE[verdict.reason] ?? 'OD-37 download refusal: host REFUSED'
       );
     }
-    return refused;
+    return verdict.refused;
   }
 
   private async request(

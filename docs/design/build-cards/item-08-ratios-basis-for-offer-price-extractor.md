@@ -332,7 +332,19 @@ rather than about my pattern. The table was on the page I had already cited, fur
 So the card's original "4 of 4" was right, and is now confirmed by a stronger method — reading all
 four tables.
 
-### The heading is worded three ways, and the section number varies
+### The heading is worded TWO ways, not three - correcting this card
+
+**Correction, 2026-09-11, third on this item and again mine.** This card recorded Glasswall's heading
+as "Comparison with listed industry peers". It is not. That phrase appears in Glasswall only inside a
+NOTE, as a cross-reference in curly quotes - *"...based on the peer set provided below under
+'Comparison with listed industry peers'"*. Its real heading sits twelve lines further down and reads
+**"VI. Comparison of accounting ratios with listed industry peers"**.
+
+So across the four issuers there are **two** wordings, separated by one word - `key`. I recorded a
+third because I read a sentence that mentions the table as if it were the table's title.
+
+That mistake is now a test: a prose mention inside a sentence must not be matched, and the locator
+requires the phrase to START the line after an optional section marker.
 
 A matcher anchored on any single wording will miss at least one of these four. Use
 `comparison .{0,40} listed industry peers`, case-insensitive, whitespace-collapsed.
@@ -342,7 +354,7 @@ A matcher anchored on any single wording will miss at least one of these four. U
 | Karamtara | Comparison of Accounting Ratios with Listed Industry Peers | 6 | 135 |
 | PRASOLCHEM | Comparison of Accounting Ratios with Listed Industry Peers | 6 | 206 |
 | Kanohar | Comparison of **key** accounting ratios with listed industry peers | 8 | 156 |
-| Glasswall | Comparison with listed industry peers | VI | 143 |
+| Glasswall | Comparison of accounting ratios with listed industry peers | VI | 144 |
 
 Kanohar also prints a **separate** "Comparison of KPIs with our peers listed in India" table (p.160).
 It is not this table and must not be parsed as it.
@@ -407,7 +419,7 @@ constraint is a comment.
 | Karamtara | `sebi.gov.in/sebi_data/attachdocs/sep-2026/1788514905936.pdf` | 17,662,879 B | 529 |
 
 The PDFs are 9.5-17.7 MB each and are NOT committed. What must be committed is the **extracted text of
-the peer-table pages** for all four, so the parser tests run offline and the three heading wordings are
+the peer-table pages** for all four, so the parser tests run offline and both heading wordings are
 all exercised. Two fixtures are not enough: two issuers already disagree on columns.
 
 **One NEGATIVE fixture is required, and it is not optional.** Kanohar p.160 prints a second,
@@ -416,3 +428,172 @@ companies with numeric columns, and a loose heading matcher WILL find it. Commit
 alongside the others and assert the parser **rejects it by heading** and returns nothing for it. Without
 that case, "does the matcher find the table" and "does the matcher find the RIGHT table" are the same
 test, and only the first one is actually being asked.
+
+---
+
+## 8a-2 must read CELLS, not text — measured 2026-09-11, before the parser was written
+
+**The committed text fixtures are sufficient for the LOCATOR and insufficient for the COLUMN MAPPER.**
+This was measured rather than discovered mid-build, and it changes the plan.
+
+### Why the text layer cannot support header mapping
+
+The card requires mapping columns by header NAME. In the extracted text layer, a header block looks
+like this (Karamtara, immediately after its heading):
+
+```
+Name of / Company / Face / Value / (₹ / Per / Share / ) / Closing / price as / on /
+August / 28, 2026 / (₹) / Market / capitalization / on BSE as on / August 28, / 2026 (in ₹ / millions)
+```
+
+One or two words per line, **with nothing marking where one column header ends and the next begins.**
+There is no delimiter, no blank line, no casing rule. You cannot tell whether `Closing` starts a new
+header or continues the previous one without positional information. Header-name mapping from this
+text is not hard — it is **not possible**.
+
+### Table extraction does support it
+
+`pdfplumber.Page.extract_tables()` returns column-aligned cells, and the header fragments stay in
+their own column index, so a header is reconstructed by joining the header rows down one column.
+
+| Issuer | Peer table shape | Header form |
+|---|---|---|
+| Karamtara (p.135, table 1 of 2) | 16 rows x 10 cols | fragmented across ~5 header rows, aligned by column |
+| PRASOLCHEM (p.206, table 1 of 11) | 13 rows x 20 cols | mostly complete strings in row 0 |
+
+### Two consequences the parser must handle
+
+1. **The extractor's column count is not the real column count.** PRASOLCHEM reports 20 columns, of
+   which roughly half are empty filler produced by whitespace gutters. Real columns are the ones with
+   a non-empty reconstructed header.
+2. **The peer table is not table 0.** It is table 1 of 2 on Karamtara and table 1 of 11 on
+   PRASOLCHEM. The section locator (slice 1) narrows the page; the table still has to be chosen by
+   its header row, never by index.
+
+### CORRECTION, same session: cells are necessary but NOT sufficient
+
+I wrote the section above after measuring TWO issuers. Extending to the other two broke it, which is
+the third time on this card that a conclusion from two samples did not survive the third.
+
+**On Kanohar, pdfplumber returns the peer table with its characters REVERSED.**
+
+```
+['rep Rs( VAN', ')erahs ytiuqe', ... '90.05', 'sreep detsiL', '65.161,1']
+```
+
+`sreep detsiL` is `Listed peers`. `65.161,1` is `1,161.56`. The table is found - 11x12, correctly
+column-aligned - and every cell is mirrored, so `Hitachi` is stored as `ihcatiH` and no search for a
+peer name finds it.
+
+Measured, so nobody re-diagnoses it: the page is **not rotated** (`/Rotate` absent, pdfplumber
+`rotation = 0`, portrait mediabox), and `ihcatiH` **is** present in pdfplumber's text. The PDF draws
+its glyphs in reverse order; pdfplumber preserves drawing order while pypdf reorders by position. On
+the same page pypdf yields 4,815 characters including `Hitachi`; pdfplumber yields 4,673 without it.
+The two libraries disagree about the CONTENT, not merely the layout.
+
+So the rule for 8a-2 is:
+
+| Source | Column mapping | Content |
+|---|---|---|
+| text layer (pypdf) | impossible - headers unsegmentable | correct |
+| cells (pdfplumber) | works - column-aligned | correct on 3 of 4; **mirrored on Kanohar** |
+
+**Detection is cheap and certain**: the divider row reads `Listed peers` or `Peer Group:` in every
+issuer, so the reversed spelling is an unambiguous signal. A parser that skips the check does not fail
+loudly on Kanohar - it finds a table, maps no headers, and returns nothing, which reads as "this
+issuer has no peer table".
+
+**CORRECTION AGAIN, and this one stops short of prescribing a fix.** Reversal is not the whole of it.
+Measured on the full table rather than a preview:
+
+- The table is **TRANSPOSED**: metrics are the ROWS (`NAV`, `EV / Operating EBITDA`, `RoNW`, `EPS`)
+  and the companies are the COLUMNS. Row 10 is `Name of the company`, reversed.
+- **Whole-cell reversal recovers the words but SCRAMBLES THEIR ORDER.** The raw cell
+  `yvaeH detimiL slacirtcelE tarahB` reverses to `Bharat Electricals Limited Heavy`; the company is
+  **Bharat Heavy Electricals Limited**. `Kanohar Electricals Limited` comes back as
+  `Limited Kanohar Electricals`. Reversing each token instead does not fix it either - the token
+  ORDER is genuinely scrambled, not merely inverted.
+
+So for this issuer the `extract_tables()` output is **not recoverable by any string transformation**.
+Recovery needs word-level COORDINATES (`extract_words()`, which carries x/y per word) to rebuild
+reading order - or that issuer takes the pypdf text path, which reads the same page correctly.
+
+**Which of those two 8a-2 uses is a decision to be made from a spike, not from this note.** I am
+deliberately not prescribing it: I have measured that the simple fix does not work, and I have not
+measured that either alternative does. Writing down a mechanism I have not validated is exactly how
+the three earlier wrong rules on this card got written.
+
+### What this means for the fixtures
+
+The five committed `.txt` fixtures stay — they are what the locator is tested on, and they carry the
+heading wordings. **A cell-structured companion is needed for 8a-2**: the `extract_tables()` output
+for each peer page, committed as JSON, so the column mapper is testable offline and the two issuers'
+very different shapes are both exercised. That is a slice of its own (8a-1b) and it comes before the
+mapper.
+
+### The point of recording this here
+
+Nothing had been built on the wrong assumption yet. The text fixtures were committed two hours
+earlier and would have looked adequate right up until the mapper failed to find a stable header — at
+which point the natural conclusion would have been "the header mapping approach is wrong", rather
+than "the input is wrong". That is the same shape as the two errors already recorded on this card.
+
+---
+
+## The spike answered: the rotated issuer IS recoverable, and here is the measured recipe
+
+The section above deliberately refused to prescribe a fix, because the obvious one failed and no
+alternative had been measured. It has now been measured, and it works.
+
+**The page is rotated 90 degrees.** That is the single fact that explains every earlier symptom.
+What `extract_tables()` reports as a row is a printed COLUMN, which is why the output looked
+"transposed"; and each word's characters are stored in reverse, which is why it looked "mirrored".
+Neither is a separate defect - they are one rotation seen twice.
+
+`page.rotation` is **0** and there is no `/Rotate` entry, so the rotation is baked into the text
+matrix rather than declared. Nothing in the page metadata will tell you. The signal is the content.
+
+### The recipe, validated end to end
+
+```python
+words = page.extract_words()
+cols = {}
+for w in words:
+    cols.setdefault(round(w["x0"] / 3), []).append(w)   # a printed ROW shares an x position
+rows = []
+for key in sorted(cols):
+    ws = sorted(cols[key], key=lambda w: w["top"])      # read down the page
+    rows.append(" ".join(w["text"][::-1] for w in ws)[::-1].split())
+```
+
+In words: group by x, order by top, reverse each word's characters, then reverse the token sequence.
+
+**Output, against the real page:**
+
+```
+Kanohar Electricals      6,538.39      2 N.A.       17.43  17.43 34.80  [.]*   50.09
+Listed peers
+Hitachi Energy India    81,477.10      2 35,360.00 159.55  30.44 221.63 221.63 19.08 106.34 1,161.56
+Bharat Heavy          3,37,821.80      2    420.00  91.30   5.60   4.60   4.60  6.13  47.58    74.99
+Schneider Electric      28,906.30      2  1,379.00 155.12  44.96   8.89   8.89 28.98  88.25    30.67
+CG Power and Industrial 1,24,179.50    2    886.00 114.77  18.42   7.72   7.71 15.82  75.92    48.11
+Transformers &          25,088.00      1    292.00  32.19   5.68   9.07   9.07 17.64  20.75    51.39
+GE Vernova T&D India    62,063.10      2  4,304.00  89.37 100.40  48.16  48.16 45.85 156.96    42.87
+```
+
+Every figure matches the text layer read independently with pypdf, the issuer's own row is present
+above the `Listed peers` divider, and all six peers are recovered.
+
+### One limitation, stated rather than left to be discovered
+
+**Company names are truncated** - `Bharat Heavy`, not `Bharat Heavy Electricals Limited`; the rest of
+the name sits in an adjacent x-group and the fixed `x0 / 3` bucket splits it. That is a refinement
+(widen the bucket for the name column, or merge adjacent groups when the leading token is
+non-numeric), not a blocker: every NUMERIC column is complete and correctly ordered, which is what the
+peer table is for. Do not assume the name column is finished.
+
+### How the parser should decide which path to take
+
+Not by issuer name, and not by trying rotation first. The divider row is the discriminator: if
+`Listed peers` / `Peer Group:` appears normally the page is upright; if its reversed spelling appears,
+apply the recipe above. Both checks are cheap and neither guesses.

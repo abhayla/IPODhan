@@ -675,6 +675,7 @@ jobs:
           tests/integration/document-fetch-state-repository.integration.test.ts
           tests/integration/child-table-normalized-name.integration.test.ts
           tests/integration/child-table-row-key-unique-constraint.integration.test.ts
+          tests/integration/child-row-consolidation-financials.integration.test.ts
           tests/integration/peer-company-replace-atomicity.integration.test.ts
           tests/integration/field-sources-row-key-provenance.integration.test.ts
           tests/integration/field-sources-row-key-unique.integration.test.ts

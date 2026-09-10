@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, chmodSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, chmodSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,6 +110,7 @@ const CONTROLLED_VARS = [
   'PROSPECTUS_STORE_DIR',
   'TZ',
   'PREFLIGHT_ETC_TIMEZONE_FILE',
+  'PREFLIGHT_NVMRC_FILE',
 ];
 
 // A path that is guaranteed not to exist, so check_tz's `[ -r "$file" ]`
@@ -143,12 +144,29 @@ function run({ shimDir, env = {}, args = [] }) {
   return result;
 }
 
+// Item 23 S1: check_node asserts the box's Node MAJOR equals the pin in
+// .nvmrc. Cases that are not about the pin keep shimming v20.x, so they get
+// a temp pin of 20 and stay about whatever they were about; the cases that
+// ARE about the pin read the repo's REAL .nvmrc (below) so a change to the
+// pinned major cannot pass this suite without someone noticing.
+function writeNvmrc(content) {
+  const dir = mkdtempSync(join(tmpdir(), 'preflight-nvmrc-'));
+  const file = join(dir, '.nvmrc');
+  writeFileSync(file, `${content}
+`);
+  return file;
+}
+
+const REPO_NVMRC = join(__dirname, '..', '..', '.nvmrc');
+const REPO_PINNED_MAJOR = readFileSync(REPO_NVMRC, 'utf8').trim().replace(/^v/, '').split('.')[0];
+
 function baseGoodEnv(storeDir) {
   return {
     TZ: 'UTC',
     ADMIN_API_TOKEN: 'test-token-value',
     PROSPECTUS_STORE_DIR: storeDir,
     PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE,
+    PREFLIGHT_NVMRC_FILE: writeNvmrc('20'),
   };
 }
 
@@ -289,7 +307,7 @@ test('PROSPECTUS_STORE_DIR unset -> falls back to checking the parent shared dir
   mkdirSync(join(deployRoot, 'shared'));
   goodPython(shimDir);
   goodTesseract(shimDir);
-  goodNode('v20.11.0')(shimDir);
+  goodNode(`v${REPO_PINNED_MAJOR}.11.0`)(shimDir);
   const res = run({
     shimDir,
     env: {
@@ -305,7 +323,7 @@ test('PROSPECTUS_STORE_DIR unset -> falls back to checking the parent shared dir
   rmSync(deployRoot, { recursive: true, force: true });
 });
 
-test('node < 20 -> FAIL', () => {
+test('node major below the pin -> FAIL', () => {
   const shimDir = makeShimDir();
   const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
   goodPython(shimDir);
@@ -467,13 +485,86 @@ test('all 8 checks are present in --report output (coverage guard)', () => {
     /process TZ \(T-327\)/,
     /prospectus store dir/,
     /free disk >= 2GB/,
-    /node >= 20/,
+    /node major matches .nvmrc pin/,
     /ADMIN_API_TOKEN set/,
   ];
   for (const pattern of expectedChecks) {
     assert.match(res.stdout, pattern, `missing check line matching ${pattern}`);
   }
   assert.equal(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+});
+
+// --- Item 23 S1: the Node pin is asserted, not a >= floor --------------------
+// Before this slice the check was `node >= 20`, which passes on ANY major the
+// artifact was not built on. These three cases drive the REAL repo .nvmrc.
+test('node major equals the repo .nvmrc pin -> OK, exit 0', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode(`v${REPO_PINNED_MAJOR}.22.2`)(shimDir);
+  dfWithAvailKb(5242880)(shimDir);
+  const env = baseGoodEnv(storeDir);
+  delete env.PREFLIGHT_NVMRC_FILE; // read the repo's own .nvmrc
+  const res = run({ shimDir, env });
+  assert.match(res.stdout, /OK node major matches \.nvmrc pin/);
+  assert.match(res.stdout, new RegExp(`pinned v${REPO_PINNED_MAJOR}, found v${REPO_PINNED_MAJOR}\.22\.2`));
+  assert.equal(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+});
+
+test('node major different from the pin -> FAIL naming BOTH versions, exit 1', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  const wrongMajor = Number(REPO_PINNED_MAJOR) - 2;
+  goodNode(`v${wrongMajor}.19.0`)(shimDir);
+  dfWithAvailKb(5242880)(shimDir);
+  const env = baseGoodEnv(storeDir);
+  delete env.PREFLIGHT_NVMRC_FILE;
+  const res = run({ shimDir, env });
+  assert.match(res.stdout, /FAIL node major matches \.nvmrc pin/);
+  assert.match(res.stdout, new RegExp(`pinned v${REPO_PINNED_MAJOR}`));
+  assert.match(res.stdout, new RegExp(`found v${wrongMajor}\.19\.0`));
+  assert.match(res.stdout, /MAJOR mismatch/);
+  assert.notEqual(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+});
+
+test('a newer PATCH on the pinned major is still OK (only the major is asserted)', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode(`v${REPO_PINNED_MAJOR}.99.99`)(shimDir);
+  dfWithAvailKb(5242880)(shimDir);
+  const env = baseGoodEnv(storeDir);
+  delete env.PREFLIGHT_NVMRC_FILE;
+  const res = run({ shimDir, env });
+  assert.match(res.stdout, /OK node major matches \.nvmrc pin/);
+  assert.equal(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+});
+
+test('unreadable pin file -> FAIL (cannot verify the box runs the built-for major)', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode('v22.22.2')(shimDir);
+  dfWithAvailKb(5242880)(shimDir);
+  const res = run({
+    shimDir,
+    env: { ...baseGoodEnv(storeDir), PREFLIGHT_NVMRC_FILE: join(tmpdir(), 'preflight-no-such-nvmrc') },
+  });
+  assert.match(res.stdout, /FAIL node major matches \.nvmrc pin — pin file not readable/);
+  assert.notEqual(res.status, 0);
   rmSync(shimDir, { recursive: true, force: true });
   rmSync(storeDir, { recursive: true, force: true });
 });

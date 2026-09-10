@@ -79,7 +79,7 @@ function makeShims(opts: ShimOpts): string {
     ].join('\n')
   );
   if (opts.tesseract) shim(dir, 'tesseract', 'echo "tesseract 5.3.0"');
-  shim(dir, 'node', 'echo "v22.11.0"');
+  shim(dir, 'node', `echo "${opts.nodeVersion ?? 'v22.11.0'}"`);
   // df -Pk <path>: second line's 4th column is the Available 1K-block count.
   // 10485760 KiB = 10 GiB, comfortably over the script's 2GB floor.
   shim(
@@ -110,7 +110,11 @@ describe('pipeline stage 9 - VPS runtime preflight', () => {
   for (const [name, expected] of Object.entries(EXPECTED.scenarios)) {
     it(`scenario ${name} matches the expected verdict file`, () => {
       const input = expected.input;
-      const shims = makeShims({ pdfplumber: input.pdfplumber, tesseract: input.tesseract });
+      const shims = makeShims({
+        pdfplumber: input.pdfplumber,
+        tesseract: input.tesseract,
+        nodeVersion: input.nodeVersion,
+      });
       const workspace = mkdtempSync(join(tmpdir(), 'stage9-ws-'));
       const storeDir = join(workspace, 'prospectus');
       const tzFile = join(workspace, 'timezone');

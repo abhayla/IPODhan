@@ -946,6 +946,11 @@ describe('filing-persister — T-504/#402 ipo_details numeric overflow (Rentomoj
       fresh_issue_amount: { value: 10555.67, passed: true }, // millions -> Rs 1,055.567 Cr
       ofs_amount_at_cap: { value: 2000.0, passed: true }, // millions -> Rs 200 Cr
       ofs_amount: { value: 2000.0, passed: true },
+      // F-51: this fixture swaps ANOTHER company's fresh/OFS legs into the
+      // Deepa oracle, so the oracle's own `ofs_shares` no longer belongs to
+      // them. Nulled here so the reconciliation gate has no share form to
+      // cross-check — this test is about column WIDTH, not the OFS forms.
+      ofs_shares: { value: null, passed: true },
     });
 
     const summary = await persistFilingExtraction(
@@ -978,6 +983,11 @@ describe('filing-persister — T-504/#402 ipo_details numeric overflow (Rentomoj
       fresh_issue_amount: { value: 10_555_670_000_000, passed: true }, // millions -> absurd
       ofs_amount_at_cap: { value: 0, passed: true },
       ofs_amount: { value: 0, passed: true },
+      // F-51: this fixture swaps ANOTHER company's fresh/OFS legs into the
+      // Deepa oracle, so the oracle's own `ofs_shares` no longer belongs to
+      // them. Nulled here so the reconciliation gate has no share form to
+      // cross-check — this test is about column WIDTH, not the OFS forms.
+      ofs_shares: { value: null, passed: true },
     });
 
     const summary = await persistFilingExtraction(
@@ -1013,6 +1023,11 @@ describe('filing-persister — T-504/#402 ipo_details numeric overflow (Rentomoj
       fresh_issue_amount: { value: 10_555_670_000_000, passed: true },
       ofs_amount_at_cap: { value: 0, passed: true },
       ofs_amount: { value: 0, passed: true },
+      // F-51: this fixture swaps ANOTHER company's fresh/OFS legs into the
+      // Deepa oracle, so the oracle's own `ofs_shares` no longer belongs to
+      // them. Nulled here so the reconciliation gate has no share form to
+      // cross-check — this test is about column WIDTH, not the OFS forms.
+      ofs_shares: { value: null, passed: true },
     });
     // Prove the guard covers a raw number, not only the string form the
     // real mapping happens to produce today (mark() is generic over both).
