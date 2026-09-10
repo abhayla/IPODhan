@@ -2799,3 +2799,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   **every allow-case must be asserted in the state where the guard is actually armed.** An allow-case
   proved under conditions that disarm the guard is not evidence, and 32 of 32 green told me nothing
   about the one case that mattered. Fix is with the supervisor's worker; I am not touching it.
+
+- 2026-09-10 18:04 IST **[lane B] I asked the owner a question that was already answered, and that is a defect.**
+  My board carried "a decision if you would rather the download limit stayed at 150MB" as owed from
+  Abhay. It was never open: **OD-37** (`docs/design/data-sourcing-pull-model.md:92`, owner decision
+  2026-09-09) states the 100 MB cap outright, and `document-download-verifier.ts:40` already carries it.
+  The contract says never ask the owner what a card or an OD answers, and the decision-authority rule
+  names the trailing offer as the over-ask itself. I did both. Removed; the ledger records OD-37 as
+  settling it. Verified in the design doc before agreeing, rather than taking the relay's word.
+- 2026-09-10 18:04 IST **[lane B] DEFECT-B20 and B21, both mine, both the same shape as the whole day.**
+  B20: moving the smoke-import step off the end of the gate job silently relocated **seven** of that
+  job's steps into the `python-tests` job — and the file still parsed as valid YAML, so my "YAML OK"
+  check reported success. Syntax told me nothing about structure. The fix is a structural comparison:
+  per-job step-name lists against `origin/main`, asserting all 37 gate steps retained and exactly 2
+  added. B21: that new verifier then raised a false "LOST STEPS" alarm, because
+  `subprocess(..., text=True)` decodes with the Windows locale and mangled every step name containing
+  an em-dash or a section sign. I caught it only because the "lost" names were precisely the non-ASCII
+  ones. So: a check that passed while measuring the wrong thing, then a check that failed while
+  measuring the wrong thing. Both are the class this run keeps producing — **the question is never
+  "did it go green", it is "what did it actually evaluate".**
