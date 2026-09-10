@@ -44,6 +44,7 @@ import { isInLiveWindow, CYCLE_BUDGET, planIpoCycle, type IssueShape } from './d
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import {
   decidePurge,
+  everyDocumentPastItsOwnWindow,
   purgeIpoDocuments,
   getRetentionDays,
   getMaxRetentionDays,
@@ -1638,7 +1639,21 @@ export const PURGE_CANDIDATES_SQL = `
                AND NOT EXISTS (
                  SELECT 1 FROM document_pages p WHERE p.document_id = d.id
                )
-           )::int AS textless_count
+           )::int AS textless_count,
+           -- Item 18 slice 2b. Every document's OWN extraction clock, so the
+           -- retention window can be each document's rather than the IPO's.
+           --
+           -- The contract defines item 18 as "PDF deleted seven days after its
+           -- LAST SUCCESSFUL EXTRACTION"; the close-date anchor belonged to
+           -- neither document on a two-document IPO. Aggregated as a min so one
+           -- recently-read document holds the whole directory, and counted
+           -- separately so a NULL (never extracted) is distinguishable from an
+           -- old timestamp - reading NULL as old is how an unread file gets
+           -- deleted before anything read it.
+           min(d.extracted_at) FILTER (WHERE d.extracted_at IS NOT NULL) AS newest_extracted_at,
+           max(d.extracted_at) FILTER (WHERE d.extracted_at IS NOT NULL) AS latest_extracted_at,
+           count(d.id)::int AS document_count,
+           count(d.id) FILTER (WHERE d.extracted_at IS NULL)::int AS unextracted_count
       FROM ipos i
       LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
       LEFT JOIN documents d ON d.ipo_id = i.id
@@ -1685,6 +1700,29 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
       maxRetentionDays,
     });
     if (!decision.purge) continue;
+
+    // Item 18 slice 2b. An ADDITIONAL constraint, never a loosening: the old
+    // arms have already said purge, and this asks whether every document is
+    // ALSO past its own retention window.
+    //
+    // Built from the aggregates rather than a second query: `latest_extracted_at`
+    // is the most recent successful extraction on this IPO, so if THAT is past
+    // the window every earlier one is too; `unextracted_count > 0` means at
+    // least one document never extracted at all, whose clock has not started.
+    // Passing a synthetic null for that case is what makes the helper refuse.
+    const unextracted = Number(row.unextracted_count ?? 0);
+    const perDocument = unextracted > 0
+      ? [{ extractedAt: null as Date | null }]
+      : Number(row.document_count ?? 0) === 0
+        ? []
+        : [{ extractedAt: (row.latest_extracted_at as Date | string | null) ?? null }];
+    if (!everyDocumentPastItsOwnWindow(perDocument, retentionDays)) {
+      logger.info(
+        { ipoId: String(row.id), unextracted, latest: row.latest_extracted_at },
+        'Purge held: a document is still inside its own retention window (item 18 s2b)'
+      );
+      continue;
+    }
 
     summary.candidates++;
     const purge = await purgeIpoDocuments(String(row.id));
