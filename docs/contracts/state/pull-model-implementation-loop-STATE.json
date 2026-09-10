@@ -201,7 +201,9 @@
   "s16 MERGED ecccc4bd via PR #547 (5/5 green, file-overlap with post-#517 main proven [none], conflicts 0). OWED: the real du -sh before/after and the build time from the first staging deploy.",
   "s8 supervisor pass 2026-09-11: 19/19 unit green and BOTH per-guard mutations red when run individually (hasAnyRealKey:=true -> 3 fail; per-pair join -> 8 fail). UNVERIFIABLE->EXIT_UNVERIFIABLE confirmed at detection-floor-checks.mjs:775-778, so the worker's third-state call is endorsed. DEFECT I FOUND, NOT THE WORKER: deriveChildRowKey uses the INNER normalizeCompanyNameForMatching, not the canonical rowKeyForName - a junk name ('----') derives '' in the audit but junk:<sha1> in the write path, and a no-identity name derives '' for a row the writer never writes. Both are FALSE FAILs the moment s5b/s7a/s7b land. Same mistake #508 explicitly avoided. Fix dispatched before the PR is opened.",
   "s14 #548 RED on CI, cause identified: its own new test spawns node --experimental-strip-types, a flag that exists only on Node >= 22.6, and pr-gate's unit job pins node-version 20 (pr-gate.yml:63). Green on this laptop (v22.20.0), red on CI forever. Fix dispatched: evaluate the config through tsx (already a devDependency, runs on Node 20) and add a check that no scripts/tests file passes that flag again.",
-  "s17 #549 rebased onto main at 0c01a1d2 before merge: it edits pr-gate.yml and main had just gained #552's edit to the same file. merge-tree said clean, but a textually-clean merge of two edits to one workflow is exactly the #522 shape - CI re-run on the real base is the gate."
+  "s17 #549 rebased onto main at 0c01a1d2 before merge: it edits pr-gate.yml and main had just gained #552's edit to the same file. merge-tree said clean, but a textually-clean merge of two edits to one workflow is exactly the #522 shape - CI re-run on the real base is the gate.",
+  "s17 MERGED e7ef5357 via PR #549, all 5 checks green on a head made current with main first. The deploy-load trio the owner named (s12 orphan cleanup, s16 cache out of release, s17 15-minute staging cadence) is now complete, so item 23 (build in CI, ship an artifact so the production box never runs npm ci or next build) is unblocked - owner approved it for lane A after s17.",
+  "s14 #548 fix pushed bb522f58: the alias-table test now evaluates scraper/vitest.config.ts through tsx instead of node --experimental-strip-types, its pr-gate step moved to AFTER npm ci (tsx needs node_modules), and a new guard fails if any scripts/tests file passes that flag to a subprocess again. The worker reported that pushing would not launch a CI run - that is wrong, pull_request fires on synchronize and a run started on bb522f58. Follow-up dispatched: the guard scans only scripts/tests/ and only matches the flag as a quoted literal, so scripts/ci/tests/ and a NODE_OPTIONS spelling both slip past it."
  ],
  "items": {
   "item-01": {
@@ -488,10 +490,10 @@
     },
     {
      "k": "s17",
-     "status": "PR-OPEN",
+     "status": "MERGED",
      "tier": "A",
      "pr": 549,
-     "sha": "1a69cf40",
+     "sha": "e7ef5357",
      "title": "staging deploys on a 15-minute schedule when main differs, not on every push"
     }
    ],
