@@ -279,8 +279,8 @@
         {
           "k": "s6",
           "title": "ipo_risk_factors re-key from seq to heading_hash",
-          "status": "BUILT-HELD-NO-PR",
-          "pr": null,
+          "status": "IN-REVIEW",
+          "pr": 513,
           "sha": "cfaee7f0",
           "tier": "A",
           "branch": "feat/pm-item01-s6-risk-factor-heading-key",
@@ -361,10 +361,10 @@
         },
         {
           "k": "s8b",
-          "status": "PR-OPEN",
+          "status": "MERGED",
           "tier": "B",
           "pr": 508,
-          "sha": null,
+          "sha": "12fc2dbc",
           "title": "guard: stored normalized_name and heading_hash must re-compute to themselves under the current normaliser (#506)",
           "branch": "feat/pm-item01-s8b-derived-key-recompute-guard",
           "prBodyMustState": "Added to the pr-gate integration ALLOW-LIST at .github/workflows/pr-gate.yml:497 (scraper-document-integration job). It is an allow-list, not a glob - a guard not named on that run line executes nowhere and still looks like coverage. Reference #507: 11 of 17 files in scraper/tests/integration/ are in exactly that state."
@@ -410,7 +410,8 @@
         459,
         476,
         500,
-        498
+        498,
+        508
       ],
       "mergeShas": [
         "6797fdab",
@@ -423,7 +424,8 @@
         "87cbeddf",
         "667c1370",
         "c15c7eb3",
-        "15a8378f"
+        "15a8378f",
+        "12fc2dbc"
       ],
       "proof": {
         "status": "OWED",
@@ -860,5 +862,22 @@
   "knownTestDbDrift": "ipodhan_test carries a stray heading_hash column on ipo_risk_factors, left from s6 testing on this machine. The test DB is AHEAD of origin/main. A slice that assumes ipodhan_test mirrors main can get a green that means nothing.",
   "laneAMergeOrderAfterFreeze": "s8b BEFORE s6. s6's merge condition is to add the ipo_risk_factors/heading_hash entry to the registry in scraper/tests/integration/derived-key-recompute-guard.integration.test.ts - a file that only exists once s8b has merged. Merging s6 first makes its own merge condition unsatisfiable. Then s9, which is 8 behind origin/main and needs `git rebase --onto origin/main <last-base-commit> <branch>` plus one PR-gate run before it can merge.",
   "goalCondition": "Append 'LANE A COMPLETE' as the final line of the lane A ledger (branch ops/impl-loop-ledger) only when items 1, 15, 13, 4, 5, 6, 7, 9, 10, 11 and 17 each have a DONE ledger line with proof. Reading or complying with the contract is NOT completion. A merge freeze, BLOCKED-OWNER or waiting is neither completion nor impossibility: keep working unblocked slices or wait for the owner's word. (Owner, 2026-09-10 19:4x IST, replacing the path-shaped goal the evaluator cleared at 12:52Z.)",
-  "prGateStopTonight": 55
+  "prGateStopTonight": 55,
+  "stagingProofEvidence": {
+    "readAt": "2026-09-10T19:5x IST",
+    "database": "ipodhan_staging",
+    "method": "read-only pool, default_transaction_read_only=on, information_schema only",
+    "columnsPresent": [
+      "promoters.normalized_name",
+      "peer_companies.normalized_name",
+      "ipo_intermediaries.normalized_name",
+      "field_sources.row_key",
+      "data_conflicts.row_key"
+    ],
+    "uniqueConstraintsPresent": [
+      "unique_field_source_per_ipo",
+      "unique_ipo_risk_factors_ipo_seq"
+    ],
+    "note": "The three E1 gated constraints are ABSENT, as designed - they are applied by hand per slot and staging has not had them. idx_ipos_slug present. So s1 and s3's columns are live on staging and today's deploys carried them; the gated DDL has not been applied anywhere. Do NOT read staging row counts as coverage: staging has 11 duplicate IPO rows prod does not (376 vs 333), pending lane C 12-C's repair."
+  }
 }
