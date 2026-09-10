@@ -298,6 +298,14 @@ STAMP="$(date -u +%Y%m%d-%H%M%S)"
 RELEASE_NAME="$STAMP-$SHORT_SHA"
 RELEASE_DIR="$RELEASES_DIR/$RELEASE_NAME"
 
+# Item 01 (orphaned release dirs): bookkeeping for the failed-deploy cleanup
+# below. RELEASE_DIR_CREATED flips to 1 ONLY when this invocation is the one
+# that created $RELEASE_DIR (step 3), so a re-run against a pre-existing
+# directory can never delete the previous attempt's artifacts out from under
+# whoever is investigating them.
+RELEASE_DIR_CREATED=0
+RELEASE_DIR_CLEANUP_DONE=0
+
 log "Deploying $SHORT_SHA to slot '$SLOT' as release $RELEASE_NAME under $ROOT (dry_run=$DRY_RUN)"
 
 # --------------------------------- 0.5 deployed-sha lineage gate (G-I, #194)
@@ -682,7 +690,27 @@ resume_scraper() {
       --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
-trap resume_scraper EXIT
+# Item 01: the EXIT trap now also removes the release directory this
+# invocation created when the deploy failed (cleanup_failed_release_dir,
+# defined below - bash resolves it at fire time, not at trap-registration
+# time). EXIT, not ERR, is the right home: nearly every real abort path in
+# this script goes through fatal() (an explicit `exit 1`) or an
+# `if ! step; then fatal ...` shape, and NEITHER fires the ERR trap - an
+# explicit exit is not an ERR event, and a command failing inside an `if`
+# condition is explicitly exempt from ERR/`set -e`. EXIT is the only hook
+# that sees every abort. The success path already disarms this trap
+# (`trap - EXIT` after the post-flip verification), so a good deploy never
+# reaches the cleanup at all. resume_scraper runs FIRST so the scraper is
+# started against whatever release survives before anything is removed, and
+# both calls are `|| true` so the original exit code is what leaves the
+# script (T-321's named-failure line and its exit code are untouched).
+on_deploy_exit() {
+  local ec=$?
+  resume_scraper || true
+  cleanup_failed_release_dir || true
+  exit "$ec"
+}
+trap on_deploy_exit EXIT
 
 # T-262: factored out of read_current_link() so collect_live_release_dirs()
 # can resolve ANY slot's current-link, not just this invocation's own.
@@ -718,8 +746,94 @@ atomic_flip_current() {
   fi
 }
 
+# --------------------------------------- 2.9 failed-deploy release-dir cleanup
+# Item 01. Before this, ANY failure after the release directory was created
+# left that directory behind - populated to ~3.1GB by `npm ci`/`next build` -
+# and nothing ever removed it, because the prune in step 12 only runs on the
+# success path. On 2026-09-10 twelve failed staging deploys left 15 release
+# directories totalling 47GB and took the VPS root filesystem to 100% (787MB
+# free of 96GB), which broke every later deploy. The class is every failed
+# deploy of every slot: the T-406 runtime preflight runs 200+ lines BEFORE the
+# mkdir so a preflight abort allocates nothing, but every gate after it (build,
+# venv, migrations, the T-330 schema-drift assert, the pre-flip probe, the
+# post-flip verify/rollback) failed with a fully-built directory on disk.
+#
+# Four guards, each for a specific way this can go wrong:
+#   1. only a directory THIS invocation created (RELEASE_DIR_CREATED) - a retry
+#      against a pre-existing dir must not delete the previous attempt.
+#   2. never the directory ANY slot's current link resolves to - compared on
+#      CANONICAL paths (`readlink -f` on both sides, the way
+#      vps-disk-hygiene.sh's prune_slot() does it) so a trailing slash or a
+#      symlinked component cannot desync the comparison. A deploy that fails
+#      AFTER the flip must not delete what is being served.
+#   3. refuse any path that is not a <stamp>-<sha> release dir directly under
+#      $RELEASES_DIR - same shape as vps-disk-hygiene.sh's
+#      safe_rm_release_dir(). That function is NOT reused here: it lives in a
+#      separate top-level script that acquires a /var/lock single-flight lock
+#      and runs its own main() unless HYGIENE_SOURCED is set, and it is guarded
+#      by ITS $ROOT rather than this script's $RELEASES_DIR - sourcing it from
+#      a deploy would couple the deploy's error path to the hygiene cron's
+#      locking. The check is replicated instead, and both are covered by their
+#      own suites.
+#   4. run at most once (RELEASE_DIR_CLEANUP_DONE).
+# Every removal is logged with the path and the space it freed, so the next
+# disk investigation has a trail; a skip is logged too.
+cleanup_failed_release_dir() {
+  if [ "$RELEASE_DIR_CLEANUP_DONE" -eq 1 ]; then
+    return 0
+  fi
+  RELEASE_DIR_CLEANUP_DONE=1
+  if [ "$RELEASE_DIR_CREATED" -ne 1 ]; then
+    return 0
+  fi
+
+  local dir="$RELEASE_DIR" base canon_dir link target canon_target kb mb
+  case "$dir" in
+    "") warn "cleanup: refusing to remove an empty release-dir path"; return 0 ;;
+    */) warn "cleanup: refusing to remove '$dir' - trailing slash not allowed"; return 0 ;;
+    *..*) warn "cleanup: refusing to remove '$dir' - contains '..'"; return 0 ;;
+    "$RELEASES_DIR"/*) ;;
+    *) warn "cleanup: refusing to remove '$dir' - not directly under $RELEASES_DIR"; return 0 ;;
+  esac
+  base="$(basename "$dir")"
+  if ! [[ "$base" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-fA-F]{7,40}$ ]]; then
+    warn "cleanup: refusing to remove '$dir' - name '$base' is not a <stamp>-<sha> release name"
+    return 0
+  fi
+  [ -d "$dir" ] || return 0
+
+  canon_dir="$(readlink -f "$dir" 2>/dev/null || printf '%s' "$dir")"
+  for link in "$ROOT"/current "$ROOT"/current-*; do
+    [ -L "$link" ] || [ -f "$link" ] || continue
+    target="$(resolve_link_target "$link")"
+    [ -n "$target" ] || continue
+    canon_target="$(readlink -f "$target" 2>/dev/null || printf '%s' "$target")"
+    if [ "$canon_target" = "$canon_dir" ]; then
+      log "cleanup: keeping $base - $link still resolves to it; a failed deploy never removes the release being served"
+      return 0
+    fi
+  done
+
+  kb="$(du -sk "$dir" 2>/dev/null | cut -f1 || true)"
+  case "$kb" in
+    ''|*[!0-9]*) kb=0 ;;
+  esac
+  mb=$(( kb / 1024 ))
+  rm -rf "${RELEASES_DIR:?}/${base:?}"
+  log "cleanup: removed the release dir this failed deploy created: $dir (freed ${mb} MB / ${kb} KB) - nothing served it"
+}
+
 # ------------------------------------------------- 3. prepare layout + release dir
 log "Preparing layout and release directory $RELEASE_NAME"
+if [ -d "$RELEASE_DIR" ]; then
+  # Item 01 guard 1: a pre-existing directory was NOT created by this
+  # invocation (a same-second retry of the same sha), so the cleanup above
+  # must leave it alone - the previous attempt's artifacts may be under
+  # investigation.
+  warn "release directory $RELEASE_DIR already exists - reusing it; the failed-deploy cleanup will NOT remove it"
+else
+  RELEASE_DIR_CREATED=1
+fi
 mkdir -p "$RELEASES_DIR" "$ENV_DIR" "$RELEASE_DIR"
 
 # ------------------------------------------------------- 4. stream committed tree

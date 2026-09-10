@@ -195,6 +195,239 @@ else
   fail "case 5: 'current' points at a PRUNED (or missing) release ($CUR_TARGET5)"
 fi
 
+# --- Case 33: item 01 - a FAILED deploy must not leave its release dir -----
+# --- behind. Twelve failed staging deploys on 2026-09-10 left 15 dirs ------
+# --- totalling 47GB and filled the VPS root filesystem; the prune in -------
+# --- step 12 only ever runs on the success path. ---------------------------
+unset DEPLOY_ROOT DEPLOY_KEEP_RELEASES DEPLOY_FAIL_BUILD DEPLOY_FAIL_PREFLIGHT DEPLOY_DRYRUN_VERSION_MISMATCH 2>/dev/null || true
+
+count_releases() {
+  # shellcheck disable=SC2012  # release dir names are timestamp-sha, plain alphanumeric
+  ls -1 "$1" 2>/dev/null | wc -l | tr -d ' '
+}
+
+ROOT33="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT33"
+export DEPLOY_MUTEX_MAX_WAIT_SECONDS=2
+export DEPLOY_MUTEX_POLL_SECONDS=1
+
+if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33-seed.log 2>&1; then
+  :
+else
+  fail "case 33: seed deploy failed"
+  cat /tmp/deploy-test-33-seed.log
+fi
+CUR33="$(current_target "$ROOT33/current")"
+BEFORE33="$(count_releases "$ROOT33/releases")"
+
+# --- Case 33a: failure AFTER the release dir is created (the build gate) ---
+sleep 1.1 # distinct second-resolution release stamp
+DEPLOY_FAIL_BUILD=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33a.log 2>&1
+RC33A=$?
+AFTER33A="$(count_releases "$ROOT33/releases")"
+if [ "$RC33A" -ne 0 ]; then
+  pass "case 33a: a build failure after the release dir exists still exits non-zero (rc=$RC33A)"
+else
+  fail "case 33a: a build failure exited 0"
+fi
+if [ "$AFTER33A" = "$BEFORE33" ]; then
+  pass "case 33a: the failed deploy left NO orphaned release dir (count still $AFTER33A)"
+else
+  fail "case 33a: release dir count grew after a failed deploy (before=$BEFORE33 after=$AFTER33A)"
+  ls -1 "$ROOT33/releases"
+fi
+if grep -q "^==> cleanup: removed the release dir this failed deploy created:" /tmp/deploy-test-33a.log; then
+  pass "case 33a: the removal is logged with its path"
+else
+  fail "case 33a: no 'cleanup: removed the release dir' line in the deploy log"
+fi
+if grep -q "freed .* MB / .* KB" /tmp/deploy-test-33a.log; then
+  pass "case 33a: the cleanup line names how much disk it freed"
+else
+  fail "case 33a: the cleanup line does not report freed space"
+fi
+# T-321 must survive: the deploy still NAMES its failure before exiting.
+if grep -q "^FATAL: " /tmp/deploy-test-33a.log; then
+  pass "case 33a: T-321 intact - the failure is still named on stderr before the exit"
+else
+  fail "case 33a: T-321 regression - no FATAL line printed by the failed deploy"
+fi
+if [ "$(current_target "$ROOT33/current")" = "$CUR33" ] && [ -d "$CUR33" ]; then
+  pass "case 33a: 'current' still resolves to the same live release dir"
+else
+  fail "case 33a: 'current' moved or its target vanished (was=$CUR33)"
+fi
+
+# --- Case 33b: failure BEFORE the release dir is created (T-406 preflight) -
+# The preflight runs 200+ lines ahead of the mkdir, so this abort allocates
+# nothing - and the cleanup must stay completely silent, not log a no-op.
+BEFORE33B="$(count_releases "$ROOT33/releases")"
+sleep 1.1
+DEPLOY_FAIL_PREFLIGHT=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33b.log 2>&1
+RC33B=$?
+AFTER33B="$(count_releases "$ROOT33/releases")"
+if [ "$RC33B" -ne 0 ] && [ "$AFTER33B" = "$BEFORE33B" ]; then
+  pass "case 33b: a pre-mkdir failure removes nothing (count still $AFTER33B)"
+else
+  fail "case 33b: pre-mkdir failure changed the release count (rc=$RC33B before=$BEFORE33B after=$AFTER33B)"
+fi
+if grep -q "^==> cleanup: " /tmp/deploy-test-33b.log; then
+  fail "case 33b: spurious cleanup log line on a failure that created nothing"
+  grep "cleanup: " /tmp/deploy-test-33b.log
+else
+  pass "case 33b: no spurious cleanup line when no release dir was created"
+fi
+
+# --- Case 33c: failure AFTER the 'current' flip - the SERVED directory -----
+# --- must survive. A fresh root with no previous release takes the --------
+# --- "No previous release to roll back to - fix forward" branch, which -----
+# --- exits 1 with 'current' still pointing at the new release. -------------
+ROOT33C="$(fresh_root)"
+DEPLOY_ROOT="$ROOT33C" DEPLOY_DRYRUN_VERSION_MISMATCH=1 \
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33c.log 2>&1
+RC33C=$?
+SERVED33C="$(current_target "$ROOT33C/current")"
+CANON_SERVED33C="$(readlink -f "$SERVED33C" 2>/dev/null || printf '%s' "$SERVED33C")"
+if [ "$RC33C" -ne 0 ]; then
+  pass "case 33c: a post-flip verification failure exits non-zero (rc=$RC33C)"
+else
+  fail "case 33c: post-flip failure exited 0"
+fi
+if [ -n "$SERVED33C" ] && [ -d "$CANON_SERVED33C" ]; then
+  pass "case 33c: the directory 'current' resolves to still exists after the failed deploy ($CANON_SERVED33C)"
+else
+  fail "case 33c: the SERVED release dir was deleted by the failed-deploy cleanup (current=$SERVED33C)"
+  ls -1 "$ROOT33C/releases" 2>/dev/null
+fi
+if grep -q "^==> cleanup: keeping .* still resolves to it" /tmp/deploy-test-33c.log; then
+  pass "case 33c: the cleanup logged that it kept the served release"
+else
+  fail "case 33c: expected a 'cleanup: keeping ... still resolves to it' line"
+fi
+
+# --- Case 33d: a PRE-EXISTING release dir this invocation did NOT create ---
+# --- is never removed. Driven at function level (the release name is a ----
+# --- runtime timestamp, so pre-creating it end-to-end would be a race) - ---
+# --- same isolation technique as cases 9b/9c/9d. ---------------------------
+CLEANUP_FN="$(sed -n '/^cleanup_failed_release_dir()/,/^}/p' "$DEPLOY_SCRIPT")"
+RESOLVE_LINK_FN="$(sed -n '/^resolve_link_target()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$CLEANUP_FN" ] || [ -z "$RESOLVE_LINK_FN" ]; then
+  fail "case 33d: could not extract cleanup_failed_release_dir()/resolve_link_target() from $DEPLOY_SCRIPT - renamed?"
+else
+  CL_ROOT="$(mktemp -d)"
+  mkdir -p "$CL_ROOT/releases/20260910-101112-abc1234"
+  : > "$CL_ROOT/releases/20260910-101112-abc1234/marker"
+  (
+    eval "$RESOLVE_LINK_FN"
+    eval "$CLEANUP_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    ROOT="$CL_ROOT"
+    RELEASES_DIR="$CL_ROOT/releases"
+    RELEASE_DIR="$CL_ROOT/releases/20260910-101112-abc1234"
+    RELEASE_DIR_CREATED=0
+    RELEASE_DIR_CLEANUP_DONE=0
+    cleanup_failed_release_dir
+  ) >/tmp/deploy-test-33d.log 2>&1
+  if [ -d "$CL_ROOT/releases/20260910-101112-abc1234" ]; then
+    pass "case 33d: a pre-existing release dir (RELEASE_DIR_CREATED=0) is NOT removed"
+  else
+    fail "case 33d: the cleanup deleted a release dir this invocation did not create"
+  fi
+  if grep -q "cleanup: " /tmp/deploy-test-33d.log; then
+    fail "case 33d: spurious cleanup log line for a dir this invocation did not create"
+  else
+    pass "case 33d: no log line for a dir this invocation did not create"
+  fi
+
+  # Same function, RELEASE_DIR_CREATED=1 -> it IS removed (proves the harness
+  # can observe a removal at all, so the PASS above is not vacuous), and a
+  # second call is a no-op (double-cleanup guard).
+  (
+    eval "$RESOLVE_LINK_FN"
+    eval "$CLEANUP_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    ROOT="$CL_ROOT"
+    RELEASES_DIR="$CL_ROOT/releases"
+    RELEASE_DIR="$CL_ROOT/releases/20260910-101112-abc1234"
+    RELEASE_DIR_CREATED=1
+    RELEASE_DIR_CLEANUP_DONE=0
+    cleanup_failed_release_dir
+    # The cleanup runs AT MOST ONCE per invocation. Re-create the directory
+    # between the two calls so the `[ -d ]` existence check cannot stand in
+    # for the RELEASE_DIR_CLEANUP_DONE flag: only the flag can stop the
+    # second call from removing a directory that exists again.
+    mkdir -p "$RELEASE_DIR"
+    : > "$RELEASE_DIR/recreated"
+    cleanup_failed_release_dir
+  ) >/tmp/deploy-test-33d2.log 2>&1
+  if [ -f "$CL_ROOT/releases/20260910-101112-abc1234/recreated" ]; then
+    pass "case 33d: RELEASE_DIR_CREATED=1 removed the dir, and the second call left the re-created dir alone (double-cleanup guard)"
+  else
+    fail "case 33d: the second cleanup call removed a re-created dir - RELEASE_DIR_CLEANUP_DONE is not holding"
+  fi
+  REMOVED_LINES33D="$(grep -c "cleanup: removed the release dir" /tmp/deploy-test-33d2.log || true)"
+  if [ "$REMOVED_LINES33D" = "1" ]; then
+    pass "case 33d: two calls remove and log exactly once (non-vacuous: the first call did remove it)"
+  else
+    fail "case 33d: expected exactly 1 removal line from two calls, got $REMOVED_LINES33D"
+  fi
+
+  # Path guards: nothing outside $RELEASES_DIR, nothing containing '..',
+  # nothing whose basename is not a <stamp>-<sha> release name.
+  GUARD_FAILED33=0
+  : > /tmp/deploy-test-33d3.log
+  OUTSIDE33="$(mktemp -d)"
+  : > "$OUTSIDE33/keepme"
+  for BAD in "$OUTSIDE33" "$CL_ROOT/releases/../releases" "$CL_ROOT/releases/not-a-release"; do
+    mkdir -p "$BAD" 2>/dev/null || true
+    (
+      eval "$RESOLVE_LINK_FN"
+      eval "$CLEANUP_FN"
+      log() { echo "==> $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      ROOT="$CL_ROOT"
+      RELEASES_DIR="$CL_ROOT/releases"
+      RELEASE_DIR="$BAD"
+      RELEASE_DIR_CREATED=1
+      RELEASE_DIR_CLEANUP_DONE=0
+      cleanup_failed_release_dir
+    ) >>/tmp/deploy-test-33d3.log 2>&1
+    if [ ! -d "$BAD" ]; then
+      GUARD_FAILED33=1
+      echo "  (cleanup removed a path it must refuse: $BAD)"
+    fi
+  done
+  if [ "$GUARD_FAILED33" -eq 0 ]; then
+    pass "case 33d: the cleanup refuses a path outside RELEASES_DIR, a '..' path, and a non-release name"
+  else
+    fail "case 33d: the cleanup removed at least one path it must refuse - see /tmp/deploy-test-33d3.log"
+  fi
+  rm -rf "$CL_ROOT" "$OUTSIDE33"
+fi
+
+# --- Case 33e: the SUCCESS path is unchanged - no cleanup, no new output ---
+ROOT33E="$(fresh_root)"
+if DEPLOY_ROOT="$ROOT33E" bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-33e.log 2>&1; then
+  if grep -q "^==> cleanup: " /tmp/deploy-test-33e.log; then
+    fail "case 33e: a SUCCESSFUL deploy emitted a cleanup line"
+    grep "cleanup: " /tmp/deploy-test-33e.log
+  else
+    pass "case 33e: a successful deploy runs no cleanup and logs no cleanup line"
+  fi
+  T33E="$(current_target "$ROOT33E/current")"
+  if [ -n "$T33E" ] && [ -d "$T33E" ]; then
+    pass "case 33e: a successful deploy still leaves 'current' pointing at its release dir"
+  else
+    fail "case 33e: successful deploy left 'current' broken ($T33E)"
+  fi
+else
+  fail "case 33e: the clean success-path deploy exited non-zero"
+  cat /tmp/deploy-test-33e.log
+fi
+unset DEPLOY_ROOT DEPLOY_MUTEX_MAX_WAIT_SECONDS DEPLOY_MUTEX_POLL_SECONDS 2>/dev/null || true
+
 # --- Case 6: the scraper mutex refuses to build while a cycle is in flight --
 ROOT6="$(fresh_root)"
 DEPLOY_ROOT="$ROOT6" DEPLOY_MUTEX_MAX_WAIT_SECONDS=2 DEPLOY_MUTEX_POLL_SECONDS=1 \
@@ -2202,6 +2435,7 @@ FAKERC30
 
   rm -rf "$FAKEBIN30" "$ENVDIR30"
 fi
+
 
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
