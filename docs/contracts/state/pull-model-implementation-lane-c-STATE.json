@@ -238,6 +238,14 @@
           "tier": "B",
           "status": "PLANNED",
           "title": "seed the 16 live Group-C fields + config-diff test against field-source-resolution.spec.mjs"
+        },
+        {
+          "id": "2-fix-493",
+          "tier": "B",
+          "status": "IN_CI",
+          "pr": 494,
+          "issue": 493,
+          "title": "field-manifest-loader importable under real ESM + shrink-only class guard"
         }
       ],
       "prs": [
@@ -294,7 +302,7 @@
     }
   },
   "prGate": {
-    "laneCRunsToday": 5,
+    "laneCRunsToday": 6,
     "repoRunsTodayAtPreflight": 17,
     "laneCDailyCap": 15,
     "repoStopAt": 50
@@ -413,7 +421,11 @@
     "2026-09-10 17:14 IST MY PROCESS ERROR, no harm done but the gate was defeated: I ran the merge-gate HARD STOP (git log --oneline origin/main ^HEAD must be empty) and gh pr merge in the SAME command, so I never read the check before acting. The branch WAS behind - lane B dcc8193a (#492) had landed - and the hard stop existed precisely to catch that. Verified afterwards that nothing was lost: dcc8193a is an ancestor of main, lane B work intact, my changes present. Correct because git merges from the merge-base, not because my process worked.",
     "2026-09-10 17:14 IST THE LESSON IS THE SHAPE, and it is the same one running through this whole day: a check that does not gate is decorative. Batching a hard stop with the action it guards is the same class as a permanently-red detection check, an alert that 400s in silence, a progress log that exists but is stale, and a CI query that counts pending as failed. The check RAN and was CORRECT and changed nothing, because nothing read it before acting. Standing brief line added: a hard stop runs as its own command and its output is read before the gated action.",
     "2026-09-10 17:16 IST DEFERRED DECISION SETTLED, from the design text rather than convenience, and it went the OPPOSITE way to the easy option. The question was whether a NULL segment should be judged against the stricter MAINBOARD floor. Design line 812, ruling directly on NULL segments for INVITS/REITS: \"say so explicitly rather than letting them fail every check.\" So judging an unknown by a rule that does not apply to it is exactly what the design forbids. 2-S3c will EXCLUDE NULL-segment rows from the floor check and raise a separate named finding instead.",
-    "2026-09-10 17:16 IST AND THE DESIGN ALREADY NAMES THE TRAP THAT MAKES THIS DANGEROUS - line 703, on pe_at_floor/_cap: \"null with pe_not_ascertainable_reason ... the reason column is 0% populated, so today not-ascertainable is indistinguishable from not-extracted.\" That is the same class I have hit all day. An unknown WITHOUT a recorded reason is not honesty, it is just a different silence. So 2-S3b mandatory provenance reason is not bookkeeping - it is what stops 2-S3c honest NULLs from collapsing back into the very ambiguity this whole item exists to remove."
+    "2026-09-10 17:16 IST AND THE DESIGN ALREADY NAMES THE TRAP THAT MAKES THIS DANGEROUS - line 703, on pe_at_floor/_cap: \"null with pe_not_ascertainable_reason ... the reason column is 0% populated, so today not-ascertainable is indistinguishable from not-extracted.\" That is the same class I have hit all day. An unknown WITHOUT a recorded reason is not honesty, it is just a different silence. So 2-S3b mandatory provenance reason is not bookkeeping - it is what stops 2-S3c honest NULLs from collapsing back into the very ambiguity this whole item exists to remove.",
+    "2026-09-10 17:23 IST #493 FIX IS PR #494. My own merged file made importable under real ESM, plus a static guard for the CLASS and a shrink-only baseline. Lane C 6 of 15 PR-gate runs.",
+    "2026-09-10 17:23 IST THE DYNAMIC TEST WAS TRIED AND REJECTED ON EVIDENCE, which is the useful part: tsx POLYFILLS __dirname itself, so a tsx-based import test would have HIDDEN the very bug it was written to catch; bare node --experimental-strip-types got further and correctly flagged the missing .js extensions, but cannot resolve ./validated-config-loader.js because scraper has no dist/ and no build step, and Node ESM will not swap .js for .ts. Adding a build step to make one test work is out of scope for a Tier B fix. So the guard is static - and strictly better in one way, since it catches the whole class rather than one file.",
+    "2026-09-10 17:23 IST THE BASELINE IS SHRINK-ONLY IN BOTH DIRECTIONS and that is deliberate: a NEW offender fails the gate, and a STALE entry - a listed file that no longer offends - ALSO fails, forcing its removal. So when lane B fixes download-allowlist-loader.ts the test goes red until the entry is deleted. That is the difference between a ratchet and a suppression list, and it is the same mechanism that caught my stale coverage entries on #490 two hours ago.",
+    "2026-09-10 17:23 IST MY REBASE HARD STOP WORKED THIS TIME BECAUSE I READ IT: ran it as its OWN command, saw the branch was 1 behind (my own 2fd8a43b), rebased, re-checked to 0, and only then opened the PR. Two hours ago I batched that same check with gh pr merge and never read it - the branch was behind and the gate did nothing. Same check, opposite outcome, decided entirely by whether its output was consumed before acting."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
