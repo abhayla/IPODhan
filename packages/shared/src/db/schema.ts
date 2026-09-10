@@ -856,6 +856,9 @@ export const peerCompanies = pgTable(
     // (slice s2, after the duplicate scan). Written by every insert path via
     // `normalizeCompanyNameForMatching`; '' default only for rows written
     // before this slice, backfilled by scraper/scripts/backfill-normalized-name.ts.
+    // slice s2's gated DDL (web/drizzle/migrations/_gated/E1_row_key_unique_constraints.sql)
+    // also DROPs this default once applied — kept here until then so schema.ts
+    // matches the live pre-apply shape (precedent: _gated/README.md).
     normalizedName: varchar('normalized_name', { length: 255 }).notNull().default(''),
     sector: varchar('sector', { length: 100 }),
     isListed: boolean('is_listed').notNull(),
@@ -879,6 +882,15 @@ export const peerCompanies = pgTable(
       table.ipoId,
       table.normalizedName
     ),
+    // Item 1 slice s2: row-key uniqueness. DDL lives in
+    // web/drizzle/migrations/_gated/ (owner-applied AFTER the backfill), never
+    // in the journal — see that directory's README for the apply order.
+    // Declared here so schema.ts (the SSOT) matches the eventual live shape;
+    // drizzle-kit generate output for this constraint is diverted to _gated/,
+    // not journaled, per the same rule.
+    uniquePeerCompaniesIpoNormalizedName: unique(
+      'unique_peer_companies_ipo_id_normalized_name'
+    ).on(table.ipoId, table.normalizedName),
   })
 );
 
@@ -1792,7 +1804,8 @@ export const promoters = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     // Item 1 slice s1 (row-key prep, F-74): see peerCompanies.normalizedName
     // for the rationale — the future `(ipoId, normalizedName)` unique
-    // constraint lands in slice s2.
+    // constraint lands in slice s2. Same gated-DROP-DEFAULT note as
+    // peerCompanies.normalizedName above.
     normalizedName: varchar('normalized_name', { length: 255 }).notNull().default(''),
     sharesHeld: bigint('shares_held', { mode: 'number' }),
     waca: numeric('waca', { precision: 18, scale: 2 }),
@@ -1804,6 +1817,13 @@ export const promoters = pgTable(
   (table) => ({
     ipoIdIdx: index('idx_promoters_ipo_id').on(table.ipoId),
     ipoIdNormalizedNameIdx: index('idx_promoters_ipo_id_normalized_name').on(
+      table.ipoId,
+      table.normalizedName
+    ),
+    // Item 1 slice s2: row-key uniqueness. DDL lives in
+    // web/drizzle/migrations/_gated/ (owner-applied AFTER the backfill), never
+    // in the journal — see that directory's README for the apply order.
+    uniquePromotersIpoNormalizedName: unique('unique_promoters_ipo_id_normalized_name').on(
       table.ipoId,
       table.normalizedName
     ),
@@ -1859,6 +1879,7 @@ export const ipoIntermediaries = pgTable(
     // Item 1 slice s1 (row-key prep, F-74): the normalised NAME only — the
     // future row key is `role:normalizedName` (build card), a composite this
     // slice does not compute; it stores the name half, per peerCompanies.
+    // Same gated-DROP-DEFAULT note as peerCompanies.normalizedName above.
     normalizedName: varchar('normalized_name', { length: 255 }).notNull().default(''),
     sebiRegNo: varchar('sebi_reg_no', { length: 50 }),
     contactPerson: varchar('contact_person', { length: 255 }),
@@ -1875,6 +1896,16 @@ export const ipoIntermediaries = pgTable(
       table.normalizedName
     ),
     ipoIdRoleIdx: index('idx_ipo_intermediaries_ipo_id_role').on(table.ipoId, table.role),
+    // Item 1 slice s2: row key is (ipoId, role, normalizedName), NOT
+    // (ipoId, normalizedName) — the staging scan found 5 real, correct
+    // collisions on the two-column key (e.g. ICICI Bank as both
+    // SPONSOR_BANK and PUBLIC_ISSUE_BANK for one IPO). Same legal entity,
+    // two distinct roles, two distinct rows. DDL lives in
+    // web/drizzle/migrations/_gated/ (owner-applied AFTER the backfill),
+    // never in the journal — see that directory's README for the apply order.
+    uniqueIntermediariesIpoRoleNormalizedName: unique(
+      'unique_ipo_intermediaries_ipo_id_role_normalized_name'
+    ).on(table.ipoId, table.role, table.normalizedName),
   })
 );
 

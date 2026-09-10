@@ -87,8 +87,7 @@ interface Spies {
   replaceRanges: ReturnType<typeof vi.fn>;
   replaceIntermediaries: ReturnType<typeof vi.fn>;
   brlm: ReturnType<typeof vi.fn>;
-  peerDelete: ReturnType<typeof vi.fn>;
-  peerCreate: ReturnType<typeof vi.fn>;
+  peerReplace: ReturnType<typeof vi.fn>;
   finData: ReturnType<typeof vi.fn>;
   trackField: ReturnType<typeof vi.fn>;
   detailsUpsert: ReturnType<typeof vi.fn>;
@@ -101,8 +100,7 @@ function makeDeps(): Spies {
   const replaceRanges = vi.fn(async () => []);
   const replaceIntermediaries = vi.fn(async () => []);
   const brlm = vi.fn(async (row: unknown) => row);
-  const peerDelete = vi.fn(async () => 0);
-  const peerCreate = vi.fn(async () => []);
+  const peerReplace = vi.fn(async () => []);
   const finData = vi.fn(async (row: unknown) => row);
   const trackField = vi.fn(async () => ({}));
   const detailsUpsert = vi.fn(async () => undefined);
@@ -134,7 +132,7 @@ function makeDeps(): Spies {
     },
     intermediaries: { replaceForIpo: replaceIntermediaries },
     brlmTrackRecord: { upsert: brlm },
-    peerCompanies: { deleteByIPOId: peerDelete, batchCreate: peerCreate },
+    peerCompanies: { replaceForIpo: peerReplace },
     financialData: { upsert: finData },
     fieldSources: {
       findByField: vi.fn(async () => null),
@@ -151,8 +149,7 @@ function makeDeps(): Spies {
     replaceRanges,
     replaceIntermediaries,
     brlm,
-    peerDelete,
-    peerCreate,
+    peerReplace,
     finData,
     trackField,
     detailsUpsert,
@@ -559,7 +556,7 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
       s.deps
     );
     expect(summary.written.peer_companies).toBe(5);
-    const peers = s.peerCreate.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const peers = s.peerReplace.mock.calls[0][1] as Array<Record<string, unknown>>;
     const sky = peers.find((p) => p.companyName === 'Sky Gold and Diamonds Limited')!;
     expect(sky.peRatio).toBe('57.56');
     expect(sky.eps).toBe('13.97');
@@ -670,7 +667,7 @@ describe('filing-persister — dry run and idempotency', () => {
     expect(upsertIPOMock).not.toHaveBeenCalled();
     expect(s.detailsUpsert).not.toHaveBeenCalled();
     expect(s.finStmt).not.toHaveBeenCalled();
-    expect(s.peerCreate).not.toHaveBeenCalled();
+    expect(s.peerReplace).not.toHaveBeenCalled();
     expect(s.trackField).not.toHaveBeenCalled();
     expect(summary.written.financial_statements).toBe(3);
     expect(summary.ipos_fields).toContain('issueSize');
@@ -721,9 +718,9 @@ describe('filing-persister — dry run and idempotency', () => {
     expect(s.replaceIntermediaries.mock.calls[1][1]).toHaveLength(
       (s.replaceIntermediaries.mock.calls[0][1] as unknown[]).length
     );
-    expect(s.peerDelete).toHaveBeenCalledTimes(2);
-    expect(s.peerCreate.mock.calls[1][0]).toHaveLength(
-      (s.peerCreate.mock.calls[0][0] as unknown[]).length
+    expect(s.peerReplace).toHaveBeenCalledTimes(2);
+    expect(s.peerReplace.mock.calls[1][1]).toHaveLength(
+      (s.peerReplace.mock.calls[0][1] as unknown[]).length
     );
   });
 
@@ -1127,7 +1124,7 @@ describe('filing-persister — lock and field protection (F5)', () => {
     expect(s.finStmt).not.toHaveBeenCalled();
     expect(s.valuation).not.toHaveBeenCalled();
     expect(s.replacePromoters).not.toHaveBeenCalled();
-    expect(s.peerCreate).not.toHaveBeenCalled();
+    expect(s.peerReplace).not.toHaveBeenCalled();
     expect(s.brlm).not.toHaveBeenCalled();
     expect(s.finData).not.toHaveBeenCalled();
   });
@@ -1346,7 +1343,7 @@ describe('filing-persister — field protection on EVERY child table (MAJOR-4)',
       summary.skipped_protected.some((x) => x.startsWith('promoters (whole-row replace refused'))
     ).toBe(true);
     // Unrelated tables still write.
-    expect(s.peerCreate).toHaveBeenCalled();
+    expect(s.peerReplace).toHaveBeenCalled();
   });
 });
 

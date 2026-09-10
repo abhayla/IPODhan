@@ -7,6 +7,28 @@
  * Usage:
  *   npx tsx scripts/deduplicate-test-ipos.ts --dry-run    # Preview changes
  *   npx tsx scripts/deduplicate-test-ipos.ts --execute    # Apply changes
+ *
+ * DEFERRED (issue #447, item 1 slice s2): this script re-parents
+ * peer_companies (and other child tables) with a bare per-row UPDATE,
+ * no transaction around the multi-table sequence. Now that
+ * peer_companies carries UNIQUE (ipo_id, normalized_name)
+ * (web/drizzle/migrations/_gated/E1_row_key_unique_constraints.sql,
+ * applied after the normalized_name backfill), that UPDATE throws if
+ * the canonical and duplicate IPO share a peer company name, AFTER
+ * earlier tables (subscriptions, gmp_records, financial_data,
+ * documents, listing_performance) have already been reassigned and
+ * committed -- a partial re-parent with no rollback.
+ * NOT fixed in this slice: this is a one-off historical script (Phase
+ * 11 Step 3 / MULTI_IPO_DATA_INVESTIGATION_PLAN.md), already run to
+ * completion against its 3 hardcoded DUPLICATE_GROUPS, not on any live
+ * or scheduled path, and exempted from the documents-cache-invalidation
+ * scan as a known legacy file. Trigger to actually fix: before this
+ * script is next run with --execute (DUPLICATE_GROUPS extended for a
+ * new duplicate set, or re-run against fresh test data), wrap the
+ * Step 3 reassignment loop in one db.transaction(...) and add a
+ * merge-or-skip branch on the peer_companies UPDATE (catch the unique
+ * violation, DELETE the duplicate's colliding row instead of
+ * reassigning it, since the canonical IPO already has that peer).
  */
 
 import { getDb } from '../lib/db/index.js';
