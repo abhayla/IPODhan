@@ -287,7 +287,8 @@
     "process sweep: DETECT by enumeration (every process >20 min minus a known-good allowlist, printed in full, no top-N) but ACT only on positive identification - kill only a process this run started, confirmed by its command line containing the repo path, and never before `Get-NetTCPConnection -State Listen -LocalPort 15432,5432` proves it owns no tunnel. A detection rule is not a kill list.",
     "Notifier severity must be one of P0|P1|P2|info; anything else returns 400",
     "a fix slice that belongs to no contracted item is attached as board slice s0 of the item whose family it is in, with the issue number in its title",
-    "under MSYS_NO_PATHCONV=1, pass Windows-form paths (D:/...) to git, node and gh - never MSYS form (/d/...); the variable is still needed for refspecs like origin/main:path"
+    "under MSYS_NO_PATHCONV=1, pass Windows-form paths (D:/...) to git, node and gh - never MSYS form (/d/...); the variable is still needed for refspecs like origin/main:path",
+    "mutation restore is by file copy and verified with diff; git checkout -- is never used in a worktree holding uncommitted work"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -392,6 +393,14 @@
       "foundBy": "applying the false-zero rule to a suspicious 0 during a routine tick",
       "class": "ROOT CAUSE of DEFECT-B01 as well - MSYS_NO_PATHCONV=1 suppresses path conversion, so a Windows binary cannot resolve an MSYS-form path; both incidents surfaced as a downstream false zero",
       "mechanism": "under MSYS_NO_PATHCONV=1, every path handed to a Windows binary uses the Windows form D:/... never /d/..."
+    },
+    {
+      "id": "DEFECT-B14",
+      "at": "2026-09-10 15:56 IST",
+      "what": "a builder used git checkout -- <file> to undo a mutation; it restored from HEAD and silently reverted the whole uncommitted security fix to the vulnerable original",
+      "foundBy": "the builder itself, via a stray unrelated-looking test failure, and reported rather than hidden",
+      "class": "a restore method that reverts to a state older than the work in progress; the symptom appears far from the cause",
+      "mechanism": "never git checkout -- in a worktree holding uncommitted work; restore a mutated file by copying back the pre-mutation copy and verify with diff before continuing"
     }
   ],
   "contractCorrectionsDue": [],
