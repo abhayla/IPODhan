@@ -491,6 +491,20 @@ export async function main() {
   try {
     // Parse CLI arguments
     const args = process.argv.slice(2);
+
+    // --smoke-import: prove the ENTIRE production import graph loads under the
+    // real ESM runtime, then exit before any DB, network or scrape work.
+    // Reaching this line means every module reachable from this entry point
+    // evaluated its top level successfully. This is the only check that can
+    // catch a CommonJS global (__dirname/__filename/require) left at module
+    // scope: vitest transforms modules to CJS and shims those globals, and
+    // `tsx -e` shims them too, so both report green on code that crashes the
+    // moment pm2 runs `tsx src/index.ts` (2026-09-10, download-allowlist-loader).
+    if (args.includes('--smoke-import')) {
+      console.log('smoke-import: OK - production import graph loaded under ESM');
+      return;
+    }
+
     const source = args.find(arg => arg.startsWith('--source='))?.split('=')[1] || 'nse';
 
     logger.info({ source }, 'IPO Scraper CLI started');
