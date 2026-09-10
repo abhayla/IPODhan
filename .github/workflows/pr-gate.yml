@@ -269,6 +269,12 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
         working-directory: ./web
+        env:
+          # Match ci.yml exactly. Same command with a different heap ceiling is
+          # the same class of bug as the --no-isolate divergence #474 fixes: one
+          # workflow could OOM on a suite the other passes. This repo has an OOM
+          # history (PR #104 fixed a Next build OOM), so match UPWARD.
+          NODE_OPTIONS: '--max-old-space-size=6144'
 
       - name: Type-check scraper scripts (T-433 MAJOR-4 - scraper/tsconfig.json only ever covered src/**)
         run: npm run type-check:scripts
