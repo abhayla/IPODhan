@@ -707,7 +707,7 @@ What went wrong: nothing new. The corrections I made earlier this morning stand 
 
 What is needed from you: nothing. **6 CI runs used today**, cap 60.
 
-## 10:07 — the third slice was checked before review and sent back
+**2026-09-10 10:07 IST — the third slice was checked before review and sent back.** Item 1: **38%**, five of thirteen slices merged, unchanged.
 
 The third slice of item 1 adds a "row key" to the provenance table, so the site can tell which of an
 IPO's several rows a fact came from rather than only which IPO. Earlier this morning I cut a
@@ -732,3 +732,24 @@ description that generates it. Deleting output while leaving the source is how t
 The brief template now says to check the schema, the snapshot and the migration together.
 
 What is needed from you: nothing. **6 CI runs used today**, cap 60.
+
+**2026-09-10 10:12 IST — tick.** Item 1: **38%**, five of thirteen slices merged, unchanged since 08:58.
+
+What a reader of ipodhan.com would notice: nothing yet. Everything merged so far is plumbing under the
+pages, not the pages themselves.
+
+What went wrong, and it is mine: the correction I ordered for the sixth slice was written badly. I told
+the worker to delete a generated database file; I should have told it to change the description that
+generates the file. It did what I asked, so the description stayed, and the generator's own record was
+left claiming a change had already been made to the databases that had not. Two records agreeing on the
+same wrong fact is a silent failure — the generator would have stopped producing that change forever,
+and the nightly drift alarm would have complained every night with nothing anyone could do to clear it.
+A repair is running now; the same slice also left two scratch files and reformatted an entire operations
+document, both being undone.
+
+Second, smaller: the command I use to count how many automated check-runs the day has used gave a wrong
+answer again — it started counting from 5.30am instead of midnight. Recounted properly. This is the
+third different way that one count has been wrong in two days, which says the counting should be a
+checked-in script rather than a line I retype each time.
+
+What is needed from you: nothing. **6 of 60 check-runs used today**, 4 of them this run's.
