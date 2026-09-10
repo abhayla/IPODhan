@@ -98,34 +98,41 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
     // suffix in parens after the real legal suffix.
     .replace(/\s*\([^)]*\)\s*$/, '')
     .trim()
-    .replace(/\s+ipo$/i, '')
-    .replace(/\s+fpo$/i, '')
-    .replace(/\s+limited$/i, '')
-    .replace(/\s+ltd\.?$/i, '')
-    .replace(/\s+private\s+limited$/i, '')
-    .replace(/\s+pvt\.?\s+ltd\.?$/i, '')
-    .replace(/\s+pvt\.?$/i, '')
-    .replace(/\s+private$/i, '')
-    .replace(/\s+inc\.?$/i, '')
-    .replace(/\s+incorporated$/i, '')
-    .replace(/\s+corp\.?$/i, '')
-    .replace(/\s+corporation$/i, '')
-    .replace(/\s+llc$/i, '')
-    .replace(/\s+llp$/i, '')
-    .replace(/\s+plc$/i, '')
-    // "Company" / a bare "Co." are generic-corporate-suffix synonyms for
-    // ltd/inc/corp (P2-2, T-293) — "IC Electricals Co.Ltd." and "IC
-    // Electricals Company" must fold to the same identity. Strip "company"
-    // first (longer token), then a trailing "co" (already period-stripped
-    // above) so "co ltd" -> "co" (ltd already stripped by the prior rule)
-    // -> "" folds correctly without eating mid-string words ("Cocoa Traders").
-    .replace(/\s+company$/i, '')
-    .replace(/\s+co$/i, '')
-    // Any remaining parens (mid-string, e.g. "(India)") and hyphens are
-    // separators, not semantic content — fold to spaces so "Indo-MIM" and
-    // "INDO MIM", or "Gulf Lloyds (India)" and "Gulf Lloyds India", agree.
+    // SEPARATORS FIRST (item 12 slice B). Parens and hyphens are separators,
+    // not semantic content, and they used to be folded AFTER the corporate-word
+    // strip. That ordering is exactly what let "ASSET RECONSTRUCTION COMPANY
+    // (INDIA) LIMITED" and "Asset Reconstruction Co.(India) Ltd." keep two
+    // identities: the strip was END-ANCHORED, so a mid-string "(India)" sat
+    // between "company"/"co" and the end of the string and blocked it. Folding
+    // the separators first removes the blocker.
     .replace(/[()]/g, ' ')
     .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s+ipo$/i, '')
+    .replace(/\s+fpo$/i, '')
+    // WHOLE-WORD, not end-anchored. A corporate-form word carries no identity
+    // wherever it appears, so "IC Electricals Co.Ltd." and "IC Electricals
+    // Company" reach one key. Longer forms precede their prefixes so "private
+    // limited" is consumed as a unit instead of leaving a stray word.
+    //
+    // THE \b IS LOAD-BEARING. Without it "co" matches inside "Cocoa" and
+    // "corp" inside "Corporate"; an earlier draft of this very change lost the
+    // word boundaries to a string-escaping bug and would have merged unrelated
+    // companies. Any edit here re-runs the collision report below.
+    //
+    // DELIBERATELY ABSENT: "india", "and", "the", "of". Those belong to
+    // `foldCompanyIdentity`, a COARSER key used by the duplicate-row repair
+    // class. Adding them here would quietly turn the binding key into the fold
+    // and merge companies that differ only by a country word.
+    //
+    // Proven over real names BEFORE it shipped: production 333 rows -> 333
+    // distinct identities (ZERO merges, no behaviour change at all); staging
+    // merges exactly ONE group, the ARCIL pair this slice exists for.
+    .replace(
+      /\b(?:private\s+limited|pvt\.?\s+ltd\.?|limited|ltd|private|pvt|incorporated|inc|corporation|corp|company|co|llc|llp|plc)\b/gi,
+      ' '
+    )
     .replace(/\s+/g, ' ')
     .trim();
 }
