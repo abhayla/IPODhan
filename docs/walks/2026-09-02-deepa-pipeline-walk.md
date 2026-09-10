@@ -2374,3 +2374,33 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   manifest that notices the pipeline wrote NOTHING, which is precisely this class, so a new check would duplicate it.
   Cost: one gate job re-run, no new full CI run. The failed job could not be re-run immediately because the workflow
   was still executing its other jobs - noted so the next occurrence does not read as a second failure.
+
+- **2026-09-10 15:01 IST [lane B] #468 MERGED as `82842b92` via PR #484, after two Tier A rounds and one supervisor override.**
+  5/5 checks green, `mergeStateStatus=CLEAN`, three files. Verified on `origin/main`, not assumed: the flag
+  `ENABLE_UPCOMING_DISCOVERY_RESERVATION` is present once in `feature-flags.ts` and `enrichRotatingCandidates`
+  appears 8 times in `document-cycle.ts`. `state=MERGED` confirmed before the branch was deleted separately;
+  worktree removed only after the diff to main proved empty on stdout, stderr AND exit code; main checkout re-read
+  afterwards - 4602 tracked, `packages/shared` present; zero lane B slice worktrees remain.
+  **The substance:** an IPO about to open can no longer be starved of document work by a backlog of open and closed
+  ones. Before this, the scheduler guaranteed a turn to an IPO that had already LISTED and to one that was WITHDRAWN,
+  and guaranteed nothing to one opening tomorrow. Now rank 2 has a reserved slot AND the rotation that makes the slot
+  fair - the first version had the slot without the rotation and de-starved exactly one IPO while leaving every
+  sibling starved forever.
+  **The override is the part worth keeping.** Round 1's reviewer recommended merging that first version as "strictly
+  an improvement, default-off, mutation-tight" - all true - while its own verdict line read `covers the class: no`.
+  This run overruled the recommendation on the strength of that line, because the contract requires a class-level fix
+  and the mechanisms to build one already existed thirty lines away in the LISTED tier. **A reviewer can be right
+  about every fact and still recommend the wrong action; the verdict lines are the contract, the recommendation is
+  an opinion.**
+  Owed and stated plainly rather than quietly dropped: the real-data proof. The class cannot be reproduced on
+  staging (0 matching rows there today), so the proof is a staging cycle line showing the rank-2 reservation APPLIED,
+  and it arrives once lane A's slot-aware flag helper merges and the next cycle runs. Until then the flag is OFF
+  everywhere and **the class is not fixed anywhere the flag is off** - that sentence is in the PR body too.
+- **2026-09-10 15:01 IST [lane B] A stray process was found and deliberately NOT killed - the rule working in the other direction.**
+  `PID 11408  tail.exe -n +23 -f /tmp/dryrun.log`, 41 minutes old, parent 7812. Checked for tunnel ownership first
+  (none), then checked whether it was lane B's: this lane has run no dry run and created no `/tmp/dryrun.log`, and
+  the command line carries no path under this repo. **Not positively identifiable as mine, therefore not killed** -
+  reported to the other lanes instead. A `tail` is invisible to a name filter for node/python (the blindness that let
+  this lane's own `find` run 99 minutes), and under the old enumerate-and-subtract-then-kill rule it would have been
+  killed - which is how two database tunnels died this afternoon. Detection found it; identification stopped the
+  kill. Both halves of the rule earned their keep inside one sweep.

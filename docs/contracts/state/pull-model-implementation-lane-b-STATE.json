@@ -442,7 +442,7 @@
     {
       "issue": 468,
       "at": "2026-09-10 13:59 IST",
-      "status": "RCA DONE, fix slice next",
+      "status": "MERGED",
       "tier": "A",
       "rca": "priority inversion: the discovery cycle reserves guaranteed slots for rank-3 LISTED and the rank-4 purge candidate but nothing for rank-2 UPCOMING/PRE_OPEN; uncapped OPEN+CLOSED can consume the whole 60s CYCLE_BUDGET.DISCOVERY_MS every cycle, so processCandidate - the only path to ensureRow - never reaches an UPCOMING row",
       "class": "any ipos row with offering_type='IPO' and status UPCOMING (or lifecycle PRE_OPEN), either segment, any creation path, any created_at, either slot, sitting behind an OPEN+CLOSED backlog large enough to exhaust the 60s budget",
@@ -450,7 +450,15 @@
       "stagingMeasurement": "0 currently-matching rows; staging's Manika row already has 6 document_fetch_state rows and staging has only 37 OPEN+CLOSED candidates",
       "proofPlan": "a staging cycle log line showing the new rank-2 reservation APPLIED - the path runs every cycle whether or not starvation occurs",
       "notMeasured": "production backlog size and per-cycle trip point - this lane reads staging only",
-      "ownerNote": "the affected IPO opens 2026-09-11; the fix lands on main today, but whether it reaches production before then is the owner's deploy-window decision, not this run's"
+      "ownerNote": "the affected IPO opens 2026-09-11; the fix lands on main today, but whether it reaches production before then is the owner's deploy-window decision, not this run's",
+      "pr": 484,
+      "sha": "82842b92",
+      "reviewRounds": 2,
+      "supervisorOverride": "round 1 recommended a conditional merge-yes while its own verdict said 'covers the class: no'; overruled and sent back",
+      "proof": {
+        "status": "OWED",
+        "line": "a staging cycle line showing the rank-2 reservation applied; arrives once lane A's slot-aware flag helper merges"
+      }
     }
   ],
   "contractCorrectionsMade": [
