@@ -1927,3 +1927,32 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Also confirmed by the peer, independently reaching this lane's own reading: the three lane caps do not sum to 60,
   the repo stop-at-50 is the binding constraint, and deriving the count immediately before each push is the only
   correct method with three writers.
+
+- **2026-09-10 12:50 IST [lane B] s2 built (`486bf400`), and its builder surfaced a possible defect in the BUILD CARD'S OWN
+  REASONING - which outranks anything in the diff.** The card calls failure mode 4 "the mode that earns the check"
+  and states its purpose as: *somebody improves a sentence in the design six weeks from now and nothing notices that
+  the code no longer matches it.* Mode 4 as specified triggers on **same rule id, different text hash**.
+  The builder reports that condition **cannot arise from the documented workflow**: `generate-rule-index.mjs` matches
+  rules BY HASH, so editing a design sentence RETIRES the old id and MINTS a new one rather than changing an existing
+  id's hash. It says it verified this on real data - R-153 got `retired: true` and a new orphan id appeared.
+  If that holds, mode 4 guards a condition the normal workflow never produces, and the card's stated rationale is not
+  served by the mechanism the card specifies. Note what the builder did right: it built to the card's letter,
+  reported the contradiction plainly, and did NOT quietly redesign mode 4 to match what it thought the card meant.
+  Contract decision 16 is explicit that a worker never resolves a card/code contradiction by choosing.
+  **The supervisor's reading, for the reviewer to confirm or destroy:** the card's INTENT may still be served, just by
+  a different arm - a sentence edit that mints a NEW orphan id should fail **mode 1** (a live rule claimed by no
+  card). If so, the defect is in the card's WORDING, not in the check, and mode 4 is still worth having because it
+  guards `rules.json` drifting by manual edit or by a future change to the generator.
+  **And a gap nobody has named until now, put to the reviewer explicitly:** when the old id is retired, a build card
+  is left claiming an id that is now RETIRED. Mode 1 covers live-but-unclaimed. Mode 3 covers tests naming non-live
+  ids. **A card claiming a retired id appears to fall between them and be caught by nothing.** If that is right it is
+  a real hole in exactly the scenario the card cares most about, and it is the reviewer's job to test it rather than
+  reason about it.
+  Second thing for the review, same family as this item's two earlier CRITICALs: `--base` is opt-in rather than
+  defaulted, for a defensible reason (the mode 1-3 fixtures are not git repositories, so an unconditional default
+  would exit 2 on every pre-existing test). But the risk is plain - **if slice 4 forgets to pass `--base`, mode 4
+  silently never runs and nobody is told.** That is the third time in one item that the failure mode is "a check that
+  examined nothing", so it is weighed in that light and not on its own.
+  Builder's own diff hygiene was right under pressure: `origin/main` advanced to `40889f8a` while it worked, so a
+  plain two-ref diff showed slice 3's four merged files as its own. It noticed, verified its change two independent
+  ways (`HEAD~1..HEAD` and `6c31d995..HEAD`), and reported both as exactly the two allowed files.

@@ -65,9 +65,9 @@
         {
           "k": "s2",
           "title": "failure mode 4: rule hash changed, card and test untouched",
-          "status": "PLANNED",
+          "status": "IN-REVIEW",
           "pr": null,
-          "sha": null,
+          "sha": "486bf400",
           "tier": "A"
         },
         {
@@ -311,5 +311,15 @@
   ],
   "carriedInputs": [
     "Items 22 and 18: the four architect decisions land as an 'Architect correction 2026-09-10' block AMENDING the build cards themselves (Tier C docs PR), with the plans under docs/contracts/plans/. Binding via 'the card is the slice source' rather than via a relay. Plan nothing for 22 or 18 until that PR merges; the peer sends the number."
+  ],
+  "cardDefectsUnderReview": [
+    {
+      "at": "2026-09-10 12:50 IST",
+      "card": "docs/design/build-cards/item-20-design-traceability-check.md",
+      "defect": "mode 4 triggers on same-id-different-hash, but generate-rule-index.mjs matches by hash so a design sentence edit retires the old id and mints a new one - the card's stated rationale may not be served by the mechanism it specifies",
+      "supervisorReading": "intent likely served by mode 1 (new orphan id) instead; card wording is the defect, and mode 4 still guards manual/other drift",
+      "namedGap": "a card claiming a now-RETIRED id may be caught by no mode at all - mode 1 covers live-but-unclaimed, mode 3 covers tests naming non-live ids",
+      "status": "with the Tier A reviewer to confirm or destroy; contract decision 16 forbids a worker resolving a card/code contradiction by choosing"
+    }
   ]
 }
