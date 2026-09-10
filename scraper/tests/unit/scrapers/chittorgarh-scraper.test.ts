@@ -315,3 +315,41 @@ describe('item 2 slice 3a — parseListingInfo yields unknown when "Listing at" 
     expect(info.exchange).toBeUndefined();
   });
 });
+
+describe('item 2 slice 3a round 3 — Emerge is an SME signal, board match is word-bounded', () => {
+  it('"NSE Emerge Platform" yields SME segment on the NSE exchange (Emerge is NSE\'s SME platform)', () => {
+    const info = parseListingInfo('NSE Emerge Platform');
+    expect(info.segment).toBe('SME');
+    expect(info.exchange).toBe('NSE');
+  });
+
+  it('bare "Emerge" (no NSE/BSE word) still yields unknown -- no board named at all', () => {
+    const info = parseListingInfo('Emerge');
+    expect(info.segment).toBeNull();
+    expect(info.exchange).toBeUndefined();
+  });
+
+  it('"BSE SME" still yields SME on BSE', () => {
+    const info = parseListingInfo('BSE SME');
+    expect(info.segment).toBe('SME');
+    expect(info.exchange).toBe('BSE');
+  });
+
+  it('"NSE, BSE" still yields MAINBOARD/BOTH', () => {
+    const info = parseListingInfo('NSE, BSE');
+    expect(info.segment).toBe('MAINBOARD');
+    expect(info.exchange).toBe('BOTH');
+  });
+
+  it('"Nonsense" (unanchored substring match on NSE) yields unknown, not a false MAINBOARD/NSE', () => {
+    const info = parseListingInfo('Nonsense');
+    expect(info.segment).toBeNull();
+    expect(info.exchange).toBeUndefined();
+  });
+
+  it('"Absent" (unanchored substring match on BSE) yields unknown, not a false MAINBOARD/BSE', () => {
+    const info = parseListingInfo('Absent');
+    expect(info.segment).toBeNull();
+    expect(info.exchange).toBeUndefined();
+  });
+});

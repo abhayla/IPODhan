@@ -134,7 +134,7 @@ export async function runIPOReviewsJob(options: IPOReviewsJobOptions = {}): Prom
  * Get IPOs that need reviews
  * Priority: OPEN > CLOSED > LISTED
  */
-async function getIPOsForReviewScraping(
+export async function getIPOsForReviewScraping(
   db: any,
   options: IPOReviewsJobOptions
 ): Promise<Array<{ id: string; companyName: string; slug: string; segment: 'MAINBOARD' | 'SME' }>> {

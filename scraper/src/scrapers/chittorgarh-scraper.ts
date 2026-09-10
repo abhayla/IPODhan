@@ -194,31 +194,37 @@ export function parseListingInfo(listingAt: string): {
   }
 
   // Item 2 slice 3a fix round: a non-blank cell is not automatically a
-  // positive board signal -- "Emerge", a typo'd board name, or unrelated
-  // junk text contains neither "NSE" nor "BSE" and must yield unknown for
-  // BOTH fields too, not a defaulted MAINBOARD/BOTH guess. Only the literal
-  // presence of "NSE" or "BSE" is treated as a genuine signal here.
+  // positive board signal -- a typo'd board name or unrelated junk text
+  // containing neither the word "NSE" nor the word "BSE" must yield unknown
+  // for BOTH fields too, not a defaulted MAINBOARD/BOTH guess. Only the
+  // literal word "NSE" or "BSE" is treated as a genuine signal here.
   //
-  // "Emerge" is NSE's real SME platform name, so recognising it outright
-  // would be a correctness improvement in principle -- but it is also a
-  // second, silent guess layered on top of this fix (nothing in this data
-  // source guarantees "Emerge" always means NSE SME, e.g. a stray mention
-  // in unrelated text), so it is left OUT as scope creep. Unrecognised text
-  // -- "Emerge" included -- resolves to unknown, matching MAJOR 1's test.
-  const hasBSE = normalized.includes('BSE');
-  const hasNSE = normalized.includes('NSE');
+  // Round 3 (word-boundary): `includes('NSE')` / `includes('BSE')` matched
+  // as an unanchored substring, so junk text like "Nonsense" or "Absent"
+  // falsely produced a positive MAINBOARD signal -- exactly the "junk text
+  // asserts a board" shape this slice exists to kill. Match the board word
+  // on a word boundary instead.
+  const hasBSE = /\bBSE\b/.test(normalized);
+  const hasNSE = /\bNSE\b/.test(normalized);
 
   if (!hasBSE && !hasNSE) {
     return { exchange: undefined, segment: null };
   }
 
-  // A populated "Listing at" naming an actual board without "SME" is a
-  // genuine positive MAINBOARD signal (the field literally states the board).
+  // A populated "Listing at" naming an actual board without "SME"/"EMERGE"
+  // is a genuine positive MAINBOARD signal (the field literally states the
+  // board).
   let segment: 'MAINBOARD' | 'SME' = 'MAINBOARD';
   let exchange: 'NSE' | 'BSE' | 'BOTH';
 
-  // Determine segment
-  if (normalized.includes('SME')) {
+  // Determine segment. "EMERGE" is recognised alongside "SME" because it is
+  // NSE's real SME platform name -- the same convention the authoritative
+  // NSE API path already uses (nse-api-client.ts transformIPOData: `series
+  // === 'SME' || platform.includes('SME') || platform.includes('EMERGE')`).
+  // This only runs once a genuine board word (NSE/BSE) has already been
+  // matched above, so a bare "Emerge" with no board word still falls into
+  // the unknown branch above -- only "<board> Emerge ..." resolves to SME.
+  if (normalized.includes('SME') || normalized.includes('EMERGE')) {
     segment = 'SME';
   }
 

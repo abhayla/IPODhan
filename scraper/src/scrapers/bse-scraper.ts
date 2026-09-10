@@ -203,13 +203,11 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
       }
 
       if (!ipoTable) {
-        return { ipos: [], subscriptions: [], smeCount: 0, mainboardCount: 0 };
+        return { ipos: [], subscriptions: [] };
       }
 
       // Extract IPO rows
       const rows = ipoTable.querySelectorAll('tr');
-      let smeCount = 0;
-      let mainboardCount = 0;
 
       for (const row of Array.from(rows)) {
         const cells = row.querySelectorAll('td');
@@ -253,20 +251,19 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             continue;
           }
 
-          // MINOR 3 (item 2 slice 3a fix round): the old `segment = isSME ?
-          // 'SME' : 'MAINBOARD'` binary default is deleted -- it was dead
-          // for the persisted output (its value only reached `rawIPO.segment`,
-          // which has zero readers; the real segment is derived downstream
-          // by `detectSegmentFromExchange`, see below). `isSME` itself is
-          // kept, used directly for this in-browser SME/MAINBOARD count.
-          const isSME = platform.trim().toUpperCase().includes('SME');
-
-          if (isSME) {
-            smeCount++;
-          } else {
-            mainboardCount++;
-          }
-
+          // MINOR 3 (item 2 slice 3a fix round 3): `isSME` and the
+          // in-browser smeCount/mainboardCount it fed are deleted -- round 2
+          // found round 1's "kept because it drives an in-browser counter"
+          // justification was false. Verified: this page.evaluate() callback
+          // returns `{ ipos, subscriptions, smeCount, mainboardCount }`, but
+          // outside page.evaluate() only `extractedData.ipos` and
+          // `extractedData.subscriptions` are ever read (grepped every
+          // `extractedData.` access in this file) -- the smeCount/
+          // mainboardCount this block computed were discarded on every
+          // call. The REAL, reported smeCount/mainboardCount (this
+          // function's own returned BSEScrapeResult, further below) is
+          // computed independently from `detectSegmentFromExchange` and is
+          // untouched by this deletion.
           ipos.push({
             companyName,
             platform,
@@ -284,7 +281,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
         }
       }
 
-      return { ipos, subscriptions, smeCount, mainboardCount };
+      return { ipos, subscriptions };
     });
 
     // Transform extracted data to ScrapedIPO format
