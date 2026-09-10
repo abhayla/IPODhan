@@ -42,7 +42,9 @@
           "status": "IN-REVIEW",
           "pr": null,
           "sha": "95351103",
-          "tier": "A"
+          "tier": "A",
+          "reviewRounds": 1,
+          "reviewVerdict": "MERGE NO - 2 MAJOR (silent pass on zero test roots; heading anchor untested), 2 MINOR"
         },
         {
           "k": "s2",
@@ -178,7 +180,8 @@
     "Stage 0 acceptance enumerates the four contract artefacts (ledger line, tracker section, STATE.json, PROGRESS log) and confirms each by ls, not by recollection (DEFECT-B03)"
   ],
   "openConcerns": [
-    "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief."
+    "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
+    "MINOR 3 deferred by reviewer ruling: the IMPLEMENTS_TAG fixture workaround stays for slice 1; the structural fix (opt-out marker or excluded __fixtures__/ segment) must land with the MODE2_ENFORCE flip at build item 6."
   ],
   "defects": [
     {
