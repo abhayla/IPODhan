@@ -89,9 +89,14 @@ async function main() {
     `SELECT i.id, i.company_name, i.isin, i.segment,
             i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
-            i.company_website,
+            i.company_website, i.face_value,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
+            -- The RAW oracle, deliberately separate from the COALESCE above:
+            -- that alias falls back to price_range_max, which on a degenerate
+            -- row IS the stored value, so a check comparing against it would
+            -- compare a number to itself and never fire.
+            lp.issue_price AS authoritative_issue_price,
             d.issue_type
        FROM ipos i
        LEFT JOIN listing_performance lp ON lp.ipo_id = i.id
