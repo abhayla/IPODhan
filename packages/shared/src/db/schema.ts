@@ -660,6 +660,24 @@ export const documents = pgTable(
     // and empty" from "purged before we got to it".
     purgedUnread: boolean('purged_unread').default(false).notNull(),
 
+    /**
+     * Item 22 slice 4. NSE and BSE sometimes publish one filing as several PDFs
+     * ("Part 1 of 3"), and every exchange gives a filing its own stable id.
+     *
+     * Both are NULLABLE and neither has a default, deliberately. `1` as a
+     * default for partNumber would make every one of the existing rows claim to
+     * be part one of a multi-part filing - a value nobody measured, reading as
+     * though somebody had. NULL means "this document is the whole thing", which
+     * is true of nearly all of them.
+     *
+     * partNumber is NOT sequenceNumber. sequenceNumber distinguishes an
+     * addendum from the original document; partNumber splits ONE document
+     * across several files. Conflating them would make "page 118 of part 2"
+     * point at the wrong page in a three-part RHP.
+     */
+    partNumber: integer('part_number'),
+    exchangeDocumentId: varchar('exchange_document_id', { length: 255 }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
