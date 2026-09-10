@@ -1,0 +1,60 @@
+# The gates whose ONLY input is documentation, run on the pull requests that
+# change documentation.
+#
+# WHY THIS FILE EXISTS (#541). `pr-gate.yml` skips docs-only pull requests at the
+# trigger level, to avoid burning Actions minutes running the scraper suite for a
+# typo in a README. That is right for almost everything in it — and exactly wrong
+# for the design-consistency gate, which lives inside it and whose entire input is
+# `docs/`. The result was that a pull request changing nothing but build cards
+# skipped the one check that could evaluate it, reported "no checks reported"
+# (an absence, not a pass), merged, and broke that gate on main for every other
+# lane. It happened on 2026-09-10: #537 cited a file that did not exist yet, and
+# the failure surfaced on an unrelated scraper PR.
+#
+# The fix is NOT to widen pr-gate's `paths` — that would make a README typo run
+# the full scraper suite, which is the cost the skip exists to avoid. Instead the
+# documentation gates move out from behind it, into this workflow, which runs on
+# the complement of what pr-gate covers plus the docs pr-gate already includes.
+#
+# There is deliberately NO `npm ci` here. Every script it runs imports only
+# `node:` builtins — asserted by a test, not assumed — so this workflow is a
+# checkout, a node, and three commands.
+name: Docs gates
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.md'
+      - 'docs/**'
+
+concurrency:
+  group: docs-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Design consistency & registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build cards keep their promise
+        # Run explicitly as well as via the design gate below, so a build-card
+        # failure names itself in the step list instead of arriving as one line
+        # of D16's output.
+        run: node docs/design/check-build-cards.mjs --gate
+
+      - name: Design consistency gate
+        # The check that #537 skipped past. 23 rules over the design document,
+        # the build cards, the owner decisions and the code citations.
+        run: node docs/design/check-design-consistency.mjs
+
+      - name: Detection registry matches its per-entry sources
+        # Same argument: its input is docs/reviews/**, so a docs-only change is
+        # exactly when it matters and exactly when pr-gate would not run it.
+        run: node scripts/build-detection-registry.mjs --check
