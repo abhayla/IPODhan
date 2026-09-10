@@ -297,11 +297,13 @@ describe('summarizeBSEApiResult — orchestrator ScrapedData shape + segment cou
     expect(s.subscriptions).toHaveLength(1);
   });
 
-  it('a null/blank segment counts as MAINBOARD (BSE IPO board default)', () => {
+  it('item 2 slice 3a: a null/blank segment counts in NEITHER bucket — never silently folded into MAINBOARD', () => {
     const result: BSEApiScrapeResult = { ipos: [{ companyName: 'Y', segment: null } as any], subscriptions: [], errors: [] };
     const s = summarizeBSEApiResult(result);
-    expect(s.mainboardCount).toBe(1);
+    expect(s.mainboardCount).toBe(0);
     expect(s.smeCount).toBe(0);
+    // The gap between total ipos and mainboard+sme IS the "unknown segment" signal.
+    expect(s.ipos).toHaveLength(1);
   });
 });
 

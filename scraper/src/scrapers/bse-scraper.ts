@@ -203,13 +203,11 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
       }
 
       if (!ipoTable) {
-        return { ipos: [], subscriptions: [], smeCount: 0, mainboardCount: 0 };
+        return { ipos: [], subscriptions: [] };
       }
 
       // Extract IPO rows
       const rows = ipoTable.querySelectorAll('tr');
-      let smeCount = 0;
-      let mainboardCount = 0;
 
       for (const row of Array.from(rows)) {
         const cells = row.querySelectorAll('td');
@@ -253,17 +251,19 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             continue;
           }
 
-          // Story 11.8: Determine segment (SME vs MAINBOARD) from platform
-          const isSME = platform.trim().toUpperCase().includes('SME');
-          const segment = isSME ? 'SME' : 'MAINBOARD';
-
-          // Count SME vs MAINBOARD
-          if (segment === 'SME') {
-            smeCount++;
-          } else {
-            mainboardCount++;
-          }
-
+          // MINOR 3 (item 2 slice 3a fix round 3): `isSME` and the
+          // in-browser smeCount/mainboardCount it fed are deleted -- round 2
+          // found round 1's "kept because it drives an in-browser counter"
+          // justification was false. Verified: this page.evaluate() callback
+          // returns `{ ipos, subscriptions, smeCount, mainboardCount }`, but
+          // outside page.evaluate() only `extractedData.ipos` and
+          // `extractedData.subscriptions` are ever read (grepped every
+          // `extractedData.` access in this file) -- the smeCount/
+          // mainboardCount this block computed were discarded on every
+          // call. The REAL, reported smeCount/mainboardCount (this
+          // function's own returned BSEScrapeResult, further below) is
+          // computed independently from `detectSegmentFromExchange` and is
+          // untouched by this deletion.
           ipos.push({
             companyName,
             platform,
@@ -273,7 +273,6 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             faceValue: faceValue && faceValue !== '--' ? faceValue : undefined,
             typeOfIssue,
             issueStatus,
-            segment, // Story 11.8: Store segment instead of category
             detailUrl
           });
 
@@ -282,7 +281,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
         }
       }
 
-      return { ipos, subscriptions, smeCount, mainboardCount };
+      return { ipos, subscriptions };
     });
 
     // Transform extracted data to ScrapedIPO format

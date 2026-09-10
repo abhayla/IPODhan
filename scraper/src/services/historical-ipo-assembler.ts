@@ -79,9 +79,15 @@ export function assembleHistoricalRecord(input: {
   const lot = extractLotSizeFromDetailHtml(detailHtml);
   const description = extractCompanyDescriptionFromDetailHtml(detailHtml);
 
+  // Item 2 slice 3a: the report's `Issue Type` field explicitly labels SME
+  // issues (e.g. "SME IPO"); a populated value that does NOT mention SME is a
+  // genuine positive mainboard signal from that same field. A missing/blank
+  // `Issue Type` is NOT a signal at all -- it must yield unknown, never a
+  // defaulted MAINBOARD (the class this slice fixes).
+  const issueType = (reportRow['Issue Type'] || '').trim();
   const segment =
     input.segment ??
-    (/\bSME\b/i.test(reportRow['Issue Type'] || '') ? 'SME' : 'MAINBOARD');
+    (issueType ? (/\bSME\b/i.test(issueType) ? 'SME' : 'MAINBOARD') : null);
 
   const scraped: ScrapedIPO = {
     companyName,

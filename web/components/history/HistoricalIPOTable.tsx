@@ -65,7 +65,10 @@ const formatListingGain = (gain: number) => {
 
 /** Muted second line under the company name: "Mainboard · Jul 2026". */
 const companySubline = (ipo: HistoricalIPO): string => {
-  const board = ipo.segment === 'SME' ? 'SME' : 'Mainboard';
+  // Item 2 slice 3a fix round: this slice increases NULL segment volume --
+  // an unknown segment must never render as "Mainboard" (em dash is this
+  // codebase's convention for an unknown/missing value, e.g. line 182/189/193).
+  const board = ipo.segment === 'SME' ? 'SME' : ipo.segment === 'MAINBOARD' ? 'Mainboard' : '—';
   const when = ipo.listingDate ? format(new Date(ipo.listingDate), 'MMM yyyy') : `${ipo.year}`;
   return `${board} · ${when}`;
 };

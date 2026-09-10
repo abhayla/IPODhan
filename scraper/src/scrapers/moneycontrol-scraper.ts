@@ -180,13 +180,16 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
             // this pure check is unit-coverable. Do NOT re-add a `continue`
             // here — it would make the skip untestable again.
 
-            // Extract category (second cell)
+            // Extract category (second cell). Item 2 slice 3a: keep the RAW
+            // cell text here (never collapse blank -> MAINBOARD at
+            // extraction) so segment detection downstream can tell "the cell
+            // was empty" apart from "the cell said something that isn't SME".
             const category = cells[1]?.textContent?.trim().toUpperCase() || '';
 
             let ipoData: any = {
               companyName,
               companyUrl,
-              category: category.includes('SME') ? 'SME' : 'MAINBOARD',
+              category,
               tableType
             };
 
@@ -274,8 +277,17 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         // page never prints them (only listingDate/allotmentDate), and this
         // scraper used to fabricate them from those anchors.
 
-        // Detect segment (MAINBOARD vs SME)
-        const segment = raw.category === 'SME' ? 'SME' : 'MAINBOARD';
+        // Detect segment (MAINBOARD vs SME). Item 2 slice 3a: a blank
+        // category cell carries no board signal at all -- it must yield
+        // unknown, never a defaulted MAINBOARD. A populated cell that does
+        // NOT say SME is treated as a positive MAINBOARD signal (the column
+        // is the page's own category/board tag, not free text).
+        const rawCategory = (raw.category || '').trim();
+        const segment: 'MAINBOARD' | 'SME' | null = !rawCategory
+          ? null
+          : rawCategory.includes('SME')
+            ? 'SME'
+            : 'MAINBOARD';
 
         // Detect offering type (default to IPO for Moneycontrol data)
         const offeringType = 'IPO'; // Moneycontrol primarily lists equity IPOs
@@ -302,7 +314,7 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
           // rows wrongly marked "both" in prod). Unknown is omitted; NSE/BSE's own
           // self-assertions are the source of truth for this field.
           listingExchange: undefined,
-          segment: segment as 'MAINBOARD' | 'SME',
+          segment,
           offeringType: offeringType as 'IPO',
           status,
           dataSource: 'MONEYCONTROL',
