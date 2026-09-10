@@ -432,11 +432,13 @@
         },
         {
           "id": "12-C2",
-          "status": "BUILT_HELD",
+          "status": "MERGED",
           "tier": "B",
           "commit": "22d8b9be",
           "branch": "feat/pm-c-item12-sC2-not-yet-backfilled-outcome (pushed, no PR - cap at 58)",
-          "title": "tell NOT_YET_BACKFILLED apart from STALE in the row-key invariant"
+          "title": "tell NOT_YET_BACKFILLED apart from STALE in the row-key invariant",
+          "pr": 519,
+          "mergeSha": "1373620c"
         },
         {
           "id": "12-B",
@@ -457,17 +459,19 @@
         },
         {
           "id": "12-D1",
-          "status": "BUILT_PUSHED",
+          "status": "MERGED",
           "tier": "A",
           "commit": "289933b6",
           "branch": "feat/pm-c-item12-sD1-duplicate-candidate-at-discovery",
-          "title": "log duplicate candidates at discovery - observe-only, flag default false in every slot"
+          "title": "log duplicate candidates at discovery - observe-only, flag default false in every slot",
+          "pr": 521,
+          "mergeSha": "0fc3ab80"
         },
         {
           "id": "12-D2",
-          "status": "BLOCKED_DESIGN",
+          "status": "FUTURE",
           "tier": "A",
-          "title": "CIN identity tier - blocked: its card requires CIN to beat a name match, ipo-identity.ts:485 deliberately does the opposite"
+          "title": "CIN as an identity tier - measured at ZERO effect today, deferred with a trigger"
         }
       ],
       "prs": [
@@ -826,6 +830,16 @@
           "theLastOne": "Asset Reconstruction is AMBIGUOUS rather than unmatched - staging carries two rows that both reduce to the same key, which is the genuine duplicate pair. It resolves when that duplicate is repaired, which is already 12-C job. No new slice needed.",
           "whereItShips": "Folding the country-word drop into 12-B rather than opening a seventh branch: it touches the same function in the same file 12-B already changes, and shipping it separately would re-key the same 544 rows twice. Flagged to the peer that if they want it reviewed as its own slice that is defensible, at the cost of a double re-key."
         }
+      },
+      "slice12D2Deferred": {
+        "at": "2026-09-10 22:28 IST",
+        "ruling": "FUTURE slice, not built now.",
+        "measurement": "Production: 333 rows, 31 (9.3%) carry a CIN, and ALL 31 already resolve to the SAME row by name - zero ambiguous, zero misses. Staging: 376 rows, 36 (9.6%), all 36 the same. The count that would bind differently is ZERO on both slots.",
+        "whyThatSettlesIt": "Making a key tier outrank an exact-name match means changing ipo-identity.ts:485 - const resolution = nameMatchIsTier3b ? keyMatch : nameMatch - which is annotated T-403 review item 4 and pinned by the identity suite conflict cases. That alters behaviour every existing caller relies on, to change zero current bindings.",
+        "TRIGGER": "Re-run the measurement; BUILD when the count of CIN-bearing rows whose name match disagrees is NON-ZERO. Query: for every row with a non-empty cin, compare the row id against the single id that normalizeCompanyNameForMatching resolves its company_name to; count the rows where those differ, or where the name is ambiguous or matches nothing.",
+        "firstBehaviourWhenBuilt": "AMBIGUOUS-never-bind on a shared CIN. The first real value of a CIN tier is REFUSING to bind, not binding: a CIN typo binding two genuinely different companies is worse than a name miss, because the name tiers would never have made that mistake.",
+        "theOneSharedCin": "U85110DL2017PLC322623 is held by two rows on BOTH slots - Rays of Belief Limited- For Profit Social Enterprise and Rays of Belief Ltd. That is one company as two rows, i.e. a DUPLICATE for 12-C list, not a CIN problem. It is also the flagship W-108 name in the identity module own comments.",
+        "caveat": "This measures today data. Coverage should grow and the argument flips the moment a CIN-bearing row disagrees with its name match, which is exactly what the trigger watches for."
       }
     },
     "item-03": {
@@ -1213,7 +1227,12 @@
     "2026-09-10 22:13 IST 2-S6 RCA PREREQUISITE IS BLOCKED, with a precise reason rather than a vague one. Reading the raw BSE payload for BANGANGA and NIRBHAY is impossible: both carry NULL bse_ipo_no AND NULL bse_scrip_code, so there is no key to query the detail endpoint with.",
     "2026-09-10 22:13 IST AND MEASURING IT CORRECTED MY OWN FIRST READING. I was ready to call it contradictory that BSE-attributed rows carry no BSE key. Across staging, of 70 rows with any BSE-sourced field only 12 (17.1%) carry a BSE identifier and 58 (82.9%) carry none. The absence is the NORM, not an anomaly of these two.",
     "2026-09-10 22:13 IST THE BIGGER FINDING IS THE 83%: most BSE-sourced rows cannot be re-fetched from BSE at all, because the key was never stored. That reaches well past #515 - for 5 in 6 BSE-sourced rows, any value attributed to BSE is unverifiable against its source, and a repair required to read the real value from the exchange cannot do it.",
-    "2026-09-10 22:13 IST SO 2-S6 NEEDS A ROUTE DECISION, not improvisation: recover the identifier by finding the IPO on BSE by name and date, or accept that the RCA for these rows stops at BSE-attributed-and-unverifiable. I have NOT established why the face value ended up in the price band for these two, and I am not guessing it - the question is open with a named obstacle."
+    "2026-09-10 22:13 IST SO 2-S6 NEEDS A ROUTE DECISION, not improvisation: recover the identifier by finding the IPO on BSE by name and date, or accept that the RCA for these rows stops at BSE-attributed-and-unverifiable. I have NOT established why the face value ended up in the price band for these two, and I am not guessing it - the question is open with a named obstacle.",
+    "2026-09-10 22:28 IST MERGED: #519 12-C2 at 1373620c, #521 12-D1 at 0fc3ab80.",
+    "2026-09-10 22:28 IST 12-D2 DEFERRED AS A FUTURE SLICE ON MY OWN MEASUREMENT, not on a hunch. Production 31 of 333 rows carry a CIN (9.3%) and ALL 31 already resolve to the SAME row by name; staging 36 of 376 (9.6%), all 36 the same. Zero rows on either slot would bind differently. Changing ipo-identity.ts:485 alters behaviour every existing caller relies on, for zero present effect.",
+    "2026-09-10 22:28 IST RECORDED ITS TRIGGER so the deferral is not a quiet drop: re-run the query and BUILD when the count of CIN-bearing rows whose name match disagrees is non-zero. And its first behaviour when built is AMBIGUOUS-never-bind on a shared CIN - the first real value of a CIN tier is REFUSING to bind, because a CIN typo binding two different companies is worse than a name miss the name tiers would never have made.",
+    "2026-09-10 22:28 IST THE ONE SHARED CIN IS A DUPLICATE, NOT A CIN PROBLEM: U85110DL2017PLC322623 is held by Rays of Belief Limited- For Profit Social Enterprise and Rays of Belief Ltd. on both slots. It goes on 12-C duplicate list. It is also the flagship W-108 name in the identity module own comments.",
+    "2026-09-10 22:28 IST I ALSO OVER-ESCALATED TWICE AND WAS CORRECTED. I put the 22 configuration entries to the owner as an open decision when it had already been ruled, and I put the CIN question to the owner without doing the measurement that makes it decidable. Both are the same failure - escalating instead of finishing the work that lets someone decide. The measurement took one query."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
