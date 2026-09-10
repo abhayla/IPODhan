@@ -942,3 +942,26 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   to approve the new PDF library the document-download work needs. One proof is still owed and named:
   a real deletion run on the test server. Test-server deploys were broken all evening and came back an
   hour ago, so that proof was unobtainable, not skipped.
+
+- **2026-09-11 02:23 IST** - Item 20 stays at 100% merged and proven, previous and current, so no change there; the
+  movement this tick is elsewhere. The test server came back, so I stopped owing proofs and started
+  paying them. Two are now paid outright: the database changes behind the file-retention work and the
+  document-download work were applied and verified on the test server by a check that had failed a
+  different run an hour earlier, so it was capable of catching a problem. A third is partly paid - I
+  watched the new deletion safety rule run in a real cycle and hold 170 files back - but I am not
+  calling it fully proven, because all 170 were held by the simpler of its two rules and the
+  seven-day clock itself was not exercised. Two proofs remain owed and I know exactly why: one needs
+  a cycle that actually reads a new document, the other a cycle that actually changes an IPO, and
+  this cycle did neither. A reader of ipodhan.com would notice nothing different today. What went
+  wrong, and it is mine: two hours ago I reported that company prospectuses do not contain the
+  rival-company comparison table we want to extract. They do. I searched for a heading, the four
+  documents word that heading three different ways, my search found nothing, and I treated
+  nothing-found as proof rather than checking my search. I have now read all four documents at table
+  level and corrected it in public. The useful part is what the re-reading found: the columns and
+  their order differ between documents - revenue is the fifth column in one and the second in another
+  - so a reader assuming fixed positions would file revenue as a share price and report success.
+  Second thing that went wrong: my working log for this lane sat in a folder git ignores, so a full
+  day of record existed only on this laptop. Another team measured that and was right; the day's
+  events are now written into a shared file and pushed. What is needed from Abhay: nothing tonight.
+  Two decisions whenever you have time - whether the shared branch should refuse changes that have
+  not passed their checks, and whether to approve the new PDF library the download work needs.
