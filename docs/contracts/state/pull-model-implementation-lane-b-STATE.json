@@ -499,7 +499,8 @@
   "carriedInputs": [
     "Items 22 and 18: the four architect decisions land as an 'Architect correction 2026-09-10' block AMENDING the build cards themselves (Tier C docs PR), with the plans under docs/contracts/plans/. Binding via 'the card is the slice source' rather than via a relay. Plan nothing for 22 or 18 until that PR merges; the peer sends the number.",
     "lane A measured 26 of 44 web integration tests failing WITHOUT the tunnel (14:59 tick) - the tunnel-exhaustion hypothesis is partly falsified and the failures are substantially real",
-    "find-guard edge: a heredoc whose body contains another heredoc start marker with no terminator can false-block; use distinct delimiters"
+    "find-guard edge: a heredoc whose body contains another heredoc start marker with no terminator can false-block; use distinct delimiters",
+    "item 22 pipelining blocked 2026-09-10 16:57 IST: 22-3/22-5/22-6 overlap 22-2 files; 22-4 collides with lane A open PR #459 which adds a migration and edits _journal.json. Journal 36 = stage-0 fixture 36. 22-4 waits for #459 to merge so the journal number is known, not guessed."
   ],
   "cardDefectsUnderReview": [
     {

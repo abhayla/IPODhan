@@ -2687,3 +2687,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   Honest limit reported rather than glossed: memory is **not** released mid-read -- chunks accumulate and are
   concatenated at the end. Peak is now BOUNDED by the cap instead of unbounded, which is the stated goal, but
   it is a bound, not a stream-through.
+
+- **2026-09-10 16:57 IST [lane B] Pipelining decision for item 22: NONE of the remaining slices can run in parallel right now,
+  and the reason was found by checking rather than by hitting a conflict.**
+  Contract decision 2 allows the next slice to build while the previous waits on CI, but only if the two touch
+  no common file. Checked each remaining slice against 22-2 (`document-discovery-runner.ts`,
+  `document-download-verifier.ts`, `feature-flags.ts`) and against the other lanes open work:
+  - 22-3 refusal log -> edits `document-discovery-runner.ts`. Overlaps 22-2.
+  - 22-5 multi-part loop -> edits the runner AND the verifier. Overlaps 22-2.
+  - 22-6 blank password -> edits the verifier. Overlaps 22-2.
+  - 22-4 migration -> no overlap with 22-2, **but it collides with lane A open PR #459**, which adds
+    `web/drizzle/migrations/20260910043758_salty_shen.sql` and edits `web/drizzle/migrations/meta/_journal.json`.
+    Two lanes writing migrations concurrently collide on the journal and on the stage-0 fixture that mirrors
+    its count. Measured now: journal entries **36**, fixture `journalEntries` **36** -- consistent, and both
+    must move together. If lane B generated a migration today it would assume 37 while lane A PR also assumes
+    37, and whichever merged second would carry a silently skipped migration -- exactly the #442 class this
+    project spent a day on.
+  Decision: **no pipelining; item 22 proceeds sequentially** until 22-2 merges, and 22-4 waits for #459 to land
+  so the journal number is known rather than guessed. The cost is wall-clock; the alternative is a merge
+  conflict in the one file where a conflict is dangerous rather than annoying.
