@@ -253,12 +253,15 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             continue;
           }
 
-          // Story 11.8: Determine segment (SME vs MAINBOARD) from platform
+          // MINOR 3 (item 2 slice 3a fix round): the old `segment = isSME ?
+          // 'SME' : 'MAINBOARD'` binary default is deleted -- it was dead
+          // for the persisted output (its value only reached `rawIPO.segment`,
+          // which has zero readers; the real segment is derived downstream
+          // by `detectSegmentFromExchange`, see below). `isSME` itself is
+          // kept, used directly for this in-browser SME/MAINBOARD count.
           const isSME = platform.trim().toUpperCase().includes('SME');
-          const segment = isSME ? 'SME' : 'MAINBOARD';
 
-          // Count SME vs MAINBOARD
-          if (segment === 'SME') {
+          if (isSME) {
             smeCount++;
           } else {
             mainboardCount++;
@@ -273,7 +276,6 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             faceValue: faceValue && faceValue !== '--' ? faceValue : undefined,
             typeOfIssue,
             issueStatus,
-            segment, // Story 11.8: Store segment instead of category
             detailUrl
           });
 

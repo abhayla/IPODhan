@@ -193,25 +193,43 @@ export function parseListingInfo(listingAt: string): {
     return { exchange: undefined, segment: null };
   }
 
+  // Item 2 slice 3a fix round: a non-blank cell is not automatically a
+  // positive board signal -- "Emerge", a typo'd board name, or unrelated
+  // junk text contains neither "NSE" nor "BSE" and must yield unknown for
+  // BOTH fields too, not a defaulted MAINBOARD/BOTH guess. Only the literal
+  // presence of "NSE" or "BSE" is treated as a genuine signal here.
+  //
+  // "Emerge" is NSE's real SME platform name, so recognising it outright
+  // would be a correctness improvement in principle -- but it is also a
+  // second, silent guess layered on top of this fix (nothing in this data
+  // source guarantees "Emerge" always means NSE SME, e.g. a stray mention
+  // in unrelated text), so it is left OUT as scope creep. Unrecognised text
+  // -- "Emerge" included -- resolves to unknown, matching MAJOR 1's test.
+  const hasBSE = normalized.includes('BSE');
+  const hasNSE = normalized.includes('NSE');
+
+  if (!hasBSE && !hasNSE) {
+    return { exchange: undefined, segment: null };
+  }
+
   // A populated "Listing at" naming an actual board without "SME" is a
   // genuine positive MAINBOARD signal (the field literally states the board).
   let segment: 'MAINBOARD' | 'SME' = 'MAINBOARD';
-  let exchange: 'NSE' | 'BSE' | 'BOTH' = 'BOTH';
+  let exchange: 'NSE' | 'BSE' | 'BOTH';
 
   // Determine segment
   if (normalized.includes('SME')) {
     segment = 'SME';
   }
 
-  // Determine exchange
-  const hasBSE = normalized.includes('BSE');
-  const hasNSE = normalized.includes('NSE');
-
+  // Determine exchange -- a board word was matched above, so exactly one
+  // of these three branches always applies; BOTH is a genuine signal here
+  // (both words present), never a default.
   if (hasBSE && hasNSE) {
     exchange = 'BOTH';
   } else if (hasNSE) {
     exchange = 'NSE';
-  } else if (hasBSE) {
+  } else {
     exchange = 'BSE';
   }
 

@@ -302,4 +302,16 @@ describe('item 2 slice 3a — parseListingInfo yields unknown when "Listing at" 
     expect(result.ipos).toHaveLength(1);
     expect(result.ipos[0].segment).toBeNull();
   });
+
+  it('junk/unrecognised "Listing at" text (no NSE/BSE word) yields unknown segment and exchange, never MAINBOARD/BOTH', () => {
+    const info = parseListingInfo('Not Applicable');
+    expect(info.segment).toBeNull();
+    expect(info.exchange).toBeUndefined();
+  });
+
+  it('"Emerge" (NSE\'s SME platform name) without the literal word NSE still yields unknown under the positive-signal rule', () => {
+    const info = parseListingInfo('Emerge');
+    expect(info.segment).toBeNull();
+    expect(info.exchange).toBeUndefined();
+  });
 });
