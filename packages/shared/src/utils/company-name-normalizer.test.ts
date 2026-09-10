@@ -20,7 +20,7 @@ import {
 describe('normalizeCompanyNameForMatching — P2-1 duplicate-prevention pairs', () => {
   const convergingPairs: Array<[string, string, string]> = [
     ['Caliber Mining & Logistics Ltd.', 'Caliber Mining and Logistics', 'caliber mining and logistics'],
-    ['Gulf Lloyds India', 'Gulf Lloyds (India) Ltd.', 'gulf lloyds india'],
+    ['Gulf Lloyds India', 'Gulf Lloyds (India) Ltd.', 'gulf lloyds'],
     ['G V Electricals', 'G.V.Electricals Ltd. (G.V. Electricals IPO)', 'g v electricals'],
     ['H R Hygiene Products', 'H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)', 'h r hygiene products'],
     ['INDO MIM Limited', 'Indo-MIM Ltd.', 'indo mim'],

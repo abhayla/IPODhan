@@ -133,7 +133,36 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
       /\b(?:private\s+limited|pvt\.?\s+ltd\.?|limited|ltd|private|pvt|incorporated|inc|corporation|corp|company|co|llc|llp|plc)\b/gi,
       ' '
     )
+    // Item 12 slice E's closing fix: a TRAILING country token only.
+    //
+    // The grey-market source writes "Jindal Supreme" where we store "Jindal
+    // Supreme (India) Ltd." - four live IPOs lost their GMP binding to exactly
+    // this and nothing else. By here the parens are already spaces and the
+    // corporate words are gone, so the country word is simply the last token.
+    //
+    // TRAILING ONLY, and the narrowing is load-bearing: a leading or medial
+    // "India" is part of the identity, not decoration - INDIAN RAILWAY FINANCE,
+    // INDIAN OVERSEAS BANK, EAST INDIA DRUMS, STALLION INDIA FLUOROCHEMICALS,
+    // Sampark India Logistics all exist in production and must keep it. An
+    // anywhere-rule measures identically on today's data and would merge the
+    // first "X India" / "X" pair that ever appears.
+    //
+    // KNOWN LIMIT, stated rather than discovered later: a name whose LAST word
+    // is genuinely part of the identity ("Bank of India") is also trailing and
+    // would be stripped to "bank of". No such name exists in either database
+    // today, and it only does harm if the stripped form collides with another
+    // company - but that is the case to watch, not a case this rule handles.
+    //
+    // Measured before shipping: production 333 names -> 333 identities, ZERO
+    // newly merged; staging 349 -> 349 with ONE, the ARCIL pair, which is the
+    // same company and the merge this slice exists to make.
+    // Collapse and trim FIRST: the corporate strip above replaces words with
+    // SPACES, so at this point the string still ends in whitespace and a
+    // $-anchored match would silently never fire. The code read correctly and
+    // did nothing - caught by running it, not by reading it.
     .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s+(india|indian)$/i, '')
     .trim();
 }
 
@@ -196,7 +225,8 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
   //
   // Agreement with the JS side is gated by
   // scraper/tests/integration/normalizer-sql-agreement.integration.test.ts.
-  return sql`LOWER(
+  return sql`REGEXP_REPLACE(
+  LOWER(
   TRIM(
     REGEXP_REPLACE(
       REGEXP_REPLACE(
@@ -270,6 +300,10 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
       'g'
     )
   )
+),
+  '\\s+(india|indian)$',
+  '',
+  'i'
 )`;
 }
 
