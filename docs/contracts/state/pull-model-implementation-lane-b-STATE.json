@@ -11,12 +11,12 @@
     8,
     21
   ],
-  "currentItem": 20,
+  "currentItem": 22,
   "testDb": {
     "name": "ipodhan_test2",
     "drop": "OWED"
   },
-  "prGateRunsSpentByThisLane": 4,
+  "prGateRunsSpentByThisLane": 6,
   "laneCapPerDay": 25,
   "repoCeilingPerDay": 60,
   "repoStopAt": 50,
@@ -50,7 +50,7 @@
     "item-20": {
       "item": 20,
       "card": "docs/design/build-cards/item-20-design-traceability-check.md",
-      "status": "IN-PROGRESS",
+      "status": "DONE",
       "slices": [
         {
           "k": "s1",
@@ -84,26 +84,28 @@
         {
           "k": "s4",
           "title": "pr-gate wiring + design_traceability registry entry",
-          "status": "BUILDING",
-          "pr": null,
-          "sha": null,
+          "status": "MERGED",
+          "pr": 470,
+          "sha": "daeb3ad3",
           "tier": "A"
         }
       ],
       "prs": [
         460,
         462,
-        465
+        465,
+        470
       ],
       "mergeShas": [
         "6c31d995",
         "40889f8a",
-        "78fb228b"
+        "78fb228b",
+        "daeb3ad3"
       ],
       "proof": {
-        "status": "OWED",
-        "cycle": null,
-        "line": null
+        "status": "HELD",
+        "cycle": "pr-gate run 34453974929 on PR #470, 2026-09-10",
+        "line": "MODE 4 - 166 rule id(s) compared; check-design-traceability: PASS; 23/23 consistent - the base ref resolves on the runner and mode 4 runs rather than skipping"
       }
     },
     "item-22": {
