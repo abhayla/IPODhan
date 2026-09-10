@@ -1595,3 +1595,22 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   count on the summary line, a fixture card whose PROSE mentions the heading above the real heading (RED with
   `indexOf`, green with the anchor), and a test for the enforcing path of mode 2 without changing its shipped value.
   The brief requires the builder to prove BOTH new guards by mutation itself.
+
+- **2026-09-10 11:35 IST [lane B] Item 20 s1 fix round landed as `b8bf7202`; Tier A round 2 dispatched on the changed lines only.**
+  Builder-reported (CLAIMS until round 2 reproduces them): self-test 9/9 (three new tests), real repo exit 0, and
+  the summary line now reads verbatim `166 rules, 166 claimed, 0 orphans, 8 test declaration(s) found, test roots
+  scanned: scraper/tests, web/tests, scripts/tests, scripts/ci/tests`. `--tests /nonexistent/path` now exits **2**
+  where it exited 0 before. Both new guards were mutation-proved by the builder in a scratch copy: reverting the
+  heading anchor to `indexOf` and removing the zero-test-roots floor each turn a test RED. Diff is still exactly the
+  two slice files, `git status --short` empty, no `web/` paths.
+  The builder also added a `DESIGN_TRACEABILITY_MODE2_ENFORCE` env seam so the enforcing path of mode 2 can be
+  tested without changing the shipped `false` constant, which stays false until build item 6 as the card requires.
+  **Round 2's reviewer is also this slice's gate verifier** (contract decision 6 requires a second round when round
+  1 found MAJOR; supervisor-verification requires an independent context to re-run the gates - one fresh adversarial
+  context satisfies both, and its brief says every number in its verdict must come from a command it ran itself).
+  Recorded here as a deliberate merge of two steps, not a skipped one.
+  Round 2 must decide three things beyond re-checking the two MAJORs: whether the floor covers BOTH paths that had
+  the bug (`defaultTestRoots()` as well as `--tests`) or only the flag one - if only one, the class is not covered;
+  whether the new env seam can be used to WEAKEN the check in CI; and whether the new summary line's declaration
+  count and root list are actually TRUE, checked by grepping the named roots independently. A summary line that
+  reports a wrong number is worse than no summary line.
