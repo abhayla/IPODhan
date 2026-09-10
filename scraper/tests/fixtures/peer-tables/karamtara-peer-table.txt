@@ -1,0 +1,190 @@
+<<<PAGE 135>>>
+  
+ 
+130  
+Quantitative Factors 
+Some of the information presented below relating to our Company is derived from the Restated Consolidated 
+Financial Information . For details, see “ Restated Consolidated Financial Information ” and “ Other Financial 
+Information” beginning on pages 329 and 389, respectively. 
+Some of the quantitative factors which may form the basis for computing the Offer Price are as follows:  
+1. Basic and diluted earnings per share (“EPS”) (as adjusted for changes in capital, if any), calculated 
+in accordance with the Indian Accounting Standard 33 issued by the Institute of Chartered 
+Accountants of India: 
+Financial Year Ended Basic EPS (in ₹) Diluted EPS (in ₹) Weight 
+March 31, 2024 3.64 3.64 1 
+March 31, 2025 4.90 4.90 2 
+March 31, 2026 7.83 7.83 3 
+Weighted Average 6.16 6.16   
+Notes: 
+1. The face value of each Equity Share of the company is ₹ 10 
+2. Pursuant to a Board resolution and Shareholders resolution each dated December 23, 2024, bonus share have been issued in 
+the ratio of 50 equity shares of face value of ₹ 10 each for every one equity share of face value of ₹10 each. For calculation of 
+EPS, bonus equity shares have been retrospectively adjusted as if the event had occurred at the beginning of the earliest period 
+presented. 
+3. In terms of Paragraph 64 of Indian Accounting Standard 33 Earnings per Share, if the number of ordinary shares outstanding 
+increases as a result of bonus, the calculation of basic and diluted earnings per share for all periods presented shall be adjusted 
+retrospectively. If these changes occur after the reporting period but before the financial statements are approved for issue, the 
+per share calculations for those and any prior period financial statements presented shall be based on the new number of 
+shares. Considering the provision of Indian Accounting Standard 33, figure of Basic and Diluted EPS for all the /year s have 
+been restated as above. 
+4. Weighted average: Aggregate of year -wise weighted EPS divided by the aggregate of weights i.e. (EPS x Weight) for each 
+year/Total of weights. 
+5. Basic EPS: Net profit after tax attributable to owners of our Company, as restated / Weighted average no. of Equity Shares 
+outstanding during the year. 
+6. Diluted EPS: Net Profit after tax attributable to owners of our Company, as restated / Weighted average no. of potential Equity 
+Shares outstanding during the year. Basic and diluted earnings per share are computed in accordance with Indian Accounting 
+Standard 33 notified under the Companies (Indian Accounting Standards) Rules of 2015 (as amended) read with the 
+requirements of SEBI ICDR Regulations 
+7. The figures disclosed above are based on the Restated Consolidated Financial Information of our Company. 
+2. Price/Earning (“P/E”) ratio in relation to Price Band of ₹[●] to ₹[●] per Equity Share: 
+Particulars P/E at the Floor Price 
+(number of times) 
+P/E at the Cap Price 
+(number of times) 
+Based on basic EPS for Fiscal 2026 [●]* [●]* 
+Based on diluted EPS for Fiscal 2026 [●]* [●]* 
+* To be computed after finalization of price band. 
+3. Industry P/E ratio 
+ P/E Ratio Name of the company Face value of equity 
+shares (₹) 
+Highest 30.15 Premier Energies Limited 1.00 
+Lowest 9.65 KP Green Energy Limited 5.00 
+Average 19.18   
+Notes: 
+• The highest and lowest industry P/E shown above is based on the peer set provided below under “Comparison of Accounting 
+Ratios with Listed Industry Peers” 
+• P/E Ratio has been calculated as the closing market price of equity shares on BSE on August 28, 2026, divided by diluted 
+EPS as on March 31, 2026. 
+4. Return on Net Worth (“RoNW”) 
+Financial Year Ended RoNW (%) Weight 
+March 31, 2024 20.47% 1 
+March 31, 2025 18.15% 2 
+March 31, 2026 20.78% 3 
+Weighted Average 19.85%   
+Notes: 
+• Weighted average: Aggregate of year-wise weighted RoNW divided by the aggregate of weights i.e. (RoNW x Weight) for each 
+<<<PAGE 136>>>
+  
+ 
+131  
+year divided by total of weights. 
+• Return on Net Worth (%): Restated Profit after tax divided by Restated average net worth (excluding non-controlling interest) 
+at the end of the year where average net worth is average of opening and closing net worth. 
+• ‘Net worth’ under Ind-AS: Net worth has been defined as the aggregate value of the paid-up share capital, Instruments entirely 
+Equity in nature, General reserve, Security premium, Surplus/deficit on retained earning s, Foreign currency translation 
+reserve, Share based payment reserve, Treasury shares and other comprehensive income in accordance with Regulation 
+2(1)(hh) of the Securities and Exchange Board of India (Issue of Capital and Disclosure Requirements) Regulations, 2018, as 
+amended. 
+5. Net Asset Value (“NAV”) per Equity Share 
+NAV per Equity Share Amount (in ₹) 
+As on March 31, 2024^ 19.60 
+As on March 31, 2025^ 33.62 
+As on March 31, 2026^ 41.72 
+After the Offer  
+-At the Floor Price [●]* 
+-At the Cap Price [●]* 
+At Offer Price [●]* 
+*To be computed after finalization of price band. 
+^ Pursuant to a Board resolution and Shareholders resolution dated December 23, 2024, bonus share have been issued in the ratio 
+of 50 equity shares for every 1 equity shares. For calculation of NAV, bonus equity shares have been retrospectively adjusted. 
+Notes: 
+1. Net Asset Value per Equity Share: Net worth at the end of the year divided by number of equity shares outstanding as at the 
+end of year. 
+2. ‘Net worth’ under Ind-AS: Net worth has been defined as the aggregate value of the paid-up share capital, Instruments entirely 
+Equity in nature, General reserve, Security premium, Surplus/deficit on retained earning, Foreign currency translation 
+reserve, Share based payment reserve, Treasury shares and other comprehensive income in accordance with Regulation 
+2(1)(hh) of the Securities and Exchange Board of India (Issue of Capital and Disclosure Requirements) Regulations, 2018, as 
+amended. 
+6. Comparison of Accounting Ratios with Listed Industry Peers 
+Name of 
+Company 
+Face 
+Value  
+(₹ 
+Per 
+Share
+) 
+Closing 
+price as 
+on 
+August 
+28, 2026 
+(₹) 
+Market 
+capitalization 
+on BSE as on 
+August 28, 
+2026 (in ₹ 
+millions) 
+Revenue 
+from 
+operations, 
+for Fiscal 
+2026 
+(in ₹ million) 
+EPS (₹) NAV 
+(₹ per 
+share) 
+for 
+Fiscal 
+2026 
+P/E RON
+W 
+(%) 
+for 
+Fiscal 
+2026 
+Basic for 
+Fiscal 
+2026 
+Dilute
+d for 
+Fiscal 
+2026 
+Karamtara 
+Engineering 
+Limited 
+10.00 NA# NA# 43,119.76  7.83 7.83 41.72  NA#  20.78
+% 
+Listed Peers 
+Inox Wind 
+Limited 
+10.00 71.76 1,24,018.35 43,971.20 2.65 2.65 36.93 27.08 8.32% 
+Waaree 
+Energies 
+Limited 
+10.00 2639.00 7,59,111.87 265,367.70 129.10 128.84 501.90 20.48 32.48
+% 
+KP Green 
+Engineering 
+Limited 
+5.00 262.00 13,100.00 12,455.69 27.15 27.15 91.52 9.65 32.32
+% 
+Suzlon 
+Energy 
+Limited 
+2.00 46.78 6,42,888.07 166,791.10 2.31 2.31 6.90 20.25 40.64
+% 
+Premier 
+Energies 
+Limited 
+1.00 1014.00 4,60,306.83 78,243.74 33.63 33.63 95.09 30.15 42.35
+% 
+Vikram Solar 
+Limited 
+10.00 172.70 62,578.60 48,022.51 13.68 13.6 87.43 12.70 21.34
+% 
+Saatvik 
+Green Energy 
+Limited 
+2.00 423.60 53,841.68 45,484.37 29.83 29.76 107.08 14.23 41.97
+% 
+Emmvee 
+Photovoltaic 
+Power 
+Limited 
+2.00 323.95 2,24,285.17 50,498.77 17.17 17.17 53.37 18.87 51.12
+% 
+#  To be included in the Prospectus based on the Offer Price. 
+Notes: 
+1. All the financial information for Karamtara Engineering Limited is on a consolidated basis for the year ended March 31, 2026 
