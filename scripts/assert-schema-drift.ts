@@ -173,30 +173,28 @@ export function isKnownGatedDrift(d: Drift): boolean {
       d.detail === `"${g.tableName}.${g.columnName}" expects ${g.expected}, live column is ${g.actual}`
   );
 }
-
-// ==================== KNOWN-GATED INDEX DRIFT (item 1 slice s3b) ====================
-// Same convention as KNOWN_GATED_TYPE_DRIFT above: a small, explicit,
-// human-maintained registry for drift that is real, already known, and
-// approved elsewhere — never a silent catch-all.
+// KNOWN_GATED_INDEX_DRIFT is EMPTY and should normally stay that way.
 //
-// field_sources.idx_field_sources_ipo_table_field: slice s3
-// (feat/pm-item01-s3-row-key-provenance, commit 34b447058, NOT YET merged to
-// main) widens this index with a new `row_key` column and tested that change
-// directly against the shared `ipodhan_test` database ahead of merge. This
-// branch's schema.ts does not declare `row_key` yet (that column belongs to
-// slice s3, not this CI-hardening slice), so the index checker below sees a
-// real 3-vs-4-column mismatch on ipodhan_test today. It is not this slice's
-// place to either (a) touch the shared ipodhan_test index slice s3 is relying
-// on for its own testing, or (b) add slice s3's row_key column to schema.ts
-// pre-emptively. Remove this entry the moment slice s3 merges and schema.ts
-// itself declares row_key on field_sources.
+// It exists for one narrow case: a schema object that is deliberately applied to a
+// slot BY HAND, out of the migration journal, so schema.ts and the live database
+// legitimately disagree for a while. #464 used it for exactly one entry - the
+// field_sources index that slice s3 widened on ipodhan_test ahead of its own merge -
+// and slice s3 removed that entry here, because s3 is the change that made schema.ts
+// and the index agree again.
+//
+// If you add an entry: it is suppressed ONLY under SCHEMA_DRIFT_IGNORE_GATED=1, which
+// is set in exactly one place (pr-gate.yml). deploy-linux.sh and the nightly audit call
+// this script bare and still fail on it. Matching is exact, so a DIFFERENT mismatch on
+// the same object still fails rather than being swallowed. And
+// scripts/tests/known-gated-registry-invalidation.test.ts will fail the moment your
+// entry stops matching what schema.ts declares, so the entry cannot outlive its reason.
 export const KNOWN_GATED_INDEX_DRIFT: { tableName: string; indexName: string; expectedColumns: string; actualColumns: string }[] = [
-  {
-    tableName: 'field_sources',
-    indexName: 'idx_field_sources_ipo_table_field',
-    expectedColumns: 'ipo_id, table_name, field_name',
-    actualColumns: 'ipo_id, table_name, row_key, field_name',
-  },
+  // EMPTIED by item 01 slice s3, which is the change the previous entry was
+  // waiting for: schema.ts now declares row_key on idx_field_sources_ipo_table_field,
+  // so schema.ts and the live index agree and there is no drift left to tolerate.
+  // known-gated-registry-invalidation.test.ts FAILED this PR until the entry was
+  // removed - which is exactly what that guard exists to do. It replaced a comment
+  // saying 'remove this when s3 merges' with a test that would not let s3 merge.
 ];
 
 /**

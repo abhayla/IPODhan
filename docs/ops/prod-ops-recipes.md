@@ -77,8 +77,7 @@ curl -s -o /dev/null -w '%{http_code}' https://ipodhan.com/
 cd web && npm run test:prod-verify          # laptop, needs >= 2.5 GB free
 npm run audit:data                          # root; expect only the known legacy reds
 # audit:coverage needs a DB: web/.env.local is git-ignored and may be missing on the laptop; supply the tunnel instead:
-#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
-'); DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" npm run audit:data
+#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"'); DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan" npm run audit:data
 ```
 Then on the VPS: served sha (section 2), pm2 web x2 online, scraper `stopped` between runs, next cycle
 `extractionFailed 0`, extractor `ni=10`.
@@ -214,8 +213,7 @@ run now fails loudly instead of looking healthy.
 
 ```bash
 # issue_size below the segment floor (share counts / zeros): source = Chittorgarh detail page, cross-checked shares x cap
-cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"
-')
+cd scraper && PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging" DATABASE_HOST=127.0.0.1 DATABASE_PORT=15432   DATABASE_USER=ipodhan_app DATABASE_PASSWORD="$PW" DATABASE_NAME=ipodhan_staging   npx tsx scripts/backfill-issue-size-chittorgarh-detail.ts                     # dry run (staging)
   ... --apply                                                                    # write on staging
   ... --allow-prod            (DATABASE_NAME=ipodhan)                            # prod dry run
@@ -279,7 +277,7 @@ plus a nameless `asset-reconstruction-co-india-ltd`) because the name normaliser
 runs the whole merge in one transaction.
 
 ```bash
-PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
 # 1. rehearse on staging (it usually carries the same pair)
 DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_staging"   node scripts/merge-duplicate-ipo.mjs --keep <uuid> --drop <uuid> [--set-issue-size <rupees>]
 #    ... then the same line with --apply
@@ -365,6 +363,32 @@ step 2 (`backfill-normalized-name.ts --apply`) for that table and re-run the pre
 file first fails immediately: every pre-existing `''` row on that table collides on the very first
 `ADD CONSTRAINT` (27 promoters, 326 peer_companies, 178 ipo_intermediaries in prod as of this slice),
 and the migration — and the deploy, if it were journaled — dies mid-flight.
+
+
+### 8c-note. field_sources row_key — deferred to the slice that ships the constraint swap (item 1 slice s3)
+
+Slice s3 added `field_sources.row_key` (column + widened non-unique index) but does NOT ship the
+constraint swap or retarget any upsert's `ON CONFLICT` — see this slice's commit body and
+`docs/design/build-cards/item-01-child-table-consolidated-writer.md` for the re-scope rationale
+(the original F1-gated design created a broken window: `ON CONFLICT` naming a constraint that
+doesn't exist yet before F1 is applied, and two untouched upsert paths breaking the other way once
+it is). For the slice that DOES ship the swap, record here:
+
+- **Four `field_sources` upsert sites must ALL retarget together**, in the same change that swaps
+  the constraint: `packages/shared/src/repositories/field-sources-repository.ts` and its `web/lib/`
+  copy (`trackFieldUpdate`'s `onConflictDoUpdate` target), `packages/shared/src/repositories/
+  ipo-repository.ts:1143` (the duplicate-IPO merge provenance upsert, an owner-run production
+  repair), and `scraper/scripts/lib/repair-tool.ts:222` (the shared upsert every field-repair
+  script uses). Retargeting only the repository copies while the DDL is live reproduces this
+  slice's original finding on the two paths this diff never touches.
+- **`web/scripts/apply-phase0-direct.ts:88` creates the OLD three-column constraint by hand** —
+  a bootstrap run on a fresh slot would recreate the wrong key unless that script is updated in
+  the same change.
+- **A real row key of `''` is indistinguishable from the singleton sentinel.** Nothing today
+  rejects an empty row key for a table known to hold multiple rows per IPO (e.g.
+  `financial_statements`) — the slice that ships the constraint swap must reject `rowKey === ''`
+  for such tables, or a caller that forgets to pass one silently collides with the sentinel
+  convention instead of failing loudly.
 
 ## 9. Nightly audit -> GitHub issues (live since 2026-09-07 03:45, dry-run by default)
 Cron step [4/5] runs `scripts/audit-findings-to-issues.mjs`; dry-run until `touch /root/data-audit-ipodhan/state/issues-live`
