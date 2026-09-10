@@ -277,9 +277,30 @@ export function checkRegistrarQuality(row) {
 const URL_ALPHABET = /^[A-Za-z0-9:/?#[\]@!$&'()*+,;=._~%-]+$/;
 
 export function checkCompanyWebsiteCharacters(row) {
-  const site = row.company_website;
-  if (typeof site !== 'string' || site.trim() === '') return null;
+  const raw = row.company_website;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  // TRIMMED before testing, not merely before the emptiness check. The first
+  // version tested the untrimmed string, so a trailing space - one of the most
+  // common scrape artefacts there is - was reported as URL corruption. A check
+  // that reds a nightly gate on legal data is the defect it was written to stop.
+  const site = raw.trim();
   if (URL_ALPHABET.test(site)) return null;
+
+  // An internationalised domain is LEGAL and is not corruption. .bharat is a
+  // live Indian TLD, which matters rather more on this project than most, and a
+  // unicode path is legal too. `new URL` punycodes the host and percent-encodes
+  // the path, so a URL that normalises cleanly is fine no matter how it was
+  // typed. Only something that survives normalisation still carrying an
+  // out-of-alphabet character - or that will not parse as a URL at all - is
+  // corruption.
+  try {
+    const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(site);
+    const normalised = new URL(hasScheme ? site : `https://${site}`).href;
+    if (URL_ALPHABET.test(normalised)) return null;
+  } catch {
+    // falls through to the report below: unparseable IS the finding
+  }
+
   const bad = [...new Set(Array.from(site).filter((c) => !URL_ALPHABET.test(c)))].join('');
   return `company_website contains character(s) outside the URL alphabet (${JSON.stringify(bad)}): ${site}`;
 }

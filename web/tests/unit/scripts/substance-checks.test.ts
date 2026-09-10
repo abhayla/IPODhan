@@ -25,6 +25,7 @@ import {
   SME_LOT_ECONOMICS_MIN,
   SME_LOT_ECONOMICS_MAX,
   SUBSTANCE_CHECKS,
+  checkCompanyWebsiteCharacters,
 } from '../../../../scripts/lib/substance-checks.mjs';
 
 describe('checkDateOrdering (the #41 class)', () => {
@@ -427,5 +428,50 @@ describe('SUBSTANCE_CHECKS registry', () => {
   it('marks only gmp_sanity as optional', () => {
     const optional = SUBSTANCE_CHECKS.filter((c) => c.optional).map((c) => c.key);
     expect(optional).toEqual(['gmp_sanity']);
+  });
+});
+
+describe('checkCompanyWebsiteCharacters (#582)', () => {
+  // This predicate shipped with a count-pin and NO behavioural test. A review
+  // called that a defect-fix-contract miss and it was right: a nightly gate that
+  // exits 1 had no case proving what it flags or what it lets through. It also
+  // false-positived on six shapes of legal URL, listed below as real cases.
+  const check = (site: string | null) =>
+    checkCompanyWebsiteCharacters({ company_website: site } as never);
+
+  it('flags the real corruption, and names the offending character', () => {
+    // The staging row: Hy-Tech Engineers, a brace where a "t" belongs. That host
+    // does not resolve; the corrected one answers on two public addresses.
+    const r = check('https://www.hy{echengineers.com');
+    expect(r).not.toBeNull();
+    expect(String(r)).toContain('{');
+    expect(String(r)).toContain('hy{echengineers');
+  });
+
+  it('flags a value that cannot be a URL at all', () => {
+    expect(check('http://exa mple .com/<broken>')).not.toBeNull();
+  });
+
+  it.each([
+    ['a plain host', 'https://www.hytechengineers.com'],
+    ['a trailing space, the commonest scrape artefact', 'https://www.abc.com '],
+    ['a trailing newline', 'https://www.abc.com\n'],
+    ['an internationalised host', 'https://münchen.de'],
+    // .bharat is a LIVE Indian TLD. On this project of all projects, flagging it
+    // as corruption would red the nightly gate on a legitimate Indian issuer.
+    ['an Indian IDN TLD', 'https://भारत.example.com'],
+    ['a unicode path', 'http://ex.com/path/файл.pdf'],
+    ['percent-encoding', 'https://example.com/p?q=a%20b&x=1'],
+    ['no scheme at all', 'www.hytechengineers.com'],
+  ])('does NOT flag %s', (_label, value) => {
+    expect(check(value)).toBeNull();
+  });
+
+  it.each([
+    ['null', null],
+    ['empty', ''],
+    ['whitespace only', '   '],
+  ])('ignores %s rather than flagging it', (_label, value) => {
+    expect(check(value)).toBeNull();
   });
 });
