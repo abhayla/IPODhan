@@ -633,6 +633,17 @@ jobs:
       - name: Run require-release-branch test suite
         run: bash scripts/deploy/tests/require-release-branch.test.sh
 
+      # Slice s17: deploy-linux.yml no longer triggers on push; staging is
+      # deployed by a 15-minute poll that fires only when main's head differs
+      # from the sha staging serves. Both ways that gate can break are silent
+      # - it never deploys again, or it deploys every tick - so its branches
+      # are pinned here. The suite extracts the gate's own `run:` body out of
+      # deploy-linux.yml and executes it, so an edit to the workflow is what
+      # it sees; it needs no npm install (no YAML library) and never contacts
+      # the real box (curl is stubbed, git history is a mktemp repo).
+      - name: Run staging-cadence gate test suite
+        run: bash scripts/tests/deploy-linux-schedule-gate.test.sh
+
   # Recurrence loop, part 1 (2026-09-06): the "share count stored as issue
   # size" class was fixed on one write path in August and recurred on
   # another write path in September with no check to catch it. This job
