@@ -956,3 +956,31 @@ What is needed from you: still only the password decision from 12:20.
 Automated check-runs: **15 used today of a shared 60** — eight mine, seven the other streams'. None
 failed. One of mine shows "cancelled": that is the run superseded when I re-based and re-submitted, not
 a fault.
+
+**2026-09-10 13:34 IST — tick. A check I ran gave me a confident wrong answer, again.** Item 1: **38%**,
+five of thirteen slices merged, unchanged.
+
+Twenty minutes ago I checked whether a file path was excluded from version control, got a clear "yes",
+and reported it as fact. It was wrong — the tool has a bug on this machine and answers "yes" for paths
+that do not exist at all. I only found out because the other work stream's build failed on the same
+thing and I went to check their diagnosis. Theirs was also half wrong, and the wrong half affects one of
+my own planning documents, so I have told them before they merge the fix.
+
+What settled it was embarrassingly simple: I asked the tool about a folder I made up on the spot. It
+said that was excluded too. When a check says yes, ask it something that must be no — that one trick
+would have caught three other wrong answers I have acted on today.
+
+Also this half hour: two runaway searches had been scanning the entire disk for nearly two hours. The
+half-hourly check I run to catch exactly that could never have found them, because I had written it to
+look only at two kinds of program and these were a third. It reported "nothing running" every time,
+which read as reassurance. Both killed, and the check rewritten to list everything and subtract what is
+known-good rather than search for what I already expected.
+
+The pipeline fix is green and now re-submitted against the very latest state; it merges next.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: nothing. The password decision is closed — deferred until this work finishes.
+
+Automated check-runs: **17 used today of a shared 60** — nine mine, eight the other streams'. One
+failure, and it is the other stream's build-card check described above, not a fault in my work.
