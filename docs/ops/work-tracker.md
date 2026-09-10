@@ -591,3 +591,14 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   three build documents carried a wrong marker that nobody could see locally. Fixing it took three attempts at the
   diagnosis: two of us proposed a fix that would have broken the opposite case, and the worker's own objection turned
   out to be right. A reader of ipodhan.com sees nothing from any of this. Nothing needed from you.
+- **2026-09-10 14:01 IST - item 20 complete (100% of its four parts), and a live defect now jumps the queue.** The four checks are
+  merged and genuinely running on every pull request - CI proved they run rather than silently skipping, which was
+  the one thing that could not be tested on a laptop. What they found on the way was worth more than the checks
+  themselves: a tool that had been passing everything on Windows for months, and four build documents describing a
+  file as something git ignores when it never did.
+  Next is not the queued work. The nightly check that notices when the machine did NOTHING flagged an IPO that opens
+  tomorrow and has never been looked at by the document job. The cause is now understood: the job guarantees
+  attention to IPOs that have already listed and to withdrawn ones, but guarantees nothing to an IPO that is about to
+  open, so a big enough backlog starves it every single cycle. A reader of ipodhan.com would see that as an IPO page
+  with no prospectus-derived detail on the morning it opens. The fix lands on main today; **whether it reaches the
+  live site before that IPO opens tomorrow is your deploy decision, not something this run does.**
