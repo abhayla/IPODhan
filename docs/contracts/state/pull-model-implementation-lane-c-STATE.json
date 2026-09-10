@@ -1052,6 +1052,17 @@
         "patternCONFIRMED": "The correlation is real and it is strong. Production: rows WITH a bse_ipo_no average 3.9 documents (min 0, max 6); rows WITHOUT average 0.2 (min 0, max 2). So the document pipeline effectively depends on having a BSE identifier.",
         "verdict": "Counts wrong, finding right. Recorded as pattern-confirmed-counts-corrected rather than accepted or rejected wholesale, because rejecting it on the arithmetic would have thrown away a real finding.",
         "sideObservation": "Staging carries 50 live IPO rows against production 33 - 17 more. Consistent with the duplicate and stale-row picture already recorded, and another reason a staging count is not a production count."
+      },
+      "arcilDryRun": {
+        "at": "2026-09-11 01:08 IST",
+        "db": "ipodhan_staging",
+        "tool": "scraper/scripts/repair-merge-duplicate-ipo.ts (dry-run default)",
+        "refusalPathPROVEN": "Ran first with placeholder UUIDs and it REFUSED: \"expected 2 rows in ipos for [...], found 0\". That is the refusal path lane B wanted proven before the multi-group pass, and it is proven - the tool does not proceed on rows it cannot find.",
+        "keep": "0ef10ead-ef6f-4f58-8bd5-e8adb8148511 - ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED, bse_ipo_no 7950, 5 documents, created 2026-09-05, issue_size 7,329,740,494",
+        "drop": "5677e1e9-bc90-456c-8f23-bc8affd5898d - Asset Reconstruction Co.(India) Ltd., bse_ipo_no NULL, 0 documents, created 2026-09-09, issue_size 7,329,700,000",
+        "whatItWouldDo": "33 descendant tables discovered, 30 carrying an ipo id. Fields written onto the survivor: NONE. Child rows DELETED with the dropped row, all regenerable scraper output: document_fetch_state 7, field_sources 16, ipo_pipeline_steps 52. Child rows REPOINTED (person-created, never deleted): NONE. Slug redirect /asset-reconstruction-co-india-ltd -> /asset-reconstruction-company-india-ltd.",
+        "twoObservationsWorthKeeping": "(1) The dropped row has 7 document_fetch_state rows but ZERO documents - it was ATTEMPTING document fetches and getting nothing, which is a thread for the creation-path question. (2) The two issue_size values differ by Rs40,494 (7,329,740,494 vs 7,329,700,000), so the rows were populated from different sources rather than one being a blind copy.",
+        "whyNotApplied": "Not applied. It is sanctioned on staging and the risk is genuinely low - no person-created rows would be lost. But applying advances NO goal item: item 12 DONE needs its write-path exercise, which this does not provide. The dry-run evidence is the deliverable, and applying at 01:20 would consume the evidence state for no progress."
       }
     },
     "item-03": {
@@ -1602,7 +1613,11 @@
     "2026-09-11 01:05 IST RE-MEASURED LANE B BSE-ID CLAIM ON PRODUCTION, since it arrived in the same message as the ARCIL error. Counts wrong, finding RIGHT - and I am recording it that way rather than accepting or rejecting it wholesale.",
     "2026-09-11 01:05 IST MEASURED: production has 33 live IPO rows, 14 WITH bse_ipo_no and 19 WITHOUT - not the 11/22 relayed. Staging has 50 live rows, 12 with and 38 without.",
     "2026-09-11 01:05 IST BUT THE CORRELATION IS REAL AND STRONG: on production, rows WITH a bse_ipo_no average 3.9 documents (min 0, max 6); rows WITHOUT average 0.2 (min 0, max 2). The document pipeline effectively depends on having a BSE identifier. Rejecting the claim on its arithmetic would have discarded a genuine finding, which is the opposite failure to accepting it on trust.",
-    "2026-09-11 01:05 IST SIDE OBSERVATION WORTH KEEPING: staging carries 50 live IPO rows against production 33 - seventeen more. Consistent with the duplicate and stale-row picture, and one more reason a staging count is never a production count."
+    "2026-09-11 01:05 IST SIDE OBSERVATION WORTH KEEPING: staging carries 50 live IPO rows against production 33 - seventeen more. Consistent with the duplicate and stale-row picture, and one more reason a staging count is never a production count.",
+    "2026-09-11 01:08 IST ARCIL DRY RUN DONE ON STAGING, and the tool REFUSAL PATH IS PROVEN as a side effect. I ran it first with placeholder UUIDs and it refused: \"expected 2 rows in ipos, found 0\". That is the refusal proof lane B wanted before any multi-group pass.",
+    "2026-09-11 01:08 IST WHAT THE REPAIR WOULD DO: keep 0ef10ead (5 documents, bse 7950), drop 5677e1e9 (0 documents, bse NULL, created 09-09). 33 descendant tables discovered, 30 carrying an ipo id. Fields written onto the survivor: NONE. Deleted with the dropped row, all regenerable scraper output: document_fetch_state 7, field_sources 16, ipo_pipeline_steps 52. Repointed person-created rows: NONE. Slug redirect created.",
+    "2026-09-11 01:08 IST TWO OBSERVATIONS THE DRY RUN SURFACED THAT NOBODY ASKED FOR. First, the dropped row has 7 document_fetch_state rows but ZERO documents - it was ATTEMPTING document fetches and getting nothing, which is a real thread for the creation-path question. Second, the two issue_size values differ by Rs40,494 (7,329,740,494 against 7,329,700,000), so the two rows were populated from DIFFERENT sources rather than one being a blind copy of the other.",
+    "2026-09-11 01:08 IST NOT APPLIED, and this is an evidence-based stop rather than a tired one. It is sanctioned on staging and the risk is genuinely low - no person-created rows would be lost. But applying advances NO goal item: item 12 DONE needs its write-path exercise and this does not provide it. The dry-run evidence IS the deliverable, and applying at 01:20 would consume the evidence state for no progress."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
