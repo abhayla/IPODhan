@@ -682,7 +682,8 @@
     "2026-09-10 18:51 IST DETECTION OWNERSHIP settled: the re-compute guard is lane A item 1 slice s8b under #506, and lane C does not build a second one. Consequence I have to honour: 12-B touches scraper write paths, so the recurrence gate demands a detection change or a declaration. 12-B carries the declaration naming s8b - and the reviewer must confirm s8b actually landed, because a declaration pointing at a guard that never ships is a paper check.",
     "2026-09-10 18:51 IST HAZARD nobody raised: five functions in this repo are named normalizeCompanyName, plus normalizeCompanyNameForMatching. 12-B touches company-name-normalizer.ts only and its PR body must say which one moved.",
     "2026-09-10 18:54 IST ITEM 12 CONVERGED with lane A. They withdrew the ipos-column point once I checked the table; revised 12-B accepted as written. They also took the five-namesake hazard and will key s1 and s8b to normalizeCompanyNameForMatching specifically.",
-    "2026-09-10 18:54 IST OPEN DEPENDENCY, deliberately left open rather than closed: 12-B carries a No detection change declaration pointing at lane A s8b. Honest only while s8b is real. Re-check at 12-B build time; do NOT treat as settled because it was agreed today. A declaration pointing at a guard that never lands is a paper check, and it would be a lane C PR carrying it."
+    "2026-09-10 18:54 IST OPEN DEPENDENCY, deliberately left open rather than closed: 12-B carries a No detection change declaration pointing at lane A s8b. Honest only while s8b is real. Re-check at 12-B build time; do NOT treat as settled because it was agreed today. A declaration pointing at a guard that never lands is a paper check, and it would be a lane C PR carrying it.",
+    "2026-09-10 18:54 IST GOTCHA, a false zero I nearly published. `git log origin/main --since=2026-09-10` returned ZERO commits, which would have read as \"no lane has merged today\" - flatly wrong, main took at least a dozen commits today. The refpath guard warns to sanity-check a zero with a line count, and that check is what caught it: total-commits-today came back 0, which is impossible. Re-querying with `-30` and reading the dates gave the real answer. Rule for myself: never report a zero from a filtered query without a companion query that MUST be non-zero. This is the same class as the CI query that counted pending as failed - a filter that silently matches nothing looks exactly like a clean result."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -767,5 +768,16 @@
     "Never wrap a git command in bash -c to get past a guard - the discard guard documents bash -c as out of scope, so wrapping is an accidental bypass, not a workaround.",
     "A slice with a generated migration takes its journal idx from origin/main AT MERGE TIME, never from its base; re-check a held migration branch with git merge-tree --write-tree --messages origin/main <branch> (no Actions run) immediately before its PR opens.",
     "slotAwareFlagDefault is for flags you WANT on in staging first - an UNSET var returns true when DEPLOY_SLOT=staging. Never use it for a flag specified as default-false in every slot; use the plain process.env.X === true pattern."
-  ]
+  ],
+  "mergeHold": {
+    "verifiedAt": "2026-09-10 18:54 IST",
+    "laneCLastMergeToMain": "4d28b4db at 17:39 IST (item 2 slice 3c, #499)",
+    "mainLastCommitOverall": "1efa40b3 at 17:55 IST",
+    "finding": "Lane C has merged nothing for over two hours and nothing since the hold. Repo-wide, main has not moved since 17:55. The hold is real and every lane is honouring it.",
+    "heldSlices": [
+      "2-S3b 5f26f964",
+      "2-S4 fa7f37f8",
+      "2-S5 e90d6318"
+    ]
+  }
 }
