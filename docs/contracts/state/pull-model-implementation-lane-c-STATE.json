@@ -215,7 +215,7 @@
         {
           "id": "2-S3c",
           "tier": "A",
-          "status": "IN_CI",
+          "status": "MERGED",
           "issue": 482,
           "title": "floor check treats NULL segment as unknown - declared detection change",
           "decision": {
@@ -229,7 +229,8 @@
           "commit": "5f8ead03",
           "finding": "Both halves already existed. The skip is checkIssueSizeSegmentFloor returning null when no floor is defined for the segment; the visibility finding is checkSegmentPopulatedForIpo, live as check id j_segment_not_null and correctly registered in section checks. The real gap was TEST COVERAGE - nothing proved the skip was deliberate rather than incidental. Three tests added, both halves mutation-proven.",
           "predictedConsequence": "j_segment_not_null fires on any offering_type=IPO row with a NULL segment and SKIPS non-IPO types. It passes today only because segment is MAINBOARD everywhere by default. As 3a-honest writes and the 2-S3b repair produce real NULLs, this check will go PASS -> FAIL for genuine IPO rows. That is the check WORKING, not a regression.",
-          "pr": 499
+          "pr": 499,
+          "mergeSha": "4d28b4db"
         },
         {
           "id": "2-S4",
@@ -260,7 +261,8 @@
       "mergeShas": [
         "b0c42202",
         "4e188187",
-        "2fd8a43b"
+        "2fd8a43b",
+        "4d28b4db"
       ],
       "proof": {
         "status": "OWED",
@@ -442,7 +444,8 @@
     "2026-09-10 17:33 IST STAGING MAY BE RECOVERING: lane A merged #495 \"honour the gated-drift registry in the deploy schema-drift assert\" and #489 \"restore working-directory and env dropped from the integration step\". Both landed while 2-S3c was building, and my rebase picked them up. If deploys resume, the OWED proofs for #471, #473, #483, #490 become obtainable. NOT claiming they are fixed - I have not seen a green deploy yet, and today has produced enough premature claims.",
     "2026-09-10 17:38 IST 2-S5 DISPATCHED (seed the manifest for item 3 16 Group-C fields). 2-S4 stays BLOCKED: it imports field-manifest-loader at process start and lane B #496, which fixes that loader ESM defect, is still OPEN - importing a still-broken loader is exactly the crash 2-S4 would cause.",
     "2026-09-10 17:38 IST PLAN CORRECTION I CAUGHT BY RUNNING IT, and it would have burned a worker budget: the pre-made plan says to run node docs/design/field-source-resolution.spec.mjs and diff its OUTPUT. I ran it - exit 0, ZERO bytes printed. It is a MODULE exporting F, RESOLVE(f,type), renderA1/A2 and STATS, not a script, and docs/design/check-design-consistency.mjs already consumes it. An exit 0 on no output is precisely the #461 trap. The brief now points the builder at the real exports and at the existing consumer to copy, instead of at stdout that does not exist.",
-    "2026-09-10 17:38 IST STRAY PROCESS OF MY OWN, stopped and confirmed: a repo-wide grep I ran timed out into the background and left two grep.exe processes. Killed by PID, re-checked, zero remaining. My own standing rule caught my own violation - and the deeper fix is the one already in the briefs: scope greps to a directory rather than the repo root, which is why that rule exists."
+    "2026-09-10 17:38 IST STRAY PROCESS OF MY OWN, stopped and confirmed: a repo-wide grep I ran timed out into the background and left two grep.exe processes. Killed by PID, re-checked, zero remaining. My own standing rule caught my own violation - and the deeper fix is the one already in the briefs: scope greps to a directory rather than the repo root, which is why that rule exists.",
+    "2026-09-10 17:40 IST 2-S3c MERGED as 4d28b4db via PR #499. FOUR of item 2 seven slices are now on main: 2-S1 the loader, 2-S2 the manifest, 2-S3a the honest writes plus the reader audit, 2-S3c the tests that make the unknown-segment exclusion deliberate. Verified on origin/main after merge, worktree removed, main checkout 4614 -> 4614, 0 deleted-on-disk."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
