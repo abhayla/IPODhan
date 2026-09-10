@@ -1044,3 +1044,29 @@ What a reader of ipodhan.com would notice: nothing yet.
 Automated check-runs: **27 used today of a shared 60** — fifteen mine, twelve the other streams'. No
 current failures of mine; the one showing against my work is the earlier run of a check that has since
 gone green after I fixed what it caught.
+
+**2026-09-10 14:59 IST — tick. The question I have been chasing all day is answered, and I was half
+wrong.** Item 1: **38%**, five of thirteen slices merged, unchanged.
+
+This morning 193 of 292 website tests failed on my laptop and I suspected the remote-database
+connection rather than the tests. I recorded that as *likely*, deliberately not as proven. That caution
+was worth it: the build has now run those tests against its own local database, with no remote
+connection anywhere, and **26 of 44 test files still fail**. Through the tunnel it was 40 of 44. So the
+connection explained about fourteen files and twenty-six fail regardless.
+
+Before reporting that I ruled out the thing I would most expect to have got wrong myself — that I had
+wired the build badly. Both databases it needs are declared, and the settings handed to the tests are
+byte-identical to the equivalent check that passes today. The two steps before it, the ones my earlier
+work touched, both succeeded.
+
+**What is needed from you: a second decision, and this one blocks work.** These tests had never run in
+the build before today, so this is the first honest measurement of them — old breakage made visible,
+not something broken today. But the rule we are working under says a change touching the website waits
+for these tests to pass. Read literally, nothing touching the website can now merge in any of the three
+work streams until twenty-six files are fixed. Either we fix them first, or we write down the
+twenty-six as a known baseline and require only that no *new* ones appear. I am not relaxing that rule
+on my own and not merging around it.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+Automated check-runs: **29 used today of a shared 60** — fifteen mine. No current failures of mine.
