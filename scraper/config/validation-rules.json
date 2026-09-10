@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "face_value_equity_enum",
+      "appliesTo": { "table": "ipos", "column": "face_value" },
+      "offeringTypes": ["IPO", "FPO", "RIGHTS", "IPP", "QIP", "PREFERENTIAL"],
+      "segments": ["ALL"],
+      "validFrom": null,
+      "validTo": null,
+      "assertion": "ENUM(value, [1, 2, 5, 10])",
+      "causeTemplate": "face_value {value} is not one of the equity denominations {1,2,5,10}"
+    },
+    {
+      "id": "face_value_debt_positive",
+      "appliesTo": { "table": "ipos", "column": "face_value" },
+      "offeringTypes": ["NCD", "BONDS"],
+      "segments": ["ALL"],
+      "validFrom": null,
+      "validTo": null,
+      "assertion": "RANGE(value, 0, 100000)",
+      "causeTemplate": "face_value {value} is not a positive amount within the NCD/BONDS range"
+    },
+    {
+      "id": "listing_t3",
+      "appliesTo": { "table": "ipos", "column": "listing_date" },
+      "offeringTypes": ["ALL"],
+      "segments": ["ALL"],
+      "validFrom": "2023-12-01",
+      "validTo": null,
+      "assertion": "DATE_WITHIN_WORKING_DAYS(listing_date, close_date, 3, exchange)",
+      "causeTemplate": "listing_date {value} is more than 3 working days after close_date (T+3, in force since 2023-12-01)"
+    },
+    {
+      "id": "listing_t6",
+      "appliesTo": { "table": "ipos", "column": "listing_date" },
+      "offeringTypes": ["ALL"],
+      "segments": ["ALL"],
+      "validFrom": null,
+      "validTo": "2023-11-30",
+      "assertion": "DATE_WITHIN_WORKING_DAYS(listing_date, close_date, 6, exchange)",
+      "causeTemplate": "listing_date {value} is more than 6 working days after close_date (T+6, the rule before 2023-12-01)"
+    }
+  ]
+}

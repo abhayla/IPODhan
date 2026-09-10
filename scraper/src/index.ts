@@ -54,6 +54,7 @@ import { checkCrossSourceDisagreements } from './services/cross-source-disagreem
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { FEATURE_FLAGS, validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
 import { loadFieldManifest } from './config/field-manifest-loader.js';
+import { loadValidationRules } from './config/validation-rules-loader.js';
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
@@ -572,6 +573,25 @@ export function validateFieldManifestAtStartup(
 ): void {
   if (!enabled) return;
   loadFieldManifest(manifestPath);
+}
+
+/**
+ * Item 4 slice 1 — validate `scraper/config/validation-rules.json` at process
+ * start, immediately after item 2's manifest check and for exactly the same
+ * reason: a malformed rule file must be a loud startup failure, never a wrong
+ * write-time verdict. Same shape as `validateFieldManifestAtStartup` above
+ * (explicit path + explicit enabled override so a unit test can point at a
+ * temp fixture without `vi.resetModules()`).
+ *
+ * With `ENABLE_FIELD_EXTRACTION_VALIDATION` at its default `false` this is a
+ * pure no-op — `loadValidationRules()` is never even called.
+ */
+export function validateValidationRulesAtStartup(
+  rulesPath?: string,
+  enabled: boolean = FEATURE_FLAGS.ENABLE_FIELD_EXTRACTION_VALIDATION
+): void {
+  if (!enabled) return;
+  loadValidationRules(rulesPath);
 }
 
 /**
@@ -1515,5 +1535,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   // doc comment. A malformed manifest (flag ON) throws synchronously here and
   // main() never runs, so no cycle-start log line is ever emitted.
   validateFieldManifestAtStartup();
+  // Item 4 slice 1: same contract, same reason — malformed rules fail loudly here.
+  validateValidationRulesAtStartup();
   main();
 }

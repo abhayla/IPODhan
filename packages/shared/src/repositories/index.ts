@@ -16,6 +16,12 @@ export { MarketHolidayRepository } from './market-holiday-repository';
 export { ScraperLogRepository } from './scraper-log-repository';
 export { FieldSourcesRepository } from './field-sources-repository';
 export { DataConflictsRepository } from './data-conflicts-repository';
+// Item 4 (OD-21): per-field validation failures recorded before the write.
+export { FieldExtractionFailuresRepository } from './field-extraction-failures-repository';
+export type {
+  RecordFailureInput,
+  FieldExtractionFailureRecord,
+} from './field-extraction-failures-repository';
 export { DocumentFetchStateRepository } from './document-fetch-state-repository';
 export type {
   IDocumentFetchStateStore,
