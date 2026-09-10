@@ -40,7 +40,7 @@
 // every pair NOT-YET-KEYED forever, so this check would page P2 nightly rather
 // than FAIL. That is loud, not silent, but it is not a hard gate — the
 // row-key round-trip test in the writer slice is what catches that case.
-import { normalizeCompanyNameForMatching } from './normalize-company-name.mjs';
+import { rowKeyForName } from './normalize-company-name.mjs';
 
 // GUARD (table list): the four multi-row child tables this check sweeps.
 // ipos / ipo_details / anchor_investors are singleton-shaped (row_key '' is
@@ -56,17 +56,28 @@ export const ROW_KEYED_CHILD_TABLES = [
 // GUARD (key derivation): the row_key shape per table, matching the item-01
 // card's row-key table exactly. Derived from the child row's OWN identity
 // columns, never from the denormalized normalized_name the writer stored —
-// the check must not depend on a value the path under audit wrote.
+// the check must not depend on a value the path under audit wrote. Uses
+// `rowKeyForName` — the SAME row-key function every write path and the
+// backfill use (packages/shared/src/utils/company-name-normalizer.ts) — not
+// the bare normalizer, because the bare normalizer collapses a non-empty
+// JUNK name (e.g. "----") to '' and a genuinely-keyed junk row would then
+// read as a FALSE FAIL against this check. Returns `null` when the row has
+// no identity at all (name null/empty/whitespace-only) — the caller MUST
+// skip that row rather than treat it as a missing key, because no writer
+// will ever have minted provenance for a row it was told to skip.
 export function deriveChildRowKey(tableName, row) {
   switch (tableName) {
     case 'financial_statements':
       return `${row.fiscalYear}:${row.basis}`;
     case 'promoters':
-      return normalizeCompanyNameForMatching(row.name ?? '');
-    case 'ipo_intermediaries':
-      return `${row.role}:${normalizeCompanyNameForMatching(row.name ?? '')}`;
+      return rowKeyForName(row.name ?? '');
+    case 'ipo_intermediaries': {
+      const nameKey = rowKeyForName(row.name ?? '');
+      if (nameKey === null) return null;
+      return `${row.role}:${nameKey}`;
+    }
     case 'peer_companies':
-      return normalizeCompanyNameForMatching(row.companyName ?? '');
+      return rowKeyForName(row.companyName ?? '');
     default:
       throw new Error(`deriveChildRowKey: unknown child table '${tableName}'`);
   }
@@ -198,11 +209,16 @@ export async function collectRowKeyCoverage(q) {
     const rows = await q(CHILD_ROW_SQL[tableName]);
     for (const r of rows) {
       const source = tableName === 'peer_companies' ? { companyName: r.companyNameOfPeer } : r;
+      const rowKey = deriveChildRowKey(tableName, source);
+      // No-identity row (name null/empty/whitespace-only): the writer has no
+      // key to have written provenance under, so this is not a "missing key"
+      // — it is out of the check's class entirely. Skip, don't count.
+      if (rowKey === null) continue;
       childRows.push({
         ipoId: r.ipoId,
         companyName: r.companyName,
         tableName,
-        rowKey: deriveChildRowKey(tableName, source),
+        rowKey,
       });
     }
   }

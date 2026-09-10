@@ -19,6 +19,10 @@ import {
   CHILD_ROW_SQL,
   PROVENANCE_KEYS_SQL,
 } from '../lib/row-key-coverage-checks.mjs';
+import {
+  normalizeCompanyNameForMatching,
+  rowKeyForName,
+} from '../lib/normalize-company-name.mjs';
 
 const IPO = '11111111-1111-1111-1111-111111111111';
 const IPO2 = '22222222-2222-2222-2222-222222222222';
@@ -253,4 +257,107 @@ test('peer_companies rows are keyed on the PEER company name, not on the IPO com
   assert.equal(r.status, 'FAIL');
   assert.match(r.offenders[0], /'gamma industries'/);
   assert.doesNotMatch(r.offenders[0], /'acme'/);
+});
+
+// ---- GUARD: rowKeyForName (junk-name + no-identity), not the bare normalizer -
+
+test('deriveChildRowKey uses rowKeyForName, not the bare normalizer — a junk-named promoter gets a stable junk: key, not ""', () => {
+  const key = deriveChildRowKey('promoters', { name: '(...)' });
+  assert.equal(key, rowKeyForName('(...)'));
+  assert.match(key, /^junk:[0-9a-f]{40}$/);
+  assert.notEqual(key, '');
+});
+
+test('a junk-named promoter row WITH the matching junk: provenance key PASSes (pins the derivation, not just the verdict)', () => {
+  const junkKey = rowKeyForName('(...)');
+  const r = classifyRowKeyCoverage({
+    childRows: [
+      { ipoId: IPO, companyName: 'Acme Ltd', tableName: 'promoters', rowKey: junkKey },
+      { ipoId: IPO, companyName: 'Acme Ltd', tableName: 'promoters', rowKey: 'jane roe' },
+    ],
+    provenanceKeys: [
+      prov(IPO, 'promoters', junkKey),
+      prov(IPO, 'promoters', 'jane roe'),
+    ],
+  });
+  assert.equal(r.status, 'PASS');
+  // The OLD bare-normalizer behaviour would have derived '' for '(...)' and
+  // FAILed here (no provenance row under ''). Pin the value so a regression
+  // back to the bare normalizer is caught, not just the verdict shape.
+  assert.notEqual(junkKey, '');
+});
+
+test('deriveChildRowKey returns null for a no-identity name (null/empty/whitespace) across every name-keyed table', () => {
+  assert.equal(deriveChildRowKey('promoters', { name: '   ' }), null);
+  assert.equal(deriveChildRowKey('promoters', { name: '' }), null);
+  assert.equal(deriveChildRowKey('promoters', { name: null }), null);
+  assert.equal(deriveChildRowKey('peer_companies', { companyName: '   ' }), null);
+  assert.equal(deriveChildRowKey('ipo_intermediaries', { role: 'BRLM', name: '   ' }), null);
+});
+
+test('collectRowKeyCoverage SKIPS a no-identity row rather than reporting it missing — a pair left with only 1 identifiable row drops out of the multi-row class', async () => {
+  const fakeQ = async (sql) => {
+    if (sql === CHILD_ROW_SQL.promoters) {
+      return [
+        { ipoId: IPO, companyName: 'Acme Ltd', name: 'Jane Roe' },
+        { ipoId: IPO, companyName: 'Acme Ltd', name: '   ' }, // no identity — must be skipped
+      ];
+    }
+    if (sql === PROVENANCE_KEYS_SQL) return [];
+    return [];
+  };
+  const r = await collectRowKeyCoverage(fakeQ);
+  // Only one identifiable promoter row survives, so this pair is
+  // single-row-shaped and out of the multi-row class entirely — PASS
+  // ("nothing to check"), never a reported offender for the blank row.
+  assert.equal(r.status, 'PASS');
+  assert.equal(r.multiRowPairCount, 0);
+  assert.equal(r.offenders.length, 0);
+});
+
+test('collectRowKeyCoverage SKIPS a no-identity row inside a genuinely multi-row pair — the blank row never appears as a missing key', async () => {
+  const fakeQ = async (sql) => {
+    if (sql === CHILD_ROW_SQL.promoters) {
+      return [
+        { ipoId: IPO, companyName: 'Acme Ltd', name: 'Jane Roe' },
+        { ipoId: IPO, companyName: 'Acme Ltd', name: 'Sunrise Holdings Limited' },
+        { ipoId: IPO, companyName: 'Acme Ltd', name: '' }, // no identity — must be skipped
+      ];
+    }
+    if (sql === PROVENANCE_KEYS_SQL) {
+      return [
+        { ipoId: IPO, tableName: 'promoters', rowKey: 'jane roe' },
+        { ipoId: IPO, tableName: 'promoters', rowKey: 'sunrise holdings' },
+      ];
+    }
+    return [];
+  };
+  const r = await collectRowKeyCoverage(fakeQ);
+  assert.equal(r.status, 'PASS');
+  assert.equal(r.multiRowPairCount, 1);
+  assert.equal(r.offenders.length, 0);
+});
+
+// ---- GUARD: parity with the canonical rowKeyForName -------------------------
+
+test('rowKeyForName parity: a normal name matches normalizeCompanyNameForMatching exactly', () => {
+  assert.equal(rowKeyForName('Sunrise Holdings Limited'), normalizeCompanyNameForMatching('Sunrise Holdings Limited'));
+  assert.equal(rowKeyForName('Sunrise Holdings Limited'), 'sunrise holdings');
+});
+
+test('rowKeyForName parity: distinct pure-punctuation junk names get distinct, stable junk: keys', () => {
+  const a1 = rowKeyForName('(...)');
+  const a2 = rowKeyForName('(...)');
+  const b = rowKeyForName('()');
+  assert.equal(a1, a2, 'same raw junk name must derive the same key every time');
+  assert.match(a1, /^junk:[0-9a-f]{40}$/);
+  assert.match(b, /^junk:[0-9a-f]{40}$/);
+  assert.notEqual(a1, b, 'different raw junk names must not collide');
+});
+
+test('rowKeyForName parity: null, empty and whitespace-only all return null (no identity)', () => {
+  assert.equal(rowKeyForName(null), null);
+  assert.equal(rowKeyForName(undefined), null);
+  assert.equal(rowKeyForName(''), null);
+  assert.equal(rowKeyForName('   '), null);
 });
