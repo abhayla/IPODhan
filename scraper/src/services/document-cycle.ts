@@ -1621,9 +1621,27 @@ export const PURGE_CANDIDATES_SQL = `
            i.status,
            count(s.id) FILTER (
              WHERE s.state NOT IN ('EXTRACTED', 'NOT_APPLICABLE')
-           )::int AS unread_count
+           )::int AS unread_count,
+           -- Item 18 slice 2. Documents this IPO has marked COMPLETED that
+           -- stored NO page text. Their bytes are the only copy we hold, so any
+           -- non-zero count here vetoes the purge for the whole IPO.
+           --
+           -- Measured 2026-09-10: NSE's ratios archives are newspaper
+           -- PHOTOGRAPHS - extraction runs, reports COMPLETED, and stores
+           -- nothing. Without this the purge would delete exactly those files.
+           --
+           -- Counted with a correlated NOT EXISTS rather than another LEFT JOIN:
+           -- joining document_pages would multiply the rows this GROUP BY
+           -- counts and corrupt unread_count beside it.
+           count(DISTINCT d.id) FILTER (
+             WHERE d.extraction_status = 'COMPLETED'
+               AND NOT EXISTS (
+                 SELECT 1 FROM document_pages p WHERE p.document_id = d.id
+               )
+           )::int AS textless_count
       FROM ipos i
       LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
+      LEFT JOIN documents d ON d.ipo_id = i.id
      WHERE i.offering_type = 'IPO'
        AND i.close_date IS NOT NULL
        AND (
@@ -1660,6 +1678,9 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
       closeDate: row.close_date as Date | null,
       withdrawn: status === 'WITHDRAWN' || status === 'POSTPONED',
       allDocumentsRead: Number(row.unread_count ?? 0) === 0,
+      // Item 18 slice 2: supplied, so the veto is live rather than a parameter
+      // nothing passes. An unwired guard is the class item 20's gate exists for.
+      textlessCount: Number(row.textless_count ?? 0),
       retentionDays,
       maxRetentionDays,
     });
