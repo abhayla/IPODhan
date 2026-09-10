@@ -1143,3 +1143,31 @@ What a reader of ipodhan.com would notice: still nothing. Everything so far is g
 What is needed from you: nothing.
 
 Automated check-runs: **33 used today of a shared 60** — eighteen mine. No current failures of mine.
+
+**2026-09-10 16:58 IST — tick. I broke the build, and the thing I built caught it.** Item 1: **46%**,
+six of thirteen slices merged, unchanged since 16:37.
+
+When I tidied a duplicated comment in the build file earlier, my edit removed everything between two
+lines instead of just the duplicate — taking with it the setting that tells the website tests which
+folder to run in, and the two database addresses they need. The step then ran in the wrong place,
+failed before a single test started, produced no report, and — because that step is deliberately allowed
+to fail — was displayed as a **success**.
+
+What caught it was the safeguard's refusal to accept a missing report. That refusal only exists because
+the first review of it insisted on it; the version I would have shipped would have seen no report, said
+nothing was wrong, and reported a clean result over a suite that never ran. The fix is submitted and
+four of its five checks are green.
+
+I also have to record that the same change had quietly reintroduced a fault fixed earlier today — the
+website tests being run two different ways in two places, which is what caused ninety of a hundred and
+eighty-seven files to fail this morning. I reviewed that change twice and missed it both times. Reading
+something twice is not the same as reading it against what it was meant to preserve.
+
+Meanwhile a separate, independent piece of work is running: a timezone test suite that the work contract
+tells every date-related change to run, and which has never been runnable by anyone.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: nothing.
+
+Automated check-runs: **35 used today of a shared 60**, twenty mine. No current failures of mine.
