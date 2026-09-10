@@ -620,3 +620,14 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   A reader of ipodhan.com would notice nothing today; the symptom this prevents is an IPO page with no prospectus
   detail on the morning it opens. **Nothing needs you** - the earlier note claiming two owner actions was wrong and
   has been corrected on the status page.
+- **2026-09-10 15:08 IST - item 20 done and the urgent defect fixed; item 22 now planned.** The IPO that opens tomorrow can
+  no longer be skipped by the document job, and every other waiting IPO gets a fair turn rather than one
+  winning forever. Item 22 is next: making document downloads safe and bounded -- refusing addresses that
+  resolve somewhere private, a real size limit while downloading rather than after, handling multi-part
+  filings as separate parts, and logging every refusal with its reason. Six pieces of work, planned against
+  the code rather than from memory.
+  Nothing went wrong this round. One long-standing puzzle got solved: a command that kept failing on an
+  existing folder turned out to be the same cause as this morning first mistake, six hours apart -- a path
+  format that Windows tools cannot read. Both times it showed up as a silent zero rather than an error.
+  **Nothing needs you today.** One thing will at item close: a rollback rehearsal, turning the new download
+  limits off for one cycle to prove the old path still works.
