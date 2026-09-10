@@ -135,6 +135,11 @@ change.
 **Fixtures, chosen because they were the strongest of the four:** PRASOLCHEM (5 of 6 fields, ratio
 table at pp 442–443) and KARAMTARA (peer table on pp 68/135/136/137/141, WACA on pp 109/110/147/149/517).
 
+> **BINDING, read this before writing any 8a code:** the fixture list above is superseded and
+> the parser shape is now constrained. See **"8a is header-mapped, never positional"** at the end
+> of this card. Two of the columns this card assumed are present on only one issuer each, and the
+> column ORDER is not stable across issuers.
+
 ### Item 8b — derive the three ratios, do not hunt for them printed
 
 The ratios are mostly not printed. **Every input needed to calculate them is text in all four
@@ -307,3 +312,100 @@ a forgotten list look identical.
 
 None recorded yet. A finding this item owns but does not close is written here, with its
 id and the reason — that is what stops "zero open findings" being reached by dropping one.
+
+---
+
+## 8a is header-mapped, never positional — binding constraint added 2026-09-11
+
+This section is the ruling. It supersedes the two-fixture line in the 8a scope block above, and it
+exists because I got this item wrong twice in one night and only measurement settled it.
+
+### What happened first, recorded so the constraint is not mistaken for caution
+
+The card said "peer comparison table: 4 of 4", measured by keyword. I distrusted that, re-measured,
+and filed issue #565 claiming the opposite: that an RHP carries only a Highest/Lowest/Average P/E
+summary and that eight of the ten stored peer columns are absent. **That claim was wrong and is
+withdrawn.** I had searched for the heading `comparison with listed industry peers`; the documents do
+not word it that way, my search returned zero, and I read zero hits as a fact about the document
+rather than about my pattern. The table was on the page I had already cited, further down than I read.
+
+So the card's original "4 of 4" was right, and is now confirmed by a stronger method — reading all
+four tables.
+
+### The heading is worded three ways, and the section number varies
+
+A matcher anchored on any single wording will miss at least one of these four. Use
+`comparison .{0,40} listed industry peers`, case-insensitive, whitespace-collapsed.
+
+| Issuer | Heading as printed | Section | Page |
+|---|---|---|---|
+| Karamtara | Comparison of Accounting Ratios with Listed Industry Peers | 6 | 135 |
+| PRASOLCHEM | Comparison of Accounting Ratios with Listed Industry Peers | 6 | 206 |
+| Kanohar | Comparison of **key** accounting ratios with listed industry peers | 8 | 156 |
+| Glasswall | Comparison with listed industry peers | VI | 143 |
+
+Kanohar also prints a **separate** "Comparison of KPIs with our peers listed in India" table (p.160).
+It is not this table and must not be parsed as it.
+
+### The column set and the column ORDER both vary
+
+| Column | Karamtara | PRASOLCHEM | Kanohar | Glasswall |
+|---|---|---|---|---|
+| Name of company | yes | yes | yes | yes |
+| Face value | yes | yes | yes | yes |
+| Revenue from operations | yes | yes | yes | yes |
+| NAV | yes | yes | yes | yes |
+| P/E | yes | **split D + B** | yes | yes |
+| RoNW % | yes | yes | yes | yes |
+| EPS basic / diluted | 2 cols | 2 cols | 2 cols | **1 merged col** |
+| Closing price | yes | absent | yes | yes |
+| Market cap on BSE | yes | absent | absent | absent |
+| Total income | absent | yes | absent | absent |
+| P/B | absent | absent | yes | absent |
+| EV / Operating EBITDA | absent | absent | yes | absent |
+| Profit for the year | absent | absent | absent | yes |
+| Restated/Consolidated basis | absent | absent | absent | yes |
+| EPS Class B | absent | absent | absent | yes |
+
+**Universal across all four: six columns** — name, face value, revenue from operations, NAV, P/E,
+RoNW. Nothing else can be assumed, including whether EPS is one column or two.
+
+**Order is not stable.** Revenue from operations is the **5th** column in Karamtara and the **2nd** in
+Kanohar. A positional ten-column reader takes Kanohar's revenue as a face value. It does not crash and
+it does not warn — it stores a wrong number and reports success. That is why this constraint is
+binding rather than advisory.
+
+### The rules 8a must satisfy
+
+1. Locate the section by the loose heading pattern above; then map every column by its **header text**.
+   Never by index, never by a fixed count.
+2. Drop the issuer's own row. It sits ABOVE a divider reading `Listed Peers`, `Listed peers` or
+   `Peer Group:`, and it is the company itself, not a peer.
+3. Accept **1 to 8** peer rows. Glasswall has exactly one, which is why its summary reads
+   Highest 16.54 / Lowest 16.54 / Average 16.54. A parser requiring two or more rejects a valid table.
+4. Treat `N.A.`, `NA#`, the filled-circle placeholder and empty cells as **legitimately absent**, not
+   as parse failures. The issuer's own P/E and closing price are genuinely unknown until the Offer
+   Price is fixed.
+5. Map EPS from either one merged `Basic and diluted` column or two separate ones, and **ignore** a
+   second share-class column rather than mis-binding it to EPS.
+6. Expect `market_cap`, `pb` and `closing_price` to be **null for most issuers**. That is the source's
+   nature, not a defect. A completeness check that flags them will cry wolf on every IPO.
+
+### The test that makes the constraint real
+
+A unit test that **swaps two columns in the header row of a fixture and asserts the same parsed
+output**. A positional reader passes every other test and fails only this one. Without it the
+constraint is a comment.
+
+### Committed fixtures — all four, covering all three headings
+
+| Issuer | Source | Size | Pages |
+|---|---|---|---|
+| PRASOLCHEM | `nsearchives.nseindia.com/content/ipo/RHP_PRASOLCHEM.zip` | 9,970,628 B zip | 590 |
+| Glasswall | `nsearchives.nseindia.com/content/ipo/RHP_GLASSWALL.zip` | 10,604,902 B zip | 571 |
+| Kanohar | `nsearchives.nseindia.com/content/ipo/RHP_KANOHAR.zip` | 17,203,896 B zip | 508 |
+| Karamtara | `sebi.gov.in/sebi_data/attachdocs/sep-2026/1788514905936.pdf` | 17,662,879 B | 529 |
+
+The PDFs are 9.5-17.7 MB each and are NOT committed. What must be committed is the **extracted text of
+the peer-table pages** for all four, so the parser tests run offline and the three heading wordings are
+all exercised. Two fixtures are not enough: two issuers already disagree on columns.
