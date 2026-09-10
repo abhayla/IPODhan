@@ -449,9 +449,11 @@
         },
         {
           "id": "12-E",
-          "status": "PLANNED",
+          "status": "BUILT_PUSHED",
           "tier": "A",
-          "title": "same identity rule in the grey-market source"
+          "title": "same identity rule in the grey-market source",
+          "commit": "0fafafed",
+          "branch": "feat/pm-c-item12-sE-strict-list-binding"
         },
         {
           "id": "12-D1",
@@ -791,6 +793,17 @@
         "theInterestingPart": "ZERO ambiguous matches. The fuzzy path exists to pick the best of several date matches, but exact name is already UNIQUE wherever it matches at all. So strict binding is not merely safer - it is more decisive than the thing it replaces. The 0.6 threshold is doing worse work than an exact key would.",
         "cost": "4 of 28 real records - about 14% - lose their GMP display until their names align. That is a visible, user-facing cost and it must be in the PR body by NAME, not as a percentage.",
         "doNotFixItWithTheFold": "The obvious patch is to bind on foldCompanyIdentity, which strips \"india\" and would match all four. That is wrong: the fold is deliberately COARSER and is the key a row-DELETING repair uses. Widening the binding key to the fold would merge companies that differ only by a country word. The four are a data-alignment issue to track, not a reason to loosen the key."
+      },
+      "slice12E": {
+        "at": "2026-09-10 21:49 IST",
+        "commit": "0fafafed",
+        "design": "The decision is extracted into a PURE exported chooseListBinding - no database, no logging, no I/O - mirroring computeGMPRunOutcome in the same file. matchIPOByDates was never exported and so could never be unit-tested; the decision now can be, exhaustively, without a connection.",
+        "cardCorrection": "The card specified symbol then ISIN then exact name. The source provides NEITHER a symbol NOR an ISIN, so only the last tier exists here. The PR body says so rather than implying three safety nets.",
+        "costNamed": "Four records stop showing GMP until their stored names align with the source shorter form: Jindal Supreme, Steamhouse, Asset Reconstruction, Glass Wall Systems. Named in the body, not given as a percentage.",
+        "scopeHeld": "The plus-or-minus one day date tolerance was left alone. The card asked for the similarity path only, and widening to unmeasured behaviour is how a slice grows a defect.",
+        "unreachableHandledAnyway": "UNBOUND is handled explicitly in the caller even though it is unreachable there. An invariant the compiler cannot see is exactly the kind that stops being true after an edit.",
+        "detectionDeclaration": "No detection change, with the reason: the slice only NARROWS what is written and sits behind a flag off in every slot, so it cannot introduce a new wrong-write class, only decline writes it previously made.",
+        "proof": "9 new tests including both directions of the flag on identical input - off binds a merely-similar name, on refuses it. Existing orchestrator suite unchanged, 13 of 13 together. Zero type errors in this file; main carries 99 pre-existing scraper errors and this adds none."
       }
     },
     "item-03": {
@@ -1150,7 +1163,12 @@
     "2026-09-10 21:43 IST AND THE FUZZY PATH IS NOT AN EDGE CASE. It fires only when two IPOs share BOTH dates, and that is the norm: 194 of 333 production rows (58%) sit in a shared open-plus-close date group, because SME issues routinely share a window.",
     "2026-09-10 21:43 IST THE DECIDING MEASUREMENT, against the 29 real records in the captured GMP fixture: 24 bind to exactly ONE row by exact name, ZERO are ambiguous, 5 match nothing. One of the five is a junk header row literally named NSE. FOUR are real IPOs that would stop showing GMP - Jindal Supreme, Steamhouse, Asset Reconstruction, Glass Wall Systems - each because the source uses a SHORTER name than the database.",
     "2026-09-10 21:43 IST THE MOST INTERESTING RESULT IS THE ZERO. There were no ambiguous name matches at all, so exact name is already unique wherever it matches. The 0.6 fuzzy threshold exists to pick the best of several date candidates, and it is doing worse work than an exact key would. Strict binding is not just safer here, it is more decisive than what it replaces.",
-    "2026-09-10 21:43 IST THE COST IS REAL AND MUST BE NAMED: 4 of 28 real records, about 14%, lose their GMP display until their names align. That belongs in the PR body BY NAME, not as a percentage. And it must NOT be fixed by binding on foldCompanyIdentity - the fold strips india and is the key a row-DELETING repair uses; widening the binding key to it would merge companies that differ only by a country word."
+    "2026-09-10 21:43 IST THE COST IS REAL AND MUST BE NAMED: 4 of 28 real records, about 14%, lose their GMP display until their names align. That belongs in the PR body BY NAME, not as a percentage. And it must NOT be fixed by binding on foldCompanyIdentity - the fold strips india and is the key a row-DELETING repair uses; widening the binding key to it would merge companies that differ only by a country word.",
+    "2026-09-10 21:49 IST 12-E BUILT AND PUSHED at 0fafafed - GMP list rows bind by exact name instead of a 0.6 similarity guess, flag-gated off in every slot.",
+    "2026-09-10 21:49 IST THE CARD WAS HALF FICTION AND THE PR BODY SAYS SO: it specified symbol then ISIN then exact name, but the InvestorGain source provides NEITHER a symbol NOR an ISIN. Only the last tier exists. Shipping it while implying three fallbacks would have left the next reader believing in safety nets that are not there.",
+    "2026-09-10 21:49 IST I EXTRACTED THE DECISION INTO A PURE FUNCTION because matchIPOByDates was never exported and therefore could never be unit-tested. chooseListBinding takes candidates, a name and the flag, and returns BOUND, AMBIGUOUS or UNBOUND - no database, no logging. That mirrors computeGMPRunOutcome already in the same file, so it follows the file own convention rather than inventing one.",
+    "2026-09-10 21:49 IST THE COST IS NAMED, NOT PERCENTAGED: Jindal Supreme, Steamhouse, Asset Reconstruction and Glass Wall Systems stop showing GMP until their stored names align with the source shorter form. A refused write is recoverable; a GMP printed against the wrong company is not.",
+    "2026-09-10 21:49 IST I HELD SCOPE where it would have been easy not to: the plus-or-minus one day date tolerance is untouched. The card asked for the similarity path only, and I have no measurement for the date tolerance - widening into unmeasured behaviour is how a slice grows a defect."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
