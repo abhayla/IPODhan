@@ -166,7 +166,17 @@
             "scraper/src/scrapers/chittorgarh-scraper.ts:187",
             "scraper/src/scrapers/moneycontrol-scraper.ts:278",
             "scraper/src/scrapers/bse-scraper.ts:258"
-          ]
+          ],
+          "readerAudit": {
+            "measuredAt": "2026-09-10 15:00 IST",
+            "totalComparisonSites": 89,
+            "testSites": 12,
+            "productionSites": 77,
+            "genuinelyNullUnsafe": "about 6 - the \"row.segment === SME ? SME : EQ\" pattern at backfill-demand-graph.ts:40, backfill-primary-source-documents.ts:88, backfill-subscription.ts:38, document-discovery-runner.ts:901, plus data-validation.ts:258 (SME ? 6 : 12 gap days)",
+            "alreadySafe": "47 sites use an explicit === MAINBOARD (17) or === SME (30) comparison, which simply does not match a NULL - no silent bucket. Three more handle NULL explicitly already: data-consolidation-service.ts:563 (three-way, returns null for unknown), display-nse-fields-table.ts:354 (!ipo.segment), dashboard/page.tsx:42 (undefined = no filter).",
+            "verdict": "2-S3a can stay ONE slice with the reader audit inside its DoD. The raw 77 was misleading.",
+            "concreteHarm": "A NULL-segment IPO hits the EQ (mainboard) NSE series instead of the SME series in four backfill/discovery paths - it fetches the wrong series, not merely a cosmetic mislabel."
+          }
         },
         {
           "id": "2-S3b",
@@ -319,7 +329,10 @@
     "2026-09-10 14:45 IST DIVERGENCE DECIDED BY ME, declared in the PR body rather than absorbed. The verifier caught that one capability reason string is paraphrased, not verbatim: the card says \"SEE CONTRADICTION below\", the shipped JSON names the contradiction (OD-3 retires Moneycontrol scheduling; owner decision C-1 pending). KEPT deliberately - \"below\" is a pointer into the card prose, and lifted into a standalone JSON file it points at NOTHING, sending a reader after text that does not exist. Every other field of every row matches the card verbatim, checked field by field by the reviewer including all other reason strings.",
     "2026-09-10 14:45 IST 2-S1 GAP CLOSED HERE as planned, not forgotten: nested key paths were implemented but untested in 2-S1 and declared as a known gap in its PR. 2-S2 proves them against the REAL nested manifest rather than an invented fixture - observed renderings fields.<key>.rank.MAINBOARD.1 and fields.<key>.capability.BSE.capable. Deferring a test to where the real data exists, and writing the deferral down, worked.",
     "2026-09-10 14:52 IST 2-S2 MERGED as 4e188187 via PR #483, squash. Five checks pass, mergeState CLEAN, zero non-success - read from the checks. Verified on origin/main before discarding: manifest 63 lines with all three fields (ipos.issue_size, ipo_details.fresh_issue, financial_statements.revenue), version 1, generatedFrom the spec; loader 35, schema 75, test 217. Worktree removed, 1309 links removed as links, main checkout 4602 -> 4602, 0 deleted-on-disk. Item 2 now has the loader AND the manifest on main.",
-    "2026-09-10 14:52 IST HELD WORK PRESERVED BEFORE ITS TREE DIED. 14-S2 is held indefinitely pending #482, so under worktree lifecycle R2 its tree should not sit around - but its commit existed only locally, and -Discard would have taken it. Pushed fix/pm-c-item14-s2-bse-issue-size-residue @ e4a855b8 to origin FIRST, confirmed the ref, then removed the tree. That tool is the investigator that proved both rows already correct; rebuilding its BSE sourcing logic later would be pure waste. Lane C now has exactly one worktree, the coordination tree."
+    "2026-09-10 14:52 IST HELD WORK PRESERVED BEFORE ITS TREE DIED. 14-S2 is held indefinitely pending #482, so under worktree lifecycle R2 its tree should not sit around - but its commit existed only locally, and -Discard would have taken it. Pushed fix/pm-c-item14-s2-bse-issue-size-residue @ e4a855b8 to origin FIRST, confirmed the ref, then removed the tree. That tool is the investigator that proved both rows already correct; rebuilding its BSE sourcing logic later would be pure waste. Lane C now has exactly one worktree, the coordination tree.",
+    "2026-09-10 15:00 IST READER AUDIT SCOPED, and the raw count was misleading - a number is not a reading. 89 comparison sites total, 12 in tests, 77 in production. But only about SIX are genuinely NULL-unsafe: the \"row.segment === SME ? SME : EQ\" pattern in backfill-demand-graph.ts:40, backfill-primary-source-documents.ts:88, backfill-subscription.ts:38 and document-discovery-runner.ts:901, plus data-validation.ts:258 which gives NULL the 12-day mainboard gap. 47 sites use explicit === MAINBOARD (17) or === SME (30), which simply fail to match a NULL - no silent bucket. So 2-S3a can stay ONE slice with the reader audit inside its DoD; it does not need the 2-S3a-prime split I warned about.",
+    "2026-09-10 15:00 IST THE CORRECT PATTERN ALREADY EXISTS HERE TOO, which is the second time today the fix turned out to be an in-repo precedent rather than a new design: data-consolidation-service.ts:563 does `segment === MAINBOARD ? MAINBOARD_FLOOR : segment === SME ? SME_FLOOR : null` - an explicit three-way that returns null for unknown. display-nse-fields-table.ts:354 and dashboard/page.tsx:42 also handle absence explicitly. So 2-S3a copies a shape already in the codebase at three sites.",
+    "2026-09-10 15:00 IST CONCRETE HARM, not cosmetic: a NULL-segment IPO would be queried against NSE EQ (mainboard) series instead of the SME series in four backfill and discovery paths. That fetches the WRONG DATA or none, rather than merely showing a wrong label. Worth stating in the 2-S3a brief so the builder treats those four as the load-bearing fixes."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
