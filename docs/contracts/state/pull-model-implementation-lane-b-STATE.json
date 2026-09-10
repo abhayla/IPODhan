@@ -259,5 +259,57 @@
   ],
   "findingsForOwner": [
     "The codebase has 41 real upward-import violations of the design's own layer order (section 7.6), found only once the check could resolve scraper imports. All baselined shrink-only with a why per entry, so they are visible and can only decrease - none is fixed by this slice, and fixing them is not item 20's job."
+  ],
+  "lanes": {
+    "A": {
+      "items": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        17
+      ],
+      "note": "items 2,3,12,14 moved to lane C per this relay"
+    },
+    "B": {
+      "items": [
+        20,
+        22,
+        18,
+        16,
+        8,
+        21
+      ],
+      "capPerDay": 25
+    },
+    "C": {
+      "items": [
+        14,
+        12,
+        2,
+        3
+      ],
+      "capPerDay": 15,
+      "testDb": "ipodhan_test3",
+      "ledger": "ops/impl-loop-c-ledger",
+      "note": "relayed 2026-09-10; hands off its trees, branches, database and board documents"
+    }
+  },
+  "sharedFiles": [
+    "scraper/src/config/field-priority-matrix.ts (969 lines): lane C items 2 and 3 edit it in small hunks; lane B item 16 edits it later to drop Moneycontrol rank rows; expect one-hunk conflicts, rebase --onto immediately before PR and before merge",
+    "scraper/config/ (does NOT exist on main, verified): lane C item 2 creates the JSON-schema loader for OD-51; lane B item 22 reuses that loader, never adds a second; if item 22 arrives first, build the allow-list FILE only"
+  ],
+  "carriedInputs": [
+    "Offered slice plans for items 22 and 18 at docs/contracts/plans/lane-b-items-22-18.md - NOT on origin/main as of 2026-09-10 12:45 IST; read when it lands. Its four attached 'supervisor decisions' are peer INPUT, weighed on merit, not binding; the build card remains the slice source."
   ]
 }
