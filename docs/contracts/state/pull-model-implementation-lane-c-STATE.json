@@ -395,6 +395,14 @@
           "proof": "DONE pre-merge, read-only: staging 0 stale at 19:52:56 IST (baseline for 12-B); detection proven red at 544 by mutating the deriving function. No proof debt."
         },
         {
+          "id": "12-C2",
+          "status": "BUILT_HELD",
+          "tier": "B",
+          "commit": "22d8b9be",
+          "branch": "feat/pm-c-item12-sC2-not-yet-backfilled-outcome (pushed, no PR - cap at 58)",
+          "title": "tell NOT_YET_BACKFILLED apart from STALE in the row-key invariant"
+        },
+        {
           "id": "12-B",
           "status": "PLANNED",
           "tier": "A",
@@ -610,7 +618,24 @@
         "wiring": "The unit test needs none - pr-gate runs packages/shared vitest directory-wide at line 313. The parity test IS individually listed, so it was added to pr-gate.yml INSIDE the Node 22 window and before the Node 20 restore: it uses erasable-TS type stripping, and on Node 20 the SSOT import throws and it fails loud by design. Placement is load-bearing.",
         "detectionGate": "Does not fire - no file here is under scraper/src/services, scraper/src/scrapers, field-priority-matrix.ts or scraper/scripts/*.py. No declaration needed and none claimed."
       },
-      "proofDebt": "NONE for 12-A and 12-C. Both are read-only work whose real-data proof was obtained BEFORE merge, against live databases, writing nothing. Unlike item 14 they owe no staging cycle. Stating this explicitly because merged-with-proof-owed is the default in this lane and these two are not that."
+      "proofDebt": "NONE for 12-A and 12-C. Both are read-only work whose real-data proof was obtained BEFORE merge, against live databases, writing nothing. Unlike item 14 they owe no staging cycle. Stating this explicitly because merged-with-proof-owed is the default in this lane and these two are not that.",
+      "slice12C2": {
+        "at": "2026-09-10 20:17 IST",
+        "commit": "22d8b9be",
+        "tier": "B",
+        "trigger": "Lane A hazard, verified against my own code: production has no normalized_name column, and the release sequence is migration (NOT NULL DEFAULT empty) then backfill then E1. In the window between migration and backfill every one of the ~531 prod rows reads empty, and the invariant as written reports one finding PER ROW. Technically true; practically the kind of check people learn to ignore, which means it gets ignored on the night it is right.",
+        "outcomeVocabulary": {
+          "stale": "STALE",
+          "notYetBackfilled": "NOT_YET_BACKFILLED",
+          "consolePrefix": "NOT-YET-BACKFILLED:",
+          "exportedAs": "OUTCOME_STALE and OUTCOME_NOT_YET_BACKFILLED from scripts/lib/repair-invariants/normalized-name-current.mjs"
+        },
+        "theHoleIClosed": "The ask was to report NOT-YET-BACKFILLED instead of N stale findings. The obvious reading - return ZERO for that state - is a hole: a backfill that silently never ran would then read as a CLEAN gate, which is the exact failure this invariant exists to catch. So NOT_YET_BACKFILLED returns ONE finding per table, never none. One line, not silence, and not 531.",
+        "edgeCases": "A table with no rows is not un-backfilled - nothing is waiting. A blank-name row (the documented no-identity pair) is neither stale nor evidence about the backfill, so it cannot make a populated table look un-backfilled. A MIXED table stays STALE and names every row.",
+        "tests": "The module had NO tests, which is poor for the tool a 544-row re-key is proven with. Seven added against a stub pool: all-current, un-backfilled collapses to one finding, un-backfilled still FAILS, mixed stays STALE, a single genuinely stale key, the no-identity pair, empty table. Red first - the run failed naming the missing OUTCOME_NOT_YET_BACKFILLED export.",
+        "realData": "ipodhan_staging still reads 0 after the change (it is fully backfilled), so the happy path it was originally proven on is unchanged.",
+        "wiring": "Added to pr-gate INSIDE the Node 22 window and before the Node 20 restore, verified at line 304 with the window at 256 to 306. The invariant imports rowKeyForName via erasable type stripping, so on Node 20 it cannot load and every test fails. Placement is load-bearing, not cosmetic."
+      }
     },
     "item-03": {
       "item": 3,
@@ -880,7 +905,10 @@
     "2026-09-10 20:08 IST COUNT DISCREPANCY, unresolved and flagged rather than papered over: the peer reports 55 pr-gate runs today, my query of the same workflow reports 54. One of the two filters is wrong. It matters because the cap of 58 is being planned to the single run, and an off-by-one either wastes a slot or busts the cap.",
     "2026-09-10 20:13 IST REAL RISK FOUND AND CLOSED: the three held item-2 commits existed only as local branches inside their worktrees, with no branch on origin. A worktree sweep would have destroyed finished, proven work. All three are now pushed, at zero CI cost - pr-gate triggers on pull_request only, which I verified in the workflow before pushing rather than assuming.",
     "2026-09-10 20:13 IST PRE-FLIGHT on all three held slices, done now rather than at 00:00 because a stale slice failing CI would waste a run from a fresh budget. None needs a rebase. 2-S3b: aggregate not stale, main has 73 check entries and the branch has the same 73 plus its one new one. 2-S4: touches feature-flags.ts which main also changed, but it already sits ON TOP of that change - proven with merge-base --is-ancestor, not assumed, because that file is where I previously handed a builder the wrong flag helper. 2-S5: predates lane B ESM loader fix, but its test reads the manifest JSON directly with fs and never imports the loader, so the fix cannot affect it.",
-    "2026-09-10 20:13 IST I WAS WRONG ON THE CI COUNT and the peer was right. I reported 54 and implied their 56 might be off. gh run list --created=2026-09-10 filters by the UTC day and misses runs made between 00:00 and 05:30 IST, because the IST day begins at 18:30Z on the previous date. Adopting the IST filter. The lesson is the one I keep relearning today: a filter that silently matches less than you think looks exactly like a correct answer."
+    "2026-09-10 20:13 IST I WAS WRONG ON THE CI COUNT and the peer was right. I reported 54 and implied their 56 might be off. gh run list --created=2026-09-10 filters by the UTC day and misses runs made between 00:00 and 05:30 IST, because the IST day begins at 18:30Z on the previous date. Adopting the IST filter. The lesson is the one I keep relearning today: a filter that silently matches less than you think looks exactly like a correct answer.",
+    "2026-09-10 20:17 IST 12-C2 BUILT AND HELD at 22d8b9be - the row-key invariant now tells NOT_YET_BACKFILLED apart from STALE. Pushed, no PR: the cap is at 58 and the remaining two runs are committed to lane A s6 and lane B 22-s0d.",
+    "2026-09-10 20:17 IST I DID NOT COPY THE ASK AS GIVEN, and the difference matters. The request was to report NOT-YET-BACKFILLED rather than N stale findings. Returning ZERO for that state is the obvious reading and it is a hole: a backfill that silently never ran would read as a clean gate, which is the precise failure this invariant exists to catch. So it returns ONE finding per table, never none. One line, not silence, and not 531.",
+    "2026-09-10 20:17 IST The module had NO unit tests before this, which is poor for the tool a 544-row re-key is proven with. Seven added against a stub pool, red first on the missing export. Staging still reads 0, so the happy path it was proven on is unchanged."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
