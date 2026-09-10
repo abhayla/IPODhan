@@ -36,11 +36,18 @@
  */
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { IPORepository } from '@ipodhan/shared/repositories';
+import { IPORepository, type IPOInsert } from '@ipodhan/shared/repositories';
 import { eq } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
+
+type OfferTermsUpdate = Pick<Partial<IPOInsert>, 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'>;
+
+/** Minimal shape this tool needs from a transaction-scoped repository. */
+interface OfferTermsRepo {
+  applyOfferTerms(id: string, data: OfferTermsUpdate): Promise<unknown>;
+}
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
@@ -72,6 +79,58 @@ export function deriveIssueSizeRupees(
     );
   }
   return freshIssueRupees + ofsShares * priceAtWhichOfsIsValued;
+}
+
+export interface RepairWriteTarget {
+  field: 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize';
+  from: string | number | null;
+  to: number;
+}
+
+/**
+ * Writes the `field_sources` provenance rows AND the `ipos` offer-terms
+ * update inside ONE transaction, so a throw from either half leaves nothing
+ * persisted (Tier-A review, PR #456: the two writes used to be split across
+ * a committed `db.transaction` for provenance followed by an UNGUARDED
+ * `repo.applyOfferTerms()` call outside it — a throw from the update left a
+ * provenance row on disk describing a write that never happened).
+ *
+ * `makeRepo` constructs the repository bound to the transaction handle
+ * (`tx`), never the outer `db`, so `applyOfferTerms`'s own `db.update(...)`
+ * runs on the same connection/transaction as the provenance writes.
+ */
+export async function applyRepairAtomically(
+  dbLike: { transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T> },
+  params: {
+    ipoId: string;
+    targets: RepairWriteTarget[];
+    updatedBy: string;
+    reason: string;
+    updatePayload: OfferTermsUpdate;
+    upsertFieldSourceFn: typeof upsertFieldSource;
+    makeRepo: (tx: unknown) => OfferTermsRepo;
+  }
+): Promise<void> {
+  await dbLike.transaction(async (tx) => {
+    for (const t of params.targets) {
+      await params.upsertFieldSourceFn(tx as any, {
+        ipoId: params.ipoId,
+        fieldName: t.field,
+        source: 'ADMIN',
+        confidence: 100,
+        previousValue: t.from,
+        dataLineage: {
+          reason: params.reason,
+          repairedBy: params.updatedBy,
+          repairedAt: new Date().toISOString(),
+        },
+        updatedBy: params.updatedBy,
+      });
+    }
+
+    const repo = params.makeRepo(tx);
+    await repo.applyOfferTerms(params.ipoId, params.updatePayload);
+  });
 }
 
 function readFlag(name: string): string | undefined {
@@ -112,14 +171,33 @@ async function main() {
   const freshCr = requireNumberFlag('fresh-cr');
   const ofsShares = requireNumberFlag('ofs-shares');
 
+  if (!(bandLow < bandHigh)) {
+    console.error(`--band-low (${bandLow}) must be strictly less than --band-high (${bandHigh})`);
+    process.exit(1);
+  }
+  if (!(lot > 0)) {
+    console.error(`--lot must be a positive integer, got ${lot}`);
+    process.exit(1);
+  }
+  if (!(ofsShares >= 0)) {
+    console.error(`--ofs-shares must be >= 0, got ${ofsShares}`);
+    process.exit(1);
+  }
+  if (!(freshCr >= 0)) {
+    console.error(`--fresh-cr must be >= 0, got ${freshCr}`);
+    process.exit(1);
+  }
+
   const freshIssueRupees = freshCr * 1_00_00_000; // 1 crore = 1,00,00,000 rupees
   const targetIssueSize = deriveIssueSizeRupees(freshIssueRupees, ofsShares, bandHigh);
 
-  const [ipo] = await db
+  const matches = await db
     .select({
       id: schema.ipos.id,
       companyName: schema.ipos.companyName,
       slug: schema.ipos.slug,
+      status: schema.ipos.status,
+      openDate: schema.ipos.openDate,
       priceRangeMin: schema.ipos.priceRangeMin,
       priceRangeMax: schema.ipos.priceRangeMax,
       lotSize: schema.ipos.lotSize,
@@ -127,21 +205,27 @@ async function main() {
     })
     .from(schema.ipos)
     .where(eq(schema.ipos.slug, slug))
-    .limit(1);
+    .limit(2);
 
-  if (!ipo) {
+  if (matches.length === 0) {
     console.error(`no ipos row found for slug="${slug}"`);
     process.exit(1);
   }
+  if (matches.length > 1) {
+    console.error(`slug="${slug}" resolves to more than one ipos row — refusing (this tool repairs exactly one named row)`);
+    process.exit(1);
+  }
+  const ipo = matches[0];
 
-  const targets: { field: 'priceRangeMin' | 'priceRangeMax' | 'lotSize' | 'issueSize'; from: string | number | null; to: number }[] = [];
+  console.log(`target row: ${ipo.companyName} (${ipo.slug}, id=${ipo.id}) — status=${ipo.status}, openDate=${ipo.openDate ?? 'NULL'}`);
+
+  const targets: RepairWriteTarget[] = [];
   if (ipo.priceRangeMin !== bandLow) targets.push({ field: 'priceRangeMin', from: ipo.priceRangeMin, to: bandLow });
   if (ipo.priceRangeMax !== bandHigh) targets.push({ field: 'priceRangeMax', from: ipo.priceRangeMax, to: bandHigh });
   if (ipo.lotSize !== lot) targets.push({ field: 'lotSize', from: ipo.lotSize, to: lot });
   const currentIssueSize = ipo.issueSize == null ? null : Number(ipo.issueSize);
   if (currentIssueSize !== targetIssueSize) targets.push({ field: 'issueSize', from: ipo.issueSize, to: targetIssueSize });
 
-  console.log(`row: ${ipo.companyName} (${ipo.slug}, id=${ipo.id})`);
   console.log(`derived issue size @ band cap ${bandHigh}: ${freshIssueRupees} (fresh) + ${ofsShares} (OFS shares) x ${bandHigh} = ${targetIssueSize}`);
   console.log(`fields to write (${targets.length}):`);
   for (const t of targets) {
@@ -164,30 +248,29 @@ async function main() {
   writeLedgerFile(backupPath, { capturedAt: new Date().toISOString(), ipo });
   console.log(`backup written: ${backupPath}`);
 
-  const repo = new IPORepository(db as any, getRedisClient());
+  const redisClient = getRedisClient();
 
-  const updatePayload: Record<string, number> = {};
-  for (const t of targets) updatePayload[t.field] = t.to;
-
-  await db.transaction(async (tx) => {
-    for (const t of targets) {
-      await upsertFieldSource(tx as any, {
-        ipoId: ipo.id,
-        fieldName: t.field,
-        source: 'ADMIN',
-        confidence: 100,
-        previousValue: t.from,
-        dataLineage: {
-          reason: '#453 band published after row creation',
-          repairedBy: UPDATED_BY,
-          repairedAt: new Date().toISOString(),
-        },
-        updatedBy: UPDATED_BY,
-      });
+  // `issueSize` is a drizzle `numeric` column (string-typed on the insert
+  // shape); the other three targets are plain integer columns — assign
+  // per-field rather than through a single heterogeneous indexed write.
+  const updatePayload: OfferTermsUpdate = {};
+  for (const t of targets) {
+    if (t.field === 'issueSize') {
+      updatePayload.issueSize = String(t.to);
+    } else {
+      updatePayload[t.field] = t.to;
     }
-  });
+  }
 
-  await repo.applyOfferTerms(ipo.id, updatePayload as any);
+  await applyRepairAtomically(db, {
+    ipoId: ipo.id,
+    targets,
+    updatedBy: UPDATED_BY,
+    reason: '#453 band published after row creation',
+    updatePayload,
+    upsertFieldSourceFn: upsertFieldSource,
+    makeRepo: (tx) => new IPORepository(tx as any, redisClient),
+  });
 
   const [after] = await db
     .select({
@@ -208,6 +291,13 @@ async function main() {
   const ledgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-T453/applied-${ipo.slug}.json`;
   writeLedgerFile(ledgerPath, { appliedAt: new Date().toISOString(), ipo: after, targets });
   console.log(`ledger written: ${ledgerPath}`);
+
+  if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
+    console.log(
+      'cache: production Redis was NOT invalidated through the tunnel; run DEL ipo:id:<id> ipo:slug:<slug> ' +
+        'on the prod host, or wait for the 15-minute TTL'
+    );
+  }
 
   console.log('\nAPPLY complete.');
   console.log('='.repeat(80));
