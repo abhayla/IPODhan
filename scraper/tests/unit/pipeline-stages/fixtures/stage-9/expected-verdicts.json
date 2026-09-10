@@ -8,7 +8,7 @@
     "process TZ (T-327)",
     "prospectus store dir",
     "free disk >= 2GB",
-    "node >= 20",
+    "node major matches .nvmrc pin",
     "ADMIN_API_TOKEN set"
   ],
   "scenarios": {
@@ -29,7 +29,7 @@
         "process TZ (T-327)": "OK",
         "prospectus store dir": "OK",
         "free disk >= 2GB": "OK",
-        "node >= 20": "OK",
+        "node major matches .nvmrc pin": "OK",
         "ADMIN_API_TOKEN set": "OK"
       }
     },
@@ -50,7 +50,7 @@
         "process TZ (T-327)": "OK",
         "prospectus store dir": "OK",
         "free disk >= 2GB": "OK",
-        "node >= 20": "OK",
+        "node major matches .nvmrc pin": "OK",
         "ADMIN_API_TOKEN set": "OK"
       }
     },
@@ -71,7 +71,7 @@
         "process TZ (T-327)": "OK",
         "prospectus store dir": "OK",
         "free disk >= 2GB": "OK",
-        "node >= 20": "OK",
+        "node major matches .nvmrc pin": "OK",
         "ADMIN_API_TOKEN set": "OK"
       }
     },
@@ -92,7 +92,7 @@
         "process TZ (T-327)": "FAIL",
         "prospectus store dir": "OK",
         "free disk >= 2GB": "OK",
-        "node >= 20": "OK",
+        "node major matches .nvmrc pin": "OK",
         "ADMIN_API_TOKEN set": "OK"
       }
     },
@@ -113,7 +113,7 @@
         "process TZ (T-327)": "OK",
         "prospectus store dir": "FAIL",
         "free disk >= 2GB": "OK",
-        "node >= 20": "OK",
+        "node major matches .nvmrc pin": "OK",
         "ADMIN_API_TOKEN set": "OK"
       }
     },
@@ -136,7 +136,29 @@
         "process TZ (T-327)": "OK",
         "prospectus store dir": "OK",
         "free disk >= 2GB": "OK",
-        "node >= 20": "OK",
+        "node major matches .nvmrc pin": "OK",
+        "ADMIN_API_TOKEN set": "OK"
+      }
+    },
+    "node-major-mismatch": {
+      "why": "the box runs a Node MAJOR other than the .nvmrc pin (item 23 S1): from 23-S2 the release is BUILT in CI on the pinned major, so a different major on the box runs output it was not built for - FATAL, not a warning. Without this scenario the rename above would pass while the assert itself did nothing.",
+      "input": {
+        "pdfplumber": true,
+        "tesseract": true,
+        "tz": "Asia/Kolkata",
+        "storeDir": "exists",
+        "nodeVersion": "v20.11.0",
+        "args": []
+      },
+      "exitCode": 1,
+      "verdicts": {
+        "python3 on PATH": "OK",
+        "python3 pdfplumber import": "OK",
+        "tesseract on PATH": "OK",
+        "process TZ (T-327)": "OK",
+        "prospectus store dir": "OK",
+        "free disk >= 2GB": "OK",
+        "node major matches .nvmrc pin": "FAIL",
         "ADMIN_API_TOKEN set": "OK"
       }
     }
