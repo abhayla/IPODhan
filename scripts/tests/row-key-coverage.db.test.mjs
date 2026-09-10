@@ -136,9 +136,9 @@ test('seeded PASS: the same two rows with a field_sources entry each are clean',
   assert.notEqual(result.status, 'UNVERIFIABLE', 'a row-keyed pair exists, so the run must be judged, not blind');
 });
 
-test("seeded NOT-YET-KEYED: two rows whose provenance is all under the '' default are not judged as clean", async (t) => {
+test("seeded FAIL (F-101): two rows whose provenance is all under the '' default are named as unresolved, not read as unverifiable", async (t) => {
   if (skipReason) return t.skip(skipReason);
-  const name = `S8 Unkeyed Case ${RUN} Ltd`;
+  const name = `S8 Unresolved Case ${RUN} Ltd`;
   const id = await seedIpo(name);
   await q(
     `INSERT INTO peer_companies (ipo_id, company_name, is_listed)
@@ -153,11 +153,34 @@ test("seeded NOT-YET-KEYED: two rows whose provenance is all under the '' defaul
 
   const result = await collectRowKeyCoverage(q);
   const mine = forIpo(result, id, name);
-  console.log('  [seeded NOT-YET-KEYED] status=%s myOffenders=%d', mine.status, mine.mine.length);
-  // Not reported as an offender (the writer is not keying this pair yet)...
+  console.log('  [seeded FAIL unresolved] status=%s offenders=%o', mine.status, mine.mine);
+  // field_sources rows EXIST for this pair — every one carries the ''
+  // catch-all key. A writer ran and wrote unresolved provenance for every
+  // row it touched: a real, detectable defect (F-101), not an unknowable
+  // "writer never ran" state.
+  assert.equal(result.status, 'FAIL');
+  assert.equal(mine.mine.length, 1);
+  assert.match(mine.mine[0], /peer_companies/);
+  assert.match(mine.mine[0], /'beta industries'/);
+  assert.match(mine.mine[0], /'gamma industries'/);
+});
+
+test('seeded UNVERIFIABLE: a pair with NO field_sources rows at all is not judged as clean (genuinely unknowable, F-101)', async (t) => {
+  if (skipReason) return t.skip(skipReason);
+  const name = `S8 NoProvenance Case ${RUN} Ltd`;
+  const id = await seedIpo(name);
+  await q(
+    `INSERT INTO peer_companies (ipo_id, company_name, is_listed)
+     VALUES ($1, 'Delta Industries Limited', true), ($1, 'Epsilon Industries Ltd', true)`,
+    [id]
+  );
+  // No field_sources rows inserted for this pair at all — genuinely unknown.
+
+  const result = await collectRowKeyCoverage(q);
+  const mine = forIpo(result, id, name);
+  console.log('  [seeded UNVERIFIABLE no-provenance] status=%s myOffenders=%d', mine.status, mine.mine.length);
   assert.equal(mine.mine.length, 0);
-  // ...but the pair IS counted as unjudged, so it can never read as clean.
-  assert.ok(result.notYetKeyedPairCount >= 1, 'the unkeyed pair must be counted as not-yet-keyed');
+  assert.ok(result.noProvenancePairCount >= 1, 'the un-provenanced pair must be counted as no-provenance');
 });
 
 test('seeded cross-table FAIL: a promoter and an intermediary row with no provenance are each named', async (t) => {

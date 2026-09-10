@@ -13,33 +13,39 @@
 //
 // WHAT IT ASSERTS
 // ---------------
-// For every (ipo, child table) pair holding MORE THAN ONE row, field_sources
-// must hold at least one row per (table_name, row_key) pair that the child
-// table actually contains. A derived child key with no provenance row is a
-// silently un-provenanced row.
+// For every (ipo, child table) pair holding at least one row (single-row
+// pairs included — F-101, 2026-09-11), field_sources must hold at least one
+// row per (table_name, row_key) pair that the child table actually contains.
+// A derived child key with no provenance row is a silently un-provenanced
+// row.
 //
-// THE ALL-EMPTY-KEY STATE IS **UNVERIFIABLE**, NEVER PASS
-// -------------------------------------------------------
-// No production caller passes a non-empty rowKey yet: both callers of
-// consolidateIPOData pass tableName 'ipos', and the four child tables are
-// still written directly by filing-persister. So today every child row's
-// provenance (where any exists) sits under the '' default. Calling that PASS
-// would make this check permanently, meaninglessly green through exactly the
-// transition it exists to police — indistinguishable from a broken check.
-// Calling it FAIL would make the nightly audit red from the day it merges
-// until the writer slices land, which trains readers to ignore it.
+// UNVERIFIABLE MEANS "NO PROVENANCE ROWS AT ALL", NOT "UNRESOLVED PROVENANCE"
+// ----------------------------------------------------------------------------
+// There are two genuinely different states behind "this pair's provenance
+// looks unkeyed", and only one of them is unknowable:
 //
-// So a pair whose provenance is ALL '' is neither: it is NOT-YET-KEYED, and
-// the check reports UNVERIFIABLE — a first-class state in this audit
-// (exit code 3, P2 page, never counted as a pass). The switch to enforcement
-// is automatic and per-pair: the moment field_sources holds ONE non-empty
-// row_key for a pair, that pair is judged for real. No flag to remember to
-// flip, and no way for the check to stay green by accident.
+//   1. NO field_sources rows exist for this pair at all — no writer has ever
+//      touched it. Nothing to judge. This is UNVERIFIABLE (exit code 3, P2
+//      page, never counted as a pass).
+//   2. field_sources rows DO exist for this pair, but every one of them
+//      carries the '' catch-all key. A writer ran, and wrote unresolved
+//      provenance for every row it touched. That is a real, detectable
+//      defect — the consolidated child writer's own fallback path does
+//      exactly this when consolidation fails — and it must FAIL.
 //
-// RESIDUAL LIMIT, NAMED: a writer that lands and keys NOTHING at all leaves
-// every pair NOT-YET-KEYED forever, so this check would page P2 nightly rather
-// than FAIL. That is loud, not silent, but it is not a hard gate — the
-// row-key round-trip test in the writer slice is what catches that case.
+// F-101 (2026-09-11): before this fix, both states collapsed into the same
+// "not yet keyed" bucket and both read as UNVERIFIABLE, so a writer that ran
+// and keyed nothing at all was indistinguishable from a writer that had
+// simply never run. That is the check passing on the likelier of the two
+// failure modes. The fix: only "prov.size === 0" (case 1) is UNVERIFIABLE;
+// any pair with at least one field_sources row (case 2 included) is judged
+// for real, via the same per-row join used for every other pair.
+//
+// RESIDUAL LIMIT, NAMED: a writer that lands and writes NO field_sources rows
+// at all for a pair leaves it UNVERIFIABLE forever, so this check would page
+// P2 nightly rather than FAIL. That is loud, not silent, but it is not a hard
+// gate — the row-key round-trip test in the writer slice is what catches
+// that case.
 import { rowKeyForName } from './normalize-company-name.mjs';
 
 // GUARD (table list): the four multi-row child tables this check sweeps.
@@ -119,7 +125,7 @@ const pairKey = (ipoId, tableName) => `${ipoId}|${tableName}`;
  * @param {{childRows: Array<{ipoId: string, companyName: string, tableName: string, rowKey: string}>,
  *          provenanceKeys: Array<{ipoId: string, tableName: string, rowKey: string}>}} input
  * @returns {{status: 'PASS'|'FAIL'|'UNVERIFIABLE', offenders: string[],
- *            enforcedPairCount: number, notYetKeyedPairCount: number,
+ *            enforcedPairCount: number, noProvenancePairCount: number,
  *            multiRowPairCount: number, detail: string}}
  */
 export function classifyRowKeyCoverage({ childRows, provenanceKeys }) {
@@ -139,28 +145,35 @@ export function classifyRowKeyCoverage({ childRows, provenanceKeys }) {
 
   const offenders = [];
   let enforcedPairCount = 0;
-  let notYetKeyedPairCount = 0;
+  let noProvenancePairCount = 0;
   let multiRowPairCount = 0;
 
   for (const [k, rows] of childByPair) {
-    // GUARD (multi-row filter): a table holding ONE row for an IPO is
-    // singleton-shaped for that IPO — row_key '' carries no ambiguity there,
-    // so it is out of this check's class.
-    if (rows.length <= 1) continue;
-    multiRowPairCount++;
+    // GUARD (multi-row tracking, informational only — F-101): no longer
+    // gates inclusion in the class. A single child row with an unresolved
+    // provenance key is exactly as un-provenanced as one of five, so
+    // single-row pairs are judged below like every other pair; this counter
+    // just keeps the pre-existing ">1 row" signal available in the result.
+    if (rows.length > 1) multiRowPairCount++;
 
     const prov = provByPair.get(k) ?? new Set();
-    // GUARD (enforced / not-yet-keyed split): a pair whose provenance is
-    // entirely '' has not been row-keyed by any writer yet — see the header.
-    const hasAnyRealKey = [...prov].some((rk) => rk !== '');
-    if (!hasAnyRealKey) {
-      notYetKeyedPairCount++;
+    // GUARD (enforced / no-provenance split — F-101): only a pair with ZERO
+    // field_sources rows is genuinely unverifiable — no writer has ever
+    // touched it. A pair that HAS field_sources rows, even if every single
+    // one carries the '' catch-all key, has been written to: that is a
+    // detectable defect (an all-empty writer output), not an unknowable
+    // state, so it is judged for real via the same per-pair join below.
+    if (prov.size === 0) {
+      noProvenancePairCount++;
       continue;
     }
     enforcedPairCount++;
 
     // GUARD (per-pair join): every derived child row key must be present in
-    // that pair's field_sources row_keys.
+    // that pair's field_sources row_keys. When every field_sources row for
+    // this pair carries only the '' key, every real derived key is "missing"
+    // here — which is exactly the all-empty-key defect FAILing on its own,
+    // with no separate branch needed.
     const distinctKeys = [...new Set(rows.map((r) => r.rowKey))];
     const missing = distinctKeys.filter((rk) => !prov.has(rk));
     if (missing.length) {
@@ -173,26 +186,26 @@ export function classifyRowKeyCoverage({ childRows, provenanceKeys }) {
 
   if (offenders.length) {
     return {
-      status: 'FAIL', offenders, enforcedPairCount, notYetKeyedPairCount, multiRowPairCount,
+      status: 'FAIL', offenders, enforcedPairCount, noProvenancePairCount, multiRowPairCount,
       detail: `${offenders.length} (ipo, table) pair(s) hold child rows with no per-row provenance, across ${enforcedPairCount} row-keyed pair(s)`,
     };
   }
   if (enforcedPairCount > 0) {
     return {
-      status: 'PASS', offenders, enforcedPairCount, notYetKeyedPairCount, multiRowPairCount,
+      status: 'PASS', offenders, enforcedPairCount, noProvenancePairCount, multiRowPairCount,
       detail: `checked and clean: ${enforcedPairCount} row-keyed (ipo, table) pair(s) have a field_sources row for every child row key` +
-        (notYetKeyedPairCount ? `; ${notYetKeyedPairCount} further pair(s) are not row-keyed yet and were not judged` : ''),
+        (noProvenancePairCount ? `; ${noProvenancePairCount} further pair(s) have no field_sources rows at all yet and were not judged` : ''),
     };
   }
-  if (notYetKeyedPairCount > 0) {
+  if (noProvenancePairCount > 0) {
     return {
-      status: 'UNVERIFIABLE', offenders, enforcedPairCount, notYetKeyedPairCount, multiRowPairCount,
-      detail: `nothing judgeable yet: all ${notYetKeyedPairCount} multi-row (ipo, table) pair(s) carry provenance only under the '' catch-all key — the row-keyed writer is not live, so per-row provenance cannot be judged. NOT a pass`,
+      status: 'UNVERIFIABLE', offenders, enforcedPairCount, noProvenancePairCount, multiRowPairCount,
+      detail: `nothing judgeable yet: all ${noProvenancePairCount} (ipo, table) pair(s) have no field_sources rows at all — no writer has touched them yet, so per-row provenance cannot be judged. NOT a pass`,
     };
   }
   return {
-    status: 'PASS', offenders, enforcedPairCount, notYetKeyedPairCount, multiRowPairCount,
-    detail: `nothing to check: no IPO holds more than one row in ${ROW_KEYED_CHILD_TABLES.join('/')}`,
+    status: 'PASS', offenders, enforcedPairCount, noProvenancePairCount, multiRowPairCount,
+    detail: `nothing to check: no child rows found in ${ROW_KEYED_CHILD_TABLES.join('/')}`,
   };
 }
 

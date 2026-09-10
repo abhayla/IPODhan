@@ -81,26 +81,30 @@ test('the join is scoped to the table — a provenance row on a different table 
   assert.equal(r.status, 'FAIL');
 });
 
-// ---- GUARD: enforced / not-yet-keyed split ----------------------------------
+// ---- GUARD: enforced / no-provenance split (F-101) --------------------------
 
-test("UNVERIFIABLE, never PASS: every multi-row pair carries provenance only under the '' catch-all (today's real state)", () => {
+test("FAIL, not UNVERIFIABLE: every child row's provenance exists but sits under the '' catch-all — an unresolved writer output is a real defect (F-101)", () => {
   const r = classifyRowKeyCoverage({
     childRows: [fin(IPO, '2023:RESTATED'), fin(IPO, '2024:RESTATED')],
     provenanceKeys: [prov(IPO, 'financial_statements', '')],
   });
-  assert.equal(r.status, 'UNVERIFIABLE');
-  assert.equal(r.notYetKeyedPairCount, 1);
-  assert.equal(r.enforcedPairCount, 0);
-  assert.match(r.detail, /NOT a pass/);
+  assert.equal(r.status, 'FAIL');
+  assert.equal(r.enforcedPairCount, 1);
+  assert.equal(r.noProvenancePairCount, 0);
+  assert.equal(r.offenders.length, 1);
+  assert.match(r.offenders[0], /'2023:RESTATED'/);
+  assert.match(r.offenders[0], /'2024:RESTATED'/);
 });
 
-test('a pair with NO field_sources rows at all is also not-yet-keyed, not a silent pass', () => {
+test('UNVERIFIABLE, never PASS or FAIL: a pair with NO field_sources rows at all is genuinely unknowable, not a silent pass (F-101)', () => {
   const r = classifyRowKeyCoverage({
     childRows: [fin(IPO, '2023:RESTATED'), fin(IPO, '2024:RESTATED')],
     provenanceKeys: [],
   });
   assert.equal(r.status, 'UNVERIFIABLE');
-  assert.equal(r.notYetKeyedPairCount, 1);
+  assert.equal(r.noProvenancePairCount, 1);
+  assert.equal(r.enforcedPairCount, 0);
+  assert.match(r.detail, /NOT a pass/);
 });
 
 test('one non-empty row_key flips that pair into enforcement — a half-keyed writer FAILs, it does not stay unverifiable', () => {
@@ -116,7 +120,7 @@ test('one non-empty row_key flips that pair into enforcement — a half-keyed wr
   assert.match(r.offenders[0], /'2024:RESTATED'/);
 });
 
-test('a keyed pair and an unkeyed pair together: PASS on the judged one, and the detail says the other was NOT judged', () => {
+test('a keyed pair and a genuinely no-provenance pair together: PASS on the judged one, and the detail says the other was NOT judged', () => {
   const r = classifyRowKeyCoverage({
     childRows: [
       fin(IPO, '2023:RESTATED'), fin(IPO, '2024:RESTATED'),
@@ -125,29 +129,63 @@ test('a keyed pair and an unkeyed pair together: PASS on the judged one, and the
     provenanceKeys: [
       prov(IPO, 'financial_statements', '2023:RESTATED'),
       prov(IPO, 'financial_statements', '2024:RESTATED'),
-      prov(IPO2, 'financial_statements', ''),
+      // IPO2 has NO field_sources rows at all — genuinely unjudged, distinct
+      // from IPO2 having rows that are all ''  (which would now FAIL, see
+      // the guard test above).
     ],
   });
   assert.equal(r.status, 'PASS');
   assert.equal(r.enforcedPairCount, 1);
-  assert.equal(r.notYetKeyedPairCount, 1);
-  assert.match(r.detail, /not row-keyed yet and were not judged/);
+  assert.equal(r.noProvenancePairCount, 1);
+  assert.match(r.detail, /no field_sources rows at all yet and were not judged/);
 });
 
-// ---- GUARD: multi-row filter ------------------------------------------------
+// ---- GUARD: single-row pairs enter the class too (F-101) --------------------
 
-test('a single-row pair with zero provenance is out of the class — but "nothing to check" is worded differently from "checked and clean"', () => {
+test('a single-row pair with zero provenance rows is UNVERIFIABLE, not a silent PASS — single-row pairs are judged like any other (F-101)', () => {
   const r = classifyRowKeyCoverage({
     childRows: [fin(IPO, '2024:RESTATED')],
     provenanceKeys: [],
   });
+  assert.equal(r.status, 'UNVERIFIABLE');
+  assert.equal(r.multiRowPairCount, 0);
+  assert.equal(r.noProvenancePairCount, 1);
+  assert.match(r.detail, /NOT a pass/);
+});
+
+test('a single-row pair whose one provenance row is unresolved FAILs — as un-provenanced as a multi-row pair (F-101)', () => {
+  const r = classifyRowKeyCoverage({
+    childRows: [fin(IPO, '2024:RESTATED')],
+    provenanceKeys: [prov(IPO, 'financial_statements', '')],
+  });
+  assert.equal(r.status, 'FAIL');
+  assert.equal(r.multiRowPairCount, 0);
+  assert.equal(r.enforcedPairCount, 1);
+  assert.equal(r.offenders.length, 1);
+  assert.match(r.offenders[0], /'2024:RESTATED'/);
+});
+
+test('a single-row pair with a matching provenance row PASSes', () => {
+  const r = classifyRowKeyCoverage({
+    childRows: [fin(IPO, '2024:RESTATED')],
+    provenanceKeys: [prov(IPO, 'financial_statements', '2024:RESTATED')],
+  });
   assert.equal(r.status, 'PASS');
   assert.equal(r.multiRowPairCount, 0);
+  assert.equal(r.enforcedPairCount, 1);
+  assert.equal(r.offenders.length, 0);
+});
+
+test('no child rows anywhere is "nothing to check" — worded differently from "checked and clean"', () => {
+  const r = classifyRowKeyCoverage({ childRows: [], provenanceKeys: [] });
+  assert.equal(r.status, 'PASS');
+  assert.equal(r.enforcedPairCount, 0);
+  assert.equal(r.noProvenancePairCount, 0);
   assert.match(r.detail, /nothing to check/);
   assert.doesNotMatch(r.detail, /checked and clean/);
 });
 
-test('two rows is already "more than one" — the boundary is >1, not >2', () => {
+test('two rows is already "more than one" — the multiRowPairCount boundary is >1, not >2', () => {
   const r = classifyRowKeyCoverage({
     childRows: [fin(IPO, '2023:RESTATED'), fin(IPO, '2024:RESTATED')],
     provenanceKeys: [prov(IPO, 'financial_statements', '2023:RESTATED')],
@@ -295,7 +333,7 @@ test('deriveChildRowKey returns null for a no-identity name (null/empty/whitespa
   assert.equal(deriveChildRowKey('ipo_intermediaries', { role: 'BRLM', name: '   ' }), null);
 });
 
-test('collectRowKeyCoverage SKIPS a no-identity row rather than reporting it missing — a pair left with only 1 identifiable row drops out of the multi-row class', async () => {
+test('collectRowKeyCoverage SKIPS a no-identity row rather than reporting it missing — the surviving single row is judged as its own pair, not silently passed (F-101)', async () => {
   const fakeQ = async (sql) => {
     if (sql === CHILD_ROW_SQL.promoters) {
       return [
@@ -307,11 +345,12 @@ test('collectRowKeyCoverage SKIPS a no-identity row rather than reporting it mis
     return [];
   };
   const r = await collectRowKeyCoverage(fakeQ);
-  // Only one identifiable promoter row survives, so this pair is
-  // single-row-shaped and out of the multi-row class entirely — PASS
-  // ("nothing to check"), never a reported offender for the blank row.
-  assert.equal(r.status, 'PASS');
+  // Only one identifiable promoter row survives. With no field_sources rows
+  // at all for this pair, it is genuinely un-verifiable (not a defect) —
+  // never a silent PASS, and never a false offender for the blank row either.
+  assert.equal(r.status, 'UNVERIFIABLE');
   assert.equal(r.multiRowPairCount, 0);
+  assert.equal(r.noProvenancePairCount, 1);
   assert.equal(r.offenders.length, 0);
 });
 
