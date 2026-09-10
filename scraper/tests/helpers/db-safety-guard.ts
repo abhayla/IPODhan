@@ -21,7 +21,7 @@
  */
 
 /** Known production/staging hosts for this project (T-239/T-241/T-242/T-275). */
-const KNOWN_PROD_HOST_MARKERS = ['72.61.240.224', '103.118.16.189', 'ipodhan.com'];
+export const KNOWN_PROD_HOST_MARKERS = ['72.61.240.224', '103.118.16.189', 'ipodhan.com'];
 
 /**
  * Refuses to run when the resolved Postgres target is unset, matches a known

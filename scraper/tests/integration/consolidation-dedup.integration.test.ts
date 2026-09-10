@@ -44,13 +44,17 @@ async function countRows(): Promise<number> {
   return r.rows[0].n;
 }
 
-describe('consolidation path dedup — variant name must match, not duplicate', () => {
+// Skips rather than throws when DATABASE_URL is unset, matching all nine sibling
+// integration files. Throwing made this one file FAIL a suite the others merely
+// skip, and afterAll then dereferenced an undefined pool, so the operator saw a
+// TypeError stacked on top of the real message.
+describe.skipIf(!DATABASE_URL)('consolidation path dedup — variant name must match, not duplicate', () => {
   beforeAll(() => {
-    if (!DATABASE_URL) throw new Error('DATABASE_URL not set - run this suite against ipodhan_test');
     pool = new pg.Pool({ connectionString: DATABASE_URL, max: 2, options: '-c timezone=UTC' });
     db = drizzle(pool);
   });
   afterAll(async () => {
+    if (!pool) return;
     await pool.query(`DELETE FROM ipos WHERE company_name ILIKE 'Regression Dedup Testco%'`);
     await pool.end();
   });
