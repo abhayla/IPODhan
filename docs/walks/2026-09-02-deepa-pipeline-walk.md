@@ -1795,3 +1795,35 @@ Deploying the branch alone changes nothing visible: the filing data exists only 
   it`. Item 22 is this lane's NEXT item, so that is a real, specific piece of work surfaced by the machinery rather
   than by someone reading 3,000 lines - which is exactly what the item was built for. Carried into item 22's slice
   plan.
+
+- **2026-09-10 12:15 IST [lane B] s3 Tier A round 2: MERGE NO again, CRITICAL - and this time the root cause is one line.**
+  The reviewer found why the gate is nearly blind, and it is not the map: `resolveToFile` cannot follow the
+  scraper's own import style. The scraper is ESM and writes `import ... from '../services/data-persister.js'` -
+  **437 such specifiers under `scraper/src`** - and the resolver tries the literal path, then path+extension
+  (`...data-persister.js.ts`, which never exists). It never strips `.js` and tries `.ts`. So 471 relative specifiers
+  were dropped and reported only as "unresolved ... ignored".
+  Measured by patching that ONE lookup in a scratch copy and changing nothing else:
+  edges resolved 2660 -> **3117**; unresolved relative 471 -> **14**; both-endpoints-mapped 49 -> **173**;
+  cross-module **2 -> 83**. So the committed gate evaluates **2 of the 83 cross-module edges its own map already
+  describes - 2.4%**. Not vacuous any more, but 97.6% blind, and blind in the resolver rather than the map. One of
+  the three mapped roots, `scraper/src/**`, is effectively unguarded.
+  **The supervisor's own MAJOR was confirmed independently:** the zero-edge floor tests the both-endpoints-mapped
+  TOTAL, which 47 same-module `web/lib/repositories/*` edges inflate - and a module importing itself can never fail.
+  Strip them and the real load is 2. The floor moves onto the CROSS-MODULE count and that number gets printed
+  separately, so nobody can read "49" and infer power the gate does not have.
+  Corroborating symptom, now explained: reversing the whole `layerOrder` failed (2 edges), swapping
+  `download`/`extraction` failed (1 edge), but swapping `validation`/`consolidation` **PASSED**. That was never a
+  separate bug - it is what 2.4% coverage looks like from the outside.
+  Things the review CLEARED rather than assumed, worth recording because two of them were the supervisor's own
+  suspicions and both were wrong: **no `utils` file is mapped to `read-side`** (the earlier concern is moot - seven
+  spot-checked mappings are all correct against the design's module table); `listing-performance-updater.ts`,
+  `anchor-investors-scraper.ts` and `document-classifier.ts` perform zero DB writes, so mapping them to `extraction`
+  is honest; and the empty baseline reflects a genuinely CLEAN graph rather than an unexamined one, proved by a
+  fixture showing a real upward edge does produce exit 1. The baseline's three states were each tested: real
+  violation exit 1, baselined exit 0, fabricated entry exit 2.
+  Accepted and NOT to be changed: the baseline can grow inside a single pull request. That is identical to the
+  existing `check-write-ratchet.mjs`, so it is consistent with the project rather than a new hole; changing it here
+  would fork the convention in one slice.
+  Round 3 dispatched (the contract defers a slice needing a FOURTH round, so this one is exact and narrow): fix the
+  `.js` -> `.ts` lookup, move the floor to the cross-module count and print it, keep identities on the ~14 residual
+  unresolved specifiers, and baseline - never hide - every real upward edge the better resolution surfaces.
