@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { invalidateIPOCaches } from '@/lib/cache/ipo-cache-invalidation';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 import { logger } from '@/lib/logger';
@@ -266,8 +267,10 @@ export async function POST(request: NextRequest) {
     // Create IPO using repository
     const createdIPO = await ipoRepository.create(ipoData);
 
-    // Invalidate cache patterns
-    await redis.del('ipo:list:*');
+    // Invalidate cache patterns. NOT `redis.del('ipo:list:*')` - DEL matches key
+    // names literally, so that deleted a key nothing creates while every real
+    // `ipo:list:<filterHash>` survived (#538).
+    await invalidateIPOCaches(redis, createdIPO.id, createdIPO.slug);
 
     const duration = Date.now() - startTime;
     requestLogger.info(
