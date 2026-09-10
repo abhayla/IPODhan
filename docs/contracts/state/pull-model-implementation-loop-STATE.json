@@ -838,7 +838,7 @@
     "note": "peer relayed 40/20; owner typed 60/20 directly in-session 2026-09-09 - owner value adopted",
     "status": "RESOLVED"
   },
-  "prGateCapPerDay": 60,
+  "prGateCapPerDay": null,
   "ownerBudgetQuote": "cap 60 per day, 20 tonight",
   "stagingRepairs": [
     {
@@ -957,13 +957,15 @@
       "at": "2026-09-10 15:19 IST",
       "session": "lane A",
       "verbatim": "Delta 1 section 1 approved: plan slices at 250 to 400 lines, apply review tiers as the list says, later review rounds read only the changed lines. Split into smaller pieces stands as the 400-line cap, not smaller than that."
-    }
+    },
+    "2026-09-10 ~22:2x IST: CI-run cap lifted from 60; merge on green with no daily run limit. Deploy load is handled by lane A's s12, s16, s17.",
+    "2026-09-10 ~22:1x IST: Approved: item 23, build in CI and deploy an artifact so the production server never runs npm ci or next build; lane A, after s17."
   ],
   "crossLaneMergeOrder": "lane C 12-B/12-C (function + SQL twin in one commit) -> same slice re-runs backfill-normalized-name.ts on the THREE tables that carry the stored column: peer_companies, promoters, ipo_intermediaries. There is NO ipos.normalized_name column - ipo-repository.ts's 22 references are the query-time normalizedCompanyNameSql expression (lane C's correction, verified). The re-backfill MUST run in TypeScript through rowKeyForName, never in SQL through normalizedCompanyNameSql: rowKeyForName has a junk branch (junk:<sha1> for a name that normalises to empty but is not blank) that the SQL twin lacks, and a SQL backfill would collapse every junk row to '' so they collide under E1. -> same slice re-runs the duplicate scan under the new normaliser before E1 is applied anywhere; baseline 0/0/5 measured under the old one, and the 5 on ipo_intermediaries are CORRECT rows (one bank, two roles) that must not be merged away. -> lane A writer slices s5b, s7a, s7b. Lane A s4, s6, s8, s8b are order-free. E1's apply step is gated on the re-backfill and the re-scan landing on staging.",
   "knownTestDbDrift": "ipodhan_test carries a stray heading_hash column on ipo_risk_factors, left from s6 testing on this machine. The test DB is AHEAD of origin/main. A slice that assumes ipodhan_test mirrors main can get a green that means nothing.",
   "laneAMergeOrderAfterFreeze": "s8b BEFORE s6. s6's merge condition is to add the ipo_risk_factors/heading_hash entry to the registry in scraper/tests/integration/derived-key-recompute-guard.integration.test.ts - a file that only exists once s8b has merged. Merging s6 first makes its own merge condition unsatisfiable. Then s9, which is 8 behind origin/main and needs `git rebase --onto origin/main <last-base-commit> <branch>` plus one PR-gate run before it can merge.",
   "goalCondition": "Append 'LANE A COMPLETE' as the final line of the lane A ledger (branch ops/impl-loop-ledger) only when items 1, 15, 13, 4, 5, 6, 7, 9, 10, 11 and 17 each have a DONE ledger line with proof. Reading or complying with the contract is NOT completion. A merge freeze, BLOCKED-OWNER or waiting is neither completion nor impossibility: keep working unblocked slices or wait for the owner's word. (Owner, 2026-09-10 19:4x IST, replacing the path-shaped goal the evaluator cleared at 12:52Z.)",
-  "prGateStopTonight": 55,
+  "prGateStopTonight": null,
   "stagingProofEvidence": {
     "readAt": "2026-09-10T19:5x IST",
     "database": "ipodhan_staging",
@@ -981,5 +983,6 @@
     ],
     "note": "The three E1 gated constraints are ABSENT, as designed - they are applied by hand per slot and staging has not had them. idx_ipos_slug present. So s1 and s3's columns are live on staging and today's deploys carried them; the gated DDL has not been applied anywhere. Do NOT read staging row counts as coverage: staging has 11 duplicate IPO rows prod does not (376 vs 333), pending lane C 12-C's repair."
   },
-  "worktreeAliasResolutionDefect": "#514: a worktree whose node_modules is a junction to the main checkout resolves @ipodhan/shared to MAIN's packages/shared. Any local test importing through the alias exercises main, silently. It produced a drift run that printed OK on a broken branch and a registry test that failed advising the opposite of the correct action. Relative-path imports are unaffected. INTERIM RULE: a local result from an alias-importing script in a worktree is UNVERIFIED - say so and let CI be the gate."
+  "worktreeAliasResolutionDefect": "#514: a worktree whose node_modules is a junction to the main checkout resolves @ipodhan/shared to MAIN's packages/shared. Any local test importing through the alias exercises main, silently. It produced a drift run that printed OK on a broken branch and a registry test that failed advising the opposite of the correct action. Relative-path imports are unaffected. INTERIM RULE: a local result from an alias-importing script in a worktree is UNVERIFIED - say so and let CI be the gate.",
+  "ciBudgetRule": "OWNER, typed in lane A's window 2026-09-10 ~22:2x IST: \"CI-run cap lifted from 60; merge on green with no daily run limit. Deploy load is handled by lane A's s12, s16, s17.\" This SUPERSEDES the 2026-09-09 \"cap 60 per day, 20 tonight\" and every self-imposed reserve (50/55/58). Recorded here because an hour earlier I refused to act on a PEER saying the same thing - correctly: a limit the owner typed changes only on owner-typed text. The rule did not change when the evidence changed or when a sibling asserted it; it changed when the owner typed it."
 }
