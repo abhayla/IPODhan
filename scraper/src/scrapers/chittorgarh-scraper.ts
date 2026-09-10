@@ -16,6 +16,18 @@ import { offeringTypeFromBusinessTrustName } from '../utils/data-validation.js';
 
 const CHITTORGARH_API_BASE = 'https://webnodejs.chittorgarh.com/cloud/report/data-read';
 const REPORT_ID = '82'; // IPO list report ID
+
+/**
+ * The ONLY page size report 82 accepts. Not a tuning knob - measured against the
+ * live endpoint on 2026-09-11: 10 returns HTTP 200 with ALL 231 rows (the report
+ * ignores the page size), while 20, 50, 100 and 300 each return HTTP 200 with
+ * ZERO rows and `error: "Invalid API Call<year>-<perPage>-01"`.
+ *
+ * That failure is silent in the worst way - a 200 with an empty list reads as
+ * "no IPOs today" rather than as a broken call. The previous default of 100 was
+ * exactly this landmine: it worked only because the single caller passed 10.
+ */
+export const REPORT82_PAGE_SIZE = 10;
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_RANGE = `${CURRENT_YEAR}-${(CURRENT_YEAR + 1) % 100}`; // e.g., "2025-26"
 
@@ -294,7 +306,7 @@ function determineStatus(
  */
 async function fetchChittorgarhAPI(
   page: number = 1,
-  perPage: number = 100,
+  perPage: number = REPORT82_PAGE_SIZE,
   category: string = 'all'
 ): Promise<ChittorgarhAPIResponse> {
   const url = `${CHITTORGARH_API_BASE}/${REPORT_ID}/${page}/${perPage}/${CURRENT_YEAR}/${YEAR_RANGE}/0/${category}/0?search=&v=15-11`;
@@ -348,9 +360,10 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
   try {
     logger.info({ url: CHITTORGARH_API_BASE }, 'Starting Chittorgarh IPO scraper (API version)');
 
-    // Fetch data with retry logic (API accepts perPage: 10, 20, 30...)
+    // Fetch with retry. The page size is REPORT82_PAGE_SIZE and nothing else works
+    // - see its comment; any other value returns 200 with zero rows.
     const apiData = await retryWithExponentialBackoff(
-      () => fetchChittorgarhAPI(1, 10, 'all'),
+      () => fetchChittorgarhAPI(1, REPORT82_PAGE_SIZE, 'all'),
       3,
       1000
     );
