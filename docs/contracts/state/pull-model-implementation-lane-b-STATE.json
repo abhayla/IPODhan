@@ -44,7 +44,7 @@
           "sha": "b8bf7202",
           "tier": "A",
           "reviewRounds": 2,
-          "reviewVerdict": "round 1 MERGE NO (2 MAJOR) -> fix b8bf7202 -> round 2 in flight"
+          "reviewVerdict": "round 2 MERGE YES; both MAJORs closed and mutation-proved; 2 MINOR reporting gaps being folded in before merge"
         },
         {
           "k": "s2",
@@ -181,7 +181,8 @@
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
-    "MINOR 3 deferred by reviewer ruling: the IMPLEMENTS_TAG fixture workaround stays for slice 1; the structural fix (opt-out marker or excluded __fixtures__/ segment) must land with the MODE2_ENFORCE flip at build item 6."
+    "MINOR 3 deferred by reviewer ruling: the IMPLEMENTS_TAG fixture workaround stays for slice 1; the structural fix (opt-out marker or excluded __fixtures__/ segment) must land with the MODE2_ENFORCE flip at build item 6.",
+    "item 20 s1 accepted MINOR (reviewer, round 2): if ONE of four default test roots is renamed the check still exits 0 for the rest, so mode 3 is unarmed for that root alone; visible via the summary line's root list and 0 declarations, but not fatal. Candidate for the mode-2 flip slice at build item 6."
   ],
   "defects": [
     {
