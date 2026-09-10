@@ -926,3 +926,33 @@ What is needed from you: still the one decision from earlier — whether to chan
 password after a worker printed it into its own log.
 
 Automated check-runs: **11 used today of a shared 60** — six mine, five the other stream's, none failed.
+
+**2026-09-10 13:05 IST — tick. I had been keeping the record where you could not read it.** Item 1:
+**38%**, five of thirteen slices merged, unchanged.
+
+The biggest thing this half hour was not code. Every entry in this tracker, and every note in the run's
+state file, existed only on this laptop — 38 commits on a branch I had never pushed. So none of it was
+readable in the project itself. It also meant the third work stream, whose start-up check reads that
+branch to see whether its items have been released, would have stopped with the wrong explanation:
+"branch missing" rather than "not released yet". Right outcome, misleading reason, and someone would
+have spent time chasing the wrong thing. Pushed now, after checking all 38 commits for anything
+sensitive first.
+
+I also have to correct myself. I told you, twice, that the file-formatting problem was what split three
+shell commands in half in the operations notes. That was wrong. The commands are genuinely broken, and
+the formatting problem is genuinely real, but one did not cause the other — checked byte by byte after
+a reviewer challenged the explanation rather than the behaviour. Every test of that rule passed; only my
+stated reason for it was false, and it had already spread into two other documents before anyone tested
+it. The rule stays, its written reason is fixed, and the note now names the wrong explanation explicitly
+so the next reader is not misled by mine.
+
+Also fixed: a flag left deliberately empty by a broken deploy template would have quietly switched a
+feature on. It now refuses and says which template variable to fix.
+
+What a reader of ipodhan.com would notice: nothing yet.
+
+What is needed from you: still only the password decision from 12:20.
+
+Automated check-runs: **15 used today of a shared 60** — eight mine, seven the other streams'. None
+failed. One of mine shows "cancelled": that is the run superseded when I re-based and re-submitted, not
+a fault.
