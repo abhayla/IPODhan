@@ -412,7 +412,9 @@
             "read-only; no writes to any slot"
           ],
           "orderingHazardNotStatedByLaneC": "s13 can be BUILT any time but can only be MEANINGFULLY RUN on a slot where s6's column exists AND its backfill has run. The column ships NOT NULL DEFAULT '', so between the migration and the backfill all ~2130 rows read '' and the invariant would report every one of them stale - correct but useless, and it trains people to ignore the check. The module must distinguish NOT-YET-BACKFILLED from STALE and say which, or recipe 8d must forbid running it before step 2. Prefer the module doing it: a runbook instruction is a thing people skip, a distinct exit is a thing they cannot.",
-          "whyItIsWorthBuilding": "After #508 and #511, normalized_name has BOTH a CI-side guard and a runtime invariant; heading_hash has only the CI-side one. The asymmetry is the argument - not precedent in the abstract, but a named twin the sibling column has and this one does not."
+          "whyItIsWorthBuilding": "After #508 and #511, normalized_name has BOTH a CI-side guard and a runtime invariant; heading_hash has only the CI-side one. The asymmetry is the argument - not precedent in the abstract, but a named twin the sibling column has and this one does not.",
+          "dependsOn": "Lane C adds the NOT-YET-BACKFILLED outcome to normalized-name-current.mjs FIRST (prod is in exactly that window at the next release: 531 rows, column absent today) and replies with the exact outcome string. s13 copies that string so the two modules share one vocabulary.",
+          "sharedVocabularyMustBeEnforced": "Copying a string is a convention and conventions decay. Whichever module lands second must IMPORT the constant rather than retype it, or carry a test asserting the two are equal. Otherwise a consumer grepping for one outcome silently misses the other, and the two modules drift into two vocabularies while looking like one. Same class as every other failure today: a mechanism holds, a convention does not."
         }
       ],
       "prs": [
