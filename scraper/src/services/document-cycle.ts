@@ -200,6 +200,14 @@ export const RESERVATION_CEILING_MS = 3 * 60 * 1000;
  */
 export const UPCOMING_RESERVE_SLOTS = 1;
 
+/**
+ * MAJOR-1 (#468 round 2): the two `stage` values `lifecycleRank` maps to
+ * rank 2 (UPCOMING/PRE_OPEN) — shared by `enrichRotatingCandidates`'s rank-2
+ * call and `loadCandidateIpos`'s unenriched-drop, so the stage list lives in
+ * exactly one place rather than being re-typed at each call site.
+ */
+const RANK2_STAGES = new Set(['UPCOMING', 'PRE_OPEN']);
+
 /** `DOCUMENT_CYCLE_WAKE_BUDGET_MS` env override, default `DEFAULT_WAKE_BUDGET_MS`. */
 export function getWakeBudgetMs(): number {
   const raw = process.env.DOCUMENT_CYCLE_WAKE_BUDGET_MS;
@@ -575,6 +583,19 @@ export function orderAndCapCandidates(
       const rb = lifecycleRank(b.c);
       if (ra !== rb) return ra - rb;
       if (ra === 2) {
+        // MAJOR-1 (#468 round 2): mirror rank 3's rotation key so the single
+        // reserved slot (`UPCOMING_RESERVE_SLOTS`) advances across cycles
+        // instead of the same soonest-opening row winning it forever. A row
+        // the reservation actually processes bumps its `lastActivityAt`
+        // (`enrichRotatingCandidates`), so it rotates behind every other
+        // still-untouched rank-2 row on the next cycle — exactly the
+        // guarantee rank 3 already has (see `compareByActivity`'s comment).
+        const byActivity = compareByActivity(a.c.lastActivityAt, b.c.lastActivityAt);
+        if (byActivity !== 0) return byActivity;
+        // MINOR-2: now only a tie-break among equally-rotated (usually both
+        // never-touched) rows, not the primary key — see this function's
+        // MINOR-2 note below for why a NULLS-FIRST special case here is not
+        // needed on top of the rotation key.
         const byOpenDate = compareByDate(a.c.openDate, b.c.openDate, 'asc');
         if (byOpenDate !== 0) return byOpenDate;
       } else if (ra === 3) {
@@ -611,6 +632,19 @@ export function orderAndCapCandidates(
         listedSeen++;
       } else {
         listedDeferred++;
+      }
+    } else if (lifecycleRank(c) === 2) {
+      // MAJOR-1 (#468 round 2): mirror the LISTED alreadyComplete drop above
+      // — a rank-2 row with nothing left to do (FOUND/NOT_APPLICABLE/
+      // SUPERSEDED, or every open row still in retry backoff) costs zero
+      // network calls, so letting it hold the single reserved slot forever
+      // purely because it opens soonest would defeat the rotation fix above.
+      // Unlike LISTED there is NO cap here (rule 4: the cap never removes
+      // OPEN/CLOSED/UPCOMING/WITHDRAWN/POSTPONED candidates) — this is
+      // purely the "nothing to do" drop, not a capacity limit, so every
+      // rank-2 row with real work due still enters `candidates`.
+      if (c.alreadyComplete !== true) {
+        capped.push(c);
       }
     } else {
       capped.push(c);
@@ -671,19 +705,37 @@ export function orderAndCapCandidates(
  * Also stores the computed `CyclePlan` on `c.precomputedPlan` (MAJOR-2) so
  * `runIpo` does not run `planIpoCycle` a second time for the same rows.
  */
-async function enrichListedCandidates(
+/**
+ * MAJOR-1 (#468 round 2): generalized from the LISTED-only `enrichListedCandidates`
+ * so rank-2 (UPCOMING/PRE_OPEN) candidates can be given the SAME rotation
+ * timestamp + already-complete decision that rank-3 (LISTED) already has,
+ * rather than a parallel implementation. `stages` selects which candidates
+ * this call enriches; `maxToEnrich === Infinity` (rank 2's call, below)
+ * disables the incomplete-count bound entirely — rank 2 is the live,
+ * time-sensitive tier (never a backlog to ration like LISTED, per
+ * `lifecycleRank`'s doc comment), so every rank-2 row in the live window is
+ * enriched, not just the first N incomplete ones.
+ *
+ * LISTED's call site is unchanged in every observable way: `stages: {LISTED}`
+ * and the same `listedCap * 4` bound reproduce the exact behavior
+ * `enrichListedCandidates` had before this generalization.
+ */
+async function enrichRotatingCandidates(
   candidates: DiscoveryIpo[],
   deps: {
     store: Pick<DocumentFetchStateRepository, 'listForIpo'>;
     documents: Pick<DocumentRepository, 'findByIPO'>;
   },
+  stages: ReadonlySet<string>,
   maxToEnrich: number
 ): Promise<{ enriched: number }> {
   let enriched = 0; // total rows VISITED (complete + incomplete) — the return value
   let incompleteSeen = 0; // rows that actually consume the maxToEnrich bound
-  const visitCeiling = Math.max(maxToEnrich, LISTED_ENRICH_VISIT_CEILING);
+  const visitCeiling = Number.isFinite(maxToEnrich)
+    ? Math.max(maxToEnrich, LISTED_ENRICH_VISIT_CEILING)
+    : Infinity;
   for (const c of candidates) {
-    if (c.stage !== 'LISTED') continue;
+    if (!stages.has(c.stage)) continue;
     if (incompleteSeen >= maxToEnrich) break;
     if (enriched >= visitCeiling) break;
 
@@ -849,17 +901,32 @@ export async function loadCandidateIpos(deps: {
     }));
 
   // W-124: LISTED-only enrichment (rotation timestamp + already-complete),
-  // BEFORE ordering/capping — see `enrichListedCandidates`. W-124 round 2
+  // BEFORE ordering/capping — see `enrichRotatingCandidates`. W-124 round 2
   // (MAJOR-2): bounded to `listedCap * 4` LISTED rows so the N+1 enrichment
   // loop cannot outgrow the backlog before the discovery budget even starts.
   const listedCap = getListedCap();
-  const { enriched: listedEnriched } = await enrichListedCandidates(candidates, deps, listedCap * 4);
+  const { enriched: listedEnriched } = await enrichRotatingCandidates(
+    candidates,
+    deps,
+    new Set(['LISTED']),
+    listedCap * 4
+  );
+
+  // MAJOR-1 (#468 round 2): the SAME enrichment for rank 2 (UPCOMING/PRE_OPEN)
+  // — mirrors the LISTED call directly above rather than a parallel
+  // implementation. No bound (`Infinity`): rank 2 is the live, time-sensitive
+  // tier, never a backlog to ration (see `lifecycleRank`'s doc comment), and
+  // the live-window filter above already keeps this population small.
+  await enrichRotatingCandidates(candidates, deps, RANK2_STAGES, Infinity);
 
   // MAJOR-2: a LISTED row past the enrichment bound has no rotation
   // timestamp and no `alreadyComplete`/`precomputedPlan` decision — offering
   // it to `orderAndCapCandidates` un-enriched would either wrongly consume a
   // cap slot or wrongly skip it, so it is dropped from `candidates` entirely
-  // (deferred whole, same as a capped-out row) and counted separately.
+  // (deferred whole, same as a capped-out row) and counted separately. Rank 2
+  // has no such bound (enriched with `Infinity` above), so every rank-2 row
+  // reaching here already has an `alreadyComplete` decision and this filter
+  // is a no-op for it.
   let listedSkippedUnenriched = 0;
   const boundedCandidates = candidates.filter((c) => {
     if (c.stage !== 'LISTED') return true;
