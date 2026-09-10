@@ -113,6 +113,18 @@ export const FEATURE_FLAGS = {
   ENABLE_CONFLICT_DETECTION: process.env.ENABLE_CONFLICT_DETECTION === 'true',
 
   /**
+   * Item 12 slice D: log LIVE rows that fold to one company identity on the
+   * same open date. OBSERVE ONLY - never merges, never writes, and cannot
+   * change which row resolveIpoRow returns.
+   *
+   * Plain `=== 'true'` on purpose, NOT slotAwareFlagDefault(): that helper
+   * returns true on staging when unset, and this must be OFF in every slot
+   * until someone sets it. Read by packages/shared (which cannot import this
+   * file); this entry is the discoverable registration.
+   */
+  ENABLE_DISCOVERY_DUPLICATE_CHECK: process.env.ENABLE_DISCOVERY_DUPLICATE_CHECK === 'true',
+
+  /**
    * Enable data consolidation service
    * When enabled, uses smart merging with priority matrix
    * Default: false (Phase 1)
