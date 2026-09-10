@@ -651,3 +651,13 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   security fix and restored the vulnerable version. It surfaced as an unrelated-looking test failure. The rule
   that would have prevented it already existed and was not followed; it is now a hard prohibition.
   A reader of ipodhan.com sees nothing from this. **Nothing needs you today.**
+- **2026-09-10 16:08 IST - the download-safety work is in its final review.** Three build rounds and three reviews on one
+  piece, and every review found something real: an address that was blocked when written one way and allowed
+  when written another; then a guard that worked but had no test, so anyone could delete it and every test
+  would still pass; then the same thing again on the address attackers target most. All fixed and now pinned
+  by tests that fail if the guards are removed.
+  One thing the worker did that is worth more than the fix: a change it could not prove with a test, it
+  reported as unproven rather than inventing a test that would pass without checking anything. The final
+  review is now checking whether a COMMENT tells the truth about what the code actually blocks -- because the
+  original comment claimed more protection than existed, and that is what makes a future reader stop looking.
+  A reader of ipodhan.com sees nothing from this. **Nothing needs you today.**
