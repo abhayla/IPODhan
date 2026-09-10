@@ -124,7 +124,43 @@
       "blockedBy": [
         "#472",
         "#482"
-      ]
+      ],
+      "stagingProofAttempt": {
+        "at": "2026-09-10 20:25 IST",
+        "verdict": "PROOF DOES NOT HOLD. Item 14 stays MERGED-UNPROVEN.",
+        "how": "node scripts/audit-detection-floor.mjs against ipodhan_staging through the tunnel, read-only, 20:18:28 IST.",
+        "result": "c_issue_size_consistency PASS, 0 violations. c_issue_size_floor FAIL, 3 violations. The card requires BOTH to read PASS with zero violations for BSE-sourced rows, so the proof fails.",
+        "decomposition": "THREE violations, THREE DIFFERENT CAUSES. My first hypothesis - that this was a segment mislabel wearing an issue-size costume - is only ONE of the three. Recording that correction rather than the tidier story.",
+        "rows": [
+          {
+            "name": "NIRBHAY COLOURS INDIA LTD",
+            "segment": "MAINBOARD",
+            "segmentProvenance": "NONE - unprovenanced",
+            "issueSize": "Rs1,47,97,000",
+            "issueSizeSource": "BSE",
+            "verdict": "SEGMENT finding, not issue size. It clears the SME floor and fails only the MAINBOARD floor, and the MAINBOARD label has no source. price_max 10 with lot 100 is a small-issue shape. Owner: the segment provenance work (issue #482, slices 2-S3b / 2-S3b2), not item 14."
+          },
+          {
+            "name": "STALLION INDIA FLUOROCHEMICALS LTD",
+            "segment": "MAINBOARD",
+            "segmentProvenance": "CHITTORGARH - SOURCED",
+            "issueSize": "Rs4,33,20,000",
+            "issueSizeSource": "CHITTORGARH",
+            "verdict": "NOT a segment finding - the MAINBOARD label IS sourced. It clears the SME floor but the label is not in doubt, so the issue size is. price_max of 10 alongside lot 4000 looks like a FACE VALUE stored where a price band belongs. HYPOTHESIS, not measured: needs its own check before anyone repairs it."
+          },
+          {
+            "name": "PIYUSH LIMITED",
+            "segment": "MAINBOARD",
+            "segmentProvenance": "NONE - unprovenanced",
+            "issueSize": "Rs70,07,320",
+            "issueSizeSource": "BSE",
+            "verdict": "GENUINE issue-size finding and it fails BOTH floors - Rs70 lakh is under even the Rs1 crore SME floor, so relabelling cannot rescue it. Rs70,07,320 divided by price_max 668 is exactly 10,490 shares, which is the #472 case I investigated earlier where BSE reports exactly 10,490. Squarely item 14 territory: a BSE share count that does not cover the whole issue."
+          }
+        ],
+        "correctionToMyself": "I told the peer that two of the three names were on my unprovenanced-segment list and implied the finding was therefore a segment defect. Two ARE unprovenanced (NIRBHAY and PIYUSH) but only ONE of those (NIRBHAY) is EXPLAINED by segment. PIYUSH fails both floors, so its label is irrelevant to its violation. Two-unprovenanced and two-explained-by-segment are different claims and I ran them together.",
+        "whoOwnsWhat": "1 of 3 belongs to the segment work. 2 of 3 belong to issue size, and of those, PIYUSH is item 14 own class (BSE share count not covering the full issue) while STALLION looks like a price-band defect and needs measuring before it is claimed.",
+        "nextStep": "Item 14 remains MERGED-UNPROVEN until c_issue_size_floor reads GONE for these names. That needs the segment repair for NIRBHAY and a real fix for PIYUSH. Neither is tonight work and neither should be rushed."
+      }
     },
     "item-02": {
       "item": 2,
@@ -908,7 +944,11 @@
     "2026-09-10 20:13 IST I WAS WRONG ON THE CI COUNT and the peer was right. I reported 54 and implied their 56 might be off. gh run list --created=2026-09-10 filters by the UTC day and misses runs made between 00:00 and 05:30 IST, because the IST day begins at 18:30Z on the previous date. Adopting the IST filter. The lesson is the one I keep relearning today: a filter that silently matches less than you think looks exactly like a correct answer.",
     "2026-09-10 20:17 IST 12-C2 BUILT AND HELD at 22d8b9be - the row-key invariant now tells NOT_YET_BACKFILLED apart from STALE. Pushed, no PR: the cap is at 58 and the remaining two runs are committed to lane A s6 and lane B 22-s0d.",
     "2026-09-10 20:17 IST I DID NOT COPY THE ASK AS GIVEN, and the difference matters. The request was to report NOT-YET-BACKFILLED rather than N stale findings. Returning ZERO for that state is the obvious reading and it is a hole: a backfill that silently never ran would read as a clean gate, which is the precise failure this invariant exists to catch. So it returns ONE finding per table, never none. One line, not silence, and not 531.",
-    "2026-09-10 20:17 IST The module had NO unit tests before this, which is poor for the tool a 544-row re-key is proven with. Seven added against a stub pool, red first on the missing export. Staging still reads 0, so the happy path it was proven on is unchanged."
+    "2026-09-10 20:17 IST The module had NO unit tests before this, which is poor for the tool a 544-row re-key is proven with. Seven added against a stub pool, red first on the missing export. Staging still reads 0, so the happy path it was proven on is unchanged.",
+    "2026-09-10 20:25 IST ITEM 14 STAGING PROOF ATTEMPTED AND IT DOES NOT HOLD. c_issue_size_consistency PASS with 0 violations; c_issue_size_floor FAIL with 3. The card requires both PASS, so item 14 stays MERGED-UNPROVEN. Read-only run against staging at 20:18:28 IST.",
+    "2026-09-10 20:25 IST THREE VIOLATIONS, THREE DIFFERENT CAUSES, which is the useful part. NIRBHAY COLOURS: unprovenanced MAINBOARD label, clears the SME floor, so it is a SEGMENT finding owned by #482 and not by item 14. STALLION: MAINBOARD label IS sourced from Chittorgarh, so the label is not in doubt and the size is - price_max 10 with lot 4000 looks like a face value stored where a price band belongs, but that is a hypothesis I have not measured. PIYUSH: fails BOTH floors at Rs70 lakh, so no relabelling saves it; Rs70,07,320 over price 668 is exactly 10,490 shares, the #472 case, and it is squarely item 14 own class.",
+    "2026-09-10 20:25 IST CORRECTING MYSELF BEFORE IT SPREADS. I told the peer two of the three were on my unprovenanced list and implied the finding was therefore a segment defect. Two ARE unprovenanced, but only ONE is EXPLAINED by segment - PIYUSH fails both floors so its label is irrelevant. Two-unprovenanced and two-explained-by-segment are different claims and I ran them together. The tidy story was wrong and the messy one is more useful: this single red check is three separate defects owned by two different items.",
+    "2026-09-10 20:25 IST ALIAS AUDIT ANSWER for #514: NONE. Of the seven merged lane C shas only ff8a0522 (#510) touched packages/shared, and its staging-touching tool scripts/audit/fold-collision-report.mjs reaches the SSOT by a RELATIVE path, never the alias. Command: git diff --name-only <sha>^ <sha> -- packages/shared, per merged sha."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
