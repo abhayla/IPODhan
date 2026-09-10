@@ -16,8 +16,13 @@
 
 import { execFileSync } from 'node:child_process';
 
-const STOP = 50;
-const CAP = 60;
+// CAP is the owner's, fixed: "cap 60 per day" (2026-09-09).
+// STOP is the lanes' self-imposed nightly reserve and MOVES by agreement --
+// it was 50 for most of 2026-09-10 and 58 by 19:57 IST. Hardcoding it made
+// this script print "-3 to the 50 stop" while the agreed stop was 58, which
+// reads as "you are over" when you are not. Pass PR_GATE_STOP to set it.
+const CAP = Number(process.env.PR_GATE_CAP ?? 60);
+const STOP = Number(process.env.PR_GATE_STOP ?? CAP);
 const IST_OFFSET_MIN = 5 * 60 + 30;
 
 function istDayStartUtcIso(now = new Date()) {
