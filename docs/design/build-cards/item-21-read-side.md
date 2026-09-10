@@ -275,7 +275,7 @@ routes**, and far more than four are driven by IPO rows. Shipping the named four
 corrected IPO fixed on its own page and stale on the calendar that links to it.
 
 A longer guess fails the same way one release later, so the list is exhaustive by construction:
-`web/lib/services/page-revalidation-targets.ts` classifies **every** route as refreshed or excluded
+`web/lib/services/page-revalidation-targets.ts` (NEW) classifies **every** route as refreshed or excluded
 with a reason, and a test fails when a route is neither. That guard caught its own author within a
 minute of being written — it failed on `/tools/lot-calculator`, missed because the directory listing
 consulted was truncated, and checking that then revealed `/tools/compare` was wrongly in the
