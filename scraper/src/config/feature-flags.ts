@@ -532,6 +532,27 @@ export function shouldUseFeature(
   }
 
   // Percentage flags
+  // Item 1 slice s5b: a PERCENTAGE feature is a per-ipoId hash rollout
+  // (`simpleHash(ipoId) % 100 < flag`), so it NEEDS an id. Without this throw,
+  // an empty id fell past the branch below and out the `return false` at the
+  // end of this function: consolidation DISABLED on a slot whose environment
+  // reads `CONSOLIDATION_PERCENTAGE=100`. `ipoId` is typed `string`, so `''`
+  // is a valid value TypeScript cannot reject — the type system will never
+  // catch this. A configuration that reads 100 and behaves as 0 is worse than
+  // a crash, and the crash names the caller.
+  //
+  // Thrown HERE, not at the `data-consolidation-service.ts:628` call site,
+  // because the emptiness is a property of THIS function's contract, not of
+  // that one caller: any future percentage feature inherits the guard, and
+  // there is exactly one such caller today (swept 2026-09-11), so the choke
+  // point costs nothing and covers everything.
+  if (typeof flag === 'number' && feature.includes('PERCENTAGE') && !ipoId) {
+    throw new Error(
+      `shouldUseFeature('${feature}') requires a non-empty ipoId: a percentage rollout is a ` +
+        `per-IPO hash, and an empty id silently reads as 0% while the flag is ${flag}.`
+    );
+  }
+
   if (typeof flag === 'number' && ipoId && feature.includes('PERCENTAGE')) {
     // Use hash of IPO ID for consistent distribution
     const hash = simpleHash(ipoId);
@@ -579,6 +600,10 @@ export function getFeatureStatus(): Record<string, boolean | number | string[]> 
     SOURCE_TRACKING_PCT: FEATURE_FLAGS.SOURCE_TRACKING_PERCENTAGE,
     CONFLICT_DETECTION_PCT: FEATURE_FLAGS.CONFLICT_DETECTION_PERCENTAGE,
     CONSOLIDATION_PCT: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
+    // Item 1 slice s5b: the child-table writer sits BEHIND the two lines
+    // above. All three are logged together so a reader never has to guess
+    // which of the three gates a quiet cycle came from.
+    CHILD_TABLE_CONSOLIDATION: FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION,
     FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST,
     SME_FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST,
     DEBUG_MODE: FEATURE_FLAGS.DEBUG_DATA_FLOW,
@@ -620,6 +645,26 @@ export function validateFeatureFlags(): void {
   // DATA_CONSOLIDATION below, whose percentage is the real gate.
   if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION && FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE === 0) {
     console.warn('⚠️  DATA_CONSOLIDATION enabled but percentage is 0% - no IPOs will use it');
+  }
+
+  // Item 1 slice s5b: ENABLE_CHILD_TABLE_CONSOLIDATION is the THIRD gate in a
+  // chain, not a switch. `consolidateIPOData` returns `fallbackConsolidation`
+  // — incoming accepted, ZERO priority resolution, ZERO provenance — unless
+  // ENABLE_DATA_CONSOLIDATION is true AND CONSOLIDATION_PERCENTAGE covers the
+  // IPO. Staging and prod already carry both, so this is a FRESH-ENVIRONMENT
+  // trap: CI's integration job, a developer laptop, the next box. Those are
+  // exactly the places a quiet cycle gets written down as a proof. The line
+  // prints the OTHER two values, because "misconfigured" sends the reader to
+  // check the wrong one.
+  if (
+    FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION &&
+    (!FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION || FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE === 0)
+  ) {
+    console.warn(
+      '⚠️  child-table consolidation flag is ON but the path is unreachable: ' +
+        `ENABLE_DATA_CONSOLIDATION=${FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION} ` +
+        `CONSOLIDATION_PERCENTAGE=${FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE}`
+    );
   }
 
   // T-278 P3-5: ENABLE_SOURCE_TRACKING is a hard prerequisite for
