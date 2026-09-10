@@ -831,3 +831,19 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   for whoever does.
   **What is needed from you: nothing tonight.** Still owed for later: a practice run of undoing a
   release. Work resumes at midnight when the shared daily pipeline allowance resets.
+
+- 2026-09-10 22:20 IST — **Item 20 still 83% (5 of 6 merged, the sixth in checks). Item 22 up to 4 of 8.**
+  Thank you for lifting the pipeline limit — merging is moving again.
+  **A reader of ipodhan.com would notice nothing new.** Still all machinery.
+  **What went wrong, and it is a good example of a silent one.** Two safety switches this work added
+  were set up so they stayed OFF on the test server. That sounds harmless, but it meant the check we
+  were about to run there could not have shown anything at all — it would have come back empty and
+  been read as "the fix does nothing". Fixed and merged. A third switch is deliberately still off,
+  because switching it on would make "this file was too big, refused" look identical to "the server
+  did not answer" in our logs, and telling those apart is the entire point of that piece of work.
+  **On the extraction item:** I finished measuring and the news is good. The three financial ratios
+  are mostly not printed in the prospectuses, but every single input needed to CALCULATE them is
+  there as text in all four documents I checked. So we can work them out rather than hunt for them
+  printed — and one company prints two of the three itself, which gives us a way to check our own
+  arithmetic against the company's.
+  **What is needed from you: nothing.** Still owed for later: a practice run of undoing a release.
