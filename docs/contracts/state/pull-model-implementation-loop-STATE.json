@@ -258,7 +258,7 @@
           "title": "rowKey through consolidateField, trackFieldSource, ConflictInfo, open-conflict lookups",
           "status": "TIER-A-FIX-ROUND",
           "pr": 518,
-          "sha": null,
+          "sha": "fa10d752",
           "tier": "A"
         },
         {
@@ -276,7 +276,8 @@
           "pr": null,
           "sha": null,
           "tier": "A",
-          "blocker": "HARD ORDERING BLOCKER, verified by the Tier A review of #518: trackFieldUpdate's onConflictDoUpdate targets (ipoId, tableName, fieldName) with set: { rowKey, source, confidence, dataLineage, ... } at field-sources-repository.ts:191-225. So a second row key does not merely overwrite rowKey - it REPLACES source, confidence and dataLineage too. Two child rows would silently DESTROY each other's provenance, not merely mislabel it. The row-key-scoped unique constraint must land BEFORE any caller passes a non-empty key. Not 'with', not 'soon after'."
+          "blocker": "HARD ORDERING BLOCKER, verified by the Tier A review of #518: trackFieldUpdate's onConflictDoUpdate targets (ipoId, tableName, fieldName) with set: { rowKey, source, confidence, dataLineage, ... } at field-sources-repository.ts:191-225. So a second row key does not merely overwrite rowKey - it REPLACES source, confidence and dataLineage too. Two child rows would silently DESTROY each other's provenance, not merely mislabel it. The row-key-scoped unique constraint must land BEFORE any caller passes a non-empty key. Not 'with', not 'soon after'.",
+          "orderChange": "FINANCIALS FIRST. Measured on staging: 5 of 6 child tables are single-source today (promoters 29, intermediaries 194, risk_factors 2840, financial_data 174 all DRHP; peer_companies 321 all CHITTORGARH), so per-field priority has NOTHING to resolve on them. field_sources already carries ipo_financials rows from FOUR sources (CHITTORGARH 648, NSE 16, DRHP 12, BSE 10). So s5b takes the financials tables first and proves priority resolution against real conflicts; s7a/s7b then take the single-source tables where the proof is provenance rows plus zero change to written values. Value before plumbing; size unchanged."
         },
         {
           "k": "s6",
@@ -393,7 +394,7 @@
           "status": "TIER-A-FIX-ROUND",
           "tier": "A",
           "pr": null,
-          "sha": "b76b4479",
+          "sha": "e1f6c854",
           "title": "failed deploy no longer orphans its release directory (#505)",
           "order": "AFTER s6, BEFORE s11 (lane C agreed)",
           "plan": [
@@ -443,10 +444,10 @@
         },
         {
           "k": "s14",
-          "status": "BUILDING-ROUND-2",
+          "status": "BUILT-HELD-NO-PR",
           "tier": "B",
           "pr": null,
-          "sha": "cd263f65",
+          "sha": "f82b32cb",
           "title": "preflight: refuse to run when @ipodhan/shared resolves outside this checkout (#514, repo side)",
           "order": "tomorrow; repo side of #514. The laptop side (wt-new.ps1 creating the junction) is lane C, Tier A, with the junction-deletion history in the brief - NOT tonight.",
           "plan": [
@@ -483,7 +484,7 @@
         },
         {
           "k": "s17",
-          "status": "PLANNED",
+          "status": "BUILDING",
           "tier": "A",
           "pr": null,
           "sha": null,
@@ -991,5 +992,6 @@
   "worktreeAliasResolutionDefect": "#514: a worktree whose node_modules is a junction to the main checkout resolves @ipodhan/shared to MAIN's packages/shared. Any local test importing through the alias exercises main, silently. It produced a drift run that printed OK on a broken branch and a registry test that failed advising the opposite of the correct action. Relative-path imports are unaffected. INTERIM RULE: a local result from an alias-importing script in a worktree is UNVERIFIED - say so and let CI be the gate.",
   "ciBudgetRule": "OWNER, typed in lane A's window 2026-09-10 ~22:2x IST: \"CI-run cap lifted from 60; merge on green with no daily run limit. Deploy load is handled by lane A's s12, s16, s17.\" This SUPERSEDES the 2026-09-09 \"cap 60 per day, 20 tonight\" and every self-imposed reserve (50/55/58). Recorded here because an hour earlier I refused to act on a PEER saying the same thing - correctly: a limit the owner typed changes only on owner-typed text. The rule did not change when the evidence changed or when a sibling asserted it; it changed when the owner typed it.",
   "mainRed": "2026-09-10 ~22:5x IST: origin/main is RED on scraper/tests/unit/scrapers/investorgain-list-binding.test.ts ('expected BOUND to be AMBIGUOUS'). Arrived with da8cad5a (#522, lane C item 12 slice E) and FAILS AT ITS OWN MERGE COMMIT. #522's checks were ALL GREEN at merge - nothing was overridden; the PR was green and the MERGE RESULT was red. Verified: normalizeCompanyNameForMatching folds 'Asset Reconstruction' and 'ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED' to the same string, so exactly one candidate matches and BOUND is CORRECT - the test is stale, the code is right. Lane C owns the fix. Lane A merges nothing onto a red main; s12/s16/s17 hold regardless of the migration freeze.",
-  "noBranchProtection": "Measured: GET repos/abhayla/IPODhan/branches/main/protection -> 404 Branch not protected. No required checks, no strict up-to-date, no force-push protection. So every merge-on-green tonight was DISCIPLINE, not enforcement. And the load-bearing correction: required checks alone would NOT have prevented #522, because its checks were green - only the STRICT 'branch must be up to date' flag would, by forcing a re-run against the current head. Enabling protection without strict would look like a fix and not be one."
+  "noBranchProtection": "Measured: GET repos/abhayla/IPODhan/branches/main/protection -> 404 Branch not protected. No required checks, no strict up-to-date, no force-push protection. So every merge-on-green tonight was DISCIPLINE, not enforcement. And the load-bearing correction: required checks alone would NOT have prevented #522, because its checks were green - only the STRICT 'branch must be up to date' flag would, by forcing a re-run against the current head. Enabling protection without strict would look like a fix and not be one.",
+  "designRuling": "The card STANDS: child tables route through the consolidation contract, and s4 is real plumbing rather than dead. I asked whether the claim was argued anywhere and said 'considered nowhere' - I was wrong, having read the build card and not the design. data-sourcing-pull-model.md 2049-2057 argues it explicitly: 162 of 194 fields have no consolidated writer, and without the extension 'the loop has nowhere to write 84% of what it extracts'. OD-10 is the owner's agreement. The card's purpose is priority + provenance + conflict detection; provenance-direct-from-persister would satisfy one of three."
 }
