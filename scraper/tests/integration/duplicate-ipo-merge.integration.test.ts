@@ -141,7 +141,17 @@ describe.skipIf(!DATABASE_URL)(`IPORepository.mergeDuplicateInto against real Po
       .where(sql`${schema.fieldSources.ipoId} = ${KEEP_ID} AND ${schema.fieldSources.fieldName} = 'cin'`);
     expect(prov).toHaveLength(1);
     expect(prov[0].updatedBy).toBe('merge-duplicate-ipo');
-  });
+    // EXPLICIT TIMEOUT, measured not guessed (item 1 slice s18, 2026-09-11).
+    // `mergeDuplicateInto({apply:true})` discovers every FK in the schema, counts
+    // both sides in each direct child, then repoints/deletes them one statement
+    // at a time inside one transaction — dozens of round trips. Measured 108 s
+    // end-to-end against ipodhan_test over the SSH tunnel to the remote
+    // Postgres; vitest's 60 s default aborted it mid-transaction twice. In CI
+    // the database is a local postgres:16 service container and this runs in
+    // seconds, so the headroom costs nothing there and stops the local run from
+    // failing on the clock rather than on the code. A test that flakes on a
+    // timeout teaches people to re-run instead of to read.
+  }, 240000);
 
   it('refuses (throws) when the two rows open on different dates', async () => {
     // Re-seed a fresh pair with disagreeing open dates to prove the eligibility gate.
