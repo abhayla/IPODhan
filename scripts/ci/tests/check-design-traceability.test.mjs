@@ -1,8 +1,9 @@
 // Self-test for scripts/ci/check-design-traceability.mjs (OD-52, §8.5).
 // Each case below builds a tiny fixture tree in a temp dir and runs the REAL
 // check script against it via a child process — the test never re-implements
-// the check's parsing logic. Slice s1: failure modes 1-3 only (mode 4, the
-// hash-drift check, is a later slice).
+// the check's parsing logic. Slice s1 covered failure modes 1-3. Slice s2
+// (this file) adds mode 4 — a rule's hash changed at the same id, with
+// neither its owning card nor a declaring test in the pull request diff.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -311,4 +312,268 @@ test('real repo: the check parses the actual rules.json/cards/tests and never ex
   // real files, which is a defect in the check.
   assert.notEqual(res.status, 2, res.stdout + res.stderr);
   assert.match(res.stdout, /\d+ rules?, \d+ claimed, \d+ orphan/i);
+});
+
+// --- Mode 4 fixtures: hash-drift needs REAL git history for a base ref. ---
+// Each fixture below is a real "git init"-ed repo (not the temp dirs above,
+// which are deliberately NOT git repos -- that absence is what proves modes
+// 1-3 stay inert without --base, see the no-op test right below). autocrlf
+// is pinned off so "git show" returns the exact bytes written to disk on
+// Windows, which the byte-identical case depends on.
+
+function git(cwd, args) {
+  const res = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  if (res.status !== 0) {
+    throw new Error('git ' + args.join(' ') + ' failed (' + res.status + '): ' + (res.stderr || res.stdout));
+  }
+  return res.stdout;
+}
+
+function initGitFixture(root) {
+  git(root, ['init', '-q']);
+  git(root, ['config', 'core.autocrlf', 'false']);
+  git(root, ['config', 'user.email', 'fixture@example.com']);
+  git(root, ['config', 'user.name', 'Fixture']);
+}
+
+function commitAll(root, message) {
+  git(root, ['add', '-A']);
+  git(root, ['commit', '-q', '-m', message]);
+  return git(root, ['rev-parse', 'HEAD']).trim();
+}
+
+function runCheckAtBase(root, base, extraArgs = []) {
+  return spawnSync(
+    'node',
+    [
+      SCRIPT,
+      '--rules',
+      join(root, 'docs/design/rules.json'),
+      '--cards',
+      join(root, 'docs/design/build-cards'),
+      '--unclaimed',
+      join(root, 'docs/design/rules-unclaimed.json'),
+      '--tests',
+      join(root, 'tests'),
+      '--base',
+      base,
+      ...extraArgs,
+    ],
+    { cwd: root, encoding: 'utf8' }
+  );
+}
+
+test('mode 4 is inert without --base: a non-git fixture tree still exits 0', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-900')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-900'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-900\n');
+
+    const res = runCheck(root); // no --base, no git init in root
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.doesNotMatch(res.stdout + res.stderr, /not a git repository/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4 without --base prints an explicit skip line, never a silent no-op', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-900')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-900'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-900\n');
+
+    const res = runCheck(root); // no --base
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(
+      res.stdout,
+      /MODE 4 — SKIPPED \(no --base given\): hash drift was NOT compared/,
+      res.stdout + res.stderr
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4: hash changed at HEAD, neither card nor test in the diff -> exit 1, names the id + card', () => {
+  const root = mkFixtureRoot();
+  try {
+    initGitFixture(root);
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-101', { hash: 'aaa111111111' })]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-101'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-101\n');
+    const base = commitAll(root, 'base');
+
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-101', { hash: 'bbb222222222' })]));
+    commitAll(root, 'drift rules.json only');
+
+    const res = runCheckAtBase(root, base);
+    assert.equal(res.status, 1, res.stdout + res.stderr);
+    const out = res.stdout + res.stderr;
+    assert.match(out, /MODE 4/);
+    assert.match(out, /R-101/);
+    assert.match(out, /item-99-fixture\.md/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4: same drift, but the owning CARD is in the diff -> exit 0', () => {
+  const root = mkFixtureRoot();
+  try {
+    initGitFixture(root);
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-102', { hash: 'aaa111111111' })]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-102'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-102\n');
+    const base = commitAll(root, 'base');
+
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-102', { hash: 'bbb222222222' })]));
+    writeFile(
+      root,
+      'docs/design/build-cards/item-99-fixture.md',
+      cardBody('R-102') + '\n<!-- touched to acknowledge the reworded rule -->\n'
+    );
+    commitAll(root, 'drift rules.json + touch the owning card');
+
+    const res = runCheckAtBase(root, base);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4: same drift, but a DECLARING TEST is in the diff -> exit 0', () => {
+  const root = mkFixtureRoot();
+  try {
+    initGitFixture(root);
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-103', { hash: 'aaa111111111' })]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-103'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-103\n');
+    const base = commitAll(root, 'base');
+
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-103', { hash: 'bbb222222222' })]));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-103\n// re-checked against the reworded rule\n');
+    commitAll(root, 'drift rules.json + touch the declaring test');
+
+    const res = runCheckAtBase(root, base);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4: a NEW rule id at HEAD absent at base is not a drift -> exit 0', () => {
+  const root = mkFixtureRoot();
+  try {
+    initGitFixture(root);
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-104', { hash: 'aaa111111111' })]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-104'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-104\n');
+    const base = commitAll(root, 'base');
+
+    writeFile(
+      root,
+      'docs/design/rules.json',
+      rulesJson([rule('R-104', { hash: 'aaa111111111' }), rule('R-204', { hash: 'ccc333333333' })])
+    );
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-104, R-204'));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-104, R-204\n');
+    commitAll(root, 'add a brand-new rule id');
+
+    const res = runCheckAtBase(root, base);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    // The summary still always prints compared/drifted counts (self-guard);
+    // what it must NOT contain is a MODE 4 FAIL — R-204 (new at HEAD) is
+    // simply outside the comparison, R-104 (unchanged) is not drifted.
+    assert.doesNotMatch(res.stdout, /MODE 4 FAIL/);
+    assert.match(res.stdout, /0 drifted/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4: a rule RETIRED at HEAD is not a drift -> exit 0', () => {
+  const root = mkFixtureRoot();
+  try {
+    initGitFixture(root);
+    writeFile(
+      root,
+      'docs/design/rules.json',
+      rulesJson([rule('R-105', { hash: 'aaa111111111' }), rule('R-106', { hash: 'zzz999999999' })])
+    );
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-105, R-106'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-105, R-106\n');
+    const base = commitAll(root, 'base');
+
+    writeFile(
+      root,
+      'docs/design/rules.json',
+      rulesJson([
+        rule('R-105', { hash: 'aaa111111111' }),
+        rule('R-106', { hash: 'yyy888888888', retired: true }),
+      ])
+    );
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-105'));
+    // Drop the now-retired R-106 declaration too, so this fixture isolates
+    // mode 4 (retirement is not a drift) from mode 3 (a test naming a
+    // now-non-live id), which is a separate, already-covered failure mode.
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-105\n');
+    commitAll(root, 'retire R-106');
+
+    const res = runCheckAtBase(root, base);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.doesNotMatch(res.stdout, /MODE 4 FAIL/);
+    assert.match(res.stdout, /0 drifted/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4: base rules.json unreadable (bad ref) -> exit 2, message names the ref', () => {
+  const root = mkFixtureRoot();
+  try {
+    initGitFixture(root);
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-107')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-107'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-107\n');
+    commitAll(root, 'base');
+
+    const res = runCheckAtBase(root, 'this-ref-does-not-exist-12345');
+    assert.equal(res.status, 2, res.stdout + res.stderr);
+    assert.match(res.stdout + res.stderr, /this-ref-does-not-exist-12345/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mode 4: base and HEAD identical -> exit 0, summary says so explicitly', () => {
+  const root = mkFixtureRoot();
+  try {
+    initGitFixture(root);
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-108', { hash: 'aaa111111111' })]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-108'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    writeFile(root, 'tests/unit/foo.test.mjs', IMPLEMENTS_TAG + 'R-108\n');
+    const base = commitAll(root, 'base');
+    // No further commits: base and HEAD are the same commit, so the file on
+    // disk is byte-identical to what "git show <base>:..." returns.
+
+    const res = runCheckAtBase(root, base);
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.match(res.stdout, /byte-identical/i);
+    assert.match(res.stdout, /\d+ rule id\(s\) compared/);
+    assert.match(res.stdout, /0 drifted/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

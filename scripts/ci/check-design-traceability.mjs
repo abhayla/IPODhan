@@ -5,22 +5,36 @@
 // test names a rule that does not exist.
 //
 // Slice s1 (docs/design/build-cards/item-20-design-traceability-check.md):
-// failure modes 1-3 only. Mode 4 (a rule's hash changed and neither its
-// owning card nor a test that names it is in the diff) is a later slice.
+// failure modes 1-3. Slice s2 (this file, mode 4): a rule's hash changed and
+// neither its owning card nor a test that names it is in the pull request
+// diff.
 //
 // Usage:
 //   node scripts/ci/check-design-traceability.mjs
 //     [--rules <path>] [--cards <dir>] [--unclaimed <path>]
-//     [--tests <dir>]...
+//     [--tests <dir>]... [--base <ref>]
+//
+// --base is OPT-IN, not defaulted internally: mode 4 runs `git show` and
+// `git diff` against the CURRENT WORKING DIRECTORY as the repo root, and
+// this script's own self-test fixtures for modes 1-3 are deliberately NOT
+// git repositories (they live in a bare temp dir) — defaulting --base to
+// "origin/main" unconditionally would make every mode-1/2/3 fixture run a
+// doomed `git show` and exit 2, breaking tests this slice must not modify.
+// A caller that wants mode 4 (CI, via the pull request's base) passes
+// --base explicitly; without it, mode 4 is skipped, exactly as before this
+// slice. "Defaulting to origin/main" (per the build card's Interfaces
+// section) describes what slice 4's workflow wiring passes as the ref
+// value, not an unconditional default inside this script.
 //
 // Exit codes:
 //   0 - clean (or only reporting-mode findings — see MODE2_ENFORCE below)
-//   1 - a broken link in the chain (mode 1 or mode 3 finding)
+//   1 - a broken link in the chain (mode 1, 3 or 4 finding)
 //   2 - the check itself failed (bad input, missing file, unparseable JSON,
-//       or a self-guard: zero live rules, or zero surviving test roots, is
-//       a FAIL, never a pass)
+//       an unreadable base ref for mode 4, or a self-guard: zero live
+//       rules, or zero surviving test roots, is a FAIL, never a pass)
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,13 +53,14 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const MODE2_ENFORCE = process.env.DESIGN_TRACEABILITY_MODE2_ENFORCE === 'true' ? true : false;
 
 function parseArgs(argv) {
-  const opts = { rules: null, cards: null, unclaimed: null, tests: [] };
+  const opts = { rules: null, cards: null, unclaimed: null, tests: [], base: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--rules') opts.rules = argv[++i];
     else if (a === '--cards') opts.cards = argv[++i];
     else if (a === '--unclaimed') opts.unclaimed = argv[++i];
     else if (a === '--tests') opts.tests.push(argv[++i]);
+    else if (a === '--base') opts.base = argv[++i];
   }
   return opts;
 }
@@ -81,6 +96,7 @@ function resolveOptions(argv) {
     unclaimedPath: parsed.unclaimed || join(REPO_ROOT, 'docs', 'design', 'rules-unclaimed.json'),
     requestedTestRoots,
     testRoots,
+    base: parsed.base,
   };
 }
 
@@ -121,7 +137,7 @@ function loadUnclaimed(unclaimedPath) {
   return declared;
 }
 
-// Returns a Map<ruleId, cardRelPath[]> — every rule id claimed by every card,
+// Returns a Map<ruleId, {rel, full}[]> — every rule id claimed by every card,
 // parsed from the generated "## Rules implemented" block (the same block
 // docs/design/apply-rule-ownership.mjs writes and D19 in
 // docs/design/check-design-consistency.mjs already reads).
@@ -152,13 +168,18 @@ function loadCardClaims(cardsDir) {
     const rel = relative(REPO_ROOT, full).split('\\').join('/');
     for (const id of new Set(ids)) {
       if (!claims.has(id)) claims.set(id, []);
-      claims.get(id).push(rel);
+      // `full` (the absolute path) rides alongside `rel` so mode 4 can
+      // re-express it relative to the git repo root (process.cwd()) for an
+      // exact match against `git diff --name-only` output — `rel` above is
+      // relative to REPO_ROOT (this script's own location), which is a
+      // different path than the repo root of a self-test fixture.
+      claims.get(id).push({ rel, full });
     }
   }
   return claims;
 }
 
-// Returns a Map<ruleId, {file, path}[]> — every "// implements: R-nnn[, R-mmm]"
+// Returns a Map<ruleId, {rel, full}[]> — every "// implements: R-nnn[, R-mmm]"
 // header found anywhere in every test file under the given roots.
 function loadTestDeclarations(testRoots) {
   const declares = new Map();
@@ -196,7 +217,9 @@ function loadTestDeclarations(testRoots) {
       const rel = relative(REPO_ROOT, full).split('\\').join('/');
       for (const id of ids) {
         if (!declares.has(id)) declares.set(id, []);
-        declares.get(id).push(rel);
+        // See the matching comment in loadCardClaims: `full` rides along
+        // for mode 4's exact-path match against the pull request diff.
+        declares.get(id).push({ rel, full });
       }
     }
   }
@@ -205,8 +228,106 @@ function loadTestDeclarations(testRoots) {
   return declares;
 }
 
+// --- Mode 4 (hash drift) helpers. All git calls run with cwd = the current
+// process's working directory, which is the repo root both in CI (checked
+// out there) and in the self-test (spawnSync sets cwd to the fixture repo).
+
+function runGit(args) {
+  return spawnSync('git', args, { cwd: process.cwd(), encoding: 'utf8' });
+}
+
+function gitRelPath(absPath) {
+  return relative(process.cwd(), absPath).split('\\').join('/');
+}
+
+// Reads docs/design/rules.json (or --rules' path) as it existed at <base>,
+// via `git show`. Never falls back to a silent skip — an unreadable base is
+// exit 2 (the check itself failed), naming the ref, per the card's mode-4
+// self-guard.
+function loadBaseRulesJson(base, rulesPath) {
+  const relPath = gitRelPath(rulesPath);
+  const res = runGit(['show', `${base}:${relPath}`]);
+  if (res.error || res.status !== 0) {
+    const detail = (res.stderr || (res.error && res.error.message) || '').trim();
+    fail2(`could not read ${relPath} at base ref "${base}" — ${detail || 'git show failed'}`);
+  }
+  const raw = res.stdout;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    fail2(`could not parse ${relPath} at base ref "${base}" as JSON: ${e.message}`);
+  }
+  if (!parsed || !Array.isArray(parsed.rules)) {
+    fail2(`${relPath} at base ref "${base}" has no "rules" array`);
+  }
+  return { raw, rules: parsed.rules };
+}
+
+function loadChangedFiles(base) {
+  const res = runGit(['diff', '--name-only', `${base}...HEAD`]);
+  if (res.error || res.status !== 0) {
+    const detail = (res.stderr || (res.error && res.error.message) || '').trim();
+    fail2(`could not compute changed files against base ref "${base}" — ${detail || 'git diff failed'}`);
+  }
+  return new Set(
+    res.stdout
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+}
+
+// Returns { identical, comparedCount, driftedCount, uncovered }. `uncovered`
+// is the blocking finding: live rules whose hash differs from base, where
+// NEITHER the owning card NOR a declaring test appears in the pull
+// request's changed-file list.
+function computeHashDrift({ base, rulesPath, rules, cardClaims, testDeclarations }) {
+  const baseInfo = loadBaseRulesJson(base, rulesPath);
+  const headRaw = readFileSync(rulesPath, 'utf8');
+  const identical = headRaw === baseInfo.raw;
+
+  const baseById = new Map(baseInfo.rules.map((r) => [r.id, r]));
+  const headLive = rules.filter((r) => !r.retired);
+
+  const eligible = [];
+  const drifted = [];
+  for (const r of headLive) {
+    const baseRule = baseById.get(r.id);
+    if (!baseRule) continue; // new at HEAD, absent at base — mode 1's concern, not a drift
+    eligible.push(r);
+    if (baseRule.hash !== r.hash) drifted.push(r);
+  }
+
+  const uncovered = [];
+  if (drifted.length > 0) {
+    const changedFiles = loadChangedFiles(base);
+    for (const r of drifted) {
+      const cards = cardClaims.get(r.id) || [];
+      const tests = testDeclarations.get(r.id) || [];
+      // Match on the path RELATIVE TO THE GIT REPO ROOT (process.cwd()),
+      // not the REPO_ROOT-relative `rel` also carried on these entries —
+      // `git diff --name-only` reports paths relative to the repo it ran
+      // in, which is process.cwd() here, not necessarily this script's own
+      // on-disk location (they differ inside the self-test's fixture repos).
+      const cardTouched = cards.some((c) => changedFiles.has(gitRelPath(c.full)));
+      const testTouched = tests.some((t) => changedFiles.has(gitRelPath(t.full)));
+      if (!cardTouched && !testTouched) {
+        uncovered.push({
+          id: r.id,
+          section: r.section,
+          cards: cards.map((c) => c.rel),
+          tests: tests.map((t) => t.rel),
+        });
+      }
+    }
+  }
+
+  return { identical, comparedCount: eligible.length, driftedCount: drifted.length, uncovered };
+}
+
 function main() {
-  const { rulesPath, cardsDir, unclaimedPath, requestedTestRoots, testRoots } = resolveOptions(
+  const { rulesPath, cardsDir, unclaimedPath, requestedTestRoots, testRoots, base } = resolveOptions(
     process.argv.slice(2)
   );
 
@@ -265,7 +386,7 @@ function main() {
       `MODE 2 (${MODE2_ENFORCE ? 'ENFORCING' : 'REPORTING — due to flip at build item 6'}) — ` +
         `${unTestedClaims.length} card claim(s) with no declaring test:`
     );
-    for (const { id, card } of unTestedClaims) lines.push(`  - ${id} claimed by ${card}, no test declares it`);
+    for (const { id, card } of unTestedClaims) lines.push(`  - ${id} claimed by ${card.rel}, no test declares it`);
   }
 
   // --- Mode 3: a test declares an id that is not live ---
@@ -278,7 +399,38 @@ function main() {
   if (badDeclarations.length > 0) {
     hasBlockingFinding = true;
     lines.push(`MODE 3 — ${badDeclarations.length} test declaration(s) name a rule id that is not live:`);
-    for (const { id, file } of badDeclarations) lines.push(`  - ${id} declared by ${file}`);
+    for (const { id, file } of badDeclarations) lines.push(`  - ${id} declared by ${file.rel}`);
+  }
+
+  // --- Mode 4: a rule's hash changed at the same id, with neither its
+  // owning card nor a declaring test in the pull request diff. Opt-in via
+  // --base (see the file header for why this is not defaulted internally).
+  if (base) {
+    const hashDrift = computeHashDrift({ base, rulesPath, rules, cardClaims, testDeclarations });
+    lines.push(
+      `MODE 4 — ${hashDrift.comparedCount} rule id(s) compared against base "${base}", ` +
+        `${hashDrift.driftedCount} drifted` +
+        (hashDrift.identical
+          ? ' (base and working-tree rules.json are byte-identical — checked, nothing changed)'
+          : '')
+    );
+    if (hashDrift.uncovered.length > 0) {
+      hasBlockingFinding = true;
+      lines.push(
+        `MODE 4 FAIL — ${hashDrift.uncovered.length} rule(s) changed wording with no owning card or ` +
+          `declaring test in the diff:`
+      );
+      for (const u of hashDrift.uncovered) {
+        const cardsStr = u.cards.length ? u.cards.join(', ') : '(no owning card)';
+        const testsStr = u.tests.length ? u.tests.join(', ') : '(no declaring test)';
+        lines.push(
+          `  - ${u.id} (section: ${u.section}) — card(s): ${cardsStr}; test(s): ${testsStr} — ` +
+            `none touched in this diff`
+        );
+      }
+    }
+  } else {
+    lines.push('MODE 4 — SKIPPED (no --base given): hash drift was NOT compared');
   }
 
   const claimedLiveCount = liveIds.filter((id) => cardClaims.has(id) || declaredUnclaimed.has(id)).length;
