@@ -574,3 +574,13 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   none fixed here. A fourth slice is building alongside: the one that catches a design sentence being reworded
   without its code or tests being touched. A reader of ipodhan.com still sees nothing from any of this. Nothing
   needed from you.
+- **2026-09-10 13:00 IST - 50% merged, third of four slices in CI.** Two of item 20's four checks are on main and a third is
+  running. The one just pushed found something worth knowing: the design document's own explanation of what that
+  check was for turned out to be wrong. It claimed the check would catch someone rewording a design sentence; when
+  the reviewer actually tried it, the tool that tracks design rules retires the old rule and creates a new one, so
+  that scenario is caught by a different check entirely. The document has been corrected with the evidence, and the
+  check is kept for what it genuinely does catch - the rule file being edited by hand. It also exposed a real hole:
+  when a rule is retired that way, its build document is left pointing at something that no longer exists, and
+  nothing currently running catches that. Fixing it is assigned to the last slice. A reader of ipodhan.com still
+  sees nothing from any of this, and the honest position is that none of these checks protects anything until that
+  last slice wires them into the pull-request gate. Nothing needed from you.
