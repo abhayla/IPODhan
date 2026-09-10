@@ -105,14 +105,21 @@ export function laneFiles(lane) {
 // Arg parsing — a strict allow-list. Rejects any timestamp-shaped flag by
 // name, on purpose: the guard must hold even if someone tries to pass one,
 // not just because the happy path never reads it.
+//
+// ALLOWED_FLAGS is exported (and mutable) so a test can prove the timestamp
+// rejection fires ON ITS OWN — by temporarily registering a timestamp-shaped
+// flag as "recognised" here, which removes the unrecognised-flag guard as a
+// possible (accidental) cause of the same throw. Two guards that both happen
+// to throw is one guard wearing a disguise; this is what stops that.
 // ---------------------------------------------------------------------------
+export const ALLOWED_FLAGS = new Set([
+  '--event', '--lane', '--repo-root', '--board-note',
+  '--item', '--item-status', '--item-note', '--out',
+  '--force', '--mark-consumed',
+]);
+
 export function parseCliArgs(argv) {
   const args = { markConsumed: false, force: false };
-  const allowed = new Set([
-    '--event', '--lane', '--repo-root', '--board-note',
-    '--item', '--item-status', '--item-note', '--out',
-    '--force', '--mark-consumed',
-  ]);
 
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -123,7 +130,7 @@ export function parseCliArgs(argv) {
         `timestamp 85 minutes in the future made the board's freshness strip lie).`
       );
     }
-    if (!allowed.has(flag)) {
+    if (!ALLOWED_FLAGS.has(flag)) {
       throw new Error(`record-event: unrecognised flag "${flag}"`);
     }
     if (flag === '--force') { args.force = true; continue; }

@@ -11,6 +11,7 @@ import { dirname } from 'node:path';
 
 import {
   BOARD_URL,
+  ALLOWED_FLAGS,
   inferLaneFromBranch,
   laneFiles,
   parseCliArgs,
@@ -104,6 +105,23 @@ test('parseCliArgs REJECTS every timestamp-shaped flag', () => {
       /no timestamp parameter/,
       `expected ${flag} to be refused`
     );
+  }
+});
+
+test('parseCliArgs rejects --timestamp on its OWN guard, not by accident of the unrecognised-flag fallback', () => {
+  // Register the timestamp-shaped flag as RECOGNISED first, so the
+  // unrecognised-flag guard cannot fire and cannot be the reason this
+  // throws. If the timestamp-specific check were ever removed, this flag
+  // would now parse as an ordinary (accepted) argument instead of throwing.
+  assert.equal(ALLOWED_FLAGS.has('--timestamp'), false, 'precondition: not already allowed');
+  ALLOWED_FLAGS.add('--timestamp');
+  try {
+    assert.throws(
+      () => parseCliArgs(['--timestamp', '2020-01-01T00:00:00Z', '--event', 'x']),
+      /no timestamp parameter/
+    );
+  } finally {
+    ALLOWED_FLAGS.delete('--timestamp');
   }
 });
 
