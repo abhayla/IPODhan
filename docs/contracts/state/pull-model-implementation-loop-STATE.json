@@ -279,10 +279,11 @@
         {
           "k": "s6",
           "title": "ipo_risk_factors re-key from seq to heading_hash",
-          "status": "PLANNED",
+          "status": "BUILT-HELD-NO-PR",
           "pr": null,
-          "sha": null,
-          "tier": "A"
+          "sha": "cfaee7f0",
+          "tier": "A",
+          "branch": "feat/pm-item01-s6-risk-factor-heading-key"
         },
         {
           "k": "s7a",
@@ -676,7 +677,10 @@
     452,
     453,
     454,
-    501
+    501,
+    502,
+    503,
+    504
   ],
   "prGateRunsToday": 49,
   "prGateBudgetClaimedRaise": {
