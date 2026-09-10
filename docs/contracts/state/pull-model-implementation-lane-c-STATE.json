@@ -282,12 +282,12 @@
         {
           "id": "2-S3b2",
           "tier": "A",
-          "status": "PLANNED_UNBLOCKED",
+          "status": "PLANNED",
           "issue": 482,
           "title": "source the 33 unprovenanced IPO segments - fixture proof FIRST; agree/disagree/no-source",
           "blockedOn": "a real fixture proving any source states segment",
-          "blockedBy": null,
-          "note": "unblocked 2026-09-10 18:45 IST by chittorgarh issue_category fixtures"
+          "blockedBy": "no reachable page: 0 of 17 rows have a verifier_url",
+          "note": "blocker re-identified 2026-09-10 18:49 IST - not \"no source publishes it\" but \"no reachable page for these rows\""
         }
       ],
       "prs": [
@@ -318,7 +318,7 @@
       ],
       "slice2S3b2Unblock": {
         "at": "2026-09-10 18:45 IST",
-        "verdict": "UNBLOCKED. The fixture I said did not exist was already in this repo.",
+        "verdict": "CORRECTED: NOT unblocked. The field is published; the ROWS are unreachable. Blocker survives, but it is now a different and precisely named blocker.",
         "evidence": [
           "docs/design/probes/fixtures/chittorgarh/vinod-texworld-ltd.html embeds ipoData with \"issue_category\":\"SME\".",
           "docs/design/probes/fixtures/chittorgarh/asset-reconstruction-company-india-ltd.html embeds the same key with \"issue_category\":\"Mainline\".",
@@ -330,7 +330,45 @@
           "The value \"Mainline\" is NOT currently understood anywhere: a repo-wide grep for issue_category / Mainline returns zero hits. The mapping Mainline -> MAINBOARD is new code, and a value this slice has seen exactly once."
         ],
         "relationToWhatShipped": "2-S3a reads the human-readable \"Listing at\" cell (\"NSE SME\") via parseListingInfo. That is not wrong and stays. issue_category matters because it is a separate structured field likely present on HISTORICAL pages where the Listing-at cell was the thing that came back empty - which is exactly the population that produced the 33.",
-        "myMiss": "I declared this slice blocked pending a real fixture. The fixture was already committed in this repo. I blocked a slice on evidence I already had and did not look for. The lesson is not about segments: before declaring a blocker EXTERNAL, grep the repo fixtures for the thing being claimed absent."
+        "myMiss": "I declared this slice blocked pending a real fixture. The fixture was already committed in this repo. I blocked a slice on evidence I already had and did not look for. The lesson is not about segments: before declaring a blocker EXTERNAL, grep the repo fixtures for the thing being claimed absent.",
+        "correctedAt": "2026-09-10 18:49 IST",
+        "coverageProbe": {
+          "at": "2026-09-10 18:49 IST",
+          "how": "read-only probe via openReadOnlyPool (default_transaction_read_only=on, self-verified); zero writes to ipodhan",
+          "unprovenancedTotal": 48,
+          "byOfferingType": {
+            "IPO": 17,
+            "OFS": 18,
+            "TENDER": 5,
+            "RIGHTS": 4,
+            "NCD": 3,
+            "BUYBACK": 1
+          },
+          "ipoRows": 17,
+          "withVerifierUrl": 0,
+          "withoutVerifierUrl": 17,
+          "finding": "ZERO of the 17 unprovenanced IPO rows carry a stored verifier_url. The Chittorgarh issue_category field is real and published, but there is no reachable page for ANY of these rows, and constructing one from the slug is the exact failure mode design section 2.3.1 forbids (the probe that captured the fixtures says so in its own header comment).",
+          "rows": [
+            "AAA TECHNOLOGIES LTD",
+            "BANGANGA PAPER INDUSTRIES LTD",
+            "CMS INFO SYSTEMS LTD",
+            "INDUSS FOOD PRODUCTS & EQUIPMENTS LIMITED",
+            "KWALITY WALLS (INDIA) LTD",
+            "MARUTI INTERIOR PRODUCTS LTD",
+            "MORGANITE CRUCIBLE INDIA LTD",
+            "MUTHOOT FINCOTP LIMITED",
+            "NET PIX SHORTS DIGITAL MEDIA LTD",
+            "NIRBHAY COLOURS INDIA LTD",
+            "PIYUSH LIMITED",
+            "SANMITRA COMMERCIAL LTD",
+            "SHIPWAVES ONLINE LIMITED",
+            "STANBIK AGRO LIMITED",
+            "Twinkle Papers",
+            "WESTERN OVERSEAS STUDY ABROAD LIMITED",
+            "WINDLAS BIOTECH LTD"
+          ]
+        },
+        "nextHypothesis": "UNTESTED: Chittorgarh serves a report API at webnodejs.chittorgarh.com/cloud/report/data-read/<id>/... whose rows are anchors carrying REAL hrefs (chittorgarh-scraper.ts:34 documents the shape). If those report rows also carry issue_category, one call could both rediscover a real url AND read the label for many rows at once - rediscovery from a listing, which is the sanctioned route, not slug construction. This is a hypothesis. It has not been probed and must not be written up as a finding until it is."
       }
     },
     "item-12": {
@@ -609,7 +647,11 @@
     "2026-09-10 18:38 IST A RE-CUT THAT CONCLUDES NO CHANGE IS A REAL RESULT. I re-cut item 12 from seven slices to five where consolidation genuinely helped, and I am not manufacturing the same churn here to show symmetry. The delta section 1.1 is a SPEED lever; applying it where it would mix tiers, bury a deletion, or force a blocked slice forward would be applying a guideline against its own purpose - the same argument I made for the two under-band slices in item 12.",
     "2026-09-10 18:45 IST 2-S3b2 UNBLOCKED, and the block was my error. I held the slice waiting for a real sample proving some source publishes segment. Two such samples were already committed under docs/design/probes/fixtures/chittorgarh/: Vinod Texworld carries \"issue_category\":\"SME\" and Asset Reconstruction carries \"issue_category\":\"Mainline\" - the same structured key with contrasting values on two real captured pages. Nothing in the repo reads that key today (grep for issue_category and Mainline: zero hits).",
     "2026-09-10 18:45 IST WHAT IS STILL HONESTLY UNKNOWN about 2-S3b2: whether the 33 rows have reachable Chittorgarh pages. The fixture proves the FIELD is published; it does not prove COVERAGE of those particular 33. And \"Mainline\" has been seen exactly once, so mapping it to MAINBOARD is a one-sample generalisation that the slice must widen before it writes anything. The slice moves from BLOCKED to PLANNED, not to READY.",
-    "2026-09-10 18:45 IST LESSON, recorded against myself: before calling a blocker external, grep the repo fixtures for the evidence being claimed absent. I spent the block on a fixture that was already committed."
+    "2026-09-10 18:45 IST LESSON, recorded against myself: before calling a blocker external, grep the repo fixtures for the evidence being claimed absent. I spent the block on a fixture that was already committed.",
+    "2026-09-10 18:49 IST CORRECTION to what I wrote 20 minutes ago. I announced 2-S3b2 UNBLOCKED. That headline was wrong and I am withdrawing it. A read-only coverage probe against production shows ZERO of the 17 unprovenanced IPO rows carry a stored verifier_url. Chittorgarh does publish issue_category - that part stands and is proven by two real fixtures - but there is no reachable page for any of these 17 rows, and building a url from the slug is the precise failure mode design section 2.3.1 exists to stop.",
+    "2026-09-10 18:49 IST The blocker is not removed, it is RENAMED, and that is still worth the hour. Before: \"no source publishes segment\" - which was false, and false in a way that would have kept the slice parked forever. Now: \"these 17 rows have no reachable page\". That is a discovery problem with a known sanctioned answer (rediscover from a listing page), not a sourcing problem with no answer.",
+    "2026-09-10 18:49 IST I also corrected my own arithmetic: production carries 48 unprovenanced rows, 17 of them IPOs - not the 41/11 recorded in the repair tool header, and not the 33 from the test-copy dry run. The 33 was the test copy, a different population. Three different numbers were circulating in my own notes for one quantity; the probe output is the one to trust because it names its query.",
+    "2026-09-10 18:49 IST UNTESTED HYPOTHESIS, explicitly not a finding: Chittorgarh report rows come back as anchors with real hrefs, so a report query may yield both a rediscovered url and issue_category in one call. Not probed. Must not be repeated as fact."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
