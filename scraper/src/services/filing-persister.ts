@@ -47,6 +47,9 @@ import {
 } from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
 import * as schema from '@ipodhan/shared/db/schema';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { financialStatementsRowKey } from './child-row-keys.js';
+import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 
 // ---------------------------------------------------------------- extraction
 
@@ -151,6 +154,26 @@ export interface FilingPersisterDeps {
     data: Record<string, unknown>,
     scraperName: string
   ) => Promise<{ filtered: Record<string, unknown> }>;
+  /**
+   * Item 1 slice s5b: `DataConsolidationOrchestrator`, narrowed to the one
+   * method this module calls. Injected rather than constructed here because
+   * the orchestrator needs a repository set and a Redis handle this module has
+   * no business owning, and because a test must be able to observe the call.
+   *
+   * Optional: with `ENABLE_CHILD_TABLE_CONSOLIDATION` off (every slot but
+   * staging today) nothing calls it. With the flag ON and this absent, the
+   * write falls back to the pre-slice path and logs an error — a wiring defect
+   * must not cost the write.
+   */
+  childRowConsolidator?: {
+    consolidatedUpsertChildRows(
+      ipoId: string,
+      tableName: ChildConsolidationTable,
+      rows: ChildRowInput[],
+      source: ScraperSourceLiteral,
+      docType?: string
+    ): Promise<ConsolidatedChildRowsResult>;
+  };
 }
 
 export interface PersistFilingSummary {
@@ -1224,6 +1247,12 @@ export async function persistFilingExtraction(
       // protect — `prior` is this exact (fiscal_year, basis) row. With no
       // prior row, "protected" has nothing to preserve, so the filing's
       // value is written rather than a null.
+      // s5b: the columns THIS extraction actually supplies for THIS row, in
+      // the row's unit — i.e. the values that are this source's claim. A
+      // carried-forward prior value is NOT in here: sending it as "incoming"
+      // would let this source claim provenance for a number an earlier filing
+      // supplied.
+      const carried: Record<string, string> = {};
       const perShare = (
         m: Record<string, number>,
         col: string,
@@ -1232,7 +1261,9 @@ export async function persistFilingExtraction(
         if (prior && statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
           return kept;
         }
-        return m[fy] !== undefined ? m[fy].toString() : kept;
+        if (m[fy] === undefined) return kept;
+        carried[col] = m[fy].toString();
+        return carried[col];
       };
       const s = (m: Record<string, number>, col: keyof typeof prior): string | null => {
         if (prior && statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
@@ -1240,32 +1271,96 @@ export async function persistFilingExtraction(
         }
         if (m[fy] !== undefined) {
           const raw = m[fy];
-          return rowUnit === unitEnum
-            ? raw.toString()
-            : round2(convertUnit(raw, unitEnum, rowUnit)).toString();
+          // s5b unit decision: convert BEFORE consolidation, never after. The
+          // row carries ONE `unit` column and the stored row's unit wins, so
+          // an incoming MILLION figure and a stored CRORE figure are not
+          // comparable numbers until they are in the same denomination —
+          // ranking them raw would let a 100x-smaller number look like a
+          // different fact. Converting first also means the value the flag-ON
+          // path writes is denominated exactly as the flag-OFF path's is.
+          carried[col as string] =
+            rowUnit === unitEnum
+              ? raw.toString()
+              : round2(convertUnit(raw, unitEnum, rowUnit)).toString();
+          return carried[col as string];
         }
         const kept = prior ? (prior[col] as string | null) : null;
         return kept ?? null;
       };
+      const statementRow: Record<string, unknown> = {
+        ipoId,
+        fiscalYear,
+        basis,
+        unit: rowUnit,
+        revenue: s(revenueW, 'revenue'),
+        totalIncome: s(totalIncomeW, 'totalIncome'),
+        ebitda: s(ebitdaW, 'ebitda'),
+        pat: s(patW, 'pat'),
+        netWorth: s(netWorthW, 'netWorth'),
+        // Per-share figures are NOT amounts — they are never unit-converted.
+        epsBasic: perShare(epsBasicW, 'epsBasic', prior?.epsBasic ?? null),
+        epsDiluted: perShare(epsDilutedW, 'epsDiluted', prior?.epsDiluted ?? null),
+        opCashFlow: s(opCashFlowW, 'opCashFlow'),
+        // A ratio, not an amount.
+        dscr: perShare(dscrW, 'dscr', prior?.dscr ?? null),
+        rentExpense: s(rentW, 'rentExpense'),
+      };
       if (apply) {
-        await deps.financialStatements.upsert({
-          ipoId,
-          fiscalYear,
-          basis,
-          unit: rowUnit,
-          revenue: s(revenueW, 'revenue'),
-          totalIncome: s(totalIncomeW, 'totalIncome'),
-          ebitda: s(ebitdaW, 'ebitda'),
-          pat: s(patW, 'pat'),
-          netWorth: s(netWorthW, 'netWorth'),
-          // Per-share figures are NOT amounts — they are never unit-converted.
-          epsBasic: perShare(epsBasicW, 'epsBasic', prior?.epsBasic ?? null),
-          epsDiluted: perShare(epsDilutedW, 'epsDiluted', prior?.epsDiluted ?? null),
-          opCashFlow: s(opCashFlowW, 'opCashFlow'),
-          // A ratio, not an amount.
-          dscr: perShare(dscrW, 'dscr', prior?.dscr ?? null),
-          rentExpense: s(rentW, 'rentExpense'),
-        });
+        // Flag OFF: byte-identical to the pre-s5b write — `statementRow` is the
+        // same object literal this module always built, and nothing else runs.
+        if (FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) {
+          if (!deps.childRowConsolidator) {
+            logger.error(
+              { ipoId, fiscalYear, basis },
+              '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
+            );
+          } else {
+            const rowKey = financialStatementsRowKey(fiscalYear, basis);
+            if (rowKey === null) {
+              // Unreachable through this loop (fiscalYear is integer-checked
+              // above and basis is non-null), which is exactly why it must not
+              // be assumed: a keyless row filed under '' would collide with
+              // every other keyless row's provenance.
+              skippedFailedCheck.push(
+                `financial_statements FY${fiscalYear}/${basis} (no row key — not written)`
+              );
+              continue;
+            }
+            const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+              ipoId,
+              'financial_statements',
+              [
+                {
+                  rowKey,
+                  existingRowId: (prior as { id?: string } | undefined)?.id,
+                  data: carried,
+                  existingData: prior
+                    ? Object.fromEntries(
+                        STATEMENT_COLUMNS.map((c) => [c, (prior as unknown as Record<string, unknown>)[c]])
+                      )
+                    : undefined,
+                },
+              ],
+              source,
+              options.docType
+            );
+            const decided = resolved.rows[0];
+            if (decided && decided.skipped) {
+              skippedFailedCheck.push(
+                `financial_statements FY${fiscalYear}/${basis} (consolidation skipped: ${decided.skipReason})`
+              );
+              continue;
+            }
+            for (const [col, value] of Object.entries(decided?.consolidatedData ?? {})) {
+              // Only the columns this row actually models, and never an
+              // `undefined` that would blank a carried-forward value.
+              if (!STATEMENT_COLUMNS.includes(col as (typeof STATEMENT_COLUMNS)[number])) continue;
+              if (value === undefined) continue;
+              statementRow[col] = value;
+            }
+          }
+        }
+        await deps.financialStatements.upsert(statementRow as never);
       }
       n += 1;
     }

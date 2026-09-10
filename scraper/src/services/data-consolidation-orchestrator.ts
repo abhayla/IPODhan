@@ -59,6 +59,73 @@ export interface ConsolidatedUpsertResult {
 }
 
 /**
+ * The eight child tables item 1 brings onto the consolidated write path.
+ * Slice s5b wires `financial_statements` only; the rest are listed so the
+ * type is the card's contract rather than this slice's subset.
+ */
+export type ChildConsolidationTable =
+  | 'ipo_details'
+  | 'financial_statements'
+  | 'ipo_valuation'
+  | 'ipo_risk_factors'
+  | 'promoters'
+  | 'anchor_investors'
+  | 'ipo_intermediaries'
+  | 'peer_companies';
+
+/**
+ * Tables with structurally ONE row per IPO. Only these may legitimately carry
+ * the `''` row key — for any other table `''` means "the caller could not key
+ * this row", which is a skip, not a write.
+ */
+const SINGLETON_ROW_CHILD_TABLES: ReadonlySet<string> = new Set([
+  'ipo_details',
+  'anchor_investors',
+]);
+
+/** One incoming child row, already keyed by the caller. */
+export interface ChildRowInput {
+  /**
+   * The row's natural key, matching that table's own unique constraint (see
+   * `child-row-keys.ts`). `''` ONLY for a singleton table.
+   */
+  rowKey: string;
+  /** The row's primary-key id when it already exists (undefined = new row). */
+  existingRowId?: string;
+  /** The fields THIS source supplies for this row — not the merged row. */
+  data: Record<string, any>;
+  /** The stored values for this row, when the caller has already read them. */
+  existingData?: Record<string, any>;
+}
+
+/** Per-row outcome of `consolidatedUpsertChildRows`. */
+export interface ChildRowConsolidationResult {
+  rowKey: string;
+  existingRowId?: string;
+  /** Resolved values, field by field. Empty when the row was skipped. */
+  consolidatedData: Record<string, any>;
+  fieldsProcessed: number;
+  fieldsUpdated: number;
+  conflictsDetected: number;
+  skipped: boolean;
+  skipReason?: 'MISSING_ROW_KEY' | 'CHILD_TABLE_CONSOLIDATION_DISABLED';
+}
+
+/**
+ * Aggregate result. A superset of the item-1 card's
+ * `{ rowsProcessed, rowsUpdated, conflictsDetected }`: `rows` carries the
+ * resolved values the caller needs in order to write the row, and
+ * `rowsSkipped` makes a refused row a counted outcome rather than silence.
+ */
+export interface ConsolidatedChildRowsResult {
+  rowsProcessed: number;
+  rowsUpdated: number;
+  rowsSkipped: number;
+  conflictsDetected: number;
+  rows: ChildRowConsolidationResult[];
+}
+
+/**
  * Data Consolidation Orchestrator
  * Manages the complete consolidation workflow
  */
@@ -603,6 +670,116 @@ export class DataConsolidationOrchestrator {
    */
   async getIPOConsolidationStats(ipoId: string) {
     return this.consolidationService.getConsolidationStats(ipoId);
+  }
+
+  /**
+   * Item 1 slice s5b — the consolidated CHILD-row writer.
+   *
+   * `consolidatedUpsertIPO` above resolves one field set for one `ipos` row.
+   * A child table holds MANY rows per IPO, so resolution has to run once per
+   * (row, field) pair, scoped by the row's natural key — otherwise FY2023's
+   * stored revenue is read as FY2024's "existing value" and one year's number
+   * is kept against a value it never held.
+   *
+   * This method DECIDES values and writes provenance; it does NOT write the
+   * child row itself. The caller already holds that table's repository and its
+   * unit/protection rules, and keeping the row write there is what lets the
+   * flag-off path stay byte-identical to the pre-slice code.
+   *
+   * Currently wired for `financial_statements` only (slice scope). The other
+   * tables on the item-1 card still take their old path.
+   */
+  async consolidatedUpsertChildRows(
+    ipoId: string,
+    tableName: ChildConsolidationTable,
+    rows: ChildRowInput[],
+    source: ScraperSource,
+    docType?: string,
+    confidence: number = 100
+  ): Promise<ConsolidatedChildRowsResult> {
+    const result: ConsolidatedChildRowsResult = {
+      rowsProcessed: 0,
+      rowsUpdated: 0,
+      rowsSkipped: 0,
+      conflictsDetected: 0,
+      rows: [],
+    };
+
+    // Defence in depth. The call site branches on this flag too (that is what
+    // keeps the OFF path byte-identical); this second check means a future
+    // caller that forgets the branch cannot silently start writing provenance
+    // under a flag its operator believes is off.
+    if (!FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) {
+      for (const row of rows) {
+        result.rowsSkipped += 1;
+        result.rows.push({
+          rowKey: row.rowKey,
+          existingRowId: row.existingRowId,
+          consolidatedData: {},
+          fieldsProcessed: 0,
+          fieldsUpdated: 0,
+          conflictsDetected: 0,
+          skipped: true,
+          skipReason: 'CHILD_TABLE_CONSOLIDATION_DISABLED',
+        });
+      }
+      return result;
+    }
+
+    for (const row of rows) {
+      const rowKey = typeof row.rowKey === 'string' ? row.rowKey.trim() : '';
+
+      // A keyless row must never be written under `''`: that is the reserved
+      // sentinel for one-row-per-IPO tables, so every keyless row of a
+      // multi-row table would collide there and overwrite the others'
+      // provenance under the widened unique key. Skip it, count it, and say
+      // why — a throw here would abort the whole IPO's persistence for one
+      // malformed row, which loses strictly more data than skipping one row.
+      if (rowKey === '' && !SINGLETON_ROW_CHILD_TABLES.has(tableName)) {
+        result.rowsSkipped += 1;
+        result.rows.push({
+          rowKey: '',
+          existingRowId: row.existingRowId,
+          consolidatedData: {},
+          fieldsProcessed: 0,
+          fieldsUpdated: 0,
+          conflictsDetected: 0,
+          skipped: true,
+          skipReason: 'MISSING_ROW_KEY',
+        });
+        logger.error(
+          { ipoId, tableName, source, docType, fields: Object.keys(row.data ?? {}) },
+          '[DataConsolidation] child row has no natural key — refusing to file it under the singleton sentinel'
+        );
+        continue;
+      }
+
+      const consolidation = await this.consolidationService.consolidateIPOData({
+        ipoId,
+        tableName,
+        rowKey,
+        incomingData: row.data ?? {},
+        source,
+        existingData: row.existingData,
+        confidence,
+        docType,
+      });
+
+      result.rowsProcessed += 1;
+      result.conflictsDetected += consolidation.conflictsDetected;
+      if (consolidation.fieldsUpdated > 0) result.rowsUpdated += 1;
+      result.rows.push({
+        rowKey,
+        existingRowId: row.existingRowId,
+        consolidatedData: consolidation.consolidatedData ?? {},
+        fieldsProcessed: consolidation.fieldsProcessed,
+        fieldsUpdated: consolidation.fieldsUpdated,
+        conflictsDetected: consolidation.conflictsDetected,
+        skipped: false,
+      });
+    }
+
+    return result;
   }
 }
 
