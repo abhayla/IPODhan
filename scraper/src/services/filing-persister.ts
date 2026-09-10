@@ -101,6 +101,21 @@ export interface IpoDetailsWriter {
    * identity row is simply not written.
    */
   insertIfMissing?(ipoId: string, values: Record<string, unknown>): Promise<boolean>;
+  /**
+   * Item 2 slice 7: fill `issue_type` ONLY when it is NULL, never overwrite.
+   *
+   * `ipo_details` has NO source-priority mechanism - measured 2026-09-11: the
+   * field-priority matrix governs `ipos` writes only, and `dropOutranked` is
+   * cover-versus-price-band-ad arbitration that no-ops unless the incoming
+   * write IS a prospectus cover. So a lower-confidence source like the
+   * Chittorgarh list CANNOT be ranked against a filing here; it can only be
+   * made harmless. The `IS NULL` guard is that harmlessness, and it is the
+   * whole safety argument for this write.
+   *
+   * Returns true only when a row was actually filled, so the caller writes a
+   * provenance row for a real write and not for a no-op.
+   */
+  fillIssueTypeIfNull?(ipoId: string, issueType: string): Promise<boolean>;
 }
 
 /**

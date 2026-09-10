@@ -13,6 +13,12 @@ import { runNSEScraper } from './scrapers/nse-scraper-orchestrator-v2.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator-v2.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
+import {
+  runIssueTypeFillJob,
+  makeIssueTypeJobDeps,
+} from './services/chittorgarh-issue-type-job.js';
+import { makeIpoDetailsWriter } from './services/filing-persist-deps.js';
+import { FieldSourcesRepository, filterProtectedFields } from '@ipodhan/shared';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
 import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performance-cadence.js';
@@ -197,6 +203,24 @@ const AGGREGATOR_INTERVAL_MINUTES = 24 * 60;
 const API_FALLBACK_CADENCE_KEY = 'due-step-api-fallback';
 const API_FALLBACK_INTERVAL_MINUTES = 24 * 60;
 const AGGREGATOR_CADENCE_KEY = 'due-step-aggregators';
+
+/**
+ * Item 2 slice 7 gets its OWN cadence key, deliberately.
+ *
+ * It shares the aggregator's 24-hour interval but NOT its key. Round 2 of the
+ * Tier A review caught the reason: I had gated the shared aggregator stamp on
+ * `cgOk && fillOk`, so ONE failed row out of 231 - a single transient deadlock -
+ * left the whole branch un-stamped and re-ran the Chittorgarh SCRAPE and the
+ * report fetch on every 30-minute wake, roughly 48 times a day against a
+ * third-party source. Worse, it was dated: on 1 Jan 2027 CURRENT_YEAR flips, the
+ * new financial year's report drops below the row floor, and the hammering would
+ * have run for weeks. Fixing a one-day retry suppression by inventing a
+ * permanent retry storm is a bad trade.
+ *
+ * Separate keys give each step the retry discipline it actually needs: the
+ * scrape stamps on its own result, the fill stamps on its own.
+ */
+const ISSUE_TYPE_FILL_CADENCE_KEY = 'due-step-issue-type-fill';
 
 /**
  * Round-3 H2: what a due-step cycle reports back to `main()`. Round 1 swallowed
@@ -393,6 +417,71 @@ async function runDueStepCycle(
       // production, because prod runs the due-step scheduler.
       logger.info({ candidateCount }, 'Due-step cycle: aggregator cadence due — running Chittorgarh for UPCOMING/OPEN IPOs');
       const cgOk = await runCycleStep('aggregator:CHITTORGARH', () => runChittorgarhScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] }));
+
+      // Item 2 slice 7. Report 82 publishes Pricing Method as a first-class
+      // field; this fills `ipo_details.issue_type` where it is NULL and never
+      // overwrites. A SEPARATE step from the scrape above because it writes a
+      // different table under a different safety argument (a NULL guard, not a
+      // priority engine), and it runs regardless of `cgOk`: the scrape writing
+      // `ipos` and the report publishing an issue type are independent, so a
+      // partial scrape is no reason to drop a field the same response carried.
+      const fillDue = await isCatchUpCadenceDue(
+        redis,
+        ISSUE_TYPE_FILL_CADENCE_KEY,
+        AGGREGATOR_INTERVAL_MINUTES,
+        now
+      );
+      const fillOk = !fillDue ? true : await runCycleStep('aggregator:CHITTORGARH_ISSUE_TYPE', async () => {
+        const result = await runIssueTypeFillJob(
+          makeIssueTypeJobDeps(
+            db,
+            makeIpoDetailsWriter(),
+            new FieldSourcesRepository(db, redis),
+            (id, table, data, scraperName) =>
+              filterProtectedFields(id, table, data, scraperName, db, redis),
+            logger
+          )
+        );
+        // THE STEP VERDICT MUST BE ABLE TO FAIL FOR THE CLAIM IT SUPPORTS.
+        //
+        // I originally failed the step only on `abortedReason`, which meant a
+        // cycle where EVERY write threw - say ipodhan_app lacking UPDATE on
+        // ipo_details - returned failed=231, filled=0 and success:true. A cycle
+        // that wrote nothing and a cycle that wrote 180 rows produced the same
+        // verdict, so the staging proof this step exists to support could not
+        // have failed. Caught in Tier A review.
+        //
+        // Counts are resolved to a reason, never reported bare (signal-ownership R1).
+        const reasons: string[] = [];
+        if (result.abortedReason) reasons.push(`aborted: ${result.abortedReason}`);
+        if (result.failed > 0) reasons.push(`${result.failed} row(s) threw during the write`);
+        // Nothing matching at all means the source's name format moved or the
+        // fold changed - never a legitimate quiet day for a whole-year report.
+        if (!result.abortedReason && result.candidates > 0 && result.matched === 0) {
+          reasons.push(`0 of ${result.candidates} report rows matched any stored IPO`);
+        }
+        // MATCHED BUT WROTE NOTHING is the blind spot round 2 found. If every
+        // match is refused - all dateMismatch because the two open-date
+        // populations diverge, or all blockedByAdmin from a protection-cache
+        // anomaly - the step would otherwise report clean while zero rows were
+        // touched, and the staging proof could not fail for the write claim.
+        if (!result.abortedReason && result.matched > 0 && result.filled === 0 && result.alreadySet === 0) {
+          reasons.push(
+            `${result.matched} row(s) matched but NONE were written or already set ` +
+            `(dateMismatch=${result.dateMismatch}, blockedByAdmin=${result.blockedByAdmin})`
+          );
+        }
+        if (reasons.length === 0) return { success: true };
+        logger.warn({ ...result }, 'Due-step cycle: issue-type fill did not fully succeed');
+        return { success: false, errors: reasons.map((r) => `issue-type fill: ${r}`) };
+      });
+
+      // Each step stamps its OWN key on its OWN result. A failed fill must not
+      // suppress its own retry (the original bug), and must not un-stamp the
+      // scrape either (the retry storm that fix created).
+      if (fillDue && fillOk) {
+        await markCatchUpCadenceRan(redis, ISSUE_TYPE_FILL_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
+      }
       if (cgOk) {
         await markCatchUpCadenceRan(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
       } else {

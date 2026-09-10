@@ -1,0 +1,9 @@
+{
+  "class_id": "a 200 response with zero rows read as \"no data\" rather than \"broken call\"",
+  "feature": "scraper/src/scrapers/chittorgarh-scraper.ts (report-82 list endpoint) and any list-report fetch whose page size is a caller-supplied number",
+  "symptom": "Chittorgarh report 82 accepts EXACTLY ONE page size. Measured read-only against the live endpoint 2026-09-11: perPage=10 returns HTTP 200 with all 231 rows (the report ignores the page size), while perPage=20/50/100/300 each return HTTP 200 with zero rows and error \"Invalid API Call<year>-<perPage>-01\". The failure carries a success status, so an empty list reads as \"no IPOs today\" instead of \"this call is malformed\". fetchChittorgarhAPI's default perPage was 100 - a call that returns nothing - and never fired only because its single caller passed 10 by hand; the code comment beside it stated \"API accepts perPage: 10, 20, 30...\", which is false and actively invites the change that breaks it.",
+  "first_seen": "Sep 2026, found while wiring item 2 slice 7 (issue_type from report 82). Never fired in production: latent behind one hand-written argument.",
+  "fix_prs": "#569 (page size named REPORT82_PAGE_SIZE with the measurement in its comment, made the default, misleading comment corrected)",
+  "detection_check": "scraper/tests/unit/scrapers/chittorgarh-report82-page-size.test.ts - pins the constant to 10 and asserts it is none of the four values measured to return zero rows. Mutation-checked: restoring the old default of 100 turns both tests red. NOT a runtime check - a cycle that receives zero rows already raises via the existing `error` branch in scrapeChittorgarhIPOs, so the gap this closes is the source-level one, where the value looks like a harmless tuning knob.",
+  "status": "guarded"
+}

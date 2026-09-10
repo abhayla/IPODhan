@@ -29,6 +29,7 @@ import {
   DocumentRepository,
   getRedisClient,
 } from '@ipodhan/shared';
+import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import type {
@@ -54,6 +55,22 @@ export function makeIpoDetailsWriter(): IpoDetailsWriter {
         .insert(schema.ipoDetails)
         .values({ ipoId, ...values } as never)
         .onConflictDoNothing({ target: schema.ipoDetails.ipoId });
+      return (result.rowCount ?? 0) > 0;
+    },
+    async fillIssueTypeIfNull(ipoId, issueType) {
+      // NEVER an upsert: an upsert would overwrite a filing-sourced value with a
+      // list-page one, and this table has NO priority mechanism to stop it.
+      // Measured 2026-09-11: the field-priority matrix governs `ipos` writes
+      // only, and `dropOutranked` is cover-versus-price-band-ad arbitration that
+      // no-ops unless the incoming write IS a prospectus cover. So the `isNull`
+      // predicate IS the safety argument here - remove it and a DRHP value is
+      // clobbered, which is exactly what this method's mutation test asserts.
+      const result = await db
+        .update(schema.ipoDetails)
+        .set({ issueType: issueType as never, updatedAt: new Date() })
+        .where(
+          and(eq(schema.ipoDetails.ipoId, ipoId), isNull(schema.ipoDetails.issueType))
+        );
       return (result.rowCount ?? 0) > 0;
     },
   };
