@@ -15,3 +15,15 @@
 # 2026-09-10: contract docs stay LF too, same class as the .sh/.mjs rules above —
 # reviewed cross-platform (Windows authors, Linux CI) and a CRLF diff noise defeats review.
 docs/contracts/*.md text eol=lf
+
+# 2026-09-10: docs/ops/prod-ops-recipes.md is stored as an all-CRLF blob. Under
+# core.autocrlf=true a plain `git add` renormalises it to LF, producing ~450 lines
+# of diff churn around a handful of real edits on a file two lanes both edit --
+# which makes it unreviewable and invites merge conflicts. Pinning it keeps the
+# stored form stable so a diff shows only the actual change.
+# NOT the reason: an earlier note in this repo claimed the churn split three
+# `tr -d '"'` commands across lines. That was wrong -- verified from raw blobs,
+# the argument is a literal two-character backslash-r that EOL conversion never
+# touches. Those commands are genuinely broken on main from some earlier edit and
+# are repaired by item 01 slice s3, independently of this rule.
+docs/ops/prod-ops-recipes.md text eol=crlf

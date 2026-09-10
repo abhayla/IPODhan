@@ -385,6 +385,15 @@ jobs:
           SCHEMA_DRIFT_IGNORE_GATED: '1'
         run: npm run audit:schema-drift
 
+      - name: Self-invalidate KNOWN_GATED_INDEX_DRIFT / KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT
+        # scripts/tests/known-gated-registry-invalidation.test.ts — tsx, not
+        # bare node --test, because it imports assert-schema-drift.ts through
+        # the @ipodhan/shared/db/schema path alias. Fails the moment
+        # schema.ts's declared columns for a gated entry stop matching that
+        # entry's expectedColumns, so a stale suppression cannot silently
+        # keep gating a drift that no longer exists.
+        run: npx tsx --test scripts/tests/known-gated-registry-invalidation.test.ts
+
       - name: Run the document-state integration tests
         working-directory: ./scraper
         env:

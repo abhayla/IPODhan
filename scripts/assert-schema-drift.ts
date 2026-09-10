@@ -69,8 +69,35 @@ export interface ColumnExpectation {
 }
 
 export interface Drift {
-  kind: 'MISSING_TABLE' | 'MISSING_COLUMN' | 'COLUMN_TYPE_MISMATCH' | 'MISSING_MATVIEW';
+  kind:
+    | 'MISSING_TABLE'
+    | 'MISSING_COLUMN'
+    | 'COLUMN_TYPE_MISMATCH'
+    | 'MISSING_MATVIEW'
+    | 'MISSING_INDEX'
+    | 'INDEX_COLUMN_MISMATCH'
+    | 'MISSING_UNIQUE_CONSTRAINT'
+    | 'UNIQUE_CONSTRAINT_COLUMN_MISMATCH';
   detail: string;
+}
+
+// Item 1 slice s3b (clause 8, part 3): an index/constraint expectation, keyed
+// by NAME but verified by exact ORDERED column list — name-only matching
+// already failed once in this item (a constraint recreated under the right
+// name on the wrong columns reported OK; see assert-row-key-constraints.ts,
+// which this follows the same approach as).
+export interface IndexExpectation {
+  tableName: string;
+  indexName: string;
+  /** Column names, in the exact order the index covers them. */
+  columns: string[];
+}
+
+export interface UniqueConstraintExpectation {
+  tableName: string;
+  constraintName: string;
+  /** Column names, in the exact order the constraint covers them. */
+  columns: string[];
 }
 
 export interface MatviewExpectation {
@@ -145,6 +172,75 @@ export function isKnownGatedDrift(d: Drift): boolean {
   return KNOWN_GATED_TYPE_DRIFT.some(
     (g) =>
       d.detail === `"${g.tableName}.${g.columnName}" expects ${g.expected}, live column is ${g.actual}`
+  );
+}
+
+// ==================== KNOWN-GATED INDEX DRIFT (item 1 slice s3b) ====================
+// Same convention as KNOWN_GATED_TYPE_DRIFT above: a small, explicit,
+// human-maintained registry for drift that is real, already known, and
+// approved elsewhere — never a silent catch-all.
+//
+// field_sources.idx_field_sources_ipo_table_field: slice s3
+// (feat/pm-item01-s3-row-key-provenance, commit 34b447058, NOT YET merged to
+// main) widens this index with a new `row_key` column and tested that change
+// directly against the shared `ipodhan_test` database ahead of merge. This
+// branch's schema.ts does not declare `row_key` yet (that column belongs to
+// slice s3, not this CI-hardening slice), so the index checker below sees a
+// real 3-vs-4-column mismatch on ipodhan_test today. It is not this slice's
+// place to either (a) touch the shared ipodhan_test index slice s3 is relying
+// on for its own testing, or (b) add slice s3's row_key column to schema.ts
+// pre-emptively. Remove this entry the moment slice s3 merges and schema.ts
+// itself declares row_key on field_sources.
+export const KNOWN_GATED_INDEX_DRIFT: { tableName: string; indexName: string; expectedColumns: string; actualColumns: string }[] = [
+  {
+    tableName: 'field_sources',
+    indexName: 'idx_field_sources_ipo_table_field',
+    expectedColumns: 'ipo_id, table_name, field_name',
+    actualColumns: 'ipo_id, table_name, row_key, field_name',
+  },
+];
+
+/**
+ * Exact-match predicate for KNOWN_GATED_INDEX_DRIFT, same discipline as
+ * isKnownGatedDrift(): all fields must match verbatim, so a DIFFERENT
+ * mismatch on the same index still fails instead of being swallowed.
+ */
+// field_sources/data_conflicts.idx_field_sources_ipo_table_field aside, the
+// three row-key UNIQUE constraints schema.ts declares (promoters,
+// peer_companies, ipo_intermediaries) are DELIBERATELY kept out of the
+// migration journal — web/drizzle/migrations/_gated/E1_row_key_unique_constraints.sql
+// applies them BY HAND, per slot, after a normalized_name backfill (see that
+// file's header and assert-row-key-constraints.ts, the existing dedicated
+// verifier for this exact gap). Until an operator hand-applies the gated
+// file on a given slot, checkUniqueConstraints() correctly sees "declared in
+// schema.ts, missing live" — real information, but not THIS slice's gap to
+// close. assert-row-key-constraints.ts CAN verify that hand-apply step, but
+// it is wired only as the npm script `audit:row-key-constraints` — no
+// workflow, deploy script or cron currently calls it, so today nothing runs
+// it on a schedule; treat it as a manual check an operator runs after
+// hand-applying the gated file, not as standing coverage. Gated the same way
+// as KNOWN_GATED_TYPE_DRIFT/KNOWN_GATED_INDEX_DRIFT above so deploy-linux.sh
+// and the nightly audit (which call this script bare) still see and fail on
+// a slot that never got the gated file applied.
+export const KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT: { tableName: string; constraintName: string }[] = [
+  { tableName: 'promoters', constraintName: 'unique_promoters_ipo_id_normalized_name' },
+  { tableName: 'peer_companies', constraintName: 'unique_peer_companies_ipo_id_normalized_name' },
+  { tableName: 'ipo_intermediaries', constraintName: 'unique_ipo_intermediaries_ipo_id_role_normalized_name' },
+];
+
+export function isKnownGatedUniqueConstraintDrift(d: Drift): boolean {
+  if (d.kind !== 'MISSING_UNIQUE_CONSTRAINT') return false;
+  return KNOWN_GATED_UNIQUE_CONSTRAINT_DRIFT.some(
+    (g) => d.detail === `"${g.tableName}.${g.constraintName}" is declared in schema.ts but does not exist on the live database`
+  );
+}
+
+export function isKnownGatedIndexDrift(d: Drift): boolean {
+  if (d.kind !== 'INDEX_COLUMN_MISMATCH') return false;
+  return KNOWN_GATED_INDEX_DRIFT.some(
+    (g) =>
+      d.detail ===
+      `"${g.tableName}.${g.indexName}" expects columns (${g.expectedColumns}), live index covers (${g.actualColumns})`
   );
 }
 
@@ -304,6 +400,166 @@ export async function checkMatviews(
   return drifts;
 }
 
+// ==================== INDEX / UNIQUE CONSTRAINT DRIFT (item 1 slice s3b) ====================
+// checkColumns() above compares column SHAPE only — it has zero occurrences
+// of "index"/"constraint". A reviewer set schema.ts to a knowingly-wrong
+// five-column index, ran no migration, and this script exited 0 saying the
+// live database matched, because nothing here looked at pg_index at all.
+// These two functions close that gap, following assert-row-key-constraints.ts's
+// approach: match by NAME, verify by exact ORDERED column list (never by
+// name alone, and never by unordered set — a reordered composite index
+// serves different queries).
+
+export function collectExpectedIndexes(): IndexExpectation[] {
+  const expectations: IndexExpectation[] = [];
+  for (const value of Object.values(schema)) {
+    if (!is(value, PgTable)) continue;
+    const cfg = getTableConfig(value as PgTable);
+    for (const idx of cfg.indexes) {
+      const name = idx.config.name;
+      if (!name) continue; // unnamed indexes aren't addressable by name; skip rather than guess
+      const columns = idx.config.columns
+        .map((c) => ('name' in c ? (c as { name?: string }).name : undefined))
+        .filter((n): n is string => typeof n === 'string');
+      if (columns.length === 0) continue; // expression/SQL-only index — no plain column list to compare
+      expectations.push({ tableName: cfg.name, indexName: name, columns });
+    }
+  }
+  return expectations;
+}
+
+export function collectExpectedUniqueConstraints(): UniqueConstraintExpectation[] {
+  const expectations: UniqueConstraintExpectation[] = [];
+  for (const value of Object.values(schema)) {
+    if (!is(value, PgTable)) continue;
+    const cfg = getTableConfig(value as PgTable);
+    for (const uc of cfg.uniqueConstraints) {
+      const name = uc.getName();
+      if (!name) continue;
+      expectations.push({ tableName: cfg.name, constraintName: name, columns: uc.columns.map((c) => c.name) });
+    }
+  }
+  return expectations;
+}
+
+/**
+ * Checks every named index schema.ts declares against pg_index on the live
+ * database, ordered by column position (unnest(indkey) WITH ORDINALITY,
+ * mirroring assert-row-key-constraints.ts's ordinal_position read for
+ * constraints). Only checks indexes the SSOT declares — an extra live index
+ * schema.ts never named is not this check's business, same asymmetry as
+ * checkColumns() only checking SSOT-declared columns.
+ */
+export async function checkIndexes(client: Client): Promise<Drift[]> {
+  const expectations = collectExpectedIndexes();
+  if (expectations.length === 0) return [];
+
+  const tableNames = [...new Set(expectations.map((e) => e.tableName))];
+  const { rows } = await client.query<{ table_name: string; index_name: string; column_name: string }>(
+    `SELECT t.relname AS table_name, i.relname AS index_name, a.attname AS column_name
+     FROM pg_index ix
+     JOIN pg_class t ON t.oid = ix.indrelid
+     JOIN pg_class i ON i.oid = ix.indexrelid
+     JOIN pg_namespace n ON n.oid = t.relnamespace
+     CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS x(attnum, n)
+     JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum
+     WHERE n.nspname = 'public' AND t.relname = ANY($1::text[])
+     ORDER BY t.relname, i.relname, x.n`,
+    [tableNames]
+  );
+
+  const liveIndexes = new Map<string, { tableName: string; columns: string[] }>();
+  for (const row of rows) {
+    let entry = liveIndexes.get(row.index_name);
+    if (!entry) {
+      entry = { tableName: row.table_name, columns: [] };
+      liveIndexes.set(row.index_name, entry);
+    }
+    entry.columns.push(row.column_name);
+  }
+
+  const drifts: Drift[] = [];
+  for (const expected of expectations) {
+    const live = liveIndexes.get(expected.indexName);
+    if (!live) {
+      drifts.push({
+        kind: 'MISSING_INDEX',
+        detail: `"${expected.tableName}.${expected.indexName}" is declared in schema.ts but does not exist on the live database`,
+      });
+      continue;
+    }
+    const columnsMatch =
+      live.columns.length === expected.columns.length && live.columns.every((c, i) => c === expected.columns[i]);
+    if (!columnsMatch) {
+      drifts.push({
+        kind: 'INDEX_COLUMN_MISMATCH',
+        detail: `"${expected.tableName}.${expected.indexName}" expects columns (${expected.columns.join(', ')}), live index covers (${live.columns.join(', ')})`,
+      });
+    }
+  }
+  return drifts;
+}
+
+/**
+ * Same idea as checkIndexes(), for UNIQUE constraints declared via unique()
+ * in schema.ts, checked against information_schema (constraint_type =
+ * 'UNIQUE') the same way assert-row-key-constraints.ts does.
+ */
+export async function checkUniqueConstraints(client: Client): Promise<Drift[]> {
+  const expectations = collectExpectedUniqueConstraints();
+  if (expectations.length === 0) return [];
+
+  const names = expectations.map((e) => e.constraintName);
+  const { rows } = await client.query<{
+    constraint_name: string;
+    table_name: string;
+    column_name: string;
+  }>(
+    `SELECT tc.constraint_name, tc.table_name, kcu.column_name
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.key_column_usage kcu
+       ON kcu.constraint_name = tc.constraint_name
+      AND kcu.constraint_schema = tc.constraint_schema
+      AND kcu.table_schema = tc.table_schema
+     WHERE tc.table_schema = 'public'
+       AND tc.constraint_type = 'UNIQUE'
+       AND tc.constraint_name = ANY($1::text[])
+     ORDER BY tc.constraint_name, kcu.ordinal_position`,
+    [names]
+  );
+
+  const liveConstraints = new Map<string, { tableName: string; columns: string[] }>();
+  for (const row of rows) {
+    let entry = liveConstraints.get(row.constraint_name);
+    if (!entry) {
+      entry = { tableName: row.table_name, columns: [] };
+      liveConstraints.set(row.constraint_name, entry);
+    }
+    entry.columns.push(row.column_name);
+  }
+
+  const drifts: Drift[] = [];
+  for (const expected of expectations) {
+    const live = liveConstraints.get(expected.constraintName);
+    if (!live) {
+      drifts.push({
+        kind: 'MISSING_UNIQUE_CONSTRAINT',
+        detail: `"${expected.tableName}.${expected.constraintName}" is declared in schema.ts but does not exist on the live database`,
+      });
+      continue;
+    }
+    const columnsMatch =
+      live.columns.length === expected.columns.length && live.columns.every((c, i) => c === expected.columns[i]);
+    if (!columnsMatch) {
+      drifts.push({
+        kind: 'UNIQUE_CONSTRAINT_COLUMN_MISMATCH',
+        detail: `"${expected.tableName}.${expected.constraintName}" expects columns (${expected.columns.join(', ')}), live constraint covers (${live.columns.join(', ')})`,
+      });
+    }
+  }
+  return drifts;
+}
+
 /**
  * Resolves connection config the same way scripts/audit-ipo-coverage.mjs
  * does: a CLI arg or DATABASE_URL wins outright; otherwise fall back to the
@@ -340,9 +596,11 @@ async function main() {
   }
 
   try {
-    const [columnDrifts, matviewDrifts] = await Promise.all([
+    const [columnDrifts, matviewDrifts, indexDrifts, uniqueConstraintDrifts] = await Promise.all([
       checkColumns(client),
       checkMatviews(client),
+      checkIndexes(client),
+      checkUniqueConstraints(client),
     ]);
 
     // SCHEMA_DRIFT_IGNORE_GATED=1 is set ONLY by the T-405 "replay the journal
@@ -352,11 +610,14 @@ async function main() {
     // checkColumns() itself keeps reporting the full truth for every other
     // caller (the self-test included).
     const ignoreGated = process.env.SCHEMA_DRIFT_IGNORE_GATED === '1';
-    const knownGated = ignoreGated ? [...columnDrifts, ...matviewDrifts].filter(isKnownGatedDrift) : [];
-    const allDrifts = [...columnDrifts, ...matviewDrifts].filter((d) => !knownGated.includes(d));
+    const combined = [...columnDrifts, ...matviewDrifts, ...indexDrifts, ...uniqueConstraintDrifts];
+    const knownGated = ignoreGated
+      ? combined.filter((d) => isKnownGatedDrift(d) || isKnownGatedIndexDrift(d) || isKnownGatedUniqueConstraintDrift(d))
+      : [];
+    const allDrifts = combined.filter((d) => !knownGated.includes(d));
 
     if (knownGated.length > 0) {
-      console.log(`INFO: ${knownGated.length} known-gated type drift finding(s) ignored (SCHEMA_DRIFT_IGNORE_GATED=1):`);
+      console.log(`INFO: ${knownGated.length} known-gated drift finding(s) ignored (SCHEMA_DRIFT_IGNORE_GATED=1):`);
       for (const drift of knownGated) {
         console.log(`  [${drift.kind}] ${drift.detail}`);
       }
