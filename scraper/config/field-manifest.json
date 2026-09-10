@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "generatedFrom": "docs/design/field-source-resolution.spec.mjs",
+  "fields": {
+    "ipos.issue_size": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "documentSection": "wp-c-extraction-contract.md §A5+A6 — PBA cover + \"The Offer\", and the table \"details of the Fresh Issue and post-issue market capitalisation\"",
+      "rank": {
+        "MAINBOARD": ["DOC", "BSE", "CHITTORGARH"],
+        "SME_BSE": ["DOC", "BSE", "CHITTORGARH"],
+        "SME_NSE": ["DOC", "BSE", "CHITTORGARH"]
+      },
+      "capability": {
+        "DOC": { "capable": true, "reason": "the PBA prints the total offer size at the cap (fresh + OFS)" },
+        "BSE": { "capable": true, "reason": "BSE detail payload carries a share-count-derived total" },
+        "CHITTORGARH": { "capable": true, "reason": "CG list API field 'Total Issue Amount (Incl. Firm reservations) (Rs.cr.)' reads the printed total directly, not shares x price (field-priority-matrix.ts:415-421, T-453 comment)" },
+        "NSE": { "capable": false, "reason": "NSE computes (sharesOffered/netOffer) x price, excluding the OFS portion — it cannot print the total (field-priority-matrix.ts:406-412, T-453). The CURRENT field-priority-matrix.ts issueSize entry still lists NSE (rank 4, below CHITTORGARH) — item 3 removes it to match this manifest." },
+        "MONEYCONTROL": { "capable": false, "reason": "OD-3 retires Moneycontrol as a scheduled source" }
+      },
+      "na": [],
+      "unit": "crore"
+    },
+    "ipo_details.fresh_issue": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "documentSection": "wp-c-extraction-contract.md §A — PBA cover + \"The Offer\"",
+      "rank": {
+        "MAINBOARD": ["DOC", "BSE", "CHITTORGARH"],
+        "SME_BSE": ["DOC", "BSE", "CHITTORGARH"],
+        "SME_NSE": ["DOC", "BSE", "CHITTORGARH"]
+      },
+      "capability": {
+        "DOC": { "capable": true, "reason": "the PBA prints the fresh-issue rupee amount separately from the OFS amount" },
+        "BSE": { "capable": true, "reason": "BSE detail payload carries a fresh-issue figure" },
+        "CHITTORGARH": { "capable": true, "reason": "CG list API carries the fresh-issue line item" },
+        "NSE": { "capable": false, "reason": "same T-453 reasoning as ipos.issue_size — no printed fresh/OFS split" },
+        "MONEYCONTROL": { "capable": false, "reason": "OD-3 retires Moneycontrol as a scheduled source" }
+      },
+      "na": ["OFS", "TENDER", "BUYBACK"],
+      "unit": "crore"
+    },
+    "financial_statements.revenue": {
+      "class": "D",
+      "documentType": "RHP",
+      "documentSection": "wp-c-extraction-contract.md §C1-C2 — \"Restated Consolidated Statement of Profit and Loss\" (falls back to \"Summary of Financial Information\")",
+      "rank": {
+        "MAINBOARD": ["DOC", "CHITTORGARH", "MONEYCONTROL"],
+        "SME_BSE": ["DOC", "CHITTORGARH", "MONEYCONTROL"],
+        "SME_NSE": ["DOC", "CHITTORGARH", "MONEYCONTROL"]
+      },
+      "capability": {
+        "DOC": { "capable": true, "reason": "the RHP prints the full restated 3-5 year revenue series" },
+        "CHITTORGARH": { "capable": true, "reason": "CG's 'financialTable' (chittorgarh-detail-fields.ts, getTableById 'financialTable') DOES carry a restated per-fiscal-year revenue/total-income/EBITDA/PAT series — field-source-resolution.spec.mjs:122-124 corrects an earlier draft's wrong claim that no website publishes this" },
+        "MONEYCONTROL": { "capable": true, "reason": "historically ranked rank 3 in field-source-resolution.spec.mjs:130 — SEE CONTRADICTION flagged in the design card (OD-3 retires Moneycontrol scheduling; card leaves the capability true pending owner decision C-1)" },
+        "NSE": { "capable": false, "reason": "§2.3.5: NSE's API returns bidding and demand data only — no financial fields" },
+        "BSE": { "capable": false, "reason": "no BSE financials endpoint carries a restated series" }
+      },
+      "na": ["INVITS", "REITS", "TENDER", "BUYBACK"],
+      "unit": "crore"
+    }
+  }
+}
