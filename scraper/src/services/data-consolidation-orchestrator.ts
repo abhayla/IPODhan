@@ -43,6 +43,7 @@ import {
 } from './listing-exchange-resolution.js';
 import { initStepLedger } from './step-ledger.js';
 import { recordDiscoverySteps } from './step-ledger-recorders.js';
+import { recordTouchedIfChanged } from './touched-ipos-tracker.js';
 import type { Redis } from 'ioredis';
 
 /**
@@ -360,13 +361,24 @@ export class DataConsolidationOrchestrator {
         );
       }
 
-      return {
+      const result: ConsolidatedUpsertResult = {
         ipoId,
         isNew,
         consolidation: consolidationResult,
         locked: true,
         skipped: false,
       };
+
+      // Item 21 slice 1 (OD-40). This is the single write choke point CLAUDE.md
+      // names, so it is the only honest place to answer "which IPOs did this
+      // cycle change?". Recorded from the SAME result the caller receives, so
+      // the answer cannot drift from what was actually written, and only when a
+      // field really changed - a re-verify that rewrote nothing must not put a
+      // page in the refresh list. Deliberately not in a try/catch: it is a
+      // Set.add on an in-process Set with no I/O and nothing to fail.
+      recordTouchedIfChanged(slug, result);
+
+      return result;
     } catch (error) {
       logger.error(
         {
