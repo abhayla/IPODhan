@@ -181,13 +181,15 @@
     "firstWebTouchingSlice": {
       "taken": true,
       "takenBy": "lane A",
-      "verifiedAt": "2026-09-10 11:24 IST",
-      "evidence": "relayed 2026-09-10 ~11:40 IST; lane A found it overdue in its own lane (#448 and #455 touched web/ and merged without it). Branch not yet visible; re-verify on origin/main before item 21.",
+      "verifiedAt": "2026-09-10 12:53 IST",
+      "evidence": "gh pr view 464 = OPEN, feat/pm-item01-s3b-ci-hardening, 5 files; origin/main ci.yml still 107 lines with 5 matches",
       "carries": [
         ".gitattributes rule docs/ops/*.md text eol=crlf",
         "schema-drift check extended to indexes and constraints"
       ],
-      "consequence": "item 21 cannot CLOSE until this merges; a green ci.yml proves lint/type/build only until then"
+      "consequence": "item 21 cannot CLOSE until this merges; a green ci.yml proves lint/type/build only until then",
+      "pr": 464,
+      "state": "OPEN"
     }
   },
   "carriedFromLaneA": [
@@ -203,7 +205,10 @@
     "items 18 and 22: run db:generate, confirm the new _journal.json entry exists and is not future-dated (5 min skew tolerance), and have the verifier diff schema.ts against the generated SQL before the PR opens",
     "read `date` in a Bash call immediately before every Artifact board write and paste that exact value; the board document carries a timestampSource field (DEFECT-B02)",
     "Stage 0 acceptance enumerates the four contract artefacts (ledger line, tracker section, STATE.json, PROGRESS log) and confirms each by ls, not by recollection (DEFECT-B03)",
-    "worker briefs name the scratch directory explicitly and require its removal to be confirmed as the worker's last action (DEFECT-B06)"
+    "worker briefs name the scratch directory explicitly and require its removal to be confirmed as the worker's last action (DEFECT-B06)",
+    "`git log --oneline origin/main ^HEAD` is the LAST action before gh pr create AND before gh pr merge; non-empty output is a hard stop (three lanes merging into one branch)",
+    "item 18: if its migration adds a gated index or constraint, register it in the documented SCHEMA_DRIFT_IGNORE_GATED list; never widen the suppression",
+    "assert-schema-drift.test.ts and known-gated-type-drift.test.ts are UNWIRED until PR #464 - their green is not evidence"
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -329,6 +334,14 @@
       "supervisorReading": "intent likely served by mode 1 (new orphan id) instead; card wording is the defect, and mode 4 still guards manual/other drift",
       "namedGap": "a card claiming a now-RETIRED id may be caught by no mode at all - mode 1 covers live-but-unclaimed, mode 3 covers tests naming non-live ids",
       "status": "with the Tier A reviewer to confirm or destroy; contract decision 16 forbids a worker resolving a card/code contradiction by choosing"
+    }
+  ],
+  "risksToOwner": [
+    {
+      "at": "2026-09-10 12:53 IST",
+      "item": 21,
+      "risk": "web test:integration fails 193 of 292 locally through the tunnel; hypothesis (tunnel pool exhaustion) is UNTESTED. One ci.yml dispatch on a local postgres settles it. If it fails there too, the failures are real and clause 8's green-ci.yml requirement becomes an owner-level blocker for item 21.",
+      "laneBPosition": "item 21 is last in the queue and also waits on lane A's item 5, so there is slack; if the dispatch is red, item 21 cannot honestly close and that is the owner's call - this lane does not lower the bar to close it"
     }
   ]
 }
