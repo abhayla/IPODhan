@@ -4,5 +4,13 @@
     { "path": "./packages/shared" },
     { "path": "./web" },
     { "path": "./scraper" }
-  ]
+  ],
+  "//": "compilerOptions.paths here is NOT for building (files:[] means this solution-style config compiles nothing). It exists because tsx reads the tsconfig found from the cwd, and the root-invoked entries -- `npm run audit:schema-drift` and the identical bare `npx tsx scripts/assert-schema-drift.ts` that deploy-linux.sh runs from the release root -- had NO paths block at all, so `@ipodhan/shared*` fell through to node_modules. In a worktree whose node_modules was junctioned without re-pointing the workspace packages that reads the MAIN checkout, and the gate that fronts every release then reports on the wrong tree (item 1 slice s14).",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@ipodhan/shared": ["./packages/shared/src/index.ts"],
+      "@ipodhan/shared/*": ["./packages/shared/src/*"]
+    }
+  }
 }

@@ -7,7 +7,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./vitest.setup.ts'],
+    // Item 1 slice s14: first setup file on purpose -- prints which checkout
+    // @ipodhan/shared resolves to and refuses a run that reads another tree.
+    // web has NO @ipodhan/shared alias at all (only '@'), so every shared
+    // import here goes through node resolution: the preflight is the only
+    // thing standing between this suite and the main checkout.
+    setupFiles: ['../scripts/lib/alias-preflight-auto.mjs', './vitest.setup.ts'],
     // Modest heap headroom margin for the jsdom + recharts component suite
     // (defensive; the suite's steady-state heap is well under this). CI #35.
     pool: 'forks',

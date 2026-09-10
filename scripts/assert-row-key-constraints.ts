@@ -44,6 +44,10 @@
  * why, right above the reference.
  */
 
+// Item 1 slice s14 -- FIRST import on purpose. ESM evaluates imported modules in
+// source order, so this runs (and prints which checkout @ipodhan/shared resolves
+// to) before any module below can read the wrong tree.
+import './lib/alias-preflight-auto.mjs';
 import { Client } from 'pg';
 
 export interface ExpectedConstraint {

@@ -104,6 +104,14 @@ jobs:
         # bash, both present on ubuntu-latest).
         run: node --test scripts/tests/preflight-runtime.test.mjs
 
+      - name: Alias-resolution preflight self-tests (item 1 slice s14)
+        # Mutation-proof: drives the real scripts/lib/alias-preflight-auto.mjs
+        # as a subprocess against fabricated checkouts whose workspace link
+        # points inside / outside the tree, so deleting the outside-the-root
+        # check turns this red instead of silently letting a run exercise a
+        # different checkout than the one under test.
+        run: node --test scripts/tests/alias-preflight.test.mjs
+
       - name: Document-state check self-tests (T-403)
         # Mutation-proof: scripts/tests/document-state-checks.test.mjs imports
         # the real predicates from scripts/lib/document-state-checks.mjs, so
