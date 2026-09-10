@@ -212,3 +212,48 @@ Two verification rules enter delta 2 from this slice, both measured today rather
 2. **A Python verifier reading git output uses `encoding="utf-8"`**, never `text=True` on this
    machine. `text=True` decodes with the Windows locale and mangles every step name containing an
    em-dash or a section sign, which surfaced as a false "LOST STEPS" alarm on a correct edit.
+
+---
+
+## Migration idx procedure (adopted 2026-09-10 18:11 IST, from lane A's held-s6 collision)
+
+Applies to this lane's remaining migration-bearing slices: **item 22 slice 4** (`documents.partNumber`,
+`documents.exchangeDocumentId`) and **item 18**'s retention migration.
+
+Lane A's held slice s6 was built with journal `idx: 36`; #459 took 36 on `main` while s6 sat held. Each
+journal is internally valid on its own, so nothing fails until the merge — at which point drizzle either
+skips a migration or applies one twice. Neither is visible in a green PR gate.
+
+**The rule: a generated migration takes its idx from `origin/main` AT THE MOMENT ITS PR MERGES, never
+from the branch's base.** Concretely, for every migration-bearing slice:
+
+1. Immediately before opening the PR, and again immediately before merging, re-read the live numbers —
+   never a number remembered from when the branch was cut:
+   ```
+   export MSYS_NO_PATHCONV=1
+   git fetch -q origin main
+   git show "origin/main:web/drizzle/migrations/meta/_journal.json" | grep -o '"idx": *[0-9]*' | tail -1
+   git show "origin/main:scraper/tests/unit/pipeline-stages/fixtures/stage-0/expected-schema.json" \
+     | grep -o '"journalEntries": *[0-9]*'
+   ```
+   Measured 2026-09-10 18:11 IST on `origin/main`: highest `idx` **36**, `journalEntries` **37**. The relationship is
+   `journalEntries == highest idx + 1` (entries are 0-indexed), so a new migration takes `idx = 37` and
+   bumps `journalEntries` to 38 — **but that pair is a reading, not a constant.** An earlier note in this
+   run recorded "journal 36 = fixture 36", which was wrong by one and would have produced exactly this
+   collision class.
+2. Prove the merge behaviour with `git merge-tree --write-tree --messages origin/main <branch>` — it costs
+   no Actions run and is the same tool that settled DEFECT-B08. A non-zero exit or a conflict message on
+   `_journal.json` means the idx is stale: renumber the migration, rename its file, and re-bump the
+   `journalEntries` fixture before opening.
+3. **After 00:00 IST, when three lanes merge in a queue, every migration slice after the first in that
+   queue has a stale idx by construction.** Assume it is stale and re-check rather than assuming it is
+   fine because it was fine an hour ago.
+
+**`docs/ops/prod-ops-recipes.md` is not to be touched by a content slice.** Its committed blob is CRLF and
+a checkout writes LF, so the file reads as permanently modified in a linked worktree and any slice that
+stages it produces a whitespace-only conflict for the next lane. Lane A is leaving it to an honest
+whitespace-only slice; this lane does the same. (This run lost roughly twenty minutes to that file before
+recognising it as line endings rather than content.)
+
+Verified 2026-09-10 18:11 IST: neither held slice (20-5a, 20-5b) touches a migration, the journal, the schema fixture,
+or `prod-ops-recipes.md`, and `git merge-tree --write-tree` against `origin/main` exits 0 for both.
