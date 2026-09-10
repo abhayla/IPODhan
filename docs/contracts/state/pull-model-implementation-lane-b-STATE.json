@@ -422,6 +422,14 @@
       "foundBy": "the peer supervision tick - the PROGRESS log is the first artefact it reads",
       "class": "THIRD instance today of updating the artefact I read while leaving the one someone ELSE reads stale (board showed idle; run/meta-b claimed false owner actions; now the progress log)",
       "mechanism": "the PROGRESS log is written in the SAME turn as each ledger commit, never as a separate step that can be dropped"
+    },
+    {
+      "id": "DEFECT-B17",
+      "at": "2026-09-10 16:49 IST",
+      "what": "my brief for 22-2 told the builder to ship a plain-equality flag, skipping the item 22 card's binding Architect-correction item 4 ('the flag slice waits for lane A's slot-aware helper and rebases onto it'), and did not declare the deviation",
+      "foundBy": "the Tier A reviewer, which read the card and compared it to the commit",
+      "class": "the supervisor applied a relay-derived pattern over a card-attributed constraint - the exact rule it enforced on others all day (a relay may tighten, never loosen)",
+      "mechanism": "a brief that contradicts a binding card block states the deviation and its consequence in the brief itself, so the builder and the reviewer both see it"
     }
   ],
   "contractCorrectionsDue": [],
@@ -527,6 +535,11 @@
       "item": 21,
       "risk": "the web-integration baseline may ship EMPTY because the 26 file names are not yet known (a failed-run log cannot distinguish pass from fail; names need a vitest JSON report from CI after the mechanism slice merges)",
       "laneBPosition": "no new failure is NOT treated as measurable for web-touching work until the baseline is populated; before relying on it, check whether an empty baseline makes the gate fail every failure (safe) or pass everything (hollow) - the class this lane found three times today"
+    },
+    {
+      "at": "2026-09-10 16:49 IST",
+      "item": 22,
+      "risk": "the 150MB to 100MB cap drop is UNGATED: a filing between 100 and 150 MB accepted today will be refused as too_large on merge - staging immediately, production at the next release. Intended by the card, but not flag-protected."
     }
   ],
   "cardCorrectionsBinding": {
@@ -615,6 +628,18 @@
       "release": "a lane A ledger line recording the decision, or the owner typing it in this session",
       "verifiedAt": "2026-09-10 15:21 IST",
       "evidence": "owner verbatim text read from sha 0f632837 on origin/ops/impl-loop-ledger (ancestor confirmed), dated 2026-09-10T15:19:35+05:30"
+    }
+  ],
+  "debts": [
+    {
+      "at": "2026-09-10 16:49 IST",
+      "what": "convert ENABLE_DOWNLOAD_STREAMING_CAP and the #468 flag to the slot-aware default once lane A helper merges",
+      "blocks": "item 22 cannot close until then, and the card-mandated staging proof cannot be obtained"
+    },
+    {
+      "at": "2026-09-10 16:49 IST",
+      "what": "ENABLE_DOWNLOAD_STREAMING_CAP must NOT be enabled in any slot before slice 22-4 lands the refusal log",
+      "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ]
 }
