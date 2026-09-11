@@ -161,13 +161,42 @@ export function checkGmpSanity(row) {
 }
 
 // ---- Check 9b: degenerate band on a bookbuilding IPO (T-308, round-6 P1) ---
-// A book-built issue ALWAYS has floor < cap (SEBI ICDR); min === max is only
-// legitimate for a genuinely FIXED_PRICE issue. `checkPriceBand` above only
-// asserts min<=max (a degenerate band passes it silently) — that gap is
-// exactly what let the price-band collapse at close/listing go unnoticed for
-// three round-6 occurrences. `issue_type` (BOOK_BUILDING|FIXED_PRICE|HYBRID)
-// is read from a LEFT JOIN ipo_details in the caller; NULL is treated as "not
-// known to be fixed-price" (the near-universal default for MAINBOARD/SME).
+//
+// REWRITTEN 2026-09-11 after measuring it. The old rule was "min === max on a
+// non-FIXED_PRICE issue is wrong". On staging that fired on 268 rows and
+// exempted 0 - and 266 OF THOSE 268 WERE CORRECT DATA.
+//
+// Why 266 were correct: after an issue closes, a book-built issue HAS one
+// price, the discovered cut-off, and every source publishes it that way.
+// Measured at the source (Chittorgarh report 82, FY2026-27, book-built rows):
+// all 183 CLOSED rows carry a single price and only the 18 STILL-OPEN ones
+// carry a range. Our data mirrors it - 266 of our 268 degenerate rows are
+// closed or listed, against a control where rows with a REAL band are 28% open.
+//
+// So "floor < cap" is a rule about an issue whose book is OPEN, not about every
+// issue forever. The old wording made this check fire on normal data 266 times,
+// which is not merely noisy: it BURIED 21 real defects (#597) that nobody could
+// see. The cost of a noisy check is the signal it hides.
+//
+// WHAT REPLACES IT - three populations, each genuinely wrong:
+//
+//   1. The collapsed value equals `face_value`. A price band is not a face
+//      value; this is the #515 shape (MUTHOOT 1000/1000, STALLION 10/10).
+//   2. The book is still OPEN and the band is degenerate. While bidding is
+//      live a book-built issue must have floor < cap - the original rule, kept
+//      for the population it is actually true of.
+//   3. An authoritative per-share price exists and DISAGREES with the stored
+//      one. This is the round-6 class the old check was built for and would
+//      have been lost by simply gating on OPEN: 21 rows on staging store the
+//      band's FLOOR and lost the cap, all 21 lower than the real price, none
+//      higher, average gap 8.63% - exactly the floor-to-cap spread, with a
+//      control showing real-band issues price at the CAP in 46 of 46.
+//
+// `authoritative_issue_price` is the RAW `listing_performance.issue_price`, not
+// the caller's `issue_price` alias - that one is
+// COALESCE(lp.issue_price, i.price_range_max), which for a degenerate row IS
+// the stored value, so comparing against it would compare a number to itself
+// and never fire.
 export function checkDegenerateBookbuildingBand(row) {
   const min = toNumber(row.price_range_min);
   const max = toNumber(row.price_range_max);
@@ -175,8 +204,73 @@ export function checkDegenerateBookbuildingBand(row) {
   if (min <= 0) return null; // checkPriceBand already flags this shape
   if (min !== max) return null;
   if (row.issue_type === 'FIXED_PRICE') return null;
-  return `price band is degenerate (min===max===${min}) but the issue is not FIXED_PRICE (issue_type=${row.issue_type ?? 'null'}) — a book-built issue always has floor < cap`;
+
+  // (1) the face value is sitting in the price column
+  const face = toNumber(row.face_value);
+  if (face !== null && min === face) {
+    return `price band is degenerate (min===max===${min}) AND equals face_value (${face}) — the price column is holding the face value, not a price`;
+  }
+
+  // (3) an authoritative price disagrees - the band lost its cap
+  const real = toNumber(row.authoritative_issue_price);
+  if (real !== null && real !== min) {
+    // Magnitude, then direction as a word. The first version printed the signed
+    // value next to the word, so a stored price ABOVE the real one read
+    // "(-6.7% high)" - a negative number labelled high.
+    const gapPct = Math.abs(((real - min) / real) * 100);
+    const direction = min < real ? 'low' : 'high';
+    // DO NOT NAME THE MECHANISM HERE. The first version said "a collapsed band
+    // that kept the floor and lost the cap", which is the right story for 21 of
+    // the 22 production rows and WRONG for the 22nd: NET PIX SHORTS DIGITAL
+    // MEDIA stores 32 against an authoritative 30, so it kept something ABOVE
+    // the real price and cannot have kept a floor. Staging shows 21 low / 0
+    // high; production shows 21 low / 1 high. A message that asserts one
+    // mechanism for a population with two sends a triager looking for the
+    // wrong write path.
+    return `stored price ${min} disagrees with the authoritative issue price ${real} (${gapPct.toFixed(1)}% ${direction}) — the stored price is not the price this issue sold at`;
+  }
+
+  // (2) still taking bids - or we cannot show that it is not.
+  //
+  // AN ABSENT close_date DOES NOT MEAN CLOSED. The first version of this read
+  // `close === null ? false`, i.e. it treated "we do not know when this closed"
+  // as "it is closed, therefore safe" - the same absence-reading-as-a-value
+  // shape this file's own history is full of, and the existing
+  // web/tests/unit/scripts/substance-checks.test.ts caught it: its Gabion-shape
+  // rows carry no close_date at all and were silently passed.
+  //
+  // Not knowing cannot be the safe answer. Costs nothing on real data: zero
+  // degenerate rows lack a close_date on staging (0 of 268) or prod (0 of 90).
+  // `close_date` is a DATE column, so it parses to midnight UTC. An issue
+  // closing TODAY therefore reads as already past once midnight has gone. That
+  // is one day of imprecision at the boundary, inherited from the column type
+  // rather than introduced here; it can only make this branch quieter, never
+  // louder, and the face-value and oracle branches above are unaffected.
+  const close = toTime(row.close_date);
+  const notShownClosed = close === null || close >= Date.now();
+  if (notShownClosed) {
+    const when = row.close_date ? `closes ${row.close_date}` : 'no close date on record';
+    return `price band is degenerate (min===max===${min}) and the issue is not shown to have closed (${when}) — a book-built issue must have floor < cap while the book is open`;
+  }
+
+  // Closed, priced at a plausible value, and either agreeing with the oracle or
+  // having none. This is the normal shape for a closed book-built issue.
+  //
+  // KNOWN, ACCEPTED, UNDETECTED GAP - stated here and not only in the pull
+  // request, because the next reader has the code and not the PR. A CLOSED
+  // issue whose band collapsed to a plausible-looking WRONG value AND which has
+  // no listing_performance.issue_price to check it against is passed silently.
+  // Measured 2026-09-11: 61 of 268 degenerate rows on staging have no such
+  // oracle (43 of 90 on production). Nothing in this file can distinguish those
+  // from correct data.
+  //
+  // Accepted deliberately: the alternative is the rule this check used to have,
+  // which flagged all of them and buried 21 real defects (#597) under ~239 false
+  // positives. Closing the gap needs an oracle for those rows, not a wider rule
+  // here - tracked in #589.
+  return null;
 }
+
 
 // ---- Check 10: issue_size vs segment floor (W-177) -------------------------
 // The T-329 scraper-side guard (`collectImplausibleIssueSizeFields`,
@@ -309,7 +403,7 @@ export const SUBSTANCE_CHECKS = [
   { key: 'date_ordering', name: 'Date ordering (open<=close<allotment<listing)', predicate: checkDateOrdering },
   { key: 'lot_size', name: 'lot_size in [1..100000]', predicate: checkLotSize },
   { key: 'price_band', name: 'price band (min>0, min<=max)', predicate: checkPriceBand },
-  { key: 'degenerate_bookbuilding_band', name: 'no degenerate band on a non-FIXED_PRICE issue', predicate: checkDegenerateBookbuildingBand },
+  { key: 'degenerate_bookbuilding_band', name: 'a one-price band is the face value, contradicts the real issue price, or the book is still open', predicate: checkDegenerateBookbuildingBand },
   { key: 'issue_size', name: 'issue_size > 0', predicate: checkIssueSize },
   { key: 'issue_size_segment_floor', name: 'issue_size >= segment floor when a band is present', predicate: checkIssueSizeSegmentFloor },
   { key: 'lot_economics_retail_range', name: 'lot x cap within the SEBI retail range (MAINBOARD/SME)', predicate: checkLotEconomicsRetailRange },
