@@ -29,6 +29,7 @@ import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
 import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
+import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
 import {
   runDocumentCycle,
   runDocumentPurge,
@@ -695,8 +696,14 @@ export async function main() {
     // Item 16: 'moneycontrol' is no longer a valid source. Left OUT of the
     // allow-list rather than special-cased, so it fails through the same
     // unrecognised-value path as any other bad string.
-    if (!['nse', 'bse', 'chittorgarh', 'gmp', 'fallback', 'api', 'all'].includes(source)) {
-      logger.error({ source }, 'Invalid source. Must be: nse, bse, chittorgarh, gmp, fallback, api, or all');
+    //
+    // Item 16 slice 2: the allow-list now lives in config/runnable-sources.ts
+    // instead of inline here. It was already the list that decides which
+    // sources can run; being inline meant nothing else could read it, so when
+    // this array lost 'moneycontrol' its freshness SLO stayed armed and the
+    // monitor would have paged the owner about a retired source.
+    if (!CLI_SOURCE_ARGS.includes(source)) {
+      logger.error({ source }, `Invalid source. Must be: ${CLI_SOURCE_ARGS.join(', ')}`);
       process.exit(1);
     }
 
