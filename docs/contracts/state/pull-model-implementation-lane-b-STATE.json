@@ -368,6 +368,10 @@
     {
       "at": "2026-09-11T02:02:50.000Z",
       "what": "PRASOLCHEM card claim VERIFIED at PDF pages 441-442 (printed 442-443): note '49 Financial Ratios', a Schedule III disclosure of ten ratios with numerator, denominator, two years, variance and reason. Current Ratio = Current Assets/Current Liabilities = 1.54, 1.34. Inventory turnover = Cost of good sold / [(Opening+Closing Inventory)/2] = 5.59, 5.75. QUICK RATIO IS NOT PRINTED by either issuer - it is not a Schedule III ratio. 8b-2 therefore splits: current ratio and inventory turnover EXTRACTED from the issuer's ratio note (turnover cannot be reproduced from the statements - measured), quick ratio DERIVED from 8b-1's two inputs, labelled as derived with the formula stated and no printed oracle. PRASOLCHEM independently confirms Karamtara's turnover definition. Parser warning: the note's numbers carry internal spaces ('1 .54', '5 .59'), so _normalize_numbers is load-bearing and the fixture must preserve the mangling."
+    },
+    {
+      "at": "2026-09-11T02:06:15.000Z",
+      "what": "MEASURED, correcting our own record: RATIOS_ARCIL is 10 PDFs (price band ad in Financial Express and Jansatta, 5 pages each). NINE carry 44-73 chars (watermark). The TENTH carries 4,591 chars, so 'image scans' was wrong - but all 3,825 non-space characters are U+FFFD, ONE distinct codepoint, 0% ASCII-printable, fonts KrutiDev010 / 4CSanjaya-Bold / 4CBanjara-Bold (legacy Devanagari, no ToUnicode map, Jansatta is a Hindi paper). Practical answer unchanged - no usable text - but the mechanism is a font-mapping failure, not a picture, and it defeats a text extractor SILENTLY: a naive 'has text?' length check passes with 4,591 characters and then parses replacement characters as content. Item 8's contract condition 'proven on the card's two real fixtures' is therefore unmeetable as written."
     }
   ],
   "items": {
@@ -817,7 +821,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T02:02:50.000Z",
+  "lastStateWriteAt": "2026-09-11T02:06:15.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
