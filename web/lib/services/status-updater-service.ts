@@ -15,6 +15,7 @@ import { eq } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { getIPOBySlugKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
+import { revalidateForSlugs } from './page-revalidation-service';
 
 export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED';
 
@@ -116,7 +117,32 @@ export function computeTargetStatus(
  * Apply computeTargetStatus to every non-locked IPO, persist the rows whose
  * status changed, and invalidate their caches.
  */
-export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
+/**
+ * Refresh the pages a reader actually sees after a status flip.
+ *
+ * Separated from `updateIPOStatuses` so it is testable without a database:
+ * the same reason `revalidateForSlugs` takes its own dependencies.
+ *
+ * Deliberately never throws. By the time this runs the transition is already
+ * committed, so a failed refresh means the page waits out its timer — which is
+ * exactly the behaviour before this existed. Throwing would abort the rest of
+ * the status update and lose the report the caller returns.
+ */
+export async function revalidateAfterStatusChange(
+  slugs: string[],
+  deps: { redis: { del(key: string): Promise<unknown> }; revalidatePath: (path: string) => void }
+): Promise<void> {
+  if (slugs.length === 0) return;
+  try {
+    await revalidateForSlugs(slugs, deps);
+  } catch (error) {
+    console.error('[Status Updater] page revalidation failed (non-fatal):', error);
+  }
+}
+
+export async function updateIPOStatuses(
+  deps?: { revalidatePath?: (path: string) => void }
+): Promise<StatusUpdateResult> {
   console.log('[Status Updater] Starting status update...');
 
   const db = await getDb();
@@ -186,6 +212,29 @@ export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
       if (keys.length > 0) await redis.del(...keys);
     } catch (error) {
       console.error('[Status Updater] List cache invalidation failed:', error);
+    }
+
+    // Item 21: clearing Redis is the DATA layer only. The pages are statically
+    // generated on a timer (CacheTTL.IPO_LISTINGS is commented "matches page
+    // ISR revalidation"), so the rendered HTML keeps being served until that
+    // timer expires regardless of what Redis holds. An IPO would close, the
+    // database would say CLOSED within the minute, and the site would keep
+    // telling readers it was OPEN for up to another fifteen minutes.
+    //
+    // This was the one write path that never reached the refresh mechanism
+    // item 21 built, and it is the most visible change on the page. It could
+    // not reach it from outside: the scraper marks IPOs touched in memory in
+    // its OWN process, while the transition is applied here, in the web app,
+    // behind /api/admin/status/update.
+    //
+    // `revalidatePath` is injected rather than imported so this service stays
+    // callable from scripts and tests that have no Next request context; the
+    // route supplies the real one.
+    if (deps?.revalidatePath) {
+      await revalidateAfterStatusChange(
+        changedSlugs.map((c) => c.slug),
+        { redis, revalidatePath: deps.revalidatePath }
+      );
     }
   }
 
