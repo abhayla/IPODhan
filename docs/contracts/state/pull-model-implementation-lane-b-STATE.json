@@ -526,10 +526,10 @@
       }
     },
     "21": {
-      "status": "BLOCKED-DEPENDENCY(lane A item 5)",
-      "why": "the provenance line reads ipo_field_plan.verify_due_at. Contract test run at 01:43 on 2026-09-11: `git show origin/main:packages/shared/src/db/schema.ts | grep -c ipoFieldPlan` returns 0, and the contract's PR search shows no item 5 slice merged. The contract authorises this closure explicitly (decision 3).",
-      "trigger": "that grep returning non-zero",
-      "slicesNote": "6 branches: 21-0 #537, 21-1 #539, 21-2 #542, 21-2b #544, 21-3 #557, 21-3b #576 (bb2c93c7). 21-4 blocked on lane A item 5.",
+      "status": "SLICES COMPLETE, item open until #642 merges",
+      "why": "21-4, the provenance line, was BLOCKED-DEPENDENCY(lane A item 5) and its trigger fired: ipoFieldPlan is on origin/main with verify_due_at (schema line 1735), grep -c returns 7, not 0. Built and pushed as #642 (faaa9931) before the pause. The item is NOT DONE while that PR is open. Its provenance proof stays OWED-DEPENDENCY(lane A item 5) and is excluded from the MERGED-UNPROVEN ceiling by contract line 54. Built against the table that EXISTS: no row_key column, though the card's interface named one - lane A item 5 slice 2 is reworking that key, and this reader takes it in a follow-up rather than guessing at it now.",
+      "trigger": "#642 merging",
+      "slicesNote": "8 branches: 21-0 #537, 21-1 #539, 21-2 #542, 21-2b #544, 21-3 #557, 21-3b #576, 21-5 #614 merged; 21-4 #642 open (the provenance line).",
       "sliceIds": {
         "merged": [
           "21-0 #537",
@@ -540,14 +540,15 @@
           "21-3b #576",
           "21-5 #614"
         ],
-        "open": [],
-        "pending": [
-          "21-4 provenance line"
+        "open": [
+          "21-4 #642"
         ],
+        "pending": [],
         "retired": []
       },
       "sliceCounts": {
         "merged": 7,
+        "open": 1,
         "recorded": 8,
         "retiredNotCounted": 0
       }
@@ -1007,5 +1008,22 @@
     "22-4 migrate - same run; 1789065238437 IS 22-4 migration 20260910183358_small_freak"
   ],
   "sliceReconciliation": "STATE's items[N].slices was FREE TEXT, not a list, so the card/STATE/board counts could not be compared at all - and item 8's string was stale, still reading '#602 open ... Next: call it from extract_filing' hours after both landed. Structured sliceIds + sliceCounts added per item; the prose kept as slicesNote and no longer counted.",
-  "countingRules": "Retired slices leave the DENOMINATOR - withdrawn is not outstanding (item 8's TypeScript locator). A defect found inside an item and fixed under it IS a slice of that item (#628 under item 18) - otherwise an item shows 100% with open work against it. Both judgements are stated on the board cards, not buried."
+  "countingRules": "Retired slices leave the DENOMINATOR - withdrawn is not outstanding (item 8's TypeScript locator). A defect found inside an item and fixed under it IS a slice of that item (#628 under item 18) - otherwise an item shows 100% with open work against it. Both judgements are stated on the board cards, not buried.",
+  "paused": {
+    "at": "2026-09-11T04:17:22Z",
+    "by": "owner order, RELAYED by the supervisor session - not owner text in this window",
+    "reason": "Claude weekly limit at 77 percent",
+    "firstThreeCommandsOnResume": [
+      "git fetch -q origin main ; gh pr checks 642",
+      "node scripts/merge-if-current.mjs 642",
+      "powershell -NoProfile -File ~/.claude/tools/wt-sweep.ps1 -Repo D:/Abhay/Ventures/IPODhan"
+    ],
+    "ledgerLine": "PROGRESS.md, the block beginning \"PAUSED 2026-09-11 by owner order\"",
+    "ownerDecisionsPendingBuild": [
+      "document job reads every filing completely; 10-minute cap removed; 2-hour hung-process ceiling with every unread page recorded by number on a trip; OCR single-threaded at low priority"
+    ],
+    "ownerDecisionsRecorded": [
+      "pdf-lib withdrawn, use pypdf - nothing to revert, pdf-lib was never added"
+    ]
+  }
 }

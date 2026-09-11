@@ -1264,3 +1264,21 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   password-protected filing, and no exchange has published one.
   **What is needed from Abhay: one thing.** Confirm withdrawing the pdf-lib approval, or tell me to add
   it anyway and I will. Nothing else is outstanding - the other three decisions are applied.
+
+- **2026-09-11 04:17 IST - PAUSED by owner order, and lane B's last blocked slice shipped first.** Item 20's slices stay at
+  100% (8 of 8 merged and proven); lane B's overall slice count moves from 44 of 46 to 45 of 46 with one open.
+  **What a reader of ipodhan.com would notice:** nothing yet, because nothing here is deployed - but the change
+  waiting on `main` is the first time the site ever says where a number came from. Under each block of key facts
+  an IPO page will read "From the offer document, confirmed 6 September 2026", or in grey "last confirmed
+  28 August 2026, being rechecked", or nothing at all. Nothing is deliberate: a placeholder under every block on
+  every page teaches a reader within a week that the line means nothing, and then the real one is invisible too.
+  **What went wrong:** nothing broke, but two honest gaps are now on the record rather than buried. The date the
+  page shows is provisional - the plan table has no column meaning "last reconfirmed correct" as distinct from
+  "last written to", so the date can drift forward on churn that was not a reconfirmation. And the new detection
+  check for this feature is specified but not yet recording anything, because it needs to fetch a rendered page
+  from staging; filing it as a live check would have claimed coverage that does not exist. Both are written down
+  as owed, not as done. **What is needed from Abhay:** nothing to decide. The pause order reached me through the
+  supervisor session rather than in your own words here, and I stopped on it anyway - stopping is the cheap
+  mistake to make. Your two decisions that did arrive here directly (read every filing completely with a two-hour
+  ceiling; drop pdf-lib for pypdf) are recorded; the first is pending build, the second needed no change because
+  pdf-lib was never added.
