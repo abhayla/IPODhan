@@ -330,8 +330,15 @@ jobs:
       # the same Hostinger VPS (72.61.240.224) as the Notifier gateway
       # itself, so the gateway is reachable at 127.0.0.1:3300 with no
       # public ingress involved.
-      - name: Alert owner on deploy failure
-        if: failure()
+      - name: Report owner on deploy failure or cancellation
+        # #621: `failure()` is FALSE for a CANCELLED job, so every step in this
+        # workflow whose intent is "this deploy did not complete" must also test
+        # `cancelled()`. Measured 2026-09-11: run 34549307959 was cancelled when
+        # unattended-upgrades restarted the self-hosted runner service mid-build;
+        # the job went Canceled, this step never ran, and NOTHING paged the owner
+        # or wrote a STATUS row - the exact "automated deploy failing unnoticed"
+        # class the T-324 note below was written to close.
+        if: failure() || cancelled()
         shell: bash
         run: |
           set -uo pipefail
@@ -340,12 +347,25 @@ jobs:
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           LOG_FILE="/tmp/ipodhan-deploy-${{ github.run_id }}.log"
 
+          # #621: a CANCELLED deploy reported as "deploy FAILED" sends the reader
+          # hunting for a build error that does not exist. `job.status` is
+          # 'cancelled' or 'failure' here (this step runs on those two only), so
+          # the word in the title and the default reason follow it.
+          JOB_STATUS="${{ job.status }}"
+          if [ "$JOB_STATUS" = "cancelled" ]; then
+            OUTCOME_WORD="CANCELLED"
+            OUTCOME_NOTE="The job was CANCELLED, not failed - do NOT hunt for a build error. A cancellation means the run was stopped from outside: a cancel request, or the self-hosted runner service being stopped/restarted mid-job (unattended-upgrades restarting it was the measured cause of run 34549307959). Check the runner journal on the box around the cancel time."
+          else
+            OUTCOME_WORD="FAILED"
+            OUTCOME_NOTE=""
+          fi
+
           # Last named-gate reason: deploy-linux.sh's ERR trap (on_deploy_error)
           # and every fatal() call print a line starting "FATAL: " (see that
           # script's trap comment, T-321). Fall back to a generic reason if the
           # deploy log never got written (e.g. the "Resolve deploy slot" step
           # itself failed, before "Deploy" ever ran).
-          GATE_REASON="no deploy log captured - failure was before/outside the Deploy step"
+          GATE_REASON="no deploy log captured - the $OUTCOME_WORD happened before/outside the Deploy step"
           if [ -f "$LOG_FILE" ]; then
             LAST_FATAL="$(grep -E '^FATAL: ' "$LOG_FILE" | tail -n1 || true)"
             if [ -n "$LAST_FATAL" ]; then
@@ -364,24 +384,26 @@ jobs:
           node scripts/deploy-status.mjs set --slot "$SLOT" --sha "$SHA" --run-url "$RUN_URL" --reason "$GATE_REASON" || echo "WARNING: could not write the deploy-failure STATUS row (non-fatal - the Notifier page above is still the primary alert)." >&2
 
           if [ -z "${NOTIFIER_URL:-}" ] || [ -z "${NOTIFIER_KEY:-}" ]; then
-            echo "WARNING: NOTIFIER_URL/NOTIFIER_KEY not set in the runner's env - cannot page the owner for this failure (see runner .env setup in GLOBAL.md section 2)." >&2
+            echo "WARNING: NOTIFIER_URL/NOTIFIER_KEY not set in the runner's env - cannot page the owner for this $OUTCOME_WORD deploy (see runner .env setup in GLOBAL.md section 2)." >&2
             exit 0
           fi
 
           BODY="$(node -e '
-            const [runUrl, gateReason] = process.argv.slice(1);
-            process.stdout.write(JSON.stringify(`Run: ${runUrl}\nLast gate: ${gateReason}`));
-          ' "$RUN_URL" "$GATE_REASON")"
+            const [runUrl, gateReason, outcomeNote] = process.argv.slice(1);
+            const lines = [`Run: ${runUrl}`, `Last gate: ${gateReason}`];
+            if (outcomeNote) lines.push(outcomeNote);
+            process.stdout.write(JSON.stringify(lines.join("\n")));
+          ' "$RUN_URL" "$GATE_REASON" "$OUTCOME_NOTE")"
 
           RESPONSE="$(curl -sS -o /tmp/ipodhan-deploy-alert-response-${{ github.run_id }}.json -w '%{http_code}' \
             -X POST "${NOTIFIER_URL%/}/notify" \
             -H 'Content-Type: application/json' \
             -H "X-Api-Key: ${NOTIFIER_KEY}" \
             --max-time 5 \
-            -d "{\"project\":\"ipodhan\",\"severity\":\"P1\",\"title\":\"deploy-linux FAILED ${SHA} ${SLOT}\",\"body\":${BODY},\"type\":\"deploy\",\"dedupeKey\":\"deploy-linux-${{ github.run_id }}\"}" || echo "curl-failed")"
+            -d "{\"project\":\"ipodhan\",\"severity\":\"P1\",\"title\":\"deploy-linux ${OUTCOME_WORD} ${SHA} ${SLOT}\",\"body\":${BODY},\"type\":\"deploy\",\"dedupeKey\":\"deploy-linux-${{ github.run_id }}\"}" || echo "curl-failed")"
 
           echo "Notifier /notify HTTP status: $RESPONSE"
           cat /tmp/ipodhan-deploy-alert-response-${{ github.run_id }}.json 2>/dev/null || true
           if [ "$RESPONSE" != "202" ]; then
-            echo "WARNING: Notifier did not return 202 - owner alert may not have been delivered (deploy failure itself is already reflected by this job's red status)." >&2
+            echo "WARNING: Notifier did not return 202 - owner alert may not have been delivered (the $OUTCOME_WORD deploy is already reflected by this job's status)." >&2
           fi
