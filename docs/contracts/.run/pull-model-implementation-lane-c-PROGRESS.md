@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 06:35 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 06:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1396,5 +1396,86 @@ cross-check does.**
 Stopped spawning long watchers - three were killed for memory (~2 GB free, five Claude
 sessions taking 3 GB, node not even in the top four). Replaced with one short-lived status
 read that carries the overwrite guard inside it.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## #617 merged through the gate, which refused me twice first
+
+`239bd4de`. The merge gate earned its place on its first real use:
+
+- **exit 2** — mergeability UNKNOWN seconds after a push. *UNKNOWN is not a pass* — the
+  discipline I had been applying by hand and would eventually have skipped.
+- **exit 3** — a **genuine regression**: my branch had dropped the failure class main gained
+  minutes after my previous merge. My own `gh pr checks` read all-pass before that push, so
+  without the gate I would have merged a registry regression.
+
+**Verified by content on main:** all three test files now referenced in `pr-gate.yml`; unwired
+count **28 → 24**. Lane A owns the self-checking mechanism for the rest — every
+`scripts/tests/*.test.mjs` must be referenced by a step or sit in an exclusion baseline with a
+written reason, failing closed on a new file. I maintain no list.
+
+**The generated-aggregate treadmill bit for the fourth time tonight**, and this time a *test*
+caught it rather than a merge conflict. Fixed by regenerating from the per-entry sources,
+verified by **listing not counting**: 35 / 35 / 35, none missing.
+
+### The pending/0s tip paid off in the opposite direction
+
+`gh pr checks` showed `pending, elapsed=0` — the stale-read tell. The jobs API said
+`in_progress`, started 01:09:20Z, not completed: **genuinely running**. So the tell flagged a
+job worth re-checking and the re-check said *keep waiting*. **A diagnostic that can say "no,
+actually wait" is worth more than one that only ever says "go".**
+
+### Tally
+
+Four merges, each independently reviewed with real-data proof on the actual databases: #569,
+#601, #608, #617. Three issues filed with measurements: #597, #589, #616.
+
+**Item 2 and item 12 unchanged** — `ipo_details` 29 / 22 / 0, overwrite guard **22 = HELD**;
+zero extractions since item 12's fix. Neither failed.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## Item 12 was wrong twice, and the second error read like progress
+
+**First:** "its owed extraction has not occurred" - inferred from the **absence** of provenance
+rows. Wrong; 83 documents completed extraction in the last 7 days.
+
+**Then:** "a wait, not a wall - hours away, 146 queued". Also wrong, and more dangerously. I had
+conflated documents being **extracted** with extractions being **persisted** into the three
+child tables. The second is what item 12 needs, and it is gated by
+`ENABLE_FILING_AUTO_PERSIST`, which is off on staging.
+
+**The second error was harder to catch because it read like progress.** A correction that
+*upgrades* a status invites less scrutiny than one that downgrades it - from a peer and from
+me. I was pleased to report item 12 as hours away rather than blocked, and that satisfaction is
+exactly what should have prompted the extra check. **The comfortable correction is the one to
+re-verify.**
+
+### Verified on the code side myself
+
+`feature-flags.ts:319` is `process.env.ENABLE_FILING_AUTO_PERSIST === 'true'` - a bare boolean,
+no slot awareness - and it wraps the **whole** filing block in `document-cycle.ts`: `:1053` the
+lock acquisition, `:1439` the extraction run. With it off, `processPendingFilings` never runs,
+so no amount of queued documents produces the write item 12 needs.
+
+### What I did not conclude
+
+How 83 extractions reached COMPLETED if that flag has been absent throughout. The peer read
+staging's env; I have not. **Reasoning backwards from someone else's reading to a mechanism I
+never checked is how I produced three of tonight's wrong claims**, so it stays a named loose
+end rather than a closed inference.
+
+### Four items, four different blockers
+
+| item | blocker |
+|---|---|
+| 2 | merged and live; 24-hour cadence unfired - **a timer** |
+| 12 | flag-gated on staging - a wall lane A's change turns into a wait |
+| 14 | sources that do not exist, tested against three - a wall |
+| 3 | describes a system that does not exist - **mis-specified** |
+
+Only the first is a timer.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
