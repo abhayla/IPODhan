@@ -905,6 +905,38 @@ export async function persistFilingExtraction(
     }
   };
 
+  /**
+   * The ONE handling shape for "the consolidator threw", shared by every call
+   * site so no site can quietly diverge.
+   *
+   * Why this exists: before the consolidator was injected (PR #625),
+   * `deps.childRowConsolidator` was always `undefined`, so the
+   * `if (!deps.childRowConsolidator)` guard fired at every site and the persist
+   * always completed. With a real consolidator wired in, a Redis or DB fault
+   * inside `consolidatedUpsertChildRows` PROPAGATES — and an unhandled throw
+   * aborts `persistFilingExtraction` mid-write, skipping every table after the
+   * failing one. Losing provenance is the cheap loss; losing the rest of the
+   * write is not. So a throw is treated exactly like "no consolidator": the
+   * rows are still WRITTEN, marked unresolved, with the cause recorded.
+   *
+   * Returns the `(...)` reason fragment that callers holding an
+   * `unresolvedChildRows` list append to each row's entry.
+   */
+  const noteConsolidationThrew = async (
+    tableName: ChildConsolidationTable,
+    error: unknown,
+    context: Record<string, unknown> = {}
+  ): Promise<string> => {
+    const cause = (error as { cause?: { message?: string } } | undefined)?.cause?.message;
+    const detail = `${(error as Error)?.message ?? 'unknown'}${cause ? ` <- ${cause}` : ''}`;
+    logger.error(
+      { err: error, cause, ipoId, tableName, ...context },
+      '[FilingPersister] child-row consolidation failed — writing the rows unresolved'
+    );
+    await markChildRowsUnresolved(tableName, `consolidation-threw: ${detail}`);
+    return `consolidation failed: ${detail}`;
+  };
+
   const consolidateChildRows = async (
     tableName: ChildConsolidationTable,
     entries: { rowKey: string; row: Record<string, unknown> }[],
@@ -950,21 +982,12 @@ export async function persistFilingExtraction(
         options.docType
       );
     } catch (error) {
-      const cause = (error as { cause?: { message?: string } } | undefined)?.cause?.message;
-      const why = `consolidation failed: ${(error as Error)?.message ?? 'unknown'}${
-        cause ? ` <- ${cause}` : ''
-      }`;
-      logger.error(
-        { err: error, cause, ipoId, tableName, rowKeys: entries.map((e) => e.rowKey) },
-        '[FilingPersister] child-row consolidation failed — writing the rows unresolved'
-      );
+      const why = await noteConsolidationThrew(tableName, error, {
+        rowKeys: entries.map((e) => e.rowKey),
+      });
       for (const entry of entries) {
         unresolvedChildRows.push(`${tableName} ${entry.rowKey} (${why})`);
       }
-      await markChildRowsUnresolved(
-        tableName,
-        `consolidation-threw: ${(error as Error)?.message ?? 'unknown'}${cause ? ` <- ${cause}` : ''}`
-      );
       return;
     }
 
@@ -1535,15 +1558,25 @@ export async function persistFilingExtraction(
           );
           await markChildRowsUnresolved('ipo_details', 'no-consolidator-injected');
         } else {
-          const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
-            ipoId,
-            'ipo_details',
-            [{ rowKey: ipoDetailsRowKey(), data: detailsWritable }],
-            source,
-            options.docType
-          );
-          const decided = resolved.rows[0];
-          if (decided && decided.skipped) {
+          let resolved: ConsolidatedChildRowsResult | undefined;
+          try {
+            resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+              ipoId,
+              'ipo_details',
+              [{ rowKey: ipoDetailsRowKey(), data: detailsWritable }],
+              source,
+              options.docType
+            );
+          } catch (error) {
+            // `detailsPayload` is left as `detailsWritable` — exactly what the
+            // no-consolidator fallback leaves it as — so the row is still
+            // WRITTEN, unresolved, and the persist carries on to the next table.
+            await noteConsolidationThrew('ipo_details', error, { table: 'ipo_details' });
+          }
+          const decided = resolved?.rows[0];
+          if (resolved === undefined) {
+            // The throw was handled above; nothing to resolve, keep the payload.
+          } else if (decided && decided.skipped) {
             skippedFailedCheck.push(`ipo_details (consolidation skipped: ${decided.skipReason})`);
             await markChildRowsUnresolved(
               'ipo_details',
@@ -1877,26 +1910,39 @@ export async function persistFilingExtraction(
               );
               continue;
             }
-            const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
-              ipoId,
-              'financial_statements',
-              [
-                {
-                  rowKey,
-                  existingRowId: (prior as { id?: string } | undefined)?.id,
-                  data: carried,
-                  existingData: prior
-                    ? Object.fromEntries(
-                        STATEMENT_COLUMNS.map((c) => [c, (prior as unknown as Record<string, unknown>)[c]])
-                      )
-                    : undefined,
-                },
-              ],
-              source,
-              options.docType
-            );
-            const decided = resolved.rows[0];
-            if (decided && decided.skipped) {
+            let resolved: ConsolidatedChildRowsResult | undefined;
+            try {
+              resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+                ipoId,
+                'financial_statements',
+                [
+                  {
+                    rowKey,
+                    existingRowId: (prior as { id?: string } | undefined)?.id,
+                    data: carried,
+                    existingData: prior
+                      ? Object.fromEntries(
+                          STATEMENT_COLUMNS.map((c) => [
+                            c,
+                            (prior as unknown as Record<string, unknown>)[c],
+                          ])
+                        )
+                      : undefined,
+                  },
+                ],
+                source,
+                options.docType
+              );
+            } catch (error) {
+              // `statementRow` is left as built — exactly what the
+              // no-consolidator fallback leaves it as — so the row is still
+              // WRITTEN, unresolved, and the remaining fiscal years still run.
+              await noteConsolidationThrew('financial_statements', error, { fiscalYear, basis });
+            }
+            const decided = resolved?.rows[0];
+            if (resolved === undefined) {
+              // The throw was handled above; keep the row this extraction built.
+            } else if (decided && decided.skipped) {
               skippedFailedCheck.push(
                 `financial_statements FY${fiscalYear}/${basis} (consolidation skipped: ${decided.skipReason})`
               );
@@ -2006,15 +2052,28 @@ export async function persistFilingExtraction(
             skippedFailedCheck.push('ipo_valuation (no row key — not written)');
             w = {};
           } else {
-            const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
-              ipoId,
-              'ipo_valuation',
-              [{ rowKey: valuationRowKey, data: valuationWritable }],
-              source,
-              options.docType
-            );
-            const decided = resolved.rows[0];
-            if (decided && decided.skipped) {
+            let resolved: ConsolidatedChildRowsResult | undefined;
+            try {
+              resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+                ipoId,
+                'ipo_valuation',
+                [{ rowKey: valuationRowKey, data: valuationWritable }],
+                source,
+                options.docType
+              );
+            } catch (error) {
+              // `w` is left as `valuationWritable` — exactly what the
+              // no-consolidator fallback leaves it as — so the row is still
+              // WRITTEN, unresolved, and the persist carries on.
+              await noteConsolidationThrew('ipo_valuation', error, {
+                table: 'ipo_valuation',
+                pricingEvent,
+              });
+            }
+            const decided = resolved?.rows[0];
+            if (resolved === undefined) {
+              // The throw was handled above; keep the filtered payload.
+            } else if (decided && decided.skipped) {
               skippedFailedCheck.push(
                 `ipo_valuation (consolidation skipped: ${decided.skipReason})`
               );

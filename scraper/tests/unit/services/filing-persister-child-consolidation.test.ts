@@ -196,3 +196,59 @@ describe('financial_statements call site — flag ON', () => {
     expect(upsert.mock.calls[0][0]).toMatchObject({ revenue: '450' });
   });
 });
+
+/**
+ * PR #625 follow-up — the financial_statements call site (filing-persister.ts
+ * ~1880) had NO exception handling.
+ *
+ * Before #625 `deps.childRowConsolidator` was always `undefined`, so the
+ * `if (!deps.childRowConsolidator)` guard fired and the persist always
+ * completed. #625 injects a real consolidator, so a Redis or DB fault inside
+ * `consolidatedUpsertChildRows` now PROPAGATES and aborts the whole persist
+ * mid-write — every table after this one is skipped. Losing provenance is the
+ * cheap loss; losing the rest of the write is not.
+ */
+describe('financial_statements call site — the consolidator throws', () => {
+  const original = FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION;
+  beforeEach(() => {
+    (FEATURE_FLAGS as any).ENABLE_CHILD_TABLE_CONSOLIDATION = true;
+  });
+  afterEach(() => {
+    (FEATURE_FLAGS as any).ENABLE_CHILD_TABLE_CONSOLIDATION = original;
+  });
+
+  it('still completes the persist and writes the row unresolved', async () => {
+    const consolidate = vi.fn(async () => {
+      throw new Error('redis connection reset');
+    });
+    const trackFieldUpdate = vi.fn(async () => undefined);
+    const { deps, upsert } = makeDeps({
+      childRowConsolidator: { consolidatedUpsertChildRows: consolidate } as never,
+      fieldSources: { findByField: vi.fn(async () => null), trackFieldUpdate } as never,
+    });
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      EXTRACTION,
+      { docType: 'RHP', apply: true },
+      deps
+    );
+
+    // The persist COMPLETED — it did not reject.
+    expect(summary).toBeDefined();
+    // The row is still WRITTEN, carrying this extraction's own (unresolved) value.
+    expect(consolidate).toHaveBeenCalled();
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0]).toMatchObject({ revenue: '450', pat: '20' });
+    // And the rows are MARKED unresolved, with the cause recorded.
+    const marker = trackFieldUpdate.mock.calls
+      .map((c: any[]) => c[0])
+      .find(
+        (a: any) =>
+          a.tableName === 'financial_statements' && a.dataLineage?.unresolvedReason !== undefined
+      );
+    expect(marker).toBeDefined();
+    expect(String(marker.dataLineage.unresolvedReason)).toContain('consolidation-threw');
+    expect(String(marker.dataLineage.unresolvedReason)).toContain('redis connection reset');
+  });
+});
