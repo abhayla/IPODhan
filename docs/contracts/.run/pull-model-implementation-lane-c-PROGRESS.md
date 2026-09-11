@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 09:18 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 09:26 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2373,5 +2373,55 @@ correct design they are *cleared*. Needs re-deriving, and it belongs in the proo
 
 **Open question:** the 31 still carry their values, so the merged tool has either never run against
 production or ran dry.
+
+**Items 14, 2 and 12: zero DONE lines.**
+
+
+## The refill question, answered by read — and it redirects the fix
+
+Of the 22 staging non-IPO rows still carrying a segment after the 2026-09-10 18:29:40 apply:
+
+| bucket | rows |
+|---|---|
+| existed before, untouched since (apply did not cover) | **22** |
+| created after the apply (refill) | 0 |
+| existed before, updated after | 0 |
+
+### Why the apply skipped them is the point
+
+**All 22 are SOURCED** — 19 by BSE, 3 by CHITTORGARH, **zero** unsourced. The tool's population is
+*non-NULL segment with NO field_sources row*, so it cleared every unsourced non-IPO row and
+deliberately left the sourced ones. **The staging apply worked exactly as designed.**
+
+The survivors are precisely the rows ruling (1) targets — and that ruling is what unblocks them,
+because there are no unsourced ones left to gate on. By type: TENDER 11, RIGHTS 4, NCD 4, INVITS 2,
+REITS 1.
+
+### I am refusing the clean answer the numbers look like
+
+Zero rows arrived after the apply, which reads as *"the population does not refill"* — but the apply
+was **~15 hours ago** and all 22 were created in **one batch** on 2026-08-20. Fifteen hours of quiet,
+against evidence of a single batch three weeks earlier, does not establish stability.
+
+Recorded as *"no refill observed in 15h, insufficient to conclude"*. Same shape as reading twelve
+hours of CHITTORGARH silence as a stall this morning when the cadence was 24 hours.
+
+### The write-path guard is still warranted — for a different reason
+
+**BSE is actively asserting a segment on non-IPO offerings** — 19 of the 22, including 2 INVITS and 1
+REITS, the exact cases `schema.ts` names as nullable. The question is not whether old rows come back;
+it is whether the source keeps producing the shape. A one-off clear plus an unchanged writer is how
+*"we fixed this in August"* gets said twice.
+
+**One thing ruling (1) should state:** clearing a BSE-asserted row writes a reason row saying BSE
+called an INVIT MAINBOARD. That is not bookkeeping — it **is** the case for the guard, and must stay
+readable rather than collapse into "cleared as meaningless".
+
+### #637's proof: not taken early
+
+Staging began serving **a7036165** — a new sha, exactly the moment a careless read would be taken as
+the deploy landing. It does **not** contain the fix: not an ancestor of `f19eaa86`, and the coalesce
+is absent by content. Checked both ways, because a squash merge is not an ancestor and sha inequality
+proves nothing. That deploy started 03:40:15Z, before my merge at 03:41:56Z.
 
 **Items 14, 2 and 12: zero DONE lines.**
