@@ -592,3 +592,53 @@ Detection so this is not found by reading logs again: substance check
 `company_website_characters` (`scripts/lib/substance-checks.mjs`), which names the offending
 character. Note its column must be in the `SELECT` of `audit-substance-plausibility.mjs` or the
 check silently examines nothing — the suite's own test enforces that.
+
+## 11. Merging a PR — never on a remembered check (incident 2026-09-11, PR #588)
+
+PR #588 was merged on a stale green: both freshness clauses had fired, the
+check *had* been run, but it was typed into the same shell command as the
+`gh pr merge`, so the clause output printed after the decision was already
+committed. Main survived on luck. "Run them as two separate commands" was
+rejected as a fix — it is a habit, and a habit fails the first time someone is
+tired at 5am.
+
+The mechanism is an exit code:
+
+```bash
+node scripts/ops/merge-if-current.mjs <pr-number> && gh pr merge <pr-number> --squash
+```
+
+The gate never merges — it holds no merge code path, so there is no ordering in
+which a merge could precede the checks. The shell `&&`, not a human, enforces
+the sequencing. On a refusal it prints nothing copy-pasteable.
+
+What it refuses on, in order (it stops at the first failure, and the order
+matters — a CONFLICTING PR produces no `pull_request` check run at all, which
+looks exactly like queue latency if you read CI first):
+
+| exit | meaning |
+|---|---|
+| 0 | every clause clear |
+| 1 | usage (including `--force` with no 20+ character `--reason`) |
+| 2 | not mergeable: conflicting, draft, closed, or mergeability still UNKNOWN |
+| 3 | a check is not a genuine pass: failed, CANCELLED, never started, or no checks at all |
+| 4 | stale: a freshness clause fired |
+| 5 | the gate itself cannot run (e.g. `typescript` unresolvable, so clause 2 cannot parse imports) |
+
+Freshness clauses (`BASE = merge-base origin/main <head>`; `MOVED` = files
+changed in `BASE..origin/main`):
+
+- **clause 1** — `MOVED` touches `.github/workflows/` or `scripts/ci/`. The
+  green was produced by the old pipeline definition.
+- **clause 2** — `MOVED` overlaps what the branch changed, or a file the branch
+  changes first-level imports. Imports are read with `ts.createSourceFile`, not
+  a regex sweep. First level only: a dependency two hops away does not fire it.
+- **clause 4** — main and the branch both changed a generated aggregate
+  (`docs/reviews/detection-checks.json`, `docs/reviews/failure-classes.md`). A
+  textually clean git merge of a generated file can still be semantically stale.
+
+The remedy is the same for all three: rebase, push, let CI run against what
+would actually be merged, re-run the gate.
+
+`--force --reason "<20+ chars>"` bypasses, prints every clause that fired, and
+echoes the reason so it lands in the record. Paste that output into the PR body.

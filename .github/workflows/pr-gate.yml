@@ -365,6 +365,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Merge-gate self-tests (merge-if-current, stale-green incident 2026-09-11)
+        # Mutation-proof: scripts/tests/merge-freshness.test.mjs drives every
+        # clause of scripts/ops/lib/merge-freshness.mjs, and
+        # scripts/tests/merge-if-current-cli.test.mjs builds a REAL temporary
+        # git repo in which main moves a file the branch only imports, then
+        # asserts the CLI process exit code. Weakening any clause (accepting a
+        # CONFLICTING PR, counting a CANCELLED run as a pass, dropping the
+        # scripts/ci/ prefix, blinding the import scan) turns one of these red.
+        # Needs node_modules: clause 2 parses imports with ts.createSourceFile,
+        # so this runs after npm ci, not with the pre-install gates above.
+        run: |
+          node --test scripts/tests/merge-freshness.test.mjs
+          node --test scripts/tests/merge-if-current-cli.test.mjs
+
       - name: Setup Node.js 22 (SSOT-parity import needs erasable-TS stripping, 22.10+, and node_modules from the step above)
         uses: actions/setup-node@v4
         with:

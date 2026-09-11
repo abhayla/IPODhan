@@ -1664,6 +1664,101 @@ export const ipoSlugRedirects = pgTable(
   })
 );
 
+// ==================== TABLE 24: IPO_FIELD_PLAN (pull model, design §2.3) ====================
+// What the pull loop ASKED for, not only what it got.
+//
+// `field_sources` records successful writes only, so a field that was never attempted and a
+// field that was attempted and failed are indistinguishable in it — both absent. This table is
+// the row that separates them: one planned row per (IPO, table, field), written from the RESULT
+// of a write, never in parallel with it.
+//
+// Columns are exactly the list in docs/design/data-sourcing-pull-model.md §2.3. Two notes the
+// design leaves implicit and this schema makes explicit:
+//   * rank1/2/3_source are varchar, NOT scraper_source. The manifest's SourceCode namespace
+//     (DOC, REG, PRICE_BAND_AD, ...) is wider than the scraper_source pgEnum (which has no DOC),
+//     and coercing one into the other would silently drop the document rank.
+//   * the key is (ipo_id, table_name, field_name) as §2.3 states. Tables that hold more than one
+//     row per IPO (financial_statements, subscriptions) therefore get ONE plan row, not one per
+//     child row — unlike field_sources, which carries a row_key. That is what the design says;
+//     it is called out here so a later slice widens it deliberately rather than by accident.
+export const fieldPlanStateEnum = pgEnum('field_plan_state', [
+  'PENDING',
+  'SUPPLIED',
+  'NOT_PRINTED',
+  'NOT_AVAILABLE_YET',
+  'CHECK_FAILED',
+  'EXHAUSTED',
+]);
+
+export const ipoFieldPlan = pgTable(
+  'ipo_field_plan',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // ---- the key ----
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    tableName: varchar('table_name', { length: 100 }).notNull(),
+    fieldName: varchar('field_name', { length: 100 }).notNull(),
+
+    // ---- the ranks, resolved for THIS IPO's type ----
+    // An SME-on-BSE IPO never lists NSE here: the manifest keys its rank arrays by
+    // MAINBOARD / SME_BSE / SME_NSE and the generator reads the IPO's own key.
+    rank1Source: varchar('rank1_source', { length: 32 }),
+    rank2Source: varchar('rank2_source', { length: 32 }),
+    rank3Source: varchar('rank3_source', { length: 32 }),
+
+    // ---- where the ask stands ----
+    state: fieldPlanStateEnum('state').default('PENDING').notNull(),
+
+    // ---- what won, and on what evidence ----
+    chosenSource: varchar('chosen_source', { length: 32 }),
+    chosenRank: integer('chosen_rank'),
+    chosenDocumentId: uuid('chosen_document_id').references(() => documents.id, {
+      onDelete: 'set null',
+    }),
+    chosenDocumentType: varchar('chosen_document_type', { length: 50 }),
+    chosenSha256: varchar('chosen_sha256', { length: 64 }),
+    chosenPage: integer('chosen_page'),
+
+    // ---- per-field backoff ----
+    attempts: integer('attempts').default(0).notNull(),
+    lastAttemptAt: timestamp('last_attempt_at'),
+    nextDueAt: timestamp('next_due_at'),
+
+    // ---- reclaim of a killed walk's in-flight row (mirrors isStaleInProgress) ----
+    claimedAt: timestamp('claimed_at'),
+    claimToken: varchar('claim_token', { length: 64 }),
+
+    // ---- §3's verification state, scheduled rather than accidental ----
+    verifyDueAt: timestamp('verify_due_at'),
+    verifyState: varchar('verify_state', { length: 32 }),
+    verifySource: varchar('verify_source', { length: 32 }),
+    verifyValue: text('verify_value'),
+    disagreementCount: integer('disagreement_count').default(0).notNull(),
+
+    // ---- so the plan is RECONCILED when the manifest changes, never regenerated per cycle ----
+    manifestVersion: integer('manifest_version').notNull(),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueFieldPerIpo: unique('unique_ipo_field_plan').on(
+      table.ipoId,
+      table.tableName,
+      table.fieldName
+    ),
+    ipoIdIdx: index('idx_ipo_field_plan_ipo_id').on(table.ipoId),
+    // The walk's driving query: "which rows are due now, oldest first".
+    stateNextDueIdx: index('idx_ipo_field_plan_state_next_due').on(table.state, table.nextDueAt),
+    verifyDueIdx: index('idx_ipo_field_plan_verify_due').on(table.verifyDueAt),
+    // Reconciliation after a manifest version bump reads by version, not by IPO.
+    manifestVersionIdx: index('idx_ipo_field_plan_manifest_version').on(table.manifestVersion),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
