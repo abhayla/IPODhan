@@ -1124,3 +1124,21 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   **What is needed from Abhay: nothing new.** The same three when you have time - the one-row website
   correction, whether the shared branch should refuse changes that have not passed their checks, and
   whether to approve the new PDF library.
+- **2026-09-11 06:21 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com would notice - and this one is worth reading.** When an IPO closes,
+  our database knows within the minute. The website kept telling people it was still OPEN for up to
+  fifteen more minutes. The pages are pre-built on a timer, and the step that flips the status was
+  clearing the data store but never asking for the page to be rebuilt. A status is the most visible
+  thing on an IPO page, so this was the worst possible thing to be stale. Fixed and in checks (#614).
+  **What went wrong, structurally.** The refresh mechanism we built earlier this week could never have
+  covered this. The scraper notes which IPOs it changed in its own memory; the status flip happens in
+  the website process, behind an admin endpoint. Two separate programs, one notebook each, no shared
+  page. No amount of work on the scraper side would have found it - I only found it by following the
+  code after a log line said "no IPO was written this cycle" once too often. I also got the diagnosis
+  wrong twice before getting it right, and checked both before writing anything. **And I replaced my
+  own "nothing to detect here" note with a real one:** the cycle log now prints how many pages it
+  refreshed right next to how many statuses it changed, so "changed 3, refreshed 0" is a mismatch
+  anyone can see in a line they already read. **Honest limit:** I have not caught this happening live.
+  No IPO has changed status on the test server since the refresh step went in, so this is established
+  by reading the two code paths, not from a captured incident. The next real status change is the
+  proof. **What is needed from Abhay: nothing new** - the same three when you have time.

@@ -284,6 +284,22 @@
     {
       "at": "2026-09-11T00:47:29.000Z",
       "what": "STATE.json had fallen an hour behind PROGRESS.md and the board - caught by the lane A session, correctly. My own timestampSource line says all three are written in the same command. These notes close the gap; from here the three move together."
+    },
+    {
+      "at": "2026-09-11T00:51:37.000Z",
+      "what": "ITEM 21 DEFECT #614: a status flip clears Redis but never revalidates the ISR page, so a CLOSED IPO keeps showing OPEN for up to 15 more minutes. recordTouchedIfChanged has exactly ONE caller (the consolidation orchestrator); the transition is applied in the WEB app behind /api/admin/status/update while the tracker is in-memory in the SCRAPER process, so no scraper-side work could have connected them. Fix reuses revalidateForSlugs with revalidatePath injected from the route."
+    },
+    {
+      "at": "2026-09-11T00:51:37.000Z",
+      "what": "DETECTION for #614, replacing my own No-detection-change declaration: the result now carries pagesRevalidated next to total, so 'total: 3, pagesRevalidated: 0' is a visible mismatch in the cycle line the scraper already logs. The test that matters is that a failed refresh reports 0 rather than 1."
+    },
+    {
+      "at": "2026-09-11T00:51:37.000Z",
+      "what": "MEASURED while chasing 21-3's owed proof: 40 of 40 cycles in the staging log report iposProcessed:0, on BOTH slots, all success:true errorCount:0; the 8 IPOs updated at 18:44-18:51Z predate the revalidate step's first line at 21:15Z. 21-3's proof is still owed and cannot be forced from here."
+    },
+    {
+      "at": "2026-09-11T00:51:37.000Z",
+      "what": "TWO SELF-CORRECTIONS on #614 before shipping: the status updater's list-cache clear is NOT broken like the admin route's (it uses keys() then del(...keys), which works), and ipo:list:* does not cover ipo:listings:* but neither is the defect. The defect is the missing revalidatePath."
     }
   ],
   "items": {
@@ -729,7 +745,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T00:47:29.000Z",
+  "lastStateWriteAt": "2026-09-11T00:51:37.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
