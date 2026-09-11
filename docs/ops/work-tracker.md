@@ -1187,3 +1187,23 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   corrected me twice: the reasons were there all along, and the one prospectus I called unexplained had
   been parked with a clear reason since 3 September.
   **What is needed from Abhay: nothing new** - the same three when you have time.
+- **2026-09-11 07:42 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com would notice:** nothing new yet. Two finished pieces are sitting ready
+  and deliberately not merged - all three lanes agreed to stop merging until 07:50 so the test server can
+  finish a clean run, because our own deploys have been interrupting it every few minutes all night.
+  **What went wrong, and it is a correction to our own notes.** The plan says the ratios feature must be
+  proven on two specific filings. I finally downloaded one of them instead of trusting what our card
+  said. Our card calls it "newspaper photographs". That is wrong: one of its ten pages does contain text.
+  But the text is 3,825 copies of the "unknown character" symbol - the file uses old Hindi newspaper
+  fonts that carry no map from shape to letter, so a computer sees characters and can read none of them.
+  The practical answer is the same (nothing usable), but the reason matters: a photograph needs
+  scanning software, while this is a file that CLAIMS to have text. A naive "does this have text?" check
+  would say yes and then read gibberish as data. I checked whether we had that weakness - we do not, the
+  extractor already refuses files like this, and I proved it on the real file rather than trusting the
+  comment next to the code.
+  **What is needed from Abhay - one new thing.** The plan names two filings to prove the ratios feature
+  on. Neither can be read by any text tool. I would like to prove it on two other REAL filings we already
+  hold, which are readable and which print their own ratios so the document itself checks our arithmetic.
+  That is a change to the agreed plan, so it is your call, and I have not made the swap quietly.
+  The other three remain: the one-row website correction, whether the shared branch should refuse
+  unchecked changes, and whether to approve the new PDF library.
