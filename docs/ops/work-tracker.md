@@ -1142,3 +1142,21 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   No IPO has changed status on the test server since the refresh step went in, so this is established
   by reading the two code paths, not from a captured incident. The next real status change is the
   proof. **What is needed from Abhay: nothing new** - the same three when you have time.
+- **2026-09-11 06:36 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com gets:** the closed-IPO fix is now on main. When an IPO closes, the page
+  is rebuilt straight away instead of showing "OPEN" for up to fifteen more minutes. That lands for
+  readers on the next release.
+  **What went wrong, and it is about how I check my own work.** A new safety check on merging refused
+  this change twice, and was right both times. The first refusal: an hour earlier I had edited the file
+  that DEFINES how our tests run, so this change's six green ticks were produced by a test setup that no
+  longer existed. Green, real, and meaningless - and nothing else would have told me. The second: the
+  service had not finished working out whether the change could merge cleanly, and "don't know" is not
+  "yes". I rebased, re-ran everything, and it passed properly.
+  **And I withdrew a result I had already reported to you.** I had tested this fix inside the main
+  working copy, because the isolated copy I work in had no libraries installed. At that same moment
+  another session was repointing a shared library link inside that main copy. It was put back before my
+  run, and my logs prove my test used the right library - but that is thirty seconds of luck, not a
+  method. There was a proper tool for this and I did not know about it. I have used it, re-run
+  everything in the isolated copy, and that is now the result of record. From here nothing of mine runs
+  in the main working copy.
+  **What is needed from Abhay: nothing new** - the same three when you have time.

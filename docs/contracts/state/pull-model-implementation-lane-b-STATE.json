@@ -312,6 +312,22 @@
     {
       "at": "2026-09-11T00:59:00.000Z",
       "what": "NOTE for the gate's exit 3: gh pr checks can report a finished job as pending 0s for ~25 minutes, so an exit 3 may be a stale reading rather than a real wait - re-read via gh api repos/.../actions/jobs/<id> before waiting on it."
+    },
+    {
+      "at": "2026-09-11T01:06:31.000Z",
+      "what": "#614 MERGED squash e1f164f5 through merge-if-current (exit 0: MERGEABLE/CLEAN, six checks PASS, all freshness clauses clear vs merge-base 1c42f6b8). Item 21 now has six slices merged; only 21-4 (the provenance line) remains, blocked on lane A's ipo_field_plan."
+    },
+    {
+      "at": "2026-09-11T01:06:31.000Z",
+      "what": "The gate refused #614 twice before passing, correctly both times: exit 4 clause-1 (main moved pr-gate.yml since the merge-base - moved by ME in #610, so the PR's greens measured a pipeline that no longer existed) and exit 2 (mergeability UNKNOWN, which is not a pass)."
+    },
+    {
+      "at": "2026-09-11T01:06:31.000Z",
+      "what": "VERIFICATION SUPERSEDED: #614's tests were first run in the shared MAIN checkout (no node_modules in the worktree); a lane A builder was repointing main's @ipodhan/shared junction in that window. Restored 06:02, my runs 06:12-06:19, preflight named main's own packages/shared - correct by timing, not design. Re-ran inside the worktree after wt-link-modules.ps1 (937 entries, 3 workspace packages re-pointed at the tree): 42 passed, 0 type errors, preflight names the WORKTREE. That is the reading of record."
+    },
+    {
+      "at": "2026-09-11T01:06:31.000Z",
+      "what": "PRACTICE ADOPTED: nothing runs in the main checkout. New worktrees get node_modules from wt-new automatically; an existing tree is linked by hand with wt-link-modules.ps1 -Repo <repo> -Worktree <tree> (NOT -Path, which is wt-rm's parameter). Every verification line quotes the alias-preflight target so the tree a result came from is auditable."
     }
   ],
   "items": {
@@ -761,7 +777,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T00:59:00.000Z",
+  "lastStateWriteAt": "2026-09-11T01:06:31.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
