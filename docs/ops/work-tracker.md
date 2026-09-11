@@ -1248,3 +1248,19 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   readable filings instead of the two named ones that no text tool can read, the one-row website
   correction, whether the shared branch should refuse unchecked changes, and whether to approve the new
   PDF library.
+- **2026-09-11 09:00 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com would notice - one real correction went live.** Hy-Tech Engineers'
+  website address was stored with a stray brace in it, so the link went nowhere. Fixed on the live
+  database with your approval: one row, checked first on the test server, and I confirmed the corrected
+  address actually resolves before writing it rather than just confirming it was different. The page
+  itself picks the new address up when its own timer expires.
+  **What went wrong - you approved something that cannot do the job, and the audit you asked for is what
+  caught it.** You approved adding the pdf-lib library for password-protected filings. Its own
+  documentation says, in bold: it does not support encrypted documents and should not be used with them.
+  It is also a JavaScript library, while every PDF in this system is read by Python code, and it has had
+  no release since November 2021. Meanwhile the library we already have installed, pypdf, can both detect
+  and decrypt those files. So I have NOT added it, and I would rather tell you than leave a package in
+  the tree that does nothing. Nothing else changes: that piece of work was already waiting on a real
+  password-protected filing, and no exchange has published one.
+  **What is needed from Abhay: one thing.** Confirm withdrawing the pdf-lib approval, or tell me to add
+  it anyway and I will. Nothing else is outstanding - the other three decisions are applied.
