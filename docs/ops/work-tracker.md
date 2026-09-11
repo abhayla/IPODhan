@@ -1207,3 +1207,24 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   That is a change to the agreed plan, so it is your call, and I have not made the swap quietly.
   The other three remain: the one-row website correction, whether the shared branch should refuse
   unchecked changes, and whether to approve the new PDF library.
+- **2026-09-11 08:15 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com would notice:** two more pieces landed. Closed IPOs will stop showing as
+  open the moment they close, and the reader for the three balance-sheet numbers behind the money ratios
+  is in. Neither shows on the site until the next release.
+  **What went wrong - a fault in work I had already called finished.** I set out to mark the "switch off
+  the unused data source" job as proven, and went looking for the evidence in the live logs instead of
+  quoting our own test results. The source IS gone: the test server no longer mentions it, while the
+  production server, still on the older release, does. But six lines from the end of that same log, the
+  system is still asking the database when that source last succeeded. It never will again. We switched
+  the source off and left its smoke alarm wired in - on 17 September at about 13:45 it would have paged
+  you about a source we turned off on purpose. Fixed and in checks. The lesson is the one that keeps
+  repeating: I nearly recorded it as finished on the strength of a green test run rather than a look at
+  the running system.
+  **And a record of mine turned out not to be what I said it was.** I have been careful all night to
+  stamp the written logs from the machine clock. The status board's timestamps I was typing by hand,
+  without noticing the difference, because that write goes through a different tool with no clock
+  attached. Another session spotted it from a thirty-second discrepancy. Now read from the clock too.
+  **What is needed from Abhay:** the same four - whether the money-ratios feature may be proven on two
+  readable filings instead of the two named ones that no text tool can read, the one-row website
+  correction, whether the shared branch should refuse unchecked changes, and whether to approve the new
+  PDF library.
