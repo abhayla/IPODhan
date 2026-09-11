@@ -3118,6 +3118,76 @@ else
   fail "case 32e: expected assert_deployed_sha_lineage \"\$SHA\" wired into the real deploy path"
 fi
 
+# --- Case 35 (#621): every step in deploy-linux.yml whose intent is "this ---
+# --- deploy did not complete" must ALSO fire on a CANCELLATION. GitHub's ---
+# --- `failure()` is FALSE for a cancelled job, so a step guarded by --------
+# --- `failure()` alone is BLIND to it. Measured 2026-09-11: run -----------
+# --- 34549307959 was cancelled when unattended-upgrades restarted the ------
+# --- self-hosted runner service mid-build; the reporting step never ran, ---
+# --- so no Notifier page and no deploy-failure STATUS row were produced, ---
+# --- and the cancelled deploy was noticed only by a human reading the ------
+# --- Actions tab hours later. These are STATIC assertions on the workflow --
+# --- file: a real cancellation cannot be exercised offline, and -----------
+# --- deliberately cancelling a live deploy is itself the half-built- -------
+# --- release hazard that `cancel-in-progress: false` exists to avoid.
+WORKFLOW_FILE="$SCRIPT_DIR/../../.github/workflows/deploy-linux.yml"
+
+if [ ! -f "$WORKFLOW_FILE" ]; then
+  fail "case 35: $WORKFLOW_FILE not found - workflow renamed or moved?"
+else
+  # The reporting step both pages the Notifier AND writes the deploy-failure
+  # STATUS row (scripts/deploy-status.mjs set), so one guard covers both.
+  REPORT_STEP="$(sed -n '/- name: Report owner on deploy failure or cancellation/,$p' "$WORKFLOW_FILE")"
+
+  if [ -z "$REPORT_STEP" ]; then
+    fail "case 35: could not locate the deploy-reporting step in $WORKFLOW_FILE - step renamed? (#621 guard is now blind)"
+  else
+    if emitn "$REPORT_STEP" | grep -qF 'if: failure() || cancelled()'; then
+      pass "case 35: the deploy-reporting step fires on a cancellation, not only a failure"
+    else
+      fail "case 35: the deploy-reporting step is NOT guarded by 'failure() || cancelled()' - a cancelled deploy would page nobody (#621)"
+      emitn "$REPORT_STEP" | grep -F 'if:' || true
+    fi
+
+    if emitn "$REPORT_STEP" | grep -qF 'deploy-status.mjs set'; then
+      pass "case 35: the deploy-failure STATUS write shares the cancellation-aware guard"
+    else
+      fail "case 35: 'deploy-status.mjs set' is no longer inside the cancellation-aware reporting step (#621) - it may have moved to a failure()-only step"
+    fi
+  fi
+
+  # No step may keep a BARE `if: failure()` - every one of them means "did not
+  # complete". A future step that genuinely wants failure-but-not-cancel must
+  # say so explicitly and update this case with the reason.
+  if grep -nE '^[[:space:]]*if:[[:space:]]*failure\(\)[[:space:]]*$' "$WORKFLOW_FILE" > /tmp/deploy-test-33-bare.log 2>&1; then
+    fail "case 35: a bare 'if: failure()' remains in deploy-linux.yml - it is blind to cancellations (#621)"
+    cat /tmp/deploy-test-33-bare.log
+  else
+    pass "case 35: no bare 'if: failure()' guard remains in deploy-linux.yml"
+  fi
+
+  # --- Case 35b: the report TEXT must distinguish cancelled from failed. A
+  # --- cancellation reported as "deploy FAILED" sends the reader hunting for
+  # --- a build error that does not exist.
+  if grep -qF 'JOB_STATUS="${{ job.status }}"' "$WORKFLOW_FILE"; then
+    pass "case 35b: the reporting step reads job.status to tell cancelled from failed"
+  else
+    fail "case 35b: the reporting step does not read job.status - its text cannot distinguish a cancellation (#621)"
+  fi
+
+  if grep -qF 'OUTCOME_WORD="CANCELLED"' "$WORKFLOW_FILE" && grep -qF 'OUTCOME_WORD="FAILED"' "$WORKFLOW_FILE"; then
+    pass "case 35b: both CANCELLED and FAILED outcome words are defined"
+  else
+    fail "case 35b: expected both OUTCOME_WORD=\"CANCELLED\" and OUTCOME_WORD=\"FAILED\" in the reporting step (#621)"
+  fi
+
+  if grep -qF 'deploy-linux ${OUTCOME_WORD} ${SHA} ${SLOT}' "$WORKFLOW_FILE"; then
+    pass "case 35b: the Notifier title carries the outcome word, not a hardcoded FAILED"
+  else
+    fail "case 35b: the Notifier title does not interpolate OUTCOME_WORD - a cancellation would still page 'deploy-linux FAILED' (#621)"
+  fi
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
