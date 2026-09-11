@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 05:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 05:59 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1274,5 +1274,47 @@ prevent.
 
 **Item 2 still has no DONE line.** "The manifest is ready for lane A" is true; "item 2 is done"
 is not. Cadence unfired, staging unchanged at 29/22/22.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 05:59 IST - my fix swung from one untrue claim to another (#608)
+
+The original message asserted *"a price band (10) is on record"* for NIRBHAY, whose 10 is its
+**face value**. My correction then claimed the size *"cannot be cross-checked against a real
+price"* - false whenever `authoritative_issue_price` exists, and it sits on the **same row
+object**, in a column **I added to that SELECT an hour earlier**, which the **sibling check in
+the same file** already reads.
+
+**STALLION on staging proves it was live**: band 10, face_value 10, authoritative price 90. A
+real price existed and my message denied it. Fifth message tonight asserting something the code
+had not checked, and the worst - the evidence was a field I put there myself.
+
+### The fix uses the price rather than softening the wording
+
+> STALLION - *an authoritative issue price of 90 is on record (the price column itself holds the
+> FACE VALUE 10, not a price) - at that price this size would be Rs3,89,88,00,000 if it is a
+> share count*
+
+Against a real raise of Rs199 crore, neither reading fits - which is exactly what a triager
+needs. "Cannot be cross-checked" now appears only when there genuinely is no price.
+
+Also: `FIXED_PRICE` excluded before the face-value comparison (matching the sibling check - a
+Rs10 face-value SME issue genuinely priced at Rs10 is legal), and the shadowed `band` removed.
+
+### Evidence
+
+Three mutations, all red - including **drop the flag for face-value rows**, the
+fix-the-message-by-suppressing-the-finding failure, which fails four tests. Three tests added
+for the gaps review named. **Counts unchanged on both slots** (staging 3, production 2):
+accuracy gained, zero detection lost. That parity is the number that matters.
+
+### Six review rounds tonight, every one found something real
+
+Three were bugs in code I wrote **after** cataloguing the exact pattern they belonged to. My own
+judgement of "this one is low risk" has had no predictive value tonight.
+
+Staging now serves `ff80eac1` (the #601 merge). Item 2 still reads **29 / 22 / 22** - cadence
+unfired, pending, not a pass and not a failure.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
