@@ -1,0 +1,9 @@
+{
+  "id": "ratios_extraction_yield",
+  "findingClass": "a Ratios / Basis-of-Issue-Price document is marked COMPLETED but yielded no current_ratio, so the ratio fields stay empty while the pipeline reports success",
+  "round7Findings": [],
+  "failThreshold": "any document with type RATIOS_BASIS_ISSUE_PRICE and extraction_status COMPLETED whose ipo has financial_data.current_ratio null",
+  "severity": "P1",
+  "unverifiableWhen": "no RATIOS_BASIS_ISSUE_PRICE document has reached COMPLETED — measured 2026-09-11 on staging: 34 such documents exist and every one is PENDING, so the literal check is true of the empty set. Reported UNVERIFIABLE rather than PASS, because a check that cannot fail is not detection, and the detail carries the number that is actually actionable (how many exist and have never been extracted).",
+  "section": "checks"
+}
