@@ -1160,3 +1160,30 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   everything in the isolated copy, and that is now the result of record. From here nothing of mine runs
   in the main working copy.
   **What is needed from Abhay: nothing new** - the same three when you have time.
+- **2026-09-11 07:12 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com will get:** the three numbers that say whether a company can pay its
+  short-term bills - current ratio, quick ratio, stock turnover - are missing for EVERY IPO today (174
+  financial records, none carrying any of them). The piece that reads them out of the prospectus is now
+  written and waiting (#622).
+  **What went wrong, and it is last night's lesson again.** My first version looked right and tested
+  green, and was held up by luck. A prospectus prints the word "Inventories" twice: once in the balance
+  sheet, meaning the stock a company holds, and once in the cash-flow statement, meaning how much that
+  stock CHANGED. To a computer the two lines are identical. My code took whichever came first, and the
+  right one happened to come first. I deliberately broke my own rule to check, and the guard I had
+  written turned out to be doing nothing at all. Rewritten to find the balance sheet first and read only
+  from it - which needed a second guard, because twenty pages of this prospectus mention "statement of
+  assets and liabilities" and only ONE is the real statement. A wrong page would have produced believable
+  numbers, not an error.
+  **A smaller thing I checked instead of assuming:** the same table writes "Total OF current assets" four
+  lines above "Total current liabilities". Searching for the obvious wording finds nothing in the whole
+  529-page document, so I read the labels off the real page.
+  **One worry cleared without any fix:** the stored page-text feature looked broken because its table is
+  empty. It is not broken. The code that fills it was merged at 01:24 this morning and the most recent
+  document was processed ten hours before that. Nothing has been processed since.
+  **Two problems reported for someone to act on.** The document step runs out of its one-minute budget on
+  every single cycle, leaving between 3 and 22 items unprocessed, never zero (#620). And when a document
+  is set aside for manual review, the cycle log prints only a count - the actual reasons are recorded
+  against each document and simply never shown, so nobody reads them (#623). Writing that one up
+  corrected me twice: the reasons were there all along, and the one prospectus I called unexplained had
+  been parked with a clear reason since 3 September.
+  **What is needed from Abhay: nothing new** - the same three when you have time.

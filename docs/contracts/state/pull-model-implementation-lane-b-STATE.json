@@ -328,6 +328,30 @@
     {
       "at": "2026-09-11T01:06:31.000Z",
       "what": "PRACTICE ADOPTED: nothing runs in the main checkout. New worktrees get node_modules from wt-new automatically; an existing tree is linked by hand with wt-link-modules.ps1 -Repo <repo> -Worktree <tree> (NOT -Path, which is wt-rm's parameter). Every verification line quotes the alias-preflight target so the tree a result came from is auditable."
+    },
+    {
+      "at": "2026-09-11T01:41:42.000Z",
+      "what": "#622 opened (item 8b slice 1): the extractor reads currentAssets/currentLiabilities/inventories from the LOCATED balance sheet. Card corrected - it assumed derivation from lines the extractor never read. Measured: 174 financial_data rows, zero ratios. HELD unmerged inside the 07:50 IST merge quiet window."
+    },
+    {
+      "at": "2026-09-11T01:41:42.000Z",
+      "what": "Mutation testing rewrote 8b-1: the anchored inventories pattern protected nothing (the cash-flow row is line-anchored too); only page order made it work. Fixed by locating the statement (heading AND closing identity row; 20 pages match the heading, exactly one is the statement). Mutations kill 4 / 1 / 2."
+    },
+    {
+      "at": "2026-09-11T01:41:42.000Z",
+      "what": "18-1b RESOLVED as a timing fact, not a defect: the page-row writer landed on main 2026-09-11 01:24 IST (d7d3b9ec, #560); newest staging completion 2026-09-10T09:39Z, ten hours earlier. All 83 completions predate it. No fix, no issue."
+    },
+    {
+      "at": "2026-09-11T01:41:42.000Z",
+      "what": "#620 filed (prod): document step exhausts its 60s budget every cycle, remaining 3-22 never 0, processed 11-32, last cycle 19% over budget, warn line carries no identities."
+    },
+    {
+      "at": "2026-09-11T01:41:42.000Z",
+      "what": "#623 filed, and filing it corrected me twice: the extractionBlocked causes ARE stored in documents.extraction_error and are merely never surfaced (a read and a log, not plumbing); and the 1 MANUAL_REVIEW RHP is ESDS Software Solution Limited, retry 10, blocked_after_10_attempts since 2026-09-03 - explained all along. The 23 anchors are FOUR classes: 13 zero-row (#437), 3 no-text-layer, 6 validator refusals (correct behaviour miscounted as failure), 1 blocked_after_10_attempts."
+    },
+    {
+      "at": "2026-09-11T01:41:42.000Z",
+      "what": "PROOF STANDARD TIGHTENED (lane A finding): a deploy SIGINTs the running staging cycle and the Redis cycle lock can hold ~55 minutes, so frequent merges may have eaten cycles all night. Every staging proof from here carries the line 'no deploy landed between cycle start and the read', or it is not a proof. Applies to the whole group-1 re-read set; tonight's '19 cycles, zero extractions' readings are suspect on this basis."
     }
   ],
   "items": {
@@ -777,7 +801,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T01:06:31.000Z",
+  "lastStateWriteAt": "2026-09-11T01:41:42.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
@@ -792,7 +816,7 @@
     "21-3 revalidate line - a cycle that writes an IPO; 21-3b (#576) makes the empty case readable",
     "item 22 #496 and #468"
   ],
-  "stagingProofsBlockedReason": "No longer blocked. Staging deploys were restored (lane A #564) and now fire on every non-docs merge (#567); run 34526518484 flipped staging to 2ad49a4e at 20:33:49Z. The remaining four proofs need a scraper CYCLE, not a deploy; staging scraper cron is 15,45.",
+  "stagingProofsBlockedReason": "Group 1 (need a filing extracted AND persisted): 18-1b page rows, 18-2 timestamp arm (unreachable while textless vetoes every candidate), 8a peer rows, 8b ratios, #610's population. Cleared as a timing fact 2026-09-11: the page-row writer landed 01:24 IST today and no document has completed extraction since. Obtainable at the next completed extraction. Every such proof must also carry 'no deploy landed between cycle start and the read'.",
   "stagingProofsPaid": [
     "18-1 migrate - deploy run 34526518484, release 20260910-202813-2ad49a4e, chain assert newest applied 1789065238437 >= newest journaled, plus OK: no schema drift",
     "22-4 migrate - same run; 1789065238437 IS 22-4 migration 20260910183358_small_freak"
