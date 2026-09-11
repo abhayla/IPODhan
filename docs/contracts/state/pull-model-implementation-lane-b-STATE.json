@@ -364,6 +364,10 @@
     {
       "at": "2026-09-11T02:01:14.000Z",
       "what": "CARD OVERTURNED, measured: inventory turnover CANNOT be derived from the extracted statement lines. Karamtara prints 4.09/3.57/3.32 and defines it as COGS/average inventory; the restated P&L has no COGS line. Cost-of-material/avg = 4.074 vs 4.09; +inventory change = 3.989; /closing = 4.501. FY2025: 3.491 / 3.492 / 3.080 vs 3.57. The required numerator gap is 99.85 in FY2026 and 481.54 in FY2025 - not constant, so no fixed adjustment exists. Deriving it would publish a figure disagreeing with the document's own by 0.4-2.3%. Design: EXTRACT the printed ratio, do not derive it. Current/quick ratio remain derivable - pure balance-sheet arithmetic, both inputs already extracted by 8b-1."
+    },
+    {
+      "at": "2026-09-11T02:02:50.000Z",
+      "what": "PRASOLCHEM card claim VERIFIED at PDF pages 441-442 (printed 442-443): note '49 Financial Ratios', a Schedule III disclosure of ten ratios with numerator, denominator, two years, variance and reason. Current Ratio = Current Assets/Current Liabilities = 1.54, 1.34. Inventory turnover = Cost of good sold / [(Opening+Closing Inventory)/2] = 5.59, 5.75. QUICK RATIO IS NOT PRINTED by either issuer - it is not a Schedule III ratio. 8b-2 therefore splits: current ratio and inventory turnover EXTRACTED from the issuer's ratio note (turnover cannot be reproduced from the statements - measured), quick ratio DERIVED from 8b-1's two inputs, labelled as derived with the formula stated and no printed oracle. PRASOLCHEM independently confirms Karamtara's turnover definition. Parser warning: the note's numbers carry internal spaces ('1 .54', '5 .59'), so _normalize_numbers is load-bearing and the fixture must preserve the mangling."
     }
   ],
   "items": {
@@ -813,7 +817,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T02:01:14.000Z",
+  "lastStateWriteAt": "2026-09-11T02:02:50.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
