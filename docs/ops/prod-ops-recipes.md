@@ -642,3 +642,117 @@ would actually be merged, re-run the gate.
 
 `--force --reason "<20+ chars>"` bypasses, prints every clause that fired, and
 echoes the reason so it lands in the record. Paste that output into the PR body.
+
+## 12. Item 7: installing the scraper wake crontab (and how to tell it is working)
+
+Item 7 part B removed PM2's `--cron-restart` from `scripts/deploy-linux.sh`. That flag was the
+scraper's only wake AND its force-kill: `cron_restart` restarts an online process, so every 30
+minutes it killed whatever cycle was running, mid-extraction. It is gone. **Until the crontab
+below is installed on a box, that box's scraper runs exactly once per deploy and then never
+again.** Installing it is a manual step because a crontab is a production mutation.
+
+The lines are checked in at `scripts/scraper-wake.crontab`; they are the SSOT, and
+`scraper/tests/unit/scheduler/job-membership.test.ts` holds them in agreement with the job table
+in `scraper/src/scheduler/job-membership.ts`.
+
+### Install (per slot, as root on the VPS)
+
+```bash
+# 1. See what is there now, and keep a copy you can put back.
+crontab -l > /root/crontab.before-item7.$(date +%F)
+
+# 2. Sanity-check the wrapper from the release you are about to point cron at.
+#    A dry read: it prints "skip" or "start", and starts nothing if a cycle is live.
+DEPLOY_SLOT=prod bash /root/ipodhan/current-prod/scripts/scraper-wake.sh live
+
+# 3. Append the lines (edit the release path and, for staging, DEPLOY_SLOT=staging
+#    plus an offset of a few minutes from prod's — two slots' python extractors on
+#    one 2-vCPU box is the W-178 522 incident).
+crontab -l | cat - /root/ipodhan/current-prod/scripts/scraper-wake.crontab | crontab -
+crontab -l          # read it back; this is the only confirmation that counts
+```
+
+The crontab runs in the box's local time, which is IST. The scraper process itself is started
+`TZ=UTC` by the deploy script and does its own IST arithmetic — do not "fix" that.
+
+### The jobs, and what each one is allowed to do
+
+| Cron (IST) | Job | Runs |
+|---|---|---|
+| `0 0,8,14 * * *` | `data` | discovery, aggregators, GMP |
+| `0 1,19 * * *` | `documents` | the document pass — **its own Redis lock** (`scraper:cycle:documents`), deliberately outside market hours |
+| `*/30 10-18 * * *` + `30 18 * * *` | `live` | subscription + demand graph, gated on market hours AND on a non-zero OPEN count |
+| `0 22 * * *` | `closed` | the closed-IPO backlog (item 17) + GMP |
+| `0 20 * * 6,0` | `gmp` | GMP only — the owner's weekend evening pull |
+
+GMP is deliberately NOT in the `live` job: it is the number people read in the evening and at the
+weekend, and gating it to bidding hours measured ~65 hours stale over one weekend (F-41,
+owner-approved 2026-09-08; re-confirmed 2026-09-11).
+
+The `documents` job is the one job that does NOT share `scraper:cycle`. That is deliberate (owner,
+2026-09-11: "the document job is its own job with its own lock and never delays the live-figure
+job"), and it has a consequence worth watching on a 2-vCPU box: a document pass and any other job
+CAN now run at the same time. If you see CPU starvation at 19:00, that is where to look first.
+
+**14:00 is the one minute where two jobs collide** (`data` and `live`). Nothing special happens:
+both wakes call the wrapper, at most one gets past the Redis cycle lock, and the loser logs
+`previous cycle still running ... exiting 0 without doing anything` and stops. Discovery is not
+lost when `data` is the loser — `isDiscoveryDue` is cadence-key driven, so the next wake runs it.
+
+### Verifying a healthy wake (within one cycle)
+
+Read the scraper's own log, not pm2's status (status flickers between one-shot runs):
+
+```bash
+pm2 logs ipodhan-scraper --lines 200 --nostream | grep -E 'scraper-wake|Cycle: running the named job|previous cycle still running'
+grep scraper-wake /var/log/syslog   # cron's own view of the wrapper firing
+```
+
+Healthy, in order, at a scheduled minute:
+
+- `scraper-wake: start: job=data app=ipodhan-scraper status=stopped` — the wrapper fired and the box was idle.
+- `Cycle: running the named job` with `job: "data"` — the scraper read the job name.
+- For an overlapping wake: `scraper-wake: skip: previous cycle still active` **or** the scraper's own
+  `Due-step cycle: previous cycle still running (scraper:cycle Redis lock held) — exiting 0 without doing anything`.
+  Either line is the skip-not-kill behaviour working.
+
+**Silently NOT working** looks like this, and this is the failure to watch for, because nothing
+alerts on it:
+
+- No `scraper-wake:` line at all at a scheduled minute → cron is not firing (wrong path in the
+  crontab, the release path moved after a deploy, or `/bin/bash` missing from the line).
+- `scraper-wake: skip: previous cycle still active` at EVERY wake for more than one cycle
+  (>55 min) → a cycle is hung. Nothing kills it; see the gap note below.
+- `scraper-wake: FATAL: unknown job` → a typo'd crontab line. That wake never ran.
+
+### Rollback (configuration only — no stored row changes)
+
+These are process constants and configuration; nothing here rewrites data. In one deploy:
+
+1. Restore `--cron-restart="${SCRAPER_CRON:-*/30 * * * *}"` on both `pm2 start` lines in
+   `scripts/deploy-linux.sh` (`resume_scraper()` and `restart_pm2()`), together with the
+   per-slot `SCRAPER_CRON` assignment (prod `*/30 * * * *`, staging `15,45 * * * *`).
+2. Revert the item 7 part A budgets in the same deploy — they are derived on the assumption that
+   nothing kills a cycle at 30 minutes (`extraction-budgets.ts`, `budgetsRequireForceKillRemoval()`).
+   Rolling back the force-kill without the budgets puts a 47-minute extraction budget under a
+   30-minute kill, which is worse than either state.
+3. Remove the crontab lines, or they will wake the scraper on top of PM2's cron:
+   `crontab -l | grep -v scraper-wake.sh | crontab -` (then `crontab -l` to read it back).
+
+The only thing rollback cannot recover is wall-clock latency on documents that were force-killed
+under the old regime — that is stopped going forward, not reclaimed.
+
+### The gap this leaves open (named, not fixed here)
+
+The owner also decided on 2026-09-11 that the document step is **unbounded except for a 2-hour
+hung-process ceiling**. That ceiling does not exist in the code today — nothing enforces it, and
+item 7 part B does not build it. The cycle lock does not substitute for it: the keep-alive extends
+the lock every 5 minutes for as long as the process is alive, so a live-but-hung document job holds
+`scraper:cycle:documents` indefinitely and its TTL only matters once the process is actually dead.
+
+
+With `--cron-restart` gone, a scraper process that hangs is killed by **nothing**. The cycle's
+Redis lock expires on its TTL (`CYCLE_LOCK_TTL_MS`, 55 min) and the filing-extraction lock on
+its own (51 min), which lets the NEXT wake start — but the hung process itself stays alive and
+keeps its CPU, memory and any open handles. There is no watchdog. Killing it is a manual
+`pm2 stop ipodhan-scraper` after reading the log, and a watchdog is out of scope for item 7.

@@ -105,4 +105,23 @@ describe('CYCLE_LOCK_TTL_MS (index.ts) is derived from the wake budget, not hard
       LEGACY_PM2_FORCE_KILL_INTERVAL_MS
     );
   });
+
+  // Item 7 part B. The assertion above says these budgets REQUIRE the force-kill
+  // to be gone. This one is the proof that it IS gone, and it is why the pair is
+  // not simply deleted now that part B has landed: it goes red again the moment
+  // anyone reinstates `--cron-restart` in the deploy script, which is exactly
+  // the out-of-order deployment part A was written to refuse.
+  it('and the deploy script no longer force-kills the scraper (the removal itself)', () => {
+    const deployScript = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../../../scripts/deploy-linux.sh'),
+      'utf8'
+    );
+    // Comments explaining the removal are expected; LIVE CODE naming the flag
+    // is the regression. Same rule as deploy-linux.test.sh case 31b.
+    const liveCode = deployScript.replace(new RegExp('^[ \\t]*#.*$', 'gm'), '');
+    expect(budgetsRequireForceKillRemoval(DEFAULT_WAKE_BUDGET_MS)).toBe(true);
+    expect(liveCode).not.toMatch(/--cron-restart/);
+    expect(liveCode).not.toMatch(/cron_restart/);
+    expect(liveCode).not.toMatch(/SCRAPER_CRON/);
+  });
 });

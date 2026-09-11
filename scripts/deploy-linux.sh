@@ -73,7 +73,8 @@
 #      one-time baseline this step depends on.
 #   8. Atomically flip `current`/`current-<SLOT>`, write DEPLOYED_SHA.
 #   9. `pm2 delete`+`start` BOTH the web app and the scraper app from the
-#      release's realpath (cron_restart re-arms the scraper). T-262: NOT
+#      release's realpath (the OS crontab re-arms the scraper -- item 7
+#      part B, scripts/scraper-wake.sh). T-262: NOT
 #      `pm2 reload` for the web app — reload reuses the already-running
 #      process's original script/cwd instead of repointing it, so it can
 #      leave the live process pinned to a stale release even after the
@@ -242,16 +243,22 @@ else
   KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-2}"
 fi
 
-# W-178: prod and staging both ran --cron-restart="*/30 * * * *" — both slots'
-# extractors spawned in the same :00/:30 window on the same 2-vCPU box, and
-# with two python processes at ~100% CPU each nginx/Next got starved long
-# enough for Cloudflare to return 522s. Staging's cron is offset to :15/:45
-# so at most one slot's extractor is ever running at a time.
-if [ "$SLOT" = "prod" ]; then
-  SCRAPER_CRON="${SCRAPER_CRON_OVERRIDE:-*/30 * * * *}"
-else
-  SCRAPER_CRON="${SCRAPER_CRON_OVERRIDE:-15,45 * * * *}"
-fi
+# Item 7 part B: there is no SCRAPER_CRON any more. PM2's --cron-restart was the
+# scraper's only wake, and it woke it by KILLING it -- cron_restart RESTARTS an
+# online process, which is a kill, every 30 minutes, mid-extraction. The owner's
+# "no job ever kills a running cycle" rule (OD-19 2.1) removes it, and the
+# extraction/wake/lock budgets that landed with item 7 part A are only safe once
+# it is gone (scraper/src/config/extraction-budgets.ts,
+# budgetsRequireForceKillRemoval()).
+#
+# The wake now comes from the OS crontab calling scripts/scraper-wake.sh, which
+# starts a cycle only when one is not already running and never kills one. The
+# lines are checked in at scripts/scraper-wake.crontab; install them with
+# docs/ops/prod-ops-recipes.md, "Item 7: installing the scraper wake crontab".
+#
+# W-178 (the reason staging's cron used to be offset to :15/:45 -- two slots'
+# python extractors on one 2-vCPU box starved nginx into Cloudflare 522s) is now
+# the crontab's job: install the staging slot's lines offset from prod's.
 PROBE_PORT="${DEPLOY_PROBE_PORT:-3999}"
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-30}"
 MUTEX_MAX_WAIT="${DEPLOY_MUTEX_MAX_WAIT_SECONDS:-600}"
@@ -275,29 +282,9 @@ log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 fatal() { echo "FATAL: $*" >&2; exit 1; }
 
-# W-178 round 2 Opus MINOR-4: SCRAPER_CRON_OVERRIDE is operator-typed input (an
-# on-call engineer pastes it by hand during an incident) — validate its shape
-# HERE, before any pm2 delete/stop below, so a typo aborts loudly with a clear
-# message instead of either a cryptic pm2/cron parse failure deep into the
-# deploy, or (worse) pm2 silently accepting a malformed cron string that never
-# fires and leaves the scraper never restarting. Checked here (right after
-# fatal() exists) rather than immediately after SCRAPER_CRON is computed a few
-# lines above, because fatal() is not yet defined at that point in the script.
-_scraper_cron_field_count=0
-set -f # noglob: a cron field is "*/30" etc — unquoted word-splitting below must
-       # NOT also filename-glob-expand against cwd contents (it did: "* * * * *"
-       # silently expanded to real filenames without this).
-for _scraper_cron_field in $SCRAPER_CRON; do
-  _scraper_cron_field_count=$((_scraper_cron_field_count + 1))
-  case "$_scraper_cron_field" in
-    *[!0-9*,/-]*|'') set +f; fatal "SCRAPER_CRON_OVERRIDE is not a 5-field cron: $SCRAPER_CRON" ;;
-  esac
-done
-set +f
-if [ "$_scraper_cron_field_count" -ne 5 ]; then
-  fatal "SCRAPER_CRON_OVERRIDE is not a 5-field cron: $SCRAPER_CRON"
-fi
-unset _scraper_cron_field_count _scraper_cron_field
+# Item 7 part B: the SCRAPER_CRON_OVERRIDE shape validation that stood here went
+# with the variable itself. The equivalent operator-typed input is now the
+# crontab, whose shape `crontab` itself validates at install time.
 
 # ---------------------------------------------------------------- resolve commit
 if [[ "$COMMITISH" == "HEAD" && "$FORCE" -ne 1 ]]; then
@@ -537,9 +524,9 @@ fi
 
 # --------------------------------------------- 2. build/scrape mutual exclusion
 # Refuse to build while a scraper cycle is in flight (PM2 fork + autorestart:false
-# + cron_restart means "online" == actively mid-cycle; "stopped" == idle between
+# + an OS-crontab wake means "online" == actively mid-cycle; "stopped" == idle between
 # cycles, the expected steady state). Stop it for the whole build+flip window so
-# cron_restart cannot fire a new cycle against a half-built release; resumed in
+# the crontab wake cannot fire a new cycle against a half-built release; resumed in
 # step 6 against whichever release ends up live.
 wait_for_scraper_idle() {
   local waited=0 status
@@ -632,7 +619,7 @@ release_scraper_cycle_locks() {
   fi
 
   local key value ttl released=0
-  # The scraper runs under pm2 with --cron-restart=$SCRAPER_CRON -- a fresh cycle can
+  # The scraper is a one-shot pm2 app woken by the OS crontab -- a fresh cycle can
   # start (and take a NEW lock with a NEW token) in the window between our
   # GET and our DEL. A plain DEL after GET would then delete a lock we never
   # read, releasing a cycle that is actually still running. EVAL makes the
@@ -694,17 +681,9 @@ resume_scraper() {
   # W-111/W-112: PYTHON_BIN pins the auto-persist PDF/OCR extractor to the
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
-  # W-178 round 2: default-expand SCRAPER_CRON here (not a bare "$SCRAPER_CRON")
-  # — this function's own test isolation (case 9c, deploy-linux.test.sh) sed-
-  # extracts JUST this function body and evals it under `set -u` without ever
-  # running the top-level SLOT branch (~line 230) that assigns SCRAPER_CRON,
-  # so a bare reference is an unbound-variable abort that kills the whole
-  # `( cd ... && TZ=UTC ... pm2 start ... )` compound command before pm2 ever
-  # runs — the TZ=UTC prefix was never the problem; the line never executed.
-  # In production SCRAPER_CRON is always set well before this function is
-  # ever called, so the fallback here is dead weight on the real deploy path.
-  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all ) \
+  # Item 7 part B: no --cron-restart. This start runs ONE cycle and the process
+  # exits; every later wake comes from the OS crontab via scripts/scraper-wake.sh.
+  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP"       --no-autorestart -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
 # Item 01: the EXIT trap now also removes the release directory this
@@ -1734,7 +1713,7 @@ restart_pm2() {
     log "[dry-run] pm2 delete $PM2_WEB_APP"
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=${SCRAPER_CRON:-*/30 * * * *} -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1761,11 +1740,9 @@ restart_pm2() {
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
-  # W-178 round 2: see resume_scraper()'s comment above — default-expand
-  # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
-  # abort on an unbound variable under `set -u` before pm2 ever runs.
-  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all )
+  # Item 7 part B: no --cron-restart -- see resume_scraper() above. One cycle on
+  # deploy; the OS crontab (scripts/scraper-wake.sh) owns every wake after that.
+  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP"       --no-autorestart -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 

@@ -30,6 +30,7 @@ import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js'
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
 import { triggerPageRevalidation } from './services/page-revalidation-trigger.js';
 import { CLI_SOURCE_ARGS } from './config/runnable-sources.js';
+import { parseJob, runsStep, cycleLockResourceForJob, type ScraperJob } from './scheduler/job-membership.js';
 import {
   runDocumentCycle,
   runDocumentPurge,
@@ -274,7 +275,11 @@ async function runDueStepCycle(
   // distributed lock (keep-alive `extendLock` returned false — see `main()`)
   // stops issuing further writes instead of continuing under a lock another
   // process may already hold.
-  isLockLost: () => boolean = () => false
+  isLockLost: () => boolean = () => false,
+  // Item 7 part B: which named wake this is. `undefined` = run every step,
+  // which is what every caller that has not been updated (and local
+  // `--source=all`) still does.
+  job: ScraperJob | undefined = undefined
 ): Promise<DueStepCycleResult> {
   const redis = getRedisClient();
   const now = new Date();
@@ -328,7 +333,9 @@ async function runDueStepCycle(
     );
   }
 
-  if (isDiscoveryDue(now, lastDiscoveryRun)) {
+  if (!runsStep(job, 'discovery')) {
+    logger.info({ job }, 'Due-step cycle: discovery is not a step of this job — skipped');
+  } else if (isDiscoveryDue(now, lastDiscoveryRun)) {
     logger.info({ slot: mostRecentDiscoverySlotLabel(now) }, 'Due-step cycle: discovery is due — running NSE + BSE');
     // T-478 (issue #225): the OFS category lives ONLY on this unrestricted,
     // 4x/day discovery step (never the OPEN-only "live" step below) — OFS
@@ -367,8 +374,17 @@ async function runDueStepCycle(
     );
   }
 
-  // (c) live data — market hours only, OPEN IPOs only.
-  if (isMarketHoursIST(now)) {
+  // (c) live figures — market hours only, OPEN IPOs only.
+  //
+  // Item 7 part B: GMP used to be the third call in this block, which meant the
+  // most-watched number on an IPO page was refreshed ONLY inside the gate and
+  // went ~65 hours stale over a weekend (F-41, owner-approved 2026-09-08). The
+  // owner's 2026-09-11 ruling keeps that split: "the 09-09 in-hours rule
+  // applies to subscription and demand only". GMP moved to its own ungated
+  // block below; the membership table lives in scheduler/job-membership.ts.
+  if (!runsStep(job, 'live:subscription') && !runsStep(job, 'live:demandGraph')) {
+    logger.info({ job }, 'Due-step cycle: live figures are not a step of this job — skipped');
+  } else if (isMarketHoursIST(now)) {
     let openCount = 0;
     try {
       openCount = await countIposByStatus(['OPEN']);
@@ -382,22 +398,50 @@ async function runDueStepCycle(
     if (openCount === 0) {
       logger.info('Due-step cycle: market hours, but zero OPEN IPOs — live step makes ZERO network calls');
     } else {
-      logger.info({ openCount }, 'Due-step cycle: market hours + OPEN IPOs present — running live data (subscription/GMP/demand graph)');
+      logger.info({ openCount }, 'Due-step cycle: market hours + OPEN IPOs present — running live figures (subscription/demand graph)');
       await runCycleStep('live:NSE', () => runNSEScraper({ allowedStatuses: ['OPEN'] }));
       await runCycleStep('live:BSE', () => runBSEScraper({ allowedStatuses: ['OPEN'] }));
-      await runCycleStep('live:GMP', () => runInvestorgainGMPScraper());
       await runCycleStep('live:demandGraph', () => runDemandBackfill({ execute: true }));
     }
   } else {
-    logger.info('Due-step cycle: outside market hours (weekday 10:00-17:00 IST) — live step makes ZERO network calls');
+    logger.info('Due-step cycle: outside market hours (weekday 10:00-17:00 IST) — live figures make ZERO network calls');
+  }
+
+  // (c2) grey-market premium — NEVER gated on market hours (F-41; owner
+  // 2026-09-11). Gated instead on "is there anything to have a premium for",
+  // which is F-41's own condition: any UPCOMING or OPEN IPO. With none, this
+  // makes zero network calls, exactly like the block above.
+  if (!runsStep(job, 'gmp')) {
+    logger.info({ job }, 'Due-step cycle: GMP is not a step of this job — skipped');
+  } else {
+    let gmpCandidateCount = 0;
+    try {
+      gmpCandidateCount = await countIposByStatus(['UPCOMING', 'OPEN']);
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: UPCOMING/OPEN-IPO count query failed for GMP — treating as non-zero to fail open on freshness'
+      );
+      gmpCandidateCount = 1;
+    }
+    if (gmpCandidateCount === 0) {
+      logger.info('Due-step cycle: zero UPCOMING/OPEN IPOs — GMP step makes ZERO network calls');
+    } else {
+      logger.info({ gmpCandidateCount, job }, 'Due-step cycle: running GMP (ungated by market hours — F-41)');
+      await runCycleStep('live:GMP', () => runInvestorgainGMPScraper());
+    }
   }
 
   // (d) aggregators — UPCOMING/OPEN only, at most once/day.
   // Round-3 M2: read-only due check here, explicit stamp AFTER the work
   // succeeds (below) — the old combined check-and-stamp call meant a kill or a
   // throw between the two skipped aggregators for the next 24 hours.
-  const aggregatorsDue = await isCatchUpCadenceDue(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now);
-  if (!aggregatorsDue) {
+  const aggregatorsDue =
+    runsStep(job, 'aggregators') &&
+    (await isCatchUpCadenceDue(redis, AGGREGATOR_CADENCE_KEY, AGGREGATOR_INTERVAL_MINUTES, now));
+  if (!runsStep(job, 'aggregators')) {
+    logger.info({ job }, 'Due-step cycle: aggregators are not a step of this job — skipped');
+  } else if (!aggregatorsDue) {
     logger.info('Due-step cycle: aggregator refresh (Chittorgarh) not due yet (< 24h since last run) — skipped');
   } else {
     let candidateCount = 0;
@@ -619,6 +663,12 @@ export async function main() {
   // before the next due-step, so the run stops instead of continuing to
   // write under a lock it has actually lost.
   let lockLost = false;
+  // Owner, 2026-09-11: "the document job is its own job with its own lock and
+  // never delays the live-figure job". The resource this cycle takes therefore
+  // depends on the job, and is set once the job is parsed below; it is declared
+  // here for the same reason `cycleLock` is — the outer catch must be able to
+  // release whatever was actually taken.
+  let cycleLockResource = CYCLE_LOCK_RESOURCE;
   const releaseCycleLock = async (): Promise<void> => {
     if (cycleLockKeepAlive) {
       clearInterval(cycleLockKeepAlive);
@@ -626,7 +676,7 @@ export async function main() {
     }
     if (!cycleLock) return;
     try {
-      await cycleLock.lock.release(CYCLE_LOCK_RESOURCE, cycleLock.token);
+      await cycleLock.lock.release(cycleLockResource, cycleLock.token);
     } catch (error) {
       logger.debug(
         { error: error instanceof Error ? error.message : String(error) },
@@ -653,6 +703,14 @@ export async function main() {
     }
 
     const source = args.find(arg => arg.startsWith('--source='))?.split('=')[1] || 'nse';
+    // Item 7 part B: the named wake. `--job=` wins over `SCRAPER_JOB`, which is
+    // what scripts/scraper-wake.sh sets (pm2 re-reads the environment on
+    // `pm2 start --update-env`, but cannot be handed new argv for an app it has
+    // already registered). Absent = run every step, today's behaviour.
+    // An unknown value THROWS here, before any scraping starts.
+    const job = parseJob(args, process.env);
+    cycleLockResource = cycleLockResourceForJob(job);
+    if (job !== undefined) logger.info({ job, cycleLockResource }, 'Cycle: running the named job');
 
     logger.info({ source }, 'IPO Scraper CLI started');
 
@@ -716,9 +774,9 @@ export async function main() {
     // `source !== 'all'`: no-op (legacy behavior, unchanged).
     if (source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER) {
       const lock = new DistributedLock(getRedisClient());
-      const lockResult = await lock.acquire(CYCLE_LOCK_RESOURCE, { ttl: CYCLE_LOCK_TTL_MS });
+      const lockResult = await lock.acquire(cycleLockResource, { ttl: CYCLE_LOCK_TTL_MS });
       if (!lockResult.acquired) {
-        logger.warn('Due-step cycle: previous cycle still running (scraper:cycle Redis lock held) — exiting 0 without doing anything');
+        logger.warn({ cycleLockResource, job }, 'Due-step cycle: previous cycle still running (scraper:cycle Redis lock held) — exiting 0 without doing anything');
         process.exit(0);
       }
       cycleLock = { lock, token: lockResult.token };
@@ -731,7 +789,7 @@ export async function main() {
       if (lockResult.token) {
         const keepAliveToken = lockResult.token;
         cycleLockKeepAlive = setInterval(() => {
-          lock.extendLock(CYCLE_LOCK_RESOURCE, keepAliveToken, CYCLE_LOCK_TTL_MS)
+          lock.extendLock(cycleLockResource, keepAliveToken, CYCLE_LOCK_TTL_MS)
             .then((extended) => {
               if (!extended) {
                 // Round-4 LOW: a `false` return means the token no longer owns
@@ -740,7 +798,7 @@ export async function main() {
                 // as if it still held the lock it had actually lost.
                 lockLost = true;
                 logger.error(
-                  { resource: CYCLE_LOCK_RESOURCE },
+                  { resource: cycleLockResource },
                   'Due-step cycle: lock extend returned false — this cycle no longer holds the lock; stopping before the next step'
                 );
               }
@@ -954,7 +1012,7 @@ export async function main() {
       // Round-3 H2: the cycle's step failures land in `combinedResult` exactly
       // like the legacy path's per-source results, so a cycle in which a source
       // threw exits non-zero instead of silently exiting 0.
-      const dueStepResult = await runDueStepCycle(() => lockLost);
+      const dueStepResult = await runDueStepCycle(() => lockLost, job);
       combinedResult.success = combinedResult.success && dueStepResult.success;
       combinedResult.errors.push(...dueStepResult.errors);
     }
@@ -973,7 +1031,14 @@ export async function main() {
       await runStep(cycleId, 'listingPerformanceUpdate', triggerListingPerformanceUpdate);
       await runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep);
       await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
-      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+      // Item 7 part B: the document pass is the expensive half of a wake (up
+      // to the full extraction budget). A wake that is only there to refresh
+      // GMP must not start it.
+      if (runsStep(job, 'documents')) {
+        await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+      } else {
+        logger.info({ job }, 'Cycle: documents are not a step of this job — primarySourceDiscovery skipped');
+      }
       await runStep(cycleId, 'documentPurge', triggerDocumentPurge);
       await runStep(cycleId, 'deployDriftMonitor', triggerDeployDriftMonitor);
       await runStep(cycleId, 'pruneScraperLogs', pruneScraperLogs);

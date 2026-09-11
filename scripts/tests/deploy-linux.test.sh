@@ -2870,65 +2870,51 @@ fi
 
 echo "deploy-linux.test.sh: all cases passed"
 
-# --- Case 31: W-178 — per-slot scraper cron. Prod keeps */30, staging is ---
-# --- offset to :15/:45 (both slots extracting at :00/:30 starved nginx --
-# --- long enough for Cloudflare to 522), and SCRAPER_CRON_OVERRIDE wins  ---
-# --- over both defaults. Read from the dry-run log's pm2-start line so   ---
-# --- this never spawns a real pm2.                                      ---
-unset SCRAPER_CRON_OVERRIDE 2>/dev/null || true
-
+# --- Case 31: item 7 part B — the scraper is no longer force-killed. PM2's ---
+# --- --cron-restart RESTARTED an online scraper every 30 minutes, which is ---
+# --- a kill mid-extraction; it is gone, together with SCRAPER_CRON and its ---
+# --- override. Asserted on the dry-run log's pm2-start line (never spawns  ---
+# --- a real pm2) and on the script text itself, so reinstating the flag    ---
+# --- anywhere in this script fails here.                                   ---
 ROOT31="$(fresh_root)"
 export DEPLOY_ROOT="$ROOT31"
 
 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31-prod.log 2>&1 || fail "case 31: prod dry-run failed"
-if grep -qF -- '--cron-restart=*/30 * * * *' /tmp/deploy-test-31-prod.log; then
-  pass "case 31: prod dry-run pm2 start carries the default */30 * * * * cron"
+if grep -qF -- '--cron-restart' /tmp/deploy-test-31-prod.log; then
+  fail "case 31: prod dry-run pm2 start STILL carries --cron-restart (the force-kill is back)"
 else
-  fail "case 31: prod dry-run pm2 start did not carry the default */30 * * * * cron"
+  pass "case 31: prod dry-run pm2 start carries no --cron-restart"
+fi
+if grep -qF -- '--no-autorestart -- src/index.ts --source=all' /tmp/deploy-test-31-prod.log; then
+  pass "case 31: the scraper is still started one-shot (--no-autorestart), just without a cron"
+else
+  fail "case 31: the scraper pm2-start line lost its one-shot shape"
+  cat /tmp/deploy-test-31-prod.log
 fi
 
 bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-31-staging.log 2>&1 || fail "case 31: staging dry-run failed"
-if grep -qF -- '--cron-restart=15,45 * * * *' /tmp/deploy-test-31-staging.log; then
-  pass "case 31: staging dry-run pm2 start carries the offset 15,45 * * * * cron (not prod's */30)"
+if grep -qF -- '--cron-restart' /tmp/deploy-test-31-staging.log; then
+  fail "case 31: staging dry-run pm2 start STILL carries --cron-restart"
 else
-  fail "case 31: staging dry-run pm2 start did not carry the offset 15,45 * * * * cron"
+  pass "case 31: staging dry-run pm2 start carries no --cron-restart either"
 fi
-
-export SCRAPER_CRON_OVERRIDE="7,37 * * * *"
-bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31-override.log 2>&1 || fail "case 31: override dry-run failed"
-if grep -qF -- '--cron-restart=7,37 * * * *' /tmp/deploy-test-31-override.log; then
-  pass "case 31: SCRAPER_CRON_OVERRIDE wins over the prod default"
-else
-  fail "case 31: SCRAPER_CRON_OVERRIDE was not honoured on prod dry-run"
-fi
-unset SCRAPER_CRON_OVERRIDE
 unset DEPLOY_ROOT
 
-# --- Case 31d: W-178 round 2 Opus MINOR-4 — a malformed SCRAPER_CRON_OVERRIDE
-# --- (not exactly 5 whitespace-separated fields, or a field with characters
-# --- outside [0-9*,/-]) must abort BEFORE any pm2 delete/stop — proven here
-# --- by asserting the fatal message fires and the log never reaches a
-# --- 'pm2 delete' line, not just that the process exits non-zero.
-ROOT31D="$(fresh_root)"
-export DEPLOY_ROOT="$ROOT31D"
-export SCRAPER_CRON_OVERRIDE="not a valid cron"
-if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31d.log 2>&1; then
-  fail "case 31d: a malformed SCRAPER_CRON_OVERRIDE should have aborted the deploy, but it exited 0"
+# Static half: no executable line of the deploy script may name the flag or the
+# retired variable. Comments explaining the removal are allowed and expected.
+if grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT" | grep -qE 'cron-restart|cron_restart|SCRAPER_CRON'; then
+  fail "case 31b: deploy-linux.sh has live code referencing the removed force-kill: $(grep -vnE '^[[:space:]]*#' "$DEPLOY_SCRIPT" | grep -E 'cron-restart|cron_restart|SCRAPER_CRON')"
 else
-  if grep -q 'FATAL: SCRAPER_CRON_OVERRIDE is not a 5-field cron' /tmp/deploy-test-31d.log; then
-    pass "case 31d: malformed SCRAPER_CRON_OVERRIDE aborts with the expected FATAL message"
-  else
-    fail "case 31d: expected the FATAL SCRAPER_CRON_OVERRIDE message in the log"
-    cat /tmp/deploy-test-31d.log
-  fi
-  if grep -q 'pm2 delete' /tmp/deploy-test-31d.log; then
-    fail "case 31d: log reached 'pm2 delete' — the cron validation did not abort early enough"
-  else
-    pass "case 31d: no 'pm2 delete' reached before the malformed-cron abort"
-  fi
+  pass "case 31b: no live code in deploy-linux.sh references --cron-restart/SCRAPER_CRON"
 fi
-unset SCRAPER_CRON_OVERRIDE
-unset DEPLOY_ROOT
+
+# The replacement must exist and be executable, or removing the force-kill just
+# means the scraper never wakes again.
+if [ -x "$(dirname "$DEPLOY_SCRIPT")/scraper-wake.sh" ]; then
+  pass "case 31c: scripts/scraper-wake.sh exists and is executable"
+else
+  fail "case 31c: scripts/scraper-wake.sh is missing or not executable — nothing would wake the scraper"
+fi
 
 # --- Case 32: G-I (#194) — deployed-sha lineage gate before the flip -------
 # T-264 P2-4: prod once served 1a0b76f, a commit that existed only on an

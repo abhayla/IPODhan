@@ -459,7 +459,9 @@ investigation this design resolved.
 
 ```bash
 ENABLE_DUE_STEP_SCHEDULER=true   # gates the due-step decision logic (default: on in prod)
-SCRAPER_CRON="*/30 * * * *"      # PM2 --cron-restart expression; staging uses "15,45 * * * *"
+# SCRAPER_CRON — REMOVED (item 7 part B). PM2 --cron-restart killed the running
+# cycle every 30 minutes; the wake is now the OS crontab calling
+# scripts/scraper-wake.sh (scripts/scraper-wake.crontab; recipe: docs/ops/prod-ops-recipes.md §12).
 ```
 
 ### Running Locally
@@ -479,7 +481,7 @@ nothing here needs to be run by hand:
 
 ```bash
 pm2 start tsx/dist/cli.mjs --name ipodhan-scraper \
-  --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" \
+  --no-autorestart \
   -- src/index.ts --source=all
 ```
 

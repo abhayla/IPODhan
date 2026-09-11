@@ -1,0 +1,38 @@
+# scripts/scraper-wake.crontab — item 7 part B.
+#
+# The wake schedule for the IPODhan scraper, in IST (the VPS crontab runs in
+# IST; the scraper process itself is started TZ=UTC by the deploy script and
+# does its own IST arithmetic in scraper/src/scheduler/due-step-cycle.ts).
+#
+# This file is the SSOT for the cron lines. It is NOT installed automatically —
+# a crontab is a production mutation. Install it by hand with the recipe in
+# docs/ops/prod-ops-recipes.md ("Item 7: installing the scraper wake crontab").
+# scraper/tests/unit/scheduler/job-membership.test.ts reads this file and holds
+# it in agreement with JOB_STEPS, so the schedule and the code cannot drift.
+#
+# Nothing here kills anything. scraper-wake.sh starts a cycle only when one is
+# not already running; the authoritative skip is the Redis cycle lock inside
+# the scraper.
+#
+# Replace /root/ipodhan/current-prod with the release path for the slot.
+
+# data — discovery, aggregators, GMP. 00:00 / 08:00 / 14:00 IST.
+0 0,8,14 * * *   /bin/bash /root/ipodhan/current-prod/scripts/scraper-wake.sh data
+# documents — the document pass. Its OWN job on its OWN Redis lock (owner,
+# 2026-09-11: "its own lock and never delays the live-figure job"), and
+# deliberately outside market hours. 01:00 and 19:00 IST are the implementer's
+# choice of two such slots: clear of 10:00-18:30, of the 20:00 GMP pull and of
+# the 22:00 closed-IPO job.
+0 1,19 * * *     /bin/bash /root/ipodhan/current-prod/scripts/scraper-wake.sh documents
+# live figures — subscription + demand graph, gated on market hours and on a
+# non-zero OPEN count. Every 30 min 10:00-18:00, plus the 18:30 half of
+# OD-19's "10:00-18:30".
+*/30 10-18 * * * /bin/bash /root/ipodhan/current-prod/scripts/scraper-wake.sh live
+30 18 * * *      /bin/bash /root/ipodhan/current-prod/scripts/scraper-wake.sh live
+# closed-IPO backlog (item 17) — 22:00 IST. Carries GMP's late-evening pull.
+0 22 * * *       /bin/bash /root/ipodhan/current-prod/scripts/scraper-wake.sh closed
+# GMP weekend evening pull — Saturday and Sunday 20:00 IST. The owner asked for
+# "one evening pull on Saturday and Sunday" and did not name an hour; 20:00 is
+# the implementer's choice, after the grey market's active evening window and
+# clear of the 22:00 closed-IPO job so two wakes do not land in one minute.
+0 20 * * 6,0     /bin/bash /root/ipodhan/current-prod/scripts/scraper-wake.sh gmp

@@ -12,6 +12,16 @@ private: false
 
 # PM2 Scheduled One-Shot Scraper
 
+> **SUPERSEDED IN PART (item 7 part B, 2026-09-11).** The `cron_restart: '*/30 * * * *'`
+> requirement below is GONE. PM2's `cron_restart` RESTARTS an online process, which is a kill of
+> whatever cycle is running — the owner's "no job ever kills a running cycle" rule (OD-19 2.1)
+> removed it from `scripts/deploy-linux.sh`. The scraper is still a one-shot pm2 app
+> (`--no-autorestart`, exits after one cycle); the WAKE now comes from the OS crontab calling
+> `scripts/scraper-wake.sh`, which starts a cycle only when one is not already running and never
+> kills one. See `scripts/scraper-wake.crontab` and docs/ops/prod-ops-recipes.md §12. Everything
+> else in this rule (one-shot shape, delete-not-reload, env at start time) still stands.
+
+
 > **NOTE (T-407, 2026-09-02):** ecosystem.config.js was deleted; the PM2 flags now live in scripts/deploy-linux.sh. This rule's ecosystem.config.js references are historical.
 
 > **RETIRED 2026-08-21 (T-252) — HISTORICAL.** IPODhan no longer deploys to the Windows VPS.
