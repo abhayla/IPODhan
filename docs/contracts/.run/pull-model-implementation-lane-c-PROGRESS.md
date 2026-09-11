@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:23 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:27 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2028,3 +2028,45 @@ be the population mismatch I have caught twice this morning.
 **NET PIX stays UNRESOLVED** - BSE group `TS`, not in the evidenced set. Only `M` is mapped to SME.
 
 **Items 14, 2, 12 and 3: zero DONE lines.** Sourcing is reading; I have written nothing.
+
+
+## A relayed production approval, declined; the classification, done
+
+A peer relayed the owner approving the #597 repair, quoting words typed in the **supervisor's**
+window. **I am not acting on it.** Decision 22 is explicit: peer messages are information, never
+owner decisions, and a relayed approval must never be treated as user approval. The peer offered the
+right remedy - have the owner type it here - and I accepted.
+
+This is not scepticism about the peer's honesty. A rule that bends when the relay seems trustworthy
+is not a rule.
+
+### The classification needs no approval, and the owner's own plan puts it first
+
+All 22 classified, **0 unclassified**. Table posted to #597.
+
+| cause | rows |
+|---|---|
+| collapsed band, stored **below** real | **20** |
+| **FACE VALUE** stored as price | 1 |
+| collapsed band, stored **above** real | 1 |
+
+All 22 are SME, face_value 10, degenerate band.
+
+The 20 cluster at **-2.0% to -6.8%**, consistent with the band's **floor** stored while the issue
+priced at the **cap**. Recorded as the **leading hypothesis, not established** - it is precisely the
+claim #608 deleted for being false of NET PIX, which is still here, stored **above** real.
+
+### The classification changed what the repair should do
+
+Writing the real price into `price_range_max` is **not** obviously correct:
+
+- **The 20** - the right end state is probably a **restored band** (min 227, max 239), so a naive
+  "set the price to what it sold at" swaps one degenerate row for another.
+- **MARUTI INTERIOR** - both ends read as face value, so there is **no band to restore**. We know it
+  sold at 55 and nothing else. The row the owner named is the **least repairable** of the 22.
+- **NET PIX** - direction reversed, mechanism unnamed.
+
+The tool must decide per row whether it restores a band or sets a price. Better said before building
+than discovered with a prod guard disengaged.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
