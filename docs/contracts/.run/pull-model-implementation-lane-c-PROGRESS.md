@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 06:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 06:55 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1477,5 +1477,45 @@ end rather than a closed inference.
 | 3 | describes a system that does not exist - **mis-specified** |
 
 Only the first is a timer.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## peer_companies has 321 rows and zero provenance - and that is NOT a missing-code gap
+
+Checked with a **positive control** first, because a zero is a claim about the query:
+`field_sources` carries 10 distinct `table_name` values and `peer_companies` is not among them.
+A real zero.
+
+| table | rows | provenance |
+|---|---|---|
+| financial_statements | 106 | 31 |
+| ipo_intermediaries | 194 | 23 |
+| promoters | 29 | 7 |
+| **peer_companies** | **321** | **0** |
+
+**I was one step from filing a missing-instrumentation gap that does not exist.** The tracking
+code is there - `filing-persister.ts:2548` does `trackField('peer_companies', 'rows')`, matching
+`:2133` and `:2458` for its siblings. Checking the code before filing is the only reason I did
+not send another lane after a phantom.
+
+**What I have not established and will not infer:** why two siblings carry provenance dated
+2026-09-09 16:48 and the third carries none, when all three are tracked in the same persister.
+Three untested candidates; deciding between them needs the persister to actually run.
+
+### Why it matters for item 12
+
+Item 12 re-keyed **three** tables. If `peer_companies` never receives provenance, its `row_key`
+cannot be demonstrated there - so item 12's post-flip proof can only cover two of the three.
+**Better said now than discovered while reading the proof and quietly counting two as three**,
+which is the shape of error I would not have caught in my own favour.
+
+**Group A re-read refined:** check all three against a 0/0/0 baseline, and treat
+`peer_companies` staying at zero as a *separate question*, not an item 12 failure.
+
+### Timers
+
+`ipo_details` **29 / 22 / 0**, overwrite guard **22 = HELD**; zero extractions since item 12's
+fix. Staging now serves `239bd4de` - the #617 merge.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
