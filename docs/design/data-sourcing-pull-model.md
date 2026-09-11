@@ -107,6 +107,7 @@ it by assuming.
 | OD-52 | *"How will the implementation prove it has followed this design, rule by rule?"* — every normative rule gets an id, every build card lists the ids it implements, every test declares them, and CI refuses a PR that breaks the chain | 2026-09-09 | §8.5 | every R-id in `docs/design/rules.json` is claimed by at least one build card, with zero orphans (D19) |
 | OD-53 | *"Go with your recommendation for O-14"* — the 19 offer-for-sale rows are SEBI's OFS-through-stock-exchange mechanism, not the OFS component of a public issue; the 19 rows already-listed-public-sector names with no lot size and no document are frozen as non-IPO listings with a notice (reusing the OD-8 withdrawn-page freeze mechanism), out of phase 1, so the pull walk spends no document budget on them | 2026-09-09 | §1.11 | §1.11's OFS row states the freeze, not a page-shape build, and no section still marks O-14 provisional |
 | OD-54 | *"Yes I accept 15-minute delayed prices from the exchanges' public endpoints, with the 90-day windows"* and *"go with your recommendation for O-15"* — post-listing prices are 15-minute-delayed values polled from the free NSE/BSE public quote endpoints, labelled "delayed", for 90 days after listing then frozen with the last price and its date; no broker feed on the public site; the licensing caveat stays recorded | 2026-09-09 | §1.9, §2.1 | §2.1's post-listing price rule is stated as decided, the licensing caveat sentence survives, and no section still marks O-15 provisional |
+| OD-55 | *"Accuracy is more important than completing everything fast. There's no need to hurry. Let the scraper take whatever time it needs to scrape each of the documents of each of the IPOs and get everything right. Do not create any new scraping loop; update the existing scraper so that in the first round itself it reads the document carefully and gets all the details. Who set up that ten-minute limit? I never approved that."* — restates OD-19 ("offer document never on a clock") for the per-document extraction step itself: the 10-minute and the planned 30-minute per-document timeouts were derived numbers from item 7 part A's chain (`EXTRACT_TIMEOUT_MS`), never the owner's; the document job is its own job with its own lock and never delays the live-figure job; per-document extraction is unbounded except a 2-hour hung-process ceiling, which on trip records every unread page by page number and reason; OCR runs single-threaded at low priority; the document job stays outside market hours by default; no deferred or second OCR queue is built | 2026-09-11 | §2.1 | §2.1 states the document job is unbounded per document except the 2-hour hung-process ceiling, cross-references OD-19, runs under its own lock, and no per-document budget under 2 h appears anywhere in the design or the cards |
 
 ### 0.0.2 Decisions that are still yours — the design does NOT assume an answer
 
@@ -268,7 +269,9 @@ Read out of the code this session:
   budget `DEFAULT_MAX_SPAWNS_PER_CYCLE = 3` filings plus
   `DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE = 1` anchor (`filing-auto-persist.ts`).
 - `EXTRACT_TIMEOUT_MS = 10 * 60 * 1000` — ten minutes per document, inside a
-  `DEFAULT_WAKE_BUDGET_MS = 20 * 60 * 1000` wake shared with everything else.
+  `DEFAULT_WAKE_BUDGET_MS = 20 * 60 * 1000` wake shared with everything else. **Superseded by OD-55
+  (owner, 2026-09-11); see §2.1.** The per-document budget is removed — a document job reads a filing
+  completely, unbounded, except a 2-hour hung-process ceiling that is a crash guard, not a time limit.
 - `LIVE_WINDOW_DAYS_AFTER_LISTING = 10` (`document-state-machine.ts:749`) — an IPO listed more than
   ten days ago gets **no document state rows at all**. **Removed by OD-23, as amended by OD-32; see §0.5.1.**
 
@@ -923,7 +926,7 @@ D-13's *principle* survives — work runs on named occasions, not on a drumbeat.
 
 | Job | When (IST) | Lock it takes | What it touches | What it must never do |
 |---|---|---|---|---|
-| **Data job** | **00:00, 08:00, 14:00** | `heavy` | discovery; document download and extraction; the per-field pull walk; verification reads | never re-read a document because time passed |
+| **Data job** | **00:00, 08:00, 14:00** | `heavy` | discovery; document download and extraction (unbounded per document except the 2-hour hung-process ceiling, OD-55); the per-field pull walk; verification reads | never re-read a document because time passed; never cap a document read by wall-clock time short of the hung-process ceiling |
 | **Opening-day check** | about **09:45**, only on a day an IPO is due to open (OD-31) | `heavy`, skipped if held | the two exchange lists only: register a new or changed IPO so the live jobs can see it | never fetch, download or extract a filing; it writes identity and status, nothing else |
 | **Live-figures job** | **every 30 minutes, 10:00–18:30**, only on a day when at least one IPO is OPEN | `live` | subscription and the demand graph (OD-28) | never touch a document, a field plan row, or any static field |
 | **Grey-market premium** | **every 30 minutes** on the same wake, whenever any IPO is UPCOMING or OPEN — evenings, weekends and holidays included (OD-28, F-41) | `live` | `gmp_records` only | never gated on bidding hours, and never touches a document or a static field |
@@ -945,13 +948,13 @@ job can share the heavy one. The data job must never block the live figures."*
 
 | Lock | Held by | TTL | What happens when it is held |
 |---|---|---|---|
-| `heavy` | the data job, the opening-day check, the closed-IPO job | 55 min (derived below) | the arriving job **skips this occurrence and logs the skip with the holder's start time**; it never kills, never queues, never waits |
+| `heavy` | the data job, the opening-day check, the closed-IPO job | 2 h + slack (derived below, OD-55) | the arriving job **skips this occurrence and logs the skip with the holder's start time**; it never kills, never queues, never waits |
 | `live` | the live-figures job, the grey-market fetch, the post-listing price fetch | 4 min | the arriving wake skips; these are single HTTP reads, so a held lock means the previous one is stuck and that is what the skip line reports |
 
-Two locks, not one, for a measured reason: a data job may legitimately run for 50 minutes
-(the wake budget below), and on a closing day the subscription figure must keep moving through all
-50 of those minutes. Under one lock the 14:00 data job would blank the most-watched number on the
-site for the rest of the afternoon. Check **D17** fails the design if the live-figures job is ever
+Two locks, not one, for a measured reason: a data job may legitimately run for up to the 2-hour
+hung-process ceiling reading a single large document (OD-55), and on a closing day the subscription
+figure must keep moving through all of it. Under one lock a 14:00 data job could blank the
+most-watched number on the site for hours. Check **D17** fails the design if the live-figures job is ever
 described as taking, waiting on, or being skipped by the heavy lock.
 
 #### One download, one read (OD-33)
@@ -1036,52 +1039,86 @@ rather than within the hour. That is accepted deliberately — the alternative, 
 today, is a scraper that treats elapsed time as a reason to re-open a document it has already read,
 and gets killed mid-extraction for its trouble.
 
-#### The force-kill goes, and the budgets that depend on it
+#### The force-kill goes, and the per-document budget goes with it (OD-55, owner 2026-09-11 — supersedes the OD-19 timing this subsection used to carry)
 
 Today the scraper is started `--no-autorestart --cron-restart="*/30 * * * *"`
 (`scripts/deploy-linux.sh:237` computes that default). A cycle still running on the half hour is
 **killed**, and because extraction is a blocking `spawnSync` the signal handler that releases locks
 cannot run — so `FILING_EXTRACTION_LOCK_TTL_MS` (`filing-auto-persist.ts:530`, 45 minutes) is held to
 expiry and the next wakes lose their extraction slot. That force-kill is what made a 10-minute
-extraction timeout necessary in the first place.
+extraction timeout necessary in the first place, and it is also what an intermediate draft of this
+design (OD-19) proposed to raise to 30 minutes rather than remove.
 
-**Under OD-19 the force-kill goes.** Each job is started by a scheduler that **skips its start when
-the cycle lock is held** — it never kills what is running. That unlocks the budget changes the owner
-directed, and they have to be derived rather than typed, because three constants are coupled:
+**The owner rejected the timed cap outright, not just its size:** *"Accuracy is more important than
+completing everything fast. There's no need to hurry. Let the scraper take whatever time it needs to
+scrape each of the documents of each of the IPOs and get everything right. Do not create any new
+scraping loop; update the existing scraper so that in the first round itself it reads the document
+carefully and gets all the details. Who set up that ten-minute limit? I never approved that."* A
+prospectus whose financial statements are drawn pages (ESDS: about 60 of 555 pages needing OCR at
+roughly 46 seconds a page, 50 minutes total) has to be read completely, in the first pass, not
+partially and re-queued.
 
-| Constant | Today | Becomes | Where the number comes from |
-|---|---|---|---|
-| `EXTRACT_TIMEOUT_MS` (`filing-auto-persist.ts:166`) | 10 min | **30 min** | owner, OD-19 — a real prospectus extraction is no longer racing a 30-minute kill |
-| wake budget `DOCUMENT_CYCLE_WAKE_BUDGET_MS` (`document-cycle.ts:182`) | 20 min | **50 min** | owner, OD-19 |
-| `CYCLE_LOCK_TTL_MS` (`scraper/src/index.ts:179`) | wake + 5 = 25 min | **55 min** | *derived, not typed* — the existing expression `getWakeBudgetMs() + 5 min` already computes it |
-| `FILING_EXTRACTION_LOCK_TTL_MS` (`filing-auto-persist.ts:530`) | 45 min | **60 min** | derived below |
-| `DEFAULT_MAX_SPAWNS_PER_CYCLE` (`filing-auto-persist.ts:500`) | 3 | **3, but budget-bound** | see the new invariant |
+**What OD-55 changes, concretely:**
 
-**The invariant that makes this safe, and which does not exist today.** The current derivation
-(`maxAnchorSpawnsWithinLockTtl`, `filing-auto-persist.ts:541`) computes the worst case as
-`DEFAULT_MAX_SPAWNS_PER_CYCLE × EXTRACT_TIMEOUT_MS`. At the new numbers that is 3 × 30 = **90
-minutes**, which is longer than the 50-minute wake it is supposed to fit inside and longer than any
-sane lock TTL. Raising the timeout without touching this would produce exactly the kind of arithmetic
-that passes a unit test and breaks in production.
+- **`EXTRACT_TIMEOUT_MS` (`filing-auto-persist.ts:166`) is removed, not raised.** There is no
+  10-minute, no 30-minute, and no other typed per-document extraction budget. A document job reads a
+  filing for as long as reading it correctly takes.
+- **A 2-hour hung-process ceiling remains — a crash guard, not a budget.** It exists to catch a
+  genuinely stuck process (a hung PDF library, a corrupt file that never returns), not to cap a slow
+  but progressing OCR pass. When it trips, the extractor does not fail the whole document silently:
+  it records **every page it had not yet read, by page number, with the reason it stopped** (timeout
+  vs. crash vs. malformed page) — never a bare "N pages unread" count, per `signal-ownership.md` R1.
+  Those recorded pages are exactly what the seven-day PDF retention (OD-32, §0.5.1) exists to let a
+  later pass retry. Concretely, the 2-hour ceiling is implemented as the extractor spawn's own
+  timeout, with the per-page skip records written by the extractor process itself on termination —
+  not by a wrapper polling it from outside. The `heavy` lock's TTL is that 2-hour ceiling plus slack,
+  never a value derived from spawn count × a per-document timeout, because the document job reads one
+  document at a time and the timed-spawn-count arithmetic that produced 10/30/90-minute figures no
+  longer has a per-document timeout to multiply.
+- **The document job has its own lock and never delays the live-figure job.** This restates, for
+  extraction specifically, what OD-27 already established for the job table as a whole (§2.1's two
+  locks, above): `heavy` (document work) and `live` (subscription, demand graph, GMP, post-listing
+  price) are separate locks, and a document job running long — now potentially far longer than 50
+  minutes, since there is no wake budget capping it — still never blocks or delays a live-figures
+  wake, because the live-figures job never waits on `heavy`.
+- **OCR runs single-threaded, at low process priority** (`nice`/equivalent), so a long OCR pass on a
+  2-vCPU box shares the machine with the web app and the notifier rather than starving them — the
+  owner asked for accuracy without hurry, not for accuracy at the cost of the site going slow while a
+  document is read.
+- **The document job stays outside market hours by default.** It is not scheduled to compete with the
+  live-figures job's 10:00–18:30 window; the three data-job slots (00:00, 08:00, 14:00) remain as the
+  normal occasions it runs, unbounded once started.
+- **No deferred or second OCR queue is built.** A document is read to completion in its own job, once;
+  the only retry path is the existing re-read loop (§3) working from stored text, not a separate
+  backlog worker for slow OCR.
 
-So the design adds one rule to the extraction runner:
+**What this removes from the earlier (OD-19) derivation.** The three-constant coupling that used to
+live here — `EXTRACT_TIMEOUT_MS` (`filing-auto-persist.ts:166`) → wake budget
+`DOCUMENT_CYCLE_WAKE_BUDGET_MS` (`document-cycle.ts:182`) → `FILING_EXTRACTION_LOCK_TTL_MS`
+(`filing-auto-persist.ts:530`) → `maxAnchorSpawnsWithinLockTtl` (`filing-auto-persist.ts:541`) —
+existed only because extraction had a typed timeout that had to fit inside a typed wake budget that
+had to fit inside a typed lock TTL, and `CYCLE_LOCK_TTL_MS` (`scraper/src/index.ts:179`) derived from
+that same wake budget. With the per-document timeout removed, that whole chain of derived numbers no
+longer applies to document extraction: the `heavy` lock's TTL is sized to the 2-hour hung-process
+ceiling plus slack, not to a spawn-count-times-timeout product, and `DEFAULT_MAX_SPAWNS_PER_CYCLE`
+(`filing-auto-persist.ts:500`) stops being budget-bound because there is no per-document budget left
+for it to be bound against. The never-start-without-full-budget invariant is restated below against
+the 2-hour ceiling, not against a wake budget.
 
-> **A filing extraction is never started unless the remaining wake budget is at least
-> `EXTRACT_TIMEOUT_MS`.**
+**The invariant, restated against the hung-process ceiling.** The design still needs one rule so a
+long-running extraction cannot silently hold the `heavy` lock past what the ceiling promises:
 
-With that rule the worst case of a whole filing pass is the wake budget itself — 50 minutes, not 90 —
-whatever the spawn count is. The lock TTL then derives as
-`wake budget (50) + one anchor sidecar at its configured timeout + LOCK_SLACK_MS (60 s)`, which is
-under 60 minutes; `FILING_EXTRACTION_LOCK_TTL_MS = 60 min` is that bound rounded up to the minute.
-`maxAnchorSpawnsWithinLockTtl` is re-derived from the wake budget instead of from
-`spawns × timeout`, and the static test that guards it asserts the new expression rather than a
-re-typed number.
+> **A filing extraction is never started unless the hung-process ceiling (2 h) has not already been
+> consumed by a prior attempt on the same document in the current lock hold; the ceiling bounds one
+> document's read, not the job's total wall-clock time.**
 
-The practical effect on throughput: a data job does up to three filing extractions when they are
-quick and one when a big prospectus runs long, instead of starting a third and being killed. Three
-data jobs a day is fewer *slots* than today's forty-eight wakes, but today's slots are mostly spent
-either idle or dying — the honest comparison is against **completed** extractions, which is a number
-this design does not yet have and which §4 makes a named check.
+The lock TTL for the `heavy` lock derives from the 2-hour ceiling plus `LOCK_SLACK_MS`, not from
+`spawns × timeout`, because spawn count no longer multiplies a fixed per-document timeout.
+
+The practical effect on throughput: a data job now reads every document it opens to completion, in
+the first pass, however long that legitimately takes — the owner's explicit trade: slower per-cycle
+throughput, zero partial reads. What this design tracks instead of a timeout-driven throughput number
+is **completed extractions vs. hung-process trips**, which §4 makes a named check.
 
 #### 2.1.1 One correction to how D-13 was built: grey-market premium is gated with subscription, and should not be
 
