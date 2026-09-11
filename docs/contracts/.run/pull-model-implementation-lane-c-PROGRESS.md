@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 06:55 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 07:03 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1517,5 +1517,45 @@ which is the shape of error I would not have caught in my own favour.
 
 `ipo_details` **29 / 22 / 0**, overwrite guard **22 = HELD**; zero extractions since item 12's
 fix. Staging now serves `239bd4de` - the #617 merge.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## Item 14: the control weakened my hypothesis, and that is the finding
+
+I tested whether item 14's two remaining failures are **segment** defects rather than
+**issue_size** defects.
+
+**Positive control first:** `ipos.segment` IS tracked - 284 provenance rows across 284 IPOs
+from five sources (CHITTORGARH 235, BSE 20, NSE 13, MONEYCONTROL 12, DRHP 4). Against that,
+NIRBHAY and PIYUSH both have `segment_source = null`: their MAINBOARD label is **unsourced**.
+
+**Then the age control killed the inference.** Of 327 IPOs carrying a segment, **279 have
+provenance and 48 do not** (15%). In the Feb-Jun 2026 window where these two sit, **62 have
+provenance and 18 do not** - 23% of contemporaneous IPOs are equally unsourced.
+
+So an absent provenance row is a **common state, not an anomaly**, and does not show the label
+was guessed. **I am not claiming NIRBHAY's segment is wrong.** Recording this because a
+confirmed hypothesis at this hour is exactly what I would have been least likely to re-check.
+
+### What survives: an arithmetic split independent of provenance
+
+| row | issue_size | MAINBOARD floor | SME floor |
+|---|---|---|---|
+| PIYUSH | 7,007,320 | fails | **fails** |
+| NIRBHAY | 14,797,000 | fails | **clears** |
+
+**PIYUSH's issue_size is suspect whatever its segment is.** **NIRBHAY** clears the SME floor,
+so for that row either the segment or the size is wrong - unresolved which.
+
+That is what 14-S2's *"the figures are already correct, the defect is elsewhere"* was pointing
+at, now with a measurement behind half of it. **It does not unblock item 14** - both rows still
+need a source that does not publish closed offerings. But a future repair **must not assume one
+mechanism for both rows**; that is the error a single "fix the share count" pass would make.
+
+### Timers
+
+`ipo_details` **29 / 22 / 0**, overwrite guard **22 = HELD**; zero extractions persisted since
+item 12's fix. Staging serves `239bd4de`.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
