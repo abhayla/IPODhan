@@ -299,7 +299,25 @@ export function checkIssueSizeSegmentFloor(row) {
     segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
   if (floor === null) return null; // no segment (RIGHTS/NCD/REIT/InvIT) — floor doesn't apply
   if (size < floor) {
-    return `issue_size (${size}) is below the ${segment} floor (${floor}) while a price band (${row.price_range_min ?? row.price_range_max}) is on record — looks like a share count, not a rupee value`;
+    // SAY WHAT IS ACTUALLY ON RECORD. The band gate above only asks whether the
+    // price column is non-null, so when that column holds the FACE VALUE - the
+    // #515 shape - this message used to assert "a price band (10) is on record"
+    // for a row that has no price at all. NIRBHAY COLOURS on production is
+    // exactly that: band 10, face_value 10.
+    //
+    // The FLAG stays either way: Rs1.48 crore really is below the MAINBOARD
+    // floor, and dropping it would hide a real problem. What changes is that
+    // the message no longer claims a price we do not have, and names the second
+    // defect so a triager fixes them in the right order - you cannot decide
+    // whether issue_size is rupees or a share count until you have a real price
+    // to multiply by.
+    const band = toNumber(row.price_range_min) ?? toNumber(row.price_range_max);
+    const face = toNumber(row.face_value);
+    const bandIsFaceValue = face !== null && band === face;
+    const bandClause = bandIsFaceValue
+      ? `while the price column holds the FACE VALUE (${band}), not a price — so this size cannot be cross-checked against a real price`
+      : `while a price band (${band}) is on record — looks like a share count, not a rupee value`;
+    return `issue_size (${size}) is below the ${segment} floor (${floor}) ${bandClause}`;
   }
   return null;
 }
