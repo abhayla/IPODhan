@@ -1194,7 +1194,7 @@
     "item-03": {
       "item": 3,
       "card": "docs/design/build-cards/item-03-matrix-cleanup.md",
-      "status": "RE-CUT",
+      "status": "DEFERRED-BY-DESIGN",
       "slices": [
         {
           "id": "3-D",
@@ -1308,7 +1308,9 @@
         "measured": "The COLUMN never existed (schema.ts:296 has only listingExchanges, plural jsonb) but the FIELD is live: 36 references in scraper/src write listingExchange on the scraped-IPO shape. Production field_sources holds 223 singular rows and 209 of them were written in the LAST 7 DAYS, most recent 2026-09-05. Staging: 246 total, 217 in 7 days.",
         "consequence": "Deleting them would destroy provenance for a field the scrapers actively produce every cycle. This is the third item 3 slice falsified by measurement tonight."
       },
-      "denominatorNote": "3 of the 6 recorded slices are WITHDRAWN and leave the denominator under the board counting rule, so this item is 0 of 3, not 0 of 6."
+      "denominatorNote": "3 of the 6 recorded slices are WITHDRAWN and leave the denominator under the board counting rule, so this item is 0 of 3, not 0 of 6.",
+      "retiredFromCondition": true,
+      "retiredReason": "owner decision 2026-09-11 in the lane C window: describes a system we do not have; three of five original slices disproved by measurement; returns re-cut in delta 3"
     }
   },
   "prGate": {
@@ -2133,7 +2135,14 @@
     "2026-09-11 08:37 IST THE ACTUAL BUG IS A READ PATH, and it is one line. web/lib/repositories/ipo-repository.ts:1900, inside findListings - the listed-IPO listings page via ipo-listings-service.ts - selects `issuePrice: ipos.priceRangeMax` WHILE THE SAME QUERY ALREADY LEFT-JOINS listingPerformance, taking listingPrice, listingGainPercent and currentPrice from it in the following lines. A second query at :1142 correctly uses listingPerformance.issuePrice. One path is right, one substitutes the band column.",
     "2026-09-11 08:37 IST MY RECOMMENDATION, offered as a recommendation and not taken as a decision: fix the READ PATH before writing to any production row. Preferring listingPerformance.issuePrice with a fallback to ipos.priceRangeMax is a reversible code change through the normal pipeline, corrects EVERY listed IPO rather than these 22, needs NO production data write, and leaves price_range_min/max honestly unknown where the band is unknown instead of filling it with a number no source supports. The data repair then shrinks to whatever is genuinely wrong in the band columns, each band sourced before it is written - which for MARUTI is nothing we hold. Both findings posted to #597 so they sit where the decision lives.",
     "2026-09-11 08:37 IST NEITHER OWNER LINE HAS APPEARED IN MY WINDOW - not the price-repair approval, and not the item 3 retirement. Two peer messages have now assumed otherwise. MY COMPLETION CONDITION THEREFORE STILL INCLUDES ITEM 3 and I am treating it as unchanged. Retiring an item from my own goal on a relayed say-so would be the most serious version of the laundering rule, not the least, because it changes what 'done' means rather than what gets built.",
-    "2026-09-11 08:37 IST ITEMS 14, 2, 12 AND 3 STILL HAVE ZERO DONE LINES BETWEEN THEM. LANE C COMPLETE is not appendable and I have not appended it."
+    "2026-09-11 08:37 IST ITEMS 14, 2, 12 AND 3 STILL HAVE ZERO DONE LINES BETWEEN THEM. LANE C COMPLETE is not appendable and I have not appended it.",
+    "2026-09-11 08:52 IST OWNER DECISIONS RECEIVED IN THIS WINDOW, typed by Abhay, 2026-09-11 - not relayed, not inferred. Quoted: (1) 'Approved: #597, fix the read path first (the listings query prefers listingPerformance.issuePrice, falling back to the band cap) through the normal pipeline; then repair only band columns where the band is sourced from the exchange or offer document, staging first, production apply on the tool's dry-run evidence; rows without a sourced band stay flagged.' (2) 'Item 3 is retired from lane C's completion condition as DEFERRED-BY-DESIGN; lane C's condition is items 14, 2 and 12.' Four peer messages had relayed versions of these over the preceding hour and I acted on none of them; these are the first that count.",
+    "2026-09-11 08:52 IST WHAT THE ITEM 3 RETIREMENT DOES AND DOES NOT CHANGE, stated plainly so the smaller denominator is not mistaken for progress: it removes the one item that no amount of work from this lane could ever have moved, because it described a system we do not have and three of its five original slices were disproved by measurement. It moves the finish line NOT AT ALL. Items 14, 2 and 12 all still have proof OWED, so lane C is proven 0 OF 3 instead of 0 of 4. Nothing became done today.",
+    "2026-09-11 08:52 IST AND THE #597 DECISION WENT THE WAY THE MEASUREMENT POINTED, which is the part worth noting. The approval he was about to give an hour ago would have written the real price into price_range_max - a PRICE into a BAND column - on rows where no source gives us the band at all. Checking the live site first turned that into: fix the read path, then repair only bands that are sourced, leave the rest flagged. The 22 rows may need no data write whatever.",
+    "2026-09-11 08:52 IST READ-PATH SLICE UNDER WAY, TEST FIRST. web/tests/unit/lib/repositories/ipo-listings-issue-price.test.ts asserts three things: issuePrice projects from listing_performance.issue_price; it STILL falls back to price_range_max so a never-listed IPO keeps publishing a figure rather than null; and the listing-performance columns still come from the join, so the fix cannot be faked by dropping it. It carries a positive control that the captured projection is really the listings one - a wrong mock index would return undefined and every assertion would pass vacuously.",
+    "2026-09-11 08:52 IST TWO FACTS FOR THE CARD, confirmed while the test compiled. THE BLAST RADIUS IS THREE LIVE PAGES, not one: fetchIPOListings -> findListings is imported by web/app/mainboard-ipo-listings/page.tsx, web/app/sme-ipo-listings/page.tsx and web/app/fpo-listings/page.tsx. AND THE DETECTION CHECK MUST BE NEW: I enumerated all 40 record() ids in audit-detection-floor.mjs and none compares a SERVED price against listing_performance.issue_price. That distinction is the point - the unit test asserts the projection, which is a claim about the code; only a served-response check catches the NEXT read path that substitutes a column. I am adding it rather than declaring no detection change.",
+    "2026-09-11 08:52 IST A CORRECTION TO MY OWN RUNNING NOTE BEFORE ANYONE QUOTES IT: the first vitest run printed 'Terminated / exit 143'. That was the harness killing a slow first compile, NOT a failing test. I have no red line yet and will not claim one until I see it.",
+    "2026-09-11 08:52 IST ITEMS 14, 2 AND 12 HAVE ZERO DONE LINES BETWEEN THEM. LANE C COMPLETE is not appendable and I have not appended it."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
@@ -2414,5 +2423,18 @@
     "myCorrection": "The notice also named normalizer-sql-agreement.integration.test.ts. It does NOT match: never reads any file, takes process.env.DATABASE_URL, skips when unset, reads no table. The string env.local appears twice, BOTH IN COMMENTS at :18 and :23 saying it must never read it - I built it in 12-B to REPLACE the tunnel-reading one.",
     "theRealRisk": "A check grepping for env.local, or banning \"any test constructing its own Pool\", would flag the FIX as the defect. The property to check is a Pool built from a connection string the guarded environment did not supply. Lane B was re-briefed before building it.",
     "complied": "No npm run test:integration from me in scraper/, same instruction to any dispatched worker. Not run tonight - unit suites and single files only."
+  },
+  "completionCondition": {
+    "items": [
+      14,
+      2,
+      12
+    ],
+    "retired": [
+      3
+    ],
+    "ownerLine": "Item 3 is retired from lane C's completion condition as DEFERRED-BY-DESIGN; lane C's condition is items 14, 2 and 12.",
+    "ownerLineReceivedAt": "2026-09-11 ~08:45 IST, typed by Abhay in the lane C window",
+    "note": "Removing item 3 does NOT move the finish line: 14, 2 and 12 all still have proof OWED, so the honest figure goes from proven 0 of 4 to proven 0 of 3. A smaller denominator is not progress."
   }
 }

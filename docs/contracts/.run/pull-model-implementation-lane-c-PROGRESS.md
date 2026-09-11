@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:37 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:52 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2167,3 +2167,50 @@ otherwise. **My completion condition still includes item 3.** Retiring an item f
 relay would be the most serious version of the rule, not the least: it changes what *done* means.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## Owner decisions, received in this window
+
+Typed by Abhay, 2026-09-11 — not relayed, not inferred. Four peer messages had relayed versions of
+these over the preceding hour; I acted on none of them. These are the first that count.
+
+1. **#597 approved in the shape the measurement pointed to** — fix the read path first, then repair
+   only band columns where the band is **sourced** from the exchange or offer document, staging
+   first, production apply on dry-run evidence, unsourced bands stay flagged.
+2. **Item 3 retired** from lane C's completion condition as **DEFERRED-BY-DESIGN**. The condition is
+   now **items 14, 2 and 12**.
+
+### What the retirement does and does not change
+
+It removes the one item no amount of work from this lane could ever have moved — it described a
+system we do not have, and three of its five original slices were disproved by measurement.
+
+**It moves the finish line not at all.** 14, 2 and 12 all still have proof OWED, so lane C is
+**proven 0 of 3** instead of 0 of 4. Nothing became done today.
+
+### The #597 decision went where the measurement pointed
+
+The approval he was about to give an hour ago would have written the real price into
+`price_range_max` — a **price into a band column** — on rows where no source gives us the band at
+all. Checking the live site first turned that into: fix the read path, repair only sourced bands,
+leave the rest flagged. The 22 rows may need no data write at all.
+
+### Read-path slice under way, test first
+
+`web/tests/unit/lib/repositories/ipo-listings-issue-price.test.ts` asserts `issuePrice` projects from
+`listing_performance.issue_price`; that it **still falls back** to `price_range_max` so a never-listed
+IPO keeps publishing a figure rather than null; and that the listing-performance columns still come
+from the join, so the fix cannot be faked by dropping it. It carries a positive control that the
+captured projection really is the listings one.
+
+**Two facts for the card:**
+
+- **Blast radius is three live pages** — `mainboard-ipo-listings`, `sme-ipo-listings`, `fpo-listings`.
+- **The detection check must be new.** All 40 `record()` ids enumerated; none compares a **served**
+  price against `listing_performance.issue_price`. The unit test asserts the projection (a claim
+  about code); only a served-response check catches the next read path that substitutes a column.
+
+**Correction before anyone quotes it:** the first vitest run printed *Terminated / exit 143* — the
+harness killing a slow compile, **not** a failing test. I have no red line yet.
+
+**Items 14, 2 and 12: zero DONE lines.**
