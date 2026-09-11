@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 07:36 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 07:48 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1749,5 +1749,50 @@ H.R.Hygiene (CT), Shree Balaji Mala Textiles (CT, P). All SME/LISTED/IPO, create
 08-12, and **all six updated within 17 seconds** at 2026-09-08 01:22:14-31 - one sweep touched the
 set. Unsuffixed siblings exist alongside them, so these are genuine duplicate identities of item 12's
 class. I have not identified what P/CT/LT mean.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## A false absence of my own, then the finding that settles item 14's path
+
+**The error first.** I queried `field_sources` with `field_name='issue_size'`, got zero rows, and
+reported that issue_size has **no provenance for anyone**. Wrong - the column stores **camelCase**,
+`issueSize`: production **295** rows, staging **323**. The documented camelCase gotcha, hit again.
+Everything I concluded from that zero is void.
+
+**My segment work is unaffected and stands** - `segment` is spelled identically in both conventions,
+which is exactly why that query worked and this one did not.
+
+### Re-measured correctly
+
+`issueSize` provenance on production: CHITTORGARH 215, BSE 36, NSE 19, MONEYCONTROL 11, ADMIN 10,
+DRHP 4. And the two MAINBOARD floor violators are **both BSE-sourced**:
+
+| row | issue_size | issueSize source |
+|---|---|---|
+| NIRBHAY COLOURS | Rs14,797,000 | **BSE** |
+| PIYUSH LIMITED | Rs7,007,320 | **BSE** |
+
+Item 14's recipe requires the floor check to PASS with **zero BSE-sourced violations**. So the clause
+**is** satisfiable - the provenance exists, which I wrongly doubted an hour ago - but it **cannot pass
+today**, because the only two violations are precisely the BSE-sourced ones.
+
+### The picture is now coherent
+
+BSE supplied both figures; **14-S2 verified both figures correct** against BSE; Rs1.48 cr and
+Rs0.70 cr are plausible **SME** sizes and implausible MAINBOARD ones; both carry an **unsourced**
+MAINBOARD label; both sit in the rare **MAINBOARD + BSE-only** bucket that is 92% unsourced.
+
+Every piece points one way: **the segment label is the suspect field, not the size** - which is what
+14-S2's hold said in plain words. The hold was right.
+
+### The consequence I had not seen: item 14 is blocked on item 2
+
+Its last two slices need the segment sourced honestly. That is **2-S3b2**'s job, and these two rows
+are inside that slice's population. Item 14 does not close on its own.
+
+**Still not proven.** PIYUSH at Rs0.70 cr fails the SME floor too, so it keeps a second, separate
+problem even with a corrected segment. Nothing here licenses a production write - the segments must
+be **sourced**, not inferred from a size looking small.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
