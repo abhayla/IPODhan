@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:01 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:15 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1872,3 +1872,59 @@ reasons: **item 3 is 0 of 3, not 0 of 6.** And `2-fix-493` existed in the card b
 written to the board at all - now recorded there as WITHDRAWN.
 
 **None of this moves the only number that answers the question: lane C is proven 0 of 4.**
+
+
+## 2-S3b2's blocker is not what its card says
+
+The card reads *"no reachable page, tested against three sources"* - but that testing was against
+**closed offerings**, pages the exchanges take down. A company that **listed** still trades, and both
+exchanges publish current listed-security masters that name the board directly.
+
+### Oracle 1 - already in our codebase, unused for this
+
+`scraper/src/scrapers/nse-equity-master.ts` fetches `EQUITY_L.csv` (MAIN) and `SME_EQUITY_L.csv`
+(SME). Reached read-only: **2,568 mainboard + 572 SME** symbols, control RELIANCE present in MAIN.
+Imported by two audit/backfill scripts and by **nothing in the main pipeline**.
+
+Against our 13 symbol-carrying unsourced rows: **4 AGREE, 0 DISAGREE, 9 not on NSE.**
+
+**Those 4 prove the reading I refused to assume this morning.** KWIL, CMSINFO, WINDLAS and AAATECH
+are all stored with `listing_exchanges = ["BSE"]` only, yet NSE's own mainboard master lists them.
+So their **MAINBOARD segment is confirmed correct and the exchange list is wrong**. That is reading
+(b), measured rather than argued - and the direct evidence that 2-S3b2 must repair
+`listing_exchanges`, not `segment`, on part of its population.
+
+### Oracle 2 - not in our codebase at all
+
+BSE's active listed-scrip API returns **5,004** scrips with a `GROUP` field; SME carries its own
+groups (M 394, MT 129, MS 5). Control: RELIANCE present, GROUP `A`. It sources what NSE cannot:
+
+| row | BSE group | reads | we store |
+|---|---|---|---|
+| Shipwaves Online | M | SME | SME - agree |
+| Western Overseas Study Abroad | M | SME | SME - agree |
+| Stanbik Agro | M | SME | SME - agree |
+| Maruti Interior Products | M | SME | SME - agree |
+| Kwality Walls | B | MAINBOARD | MAINBOARD - agree |
+
+Maruti Interior's BSE `scrip_id` is **SPITZE**, which our row does not carry - any implementation
+must match on name or ISIN, not symbol.
+
+### Where I stopped, and why it matters most
+
+**NET PIX SHORTS DIGITAL MEDIA sits in group `TS`.** My *M/MT/MS means SME* mapping is **my
+assumption**, not something BSE documented to me, and under it NET PIX reads MAINBOARD while we
+store SME. Groups TS and MS hold 6 and 5 scrips - small but real.
+
+Shipping that mapping would manufacture a **sourced-but-wrong** value, which is worse than an
+unsourced one. The mapping must come from BSE's own group definitions first. **NET PIX recorded as
+UNRESOLVED**, not as a disagreement.
+
+### Item 14 - explained, not rescued
+
+NIRBHAY and PIYUSH appear in **neither** master. With status CLOSED that is consistent with offers
+that closed and never listed - which is exactly why every source item 14 tried came back empty.
+Their segment cannot be sourced from a listed master by any route. **Item 14 stays blocked**, now
+for a precisely understood reason.
+
+**Items 14, 2, 12 and 3: zero DONE lines.** Sourcing is not writing; I ran no repair.
