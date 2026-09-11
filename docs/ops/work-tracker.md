@@ -1265,7 +1265,7 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   **What is needed from Abhay: one thing.** Confirm withdrawing the pdf-lib approval, or tell me to add
   it anyway and I will. Nothing else is outstanding - the other three decisions are applied.
 
-- **2026-09-11 04:17 IST - PAUSED by owner order, and lane B's last blocked slice shipped first.** Item 20's slices stay at
+- **2026-09-11 09:48 IST - PAUSED by owner order, and lane B's last blocked slice shipped first.** Item 20's slices stay at
   100% (8 of 8 merged and proven); lane B's overall slice count moves from 44 of 46 to 45 of 46 with one open.
   **What a reader of ipodhan.com would notice:** nothing yet, because nothing here is deployed - but the change
   waiting on `main` is the first time the site ever says where a number came from. Under each block of key facts
