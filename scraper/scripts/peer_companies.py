@@ -21,8 +21,16 @@ second opener inside this module would duplicate that and could outlive it. It
 also means these functions are testable without a PDF at all.
 """
 
+import re
+
 from peer_table_rows import parse_peer_table
 from peer_table_section import contains_kpi_comparison_table, find_peer_table_section
+
+# The document's own cross-reference: every prospectus measured prints, on the
+# same page, which company has the highest and which the lowest P/E "of the peer
+# set provided below".
+_SUMMARY_LINE = re.compile(r"^\s*(?:Highest|Lowest)\s+[\d.,]+\s+(.+?)\s*$", re.M | re.I)
+_TRAILING_NUMBER = re.compile(r"\s+[\d.,]+\s*$")
 
 # Refusal reasons, kept as strings the envelope can carry so a miss says WHY.
 # "not in the document" and "the wrong table was there" are different findings
@@ -32,6 +40,54 @@ ONLY_KPI_TABLE = "peer_comparison_table_absent_only_kpi_table_present"
 NO_TABLE_ON_PAGE = "peer_comparison_section_found_but_no_table_extracted"
 NO_ROWS_PARSED = "peer_comparison_table_found_but_no_peer_rows_parsed"
 TABLE_EXTRACTION_FAILED = "peer_comparison_table_extraction_failed"
+
+
+def _first_two_words(name):
+    letters = "".join(c if (c.isalpha() or c.isspace()) else " " for c in (name or ""))
+    return " ".join(letters.split()[:2]).lower()
+
+
+def check_against_printed_summary(peers, page_texts):
+    """Verify the parsed peer list against the DOCUMENT'S OWN summary.
+
+    Every prospectus measured names, on the same page, which company has the
+    highest and which the lowest price/earnings "of the peer set provided
+    below". So the document itself asserts two companies that must appear in our
+    answer - an oracle nobody had to hand-write, which fails loudly if a row is
+    dropped. It already caught a wrong peer count on a build card.
+
+    Matched on the first TWO WORDS rather than the full name, because the
+    documents contradict themselves: Karamtara's summary calls a peer `KP Green
+    Energy Limited` while its own table calls the same company `KP Green
+    Engineering Limited`. The real company is KP Green Engineering. An
+    exact-match oracle would fail on a CORRECT parse, and a check that fails on
+    correct output is a check somebody switches off.
+
+    Returns the ``(passed, detail)`` pair the emitter expects.
+    """
+    whole = "\n".join(t or "" for _i, t in page_texts)
+    named = _SUMMARY_LINE.findall(whole)
+    wanted = []
+    for candidate in named:
+        trimmed = _first_two_words(_TRAILING_NUMBER.sub("", candidate))
+        if trimmed:
+            wanted.append(trimmed)
+
+    if not wanted:
+        # No summary in the document, so there is nothing to cross-check
+        # against. Reported as NOT passed rather than as a pass: "we could not
+        # check" and "we checked and it was right" are different states, and
+        # collapsing them is how an unverified value acquires a clean mark.
+        return False, "peer summary absent - peer list unverified against the document"
+
+    have = set()
+    for peer in peers:
+        have.add(_first_two_words(peer.get("name")))
+
+    missing = [w for w in wanted if w not in have]
+    if missing:
+        return False, "summary names %s, absent from the parsed peers" % ", ".join(missing)
+    return True, "summary's highest/lowest companies are both in the parsed peer set"
 
 
 def find_peer_section_page(page_texts):
