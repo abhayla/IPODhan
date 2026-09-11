@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 09:05 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 09:14 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2268,3 +2268,56 @@ bands — is not started.
 **Proof owed:** staging listings page showing 55 for MARUTI after deploy, read cache-busted.
 
 **Items 14, 2 and 12: zero DONE lines.**
+
+
+## #637 merged — then the second half's premise turned out not to hold
+
+**f19eaa86**, merged 03:41:56Z. The gate first **refused** it (exit 2, `mergeable=UNKNOWN` — GitHub
+still computing). That is the gate working: UNKNOWN is not a pass, and I waited rather than re-running
+until it happened to say yes. Worktree removed, main intact (4819 → 4819, 0 deleted).
+
+### I measured the second half's premise before building it
+
+The owner's line: *repair only band columns where the band is sourced from the exchange or offer
+document.*
+
+| measurement (production) | result |
+|---|---|
+| `ipo_details.cut_off_price` populated | **0** rows anywhere (26 detail rows) |
+| the 22 having an `ipo_details` row | **0 of 22** |
+| the 22 having any document | 2 of 22 |
+| **band columns sourced** | **20 of 22 — CHITTORGARH** |
+
+There is **no offer-document band to restore from**. And the band columns are **already sourced**:
+`priceRangeMin`, `priceRangeMax` and `faceValue` all carry CHITTORGARH provenance.
+
+**That inverts the premise.** Writing there would not fill an unsourced field — it would **overwrite
+one source's value with another's**, which is a source-priority decision governed by
+`FIELD_PRIORITY_MATRIX`, not a repair.
+
+### And it fits #589, which this session already resolved the opposite way to its filing
+
+For **closed** book-built rows Chittorgarh publishes a **single price**, not a range — 183 of them;
+only still-open issues carry a range. So storing that single price in both ends is us **faithfully
+recording what the source said**. What I have been calling "a collapsed band" is not a corruption on
+those rows — it is the source's own shape.
+
+### Honest restatement: two sources disagreeing, not a missing band
+
+Chittorgarh says 227 for ADMACH; the listing record says 239. **Both are sourced.** That belongs in
+the cross-source conflict machinery, not a repair script picking a winner by hand. And the
+user-visible half is **already fixed** by #637.
+
+**What I have not established:** which source is right. Chittorgarh runs 2–7% below across the 20 —
+the shape of a band floor — but "consistently lower" is not evidence of which number the issue sold
+at, and NET PIX runs the other way. Nor have I checked whether `listing_performance.issue_price` is
+written through the priority matrix at all, which decides whether the matrix can adjudicate this.
+
+### Recommendation (the owner's call, not mine)
+
+**Do not run the band repair as approved.** Its premise — unsourced bands waiting to be filled from a
+document — does not match the data. What remains is resolving a two-source disagreement on a sourced
+field: different work, different design. I would rather hand back *"the approved thing should not be
+built"* than build it and report success.
+
+**Items 14, 2 and 12: zero DONE lines.** #637's proof is owed.
