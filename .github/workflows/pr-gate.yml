@@ -443,6 +443,26 @@ jobs:
         # never ran would read as a clean gate.
         run: node --test scripts/tests/normalized-name-current.test.mjs
 
+      - name: Heading-hash runtime invariant self-test (item 1 slice s13)
+        # This file was MERGED (fc2f8776) and had never run in CI. Its whole
+        # subject is a runtime invariant - that a stored ipo_risk_factors
+        # heading_hash still re-computes to itself under the current function -
+        # and the guard for it did not execute on any PR. A guard that never
+        # runs is the same class of defect as the hole it guards against.
+        #
+        # Same Node 22 constraint as its sibling above: it imports
+        # headingHashForRiskFactor from the TypeScript SSOT via erasable type
+        # stripping, so on Node 20 it cannot load at all.
+        run: node --test scripts/tests/heading-hash-current.test.mjs
+
+      - name: Ledger record-event self-test (#581)
+        # Also merged and never run in CI. It pins the coupling that stops the
+        # status board going stale behind the ledger, and the zero-padding fix
+        # (item-4 vs item-04) WITHOUT which every item numbered 1..9 silently
+        # failed to write - a bug the only pre-existing test could not catch
+        # because it used item 20, a two-digit number.
+        run: node --test scripts/tests/record-event.test.mjs
+
       - name: Setup Node.js 20 (restore pinned version for the rest of the job)
         uses: actions/setup-node@v4
         with:
