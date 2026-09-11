@@ -1107,3 +1107,20 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   **What is needed from Abhay: nothing on this.** The three decisions still waiting are unchanged -
   the one-row website correction, whether the shared branch should refuse unchecked changes, and
   whether to approve pdf-lib.
+- **2026-09-11 06:01 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com would notice:** still nothing new on the page, but the rival-company
+  comparison is now built end to end and switched on in the code - when a cycle runs, the table a
+  prospectus prints for each competitor starts reaching IPO pages. **What went wrong, and it is the
+  useful part.** I was about to build the nightly alarm the plan asks for: "every finished Ratios
+  document must have produced a current ratio". I measured first. There are 34 of those documents and
+  NOT ONE has ever been read, so that alarm would have been true of nothing at all - showing green
+  every night while the feature had never run once. It now says "I could not check" instead of "all
+  clear", and prints the number that matters: 34 exist, none read. Also measured: of 174 financial
+  records, ZERO carry a current ratio, quick ratio or inventory turnover. Those three numbers are
+  simply absent for every IPO today, which is what the next piece of work is for. And a correction to
+  the plan itself: it assumed those ratios could be worked out from figures we already pull. We do not
+  pull them - we take revenue, profit, earnings and net worth, but not current assets, current
+  liabilities or stock. So the next piece has to read three more lines out of the prospectus first.
+  **What is needed from Abhay: nothing new.** The same three when you have time - the one-row website
+  correction, whether the shared branch should refuse changes that have not passed their checks, and
+  whether to approve the new PDF library.
