@@ -88,6 +88,31 @@ jobs:
         # deps needed (Node builtins only).
         run: node --test scripts/tests/scripts-typecheck-exclude-shrink.test.mjs
 
+      - name: Substance-check self-tests (#597, #601, #608)
+        # These three were UNWIRED and therefore never ran in CI - they passed
+        # by not being in the pipeline, which is the wire-or-retire shape this
+        # repo already has a failure class for. Found 2026-09-11 while checking
+        # whether a newly added test file actually executes: 28 of the 51 files
+        # under scripts/tests/ are not named by this workflow, so more than half
+        # of them are green locally and absent here. That systemic gap is filed
+        # separately; these three are the ones this lane added or depends on.
+        #
+        # degenerate-band-check: drives the real predicate over all four
+        #   outcomes, including the oracle-disagreement branch that surfaced 22
+        #   wrong prices on production.
+        # issue-size-floor-message: proves the floor check neither claims a
+        #   price band it lacks nor denies an authoritative price it has.
+        # audit-substance-plausibility: STATIC - asserts every row.<col> a
+        #   predicate reads is present in the audit SELECT. This is the one that
+        #   went red locally when a predicate started reading face_value before
+        #   the column was added, and CI could not have caught that.
+        #
+        # All three are Node builtins only - no database, no deps.
+        run: |
+          node --test \
+            scripts/tests/degenerate-band-check.test.mjs \
+            scripts/tests/issue-size-floor-message.test.mjs \
+            scripts/tests/audit-substance-plausibility.test.mjs
       - name: Detection-floor checks self-test (T-335)
         # Mutation-proof: scripts/tests/audit-detection-floor.test.mjs imports
         # the actual predicates from scripts/lib/detection-floor-checks.mjs
