@@ -11,7 +11,7 @@
     8,
     21
   ],
-  "currentItem": "8",
+  "currentItem": 8,
   "testDb": {
     "name": "ipodhan_test2",
     "drop": "OWED"
@@ -244,6 +244,46 @@
     {
       "at": "2026-09-10T23:43:45.795Z",
       "what": "#602 opened: end-to-end peer read. THE ORDER IS THE DESIGN - extract_filing reads text only and closes each page because pdfplumber caching pins gigabytes on a 400-page prospectus under a hard RLIMIT_AS ceiling, so tables are extracted for ONE page, the one the locator names. Memory rule asserted by two tests and proved by a mutation that asks every page with the exception path neutralised. Four distinct miss reasons where the old block could only say no-peers, including section-found-but-no-table (Glasswall, where reporting not-in-document would be false). The table-extraction-failed reason came from a test I wrote expecting to pass: a raising provider took down the whole document extraction. 10 tests, 256 passed 3 skipped. NOT yet called by extract_filing - next slice."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "#602 MERGED squash 8d3b61b1, six checks green, branch deleted separately after state=MERGED."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "#605 MERGED squash b1214f9f: THE EXTRACTOR ACTUALLY CALLS THE PEER READER - item 8a is complete and live on main. Verified ON MAIN, not just merged: import at extract_filing.py line 26, call at 2597. 7 tests drive run(), the real entry point. Removing the wiring kills 5 of 7 (the 2 survivors are the negative tests that SHOULD pass when the feature is absent); making it fetch tables for every page kills exactly the two one-page memory guards and nothing else - a regression no output assertion would catch."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "#606 FILED and left deliberately RED: on PRASOLCHEM the two-level EPS header centres the Basic/Diluted sub-labels one column right of their own numbers, so map_columns points both at columns empty in every body row and all seven peers would persist a null EPS. filing-persister reads exactly those two keys. Nothing caught it because the existing row test only demands two non-null values and revenue, NAV and P/E already supply them - A ROW CAN LOSE HALF ITS COLUMNS AND STILL LOOK HEALTHY. Written as the CLASS (a column that mapped but is blank for every peer was mapped to the wrong place), green on Karamtara so it is a real check, xfail(strict) on PRASOLCHEM so fixing it forces the marker out."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "I BROKE A CONTRACT RULE ON #605: contract line 53 says item 8 lands ratios_extraction_yield and that No detection change is NOT used for item 8. I used the declaration. The CI gate accepted it because the gate takes either; the contract asked for the check specifically."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "#610 MERGED squash 01a2f44e, the check that was owed - AND MEASURING FIRST CHANGED IT. Staging has 34 RATIOS_BASIS_ISSUE_PRICE documents, ALL PENDING, ZERO COMPLETED; financial_data has 174 rows and ZERO carry current_ratio, quick_ratio or inventory_turnover. So the check as specified is true of the EMPTY SET and would have paged green every night while the feature had never run once. It now reports UNVERIFIABLE on an empty population and prints the actionable number (34 exist, none read). 9 tests; flipping the empty verdict to PASS kills 3. Verified the new CI step ACTUALLY RAN in the job step list rather than trusting a green job."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "8b PLAN CORRECTION, measured: the card says derive the three ratios from extracted statement lines. The extractor emits revenue, totalIncome, pat, eps_basic, eps_diluted, ebitda, netWorth, op_cash_flow, dscr and rent - but NOT current assets, current liabilities or inventories, which is exactly what all three ratios need. So 8b starts with an EXTRACTION slice. Extension point: OTHER_METRICS in extract_financials_pdf.py:170, searched doc-wide and already carrying netWorth, itself a balance-sheet line. The 34 Ratios documents are NOT the source - two were opened and are newspaper image scans with no text layer."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "MEASURED TRAPS for 8b-1, found by reading real fixture text before writing any regex: Inventory holding days* 18 21 22 is a CLEAN DATA ROW that a plain inventor regex would store as inventory=18; Changes in inventories of finished goods is a cash-flow movement, not the stock balance; and the page carrying Total current assets/liabilities in the deepa fixture is a WORKING CAPITAL section, not the balance sheet - its numbers give a current ratio of 128 (3468.26/27.04) because that presentation excludes borrowings."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "ITEM 21 DEFECT FOUND AND FIXED, #614 opened: a status flip clears Redis but never revalidates the ISR page, so a CLOSED IPO keeps showing as OPEN on ipodhan.com for up to fifteen more minutes. It is the one write path that could not reach item 21 own refresh mechanism: the scraper marks IPOs touched in memory in ITS OWN process while the transition is applied in the WEB app behind /api/admin/status/update. Fix reuses revalidateForSlugs with revalidatePath injected from the route. 6 tests, two of which exist only to prove the helper is CALLED; three mutations each turn the suite red. NOT yet observed live - every staging cycle since the step deployed at 21:15Z reports total:0 transitions, so the gap is established from the code paths, not from a captured incident."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "GOTCHA: gh pr checks reported a job pending with 0s elapsed for ~25 minutes AFTER it had already succeeded (job completed 00:30:21Z). Under the 20-minute supervision rule that reads as a stuck job and I nearly stopped a finished one. The job API had the truth. Read the job, not the checks list."
+    },
+    {
+      "at": "2026-09-11T00:47:29.000Z",
+      "what": "STATE.json had fallen an hour behind PROGRESS.md and the board - caught by the lane A session, correctly. My own timestampSource line says all three are written in the same command. These notes close the gap; from here the three move together."
     }
   ],
   "items": {
@@ -689,7 +729,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-10T23:43:45.795Z",
+  "lastStateWriteAt": "2026-09-11T00:47:29.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
