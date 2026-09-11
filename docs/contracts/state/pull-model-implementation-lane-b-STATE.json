@@ -388,6 +388,10 @@
     {
       "at": "2026-09-11T03:35:39Z",
       "what": "#633 merged (aaf9ee26): the retired Moneycontrol source no longer keeps a freshness SLO, so the 2026-09-17 owner page is prevented. ESDS FIFTH CORRECTION, the dangerous one: the OCR-flagged pages have 3 chars and ZERO images, which reads as 'blank, skip them' - but they carry 3,000-4,000 vector CURVES each. They are financial statements drawn as vectors; OCR on them is correct work and a skip rule would have destroyed ~65 pages of real statements. The true waste case is page 148: 163 chars, zero curves, just under the 200 floor. So the fix is a BUDGET, not a smarter skip: today the process is killed at 10 minutes and the document yields NOTHING, including 555 pages of text already read in the first 4.5 minutes."
+    },
+    {
+      "at": "2026-09-11T03:43:43Z",
+      "what": "ITEM 16 DONE, 2/2, proof HELD on a staging cycle: staging on aaf9ee26, cycle completed 2026-09-11T03:42:24Z, getLastSuccess called exactly once for API_FALLBACK and not for MONEYCONTROL. Reopened three hours after I first called it finished, by trying to prove it instead of citing CI."
     }
   ],
   "items": {
@@ -430,9 +434,14 @@
       }
     },
     "16": {
-      "status": "IN-PROGRESS",
+      "status": "DONE",
       "why": "Moneycontrol retired from both call sites, not only the one production runs.",
-      "proof": "CI run 34504887739 all five checks green; full scraper suite 275 files / 3491 tests / 0 failures; MUTATION-CHECKED - restoring moneycontrol to the CLI allow-list turns the suite red (1 failed, 27 passed). Verified on main 2026-09-11: due-step-cycle.ts zero occurrences, index.ts three and all comments.",
+      "proof": {
+        "status": "HELD",
+        "cycle": "2026-09-11T03:42:24Z staging, on aaf9ee26",
+        "line": "getLastSuccess called exactly once in that cycle, for API_FALLBACK - not MONEYCONTROL. The monitor ran and skipped the retired source; silence alone would have proved nothing because a cycle that did not run is also silent.",
+        "beforeAfter": "staging 'aggregator refresh (Chittorgarh) not due yet' vs production (older release f0c66b6b) 'aggregator refresh (Moneycontrol/Chittorgarh)'. 53 aggregator lines on staging, zero naming Moneycontrol."
+      },
       "slicesNote": "1 of 1: #528, squash 9a958a53",
       "sliceIds": {
         "merged": [
@@ -958,7 +967,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T03:35:39Z",
+  "lastStateWriteAt": "2026-09-11T03:43:43Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
