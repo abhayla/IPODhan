@@ -691,7 +691,7 @@ jobs:
                 console.log('row-key coverage DB check: reachable, current_database()=' + rows[0].db);
                 return c.end();
               })
-              .catch((e) => { console.error('row-key coverage DB unreachable — failing, not skipping:', e.message); process.exit(1); });
+              .catch((e) => { console.error('row-key coverage DB unreachable - failing, not skipping:', e.message); process.exit(1); });
           "
           node --test scripts/tests/row-key-coverage.db.test.mjs
 
