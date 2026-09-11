@@ -23,6 +23,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memory_guard  # noqa: E402 — light (no heavy deps), safe to import first
 import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
+import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
 
 # W-178c round 2: how long this process waits to acquire the box lock before
 # giving up as "busy" this cycle — kept independent of ANCHOR_LOCK_WAIT_S
@@ -2469,7 +2470,7 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
 
 
 def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
-                doc_type=None):
+                doc_type=None, tables_for_page=None):
     # Strip the rupee glyphs before the shared core: prospectuses write
     # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
     # match across the glyph, so it would silently fall back to the SME default.
@@ -2582,13 +2583,39 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
     # `emit.failed` never increments, yet the read is genuinely incomplete.
     # Surface it so `run()` can fold it into the document-level status instead
     # of letting it evaporate unread.
+    # Item 8a. The listed-peer comparison, read from the RHP where it actually
+    # lives. `extract_price_band_ad` has carried a peer block for months, but it
+    # matches a flat price-band-ad row and finds NOTHING in a prospectus - the
+    # table there is a multi-row, multi-column grid whose column order and
+    # column set differ between issuers.
+    #
+    # `tables_for_page` is optional and absent in most tests, which is
+    # deliberate: everything above this line must keep working unchanged when
+    # no table reader is supplied, so adding this cannot regress a field that
+    # already worked.
+    if tables_for_page is not None:
+        found, reason = peer_companies.extract_peer_companies(page_texts, tables_for_page)
+        if found is None:
+            # The reason names WHICH miss it was - absent, lookalike-only,
+            # section-found-but-unreadable, or extraction failed with its cause.
+            # "no peers" alone is unactionable.
+            emit.null("peer_companies", reason)
+        else:
+            emit.put(
+                "peer_companies",
+                found["peers"],
+                found["page"],
+                "peer_list_matches_printed_summary",
+                peer_companies.check_against_printed_summary(found["peers"], page_texts),
+            )
+
     return {"unit": unit, "fiscal_years": fiscal_years,
             "financial_status": pnl.get("status")}
 
 
 # --------------------------------------------------------------------------- #
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
-        issue_size_rupees=None):
+        issue_size_rupees=None, tables_for_page=None):
     """`ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
     came from OCR rather than from the PDF's own text layer. `issue_size_rupees`
     (W-129) backs the net_worth_vs_issue_size / unit_matches_magnitude checks —
@@ -2604,7 +2631,8 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         meta = extract_price_band_ad(page_texts, emit, segment)
     else:
         meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees,
-                           segment=segment, doc_type=doc_type)
+                           segment=segment, doc_type=doc_type,
+                           tables_for_page=tables_for_page)
 
     # W-133 MAJOR-3: fold the shared core's own financial-completeness verdict
     # (pnl["status"], surfaced above as meta["financial_status"]) into the
@@ -2678,8 +2706,31 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
                     ocr_confidence[idx] = conf
                 page_texts = sorted(by_page.items())
 
+    def tables_for_page(index):
+        """Tables from ONE page, opened and closed for that page alone.
+
+        Item 8a. The loop above deliberately keeps only each page's text and
+        closes the page immediately, because pdfplumber caches every page's
+        characters and objects for the life of `pdf.pages` — on a 400-page
+        prospectus that pins gigabytes, under a process carrying a hard
+        RLIMIT_AS ceiling (W-137).
+
+        So this re-opens the file for a single page rather than holding tables
+        for all of them. That costs one extra open per document and is called at
+        most once, only after the cheap text pass has already named the page.
+        Extracting tables during the loop above would be a memory regression on
+        exactly the path that has a cap.
+        """
+        with pdfplumber.open(pdf_path) as one:
+            page = one.pages[index]
+            try:
+                return page.extract_tables()
+            finally:
+                page.close()
+
     return run(page_texts, doc_type, os.path.basename(pdf_path), segment,
-               ocr_confidence or None, issue_size_rupees=issue_size_rupees)
+               ocr_confidence or None, issue_size_rupees=issue_size_rupees,
+               tables_for_page=tables_for_page)
 
 
 def main():

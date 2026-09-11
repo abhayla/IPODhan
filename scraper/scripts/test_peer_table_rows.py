@@ -191,3 +191,60 @@ def test_a_name_only_fragment_is_not_emitted_as_a_peer():
     result = parse_peer_table(table)
     names = [p["name"] for p in result["peers"]]
     assert names == ["Real Peer Limited"], names
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        # Karamtara's headers are single-level, so this passes today - which is
+        # what makes the check meaningful rather than a blanket "known broken".
+        KARAMTARA,
+        pytest.param(
+            PRASOLCHEM,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="#596 two-level headers map a child column by its LABEL's "
+                       "index; PRASOLCHEM's Basic/Diluted labels sit one column "
+                       "right of their data",
+            ),
+        ),
+    ],
+)
+def test_no_mapped_column_is_empty_for_EVERY_peer(fixture):
+    """A column that mapped but is blank in every row was mapped to the wrong place.
+
+    This is the CLASS, not one bad field. If the mapper claims a column exists
+    and not one of the peers has a value in it, the index is pointing at the
+    wrong column - there is no honest reading in which a prospectus prints a
+    header and then leaves it blank for every single company.
+
+    The instance that exposed it: PRASOLCHEM's EPS header is two-level - a
+    parent `EPS as on March 31, 2026` spanning several columns with `Basic` and
+    `Diluted` underneath. pdfplumber centres each child LABEL inside its
+    sub-span while the numbers sit left-aligned, so the label lands one column
+    to the RIGHT of its own data:
+
+        header row 3:   [8]='Basic'   [11]='Diluted'
+        every data row: [7]=60.19     [10]=60.19
+
+    `map_columns` assigns the child by the label's index, so `eps_basic` -> 8
+    and `eps_diluted` -> 11, both empty in every body row. All seven peers carry
+    a null EPS, and `filing-persister` reads exactly those two keys - so the
+    database gets nulls for a number the table prints plainly.
+
+    Nothing caught it, because `test_every_peer_carries_real_values_not_just_a_name`
+    only demands two non-null values and revenue, NAV and P/E already supply
+    them. A row can lose half its columns and still look healthy.
+
+    `strict=True` so whoever fixes the mapper is FORCED to delete this marker.
+    An xfail that quietly starts passing is how a known defect becomes a
+    forgotten one.
+    """
+    parsed = parse_peer_table(cells(*fixture))
+    peers = parsed["peers"]
+    dead = []
+    for column in parsed["columns"]:
+        if column == "name":
+            continue
+        if all(p.get(column) is None for p in peers):
+            dead.append(column)
+    assert not dead, "mapped but empty for all %d peers: %s" % (len(peers), dead)
