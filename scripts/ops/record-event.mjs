@@ -208,6 +208,54 @@ export function buildBoardWrites({ lane, nowIso, note, item, itemStatus, itemNot
 }
 
 // ---------------------------------------------------------------------------
+// items[N] status/notes — STATE.json's `items` object does not reliably use
+// one key convention. The board always uses zero-padded doc ids (item-01 ..
+// item-22); STATE has been hand-written both ways (measured on the real
+// lane-A STATE.json: item 23 exists under the padded key in one place and,
+// separately, under the bare "23" key too). resolveItemKey normalises: reuse
+// whichever key already holds this item, and only fall back to the board's
+// padded convention when the item has never appeared in STATE before.
+// ---------------------------------------------------------------------------
+export function resolveItemKey(items, item) {
+  const padded = `item-${String(item).padStart(2, '0')}`;
+  if (Object.prototype.hasOwnProperty.call(items, padded)) return padded;
+  const plain = String(Number(item));
+  if (Object.prototype.hasOwnProperty.call(items, plain)) return plain;
+  for (const [key, value] of Object.entries(items)) {
+    if (value && Number(value.item) === Number(item)) return key;
+  }
+  return padded;
+}
+
+// Merges status/updatedAt/[note]/lane into the item's existing STATE entry —
+// never a full overwrite, so slices/card/prs/proof survive untouched. This is
+// the field set record-event now writes to STATE for the same call that,
+// until this fix, wrote ONLY into the board payload (buildBoardWrites above):
+// a STATE.json note was appended and printed, but items[N].status and
+// items[N].slices were never touched, so item 4 and item 13 read PENDING for
+// hours after they had actually merged.
+export function applyItemStatus(stateJsonText, { item, itemStatus, itemNote, lane, nowIso }) {
+  const state = JSON.parse(stateJsonText);
+  if (state.items === undefined) state.items = {};
+  if (typeof state.items !== 'object' || state.items === null || Array.isArray(state.items)) {
+    throw new Error('record-event: STATE.json `items` is not an object — refusing to guess its shape');
+  }
+  const key = resolveItemKey(state.items, item);
+  const existing = state.items[key] || { item: Number(item) };
+  state.items = {
+    ...state.items,
+    [key]: {
+      ...existing,
+      status: itemStatus,
+      updatedAt: nowIso,
+      ...(itemNote ? { note: itemNote } : {}),
+      lane,
+    },
+  };
+  return JSON.stringify(state, null, 2) + '\n';
+}
+
+// ---------------------------------------------------------------------------
 // The atomic three-write core. Stages all three to temp files; only commits
 // (renames) once every stage succeeded. `fsImpl` is injectable so tests can
 // make one target's staging throw without touching a real filesystem target
@@ -274,7 +322,10 @@ export function runRecordEvent({ repoRoot, lane, event, boardNote, item, itemSta
 
   const stateNoteLine = buildStateNoteLine(nowIso, event);
   const progressLine = buildProgressLine(nowIso, event);
-  const stateNew = appendStateNotes(stateOriginal, stateNoteLine);
+  let stateNew = appendStateNotes(stateOriginal, stateNoteLine);
+  if (item) {
+    stateNew = applyItemStatus(stateNew, { item, itemStatus, itemNote, lane: l.label, nowIso });
+  }
   const progressNew = appendProgressText(progressOriginal, progressLine);
   const boardWrites = buildBoardWrites({ lane, nowIso, note: boardNote || event, item, itemStatus, itemNote });
   const payloadNew = JSON.stringify(boardWrites, null, 2) + '\n';

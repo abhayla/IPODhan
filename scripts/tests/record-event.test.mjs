@@ -20,6 +20,8 @@ import {
   appendStateNotes,
   appendProgressText,
   buildBoardWrites,
+  resolveItemKey,
+  applyItemStatus,
   writeThreeRecordsAtomically,
   runRecordEvent,
   runMarkConsumed,
@@ -35,7 +37,17 @@ function makeLaneARepo() {
   mkdirSync(join(root, 'docs', 'contracts', '.run'), { recursive: true });
   writeFileSync(
     join(root, 'docs', 'contracts', 'state', 'pull-model-implementation-loop-STATE.json'),
-    JSON.stringify({ slug: 'pull-model-implementation-loop', notes: ['[2026-09-10T10:00:00.000Z] existing note'] }, null, 2)
+    JSON.stringify({
+      slug: 'pull-model-implementation-loop',
+      notes: ['[2026-09-10T10:00:00.000Z] existing note'],
+      items: {
+        'item-04': { item: 4, card: 'docs/design/build-cards/item-04.md', status: 'PENDING', slices: [{ k: '4-a', pr: 591, status: 'MERGED' }] },
+        // Measured on the real lane-A STATE.json (2026-09-11): item 23 exists ALSO under
+        // its own plain-number key, not only "item-23" — the two conventions coexist for
+        // real. A lookup that assumes only one shape would miss this item.
+        '23': { item: 23, status: 'IN-PROGRESS', slices: [] },
+      },
+    }, null, 2)
   );
   writeFileSync(
     join(root, 'docs', 'contracts', '.run', 'pull-model-implementation-loop-PROGRESS.md'),
@@ -106,6 +118,70 @@ test('a SINGLE-DIGIT item is zero-padded to the two-digit document id the board 
 test('a two-digit item is left alone, and a leading-zero input stays two digits', () => {
   assert.equal(buildBoardWrites({ lane: 'a', nowIso: FIXED_NOW, note: 'x', item: '22', itemStatus: 'DONE' })[1].doc_id, 'item-22');
   assert.equal(buildBoardWrites({ lane: 'a', nowIso: FIXED_NOW, note: 'x', item: '04', itemStatus: 'DONE' })[1].doc_id, 'item-04');
+});
+
+// ---------------------------------------------------------------------------
+// resolveItemKey / applyItemStatus — STATE.json's `items` object does NOT
+// reliably use one key convention (measured on the real lane-A STATE.json:
+// item 23 exists under BOTH "item-23" and the plain "23"). The lookup must
+// normalise, never assume the padded doc-id shape the board uses.
+// ---------------------------------------------------------------------------
+
+test('resolveItemKey finds an existing zero-padded key', () => {
+  assert.equal(resolveItemKey({ 'item-04': { item: 4 } }, '4'), 'item-04');
+});
+
+test('resolveItemKey finds an existing plain-number key when no padded key exists', () => {
+  assert.equal(resolveItemKey({ '23': { item: 23 } }, '23'), '23');
+});
+
+test('resolveItemKey falls back to scanning by the `.item` field when neither key shape matches', () => {
+  assert.equal(resolveItemKey({ weird_key_7: { item: 7 } }, '7'), 'weird_key_7');
+});
+
+test('resolveItemKey defaults to the padded doc-id for a brand-new item (matches the board convention)', () => {
+  assert.equal(resolveItemKey({}, '9'), 'item-09');
+});
+
+test('applyItemStatus updates status/updatedAt/lane on an EXISTING item and preserves every other field (slices, card)', () => {
+  const original = JSON.stringify({
+    items: { 'item-04': { item: 4, card: 'c.md', status: 'PENDING', slices: [{ k: '4-a', pr: 591 }] } },
+  });
+  const updated = JSON.parse(applyItemStatus(original, { item: '4', itemStatus: 'DONE', lane: 'A', nowIso: FIXED_NOW }));
+  assert.equal(updated.items['item-04'].status, 'DONE');
+  assert.equal(updated.items['item-04'].updatedAt, FIXED_NOW);
+  assert.equal(updated.items['item-04'].lane, 'A');
+  assert.equal(updated.items['item-04'].card, 'c.md');
+  assert.deepEqual(updated.items['item-04'].slices, [{ k: '4-a', pr: 591 }]);
+});
+
+test('applyItemStatus updates the item at its EXISTING plain-number key rather than creating a duplicate padded one', () => {
+  const original = JSON.stringify({ items: { '23': { item: 23, status: 'IN-PROGRESS', slices: [] } } });
+  const updated = JSON.parse(applyItemStatus(original, { item: '23', itemStatus: 'DONE', lane: 'A', nowIso: FIXED_NOW }));
+  assert.equal(updated.items['23'].status, 'DONE');
+  assert.equal('item-23' in updated.items, false);
+});
+
+test('applyItemStatus creates a new padded entry when the item has never appeared in STATE, and only sets it', () => {
+  const updated = JSON.parse(applyItemStatus(JSON.stringify({ items: {} }), { item: '9', itemStatus: 'PENDING', lane: 'A', nowIso: FIXED_NOW }));
+  assert.deepEqual(Object.keys(updated.items), ['item-09']);
+  assert.equal(updated.items['item-09'].status, 'PENDING');
+});
+
+test('applyItemStatus sets note only when itemNote is given, mirroring buildBoardWrites', () => {
+  const withNote = JSON.parse(applyItemStatus(JSON.stringify({ items: {} }), { item: '1', itemStatus: 'DONE', itemNote: 'merged abc', lane: 'A', nowIso: FIXED_NOW }));
+  assert.equal(withNote.items['item-01'].note, 'merged abc');
+  const withoutNote = JSON.parse(applyItemStatus(JSON.stringify({ items: {} }), { item: '1', itemStatus: 'DONE', lane: 'A', nowIso: FIXED_NOW }));
+  assert.equal('note' in withoutNote.items['item-01'], false);
+});
+
+test('applyItemStatus auto-inits a missing `items` object rather than throwing (fresh STATE files carry no items block yet)', () => {
+  const updated = JSON.parse(applyItemStatus(JSON.stringify({ notes: [] }), { item: '1', itemStatus: 'DONE', lane: 'A', nowIso: FIXED_NOW }));
+  assert.equal(updated.items['item-01'].status, 'DONE');
+});
+
+test('applyItemStatus refuses when `items` exists but is not an object (never guess the shape)', () => {
+  assert.throws(() => applyItemStatus(JSON.stringify({ items: [] }), { item: '1', itemStatus: 'DONE', lane: 'A', nowIso: FIXED_NOW }), /not an object/);
 });
 
 // ---------------------------------------------------------------------------
@@ -229,6 +305,77 @@ test('runRecordEvent: one call appends STATE.json, appends PROGRESS.md, and writ
     assert.equal(payload[0].collection, 'run');
     assert.equal(payload[0].doc_id, 'meta');
     assert.equal(payload[0].data.note, 'built s15');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// THE un-regressable test: not "status was written", but that STATE's items[N]
+// and the board payload's items/item-NN write AGREE FIELD FOR FIELD — driven by
+// the board write's own keys, so a next silently-skipped output fails this too.
+test('runRecordEvent: items[N] in STATE.json agrees FIELD FOR FIELD with the board payload write for that item', () => {
+  const root = makeLaneARepo();
+  try {
+    const result = runRecordEvent({
+      repoRoot: root, lane: 'a', event: 'merged s99',
+      item: '4', itemStatus: 'DONE', itemNote: 'merged abc123 (PR #999)',
+      now: () => FIXED_NOW,
+    });
+
+    const state = JSON.parse(readFileSync(result.statePath, 'utf-8'));
+    const boardItemWrite = result.boardWrites.find((w) => w.collection === 'items');
+    assert.ok(boardItemWrite, 'expected a board write for the item');
+
+    const stateItem = state.items[boardItemWrite.doc_id];
+    assert.ok(stateItem, `expected STATE items["${boardItemWrite.doc_id}"] to exist`);
+
+    for (const [field, value] of Object.entries(boardItemWrite.data)) {
+      assert.equal(stateItem[field], value, `field "${field}" differs between STATE.json and the board payload`);
+    }
+
+    // Pre-existing fields (slices, card) must survive — this is a merge, not an overwrite.
+    assert.deepEqual(stateItem.slices, [{ k: '4-a', pr: 591, status: 'MERGED' }]);
+    assert.equal(stateItem.card, 'docs/design/build-cards/item-04.md');
+
+    // The `notes` array (load-bearing, 257 entries in real STATE) must still gain
+    // exactly one entry — the item update must not touch it.
+    assert.equal(state.notes.length, 2);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('runRecordEvent: a single-digit --item writes STATE under the zero-padded key, matching the board (not "item-4")', () => {
+  const root = makeLaneARepo();
+  try {
+    const result = runRecordEvent({ repoRoot: root, lane: 'a', event: 'x', item: '4', itemStatus: 'DONE', now: () => FIXED_NOW });
+    const state = JSON.parse(readFileSync(result.statePath, 'utf-8'));
+    assert.equal('item-4' in state.items, false);
+    assert.equal(state.items['item-04'].status, 'DONE');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('runRecordEvent: an item already keyed by its plain number (item 23) is updated in place, not duplicated', () => {
+  const root = makeLaneARepo();
+  try {
+    const result = runRecordEvent({ repoRoot: root, lane: 'a', event: 'x', item: '23', itemStatus: 'BLOCKED-OWNER', now: () => FIXED_NOW });
+    const state = JSON.parse(readFileSync(result.statePath, 'utf-8'));
+    assert.equal(state.items['23'].status, 'BLOCKED-OWNER');
+    assert.equal('item-23' in state.items, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('runRecordEvent: without --item, state.items is left completely untouched', () => {
+  const root = makeLaneARepo();
+  try {
+    const before = JSON.parse(readFileSync(join(root, 'docs', 'contracts', 'state', 'pull-model-implementation-loop-STATE.json'), 'utf-8')).items;
+    const result = runRecordEvent({ repoRoot: root, lane: 'a', event: 'no item here', now: () => FIXED_NOW });
+    const after = JSON.parse(readFileSync(result.statePath, 'utf-8')).items;
+    assert.deepEqual(after, before);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
