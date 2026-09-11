@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 07:48 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 07:53 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1796,3 +1796,40 @@ problem even with a corrected segment. Nothing here licenses a production write 
 be **sourced**, not inferred from a size looking small.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## #629 merged; item 14 reclassified as blocked on item 2
+
+**92fd35be**, merged 02:20:01Z through `merge-if-current` (re-run at merge time, not trusting the
+earlier green) and through the real commit hook. Released only once the coordinator confirmed lane
+A's 02:15Z read had landed and that cycle finished on its own in 13s - so the staging deploy
+interrupted nothing.
+
+I confirmed the merge by **reading the PR state**, not by the chained exit code: `gh pr merge | tail`
+reports *tail's* status - the same `$?`-after-a-pipe trap that made me wrongly announce a gate
+refusal earlier tonight.
+
+**Worktree removed** the same session its use ended: 1309 links removed *as links*, main checkout
+proven intact (tracked **4808 -> 4808**, 0 deleted).
+
+### Item 14: BLOCKED-DEPENDENCY, not MERGED-UNPROVEN
+
+Its recipe needs the floor check to PASS with zero BSE-sourced violations. The only two violations
+**are** the BSE-sourced ones, their sizes are verified correct, so the remaining defect is the
+unsourced MAINBOARD label - which is **2-S3b2**'s work. Recorded on both cards: item 14 `blockedBy`
+2-S3b2, and 2-S3b2 carries *"unblocks item 14's last two slices"* with the cross-tab as its
+population statement instead of a bare count.
+
+### A bookkeeping gap found while doing it
+
+`STATE.json` recorded **three** item-14 slices while the board rendered **five** - 14-S3 was never
+written to STATE. Since the percentage is computed from recorded slices, the two artefacts had
+different denominators. Added it; both now read 5 slices, 3 merged. I proved the edit lost nothing by
+diffing slice ids against a `.bak` taken **before** the write.
+
+### The caveat is on all four cards
+
+The board now renders **Built beside Proven**. Lane C reads **proven 0% (0 of 4)** - the number the
+owner should read, and the less flattering one, since built reads 59%.
+
+**Items 14, 2, 12 and 3: zero DONE lines.** One more merged slice does not change that.

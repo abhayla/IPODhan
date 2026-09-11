@@ -72,7 +72,7 @@
     "item-14": {
       "item": 14,
       "card": "docs/design/build-cards/item-14-bse-share-count-conversion.md",
-      "status": "MERGED-UNPROVEN",
+      "status": "BLOCKED-DEPENDENCY",
       "slices": [
         {
           "id": "14-S1",
@@ -98,20 +98,38 @@
           "branchPreserved": "fix/pm-c-item14-s2-bse-issue-size-residue @ e4a855b8 pushed to origin before its worktree was removed - the tool is the investigator that PROVED the two rows correct and will be re-scoped for #482, so losing it would mean rebuilding the sourcing logic."
         },
         {
+          "id": "14-S5",
+          "tier": "B",
+          "status": "MERGED",
+          "pr": 629,
+          "mergeSha": "92fd35be",
+          "title": "the nightly copy of checkIssueSizeSegmentFloor stops asserting the share-count mechanism; #608 fixed only the substance-checks copy"
+        },
+        {
           "id": "14-S4",
           "status": "MERGED",
           "pr": 554,
           "tier": "A",
           "title": "c_issue_size_consistency reports its coverage and never passes on zero examined",
           "mergeSha": "941cb57b"
+        },
+        {
+          "id": "14-S3",
+          "tier": "A",
+          "status": "BLOCKED",
+          "issue": 472,
+          "title": "the PIYUSH row - the exchange no longer publishes closed offerings and no identifier was stored",
+          "note": "present on the board but never recorded in STATE.json until now; STATE showed 3 slices while the board showed 5"
         }
       ],
       "prs": [
-        471
+        471,
+        629
       ],
       "mergeShas": [
         "10c96c6b",
-        "941cb57b"
+        "941cb57b",
+        "92fd35be"
       ],
       "proof": {
         "status": "OWED",
@@ -119,8 +137,8 @@
         "line": null,
         "recipe": "node scripts/audit-detection-floor.mjs against ipodhan_staging after a real BSE cycle: c_issue_size_consistency and c_issue_size_floor both PASS with zero BSE-sourced violations; cross-check one BSE row issue_size / (shares x band floor) approx 1.0. Read-only, obtainable without the owner.",
         "owedSince": "2026-09-10 13:49 IST",
-        "blockedBy": null,
-        "blockedReason": "Staging deploys have failed on every push since 08:11:23 IST (10 consecutive; last success 07:40:31). No staging proof is obtainable for any lane C merge until deploys resume. Also blocked behind #482 for the segment question.",
+        "blockedBy": "item-02 slice 2-S3b2",
+        "blockedReason": "MEASURED 2026-09-11 07:5x IST, read-only, no deploy between cycle and read: the recipe requires c_issue_size_floor to PASS with zero BSE-SOURCED violations, and the only two violations are exactly BSE-sourced (NIRBHAY COLOURS issueSize<-BSE, PIYUSH issueSize<-BSE). The clause IS satisfiable - issueSize provenance exists, 295 rows on prod, contrary to my earlier snake_case false-zero - but cannot pass until those two segments are sourced.",
         "owedVia": "14-S2 (Tier A) repairs the residue rows so c_issue_size_floor can return to PASS; item 14 closes DONE on that staging read."
       },
       "fallbackPlan": {
@@ -130,10 +148,7 @@
         "precedentFound": "config/ already holds NINE *-baseline.json files, and f_conflict_noise_ratio already uses a shrink-only ratchet (nextRatchetBaseline / classifyConflictBacklogRatchet) inside scripts/lib/detection-floor-checks.mjs - the same file c_issue_size_floor lives in. c_issue_size_floor itself has NO baseline mechanism today.",
         "detectionDeclaration": "Adding the baseline IS a detection change and must be declared as one - never No detection change (supervisor condition, and correct: a check that learns to ignore rows has changed what it detects)."
       },
-      "blockedBy": [
-        "#472",
-        "#482"
-      ],
+      "blockedBy": "item-02 slice 2-S3b2",
       "stagingProofAttempt": {
         "at": "2026-09-10 20:25 IST",
         "verdict": "PROOF DOES NOT HOLD. Item 14 stays MERGED-UNPROVEN.",
@@ -222,7 +237,8 @@
         "measuredCoverage": "But only ONE is misleading today, measured against 277 production IPO rows: segment populated 277/277 (100%), issue_size floor 273/277 (98.6%), lot x band 269/277 (97.1%), corporate-action shape 269/277 (97.1%), issue_size CONSISTENCY 24/277 (8.7%).",
         "verdict": "14-S4 fixes the one check whose PASS was materially misleading. The other six share the shape but examine 97-100%, so their 0-violations is honest today.",
         "deliberatelyNotDone": "Not extending the pattern to the other six in this PR - a much larger diff for zero present effect, argued only from a speculative future coverage collapse. The honest version is a separate slice: every check reports its examined count so a collapse becomes visible WHEN it happens. Worth doing; not worth smuggling into a fix whose measured class is one check."
-      }
+      },
+      "statusDetail": "closes after 2-S3b2: the only two c_issue_size_floor violations (NIRBHAY COLOURS, PIYUSH) are BSE-sourced sizes under an unsourced MAINBOARD label, and both rows are inside 2-S3b2's population"
     },
     "item-02": {
       "item": 2,
@@ -2008,7 +2024,14 @@
     "2026-09-11 07:48 IST THE CONSEQUENCE FOR SEQUENCING, which I had not seen: ITEM 14 IS BLOCKED ON ITEM 2. Its last two slices need the segment sourced honestly, which is slice 2-S3b2's job, and 2-S3b2 was re-scoped today to source BOTH segment and listing_exchanges per row. These two rows are inside that slice's population. So item 14 does not close on its own; it closes after 2-S3b2 runs and the segments are either corrected or confirmed unsourceable. I am recording the dependency rather than leaving item 14 looking independently stuck.",
     "2026-09-11 07:48 IST STILL NOT PROVEN AND I AM NOT CLAIMING IT. PIYUSH at Rs0.70 crore fails the SME floor too, so it keeps a second, separate problem even if its segment is corrected - the two rows remain two different faults, as measured earlier. Nothing here licenses a production write; the segment values must be SOURCED, not inferred from the fact that a size looks small.",
     "2026-09-11 07:48 IST PR #629 HELD at the coordinator's request until lane A reports its 02:15Z read done. The gate is standing green and I will re-run it at merge time rather than trust that green.",
-    "2026-09-11 07:48 IST ITEMS 14, 2, 12 AND 3 STILL HAVE ZERO DONE LINES BETWEEN THEM. LANE C COMPLETE is not appendable and I have not appended it."
+    "2026-09-11 07:48 IST ITEMS 14, 2, 12 AND 3 STILL HAVE ZERO DONE LINES BETWEEN THEM. LANE C COMPLETE is not appendable and I have not appended it.",
+    "2026-09-11 07:53 IST #629 MERGED as 92fd35be at 02:20:01Z, through merge-if-current (re-run at merge time rather than trusting the earlier green) and through the real commit hook - no --no-verify, no core.hooksPath override. Released only after the coordinator confirmed lane A's 02:15Z read had landed and that cycle finished on its own in 13 seconds, so my staging deploy did not interrupt anything. I verified the merge by reading the PR state, NOT by the chained exit code: `gh pr merge ... | tail -4` reports tail's status, which is the same $?-after-a-pipe trap that made me announce a gate refusal wrongly earlier tonight.",
+    "2026-09-11 07:53 IST WORKTREE REMOVED the same session its use ended, via wt-rm.ps1: 1309 links removed AS LINKS, main checkout proven intact at tracked 4808 -> 4808 with 0 deleted-on-disk. That proof line is the point of the tool - a forced remove following junctions into MAIN wiped 442 tracked files once.",
+    "2026-09-11 07:53 IST ITEM 14 IS NOW BLOCKED-DEPENDENCY, NOT MERGED-UNPROVEN, and the distinction is the honest one. Its proof recipe demands c_issue_size_floor PASS with zero BSE-sourced violations; the only two violations are exactly the BSE-sourced ones; their sizes are verified correct; so the remaining defect is the unsourced MAINBOARD label, which is slice 2-S3b2's work. Recorded on both cards as the coordinator asked: item 14 blockedBy item-02 slice 2-S3b2, and 2-S3b2 carries 'unblocks item 14's last two slices' plus the cross-tab as its population statement rather than a bare count.",
+    "2026-09-11 07:53 IST A BOOKKEEPING GAP I FOUND WHILE DOING IT, and it was inflating nothing but could have: STATE.json recorded only THREE item-14 slices (14-S1, 14-S2, 14-S4) while the board rendered FIVE. 14-S3 had never been written to STATE at all. Since the board's percentage is computed from recorded slices, the two artefacts were describing different denominators. Added 14-S3 to STATE; both now read 5 slices with 3 merged. I proved the edit lost nothing by diffing the slice ids against a .bak taken BEFORE the write, not by re-reading the file afterwards.",
+    "2026-09-11 07:53 IST THE PERCENTAGE CAVEAT IS NOW ON ALL FOUR CARDS, and the board renders Built beside Proven after the coordinator adopted it. Lane C reads proven 0% (0 of 4) today. That is the number the owner should read, and it is the less flattering of the two - built reads 59% and would be taken as past halfway.",
+    "2026-09-11 07:53 IST A COST I IMPOSED ON LANE B, and two of the three causes were mine. Every PR touching .github/workflows/** forces a rebase on any lane whose PR is mid-CI, because merge-if-current clause 1 correctly refuses a branch whose base moved a file that DEFINES CI. #617 and #629 are mine and #626 is lane A's; between them they refused lane B twice, each refusal costing a rebase and a full CI run. I did not consider that when I merged - I checked MY gate, not the gates I was about to trip for others. New rule adopted for this lane: a workflow-touching PR merges only in the first five minutes of an hour, announced ten minutes ahead, unless it unblocks commits. The clause itself is right and should not be relaxed; the fix is scheduling, not weakening the gate.",
+    "2026-09-11 07:53 IST ITEMS 14, 2, 12 AND 3 STILL HAVE ZERO DONE LINES BETWEEN THEM. One more merged slice does not change that. LANE C COMPLETE is not appendable and I have not appended it."
   ],
   "haltClearedAt": "2026-09-10T07:50:05.000Z",
   "coverageCheck": {
