@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 09:31 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 09:40 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2477,3 +2477,82 @@ remain, because 14-S2 and 14-S3 need segments sourced and NIRBHAY/PIYUSH are in 
 **One slice is proven; the item is not DONE.** Lane C stays proven 0 of 3.
 
 **Items 14, 2 and 12: zero DONE lines.**
+
+
+# PAUSED 2026-09-11 by owner order
+
+Claude weekly limit at 77%. Relayed via the supervisor session — treated as a **prudent stop**, not
+as owner authority: every instruction in it is *restrictive*, so complying expands no permission.
+If the owner wants this lane to continue, their word in **this** window governs.
+
+**No production change of any kind was made today** and that holds at the pause. The band repair is
+not built; `repair-segment-provenance.ts` is not applied on production; no `ipos` row, `field_sources`
+row or band column was written by me anywhere. The only production-facing change is **#637**, a
+read-path code fix that writes nothing.
+
+## In flight
+
+**Item 14** — 14-S1/S4/S5 MERGED. **14-S6 MERGED (`f19eaa86`) and PROVEN on staging:**
+
+```
+GET /api/ipos/listings?category=SME&year=2026&limit=100&page=2&_cb=<epoch-ms>
+    Cache-Control: no-cache, Pragma: no-cache
+row MODERN DIAGNOSTIC AND RESEARCH CENTRE LIMITED   issuePrice = 90   (band cap 85)
+served sha f19eaa86, verified to CONTAIN the fix by ancestry AND by content
+```
+
+The proof could have read 85 — that is what makes it evidence. **14-S2 HELD, 14-S3 BLOCKED:** both
+need NIRBHAY/PIYUSH segments sourced, and both are in **neither** exchange master. **Item 14 is not
+DONE** — its recipe is `c_issue_size_floor` PASSing with zero BSE-sourced violations; both remain.
+
+**Item 2, slice 2-S3b2, corrected design** (my earlier recommendation retracted): the 31 non-IPO rows
+are **cleared to NULL** with a reason row naming the asserting source and value; clearing is **not**
+gated on "unsourced" (all 22 remaining staging rows *are* sourced — 19 BSE, 3 CHITTORGARH). The 17
+IPO rows are the sourcing population. A **write-path guard** is warranted because BSE asserts a
+segment on non-IPO offerings *today* (2 INVITs, 1 REIT) — not because of refill. Refill: no new rows
+in 15h, all 22 from one batch on 2026-08-20, **insufficient** to conclude stability.
+
+## Branch pushed, no PR opened — deliberately
+
+`feat/pm-c-item02-s3b2-exchange-segment-oracle` @ **fec061be** — the exchange segment oracle + 16
+tests, green, type-check exit 0, **mutation-proven** (adding `X` back turns 2 tests red; restored
+from a `.bak` and diffed clean). No PR because opening one starts a CI run and the pause is about
+budget. The module is **deliberately unwired** — wiring is the next slice, and it sits outside
+`i_wire_or_retire`'s scope, which is why the unwired state is declared rather than discovered.
+
+**Open PRs: none of mine.** #629 and #637 are merged.
+
+## Worktrees kept
+
+- `IPODhan-IPODhan-c02-segoracle` — unmerged pushed work, must survive the pause
+- `IPODhan-IPODhan-impl-loop-c` — the ledger tree itself
+
+Both slice trees used today were removed the same session, each with the main-checkout proof:
+c14-floormsg (4808 → 4808, 0 deleted), c14-issueprice (4819 → 4819, 0 deleted).
+`.run-active-c.lock` removed — no run is active.
+
+## First three commands on resume
+
+1. `cd D:/Abhay/Ventures/IPODhan && git fetch origin main && powershell -File ~/.claude/tools/wt-sweep.ps1 -Repo D:/Abhay/Ventures/IPODhan`
+2. `curl -s https://staging.ipodhan.com/api/version` — compare served sha with `origin/main`, re-read the 14-S6 proof row and confirm it still reads **90**
+3. `cd IPODhan-IPODhan-c02-segoracle && git fetch origin main && git rebase origin/main` → re-run the oracle tests → open the PR for `fec061be`
+
+## Proofs owed
+
+| item | proof |
+|---|---|
+| 14 | `c_issue_size_floor` PASS with zero BSE-sourced violations — blocked, both violations *are* the BSE-sourced ones |
+| 2 | the `ipo_details` issue_type cycle read; baseline **29 / 22 / 0**, overwrite guard **22 MUST HOLD**; CHITTORGARH is on a 24h cadence, last ran 13:45 IST 2026-09-10, due ~13:45 IST today |
+| 12 | non-empty `row_key` for promoters / ipo_intermediaries / peer_companies against 0/0/0 — blocked behind lane A's consolidator wiring; `peer_companies` staying zero is a **separate** question |
+
+## Owner decisions received today, with status
+
+1. **#597** — read path first, then repair only sourced bands. **Read path applied and proven.**
+   **Band repair NOT built**, and I recommended it stay unbuilt: no offer-document band exists
+   (cut_off_price 0 of 26; 0 of 22 with a details row; 2 of 22 with any document), and 20 of 22 bands
+   are **already sourced** by CHITTORGARH — so the approved condition selects the rows we must *not*
+   touch.
+2. **Item 3 retired** as DEFERRED-BY-DESIGN; condition is items 14, 2, 12. Applied to STATE.json.
+
+**LANE C IS PROVEN 0 OF 3.** Items 14, 2 and 12 have zero DONE lines. `LANE C COMPLETE` is not
+appendable and I have not appended it.
