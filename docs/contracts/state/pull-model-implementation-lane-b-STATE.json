@@ -376,6 +376,10 @@
     {
       "at": "2026-09-11T02:32:04.000Z",
       "what": "#622 (f54ddfe3) and #628 (26d19b11) merged through the gate at exit 0. Item 8 now 10/11, item 18 5/5. ITEM 16 REOPENED by its own proof read: MONEYCONTROL remains in DUE_STEP_FRESHNESS_SLOS with a 7-day limit; its last SUCCESS on staging is 2026-09-10T08:15:13Z, so a P1 owner page fires 2026-09-17T08:15Z. Measured that it is the ONLY unbounded orphan - all six sources read 0.74-0.86 days today, but five advance at the next market-hours cycle and Moneycontrol never can, so the guard must assert against the ENABLED set, not against staleness."
+    },
+    {
+      "at": "2026-09-11T03:24:40Z",
+      "what": "OWNER DECISIONS (typed by Abhay): Hy-Tech prod correction approved and DONE; item 8 fixtures substituted to Karamtara + Prasol with the ARCIL measurement kept; pdf-lib approved pinned with a supply-chain audit. PROD WRITE: dry run 1 row both slots, corrected value DNS-verified (old ENOTFOUND, new resolves to 172.67.166.56/104.21.82.249), staging applied and read back, prod applied - 1 row, read back https://www.hytechengineers.com, updated_at 2026-09-11T03:22:01.105Z, 0 rows still broken. Redis DEL was a NO-OP: all three keys reported EXISTS 0 beforehand."
     }
   ],
   "items": {
@@ -903,7 +907,7 @@
     }
   ],
   "ownerActionsNeeded": [
-    "issue #468's fix ships behind ENABLE_UPCOMING_DISCOVERY_RESERVATION, default OFF - the class is not fixed until it is turned on, staging then prod"
+    "none outstanding - all four decisions received 2026-09-11"
   ],
   "notifierPosts": [
     {
@@ -947,7 +951,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T02:32:04.000Z",
+  "lastStateWriteAt": "2026-09-11T03:24:40Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
