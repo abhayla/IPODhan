@@ -392,6 +392,10 @@
     {
       "at": "2026-09-11T03:43:43Z",
       "what": "ITEM 16 DONE, 2/2, proof HELD on a staging cycle: staging on aaf9ee26, cycle completed 2026-09-11T03:42:24Z, getLastSuccess called exactly once for API_FALLBACK and not for MONEYCONTROL. Reopened three hours after I first called it finished, by trying to prove it instead of citing CI."
+    },
+    {
+      "at": "2026-09-11T03:46:00Z",
+      "what": "ITEM 18 proof blocker relocated by measurement: all 10 PENDING extractable documents on staging have no bytes (file_size null, sha256 null). They were never downloaded, so there is nothing to extract. Not an extractor problem - a download one. Possible link to #620, recorded as a lead not a conclusion."
     }
   ],
   "items": {
@@ -479,6 +483,12 @@
         "merged": 5,
         "recorded": 5,
         "retiredNotCounted": 0
+      },
+      "proof": {
+        "status": "OWED",
+        "owed": "a staging cycle line from a real purge run, which needs a completed extraction",
+        "blockedBy": "NOT the extractor. All 10 PENDING extractable documents on staging (RHP/PROSPECTUS) have file_size null and sha256 null - discovered as rows with URLs and never downloaded. The chain is discover-download-extract and it stops at download; the whole staging log holds 3 download-related lines. Cannot be forced from here (nothing runs ad hoc on the VPS).",
+        "lead": "May be the same defect as #620 (document step leaves 3-22 items behind every cycle) seen from the other end. NOT established - budgetExhausted was false on the cycle I read - so recorded as a lead."
       }
     },
     "20": {
@@ -967,7 +977,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T03:43:43Z",
+  "lastStateWriteAt": "2026-09-11T03:46:00Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
