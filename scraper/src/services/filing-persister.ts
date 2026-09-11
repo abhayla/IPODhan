@@ -745,6 +745,32 @@ const NO_COLUMN_FIELDS: Record<string, string> = {
   eps_sign_matches_pat: 'extractor self-check, not data',
 };
 
+/**
+ * F-101 — the sentinel row key the fallback paths file provenance under.
+ *
+ * `field_sources` could not distinguish "the row-keyed child writer is switched
+ * OFF" from "the row-keyed child writer ran and FAILED": both left one
+ * catch-all row under `row_key = ''`, written by the legacy
+ * `trackField(table, 'rows')` call that still sits beside the consolidated
+ * writer. No change to the audit check can separate them — the information is
+ * not in the data, it is only in the writer. So the writer records it.
+ *
+ * The key is deliberately prefixed: `row-key-coverage-checks.mjs` flips a pair
+ * from UNVERIFIABLE into enforcement the moment ONE non-empty row_key exists
+ * for it, and every DERIVED key is then missing — so a failed writer reads FAIL
+ * where it used to read as an unstarted one.
+ *
+ * Truncated to `field_sources.row_key`'s varchar(200); the prefix and the cause
+ * class survive truncation because they lead.
+ */
+export const UNRESOLVED_ROW_KEY_PREFIX = 'unresolved:';
+const ROW_KEY_MAX_LENGTH = 200;
+
+export function unresolvedRowKey(reason: string): string {
+  const key = `${UNRESOLVED_ROW_KEY_PREFIX}${reason.replace(/\s+/g, ' ').trim()}`;
+  return key.length <= ROW_KEY_MAX_LENGTH ? key : key.slice(0, ROW_KEY_MAX_LENGTH);
+}
+
 // ------------------------------------------------------------------ the work
 
 export async function persistFilingExtraction(
@@ -839,6 +865,43 @@ export async function persistFilingExtraction(
    * are what the row key is computed from, so accepting a resolved value for
    * one would desync the row from the key its provenance was filed under.
    */
+  /**
+   * F-101 — file a provenance row under the `unresolved:<reason>` sentinel so a
+   * FAILED child-row writer stops looking identical to a DISABLED one.
+   *
+   * Best-effort by design, and in that order: the child row is already written
+   * by the repository call that follows, and losing the marker must never cost
+   * the row. A marker write that fails is logged as an error, because it
+   * silently re-opens the hole this exists to close.
+   */
+  const markChildRowsUnresolved = async (
+    tableName: ChildConsolidationTable,
+    reason: string
+  ): Promise<void> => {
+    if (!apply) return;
+    const rowKey = unresolvedRowKey(reason);
+    try {
+      await deps.fieldSources.trackFieldUpdate({
+        ipoId,
+        tableName,
+        rowKey,
+        fieldName: 'rows',
+        source,
+        // NOT tier 1a: nothing about these rows was resolved against a rank.
+        confidence: 0,
+        previousValue: null,
+        previousSource: null,
+        dataLineage: { ...lineage, unresolvedReason: reason },
+        updatedBy: 'FILING_PERSISTER',
+      });
+    } catch (error) {
+      logger.error(
+        { err: error, ipoId, tableName, rowKey },
+        '[FilingPersister] could not file the unresolved-row provenance marker — this pair still reads as "writer not live" to the row-key coverage check'
+      );
+    }
+  };
+
   const consolidateChildRows = async (
     tableName: ChildConsolidationTable,
     entries: { rowKey: string; row: Record<string, unknown> }[],
@@ -857,6 +920,7 @@ export async function persistFilingExtraction(
         { ipoId, tableName, rowKeys: entries.map((e) => e.rowKey) },
         '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
       );
+      await markChildRowsUnresolved(tableName, 'no-consolidator-injected');
       return;
     }
 
@@ -894,10 +958,17 @@ export async function persistFilingExtraction(
       for (const entry of entries) {
         unresolvedChildRows.push(`${tableName} ${entry.rowKey} (${why})`);
       }
+      await markChildRowsUnresolved(
+        tableName,
+        `consolidation-threw: ${(error as Error)?.message ?? 'unknown'}${cause ? ` <- ${cause}` : ''}`
+      );
       return;
     }
 
     const decidedByKey = new Map(resolved.rows.map((row) => [row.rowKey, row]));
+    // One marker per DISTINCT skip reason: the sentinel identifies the cause,
+    // not the row, and a repeated reason is one fact about the pair.
+    const skipReasons = new Set<string>();
     for (const entry of entries) {
       const decided = decidedByKey.get(entry.rowKey);
       if (!decided || decided.skipped) {
@@ -906,6 +977,7 @@ export async function persistFilingExtraction(
             decided?.skipReason ?? 'NO_RESULT'
           })`
         );
+        skipReasons.add(decided?.skipReason ?? 'NO_RESULT');
         continue;
       }
       for (const field of mergeableFields) {
@@ -915,6 +987,10 @@ export async function persistFilingExtraction(
         if (value === undefined) continue;
         entry.row[field] = value;
       }
+    }
+
+    for (const skipReason of [...skipReasons].sort()) {
+      await markChildRowsUnresolved(tableName, `consolidation-skipped: ${skipReason}`);
     }
   };
 
@@ -1454,6 +1530,7 @@ export async function persistFilingExtraction(
             { ipoId, table: 'ipo_details' },
             '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
           );
+          await markChildRowsUnresolved('ipo_details', 'no-consolidator-injected');
         } else {
           const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
             ipoId,
@@ -1465,6 +1542,10 @@ export async function persistFilingExtraction(
           const decided = resolved.rows[0];
           if (decided && decided.skipped) {
             skippedFailedCheck.push(`ipo_details (consolidation skipped: ${decided.skipReason})`);
+            await markChildRowsUnresolved(
+              'ipo_details',
+              `consolidation-skipped: ${decided.skipReason}`
+            );
             detailsPayload = {};
           } else {
             // Only the columns this extraction actually offered. A resolver
@@ -1780,6 +1861,7 @@ export async function persistFilingExtraction(
               { ipoId, fiscalYear, basis },
               '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
             );
+            await markChildRowsUnresolved('financial_statements', 'no-consolidator-injected');
           } else {
             const rowKey = financialStatementsRowKey(fiscalYear, basis);
             if (rowKey === null) {
@@ -1814,6 +1896,10 @@ export async function persistFilingExtraction(
             if (decided && decided.skipped) {
               skippedFailedCheck.push(
                 `financial_statements FY${fiscalYear}/${basis} (consolidation skipped: ${decided.skipReason})`
+              );
+              await markChildRowsUnresolved(
+                'financial_statements',
+                `consolidation-skipped: ${decided.skipReason}`
               );
               continue;
             }
@@ -1905,6 +1991,7 @@ export async function persistFilingExtraction(
             { ipoId, table: 'ipo_valuation', pricingEvent },
             '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
           );
+          await markChildRowsUnresolved('ipo_valuation', 'no-consolidator-injected');
         } else {
           const valuationRowKey = ipoValuationRowKey(pricingEvent);
           if (valuationRowKey === null) {
@@ -1927,6 +2014,10 @@ export async function persistFilingExtraction(
             if (decided && decided.skipped) {
               skippedFailedCheck.push(
                 `ipo_valuation (consolidation skipped: ${decided.skipReason})`
+              );
+              await markChildRowsUnresolved(
+                'ipo_valuation',
+                `consolidation-skipped: ${decided.skipReason}`
               );
               w = {};
             } else {
