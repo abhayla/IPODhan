@@ -377,7 +377,6 @@
   "items": {
     "8": {
       "status": "PREMISE_SETTLED_FIXTURES_MERGED",
-      "slices": "8-pre, locator, cell fixtures, constraints, rotation recipe, mapper+rows all MERGED. #602 open: end-to-end reader with the one-page memory rule. Next: call it from extract_filing and persist.",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -385,35 +384,160 @@
         "drop the issuer own row above the Peer Group / Listed Peers separator",
         "accept NA# and the pending-price placeholder as valid cells, not parse failures"
       ],
-      "owed": "column-set check on GLASSWALL and KANOHAR before the header map is written"
+      "owed": "column-set check on GLASSWALL and KANOHAR before the header map is written",
+      "slicesNote": "8-pre, locator, cell fixtures, constraints, rotation recipe, mapper+rows all MERGED. #602 open: end-to-end reader with the one-page memory rule. Next: call it from extract_filing and persist.",
+      "sliceIds": {
+        "merged": [
+          "8-pre #580",
+          "8a-1-py #593",
+          "8a-1b #594",
+          "8a-rules #590",
+          "8a-rotation #592",
+          "8a-2+3 #596",
+          "8a-5 #602",
+          "8a-6 #605",
+          "8-detection #610"
+        ],
+        "open": [
+          "8b-1 #622"
+        ],
+        "pending": [
+          "8b-2"
+        ],
+        "retired": [
+          "8a-1 #587 (TypeScript, no possible caller)"
+        ]
+      },
+      "sliceCounts": {
+        "merged": 9,
+        "recorded": 11,
+        "retiredNotCounted": 1
+      }
     },
     "16": {
-      "status": "DONE",
-      "slices": "1 of 1: #528, squash 9a958a53",
+      "status": "IN-PROGRESS",
       "why": "Moneycontrol retired from both call sites, not only the one production runs.",
-      "proof": "CI run 34504887739 all five checks green; full scraper suite 275 files / 3491 tests / 0 failures; MUTATION-CHECKED - restoring moneycontrol to the CLI allow-list turns the suite red (1 failed, 27 passed). Verified on main 2026-09-11: due-step-cycle.ts zero occurrences, index.ts three and all comments."
+      "proof": "CI run 34504887739 all five checks green; full scraper suite 275 files / 3491 tests / 0 failures; MUTATION-CHECKED - restoring moneycontrol to the CLI allow-list turns the suite red (1 failed, 27 passed). Verified on main 2026-09-11: due-step-cycle.ts zero occurrences, index.ts three and all comments.",
+      "slicesNote": "1 of 1: #528, squash 9a958a53",
+      "sliceIds": {
+        "merged": [
+          "16-1 #528 squash 9a958a53"
+        ],
+        "open": [],
+        "pending": [
+          "16-2 remove MONEYCONTROL from both freshness SLO sets"
+        ],
+        "retired": []
+      },
+      "sliceCounts": {
+        "merged": 1,
+        "recorded": 2,
+        "retiredNotCounted": 0
+      }
     },
     "18": {
-      "status": "DONE",
-      "slices": "4 of 4 built and merged: 18-1 (#543, d20790ac), 18-1b (#560, d7d3b9ec), 18-2 (#563, ac4ec20d), 18-2b (#566, e9c998b9)",
+      "status": "IN-PROGRESS",
       "why": "the contract defines item 18 as a PDF deleted seven days after its LAST SUCCESSFUL EXTRACTION. 18-2b moved the anchor from the IPO close date to each document own extracted_at, which is that definition. Real-data proof read-only on ipodhan_staging: of 283 candidate rows, 17 blocked by no stored text and 85 blocked by the document own window; 181 still purge.",
-      "owed": "the staging CYCLE log line for 18-1, 18-1b and 18-2. Was BLOCKED while staging deploys failed at the drift assert; lane A fix landed on run 34525050492, so it is now obtainable on the next deploy carrying these slices."
+      "owed": "the staging CYCLE log line for 18-1, 18-1b and 18-2. Was BLOCKED while staging deploys failed at the drift assert; lane A fix landed on run 34525050492, so it is now obtainable on the next deploy carrying these slices.",
+      "slicesNote": "4 of 4 built and merged: 18-1 (#543, d20790ac), 18-1b (#560, d7d3b9ec), 18-2 (#563, ac4ec20d), 18-2b (#566, e9c998b9)",
+      "sliceIds": {
+        "merged": [
+          "18-1 #543",
+          "18-1b #560",
+          "18-2 #563",
+          "18-2b #566"
+        ],
+        "open": [
+          "18-pagebase #628"
+        ],
+        "pending": [],
+        "retired": []
+      },
+      "sliceCounts": {
+        "merged": 4,
+        "recorded": 5,
+        "retiredNotCounted": 0
+      }
     },
     "20": {
       "status": "DONE",
-      "slices": "8 of 8: #460, #465, #462, #470, #509 (942051e8), #526 (90337baf), #531 (915178d4), #552 (0c01a1d2) - all confirmed MERGED on GitHub 2026-09-11, not recalled",
-      "proof": "PR gate run on #470 printed MODE 4 - 166 rule id(s) compared; check-design-traceability: PASS; 23/23 consistent. The last slice closed a docs-only skip that exempted the one check whose job is reading the docs; confirmed live afterwards on lane A PR run 34518846828, on someone else change."
+      "proof": "PR gate run on #470 printed MODE 4 - 166 rule id(s) compared; check-design-traceability: PASS; 23/23 consistent. The last slice closed a docs-only skip that exempted the one check whose job is reading the docs; confirmed live afterwards on lane A PR run 34518846828, on someone else change.",
+      "slicesNote": "8 of 8: #460, #465, #462, #470, #509 (942051e8), #526 (90337baf), #531 (915178d4), #552 (0c01a1d2) - all confirmed MERGED on GitHub 2026-09-11, not recalled",
+      "sliceIds": {
+        "merged": [
+          "#460",
+          "#465",
+          "#462",
+          "#470",
+          "#509",
+          "#526",
+          "#531",
+          "#552"
+        ],
+        "open": [],
+        "pending": [],
+        "retired": []
+      },
+      "sliceCounts": {
+        "merged": 8,
+        "recorded": 8,
+        "retiredNotCounted": 0
+      }
     },
     "21": {
       "status": "BLOCKED-DEPENDENCY(lane A item 5)",
-      "slices": "6 branches: 21-0 #537, 21-1 #539, 21-2 #542, 21-2b #544, 21-3 #557, 21-3b #576 (bb2c93c7). 21-4 blocked on lane A item 5.",
       "why": "the provenance line reads ipo_field_plan.verify_due_at. Contract test run at 01:43 on 2026-09-11: `git show origin/main:packages/shared/src/db/schema.ts | grep -c ipoFieldPlan` returns 0, and the contract's PR search shows no item 5 slice merged. The contract authorises this closure explicitly (decision 3).",
-      "trigger": "that grep returning non-zero"
+      "trigger": "that grep returning non-zero",
+      "slicesNote": "6 branches: 21-0 #537, 21-1 #539, 21-2 #542, 21-2b #544, 21-3 #557, 21-3b #576 (bb2c93c7). 21-4 blocked on lane A item 5.",
+      "sliceIds": {
+        "merged": [
+          "21-0 #537",
+          "21-1 #539",
+          "21-2 #542",
+          "21-2b #544",
+          "21-3 #557",
+          "21-3b #576",
+          "21-5 #614"
+        ],
+        "open": [],
+        "pending": [
+          "21-4 provenance line"
+        ],
+        "retired": []
+      },
+      "sliceCounts": {
+        "merged": 7,
+        "recorded": 8,
+        "retiredNotCounted": 0
+      }
     },
     "22": {
       "status": "BLOCKED",
-      "slices": "6 of 8 merged",
-      "why": "22-5 needs pdf-lib, a NEW shared dependency and therefore an owner line, AND a real password-protected filing, which has not appeared on either slot. 22-6 depends on 22-5. Both re-checked tonight rather than assumed."
+      "why": "22-5 needs pdf-lib, a NEW shared dependency and therefore an owner line, AND a real password-protected filing, which has not appeared on either slot. 22-6 depends on 22-5. Both re-checked tonight rather than assumed.",
+      "slicesNote": "6 of 8 merged",
+      "sliceIds": {
+        "merged": [
+          "22-1 #487",
+          "22-2 #492",
+          "22-s0b #496",
+          "22-3 #512",
+          "22-s0d #516",
+          "22-7 #529",
+          "22-4 #550",
+          "22-8 #586"
+        ],
+        "open": [],
+        "pending": [
+          "22-5 protected filings",
+          "22-6"
+        ],
+        "retired": []
+      },
+      "sliceCounts": {
+        "merged": 8,
+        "recorded": 10,
+        "retiredNotCounted": 0
+      }
     }
   },
   "sharedDuties": {
@@ -821,7 +945,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T02:06:15.000Z",
+  "lastStateWriteAt": "2026-09-11T02:27:06.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
@@ -840,5 +964,7 @@
   "stagingProofsPaid": [
     "18-1 migrate - deploy run 34526518484, release 20260910-202813-2ad49a4e, chain assert newest applied 1789065238437 >= newest journaled, plus OK: no schema drift",
     "22-4 migrate - same run; 1789065238437 IS 22-4 migration 20260910183358_small_freak"
-  ]
+  ],
+  "sliceReconciliation": "STATE's items[N].slices was FREE TEXT, not a list, so the card/STATE/board counts could not be compared at all - and item 8's string was stale, still reading '#602 open ... Next: call it from extract_filing' hours after both landed. Structured sliceIds + sliceCounts added per item; the prose kept as slicesNote and no longer counted.",
+  "countingRules": "Retired slices leave the DENOMINATOR - withdrawn is not outstanding (item 8's TypeScript locator). A defect found inside an item and fixed under it IS a slice of that item (#628 under item 18) - otherwise an item shows 100% with open work against it. Both judgements are stated on the board cards, not buried."
 }
