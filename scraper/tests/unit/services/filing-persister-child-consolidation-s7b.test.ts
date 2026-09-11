@@ -359,3 +359,96 @@ describe('ipo_valuation call site — flag ON', () => {
     expect(summary.skipped_failed_check.join(' ')).toContain('ipo_valuation');
   });
 });
+
+/**
+ * PR #625 follow-up — the `ipo_details` (~1538) and `ipo_valuation` (~2009)
+ * call sites had NO exception handling.
+ *
+ * Before #625 `deps.childRowConsolidator` was always `undefined`, so the
+ * `if (!deps.childRowConsolidator)` guard fired and the persist always
+ * completed. #625 injects a real consolidator, so a fault inside
+ * `consolidatedUpsertChildRows` now PROPAGATES and aborts the persist
+ * mid-write. The rows must still be written, marked unresolved.
+ */
+describe('ipo_details call site — the consolidator throws', () => {
+  withFlag(true);
+
+  it('still completes the persist and writes ipo_details unresolved', async () => {
+    const consolidate = vi.fn(async (_i: string, table: string) => {
+      if (table === 'ipo_details') throw new Error('redis connection reset');
+      return resolvedRow('PRICE_BAND_AD', { priceFloor: 100, priceCap: 105 });
+    });
+    const trackFieldUpdate = vi.fn(async () => undefined);
+    const { deps, detailsUpsert, valuationUpsert } = makeDeps({
+      childRowConsolidator: { consolidatedUpsertChildRows: consolidate } as never,
+      fieldSources: { findByField: vi.fn(async () => null), trackFieldUpdate } as never,
+    });
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      EXTRACTION,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      deps
+    );
+
+    expect(summary).toBeDefined();
+    expect(detailsUpsert).toHaveBeenCalledTimes(1);
+    expect(detailsUpsert.mock.calls[0][1]).toMatchObject({
+      issueType: 'BOOK_BUILDING',
+      dataSource: 'DRHP',
+    });
+    // The persist carried on past the failing table.
+    expect(valuationUpsert).toHaveBeenCalledTimes(1);
+
+    const marker = trackFieldUpdate.mock.calls
+      .map((c: any[]) => c[0])
+      .find(
+        (a: any) => a.tableName === 'ipo_details' && a.dataLineage?.unresolvedReason !== undefined
+      );
+    expect(marker).toBeDefined();
+    expect(String(marker.dataLineage.unresolvedReason)).toContain('consolidation-threw');
+    expect(String(marker.dataLineage.unresolvedReason)).toContain('redis connection reset');
+  });
+});
+
+describe('ipo_valuation call site — the consolidator throws', () => {
+  withFlag(true);
+
+  it('still completes the persist and writes ipo_valuation unresolved', async () => {
+    const consolidate = vi.fn(async (_i: string, table: string) => {
+      if (table === 'ipo_valuation') throw new Error('redis connection reset');
+      return resolvedRow('', { issueType: 'BOOK_BUILDING', faceValue: 10 });
+    });
+    const trackFieldUpdate = vi.fn(async () => undefined);
+    const { deps, detailsUpsert, valuationUpsert } = makeDeps({
+      childRowConsolidator: { consolidatedUpsertChildRows: consolidate } as never,
+      fieldSources: { findByField: vi.fn(async () => null), trackFieldUpdate } as never,
+    });
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      EXTRACTION,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      deps
+    );
+
+    expect(summary).toBeDefined();
+    expect(detailsUpsert).toHaveBeenCalledTimes(1);
+    expect(valuationUpsert).toHaveBeenCalledTimes(1);
+    expect(valuationUpsert.mock.calls[0][0]).toMatchObject({
+      ipoId: IPO_ID,
+      pricingEvent: 'PRICE_BAND_AD',
+      priceFloor: '100',
+      priceCap: '105',
+    });
+
+    const marker = trackFieldUpdate.mock.calls
+      .map((c: any[]) => c[0])
+      .find(
+        (a: any) => a.tableName === 'ipo_valuation' && a.dataLineage?.unresolvedReason !== undefined
+      );
+    expect(marker).toBeDefined();
+    expect(String(marker.dataLineage.unresolvedReason)).toContain('consolidation-threw');
+    expect(String(marker.dataLineage.unresolvedReason)).toContain('redis connection reset');
+  });
+});
