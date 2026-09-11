@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 05:14 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 05:34 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1177,5 +1177,51 @@ sha (both files, the call site, the cadence key). Version endpoint read with `no
 29 rows, 22 values, 22 non-CHITTORGARH - identical to before. The fill runs on the **24-hour**
 aggregator cadence and the deploy landed minutes ago, so it has not fired. Recorded as a
 **pending** measurement, not dressed up as a pass or a failure.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 05:34 IST - item 14's proof overstates by one; #601's five findings closed
+
+### Item 14 fails on production with TWO, not three
+
+Its proof line names NIRBHAY, STALLION and PIYUSH - measured on **staging**. On production
+**STALLION is correct**: issue_size 1,990,000,000 (Rs 199 crore, matching the real Rs 199.45
+crore raise) and a band of 85, the real floor of 85-90. Staging has 43,320,000 and a band of
+10, which is the face value.
+
+So STALLION is **staging staleness, not a live defect**. My own earlier note said exactly that,
+but the proof line was read on staging and never revisited against prod. **A proof read on the
+wrong slot counts one extra failure.** Item 14's real production status is 2, both the
+genuinely blocked class.
+
+### The Tier B review found five things, and I could upgrade one
+
+It called the percentage sign bug *latent rather than actively wrong today*, because all 21
+known rows store a lower value. True on staging (21 low / 0 high); **false on production**
+(21 low / 1 high). NET PIX SHORTS stores 32 against an authoritative 30, so the live message
+reads `(-6.7% high)` and claims the band *kept the floor and lost the cap* - the opposite of
+what that row did.
+
+**I deleted the mechanism claim, not just the sign.** The arithmetic was the smaller half. The
+real defect was asserting ONE mechanism for a population with at least TWO: a triager reading
+"kept the floor" goes hunting a write path that, for that row, does not exist.
+
+**The HIGH finding was fair and I had made the excuse it names** - I documented the coverage
+gap in the pull request, not in the code. The next reader has the code. Now stated in the
+function with counts (61/268 staging, 43/90 prod), why it is accepted, and where it is tracked.
+
+**And the registry still carried the disproved rule** as the check's name - which is the report
+title, so anyone reading only the audit got the pre-fix mental model back. I changed the
+predicate and left its label describing the old behaviour.
+
+### Evidence
+
+Nine mutations on this check, each proved applied and each red. Real-data proof on **both**
+slots: staging 28, production 26. 17 tests in the two .mjs files; the 72 web tests still pass.
+
+**Four review rounds across two changes tonight, every one finding something real** - including
+two bugs in code I wrote *after* cataloguing the exact pattern they belonged to. Knowing a
+failure shape does not stop me producing it.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
