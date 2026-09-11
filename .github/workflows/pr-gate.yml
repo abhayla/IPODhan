@@ -106,6 +106,18 @@ jobs:
         # UNVERIFIABLE rather than PASS; flipping it back kills three of them.
         run: node --test scripts/tests/ratios-extraction-yield.test.mjs
 
+      - name: Row-key coverage classifier self-test (F-101)
+        # The pure classifier's unit proofs ran NOWHERE in CI: a check that
+        # exists and is never exercised. row-key-coverage-unresolved-marker
+        # measures the three states the audit must tell apart — writer off
+        # (UNVERIFIABLE), writer succeeded (PASS), writer FAILED and left the
+        # `unresolved:<reason>` sentinel (FAIL) — against the real
+        # classifyRowKeyCoverage, so weakening it turns this red. No deps
+        # needed (Node builtins only).
+        run: |
+          node --test scripts/tests/row-key-coverage-checks.test.mjs
+          node --test scripts/tests/row-key-coverage-unresolved-marker.test.mjs
+
       - name: VPS runtime preflight self-test (T-406)
         # Drives the real scripts/preflight-runtime.sh as a subprocess with
         # fake python3/tesseract/node shims + controlled env, so a weakened
