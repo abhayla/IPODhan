@@ -300,6 +300,18 @@
     {
       "at": "2026-09-11T00:51:37.000Z",
       "what": "TWO SELF-CORRECTIONS on #614 before shipping: the status updater's list-cache clear is NOT broken like the admin route's (it uses keys() then del(...keys), which works), and ipo:list:* does not cover ipo:listings:* but neither is the defect. The defect is the missing revalidatePath."
+    },
+    {
+      "at": "2026-09-11T00:59:00.000Z",
+      "what": "MERGE GATE ADOPTED: scripts/ops/merge-if-current.mjs (main 1c42f6b8, #611), verified present on origin/main before use. Every merge from here is fetch + gate + gh pr merge --squash; exit 0 pass, 2 not mergeable, 3 checks not green, 4 base stale, 5 gate cannot run. A refusal I disagree with goes back to lane A with its exit code, never around the gate."
+    },
+    {
+      "at": "2026-09-11T00:59:00.000Z",
+      "what": "GATE REFUSED #614 ON ITS FIRST RUN, exit 4 clause-1, and it was RIGHT: main moved .github/workflows/pr-gate.yml since the merge-base, so the PR's six green jobs were produced by the OLD pipeline definition. I moved that file myself an hour earlier in #610. My own merge invalidated my next PR's green and nothing else would have told me - run conclusion success, six jobs green. Rebased onto 1c42f6b8 and force-pushed with lease; CI re-running against what would actually merge."
+    },
+    {
+      "at": "2026-09-11T00:59:00.000Z",
+      "what": "NOTE for the gate's exit 3: gh pr checks can report a finished job as pending 0s for ~25 minutes, so an exit 3 may be a stale reading rather than a real wait - re-read via gh api repos/.../actions/jobs/<id> before waiting on it."
     }
   ],
   "items": {
@@ -393,7 +405,11 @@
     "under MSYS_NO_PATHCONV=1, pass Windows-form paths (D:/...) to git, node and gh - never MSYS form (/d/...); the variable is still needed for refspecs like origin/main:path",
     "mutation restore is by file copy and verified with diff; git checkout -- is never used in a worktree holding uncommitted work",
     "the PROGRESS log is written in the same turn as every ledger commit - never deferred",
-    "when a guard is loosened to fix a false positive, re-measure the BLOCKING direction too - a false-negative created by a false-positive fix is how a guard quietly dies"
+    "when a guard is loosened to fix a false positive, re-measure the BLOCKING direction too - a false-negative created by a false-positive fix is how a guard quietly dies",
+    {
+      "at": "2026-09-11T00:59:00.000Z",
+      "what": "merge-if-current.mjs gate before every squash merge; never a bare gh pr merge"
+    }
   ],
   "openConcerns": [
     "s1: the check scans scripts/ci/tests/** which contains its own fixtures; the builder's concatenation workaround for '// implements: R-999' leaves the structural problem (a scanner scanning its own fixtures) unfixed. Named in the Tier A review brief.",
@@ -745,7 +761,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T00:51:37.000Z",
+  "lastStateWriteAt": "2026-09-11T00:59:00.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
