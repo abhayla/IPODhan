@@ -360,6 +360,10 @@
     {
       "at": "2026-09-11T01:56:45.000Z",
       "what": "8b-2 SPEC MEASURED FROM THE DOCUMENT: Karamtara p56 prints 'Inventory turnover ratio (2) (times) 4.09 3.57 3.32' and defines it as cost of goods sold / AVERAGE inventory. So turnover needs a FOURTH extracted line (COGS) and an opening+closing average - not revenue/closing-stock, which is what I would have written from memory. Current and quick ratio are not printed in this prospectus; their oracle must come from PRASOLCHEM pp 442-443, unverified by me so far."
+    },
+    {
+      "at": "2026-09-11T02:01:14.000Z",
+      "what": "CARD OVERTURNED, measured: inventory turnover CANNOT be derived from the extracted statement lines. Karamtara prints 4.09/3.57/3.32 and defines it as COGS/average inventory; the restated P&L has no COGS line. Cost-of-material/avg = 4.074 vs 4.09; +inventory change = 3.989; /closing = 4.501. FY2025: 3.491 / 3.492 / 3.080 vs 3.57. The required numerator gap is 99.85 in FY2026 and 481.54 in FY2025 - not constant, so no fixed adjustment exists. Deriving it would publish a figure disagreeing with the document's own by 0.4-2.3%. Design: EXTRACT the printed ratio, do not derive it. Current/quick ratio remain derivable - pure balance-sheet arithmetic, both inputs already extracted by 8b-1."
     }
   ],
   "items": {
@@ -809,7 +813,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T01:56:45.000Z",
+  "lastStateWriteAt": "2026-09-11T02:01:14.000Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
