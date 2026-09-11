@@ -1228,3 +1228,23 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   readable filings instead of the two named ones that no text tool can read, the one-row website
   correction, whether the shared branch should refuse unchecked changes, and whether to approve the new
   PDF library.
+- **2026-09-11 08:38 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  **What a reader of ipodhan.com would notice:** nothing new since the last note. The two pieces that
+  landed earlier reach the site at the next release.
+  **What went wrong: I have now been wrong four times in a row about one stuck document, and each time
+  the data said so.** One prospectus (ESDS) has failed to process ten times and is parked. The story
+  changed every time I measured instead of reasoned. First: a fix made on 6 September was supposed to
+  cover it - it never was that kind of fix, it changed how a failure is RECORDED, and the document
+  continuing to fail afterwards is that fix working correctly. Second: too big - no, a LARGER document
+  processed fine on its first attempt while a smaller one failed. Third: too many pages - no, I inferred
+  962 pages from a warning count and the real number is 555, while a 590-page document processed fine.
+  Fourth, and this is the one I would have bet on: slow to read - no, it is the FASTEST of the three to
+  read, 0.48 seconds a page against 1.26 and 1.03. Reading all 555 pages takes about four and a half
+  minutes inside a ten-minute limit. So the time is not going into reading the document at all, and
+  every fix I might have shipped on the first three theories would have been aimed at the wrong thing.
+  I am now measuring the one stage that can cost seconds per page: the check that decides whether a page
+  is a photograph needing character recognition, and the recognition itself.
+  **What is needed from Abhay:** the same four - whether the money-ratios feature may be proven on two
+  readable filings instead of the two named ones that no text tool can read, the one-row website
+  correction, whether the shared branch should refuse unchecked changes, and whether to approve the new
+  PDF library.
