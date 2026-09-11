@@ -380,6 +380,10 @@
     {
       "at": "2026-09-11T03:24:40Z",
       "what": "OWNER DECISIONS (typed by Abhay): Hy-Tech prod correction approved and DONE; item 8 fixtures substituted to Karamtara + Prasol with the ARCIL measurement kept; pdf-lib approved pinned with a supply-chain audit. PROD WRITE: dry run 1 row both slots, corrected value DNS-verified (old ENOTFOUND, new resolves to 172.67.166.56/104.21.82.249), staging applied and read back, prod applied - 1 row, read back https://www.hytechengineers.com, updated_at 2026-09-11T03:22:01.105Z, 0 rows still broken. Redis DEL was a NO-OP: all three keys reported EXISTS 0 beforehand."
+    },
+    {
+      "at": "2026-09-11T03:29:17Z",
+      "what": "PDF-LIB APPROVED BUT NOT ADDED, and the owner is told why. Its own README: 'pdf-lib does not currently support encrypted documents. You should not use pdf-lib with encrypted documents.' Wrong capability. It is also JavaScript while every PDF read happens in Python (extract_filing.py) - wrong runtime. And unmaintained: 1.17.1, last published 2021-11-06. Meanwhile pypdf 6.11.0 is ALREADY installed with is_encrypted and decrypt(). Recommendation: withdraw the approval, use pypdf. 22-5 stays blocked either way on the other half - a real encrypted filing, which exists on neither exchange."
     }
   ],
   "items": {
@@ -951,7 +955,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T03:24:40Z",
+  "lastStateWriteAt": "2026-09-11T03:29:17Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
