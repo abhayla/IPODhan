@@ -1,0 +1,9 @@
+{
+  "class_id": "failed child-row writer indistinguishable from a disabled one",
+  "feature": "scraper/src/services/filing-persister.ts (child-row consolidation fallback paths) -> field_sources",
+  "symptom": "when the child-row consolidator is absent, throws, or reports a skip, the rows are written with NO per-row provenance, leaving only the legacy `trackField(table, 'rows')` row under `row_key = ''` — byte-identical to the trace left by a slot where `ENABLE_CHILD_TABLE_CONSOLIDATION` is simply OFF. `classifyRowKeyCoverage` reads both as NOT-YET-KEYED and reports UNVERIFIABLE, so a broken writer is silently indistinguishable from an unstarted one",
+  "first_seen": "Sep 2026 (F-101, found while auditing why the row-key coverage check could never move off UNVERIFIABLE)",
+  "fix_prs": "this PR (the writer files provenance under the sentinel key `unresolved:<reason>` on every fallback path, naming the cause; the child row is still written)",
+  "detection_check": "`scripts/lib/row-key-coverage-checks.mjs` `classifyRowKeyCoverage` — UNCHANGED by this PR: the sentinel is a non-empty `row_key`, so the pair flips into enforcement and every derived key is then missing, which is FAIL. Wired into CI by the new `Row-key coverage classifier self-test (F-101)` step in `.github/workflows/pr-gate.yml`, which runs `scripts/tests/row-key-coverage-unresolved-marker.test.mjs` (the three-state proof: writer off -> UNVERIFIABLE, writer succeeded -> PASS, writer FAILED -> FAIL) and `scripts/tests/row-key-coverage-checks.test.mjs`, neither of which ran anywhere in CI before",
+  "status": "guarded"
+}
