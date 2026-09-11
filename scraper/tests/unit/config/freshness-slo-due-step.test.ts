@@ -53,8 +53,13 @@ describe('round-3 C4: SLO thresholds follow the schedule that is actually runnin
     expect(getFreshnessSLO('NSE')!.maxStalenessMs).toBe(16 * HOUR);
     expect(getFreshnessSLO('BSE')!.maxStalenessMs).toBe(16 * HOUR);
     expect(getFreshnessSLO('CHITTORGARH')!.maxStalenessMs).toBe(26 * HOUR);
-    expect(getFreshnessSLO('MONEYCONTROL')!.maxStalenessMs).toBe(26 * HOUR);
     expect(getFreshnessSLO('API_FALLBACK')!.maxStalenessMs).toBe(26 * HOUR);
+    // Item 16 slice 2: MONEYCONTROL was asserted here at 26h. Its scraper was
+    // retired by item 16, so its last-success can never advance again and the
+    // SLO would have paged the owner on 2026-09-17 about a source we switched
+    // off. The SLO is gone, so the lookup is now undefined BY DESIGN - asserted
+    // rather than deleted, so that putting the entry back turns this red.
+    expect(getFreshnessSLO('MONEYCONTROL')).toBeUndefined();
     expect(getFreshnessSLO('INVESTORGAIN_GMP')!.marketHoursOnly).toBe(true);
   });
 
