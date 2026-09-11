@@ -50,6 +50,7 @@ import logger from '../utils/logger.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
+import { createChildRowNoter } from './child-row-unresolved-noter.js';
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 
 // ---------------------------------------------------------------- extraction
@@ -751,28 +752,11 @@ const NO_COLUMN_FIELDS: Record<string, string> = {
 /**
  * F-101 — the sentinel row key the fallback paths file provenance under.
  *
- * `field_sources` could not distinguish "the row-keyed child writer is switched
- * OFF" from "the row-keyed child writer ran and FAILED": both left one
- * catch-all row under `row_key = ''`, written by the legacy
- * `trackField(table, 'rows')` call that still sits beside the consolidated
- * writer. No change to the audit check can separate them — the information is
- * not in the data, it is only in the writer. So the writer records it.
- *
- * The key is deliberately prefixed: `row-key-coverage-checks.mjs` flips a pair
- * from UNVERIFIABLE into enforcement the moment ONE non-empty row_key exists
- * for it, and every DERIVED key is then missing — so a failed writer reads FAIL
- * where it used to read as an unstarted one.
- *
- * Truncated to `field_sources.row_key`'s varchar(200); the prefix and the cause
- * class survive truncation because they lead.
+ * Defined in `child-row-unresolved-noter.ts` since slice s7c (the anchor
+ * persister needs the same sentinel and importing it from here would be a
+ * cycle) and re-exported unchanged so this module's public surface is the same.
  */
-export const UNRESOLVED_ROW_KEY_PREFIX = 'unresolved:';
-const ROW_KEY_MAX_LENGTH = 200;
-
-export function unresolvedRowKey(reason: string): string {
-  const key = `${UNRESOLVED_ROW_KEY_PREFIX}${reason.replace(/\s+/g, ' ').trim()}`;
-  return key.length <= ROW_KEY_MAX_LENGTH ? key : key.slice(0, ROW_KEY_MAX_LENGTH);
-}
+export { UNRESOLVED_ROW_KEY_PREFIX, unresolvedRowKey } from './child-row-unresolved-noter.js';
 
 // ------------------------------------------------------------------ the work
 
@@ -877,65 +861,22 @@ export async function persistFilingExtraction(
    * the row. A marker write that fails is logged as an error, because it
    * silently re-opens the hole this exists to close.
    */
-  const markChildRowsUnresolved = async (
-    tableName: ChildConsolidationTable,
-    reason: string
-  ): Promise<void> => {
-    if (!apply) return;
-    const rowKey = unresolvedRowKey(reason);
-    try {
-      await deps.fieldSources.trackFieldUpdate({
-        ipoId,
-        tableName,
-        rowKey,
-        fieldName: 'rows',
-        source,
-        // NOT tier 1a: nothing about these rows was resolved against a rank.
-        confidence: 0,
-        previousValue: null,
-        previousSource: null,
-        dataLineage: { ...lineage, unresolvedReason: reason },
-        updatedBy: 'FILING_PERSISTER',
-      });
-    } catch (error) {
-      logger.error(
-        { err: error, ipoId, tableName, rowKey },
-        '[FilingPersister] could not file the unresolved-row provenance marker — this pair still reads as "writer not live" to the row-key coverage check'
-      );
-    }
-  };
-
   /**
-   * The ONE handling shape for "the consolidator threw", shared by every call
-   * site so no site can quietly diverge.
-   *
-   * Why this exists: before the consolidator was injected (PR #625),
-   * `deps.childRowConsolidator` was always `undefined`, so the
-   * `if (!deps.childRowConsolidator)` guard fired at every site and the persist
-   * always completed. With a real consolidator wired in, a Redis or DB fault
-   * inside `consolidatedUpsertChildRows` PROPAGATES — and an unhandled throw
-   * aborts `persistFilingExtraction` mid-write, skipping every table after the
-   * failing one. Losing provenance is the cheap loss; losing the rest of the
-   * write is not. So a throw is treated exactly like "no consolidator": the
-   * rows are still WRITTEN, marked unresolved, with the cause recorded.
-   *
-   * Returns the `(...)` reason fragment that callers holding an
-   * `unresolvedChildRows` list append to each row's entry.
+   * Slice s7c: both helpers moved to `child-row-unresolved-noter.ts` so the
+   * anchor persister — a separate service with its own deps interface — files
+   * the identical marker instead of hand-rolling a fourth variant. Behaviour
+   * here is unchanged; `lineage` is passed as a getter because its `const` is
+   * declared further down this function.
    */
-  const noteConsolidationThrew = async (
-    tableName: ChildConsolidationTable,
-    error: unknown,
-    context: Record<string, unknown> = {}
-  ): Promise<string> => {
-    const cause = (error as { cause?: { message?: string } } | undefined)?.cause?.message;
-    const detail = `${(error as Error)?.message ?? 'unknown'}${cause ? ` <- ${cause}` : ''}`;
-    logger.error(
-      { err: error, cause, ipoId, tableName, ...context },
-      '[FilingPersister] child-row consolidation failed — writing the rows unresolved'
-    );
-    await markChildRowsUnresolved(tableName, `consolidation-threw: ${detail}`);
-    return `consolidation failed: ${detail}`;
-  };
+  const { markChildRowsUnresolved, noteConsolidationThrew } = createChildRowNoter({
+    apply,
+    ipoId,
+    source,
+    lineage: () => lineage,
+    fieldSources: deps.fieldSources,
+    updatedBy: 'FILING_PERSISTER',
+    logPrefix: '[FilingPersister]',
+  });
 
   const consolidateChildRows = async (
     tableName: ChildConsolidationTable,

@@ -208,6 +208,12 @@ export async function runAnchorAutoPersist(
       },
       anchorInvestorRepository: new AnchorInvestorRepository(db),
       ipoRepository: persisterDeps.ipoRepository,
+      // Item 1 slice s7c: the SAME consolidator and field-sources repository
+      // the filing door already built, threaded here for the same reason the
+      // IPORepository and protectionFilter are — a second instance would be a
+      // second cache and a second set of connections.
+      childRowConsolidator: persisterDeps.childRowConsolidator,
+      fieldSources: persisterDeps.fieldSources,
       protectionFilter:
         persisterDeps.protectionFilter ??
         ((id: string, table: string, data: Record<string, unknown>, scraperName: string) =>
