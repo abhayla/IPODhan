@@ -652,3 +652,83 @@ export function extractIssueSizeFromDetailHtml(
 
   return Math.round(rupees);
 }
+
+/** Plausible sector/industry-name bounds (mirrors the matrix's own regex). */
+const MIN_SECTOR_LEN = 2;
+const MAX_SECTOR_LEN = 100;
+
+/**
+ * Generic values the "Recently Listed IPOs in <X>" heading can render when
+ * the page has no real per-company industry tag (round-2 review finding,
+ * T-507): a bare "India"/"IPOs"/segment label is not a sector, it is the
+ * heading degrading to its container's own label. Case-insensitive exact
+ * match only — a real sector NAME containing one of these words as a
+ * substring (there is none in Chittorgarh's taxonomy today) is not blocked.
+ */
+const GENERIC_SECTOR_VALUES = new Set(['india', 'ipos', 'ipo', 'mainboard', 'sme', 'companies', 'stocks']);
+
+/**
+ * Extract the industry/sector name from a Chittorgarh per-IPO detail page
+ * (T-507, issue #394 — `ipos.sector` is '' on every row; T-455 found neither
+ * NSE, BSE, Moneycontrol nor Chittorgarh assigned a `sector` key anywhere).
+ *
+ * The Chittorgarh detail page DOES carry the sector, but not as a labelled
+ * "Sector"/"Industry" row like the other fields in this file — it appears as
+ * the heading of the page's "recently listed peers" comparison table:
+ *   <h2 itemprop="about">Recently Listed IPOs in Specialty Chemicals</h2>
+ * verified against two REAL captured pages (Ather Energy -> "Automobiles",
+ * Neochem Bio -> "Specialty Chemicals"; both link to the same
+ * `/report/sector-wise-ipo-list-in-india/<report>/all/<industry_id>/` report,
+ * confirming the heading names the same taxonomy Chittorgarh itself tracks
+ * server-side via the numeric `ipo_industry` id embedded elsewhere on the
+ * page).
+ *
+ * Returns null when: the heading is absent (verified against a REAL page
+ * with no heading at all — HCIN Networks, id 2410 — not a synthetic string);
+ * the captured text falls outside a plausible sector-name length (2-100
+ * chars, matches the field-priority-matrix `sector` validation regex); the
+ * value is a known generic placeholder (`GENERIC_SECTOR_VALUES`); or the
+ * value equals the company's own name (a mis-rendered page reusing the
+ * company name as its own "sector," never a real industry label) — never
+ * guessed in any of these cases.
+ *
+ * `companyName` is REQUIRED (not optional) so a caller cannot silently skip
+ * the company-name-equality guard by omission.
+ */
+export function extractSectorFromDetailHtml(html: string, companyName: string): string | null {
+  if (!html) return null;
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+
+  const m = clean.match(/itemprop="about"[^>]*>\s*Recently Listed IPOs in\s+([^<]+?)\s*<\/h2>/i);
+  if (!m) return null;
+
+  const sector = stripTags(m[1]).trim();
+  if (sector.length < MIN_SECTOR_LEN || sector.length > MAX_SECTOR_LEN) return null;
+  if (GENERIC_SECTOR_VALUES.has(sector.toLowerCase())) return null;
+  if (companyName && sector.toLowerCase() === companyName.trim().toLowerCase()) return null;
+  return sector;
+}
+
+/**
+ * Extract the company name a Chittorgarh detail page actually belongs to
+ * (round-2 review CRITICAL 2, T-507): the live site ignores an unmatched
+ * slug and serves whatever company the numeric id resolves to — a
+ * normalized-name collision in the discovery map (two companies sharing a
+ * normalized name, "first wins" — see `chittorgarh-detail-url-resolver.ts`)
+ * would otherwise silently write the WRONG company's sector onto the
+ * candidate. Callers MUST compare this against the candidate's own name
+ * (via `normalizeCompanyNameForMatching`) before trusting any extracted
+ * field from this page, not just sector.
+ *
+ * Rendered as `<h1 class="title-header">Ather Energy  IPO Details</h1>`;
+ * falls back to the `<title>` tag (`Ather Energy IPO Date, Price, GMP...`)
+ * when the h1 shape changes. Returns null when neither is found.
+ */
+export function extractCompanyNameFromDetailHtml(html: string): string | null {
+  if (!html) return null;
+  const h1 = html.match(/<h1[^>]*class="title-header"[^>]*>([^<]*?)\s*IPO Details<\/h1>/i);
+  if (h1) return stripTags(h1[1]).trim();
+  const title = html.match(/<title>([^<]*?)\s*IPO Date/i);
+  if (title) return stripTags(title[1]).trim();
+  return null;
+}

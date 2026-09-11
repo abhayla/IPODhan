@@ -247,6 +247,9 @@ scraper/scripts/test-chittorgarh-*.ts
 /verification_results/
 /P0-*_*.md
 /scraper_test_issues_*.md
+# Repair/backfill tool applied-ledger artifacts (scripts/lib/repair-tool.ts writeLedgerFile) —
+# per-run evidence, not source; T-507's backfill-sector-chittorgarh.ts is the first caller.
+scraper/scripts/.ledger/
 
 # Verification phase reports (temporary - root directory only, docs/ is tracked)
 /phase*.md

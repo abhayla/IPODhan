@@ -264,8 +264,13 @@ async function main() {
   log(`\n=== CORE ipos COLUMN FILL-RATE (genuine IPOs, non-null %) ===`);
   for (const col of coreCols) {
     try {
+      // T-507/#394: `sector` (and any future text column re-using this loop)
+      // can hold '' rather than NULL — "IS NOT NULL" alone over-reports an
+      // empty-string column as filled. Exclude '' for text-typed columns so
+      // this row cannot silently mask the exact regression it exists to catch.
       const [{ filled }] = await q(
         `SELECT count(*)::int filled FROM ipos WHERE ${REAL_IPO} AND ${col} IS NOT NULL` +
+        (['sector', 'symbol', 'registrar', 'company_description'].includes(col) ? ` AND ${col} != ''` : ``) +
         (['objectives'].includes(col) ? ` AND ${col}::text NOT IN ('[]','null','{}')` : ``)
       );
       const pct = ((filled / realtotal) * 100).toFixed(1);

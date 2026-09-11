@@ -322,22 +322,26 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // ==================== DESCRIPTIVE FIELDS (#69) ====================
   // Both were 0/285: no matrix entry meant consolidation silently dropped them.
-  // sector (T-455, issue #242, round-7 P3-1): the matrix used to list NSE, BSE,
-  //   MONEYCONTROL and CHITTORGARH as sources, but NONE of them ever writes a
-  //   sector value today — NSE read a field the payload never carries (fixed by
-  //   removing that read in nse-api-client.ts), BSE explicitly emits `undefined`
-  //   ("Not available in BSE main table" — bse-scraper.ts), and neither the
-  //   Moneycontrol nor Chittorgarh scrapers assign a `sector` key anywhere
-  //   (verified by source grep). Listing a source that can never deliver is
-  //   worse than listing none — it hides the gap. ADMIN (manual override) is
-  //   the only live source until a real scraped source exists; re-add a source
-  //   here only when its scraper actually assigns `sector`.
+  // sector (T-455, issue #242, round-7 P3-1 -> T-507, issue #394, owner decision 5
+  //   of 2026-09-08): the matrix used to list NSE, BSE, MONEYCONTROL and CHITTORGARH
+  //   as sources, but NONE of them ever wrote a sector value — NSE read a field the
+  //   payload never carries (fixed by removing that read in nse-api-client.ts), BSE
+  //   explicitly emits `undefined` ("Not available in BSE main table" -
+  //   bse-scraper.ts). T-507 found the Chittorgarh per-IPO detail page DOES carry the
+  //   sector (not as a labelled row like other fields — it's the heading of the
+  //   page's "recently listed peers" table: `<h2 itemprop="about">Recently Listed
+  //   IPOs in <Sector></h2>`, verified against two real captured pages), so
+  //   CHITTORGARH is re-added as a live source behind `extractSectorFromDetailHtml`
+  //   (chittorgarh-detail-fields.ts) + `runSectorVisit()`
+  //   (chittorgarh-sector-visitor.ts). ADMIN still always wins. Moneycontrol still
+  //   assigns no `sector` key anywhere (verified by source grep) - do not re-add it
+  //   without a scraper change that actually populates one.
   // company_description: DRHP "Our Business" or Chittorgarh "About" (id=ipoSummary).
   sector: {
-    sources: ['ADMIN'],
+    sources: ['ADMIN', 'CHITTORGARH'],
     normalization: 'none',
     confidenceThreshold: 80,
-    description: 'Industry sector - manual/ADMIN only; no live scraper source currently populates it (T-455/#242)',
+    description: 'Industry sector - ADMIN override or Chittorgarh detail-page "Recently Listed IPOs in <Sector>" heading (T-507/#394)',
     validation: { regex: '^.{2,100}$' },
   },
 
