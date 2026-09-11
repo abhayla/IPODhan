@@ -198,4 +198,22 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan LIVE constraint shape (${RUN_LABE
     expect(rows.length).toBe(1);
     expect(rows[0].def).toBe('UNIQUE (ipo_id, table_name, row_key, field_name)');
   });
+
+  // The four-column constraint is only half the guarantee. Postgres treats NULLs as
+  // DISTINCT inside a UNIQUE constraint, so if row_key were ever made nullable a writer
+  // passing rowKey: null explicitly could insert unlimited duplicates for the same
+  // (ipo, table, field) and every other test here would stay green -- the constraint
+  // would still read as present while enforcing nothing for those rows. NOT NULL is what
+  // makes the sentinel '' load-bearing, so it is asserted rather than assumed.
+  it('row_key is NOT NULL and defaults to the empty sentinel', async () => {
+    const { rows } = await pool!.query<{ is_nullable: string; column_default: string | null }>(`
+      SELECT is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_name = 'ipo_field_plan' AND column_name = 'row_key'
+    `);
+
+    expect(rows.length).toBe(1);
+    expect(rows[0].is_nullable).toBe('NO');
+    expect(rows[0].column_default).toBe("''::character varying");
+  });
 });

@@ -761,6 +761,7 @@ jobs:
           tests/integration/peer-company-replace-atomicity.integration.test.ts
           tests/integration/field-sources-row-key-provenance.integration.test.ts
           tests/integration/field-sources-row-key-unique.integration.test.ts
+          tests/integration/ipo-field-plan-row-key-unique.integration.test.ts
           tests/integration/normalizer-sql-agreement.integration.test.ts
           tests/integration/derived-key-recompute-guard.integration.test.ts
           tests/integration/alternative-sources.integration.test.ts
