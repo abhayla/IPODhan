@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 07:32 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 07:36 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1702,5 +1702,52 @@ shape item 12 collapses. Not investigated.
 Six checks PASS; `merge-if-current` exits 0, every clause clear. **Held until 07:50** rather than
 claimed as a live-defect exception - the nightly audit next runs tonight, so 19 minutes costs
 nothing, while merging now would SIGINT the cycle the window protects.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## The 17 unsourced segments are one population, not a scatter
+
+Cross-tabulating `segment` against `listing_exchanges` (production, `offering_type='IPO'`):
+
+| segment + exchanges | IPOs | sourced | unsourced |
+|---|---|---|---|
+| **MAINBOARD + BSE-only** | **12** | **1** | **11** |
+| MAINBOARD + [NSE,BSE] | 78 | 78 | 0 |
+| SME + [NSE] | 61 | 61 | 0 |
+| SME + [BSE] | 112 | 107 | 5 |
+
+**11 of the 17** sit in one 92%-unsourced bucket, against 90-100% coverage everywhere else.
+
+### It may not be a segment defect at all
+
+A MAINBOARD IPO listed on **BSE only** is unusual - mainboard issues normally list on both. So
+either **(a)** the segment is wrong and these are SME, or **(b)** the segment is right and
+`listing_exchanges` is **incomplete**, missing NSE.
+
+**(b) is the stronger reading for most of the bucket:** KWALITY WALLS (Rs1,303 cr), MUTHOOT FINCOTP
+(Rs200 cr), MORGANITE CRUCIBLE, CMS INFO SYSTEMS, WINDLAS BIOTECH, AAA TECHNOLOGIES are real
+mainboard companies. **A slice that "repairs the segment" here would repair the wrong field on most
+of them.** The likelier shared cause is one write path that set both fields without provenance and
+only knew about BSE.
+
+I am **not** deciding between (a) and (b). The bucket is internally mixed - PIYUSH (Rs0.70 cr) and
+NIRBHAY (Rs1.48 cr) are far too small to be genuine mainboard issues while KWALITY WALLS plainly is
+one. **2-S3b2 must source BOTH fields per row** and classify each, not assume the segment is at fault.
+
+### A shortcut tested and discarded
+
+I checked whether `listing_exchanges` could itself *source* the segment. The positive control killed
+it: `["BSE"]` covers **112 SME and 12 MAINBOARD**, and 16 of the 17 unsourced rows carry exactly that
+most-ambiguous value. Dead idea, measured, not built on.
+
+### Item 12: staging-only duplicate identities, filed
+
+**Six** staging rows carry a trailing `" P"` / `" CT"` / `" LT"`; production has **zero** (same LIKE
+matches 6 vs 0, so the zero is real). Three companies duplicated - G.V.Electricals (CT, LT, P),
+H.R.Hygiene (CT), Shree Balaji Mala Textiles (CT, P). All SME/LISTED/IPO, created 2026-07-24 to
+08-12, and **all six updated within 17 seconds** at 2026-09-08 01:22:14-31 - one sweep touched the
+set. Unsuffixed siblings exist alongside them, so these are genuine duplicate identities of item 12's
+class. I have not identified what P/CT/LT mean.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
