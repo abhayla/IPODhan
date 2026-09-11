@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 09:26 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 09:31 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2423,5 +2423,57 @@ Staging began serving **a7036165** — a new sha, exactly the moment a careless 
 the deploy landing. It does **not** contain the fix: not an ancestor of `f19eaa86`, and the coalesce
 is absent by content. Checked both ways, because a squash merge is not an ancestor and sha inequality
 proves nothing. That deploy started 03:40:15Z, before my merge at 03:41:56Z.
+
+**Items 14, 2 and 12: zero DONE lines.**
+
+
+## 14-S6 is proven on staging — and I nearly filed a false failure first
+
+**Proof.** Served sha `f19eaa86`, built 2026-09-11T03:51:11Z, verified to **contain** the fix before
+the read (ancestry *and* by content — a squash merge is not an ancestor, and a changed sha proves
+nothing).
+
+```
+GET https://staging.ipodhan.com/api/ipos/listings?category=SME&year=2026&limit=100&page=2&_cb=<epoch-ms>
+    Cache-Control: no-cache, Pragma: no-cache
+
+row    MODERN DIAGNOSTIC AND RESEARCH CENTRE LIMITED
+field  issuePrice = 90        band cap 85, authoritative 90
+```
+
+The proof **could have failed** — without the fix that field reads 85. That is what makes it evidence.
+
+### The near-miss is the more useful half
+
+The agreed proof row was MARUTI showing 55. Run against the fixed build, staging returned **10** —
+which looks exactly like the fix not working.
+
+It is not. **Staging holds no authoritative price for MARUTI:**
+
+| slot | band | authoritative | listing_price |
+|---|---|---|---|
+| staging | 10–10 | **NULL** | NULL |
+| production | 10–10 | 55.00 | 71.90 |
+
+So the coalesce correctly falls back to the band cap, and **10 is the right answer for staging's
+data**.
+
+**The error was mine, and precisely:** I chose the proof row from a **production** measurement and
+specified it as a **staging** proof. A proof row must come from the data of the slot it runs against.
+MARUTI's before and after on staging are identical — 10 either way — so that proof could not fail,
+and a proof that cannot fail cannot confirm.
+
+### Ten staging rows that can actually demonstrate it
+
+MODERN DIAGNOSTIC 85→90, ADMACH 227→239, BAI-KAKAJI 177→186, Nanta Tech 209→220, APOLLO TECHNO
+123→130, Dachepalli 100→102, GLOBAL OCEAN 74→78, Pajson Agro 112→118, HRS Aluglaze 94→96, Unisem
+63→65.
+
+### What this does not close
+
+Item 14's recipe is `c_issue_size_floor` PASSing with **zero BSE-sourced violations**. Both violations
+remain, because 14-S2 and 14-S3 need segments sourced and NIRBHAY/PIYUSH are in neither master.
+
+**One slice is proven; the item is not DONE.** Lane C stays proven 0 of 3.
 
 **Items 14, 2 and 12: zero DONE lines.**
