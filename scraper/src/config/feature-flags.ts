@@ -311,12 +311,28 @@ export const FEATURE_FLAGS = {
    *
    * Separate from ENABLE_DOCUMENT_STATE_MACHINE on purpose: that flag decides
    * whether documents are FOUND at all; this one decides whether finding one
-   * automatically changes published data. Turning it on in production is a
-   * distinct owner decision (§GATE) because it is the first time a scrape can
-   * rewrite a static field with no human in the loop.
-   * Default: false
+   * automatically changes published data. Turning it on in production remains
+   * a distinct owner decision (§GATE) because it is the first time a scrape
+   * can rewrite a static field with no human in the loop.
+   *
+   * Default: SLOT-DEPENDENT via `slotAwareFlagDefault`, not the flat `false`
+   * this comment used to claim. With the var genuinely unset: `true` on
+   * `DEPLOY_SLOT=staging`, `false` on prod and on every other/unset slot. The
+   * production gate is NOT weakened by this — it is moved, and it is the
+   * EXPLICIT env value that carries it: prod acquires this flag only when an
+   * operator writes it into the prod env file, which is exactly the §GATE
+   * decision above. An explicit value always beats the slot default in both
+   * directions, so `=false` on staging isolates a regression and `=true` on
+   * prod is the owner's one deliberate way to switch it on there.
+   *
+   * Staging defaults ON so the auto-persist path is actually exercised on a
+   * slot whose cycle logs and database can be READ, instead of being provable
+   * only by an env edit on a live server. See `slotAwareFlagDefault` above for
+   * the unset-vs-explicitly-empty distinction: an unexpanded deploy-template
+   * variable (`FLAG=${SOMEVAR}`) warns and fails closed to `false`, never to
+   * the staging default.
    */
-  ENABLE_FILING_AUTO_PERSIST: process.env.ENABLE_FILING_AUTO_PERSIST === 'true',
+  ENABLE_FILING_AUTO_PERSIST: slotAwareFlagDefault('ENABLE_FILING_AUTO_PERSIST'),
 
   /**
    * D-15 lift: let SME candidates through the SAME auto-persist door as
