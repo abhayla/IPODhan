@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 05:59 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 06:07 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1316,5 +1316,43 @@ judgement of "this one is low risk" has had no predictive value tonight.
 
 Staging now serves `ff80eac1` (the #601 merge). Item 2 still reads **29 / 22 / 22** - cadence
 unfired, pending, not a pass and not a failure.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 06:07 IST - I was wrong about item 12, and the correction upgrades it
+
+I reported that item 12's owed document extraction *"has not occurred"*, inferring it from the
+**absence** of new provenance rows since 2026-09-09. Absence of provenance is not absence of
+extraction - the exact reasoning that has misled me all night.
+
+Measured directly: **83 documents completed extraction in the last 7 days** on staging,
+including 14 PRICE_BAND_AD, 33 RHP and 25 DRHP.
+
+**What is actually true is narrower and more useful:** no extraction has run *since the fix
+landed*. 12-B merged **2026-09-10 22:44**; the newest extraction of any type is **09:39 the
+same morning**, thirteen hours earlier. Every one of those 83 predates the fix, so none can
+prove it. The pipeline is not broken.
+
+**And the fuel is there** - the part that changes the status: **146 documents PENDING**, of
+which **74 PROSPECTUS and 13 RHP**, exactly the types that write the three tables item 12
+re-keyed. Extractions still run at ~4/day. So item 12's proof is obtainable **within hours**.
+
+### Item 12 and item 14 are not the same kind of blocked
+
+I had been reporting them alike. **Item 14 needs a source that does not exist** - BSE publishes
+only its current board, NSE's 1,431 past issues lack both rows, tested against three sources.
+**Item 12 needs a cycle** that runs several times a day against a queue of 146. One is a wall;
+the other is a wait.
+
+### Flagged, not mine
+
+The extraction rate is falling sharply - **20, 20, 17, 11, 7, 4, 4** per day over the past week
+- while 146 sit pending. At 4/day that queue is not draining. Not one of my four items and I
+have no measurement of the cause, but a backlog that grows while throughput falls needs an
+owner.
+
+**Item 2 unchanged at 29 / 22 / 22** (cadence unfired). Staging serves `ff80eac1`, the #601
+merge. **#608 merged** as `435d279d`, verified by content on main.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
