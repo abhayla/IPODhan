@@ -61,6 +61,62 @@ test('keeps the original share-count wording when there IS a real price', () => 
   assert.match(msg, /looks like a share count/);
 });
 
+test('USES an authoritative price when one exists, instead of denying there is any', () => {
+  // STALLION on staging, live: band 10, face_value 10, authoritative price 90.
+  // The first version of this message said the size "cannot be cross-checked
+  // against a real price" while a real price sat on the same row object, in a
+  // column the sibling check already uses. Review caught it; this row proves it
+  // was wrong on real data, not in theory.
+  const msg = checkIssueSizeSegmentFloor({
+    issue_size: 43320000,
+    price_range_min: 10,
+    price_range_max: 10,
+    face_value: 10,
+    authoritative_issue_price: 90,
+    segment: 'MAINBOARD',
+  });
+  assert.ok(msg);
+  assert.match(msg, /authoritative issue price of 90/);
+  assert.ok(
+    !/cannot be cross-checked/.test(msg),
+    'must not claim there is no real price when one is on the row'
+  );
+  // And it must still note the price column is holding a face value.
+  assert.match(msg, /FACE VALUE 10/);
+});
+
+test('a FIXED_PRICE issue priced at its face value is NOT called a face-value defect', () => {
+  // A cheap SME issue with a Rs10 face value genuinely priced at Rs10 is legal.
+  // The sibling check excludes FIXED_PRICE before this same heuristic; this one
+  // did not, so it would have told the reader a real price was a face value.
+  const msg = checkIssueSizeSegmentFloor({
+    issue_size: 5000000,
+    price_range_min: 10,
+    price_range_max: 10,
+    face_value: 10,
+    issue_type: 'FIXED_PRICE',
+    authoritative_issue_price: null,
+    segment: 'SME',
+  });
+  assert.ok(msg, 'the floor breach is still real');
+  assert.ok(!/FACE VALUE/.test(msg), 'a declared FIXED_PRICE at face value is a price, not the #515 shape');
+  assert.match(msg, /a price band \(10\) is on record/);
+});
+
+test('falls back to price_range_max when min is null, and still spots a face value', () => {
+  // `band` is min ?? max. That fallback path had no test.
+  const msg = checkIssueSizeSegmentFloor({
+    issue_size: 14797000,
+    price_range_min: null,
+    price_range_max: 10,
+    face_value: 10,
+    authoritative_issue_price: null,
+    segment: 'MAINBOARD',
+  });
+  assert.ok(msg);
+  assert.match(msg, /FACE VALUE \(10\)/);
+});
+
 test('silent when the size clears the floor', () => {
   assert.equal(
     checkIssueSizeSegmentFloor({
