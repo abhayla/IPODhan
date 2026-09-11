@@ -1080,3 +1080,30 @@ Nothing here is deployed; everything lands on `main`, which feeds staging only.
   correction that is written but not run because data corrections wait for your word, whether the
   shared branch should refuse changes that have not passed their checks, and whether to approve the
   new PDF library.
+- **2026-09-11 00:04 IST** - Item 20 unchanged at 100% of its eight pieces merged and proven, previous and current.
+  Tonight's movement is on the peer-comparison item instead. **What a reader of ipodhan.com would
+  notice:** nothing yet, but the piece that was missing is now built. Every prospectus prints a table
+  comparing the company floating its shares against its listed rivals - earnings per share, net asset
+  value, price-to-earnings, return on net worth. We could read that table as of an hour ago, but
+  nothing actually called the reader, so no page ever showed it. That caller is now written, proven,
+  and waiting on its checks (#605). When it merges and a cycle runs, the peer comparison starts
+  appearing on IPO pages for documents the extractor already handles.
+  **What went wrong, and it is worth reading.** Before wiring it up I checked what the database
+  writer actually reads off this field rather than assuming it matched. It reads six values per rival
+  company. For one of the two issuers I have real data for, two of those six - basic and diluted
+  earnings per share - would have been written as blank for every single rival, while everything else
+  landed correctly. The cause is mundane and nasty: that document's table has a two-level heading, a
+  broad "EPS" label with "Basic" and "Diluted" underneath, and the PDF tool centres those sub-labels
+  so each one sits one column to the right of its own numbers. Our code trusted the label's position.
+  So it pointed at two permanently empty columns. Nothing caught this, because the existing test only
+  asks that each rival row carry at least two real values, and revenue, net asset value and
+  price-to-earnings already supplied those. **A row can lose half its columns and still look healthy.**
+  I have left that failure switched on and visible rather than papered over (#606), written as the
+  general rule - a column that we claim to have found but which is blank for every single company was
+  matched to the wrong place - so it also catches the next document that does this. It passes on the
+  other issuer, so it is a real check and not a blanket "known broken". Fixing it needs the column
+  matcher to see the data rows, which it currently cannot; that is its own piece of work, not a patch
+  I should sneak into tonight's.
+  **What is needed from Abhay: nothing on this.** The three decisions still waiting are unchanged -
+  the one-row website correction, whether the shared branch should refuse unchecked changes, and
+  whether to approve pdf-lib.
