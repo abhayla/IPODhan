@@ -388,6 +388,38 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 1, max: 100000 },
   },
 
+  /**
+   * Item 1 slice s7b — `ipo_details.issueType`.
+   *
+   * Until this slice `ipo_details` had NO consulted source ranking at all: its
+   * only write door was a raw Drizzle upsert, so nothing ever asked the matrix
+   * who should win. Routing that write through `consolidateIPOData` is what
+   * gives the column a rank; this entry is what makes the rank EXPLICIT rather
+   * than inherited from `getFieldRules`' default list.
+   *
+   * Note honestly what this entry does and does not change. The default rule
+   * ALREADY ranks DRHP (index 1) above CHITTORGARH (index 5), so the
+   * filing-beats-aggregator ordering does not depend on this entry existing.
+   * What the entry adds is: (a) MONEYCONTROL and API_FALLBACK cannot write this
+   * column at all, (b) the confidence floor is stated for this field instead of
+   * inherited, and (c) the ordering is written down where a reviewer looks
+   * rather than being a property of a fallback literal.
+   *
+   * There is no RHP or PROSPECTUS source to rank: `ScraperSource` has no such
+   * members, and `scraperSourceForDocType` maps EVERY filing doc type — DRHP,
+   * RHP, PROSPECTUS, PRICE_BAND_AD — to `'DRHP'`. "Below DRHP/RHP/PROSPECTUS"
+   * therefore collapses to "below DRHP" in the only vocabulary the matrix has;
+   * inventing an enum member to make the sentence literal would be a lie in the
+   * type system.
+   */
+  issueType: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH'],
+    normalization: 'none',
+    confidenceThreshold: 60,
+    description:
+      'Book-built vs fixed-price. Filings (DRHP/RHP/prospectus, all sourced DRHP) outrank the exchanges; the Chittorgarh report-82 list ranks last.',
+  },
+
   priceRangeMax: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'number',

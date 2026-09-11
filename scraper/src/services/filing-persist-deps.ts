@@ -59,12 +59,17 @@ export function makeIpoDetailsWriter(): IpoDetailsWriter {
     },
     async fillIssueTypeIfNull(ipoId, issueType) {
       // NEVER an upsert: an upsert would overwrite a filing-sourced value with a
-      // list-page one, and this table has NO priority mechanism to stop it.
-      // Measured 2026-09-11: the field-priority matrix governs `ipos` writes
-      // only, and `dropOutranked` is cover-versus-price-band-ad arbitration that
-      // no-ops unless the incoming write IS a prospectus cover. So the `isNull`
-      // predicate IS the safety argument here - remove it and a DRHP value is
-      // clobbered, which is exactly what this method's mutation test asserts.
+      // list-page one, and NOTHING ON THIS PATH would stop it.
+      //
+      // CORRECTED by item 1 slice s7b. The #569 wording said the table has no
+      // priority mechanism at all. As of s7b that is false in general — the
+      // filing persister's `ipo_details` write goes through
+      // `consolidatedUpsertChildRows`, which consults `FIELD_PRIORITY_MATRIX`,
+      // where `issueType` now ranks CHITTORGARH below DRHP. But this method is
+      // the OTHER door: the report-82 job calls it directly, so no consolidation
+      // and no rank runs for its writes. The `isNull` predicate is still the
+      // whole ordering argument HERE - remove it and a DRHP value is clobbered,
+      // which is exactly what this method's mutation test asserts.
       const result = await db
         .update(schema.ipoDetails)
         .set({ issueType: issueType as never, updatedAt: new Date() })

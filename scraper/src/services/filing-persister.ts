@@ -49,7 +49,7 @@ import {
 import logger from '../utils/logger.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
-import { financialStatementsRowKey } from './child-row-keys.js';
+import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 
 // ---------------------------------------------------------------- extraction
@@ -105,13 +105,23 @@ export interface IpoDetailsWriter {
   /**
    * Item 2 slice 7: fill `issue_type` ONLY when it is NULL, never overwrite.
    *
-   * `ipo_details` has NO source-priority mechanism - measured 2026-09-11: the
-   * field-priority matrix governs `ipos` writes only, and `dropOutranked` is
-   * cover-versus-price-band-ad arbitration that no-ops unless the incoming
-   * write IS a prospectus cover. So a lower-confidence source like the
-   * Chittorgarh list CANNOT be ranked against a filing here; it can only be
-   * made harmless. The `IS NULL` guard is that harmlessness, and it is the
-   * whole safety argument for this write.
+   * CORRECTED by item 1 slice s7b. The version of this comment written with
+   * #569 said `ipo_details` has NO source-priority mechanism, so a
+   * lower-confidence source "can only be made harmless" and the `IS NULL` guard
+   * "is the whole safety argument for this write." The first half of that is now
+   * FALSE: s7b routes the filing persister's `ipo_details` write through
+   * `consolidatedUpsertChildRows`, and `issueType` has an explicit entry in
+   * `FIELD_PRIORITY_MATRIX` ranking CHITTORGARH last — so the column DOES have a
+   * consulted ranking, on that path.
+   *
+   * The second half survives, and it is why this method still exists. THIS
+   * writer is not on that path: the Chittorgarh report-82 job calls it directly
+   * (`chittorgarh-issue-type-fill.ts`), never through the consolidator, so no
+   * rank is consulted for its writes. For this door the `IS NULL` predicate plus
+   * the caller's `isWriteAllowed` admin check remain the entire ordering
+   * mechanism — load-bearing, not redundant. Removing the guard would let the
+   * list page clobber a DRHP-sourced value with nothing to stop it, which is
+   * exactly what this method's mutation test asserts.
    *
    * Returns true only when a row was actually filled, so the caller writes a
    * provenance row for a real write and not for a no-op.
@@ -1435,8 +1445,45 @@ export async function persistFilingExtraction(
   // NOT NULL so an insert cannot omit it.
   if (Object.keys(detailsWritable).length > 0) {
     if (apply) {
-      await deps.ipoDetailsWriter.upsert(ipoId, { ...detailsWritable, dataSource: source });
-      for (const col of Object.keys(detailsWritable)) await trackField('ipo_details', col);
+      // Item 1 slice s7b. Flag OFF: byte-identical to the pre-s7b write —
+      // `detailsPayload` is `detailsWritable` itself and nothing else runs.
+      let detailsPayload: Record<string, unknown> = detailsWritable;
+      if (FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) {
+        if (!deps.childRowConsolidator) {
+          logger.error(
+            { ipoId, table: 'ipo_details' },
+            '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
+          );
+        } else {
+          const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+            ipoId,
+            'ipo_details',
+            [{ rowKey: ipoDetailsRowKey(), data: detailsWritable }],
+            source,
+            options.docType
+          );
+          const decided = resolved.rows[0];
+          if (decided && decided.skipped) {
+            skippedFailedCheck.push(`ipo_details (consolidation skipped: ${decided.skipReason})`);
+            detailsPayload = {};
+          } else {
+            // Only the columns this extraction actually offered. A resolver
+            // that returns a stored value for a column we did not send would
+            // otherwise be rewritten under THIS run's data_source.
+            const out: Record<string, unknown> = {};
+            for (const col of Object.keys(detailsWritable)) {
+              const v = (decided?.consolidatedData ?? {})[col];
+              if (v === undefined) continue;
+              out[col] = v;
+            }
+            detailsPayload = out;
+          }
+        }
+      }
+      if (Object.keys(detailsPayload).length > 0) {
+        await deps.ipoDetailsWriter.upsert(ipoId, { ...detailsPayload, dataSource: source });
+        for (const col of Object.keys(detailsPayload)) await trackField('ipo_details', col);
+      }
     }
     bump(written, 'ipo_details', 1);
   } else if (apply && deps.ipoDetailsWriter.insertIfMissing) {
@@ -1849,11 +1896,61 @@ export async function persistFilingExtraction(
       // and then read every column off the UNFILTERED object — so a protected
       // ipo_valuation column was written anyway. A protected column is OMITTED
       // from the payload (not sent as null, which would erase it just as surely).
-      const w = valuationWritable;
+      let w = valuationWritable;
+      // Item 1 slice s7b. Flag OFF: `w` is `valuationWritable`, byte-identical
+      // to the pre-s7b write.
+      if (FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) {
+        if (!deps.childRowConsolidator) {
+          logger.error(
+            { ipoId, table: 'ipo_valuation', pricingEvent },
+            '[FilingPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
+          );
+        } else {
+          const valuationRowKey = ipoValuationRowKey(pricingEvent);
+          if (valuationRowKey === null) {
+            // Unreachable (`pricingEvent` is one of two string literals two
+            // lines up), which is exactly why it is not assumed: `ipo_valuation`
+            // is NOT a singleton table, so a keyless row filed under '' would
+            // merge the price-band advertisement's provenance with the
+            // prospectus's.
+            skippedFailedCheck.push('ipo_valuation (no row key — not written)');
+            w = {};
+          } else {
+            const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+              ipoId,
+              'ipo_valuation',
+              [{ rowKey: valuationRowKey, data: valuationWritable }],
+              source,
+              options.docType
+            );
+            const decided = resolved.rows[0];
+            if (decided && decided.skipped) {
+              skippedFailedCheck.push(
+                `ipo_valuation (consolidation skipped: ${decided.skipReason})`
+              );
+              w = {};
+            } else {
+              const out: Record<string, unknown> = {};
+              for (const col of Object.keys(valuationWritable)) {
+                const v = (decided?.consolidatedData ?? {})[col];
+                if (v === undefined) continue;
+                out[col] = v;
+              }
+              w = out;
+            }
+          }
+        }
+      }
       const num_ = (col: string): Record<string, string | null> =>
         col in w ? { [col]: asNumeric(w[col]) } : {};
       const count_ = (col: string): Record<string, number | null> =>
         col in w ? { [col]: asCount(w[col]) } : {};
+      // A consolidation skip empties `w`. Writing the row anyway would insert
+      // an identity-only ipo_valuation row (ipoId + pricingEvent and nothing
+      // else) that reads as "we priced this offer and every number was null" —
+      // strictly worse than no row. The rest of the persister (promoters,
+      // peers, ...) must still run, so this withholds the WRITE, not the run.
+      if (Object.keys(w).length > 0) {
       await deps.ipoValuation.upsert({
         ipoId,
         pricingEvent,
@@ -1876,6 +1973,7 @@ export async function persistFilingExtraction(
         ...num_('faceValueMultipleCap'),
       } as never);
       await trackField('ipo_valuation', pricingEvent);
+      }
     }
     bump(written, 'ipo_valuation', 1);
   }

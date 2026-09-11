@@ -36,3 +36,43 @@ export function financialStatementsRowKey(
   if (trimmed === '') return null;
   return `${fiscalYear}:${trimmed}`;
 }
+
+/**
+ * `ipo_details` — the row key is the reserved singleton sentinel `''`.
+ *
+ * NOT a shortcut and NOT copied from `financial_statements`: `ipo_details.ipo_id`
+ * carries a `.unique()` of its own (packages/shared/src/db/schema.ts:1188-1191),
+ * so the table structurally holds exactly ONE row per IPO. There is no second
+ * column that could distinguish two rows, which is precisely the condition
+ * `SINGLETON_ROW_CHILD_TABLES` describes — `''` here is the row's real identity,
+ * not a missing one.
+ *
+ * A function rather than an inline `''` so the justification has one home and a
+ * future column that widens the constraint has one place to break.
+ */
+export function ipoDetailsRowKey(): string {
+  return '';
+}
+
+/**
+ * `ipo_valuation` — the row key is the PRICING EVENT.
+ *
+ * This table is NOT one row per IPO, despite reading like one: its unique
+ * constraint is `unique_ipo_valuation_ipo_pricing_event` on
+ * (ipo_id, pricing_event) (schema.ts:1927-1929), so a single IPO legitimately
+ * holds a PRICE_BAND_AD row and a PROSPECTUS row at the same time — the price
+ * band as advertised, and the price as finally struck. Keying it `''` like
+ * `ipo_details` would file both events' provenance under one identity and let
+ * the prospectus's numbers be read as the advertisement's "existing value".
+ *
+ * The pricing event is fixed by which document produced the row, so it is
+ * stable across re-extractions of the same document.
+ */
+export function ipoValuationRowKey(
+  pricingEvent: string | null | undefined
+): string | null {
+  if (pricingEvent === null || pricingEvent === undefined) return null;
+  const trimmed = String(pricingEvent).trim();
+  if (trimmed === '') return null;
+  return trimmed;
+}
