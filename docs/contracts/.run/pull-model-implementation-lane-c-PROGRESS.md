@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 09:14 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 09:18 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2321,3 +2321,57 @@ field: different work, different design. I would rather hand back *"the approved
 built"* than build it and report success.
 
 **Items 14, 2 and 12: zero DONE lines.** #637's proof is owed.
+
+
+## Retracting my own recommendation — the merged tool was right
+
+I argued 2-S3b2 should widen to all 48 flagged rows, because 27 of the 31 non-IPO rows AGREE with the
+exchange masters. **That conflated two different claims:**
+
+- *the COMPANY trades on the mainboard* — true, and what the masters tell me
+- *THIS OFFERING had a mainboard IPO segment* — not a meaningful question
+
+An OFS, buyback, tender or rights issue is **not an IPO** and has no IPO board. The company's listing
+venue does not confer a segment on the offering.
+
+### The already-merged tool says exactly this
+
+`repair-segment-provenance.ts` (2-S3b): for non-IPO rows segment is *"MEANINGLESS, not merely
+unsourced — a buyback/OFS/tender/NCD/rights issue has no IPO board by definition"*, and it **clears
+them to NULL** with a recorded reason. The schema agrees: *"Exchange segment (MAINBOARD | SME) -
+nullable for RIGHTS/InvITs/REITs"*.
+
+**I should have read the merged tool before recommending a design for the slice that extends it.**
+Reading the existing implementation is not optional diligence — it is where the reasoning already lives.
+
+### And something I reported as a discovery was a confirmation
+
+I presented the control that `["BSE"]` covers 112 SME and 12 MAINBOARD — therefore
+`listing_exchanges` cannot determine segment — as new. The merged tool's header already says it. My
+measurement independently agrees, which is worth something, but it was **not new** and I framed it as
+new.
+
+### Corrected shape
+
+| population | correct action |
+|---|---|
+| 31 non-IPO | **clear to NULL** with a recorded reason (existing behaviour) |
+| 17 IPO | genuinely need a source |
+
+Once cleared, the non-IPO rows leave `d_segment_provenance` entirely — it selects
+`WHERE segment IS NOT NULL` — so the check improves by the **correct** route.
+
+### What survives, and it is still the useful part
+
+The merged tool's `VERIFIED_IPO_SEGMENT_SOURCES` map is **empty by default** and expects an operator
+to verify each slug **by hand**, because no automated source was known. The NSE masters (already in
+our codebase, unused) plus the BSE scrip API give one, sourcing **8 of the 17** IPO rows with **zero
+disagreements** — turning a manual map into an automated sourced fill for about half.
+
+**My detection number is withdrawn.** "49 → 16" assumed the non-IPO rows would be *sourced*; under the
+correct design they are *cleared*. Needs re-deriving, and it belongs in the proof run anyway.
+
+**Open question:** the 31 still carry their values, so the merged tool has either never run against
+production or ran dry.
+
+**Items 14, 2 and 12: zero DONE lines.**
