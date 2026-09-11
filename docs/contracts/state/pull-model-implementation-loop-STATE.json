@@ -294,7 +294,7 @@
     "item-01": {
       "item": 1,
       "card": "docs/design/build-cards/item-01-child-table-consolidated-writer.md",
-      "status": "IN-PROGRESS",
+      "status": "CODE-COMPLETE-NEVER-WIRED",
       "slices": [
         {
           "k": "s0",
@@ -668,7 +668,8 @@
         "status": "OWED",
         "cycle": null,
         "line": null
-      }
+      },
+      "statusNote": "30/30 slices merged; writer never injected, proof owed"
     },
     "item-20": {
       "item": 20,
@@ -686,7 +687,7 @@
     "item-15": {
       "item": 15,
       "card": "docs/design/build-cards/item-15-value-actually-changed.md",
-      "status": "BUILT-PUSHED",
+      "status": "DONE",
       "tier": "B",
       "sha": "65bdd19b",
       "pr": null,
@@ -697,12 +698,13 @@
       "forksResolved": [
         "Report location: NO per-cycle stats surface exists anywhere in the scraper (checked data-consolidation-orchestrator.ts and repo-wide for cycleStats/perCycle) - the card's 'not located' is confirmed, not a gap in its reading. Counters sit on the returned ConsolidationResult and NOTHING consumes them yet; that is item 10's territory and is stated rather than papered over.",
         "Persistence: confirmed, no table added, item 10's territory."
-      ]
+      ],
+      "statusNote": "merged c4a65203 (PR #585); proof NOT-OWED, counters only"
     },
     "item-13": {
       "item": 13,
       "card": "docs/design/build-cards/item-13-ofs-and-fresh-issue-extraction.md",
-      "status": "PENDING",
+      "status": "DONE",
       "slices": [],
       "prs": [],
       "mergeShas": [],
@@ -710,7 +712,8 @@
         "status": "OWED",
         "cycle": null,
         "line": null
-      }
+      },
+      "statusNote": "merged cf223cdb (PR #588); staging proof OWED"
     },
     "item-14": {
       "item": 14,
@@ -741,7 +744,7 @@
     "item-04": {
       "item": 4,
       "card": "docs/design/build-cards/item-04-per-field-validation.md",
-      "status": "PENDING",
+      "status": "DONE",
       "slices": [],
       "prs": [],
       "mergeShas": [],
@@ -749,7 +752,8 @@
         "status": "OWED",
         "cycle": null,
         "line": null
-      }
+      },
+      "statusNote": "merged 3f395eb9 (PR #591); staging proof OWED"
     },
     "item-02": {
       "item": 2,
@@ -780,7 +784,7 @@
     "item-05": {
       "item": 5,
       "card": "docs/design/build-cards/item-05-ipo-field-plan-table.md",
-      "status": "PENDING",
+      "status": "SLICE-1-MERGED",
       "slices": [],
       "prs": [],
       "mergeShas": [],
@@ -788,7 +792,8 @@
         "status": "OWED",
         "cycle": null,
         "line": null
-      }
+      },
+      "statusNote": "slice 1 merged dc5782c7 (PR #612); slice 2 planned, #618 first"
     },
     "item-06": {
       "item": 6,
@@ -806,7 +811,7 @@
     "item-07": {
       "item": 7,
       "card": "docs/design/build-cards/item-07-job-scheduler-and-budgets.md",
-      "status": "PENDING",
+      "status": "BLOCKED-OWNER",
       "slices": [],
       "prs": [],
       "mergeShas": [],
@@ -814,7 +819,8 @@
         "status": "OWED",
         "cycle": null,
         "line": null
-      }
+      },
+      "statusNote": "part A BUILT ee087f55 unmerged; part B needs the GMP decision"
     },
     "item-09": {
       "item": 9,
