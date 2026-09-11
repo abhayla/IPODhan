@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:18 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:23 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1973,3 +1973,58 @@ What it must **not** say is that the slice makes the check pass. I have written 
 as the safe default, and flagged form 1 as better pending a measurement of the 31.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## The whole 48 measured: 35 sourceable, 13 remaining, zero disagreements
+
+| population | AGREE | no-source | UNRESOLVED |
+|---|---|---|---|
+| IPO (17) | 8 | 8 | 1 |
+| non-IPO (31) | **27** | 4 | 0 |
+
+**Prediction confirmed** - 27 of 31 against 8 of 17 - and for the stated reason: an OFS, RIGHTS,
+BUYBACK or TENDER only exists on an **already-listed** company, while an IPO can close without ever
+listing.
+
+### The result reframes the repair, and not the way I expected
+
+**Not one stored segment is contradicted by a source** anywhere in the 48. So this slice adds
+**provenance, not corrections**: the labels were already right; what was missing was the record of
+who said them. The write is a `field_sources` insert per row, **not** an `UPDATE` of `ipos.segment`
+on live rows. I had been sizing this as a data repair - it is an instrumentation backfill.
+
+### A bug in my own matcher, found mid-measurement
+
+First pass said 24 of 31; corrected pass says 27. **Our stored names have `&` removed** -
+`'SI CAPITAL  FINANCIAL SERVICES'` has a double space where the ampersand was - while I expanded `&`
+to `AND` on the master side. Four rows read no-source purely from that: SI Capital (BSE XT), Suryo
+Foods (BSE X), **Travels & Rentals (BSE M = SME, agrees)**, Power Finance Corporation (NSE mainboard,
+agrees). **Any implementation must strip `&`/`AND` on both sides** - load-bearing, not a nicety.
+
+### 13 is an upper bound, not a floor
+
+At least one no-source row is still a name artefact: the stored name is
+`Power Finance Corporation Limited (Zero Coupon NCD)`, and stripping the parenthetical matches NSE.
+So the remainder is **13 or fewer**, and the slice should strip parenthetical suffixes before calling
+a row unsourceable.
+
+### Condition (1) - NCD, measured not assumed
+
+A board segment **is** meaningful on these NCD rows: it describes where the **issuer** trades, and
+the masters confirm it. IIFL Finance agrees; Power Finance agrees once the suffix is stripped; only
+PRACHAY CAPITAL is genuinely absent. **No NCD exclusion** - excluding them would have hidden three
+rows that are fine.
+
+### Condition (2) - the detection line, with a number
+
+`d_segment_provenance` flags **48 on production** and should read **13 or fewer** after a repair that
+writes only sourced values. **It will not read zero**, and the slice must not claim PASS. NIRBHAY and
+PIYUSH are in the permanent remainder - CLOSED, in neither master, never listed.
+
+The proof runs against **staging**, whose population differs (31 unsourced there), so the staging
+expected count must be measured separately. Quoting the production number against a staging run would
+be the population mismatch I have caught twice this morning.
+
+**NET PIX stays UNRESOLVED** - BSE group `TS`, not in the evidenced set. Only `M` is mapped to SME.
+
+**Items 14, 2, 12 and 3: zero DONE lines.** Sourcing is reading; I have written nothing.
