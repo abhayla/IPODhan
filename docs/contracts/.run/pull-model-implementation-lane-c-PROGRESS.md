@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:15 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:18 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1928,3 +1928,48 @@ Their segment cannot be sourced from a listed master by any route. **Item 14 sta
 for a precisely understood reason.
 
 **Items 14, 2, 12 and 3: zero DONE lines.** Sourcing is not writing; I ran no repair.
+
+
+## 2-S3b2 cannot make its own detection check pass
+
+`d_segment_provenance`'s SQL is `WHERE i.segment IS NOT NULL` with **no `offering_type` filter**, and
+`checkSegmentHasProvenance` reads `row.offeringType` only to **print** it. So it flags **48** rows on
+production while 2-S3b2's population is the **17** IPOs.
+
+**Perfect execution of the slice moves the check 48 -> 31, and it still FAILS.**
+
+### The 48, listed rather than counted
+
+| offering_type | rows |
+|---|---|
+| IPO | 17 (11 MAINBOARD + 6 SME) |
+| OFS | 18 MAINBOARD |
+| TENDER | 5 MAINBOARD |
+| RIGHTS | 4 (3 MAINBOARD + 1 SME) |
+| NCD | 3 MAINBOARD |
+| BUYBACK | 1 MAINBOARD |
+
+This is **the same class of error I made myself this morning** - a check and a repair measuring
+different populations, which is how the 23% denominator went wrong. A slice whose detection line
+claims a check will pass, when the check's population is three times the slice's, is a **false
+detection claim** even if every line of the slice is correct.
+
+### An opportunity inside it - stated as a prediction, not a measurement
+
+An OFS, RIGHTS issue, BUYBACK and TENDER are only **possible on an already-listed company**. So the
+two listed-security masters validated this session should source those **30** rows *more* cleanly
+than the IPO rows, where "closed but never listed" is exactly the failure mode that defeats them.
+**NCD (3) is the likely exception** - debt, not equity - and I have not checked whether a segment is
+meaningful on an NCD row at all.
+
+### So the card gets one of two honest shapes
+
+1. **Widen** 2-S3b2 to every offering_type - the oracles appear to support it, and the detection line
+   could then honestly claim a PASS; or
+2. **Keep it at IPOs** and write the detection line as *"48 -> 31 offenders, still FAILS, remainder
+   tracked as a named follow-up"*.
+
+What it must **not** say is that the slice makes the check pass. I have written form 2 onto the card
+as the safe default, and flagged form 1 as better pending a measurement of the 31.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
