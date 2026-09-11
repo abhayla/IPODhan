@@ -186,12 +186,15 @@ export interface FilingPersisterDeps {
    * the orchestrator needs a repository set and a Redis handle this module has
    * no business owning, and because a test must be able to observe the call.
    *
-   * Optional: with `ENABLE_CHILD_TABLE_CONSOLIDATION` off (every slot but
-   * staging today) nothing calls it. With the flag ON and this absent, the
-   * write falls back to the pre-slice path and logs an error — a wiring defect
-   * must not cost the write.
+   * REQUIRED as of F-101. It was optional, and that `?` is the ONLY reason
+   * `buildFilingPersistDeps` could omit it for thirty slices while everything
+   * still type-checked: every staging cycle logged `no childRowConsolidator
+   * injected` and wrote child rows with no provenance. A missing wire must be a
+   * COMPILE error, not a runtime fallback. The runtime fallback branches below
+   * remain as defence in depth for a cast or a JS caller — they are no longer
+   * the thing that is supposed to catch this.
    */
-  childRowConsolidator?: {
+  childRowConsolidator: {
     consolidatedUpsertChildRows(
       ipoId: string,
       tableName: ChildConsolidationTable,

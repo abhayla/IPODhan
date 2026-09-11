@@ -27,11 +27,15 @@ import {
   FieldSourcesRepository,
   IpoRiskFactorsRepository,
   DocumentRepository,
+  DataConflictsRepository,
   getRedisClient,
 } from '@ipodhan/shared';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
+import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
+import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import type {
   DocumentFilingDateWriter,
   FilingPersisterDeps,
@@ -107,8 +111,43 @@ export function makeDocumentFilingDateWriter(
 export function buildFilingPersistDeps(
   redis: ReturnType<typeof getRedisClient> = getRedisClient()
 ): FilingPersisterDeps {
+  const ipoRepository = new IPORepository(db, redis);
+  const fieldSources = new FieldSourcesRepository(db, redis);
+
+  // F-101: item 1's consolidated child-row writer was built across thirty
+  // slices and NEVER reached the application, because this builder — the ONE
+  // door both the CLI and the document cycle go through — never set it. The
+  // interface's `?` made that type-check. Constructed HERE, from the `redis`
+  // this builder already holds, so there is still exactly one write path and
+  // no second Redis client.
+  const childRowConsolidator = new DataConsolidationOrchestrator(
+    ipoRepository,
+    fieldSources,
+    new DataConflictsRepository(db, redis),
+    redis as never,
+    new ListingPerformanceRepository(db, redis)
+  );
+
+  // Defence in depth, NOT the primary guard (that is the required type above).
+  // Deliberately thrown here and not at scraper startup: a boot-time refusal
+  // would stop the WHOLE production pipeline — subscriptions, GMP, listings —
+  // over a filing-path wiring check. This fails exactly where the dependency is
+  // needed, so a scraper that never persists a filing still runs.
+  if (
+    FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION &&
+    typeof childRowConsolidator?.consolidatedUpsertChildRows !== 'function'
+  ) {
+    throw new Error(
+      'buildFilingPersistDeps: ENABLE_CHILD_TABLE_CONSOLIDATION is ON but no ' +
+        'childRowConsolidator.consolidatedUpsertChildRows is available — every ' +
+        'child row would be written without per-field resolution or provenance ' +
+        '(field_sources.row_key empty). Refusing to build a silently degraded ' +
+        'dependency set.'
+    );
+  }
+
   return {
-    ipoRepository: new IPORepository(db, redis),
+    ipoRepository,
     financialStatements: new FinancialStatementsRepository(db, redis),
     ipoValuation: new IpoValuationRepository(db, redis),
     promoters: new PromotersRepository(db, redis),
@@ -116,10 +155,11 @@ export function buildFilingPersistDeps(
     brlmTrackRecord: new BrlmTrackRecordRepository(db, redis),
     peerCompanies: new PeerCompanyRepository(db),
     financialData: new FinancialDataRepository(db, redis),
-    fieldSources: new FieldSourcesRepository(db, redis),
+    fieldSources,
     ipoDetailsWriter: makeIpoDetailsWriter(),
     riskFactors: new IpoRiskFactorsRepository(db, redis),
     documentFilingDateWriter: makeDocumentFilingDateWriter(new DocumentRepository(db, redis)),
+    childRowConsolidator,
     protectionFilter: (
       id: string,
       table: string,

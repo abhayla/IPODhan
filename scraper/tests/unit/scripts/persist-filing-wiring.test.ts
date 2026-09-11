@@ -34,6 +34,12 @@ vi.mock('@ipodhan/shared', () => ({
   FieldSourcesRepository: class {},
   IpoRiskFactorsRepository: class {},
   DocumentRepository: class {},
+  // F-101: buildFilingPersistDeps now constructs the child-row consolidator,
+  // which needs these two.
+  DataConflictsRepository: class {},
+}));
+vi.mock('@ipodhan/shared/repositories/listing-performance-repository', () => ({
+  ListingPerformanceRepository: class {},
 }));
 vi.mock('../../../src/repositories/peer-company-repository.js', () => ({
   PeerCompanyRepository: class {},
