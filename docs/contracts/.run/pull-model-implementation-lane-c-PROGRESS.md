@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 07:27 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 07:32 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1654,3 +1654,53 @@ local IST; `::text` showed `now()` correct. **No skew.** Third time tonight a wr
 dressed as a measurement.
 
 **Items 14, 2, 12 and 3: zero DONE lines.** #629 is an unmerged PR, not a proof.
+
+
+## I am reversing a conclusion I recorded two hours ago
+
+I reported that NIRBHAY and PIYUSH having no segment provenance **"proves nothing"** - 62
+contemporaneous rows with provenance, 18 without, *"23% equally unsourced"*.
+
+**That denominator was wrong.** It counted every `offering_type`, including NCDs and rights issues -
+a different population with a **62%** unsourced rate (31 of 50). Restricted to `offering_type='IPO'`,
+the filter every check actually uses, the same window is **62 with provenance and 6 without** - 8.8%.
+
+### The 2x2 that settles it (production, Feb-Jun 2026, IPOs only)
+
+| | IPOs | fail MAINBOARD floor |
+|---|---|---|
+| **sourced** segment | 62 | **0** |
+| **unsourced** segment | 6 | **2** |
+
+Every floor failure in the window is unsourced; **not one** of the 62 sourced rows fails. I completed
+the 2x2 first, because *"both failures are unsourced"* is one cell and proves nothing alone.
+
+**My original suspicion was right and my disproof of it was the error.** The disproof was the
+artifact, not the hypothesis.
+
+### What I still will not claim
+
+Unsourced does **not** imply a wrong label. All six listed, and four are entirely sensible MAINBOARD
+issues: KWALITY WALLS **Rs1,303 cr**, MUTHOOT FINCOTP **Rs200 cr**, BANGANGA **Rs13.3 cr**, INDUSS
+**Rs12.1 cr**. The association runs one way only. Six is a small set. This raises **2-S3b2**'s
+priority and re-links item 14 to item 2; it proves neither segment wrong.
+
+### 2-S3b2's population is not 33
+
+Listed, not counted: **production 277 IPOs with a segment, 17 unsourced**; **staging 321 / 31**. The
+41, the 33 and my own 48 were all-offering-type or pre-repair figures. The slice brief needs the
+corrected filter or it will be built against the wrong set.
+
+### A staging-only observation for item 12 (not a finding)
+
+Staging carries suffixed sibling rows production does not: `G.V.Electricals Ltd. (...) P`, `... CT`,
+`... LT`; and `H.R.Hygiene Products Ltd. (...) CT` beside `H R Hygiene Products`. The exact identity
+shape item 12 collapses. Not investigated.
+
+### PR #629: green, deliberately unmerged
+
+Six checks PASS; `merge-if-current` exits 0, every clause clear. **Held until 07:50** rather than
+claimed as a live-defect exception - the nightly audit next runs tonight, so 19 minutes costs
+nothing, while merging now would SIGINT the cycle the window protects.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
