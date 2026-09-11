@@ -384,6 +384,10 @@
     {
       "at": "2026-09-11T03:29:17Z",
       "what": "PDF-LIB APPROVED BUT NOT ADDED, and the owner is told why. Its own README: 'pdf-lib does not currently support encrypted documents. You should not use pdf-lib with encrypted documents.' Wrong capability. It is also JavaScript while every PDF read happens in Python (extract_filing.py) - wrong runtime. And unmaintained: 1.17.1, last published 2021-11-06. Meanwhile pypdf 6.11.0 is ALREADY installed with is_encrypted and decrypt(). Recommendation: withdraw the approval, use pypdf. 22-5 stays blocked either way on the other half - a real encrypted filing, which exists on neither exchange."
+    },
+    {
+      "at": "2026-09-11T03:35:39Z",
+      "what": "#633 merged (aaf9ee26): the retired Moneycontrol source no longer keeps a freshness SLO, so the 2026-09-17 owner page is prevented. ESDS FIFTH CORRECTION, the dangerous one: the OCR-flagged pages have 3 chars and ZERO images, which reads as 'blank, skip them' - but they carry 3,000-4,000 vector CURVES each. They are financial statements drawn as vectors; OCR on them is correct work and a skip rule would have destroyed ~65 pages of real statements. The true waste case is page 148: 163 chars, zero curves, just under the 200 floor. So the fix is a BUDGET, not a smarter skip: today the process is killed at 10 minutes and the document yields NOTHING, including 555 pages of text already read in the first 4.5 minutes."
     }
   ],
   "items": {
@@ -432,16 +436,15 @@
       "slicesNote": "1 of 1: #528, squash 9a958a53",
       "sliceIds": {
         "merged": [
-          "16-1 #528 squash 9a958a53"
+          "16-1 #528 squash 9a958a53",
+          "16-2 #633 squash aaf9ee26"
         ],
         "open": [],
-        "pending": [
-          "16-2 remove MONEYCONTROL from both freshness SLO sets"
-        ],
+        "pending": [],
         "retired": []
       },
       "sliceCounts": {
-        "merged": 1,
+        "merged": 2,
         "recorded": 2,
         "retiredNotCounted": 0
       }
@@ -955,7 +958,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T03:29:17Z",
+  "lastStateWriteAt": "2026-09-11T03:35:39Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
