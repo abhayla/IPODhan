@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:27 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:32 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2068,5 +2068,50 @@ Writing the real price into `price_range_max` is **not** obviously correct:
 
 The tool must decide per row whether it restores a band or sets a price. Better said before building
 than discovered with a prod guard disengaged.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## The BSE group mapping, derived rather than assumed
+
+BSE's own definitions page **cannot be cited mechanically** - it is JavaScript-rendered, every fetch
+returns a 112-character shell, and WebFetch gets a 403. So rather than quote a third-party gloss, I
+tallied BSE's `GROUP` against **187 rows whose segment already has independent provenance**:
+
+| group | rows | derived |
+|---|---|---|
+| M | 79 | SME (unanimous) |
+| MT | 22 | SME (unanimous) |
+| B | 71 | MAINBOARD (unanimous) |
+| T / XT / A / Z | 7 / 4 / 3 / 1 | MAINBOARD (unanimous) |
+
+Zero contradictions, behind sources CHITTORGARH / MONEYCONTROL / NSE / BSE independently. A
+derivation with a denominator, not an assumption.
+
+### It caught an assumption in my own earlier number
+
+Group **`X` never appears** in those 187 rows - yet my first pass mapped X to MAINBOARD and counted
+three rows as sourced on that basis (SURYO FOODS, BABA ARTS, SARDA PROTEINS). `TS` does not appear
+either. Both are now UNRESOLVED, so **my reported 35 sourceable was inflated; the corrected figure is
+33.**
+
+### The honest detection number
+
+**49 flagged, 33 sourceable, 16 remaining, zero disagreements.** The parenthetical strip worked -
+`Power Finance Corporation Limited (Zero Coupon NCD)` now resolves to NSE mainboard. UNRESOLVED is 4:
+NET PIX (TS), SURYO FOODS (X), BABA ARTS (X), SARDA PROTEINS (X).
+
+### The caution that matters more than the number
+
+**The population moved while I was measuring it** - 48 on the first pass, 49 on the second, as Hero
+Motors Limited appeared (UPCOMING) between two reads minutes apart.
+
+So the detection line **must state the count at the time of the proof run** and compare before/after
+within the same run. A fixed expected number written into a card today will be wrong when the proof
+executes, and would read as a failed repair when it is only a moved denominator. I would have walked
+into that if the two reads had not disagreed.
+
+**Still zero disagreements**, so the slice stays a `field_sources` INSERT per sourced row and never an
+`UPDATE` of `ipos.segment`.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
