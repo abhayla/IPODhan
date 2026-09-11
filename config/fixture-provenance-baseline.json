@@ -57,6 +57,6 @@
     "scraper/tests/unit/pipeline-stages/fixtures/stage-9/expected-verdicts.json",
     "web/tests/unit/pipeline-stages/fixtures/stage-8/expected-render.json"
   ],
-  "identitySkipCount": 62,
+  "identitySkipCount": 63,
   "filenameCheckSkipCount": 0
 }

@@ -177,6 +177,74 @@ OTHER_METRICS = [
     (re.compile(r"net\s*worth", re.I), "netWorth"),
 ]
 
+# ---------------------------------------------------------------- item 8b ---
+# The three balance-sheet lines the ratios are built from. These are NOT in
+# OTHER_METRICS, and that is the whole point.
+#
+# OTHER_METRICS is searched DOC-WIDE: first matching row anywhere wins. That is
+# safe for EBITDA and net worth, which appear once in a form worth reading. It
+# is NOT safe for these three, and mutation testing is what proved it rather
+# than argument:
+#
+#   page 73  "(a) Inventories 5,718.18 6,915.69 5,285.85"   <- the stock balance
+#   page 75  "Inventories 1,197.51 (1,629.84) 14.84"        <- the CASH-FLOW movement
+#
+# Both start the line. Both are clean data rows. Both are plausible. An
+# anchored pattern does not separate them - I wrote one, believed it, and then
+# loosening it to a bare mid-line search changed no result at all, because the
+# balance sheet simply happened to come first in the page order. Feed the pages
+# in the other order and the wrong row is taken.
+#
+# So these are read from the LOCATED STATEMENT, not from wherever the label
+# appears first - the same shape as the peer-table reader: find the section in
+# the cheap text layer, then read the rows out of it.
+#
+# Labels were read off a real statement, not recalled. The same table writes
+# "Total OF current assets" four lines above "Total current liabilities"; a
+# pattern for "total current assets" finds NOTHING in that 529-page document.
+BALANCE_SHEET_METRICS = [
+    (re.compile(r"^\s*total\s+(?:of\s+)?current\s+assets\b", re.I), "currentAssets"),
+    (re.compile(r"^\s*total\s+(?:of\s+)?current\s+liabilit(?:y|ies)\b", re.I), "currentLiabilities"),
+    # Line-anchored and allowing the statement's own item marker, "(a)
+    # Inventories". To be honest about what this anchor does and does not do:
+    # it is NOT what keeps the cash-flow row out. That row is ALSO
+    # line-anchored ("Inventories 1,197.51 ..."), so loosening this pattern to
+    # a bare mid-line search changes no result. The page scoping above is the
+    # protection; this is just tidiness. Said plainly because a comment
+    # claiming a guard that is not there is worse than no comment.
+    (re.compile(r"^\s*(?:\(?[a-z]\)?\s*)?inventories\b", re.I), "inventories"),
+]
+
+# The heading of the restated balance sheet. Wording varies (SUMMARY OF
+# RESTATED CONSOLIDATED STATEMENT OF ASSETS AND LIABILITIES / RESTATED
+# STANDALONE STATEMENT OF ASSETS AND LIABILITIES / ... BALANCE SHEET), so the
+# heading alone is not trusted.
+_BALANCE_SHEET_HEADING = re.compile(
+    r"statement\s+of\s+assets\s+and\s+liabilit|balance\s+sheet\b", re.I
+)
+# ...it must also CARRY the statement's closing identity as a data row. That is
+# what separates the statement from the many pages that merely mention it - a
+# contents page, a KPI definition, an accounting-policy note. A working-capital
+# section also prints "total current assets" and "total current liabilities"
+# but never balances, and its liabilities exclude borrowings: on one prospectus
+# it yields a current ratio of 128, which is not a real one.
+_BALANCE_SHEET_IDENTITY = re.compile(
+    r"^\s*total\s+equity\s+and\s+liabilit(?:y|ies)\b[^\d\n]{0,40}[\d,]+\.\d{2}", re.I | re.M
+)
+
+
+def find_balance_sheet_page(page_texts):
+    """Return the index of the restated balance sheet, or None.
+
+    Requires BOTH the heading and the closing identity row, because either
+    alone is satisfied by pages that are not the statement.
+    """
+    for index, text in page_texts:
+        t = text or ""
+        if _BALANCE_SHEET_HEADING.search(t) and _BALANCE_SHEET_IDENTITY.search(t):
+            return index
+    return None
+
 
 def _normalize_numbers(line):
     """Repair pdfplumber's number-tokenisation artifacts on a line.
@@ -941,6 +1009,24 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
                         result["metrics"][key] = mapped
         if all(k2 in result["metrics"] for _, k2 in OTHER_METRICS):
             break
+
+    # 2.4 (item 8b). The balance-sheet lines, read from the LOCATED statement
+    # rather than doc-wide. See BALANCE_SHEET_METRICS for why the difference
+    # matters: the cash-flow statement carries a row with the same label and
+    # the same shape, and whichever came first in the page order would win.
+    bs_page = find_balance_sheet_page(page_texts)
+    if bs_page is not None:
+        bs_text = next((t for i, t in page_texts if i == bs_page), "") or ""
+        for ln in bs_text.split("\n"):
+            for rx, key in BALANCE_SHEET_METRICS:
+                if key in result["metrics"]:
+                    continue
+                m = rx.search(ln)
+                if m and _is_clean_data_row(ln, m.end()):
+                    mapped = align(ln)
+                    if mapped:
+                        result["metrics"][key] = mapped
+        result["balanceSheetPage"] = bs_page
 
     # 2.5. W-133: the KPI/summary table often has no EPS or Total income row —
     #      fill ONLY those from the richest other candidate page (the restated
