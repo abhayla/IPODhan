@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 05:34 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 05:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1223,5 +1223,56 @@ slots: staging 28, production 26. 17 tests in the two .mjs files; the 72 web tes
 **Four review rounds across two changes tonight, every one finding something real** - including
 two bugs in code I wrote *after* cataloguing the exact pattern they belonged to. Knowing a
 failure shape does not stop me producing it.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## 2026-09-11 05:51 IST - a false defect from a lossy read, and a correction to my own blame
+
+I read `scraper/config/field-manifest.json` by piping `git show` into `python3 -c`. On this
+Windows box python reads stdin with the **locale** encoding, so correct UTF-8 decodes as cp1252
+and every non-ASCII character comes out as mojibake. Reproduced deliberately to confirm: the
+bare pipe yields it, `PYTHONUTF8=1` does not. A peer ran the same shape of command, got the same
+artifact, and filed a defect against it.
+
+**Correction to my own blame**, because an over-claimed confession is still an inaccurate
+record. My first draft said I manufactured the evidence *and handed it to them*. I checked what
+I actually sent: I described the entry keys and never pasted the corrupted string - they
+generated it themselves. What is true, and is bad enough: **my own output contained the mojibake
+and I read straight past it**, the same not-interrogating-my-own-table shape as the
+196-matched-but-195-distinct collision I also printed and ignored.
+
+**The file is clean**, proven binary-safe against the blob: 11,578 bytes, **zero** `C3 82`,
+**zero** `C3 A2`. Decoded as UTF-8 it holds a real section sign and em dash, verified as
+codepoints U+00A7 and U+2014. The corruption appears only under cp1252 - which is what my pipe
+did.
+
+**I was one command from re-saving a clean file** - introducing real corruption to fix an
+imaginary one. And I deliberately did not add the suggested mojibake test: asserting the
+absence of bytes that were never present guards nothing, and is exactly the paper check the
+registry warns about. The hazard is the read.
+
+**Third time tonight the evidence, not the system, was broken** - a Postgres regex claiming 14
+fold collisions against the real fold's 13; a grep counting a table **header** as data; and now
+a lossy pipe. All three artifacts were mine. The rule that catches all three: **when one
+measurement disagrees with another, suspect the instrument before the subject.**
+
+### A cross-lane answer that changes who is blocked
+
+Item 2's field-manifest family is **complete on main** - the config, loader, schema, content
+test, loader test and startup validation. Each entry carries `documentType` and a per-segment
+`rank`. That is what lane A's item 5 generator reads, so **item 5 is not gated on item 2**; it
+waits on item 1's last slice and the owner's item 3 line.
+
+That measurement also **corrected my own board**: 2-S4 (#524) and 2-S5 (#525) showed PR-OPEN
+when both were merged, and had been since before I inherited this session. I carried a stale
+record instead of measuring.
+
+The manifest's **10 fields are the scope, not a shortfall** - 2-S5's scope was "the fields that
+are actually real". Adding entries for fields no document prints is what the file exists to
+prevent.
+
+**Item 2 still has no DONE line.** "The manifest is ready for lane A" is true; "item 2 is done"
+is not. Cadence unfired, staging unchanged at 29/22/22.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
