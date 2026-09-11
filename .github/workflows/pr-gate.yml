@@ -120,7 +120,9 @@ jobs:
         # nightly checks), so weakening/deleting a predicate turns this red
         # before it can silently stop catching that finding class again. No
         # deps needed (Node builtins only).
-        run: node --test scripts/tests/audit-detection-floor.test.mjs
+        run: |
+          node --test scripts/tests/audit-detection-floor.test.mjs
+          node --test scripts/tests/detection-floor-issue-size-select.test.mjs
 
       - name: Ratios extraction-yield check self-test (lane B item 8)
         # The check this guards was specified as "current_ratio non-null for
