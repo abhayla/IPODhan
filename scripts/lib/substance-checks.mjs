@@ -299,7 +299,49 @@ export function checkIssueSizeSegmentFloor(row) {
     segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
   if (floor === null) return null; // no segment (RIGHTS/NCD/REIT/InvIT) — floor doesn't apply
   if (size < floor) {
-    return `issue_size (${size}) is below the ${segment} floor (${floor}) while a price band (${row.price_range_min ?? row.price_range_max}) is on record — looks like a share count, not a rupee value`;
+    // SAY WHAT IS ACTUALLY ON RECORD, AND USE EVERY PRICE THE ROW CARRIES.
+    //
+    // Two corrections live here, both from review, both the same shape - a
+    // message asserting something the code had not checked.
+    //
+    // 1. The band gate above only asks whether the price column is non-null, so
+    //    when that column holds the FACE VALUE (the #515 shape) this message
+    //    used to assert "a price band (10) is on record" for a row with no
+    //    price. NIRBHAY COLOURS on production is exactly that.
+    // 2. The first fix then swung the other way and claimed the size "cannot be
+    //    cross-checked against a real price" - while `authoritative_issue_price`
+    //    (raw listing_performance.issue_price) sits on the SAME row object, and
+    //    the sibling check in this file already uses it. STALLION on staging
+    //    proves it live: band 10, face_value 10, authoritative price 90. A real
+    //    price existed and the message denied it.
+    //
+    // The FLAG is unchanged in every branch: Rs1.48 crore really is below the
+    // MAINBOARD floor. Only the explanation moves, and it matters because you
+    // cannot decide whether issue_size is rupees or a share count without a
+    // real price to multiply by.
+    const face = toNumber(row.face_value);
+    const real = toNumber(row.authoritative_issue_price);
+    const bandIsFaceValue = face !== null && band === face && row.issue_type !== 'FIXED_PRICE';
+
+    let bandClause;
+    if (real !== null) {
+      // A real price exists whatever the band column holds - so the share-count
+      // reading IS testable, and the reader is told with what.
+      const asShares = size * real;
+      bandClause =
+        `and an authoritative issue price of ${real} is on record` +
+        (bandIsFaceValue ? ` (the price column itself holds the FACE VALUE ${face}, not a price)` : '') +
+        ` — at that price this size would be Rs${asShares.toLocaleString('en-IN')} if it is a share count`;
+    } else if (bandIsFaceValue) {
+      // No authoritative price AND the price column holds a face value: there is
+      // genuinely nothing on this row to test the size against.
+      bandClause =
+        `while the price column holds the FACE VALUE (${face}), not a price, and no authoritative ` +
+        `issue price is recorded — so this size cannot be cross-checked against any real price`;
+    } else {
+      bandClause = `while a price band (${band}) is on record — looks like a share count, not a rupee value`;
+    }
+    return `issue_size (${size}) is below the ${segment} floor (${floor}) ${bandClause}`;
   }
   return null;
 }
