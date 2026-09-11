@@ -649,7 +649,7 @@ line below carries the ledger's own date-stamped time, not an estimate. The miss
 
 04:16 THE FIRST THREE COMMANDS ON RESUME, exactly:
 04:16 1. git fetch -q origin main then gh pr checks 642
-04:16 2. node scripts/merge-if-current.mjs 642
+04:16 2. node scripts/ops/merge-if-current.mjs 642 (NOT scripts/merge-if-current.mjs - that path does not exist)
 04:16 3. powershell -NoProfile -File ~/.claude/tools/wt-sweep.ps1 -Repo D:/Abhay/Ventures/IPODhan
 
 04:16 EVERY PROOF OWED AT THE PAUSE:
@@ -664,3 +664,7 @@ line below carries the ledger's own date-stamped time, not an estimate. The miss
 04:16 OWNER TEXT IN MY WINDOW, 2026-09-11: pdf-lib WITHDRAWN; use pypdf, already installed. STATUS: RECORDED, and it matches the recommendation I made at 08:59 on measurement - pdf-lib cannot decrypt an owner-password PDF at all, so adding it would have put an unmaintained dependency in the tree for no capability. Nothing to revert: pdf-lib was never added. 22-5 will use pypdf's decrypt path in the Python extractor, and stays blocked on the missing filing regardless.
 04:16 OWNER DECISIONS, 2026-09-11, EARLIER AND ALREADY APPLIED: the Hy-Tech one-row company_website correction on production - DONE, 1 row, updated_at 2026-09-11T03:22:01.105Z, 0 rows still broken; item 8 proven on Karamtara and Prasol Chemicals instead of ARCIL and Vinod Texworld, with the ARCIL measurement kept on the card - DONE.
 04:16 RELAYED, NOT OWNER TEXT IN MY WINDOW: OD-55 on main as PR #641 / 6eb37048, and the pause order itself. I am acting on both, and recording that neither arrived as the owner's own words here.
+04:20 PAUSE ADDENDUM - I RAN THE ONE THING THE PAUSE ORDER ALLOWS (merge only on an immediate exit 0) AND IT REFUSED, so #642 stays open. All seven checks on #642 are PASS. merge-if-current exits 4, not 0: the green is stale.
+04:20 BOTH STALENESS CLAUSES FIRED AND THE SECOND ONE MATTERS. Clause 1: main moved .github/workflows/pr-gate.yml since this branch's merge-base 947fb0f4, so the green was produced by the OLD pipeline definition and says nothing about what the new one would do. Clause 2: main moved packages/shared/src/db/schema.ts, which is the file this slice's repository imports - the branch was tested against the OLD content of the exact table it reads.
+04:20 THAT IS PROBABLY LANE A'S ITEM 5 SLICE 2, the row-key rework, and it is the reason I built against the table rather than the card: if row_key landed, the reader needs to key on it. On resume the rebase is not a formality - re-read the table definition on main FIRST, then rebase, then let CI run against what would actually merge.
+04:20 AND A TRAP WORTH RECORDING: the merge gate does not live at scripts/merge-if-current.mjs, it is scripts/ops/merge-if-current.mjs. Running the wrong path printed a MODULE_NOT_FOUND stack and, piped through tail, reported EXIT=0 - tail's exit code, not node's. A green read from the wrong command is how an unmergeable PR gets merged. The resume command list above is corrected to the real path.
