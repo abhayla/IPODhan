@@ -374,3 +374,7 @@ docs/contracts/.run/*
 # CONTENTS with `/*` is what makes the negation below work at all.
 !docs/contracts/.run/*-PROGRESS.md
 docs/design/probes/fixtures/pdf/
+
+# lane C record coupling: local-only sentinel and staged board payload
+.board-write-owed
+.board-payload-owed.json
