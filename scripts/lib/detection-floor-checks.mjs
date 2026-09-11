@@ -120,7 +120,27 @@ export function checkIssueSizeSegmentFloor(row) {
   const floor = ISSUE_SIZE_FLOOR_RUPEES[row.segment];
   if (floor === undefined) return null; // no floor defined for this segment (e.g. null segment)
   if (size < floor) {
-    return `issue_size (Rs${size.toLocaleString('en-IN')}) is below the ${row.segment} floor of Rs${floor.toLocaleString('en-IN')} — looks like a share count stored as rupees, not a rupee issue size`;
+    // DO NOT ASSERT THE MECHANISM UNLESS THE ROW CARRIES SOMETHING THAT TESTS IT.
+    // This message used to end "looks like a share count stored as rupees, not a
+    // rupee issue size" for every row below the floor. That claim is FALSE for the
+    // two rows it is actually printed about on production: NIRBHAY COLOURS INDIA
+    // and PIYUSH LIMITED had their issue_size independently verified CORRECT
+    // against the BSE source (lane C item 14 slice 2, issue #472) - their defect is
+    // the segment/offering_type, not the size. Naming one mechanism for a
+    // population with more than one sends a triager to the wrong write path.
+    //
+    // #608 removed the same claim from the OTHER implementation of this predicate
+    // (scripts/lib/substance-checks.mjs) and missed this copy, because nothing
+    // watched this pair. scripts/tests/detection-floor-issue-size-select.test.mjs
+    // is that missing instrument.
+    const real = toNumber(row.authoritative_issue_price);
+    const base = `issue_size (Rs${size.toLocaleString('en-IN')}) is below the ${row.segment} floor of Rs${floor.toLocaleString('en-IN')}`;
+    if (real !== null && real > 0) {
+      // A real price exists, so the share-count reading is TESTABLE - say with what.
+      const asShares = size * real;
+      return `${base} — at the authoritative issue price of ${real} this figure would be Rs${asShares.toLocaleString('en-IN')} if it is a share count`;
+    }
+    return `${base} — no authoritative issue price is on record, so whether this is a share count stored as rupees or a genuinely small issue is untested here`;
   }
   return null;
 }

@@ -400,8 +400,23 @@ async function checkC() {
   const rows = await q(
     `SELECT id, company_name, segment, issue_size AS "issueSize", price_range_max AS "priceRangeMax",
             (SELECT s.shares_offered FROM subscriptions s WHERE s.ipo_id = i.id AND s.shares_offered IS NOT NULL
-              ORDER BY s.timestamp DESC LIMIT 1) AS "sharesOffered"
-       FROM ipos i WHERE ${REAL_IPO}`
+              ORDER BY s.timestamp DESC LIMIT 1) AS "sharesOffered",
+            -- The RAW listing_performance.issue_price, so the floor message can
+            -- test the share-count reading instead of asserting it. LATERAL, not
+            -- a plain LEFT JOIN: a second listing_performance row for one IPO
+            -- would multiply this query's rows and silently inflate the coverage
+            -- denominator item 14 slice 4 added. Today staging has 255 rows over
+            -- 255 distinct IPOs (zero duplicates), but that is a fact about
+            -- today's data, not a constraint.
+            lp.issue_price AS authoritative_issue_price
+       FROM ipos i
+       LEFT JOIN LATERAL (
+         SELECT issue_price FROM listing_performance
+          WHERE ipo_id = i.id
+          ORDER BY id DESC
+          LIMIT 1
+       ) lp ON true
+      WHERE ${REAL_IPO}`
   );
   const floorOffenders = [];
   const consistencyOffenders = [];
