@@ -76,6 +76,17 @@ export interface StatusUpdateResult {
   openToClosed: number;
   closedToListed: number;
   total: number;
+  /**
+   * Pages actually refreshed for this batch of transitions.
+   *
+   * Reported next to `total` ON PURPOSE: the scraper logs this whole result
+   * object every cycle, so `total: 3, pagesRevalidated: 0` is a visible
+   * mismatch in a line a human already reads. Without it, a transition whose
+   * page was never refreshed leaves no trace anywhere — which is exactly how
+   * this defect survived: nothing in the database is wrong, so no data audit
+   * could ever have found it.
+   */
+  pagesRevalidated: number;
   updatedIPOs: {
     id: string;
     companyName: string;
@@ -131,12 +142,14 @@ export function computeTargetStatus(
 export async function revalidateAfterStatusChange(
   slugs: string[],
   deps: { redis: { del(key: string): Promise<unknown> }; revalidatePath: (path: string) => void }
-): Promise<void> {
-  if (slugs.length === 0) return;
+): Promise<number> {
+  if (slugs.length === 0) return 0;
   try {
-    await revalidateForSlugs(slugs, deps);
+    const outcome = await revalidateForSlugs(slugs, deps);
+    return outcome.revalidated;
   } catch (error) {
     console.error('[Status Updater] page revalidation failed (non-fatal):', error);
+    return 0;
   }
 }
 
@@ -166,6 +179,7 @@ export async function updateIPOStatuses(
 
   const updatedIPOs: StatusUpdateResult['updatedIPOs'] = [];
   const changedSlugs: { slug: string; id: string }[] = [];
+  let pagesRevalidated = 0;
 
   for (const r of rows) {
     if (r.scraperLocked) continue; // respect manual lock
@@ -231,7 +245,7 @@ export async function updateIPOStatuses(
     // callable from scripts and tests that have no Next request context; the
     // route supplies the real one.
     if (deps?.revalidatePath) {
-      await revalidateAfterStatusChange(
+      pagesRevalidated = await revalidateAfterStatusChange(
         changedSlugs.map((c) => c.slug),
         { redis, revalidatePath: deps.revalidatePath }
       );
@@ -246,6 +260,7 @@ export async function updateIPOStatuses(
     openToClosed: countTransition('OPEN', 'CLOSED'),
     closedToListed: countTransition('CLOSED', 'LISTED'),
     total: updatedIPOs.length,
+    pagesRevalidated,
     updatedIPOs,
   };
 

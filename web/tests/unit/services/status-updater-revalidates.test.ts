@@ -108,3 +108,41 @@ describe('the refresh is actually wired into the path that flips a status', () =
     expect(src).toMatch(/updateIPOStatuses\(\{\s*revalidatePath\s*\}\)/);
   });
 });
+
+/**
+ * The detection change.
+ *
+ * `No detection change` was the wrong answer here. Nothing in the database is
+ * wrong before or after this defect, so no data audit could ever find it - but
+ * the scraper already logs this whole result object every cycle, so putting the
+ * refresh count NEXT TO the transition count makes `total: 3,
+ * pagesRevalidated: 0` a visible mismatch in a line a human already reads.
+ */
+describe('a transition without a refresh is visible in the cycle log', () => {
+  it('reports how many pages it actually refreshed', async () => {
+    const revalidatePath = vi.fn();
+    const redis = { del: vi.fn().mockResolvedValue(1) };
+
+    const count = await revalidateAfterStatusChange(['a-ltd', 'b-ltd'], {
+      redis,
+      revalidatePath,
+    });
+
+    expect(count).toBe(2);
+  });
+
+  it('reports zero when the refresh blew up, rather than claiming success', async () => {
+    const revalidatePath = vi.fn(() => {
+      throw new Error('revalidate exploded');
+    });
+    const redis = {
+      del: vi.fn().mockRejectedValue(new Error('redis down')),
+    };
+
+    const count = await revalidateAfterStatusChange(['a-ltd'], { redis, revalidatePath });
+
+    // A count that reported 1 here would turn the mismatch signal into a lie,
+    // which is worse than having no signal at all.
+    expect(count).toBe(0);
+  });
+});
