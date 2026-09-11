@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 07:03 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 07:27 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1559,3 +1559,98 @@ mechanism for both rows**; that is the error a single "fix the share count" pass
 item 12's fix. Staging serves `239bd4de`.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## A defect of mine from tonight, found four hours after I merged it
+
+There are **two independent implementations** of `checkIssueSizeSegmentFloor`:
+
+| file | run by |
+|---|---|
+| `scripts/lib/substance-checks.mjs` | `audit-substance-plausibility.mjs` |
+| `scripts/lib/detection-floor-checks.mjs` | **the nightly** `audit-detection-floor.mjs` |
+
+They do not import each other. Duplication class measured: **exactly one** function name in
+both files (13 exports vs 37). **My #608 fixed the first and missed the second**, so the nightly
+check kept printing *"looks like a share count stored as rupees"* for NIRBHAY COLOURS and PIYUSH -
+the two rows whose `issue_size` was verified **correct** (14-S2, #472).
+
+### I did not unify the two copies, and that was the load-bearing call
+
+The obvious fix - delete the duplicate, delegate to the corrected one - would have been wrong.
+The substance copy has a `band === null` early return the nightly copy lacks, so delegating would
+have made the nightly check **silently skip every row with no band**: shrinking coverage while
+looking like a cleanup, the exact class **14-S4** exists to fix.
+
+### A false red in my own instrument
+
+The test first reported all four columns missing from a SELECT I could see them in. Not a finding -
+the shell collapsed my regex backslashes, so `\s` became a literal `s` and `\b` became a
+**backspace character**. Rebuilt via `chr(92)`; the test then **passed on unmodified code**. That
+corrects my working hypothesis: the nightly predicate never read the price at all.
+
+### Red-then-green, in that order
+
+Adding the price read turned the guard **RED** naming the exact column; adding the column turned it
+green. So it can fail for the right reason.
+
+**Real-data proof** (read-only, `ipodhan_staging`): the edited SQL **executes**; **322 rows over 322
+distinct ipo ids** (LATERAL - no row multiplication, 14-S4's denominator intact); **255 of 322** rows
+now carry an authoritative price the check never saw. The two item-14 rows carry none, so they get
+the honest *untested here* branch instead of the false claim. Wired into `pr-gate.yml`.
+
+### Built, green, and deliberately uncommitted
+
+`.husky/pre-commit` runs `check-workflow-ascii.js`; main's `pr-gate.yml:694` has a U+2014 in a
+`run:` block, blocking **every commit in every lane**. Reproduced (exit 1). Blame says **#556**, not
+my #617. I bounded the fix: the checker scans **only `run:` bodies**, so of 97 non-ASCII bytes
+exactly **one** fails - #626's single character is complete. Never `--no-verify`.
+
+### A correction I owe on my own earlier lines
+
+Lane A measured that a staging deploy **SIGINTs the running scraper cycle**. I have written "the
+24-hour timer has not fired" and "zero extractions since the fix" as if they were timer
+measurements. They are **inferences**, and possibly wrong - we merged every few minutes all night.
+Not restating either as fact until a cycle runs clean.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## PR #629 open, and the item-2 timer question answered by measurement
+
+**#629** — the nightly floor check stops asserting a mechanism it has not tested. Committed through
+the **real hook** (no `--no-verify`, no `core.hooksPath` override) once #626 cleared the U+2014.
+I applied #626's identical one-character fix to my own copy first - I will not `git stash` in a
+worktree, nor `git checkout --` over my own edits - then rebased; the duplicate collapsed to zero
+(`git diff origin/main -- pr-gate.yml | grep -c` = **0**). PR Gate run **34552658099** started, so
+it is not in the silent CONFLICTING-gets-no-run state. Merge waits for the 07:50 window, via
+`merge-if-current.mjs`.
+
+### The cycle read (read-only; no deploy between cycle and read - last deploy 01:18:36Z, DB now 01:54:04Z)
+
+The 01:45Z cycle **ran**: newest `scraper_logs` row **2026-09-11 01:46:13**. Cycles ran at 00:09,
+00:15, 00:21, 00:34, 00:42, 00:51, 00:59, 01:05, 01:11 - then a **35-minute gap** - then 01:46.
+That gap is lane A's leaked-lock window around the 01:15:49Z deploy (#624, theirs).
+
+### I was right, then wrong, then right again
+
+I read CHITTORGARH's newest row (2026-09-10 13:45:22, **12h09m** stale) as *stalled*. The peer
+corrected it: the cadence is **24h**, so it is **inside its window**, not due until ~13:45 IST
+today. So item 2's baseline (**29 / 22 / 0**, re-read, unmoved) is unmoved for exactly the reason I
+originally gave and then talked myself out of. The middle step was reading staleness as failure
+without knowing the cadence - the same shape as reading an absent provenance row as a guessed value.
+
+### Genuinely open, and not mine
+
+**BSE and NSE last logged 2026-09-10 12:04**, while the live step should run every wake inside
+10:00-17:00 IST. Ten market-hours wakes, no exchange rows. Routed to lane A with the numbers, not
+claimed as a finding. And the last **60 DOCUMENTS cycles are all PARTIAL, 3 records between them** -
+matching #620 and #623 from the database side.
+
+### A near-miss, recorded so it is not propagated
+
+I nearly reported a "5h30m DB clock skew". It was the pg driver parsing a tz-less `timestamp` as
+local IST; `::text` showed `now()` correct. **No skew.** Third time tonight a wrong answer arrived
+dressed as a measurement.
+
+**Items 14, 2, 12 and 3: zero DONE lines.** #629 is an unmerged PR, not a proof.
