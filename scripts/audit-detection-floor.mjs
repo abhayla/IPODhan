@@ -72,6 +72,7 @@ import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-serve
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 import { checkPriceBand } from './lib/substance-checks.mjs';
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
+import { collectRatiosYield, RATIOS_YIELD_NAME } from './lib/ratios-extraction-yield.mjs';
 import {
   classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
   REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
@@ -1480,6 +1481,23 @@ async function checkQ_rowKeyCoverage() {
     result.detail + (result.offenders.length ? `: ${result.offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
+async function checkRatiosExtractionYield() {
+  let result;
+  try {
+    result = await collectRatiosYield(q);
+  } catch (e) {
+    record('ratios_extraction_yield', RATIOS_YIELD_NAME, 'UNVERIFIABLE',
+      `documents/financial_data not readable: ${e.message}`);
+    return;
+  }
+  for (const offender of result.offenders) {
+    notify('ratios_extraction_yield', 'P1', offender.slice(0, 120),
+      'a Ratios document extracted but produced no current_ratio', offender);
+  }
+  record('ratios_extraction_yield', RATIOS_YIELD_NAME, result.status,
+    result.detail + (result.offenders.length ? `: ${result.offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
 async function main() {
   await assertSessionTimezoneUtc();
   console.log(`
@@ -1505,6 +1523,7 @@ async function main() {
   checkO();
   await checkP();
   await checkQ_rowKeyCoverage();
+  await checkRatiosExtractionYield();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');

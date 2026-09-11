@@ -97,6 +97,15 @@ jobs:
         # deps needed (Node builtins only).
         run: node --test scripts/tests/audit-detection-floor.test.mjs
 
+      - name: Ratios extraction-yield check self-test (lane B item 8)
+        # The check this guards was specified as "current_ratio non-null for
+        # every COMPLETED Ratios document". Measured on staging 2026-09-11: 34
+        # such documents exist and every one is PENDING, so the literal reading
+        # is true of the EMPTY SET and would page green forever while the
+        # feature had never run. These tests pin the empty population to
+        # UNVERIFIABLE rather than PASS; flipping it back kills three of them.
+        run: node --test scripts/tests/ratios-extraction-yield.test.mjs
+
       - name: VPS runtime preflight self-test (T-406)
         # Drives the real scripts/preflight-runtime.sh as a subprocess with
         # fake python3/tesseract/node shims + controlled env, so a weakened
