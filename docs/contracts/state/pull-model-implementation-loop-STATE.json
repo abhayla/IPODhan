@@ -699,13 +699,30 @@
         "Report location: NO per-cycle stats surface exists anywhere in the scraper (checked data-consolidation-orchestrator.ts and repo-wide for cycleStats/perCycle) - the card's 'not located' is confirmed, not a gap in its reading. Counters sit on the returned ConsolidationResult and NOTHING consumes them yet; that is item 10's territory and is stated rather than papered over.",
         "Persistence: confirmed, no table added, item 10's territory."
       ],
-      "statusNote": "merged c4a65203 (PR #585); proof NOT-OWED, counters only"
+      "statusNote": "merged c4a65203 (PR #585); proof NOT-OWED, counters only",
+      "slices": [
+        {
+          "k": "15-a",
+          "pr": 585,
+          "sha": "c4a65203",
+          "status": "MERGED",
+          "title": "four counters replace one fieldsUpdated number"
+        }
+      ]
     },
     "item-13": {
       "item": 13,
       "card": "docs/design/build-cards/item-13-ofs-and-fresh-issue-extraction.md",
       "status": "DONE",
-      "slices": [],
+      "slices": [
+        {
+          "k": "13-a",
+          "pr": 588,
+          "sha": "cf223cdb",
+          "status": "MERGED",
+          "title": "reconcileFreshAndOfs gate before the ipos/ipo_details writes"
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
@@ -745,7 +762,15 @@
       "item": 4,
       "card": "docs/design/build-cards/item-04-per-field-validation.md",
       "status": "DONE",
-      "slices": [],
+      "slices": [
+        {
+          "k": "4-a",
+          "pr": 591,
+          "sha": "3f395eb9",
+          "status": "MERGED",
+          "title": "per-field validation before the write; field_extraction_failures"
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
@@ -785,7 +810,20 @@
       "item": 5,
       "card": "docs/design/build-cards/item-05-ipo-field-plan-table.md",
       "status": "SLICE-1-MERGED",
-      "slices": [],
+      "slices": [
+        {
+          "k": "5-s1",
+          "pr": 612,
+          "sha": "dc5782c7",
+          "status": "MERGED",
+          "title": "ipo_field_plan table + migration + generator"
+        },
+        {
+          "k": "5-s2",
+          "status": "PLANNED",
+          "title": "write plan rows; #618 settles the key question first"
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
@@ -812,7 +850,19 @@
       "item": 7,
       "card": "docs/design/build-cards/item-07-job-scheduler-and-budgets.md",
       "status": "BLOCKED-OWNER",
-      "slices": [],
+      "slices": [
+        {
+          "k": "7-A",
+          "sha": "ee087f55",
+          "status": "BUILT",
+          "title": "derive budgets from OD-19; never start without full budget"
+        },
+        {
+          "k": "7-B",
+          "status": "BLOCKED-OWNER",
+          "title": "remove the PM2 force-kill, wake script + cron lines; needs the GMP decision"
+        }
+      ],
       "prs": [],
       "mergeShas": [],
       "proof": {
