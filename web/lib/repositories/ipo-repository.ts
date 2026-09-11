@@ -1897,7 +1897,24 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               openDate: ipos.openDate,
               closeDate: ipos.closeDate,
               listingDate: ipos.listingDate,
-              issuePrice: ipos.priceRangeMax,
+              // #597: PUBLISH THE PRICE THE ISSUE ACTUALLY SOLD AT.
+              // This projected `ipos.priceRangeMax` - the price BAND cap - while the
+              // very same query already left-joins listing_performance below and takes
+              // listingPrice / listingGainPercent / currentPrice from it. Measured on
+              // production: MARUTI INTERIOR published 10 (its FACE VALUE) against an
+              // issue_price of 55, while the same response's listingGainPercent of 30.73
+              // was (71.9 - 55) / 55 - already computed from 55. So the right number was
+              // present and ignored.
+              //
+              // The COALESCE is deliberate and is NOT the #515 trap. For DISPLAY the
+              // fallback is correct: an IPO that never listed has no issue price, and its
+              // band cap is the best figure available. The trap is about CHECKING - a
+              // check comparing against COALESCE(lp.issue_price, i.price_range_max)
+              // compares a degenerate row to itself and can never fire, which is why
+              // audit-substance-plausibility.mjs keeps its own RAW
+              // `lp.issue_price AS authoritative_issue_price` projection. Display
+              // prefers; checks compare raw.
+              issuePrice: sql<number | null>`coalesce(${listingPerformance.issuePrice}, ${ipos.priceRangeMax})`,
               issueSize: ipos.issueSize,
               lotSize: ipos.lotSize,
               allotmentDate: ipos.allotmentDate,
