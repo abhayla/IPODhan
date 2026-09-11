@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 06:07 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 06:35 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1354,5 +1354,47 @@ owner.
 
 **Item 2 unchanged at 29 / 22 / 22** (cadence unfired). Staging serves `ff80eac1`, the #601
 merge. **#608 merged** as `435d279d`, verified by content on main.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## Practice correction: I had been running everything in the MAIN checkout
+
+About fifteen read-only database scripts tonight ran with `cd D:/Abhay/Ventures/IPODhan` and
+`NODE_PATH` pointed at **main's** `node_modules`. Read-only against the database, but
+**executing in main** - now an explicit rule after a builder repointed main's
+`@ipodhan/shared` junction, the same mechanism that wiped `packages/shared` in July and 442
+tracked files in August.
+
+**The cause was mundane, which is why it survived:** node resolves modules relative to the
+**script's** location, not the working directory, and my scripts live in the scratchpad.
+Pointing `NODE_PATH` at main made them work, so I never questioned the directory. Now pointed
+at the worktree - identical results, nothing touching main.
+
+**Main verified intact:** zero deleted tracked files, `schema.ts` present, main's junction
+resolving to its own `packages/shared`, both worktrees to their own. The tracked count moved
+4800 to 4804 because other lanes are merging; the integrity signal is the **zero deletions**.
+
+**My check of that was wrong before the system was** - the first junction test printed
+"points at MAIN: false" because I lowercased the comparison string but not the path.
+
+### Five instrument or practice errors tonight, none caught by my own vigilance
+
+A Postgres regex reporting 14 fold collisions against the real fold's 13. A grep counting a
+table **header** as data. A pipe decoding UTF-8 as cp1252 and inventing a mojibake defect.
+`$?` read after a pipe, reporting `head`'s status while I announced a gate had refused. A
+case-mismatched path comparison. And running everything in main.
+
+**My confidence in a measurement carries no information about its correctness. Only the
+cross-check does.**
+
+### Still pending, measured from the worktree
+
+`ipo_details` **29 / 22 / 0**, overwrite guard **22 = HELD**. **Zero** extractions since item
+12's fix. Neither failed; both waiting on cycles I cannot force.
+
+Stopped spawning long watchers - three were killed for memory (~2 GB free, five Claude
+sessions taking 3 GB, node not even in the top four). Replaced with one short-lived status
+read that carries the overwrite guard inside it.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
