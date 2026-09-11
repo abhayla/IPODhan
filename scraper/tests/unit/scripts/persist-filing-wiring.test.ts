@@ -151,10 +151,16 @@ describe('persist-filing.ts paired run — refusal is wired to process.exit', ()
           '--json-rhp',
           rhpPath,
           '--apply',
+          '--expect-db',
+          'ipodhan_test',
         ],
         {
           resolveIpoId: async () => IPO_ID,
           persistFiling: persistFiling as never,
+          // This wiring test never opens a real connection (`db` is mocked to
+          // `{}` above) — the #640 database-target guard is exercised on its
+          // own in persist-filing-db-guard.test.ts, so it is a no-op here.
+          assertConnectedDatabase: async () => {},
         }
       )
     ).rejects.toThrow(`process.exit:${expected.exitCode}`);
@@ -182,8 +188,24 @@ describe('persist-filing.ts paired run — refusal is wired to process.exit', ()
     }));
 
     await run(
-      ['node', 'persist-filing.ts', '--ipo', IPO_ID, '--json-ad', adPath, '--json-rhp', rhpPath, '--apply'],
-      { resolveIpoId: async () => IPO_ID, persistFiling: persistFiling as never }
+      [
+        'node',
+        'persist-filing.ts',
+        '--ipo',
+        IPO_ID,
+        '--json-ad',
+        adPath,
+        '--json-rhp',
+        rhpPath,
+        '--apply',
+        '--expect-db',
+        'ipodhan_test',
+      ],
+      {
+        resolveIpoId: async () => IPO_ID,
+        persistFiling: persistFiling as never,
+        assertConnectedDatabase: async () => {},
+      }
     );
 
     expect(persistFiling).toHaveBeenCalledTimes(2);
@@ -198,6 +220,124 @@ describe('persist-filing.ts paired run — refusal is wired to process.exit', ()
       expect(deps.riskFactors).toBeDefined();
       expect(deps.documentFilingDateWriter).toBeDefined();
     }
+  });
+});
+
+/**
+ * #640: the database-target guard (`assertConnectedDatabase`) must run BEFORE
+ * any of the three write paths (anchor / paired / single) — never after. This
+ * drives `run()` end to end with `assertConnectedDatabase` and each write
+ * function overridden to record their call order into one shared array, so:
+ *   - deleting the `await assertDb(...)` call from `run()`, or
+ *   - moving it to AFTER a write call
+ * both turn these tests RED (mutation matrix, class 2). `db` stays mocked to
+ * `{}` — these tests never open a connection; the guard's own DB behaviour is
+ * proven separately in persist-filing-db-guard.test.ts.
+ */
+describe('persist-filing.ts — #640 database guard runs before every write path', () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let errSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit:${code}`);
+    }) as never);
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+
+  it('single-doc mode: assertConnectedDatabase runs before persistFiling', async () => {
+    const { run } = await import('../../../scripts/persist-filing');
+    const dir = mkdtempSync(path.join(tmpdir(), 'persist-filing-guard-order-'));
+    const jsonPath = path.join(dir, 'extraction.json');
+    writeFileSync(
+      jsonPath,
+      JSON.stringify({
+        extraction_status: 'OK',
+        unit: 'millions',
+        fiscal_years: [2026],
+        fields: {},
+      })
+    );
+
+    const order: string[] = [];
+    const persistFiling = vi.fn(async () => {
+      order.push('persistFiling');
+      return {
+        written: {},
+        skipped_protected: [],
+        skipped_cross_document_disagreement: [],
+        skipped_failed_check: [],
+        skipped_no_column: [],
+        skipped_no_unit: [],
+        skipped_unit_mismatch: [],
+        ipos_fields: [],
+        applied: false,
+      };
+    });
+
+    await run(
+      ['node', 'persist-filing.ts', '--ipo', IPO_ID, '--doc-type', 'DRHP', '--json', jsonPath],
+      {
+        resolveIpoId: async () => IPO_ID,
+        persistFiling: persistFiling as never,
+        assertConnectedDatabase: async () => {
+          order.push('assertConnectedDatabase');
+        },
+      }
+    );
+
+    expect(order).toEqual(['assertConnectedDatabase', 'persistFiling']);
+  });
+
+  it('anchor mode: assertConnectedDatabase runs before persistAnchor', async () => {
+    const { run } = await import('../../../scripts/persist-filing');
+
+    const order: string[] = [];
+    const persistAnchor = vi.fn(async () => {
+      order.push('persistAnchor');
+      return { refusedReason: undefined } as never;
+    });
+
+    await run(
+      ['node', 'persist-filing.ts', '--ipo', IPO_ID, '--doc-type', 'ANCHOR_ALLOCATION_REPORT'],
+      {
+        resolveIpoId: async () => IPO_ID,
+        persistAnchor: persistAnchor as never,
+        assertConnectedDatabase: async () => {
+          order.push('assertConnectedDatabase');
+        },
+      }
+    );
+
+    expect(order).toEqual(['assertConnectedDatabase', 'persistAnchor']);
+  });
+
+  it('a --apply run with no --expect-db is refused by run() itself before persistFiling can run', async () => {
+    const { run } = await import('../../../scripts/persist-filing');
+    const dir = mkdtempSync(path.join(tmpdir(), 'persist-filing-guard-missing-expect-db-'));
+    const jsonPath = path.join(dir, 'extraction.json');
+    writeFileSync(jsonPath, JSON.stringify({ extraction_status: 'OK', unit: 'millions', fiscal_years: [2026], fields: {} }));
+
+    const persistFiling = vi.fn(async () => {
+      throw new Error('persistFilingExtraction must not run when --expect-db is missing under --apply');
+    });
+
+    await expect(
+      run(
+        ['node', 'persist-filing.ts', '--ipo', IPO_ID, '--doc-type', 'DRHP', '--json', jsonPath, '--apply'],
+        { resolveIpoId: async () => IPO_ID, persistFiling: persistFiling as never }
+      )
+    ).rejects.toThrow('process.exit:2');
+
+    expect(persistFiling).not.toHaveBeenCalled();
   });
 });
 
