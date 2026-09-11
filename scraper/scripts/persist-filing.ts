@@ -2,10 +2,17 @@
  * Persist one filing extraction (walk step G4).
  *
  *   npx tsx scripts/persist-filing.ts --ipo <slug|uuid|name> \
- *     --doc-type PRICE_BAND_AD|RHP|DRHP|PROSPECTUS --json <extraction.json> [--apply]
+ *     --doc-type PRICE_BAND_AD|RHP|DRHP|PROSPECTUS --json <extraction.json> \
+ *     --expect-db <name> [--apply]
  *
  * Dry-run by default: it resolves the IPO, computes the full write plan and
  * prints the summary WITHOUT touching the database. --apply performs the writes.
+ *
+ * #640: staging and production share a host+port (the same SSH tunnel on
+ * 127.0.0.1:15432) — the database NAME is the only thing telling them apart.
+ * `--expect-db <name>` is MANDATORY with `--apply`; every run (dry or applied)
+ * prints `current_database()`/host/port from the SAME pool that would do the
+ * writing and refuses, before any write, if it does not match `--expect-db`.
  *
  * Run from scraper/ (DB creds from ../web/.env.local, override:true - same
  * convention as backfill-financials-pdf.ts).
@@ -25,7 +32,7 @@ loadEnv({ path: '../web/.env.local', override: true });
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { eq, or, ilike } from 'drizzle-orm';
+import { eq, or, ilike, sql } from 'drizzle-orm';
 import {
   db,
   getRedisClient,
@@ -60,9 +67,104 @@ export interface RunOverrides {
   resolveIpoId?: (needle: string) => Promise<string>;
   persistFiling?: typeof persistFilingExtraction;
   persistAnchor?: typeof persistAnchorReport;
+  assertConnectedDatabase?: typeof assertConnectedDatabase;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #640: staging and production are the SAME host and port, reached through the
+ * same tunnel — the database NAME is the only thing that tells them apart, and
+ * `packages/shared/src/db/index.ts` silently defaults an unset `DATABASE_NAME`
+ * to `'ipodhan'` (production). This does not remove that default (see the PR —
+ * that is separate follow-up work); it makes THIS write tool prove which
+ * database it is actually connected to and refuse to run when the caller did
+ * not name one, or named the wrong one.
+ *
+ * A `--apply` run with no `--expect-db` is refused before anything else runs —
+ * no connection is even needed to catch that misuse. Pure, so a test can
+ * delete the refusal and watch a named test go red without touching a DB.
+ */
+export function requireExpectDbForApply(
+  apply: boolean,
+  expectDb: string | undefined
+): { refuse: boolean; reason?: string } {
+  if (apply && !expectDb) {
+    return {
+      refuse: true,
+      reason:
+        'persist-filing: --apply requires --expect-db <name> naming the database this run must write to; refusing to guess the target.',
+    };
+  }
+  return { refuse: false };
+}
+
+/**
+ * The exact-match half of the guard: `current_database()` on the pool about to
+ * be used MUST equal what the caller named, in every mode (dry run included —
+ * that is how an operator catches the mistake before ever adding `--apply`).
+ * Pure so the always-true mutant (comparison that never refuses) is caught by
+ * a unit test with no DB in the loop.
+ */
+export function decideDbMismatch(
+  expectDb: string | undefined,
+  actualDb: string
+): { refuse: boolean; reason?: string } {
+  if (expectDb && expectDb !== actualDb) {
+    return {
+      refuse: true,
+      reason: `persist-filing: refusing — expected database "${expectDb}" but this connection is to "${actualDb}".`,
+    };
+  }
+  return { refuse: false };
+}
+
+/**
+ * Runs BEFORE any write path (anchor / paired / single — see `run()`) and on
+ * every dry run too. Prints the real target on the SAME connection that would
+ * do the writing (never an env var — `initPool()` prefers `DATABASE_HOST` and
+ * an env-derived name can lie about which socket actually opened), then
+ * refuses via `process.exit` (never "warn and continue") on either violation.
+ */
+export async function assertConnectedDatabase(
+  dbLike: { execute: (query: unknown) => Promise<unknown> },
+  expectDb: string | undefined,
+  apply: boolean,
+  io: {
+    log?: (line: string) => void;
+    error?: (line: string) => void;
+    exit?: (code: number) => void;
+  } = {}
+): Promise<void> {
+  const log = io.log ?? ((l: string) => console.log(l));
+  const err = io.error ?? ((l: string) => console.error(l));
+  const exit = io.exit ?? ((code: number) => process.exit(code));
+
+  const preflight = requireExpectDbForApply(apply, expectDb);
+  if (preflight.refuse) {
+    err(preflight.reason!);
+    exit(2);
+    return;
+  }
+
+  const result = await dbLike.execute(
+    sql`SELECT current_database() AS db, inet_server_addr() AS host, inet_server_port() AS port`
+  );
+  const rows = Array.isArray(result)
+    ? result
+    : ((result as { rows?: Array<Record<string, unknown>> })?.rows ?? []);
+  const row = (rows[0] ?? {}) as Record<string, unknown>;
+  const actualDb = String(row.db ?? '');
+  log(
+    `persist-filing target -> current_database=${actualDb} host=${row.host ?? 'null'} port=${row.port ?? 'null'}`
+  );
+
+  const decision = decideDbMismatch(expectDb, actualDb);
+  if (decision.refuse) {
+    err(decision.reason!);
+    exit(2);
+  }
+}
 
 /**
  * S-02: the dependency builder moved to
@@ -105,11 +207,13 @@ export async function run(
   };
   const persistFiling = overrides.persistFiling ?? persistFilingExtraction;
   const persistAnchor = overrides.persistAnchor ?? persistAnchorReport;
+  const assertDb = overrides.assertConnectedDatabase ?? assertConnectedDatabase;
 
   const ipoArg = arg('ipo');
   const docType = arg('doc-type') as FilingDocType | undefined;
   const jsonPath = arg('json');
   const apply = argv.includes('--apply');
+  const expectDb = arg('expect-db');
 
   const adPath = arg('json-ad');
   const rhpPath = arg('json-rhp');
@@ -123,13 +227,18 @@ export async function run(
       [
         'usage: persist-filing.ts --ipo <slug|uuid|name>',
         '         --doc-type PRICE_BAND_AD|RHP|DRHP|PROSPECTUS|ANCHOR_ALLOCATION_REPORT',
-        '         --json <path> [--apply]',
+        '         --json <path> [--apply] --expect-db <name> (required with --apply)',
         '   or: persist-filing.ts --ipo <..> --json-ad <ad.json> --json-rhp <rhp.json> [--apply]',
         '       (paired mode runs the W-45 cross-document agreement gate first)',
       ].join('\n')
     );
     process.exit(2);
   }
+
+  // #640: prove which database this run is actually connected to and refuse a
+  // mismatch, BEFORE any of the three write paths below (anchor / paired /
+  // single) touch the database. Runs on every dry run too, not just --apply.
+  await assertDb(db, expectDb, apply);
 
   const redis = getRedisClient();
   const ipoId = await (overrides.resolveIpoId ?? resolveIpoId)(ipoArg);
