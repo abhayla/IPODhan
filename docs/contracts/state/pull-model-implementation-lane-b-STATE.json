@@ -396,11 +396,15 @@
     {
       "at": "2026-09-11T03:46:00Z",
       "what": "ITEM 18 proof blocker relocated by measurement: all 10 PENDING extractable documents on staging have no bytes (file_size null, sha256 null). They were never downloaded, so there is nothing to extract. Not an extractor problem - a download one. Possible link to #620, recorded as a lead not a conclusion."
+    },
+    {
+      "at": "2026-09-11T03:50:29Z",
+      "what": "ITEM 8 DONE, 11/11 (one retired). All four clauses of contract line 90 met: proven on Karamtara and Prasol per the owner's 2026-09-11 substitution (ARCIL measurement kept as the evidence); ratios_extraction_yield landed as UNVERIFIABLE-on-empty; #437 recorded OWED-ELSEWHERE with its population measured into four classes; #606/#620/#623 filed with class and detection. Does NOT claim a persisted ratio - blocked on download, not extraction."
     }
   ],
   "items": {
     "8": {
-      "status": "IN-PROGRESS",
+      "status": "DONE",
       "why": "My own #565 claim (an RHP carries only a P/E summary, 8 of 10 peer columns absent) is WITHDRAWN as wrong. The peer table is present and full on both issuers checked at table level: KARAMTARA p.135 section 6, 8 listed peers; PRASOLCHEM p.206 section 6, 5 listed peers. I missed it by searching for the heading comparison-with-listed-industry-peer when the document says Comparison OF ACCOUNTING RATIOS WITH Listed Industry Peers, and by reading zero hits as a fact about the document rather than about my pattern. Two PDF libraries agreeing meant nothing - both ran the same wrong pattern.",
       "finding": "The column set is NOT fixed across issuers. Common 8: name, face value, revenue from operations, EPS basic, EPS diluted, NAV, P/E, RONW. Karamtara adds closing price and market cap; Prasol adds total income and splits P/E into Diluted and Basic. A positional ten-column parser would store Prasol total income as a share price and report success.",
       "designConstraints": [
@@ -421,20 +425,25 @@
           "8a-5 #602",
           "8a-6 #605",
           "8-detection #610",
-          "8b-1 #622 squash f54ddfe3"
+          "8b-1 #622 squash f54ddfe3",
+          "8b-2 #638 squash 947fb0f4"
         ],
         "open": [],
-        "pending": [
-          "8b-2"
-        ],
+        "pending": [],
         "retired": [
           "8a-1 #587 (TypeScript, no possible caller)"
         ]
       },
       "sliceCounts": {
-        "merged": 10,
+        "merged": 11,
         "recorded": 11,
         "retiredNotCounted": 1
+      },
+      "proof": {
+        "status": "HELD",
+        "basis": "fixture-based, which is what the contract's close condition specifies",
+        "line": "Peer table read end to end on both issuers with the extractor verified CALLING it on main (extract_filing.py:26 and :2597). Karamtara balance sheet: current ratio 1.088, quick 0.812. Prasol Schedule III note: printed 1.54/1.34 and 5.59/5.75 read exactly as printed. All on real filings from the live source whose byte sizes match the staging documents rows.",
+        "notClaimed": "No ratio is persisted to a row yet. No document has completed an extraction since the writer landed, and that is blocked on DOWNLOAD (all ten pending extractable documents have file_size null and sha256 null), not on the extractor. #610 reports UNVERIFIABLE until one persists."
       }
     },
     "16": {
@@ -977,7 +986,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T03:46:00Z",
+  "lastStateWriteAt": "2026-09-11T03:50:29Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
