@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:52 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 09:05 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2212,5 +2212,59 @@ captured projection really is the listings one.
 
 **Correction before anyone quotes it:** the first vitest run printed *Terminated / exit 143* — the
 harness killing a slow compile, **not** a failing test. I have no red line yet.
+
+**Items 14, 2 and 12: zero DONE lines.**
+
+
+## PR #637 — the #597 read-path fix, and it was in two places
+
+The bug was **not** in one place. `issuePrice: ipos.priceRangeMax` appears in **two independent
+queries**:
+
+- `ipo-repository.findListings` → three live pages (`mainboard-ipo-listings`, `sme-ipo-listings`,
+  `fpo-listings`)
+- `app/api/ipos/listings/route.ts` → its **own** Drizzle select, its own copy
+
+I only found the second because I went looking for an API route to build a served-response detection
+check against. **Stopping at the first would have shipped a fix covering half the class.**
+
+### The second copy is the worse one
+
+Its `issuePrice` feeds a marketCap estimate at `route.ts:264`, so MARUTI INTERIOR's market
+capitalisation was `issueSize x (currentPrice / 10)` instead of `/ 55` — **overstating it ~5.5x**. A
+wrong price in a display is bad; a wrong price multiplying silently into a derived financial figure
+is worse, and nobody was watching that one.
+
+### Red-then-green, and the first red was false
+
+My helper `JSON.stringify`'d Drizzle column objects, which are **circular** (`PgTable → PgUUID →
+table`), so all three cases failed with *Converting circular structure to JSON* — a red that proves
+nothing because it fails before reaching the claim. Replaced with a cycle-safe walk.
+
+Then the true red: `expected 'price_range_max price_range_max id id…' to match /issue_price/`. Green
+after the fix — 10 tests including the 7 existing tiebreaker cases. Type-check clean once
+`packages/shared` was built.
+
+### Detection is a static guard, deliberately
+
+Same reasoning that bit me on `checkIssueSizeSegmentFloor` this morning: a defect in two independent
+copies means the next is a third, and behaviour tests only cover remembered call sites.
+
+`no-band-cap-as-issue-price.test.ts` scans `web/lib` + `web/app` and fails **naming** the offender.
+Positive control (must read >50 files and include both known paths, or a wrong path scans zero and
+passes forever) plus a mutation control. **Mutation-tested for real:** planted the pattern in a
+throwaway file → red naming it → deleted → green. Wired into CI automatically.
+
+### The COALESCE is for display and is not the #515 trap
+
+Commented at both sites. A never-listed IPO has no issue price, so the fallback is right. A **check**
+comparing against that COALESCE would compare a degenerate row to itself and never fire — which is
+why `audit-substance-plausibility.mjs` keeps its own RAW projection. *Display prefers; checks compare
+raw.*
+
+**No production data written; band columns untouched.** The owner's second half — repair only sourced
+bands — is not started.
+
+**Proof owed:** staging listings page showing 55 for MARUTI after deploy, read cache-busted.
 
 **Items 14, 2 and 12: zero DONE lines.**
