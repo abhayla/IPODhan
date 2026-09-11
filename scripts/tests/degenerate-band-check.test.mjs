@@ -51,7 +51,25 @@ test('FLAGS a collapsed band whose authoritative price DISAGREES - the 21 real d
   assert.ok(msg, 'must flag a stored price that disagrees with the real one');
   assert.match(msg, /227/);
   assert.match(msg, /239/);
-  assert.match(msg, /lost the cap/);
+  assert.match(msg, /5\.0% low/);
+  // The message must NOT name a mechanism - see the HIGH case below.
+  assert.ok(!/lost the cap/.test(msg), 'must not assert a mechanism the population does not share');
+});
+
+test('a stored price ABOVE the real one reads correctly - no negative percent, no floor story', () => {
+  // NET PIX SHORTS DIGITAL MEDIA on PRODUCTION: stored 32, sold at 30. The
+  // first version printed "(-6.7% high)" - a negative number labelled high -
+  // and claimed the band "kept the floor and lost the cap", which is the
+  // opposite of what this row did. Staging is 21 low / 0 high; production is
+  // 21 low / 1 high, so the population has at least two mechanisms and the
+  // message must not pick one.
+  const msg = checkDegenerateBookbuildingBand(
+    row({ price_range_min: 32, price_range_max: 32, authoritative_issue_price: 30 })
+  );
+  assert.ok(msg, 'must flag a stored price above the real one');
+  assert.match(msg, /6\.7% high/);
+  assert.ok(!/-/.test(msg.split('(')[1] ?? ''), 'the percentage must not be negative');
+  assert.ok(!/floor/.test(msg), 'must not claim it kept a floor');
 });
 
 test('FLAGS the face value sitting in the price column', () => {
