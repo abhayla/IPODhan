@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 08:32 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:37 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -2113,5 +2113,57 @@ into that if the two reads had not disagreed.
 
 **Still zero disagreements**, so the slice stays a `field_sources` INSERT per sourced row and never an
 `UPDATE` of `ipos.segment`.
+
+**Items 14, 2, 12 and 3: zero DONE lines.**
+
+
+## Checked the live site before building the approved repair - and it is mostly unnecessary
+
+Read-only, `https://ipodhan.com/api/ipos/maruti-interior-products-ltd`:
+
+```
+ipo.priceRangeMin                     : 10
+ipo.priceRangeMax                     : 10     <- the degenerate band
+listingPerformance.issuePrice         : 55     <- the CORRECT price, already served
+listingPerformance.listingPrice       : 71.9
+listingPerformance.listingGainPercent : 30.73
+```
+
+`(71.9 - 55) / 55 = 30.7%` - **the live API is internally consistent using 55.** The correct price is
+not missing from production; it is present, served, and already driving the gain calculation.
+
+### Three consequences
+
+1. **The defect is narrower than "22 rows hold a wrong price."** `listing_performance.issue_price` is
+   correct on these rows. What is wrong is `ipos.price_range_min/max`, holding the **face value** on
+   MARUTI rather than a band.
+
+2. **The approved repair would write an unsourced value.** Putting the real price into
+   `price_range_max` puts a **price into a band column**. For MARUTI we know it sold at 55 and know
+   nothing about its band; `= 55` asserts a band no source gives, and both-ends-55 asserts a
+   degenerate band - the exact shape the degenerate-band check flags. The supervisor's own condition
+   (*restore a band only where the band is sourced*) forbids both. I would have hit this with the
+   tool already built.
+
+3. **The actual bug is a read path, and it is one line.**
+   `web/lib/repositories/ipo-repository.ts:1900`, inside `findListings` (the listed-IPO listings page
+   via `ipo-listings-service.ts`), selects `issuePrice: ipos.priceRangeMax` **while the same query
+   already left-joins `listingPerformance`** - taking `listingPrice`, `listingGainPercent` and
+   `currentPrice` from it in the next lines. A second query at `:1142` uses
+   `listingPerformance.issuePrice` correctly.
+
+### Recommendation, not a decision
+
+Fix the **read path** before writing to any production row: prefer `listingPerformance.issuePrice`
+with a fallback. Reversible, corrects **every** listed IPO rather than 22, **no production write**,
+and leaves the band honestly unknown instead of filled with an unsourced number.
+
+Both findings posted to **#597**, where the decision lives.
+
+### Neither owner line has appeared in my window
+
+Not the price-repair approval, not the item 3 retirement - though two peer messages now assume
+otherwise. **My completion condition still includes item 3.** Retiring an item from my own goal on a
+relay would be the most serious version of the rule, not the least: it changes what *done* means.
 
 **Items 14, 2, 12 and 3: zero DONE lines.**
