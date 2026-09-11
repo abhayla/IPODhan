@@ -159,7 +159,14 @@ export async function GET(request: NextRequest) {
         openDate: ipos.openDate,
         closeDate: ipos.closeDate,
         listingDate: ipos.listingDate,
-        issuePrice: ipos.priceRangeMax,
+        // #597: the SAME substitution as ipo-repository.findListings had - the price
+        // BAND cap published as the price the issue sold at, while this query already
+        // joins listing_performance. Worse here than on the listings page: `issuePrice`
+        // feeds the marketCap estimate below, so MARUTI INTERIOR's market cap was
+        // computed with 10 (its face value) instead of 55 - overstating it ~5.5x.
+        // COALESCE is for DISPLAY; checks still read the raw column (see the note in
+        // ipo-repository.ts and audit-substance-plausibility.mjs).
+        issuePrice: sql<number | null>`coalesce(${listingPerformance.issuePrice}, ${ipos.priceRangeMax})`,
         issueSize: ipos.issueSize,
         lotSize: ipos.lotSize,
         allotmentDate: ipos.allotmentDate,
