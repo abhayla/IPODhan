@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 07:53 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
+**Last refreshed: 2026-09-11 08:01 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. Local only
 (`docs/contracts/.run/` is gitignored, .gitignore:317); the durable record is
 `docs/contracts/state/pull-model-implementation-lane-c-STATE.json` and
 `docs/walks/2026-09-02-deepa-pipeline-walk.md` on `ops/impl-loop-c-ledger`.
@@ -1833,3 +1833,42 @@ The board now renders **Built beside Proven**. Lane C reads **proven 0% (0 of 4)
 owner should read, and the less flattering one, since built reads 59%.
 
 **Items 14, 2, 12 and 3: zero DONE lines.** One more merged slice does not change that.
+
+
+## Reconciled the build card against the board, and broke a rule doing it
+
+**The rule first.** I ran a script from inside the **MAIN checkout**. The rule is that nothing runs
+there. Cause: my slice worktree had just been removed and I reached for the default path. **Harm:
+none I can find** - read-only SELECT, and main measures tracked **4808**, dirty **11**, deleted **0**,
+identical to the `wt-rm` proof taken before the run.
+
+I also **misattributed the symptom**: the command hung and I assumed the main-checkout path caused
+it. It didn't - the 15432 tunnel had dropped, which the re-run proved by failing with *Connection
+terminated unexpectedly*. The violation was real; my explanation was wrong.
+
+### Two of four build cards were wrong
+
+`record-event.mjs` only appends notes and never writes `items[N].status` or `items[N].slices`, so
+every lane's STATE is stale by construction.
+
+| item | before | after |
+|---|---|---|
+| item-14 | agreed | agreed - 5 slices, 3 merged |
+| **item-02** | STATE `BUILDING` vs board `MERGED-UNPROVEN`; **2-S7 missing entirely** | agreed - 11 slices, 8 merged |
+| item-12 | agreed | agreed - 8 slices, 7 merged |
+| **item-03** | STATE had **zero** slices, board had six | agreed - 6 recorded, 3 withdrawn |
+
+**2-S7 is a MERGED slice** (PR #569, `61391a9c`) that was absent from the build card.
+
+**The direction of the error was not in my favour** - STATE under-counted. But the same mechanism
+flatters just as easily: when a card lists a slice STATE does not, the two artefacts measure against
+different denominators and nobody notices which. I proved the repair lost nothing by diffing slice
+ids against a `.bak` taken **before** the write.
+
+### A published figure changed
+
+Withdrawn slices leave the denominator, so item 3's three CANCELLED slices are now WITHDRAWN with
+reasons: **item 3 is 0 of 3, not 0 of 6.** And `2-fix-493` existed in the card but had never been
+written to the board at all - now recorded there as WITHDRAWN.
+
+**None of this moves the only number that answers the question: lane C is proven 0 of 4.**
