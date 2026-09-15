@@ -210,8 +210,17 @@ const CYCLE_LOCK_RESOURCE = 'scraper:cycle';
  *
  * Keep this >= the wrapper's SCRAPER_CEILING_SECONDS in scripts/scraper-wake.sh.
  */
-const CYCLE_LOCK_CEILING_MS = 2 * 60 * 60 * 1000;
-const CYCLE_LOCK_TTL_MS = CYCLE_LOCK_CEILING_MS + 5 * 60 * 1000;
+/**
+ * EXPORTED so tests assert the RELATIONSHIP against this single definition
+ * instead of re-typing the number. The 25-minute value used to live as a
+ * literal in three separate files; two were updated when the TTL was raised
+ * and the third (index-due-step-scheduler-wiring.test.ts) was missed, turning
+ * CI red. A literal copied into a test is a second source of truth that goes
+ * stale silently, so there is exactly one here and every other reader imports
+ * it.
+ */
+export const CYCLE_LOCK_CEILING_MS = 2 * 60 * 60 * 1000;
+export const CYCLE_LOCK_TTL_MS = CYCLE_LOCK_CEILING_MS + 5 * 60 * 1000;
 const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */

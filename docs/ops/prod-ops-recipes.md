@@ -696,3 +696,51 @@ app as *exited* — which is exactly what a healthy one-shot looks like — whil
 So `pm2 status` alone can NEVER tell you the wake is alive. **`crontab -l | grep
 ipodhan-scraper-wake` is the check**; if it returns nothing, the scraper is not running at all and
 the deploy's `install_scraper_cron` warn line will say so in the deploy log.
+
+### 12a. The cost of OD-55: a crashed cycle now blocks the next wake for 2h05m
+
+**Read this before clearing anything.** Raising the ceiling changed a real operational number, and
+it is a cost, not a free win:
+
+| | Before | After |
+|---|---|---|
+| A cycle that crashes without releasing its lock blocks the next wake for | **25 minutes** | **2 h 05 m** |
+
+Why: the `scraper:cycle` lock TTL used to be sized deliberately *shorter* than pm2's 30-minute
+force-restart, so a killed cycle's lock was always gone before the next one. That restart is
+exactly what this slice removes (OD-55 — a document read is not on a clock), so the TTL now sits
+above the 2-hour ceiling instead: the **ceiling** ends a hung cycle, never a lock expiry.
+
+A *healthy* long cycle is unaffected — it extends its lock every 5 minutes. The 2 h 05 m only
+applies when the extender stops, i.e. the process died without its signal handler running (SIGKILL,
+OOM kill, a hard box reboot). A normal crash or a `pm2 stop` releases the lock on the way out.
+
+**Symptom:** every wake logs `wake-skipped` with a large `lock_ttl`, and no cycle runs.
+
+```bash
+tail -20 /var/log/ipodhan-scraper-wake-prod.log | grep wake-skipped   # is it skipping every time?
+redis-cli -u "$REDIS_URL" TTL lock:resource:scraper:cycle             # seconds left (-2 = free)
+pm2 status ipodhan-scraper                                            # is a cycle genuinely running?
+```
+
+**Clearing it — only when no cycle is actually running.** The lock is doing its job if one is; check
+`pm2 status` and the box's node processes first. A wrongly-cleared lock lets two cycles write
+concurrently, which is the thing the lock exists to prevent.
+
+```bash
+# 1. PROVE nothing is running before deleting anything.
+pm2 status ipodhan-scraper                 # expect 'stopped'/'errored', not 'online'
+pgrep -af 'tsx .*src/index.ts' || echo "no cycle process — safe to clear"
+
+# 2. Then, and only then:
+redis-cli -u "$REDIS_URL" DEL lock:resource:scraper:cycle
+redis-cli -u "$REDIS_URL" DEL lock:resource:filing-auto-persist:cycle   # the inner one, same rule
+
+# 3. The next cron wake picks it up. Do NOT hand-start a cycle to "catch up" —
+#    a wake is due within 30 minutes and a manual run competes with it.
+tail -f /var/log/ipodhan-scraper-wake-prod.log
+```
+
+The deploy already clears both keys on every deploy (`release_scraper_cycle_locks()` in
+`deploy-linux.sh`, atomically and only if the token still matches), so a deploy is the safe way to
+clear a stale lock when one is due anyway.

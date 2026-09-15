@@ -93,6 +93,22 @@ SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 # `wake-complete`, reporting SUCCESS for a wake that did nothing at all.
 #
 # So: one lock, the outer one, matching the one command this script runs.
+#
+# BUT THE DEPENDENCY IS FLAG-CONDITIONAL, and this comment previously stated it
+# as an unconditional fact - which is how the next reader comes to trust a guard
+# that is not there. `--source=all` acquires scraper:cycle ONLY when
+# FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER is true (scraper/src/index.ts:751,
+# and the flag is `process.env.ENABLE_DUE_STEP_SCHEDULER === 'true'`, so it is
+# OFF unless explicitly set). With the flag OFF the cycle takes NO lock at all,
+# this check reads free every time, and every wake starts a cycle.
+#
+# That is deliberately NOT treated as a failure here. It is the flag's own
+# legacy behaviour, and it is a different thing from the bug this check exists
+# to prevent: with the flag off there is no lock to contend for, so nothing is
+# being misreported - unlike the old inner-lock read, which saw a FREE lock
+# while a cycle WAS running and then logged success for a wake that did nothing.
+# The honest summary: this skip is a real guard when the scheduler flag is on,
+# and a no-op when it is off. The ceiling above is unconditional either way.
 # `lock:resource:` is the prefix the distributed lock applies - the same
 # fully-qualified spelling scripts/deploy-linux.sh's
 # release_scraper_cycle_locks() uses, so the two cannot drift apart. Read
@@ -104,6 +120,15 @@ SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 # so passing it would be a fiction that reads like a feature. When the job
 # split of design section 2.1 lands, this is where each job names both the
 # command it runs and the lock that command takes - together, never apart.
+# --check: run ONLY the resolution checks below and exit - never start a cycle.
+# This is what the deploy calls, so the deploy's verdict and the wrapper's
+# runtime refusal come from the SAME code and cannot drift apart.
+SCRAPER_WAKE_CHECK_ONLY=0
+if [ "${1:-}" = "--check" ]; then
+  SCRAPER_WAKE_CHECK_ONLY=1
+  shift
+fi
+
 SCRAPER_JOB="data"
 case "${1:-}" in
   data|live|closed) SCRAPER_JOB="$1"; shift ;;
@@ -166,10 +191,19 @@ fi
 # creates, and say so plainly when it cannot be found - an ENOENT spawn is the
 # visible signal, never a silent fallback to system python (W-111 round 2).
 if [ -z "${PYTHON_BIN:-}" ]; then
+  # SCRAPER_PYTHON_BIN_CANDIDATE is a TEST SEAM: it prepends one candidate so
+  # the suite can exercise the resolve-THEN-EXPORT path without a real deploy
+  # venv on disk. Production never sets it; the two real candidates are the
+  # layout setup_python_venv() creates.
   for _cand in \
+    "${SCRAPER_PYTHON_BIN_CANDIDATE:-/nonexistent/python}" \
     "$REPO_ROOT/../shared/venv/$DEPLOY_SLOT_NAME/bin/python" \
     "$REPO_ROOT/../../shared/venv/$DEPLOY_SLOT_NAME/bin/python"; do
-    if [ -x "$_cand" ]; then PYTHON_BIN="$_cand"; export PYTHON_BIN; break; fi
+    # No export here: the single `export PYTHON_BIN` below covers both this
+    # resolved value and a caller-supplied one. Two exports meant a mutation
+    # could delete one and survive, which reads as an untested guard when in
+    # fact it was a redundant line.
+    if [ -x "$_cand" ]; then PYTHON_BIN="$_cand"; break; fi
   done
 fi
 if [ -z "${PYTHON_BIN:-}" ]; then
@@ -189,6 +223,21 @@ fi
 if [ -z "$TSX_BIN" ] || [ ! -f "$TSX_BIN" ]; then
   log "FATAL no-tsx: cannot find tsx/dist/cli.mjs under $SCRAPER_DIR or $REPO_ROOT - set SCRAPER_TSX_BIN in the cron line. Nothing was run."
   exit 78
+fi
+
+# The ceiling's own dependency, checked HERE (not only at launch) so --check
+# covers every condition that can make a real wake refuse.
+if ! command -v timeout >/dev/null 2>&1; then
+  log "FATAL no-ceiling: GNU coreutils 'timeout' is not on PATH, so the 2-hour hung-process ceiling cannot be enforced. REFUSING - pm2 no longer restarts the scraper, so nothing else would stop a hung cycle. Install coreutils. Nothing was run."
+  exit 78
+fi
+
+if [ "$SCRAPER_WAKE_CHECK_ONLY" -eq 1 ]; then
+  # Every refusal condition above has passed. Report WHAT was resolved, not a
+  # bare OK: the deploy log is where an operator later reconstructs which node
+  # and which tsx this box actually resolved.
+  log "check-ok: node=$NODE_BIN tsx=$TSX_BIN timeout=$(command -v timeout) TZ=$TZ PYTHON_BIN=${PYTHON_BIN:-<unset>}"
+  exit 0
 fi
 
 

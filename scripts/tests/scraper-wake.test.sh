@@ -604,15 +604,77 @@ fi
 # (b) TZ and PYTHON_BIN are what cron does NOT provide and the scraper needs
 # (an unset TZ is what made NSE dates land a day early for months, T-327 P2-7;
 # an unset PYTHON_BIN silently uses whatever python is on PATH, W-111/W-112).
-if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qE 'export TZ='; then
-  pass "case 13: the wrapper exports TZ itself (cron does not)"
+# VALUE, not shape. These two assertions used to grep for the ASSIGNMENT's
+# existence, which a surviving mutation proved worthless: setting
+# `export TZ="${TZ:-Asia/Kolkata}"` passed all 54 cases, and a wrong TZ is
+# exactly the defect class the code comment cites (NSE dates a day early for
+# months, T-327 P2-7). `grep -qF 'PYTHON_BIN'` was worse - it matched the WARN
+# string alone. So the wrapper is EXERCISED and the environment it actually
+# hands the job is read back out of a fake job that prints its own env.
+printf '%s
+' '#!/bin/sh' 'echo "ENV_TZ=$TZ"' 'echo "ENV_PYTHON_BIN=${PYTHON_BIN:-<unset>}"' 'exit 0' > "$FIXDIR/job-env.sh"
+chmod +x "$FIXDIR/job-env.sh"
+
+# PYTHON_BIN reaches the wrapper as an exported var (that is how cron and pm2
+# both pass it), so this assertion cannot prove the wrapper's own `export`. What
+# it DOES prove is that the value is not swallowed or overwritten on the way to
+# the job. The wrapper's export matters for the OTHER path - the venv lookup,
+# where the wrapper sets PYTHON_BIN itself and the job can only see it if the
+# wrapper exports it. That path is asserted separately below.
+ENVOUT13="$(
+  SCRAPER_WAKE_FAKE_LOCK_TTL=free   SCRAPER_WAKE_CMD="$FIXDIR/job-env.sh"   SCRAPER_CEILING_SECONDS=30   PYTHON_BIN="/tmp/fake-venv/bin/python"   sh "$WAKE" data 2>&1
+)"
+if printf '%s' "$ENVOUT13" | grep -qF 'ENV_TZ=UTC'; then
+  pass "case 13: the job actually RECEIVES TZ=UTC (value asserted, not the assignment's existence)"
 else
-  fail "case 13: the wrapper does not export TZ - cron would run the scraper in the box's local zone"
+  fail "case 13: the job did not receive TZ=UTC - a wrong or unset TZ is what made NSE dates land a day early"
+  printf '%s
+' "$ENVOUT13" | grep ENV_TZ || printf '%s
+' "$ENVOUT13"
 fi
-if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qF 'PYTHON_BIN'; then
-  pass "case 13: the wrapper resolves/exports PYTHON_BIN (cron does not)"
+if printf '%s' "$ENVOUT13" | grep -qF 'ENV_PYTHON_BIN=/tmp/fake-venv/bin/python'; then
+  pass "case 13: the job actually RECEIVES the PYTHON_BIN it was given (exported, not just mentioned)"
 else
-  fail "case 13: the wrapper never handles PYTHON_BIN - the extractor would fall back to system python under cron"
+  fail "case 13: PYTHON_BIN did not reach the job - the extractor would fall back to system python under cron"
+  printf '%s
+' "$ENVOUT13" | grep ENV_PYTHON_BIN || printf '%s
+' "$ENVOUT13"
+fi
+# The venv path: with PYTHON_BIN UNSET in the environment, the wrapper resolves
+# it from the deploy venv layout itself - and the job can only see that value if
+# the wrapper EXPORTS it. A mutation deleting the wrapper's `export PYTHON_BIN`
+# survived until this case existed, because the other assertion passes the
+# variable in already-exported and so cannot tell the two apart.
+VENV13="$C13/venv/bin"
+mkdir -p "$VENV13"
+printf '%s
+' '#!/bin/sh' 'exit 0' > "$VENV13/python"
+chmod +x "$VENV13/python"
+ENVOUT13C="$(
+  env -u PYTHON_BIN   SCRAPER_WAKE_FAKE_LOCK_TTL=free   SCRAPER_WAKE_CMD="$FIXDIR/job-env.sh"   SCRAPER_CEILING_SECONDS=30   SCRAPER_PYTHON_BIN_CANDIDATE="$VENV13/python"   sh "$WAKE" data 2>&1
+)"
+if printf '%s' "$ENVOUT13C" | grep -qF "ENV_PYTHON_BIN=$VENV13/python"; then
+  pass "case 13: a wrapper-RESOLVED PYTHON_BIN is exported through to the job"
+elif printf '%s' "$ENVOUT13C" | grep -qF 'ENV_PYTHON_BIN=<unset>'; then
+  fail "case 13: the wrapper resolved PYTHON_BIN but did not EXPORT it - the extractor would silently use system python"
+  printf '%s
+' "$ENVOUT13C" | grep -E 'ENV_PYTHON_BIN|no-python-bin' || true
+else
+  fail "case 13: unexpected PYTHON_BIN state from the venv-resolution path"
+  printf '%s
+' "$ENVOUT13C" | grep -E 'ENV_PYTHON_BIN|no-python-bin' || true
+fi
+
+# And an unset TZ must still arrive as UTC, since that is the cron case.
+ENVOUT13B="$(
+  SCRAPER_WAKE_FAKE_LOCK_TTL=free   SCRAPER_WAKE_CMD="$FIXDIR/job-env.sh"   SCRAPER_CEILING_SECONDS=30   TZ=   sh "$WAKE" data 2>&1
+)"
+if printf '%s' "$ENVOUT13B" | grep -qF 'ENV_TZ=UTC'; then
+  pass "case 13: an empty inherited TZ still reaches the job as UTC (the cron case)"
+else
+  fail "case 13: with TZ unset the job did not get UTC"
+  printf '%s
+' "$ENVOUT13B" | grep ENV_TZ || true
 fi
 # And it must not depend on `npx`, which under cron would try the network.
 if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qE '(^|[^a-zA-Z-])npx '; then
@@ -700,6 +762,93 @@ if [ -f "$DEPLOY_SCRIPT" ]; then
     fail "case 11: ${CRON_SITES11:-0} cron installs for ${PM2_SITES11:-0} pm2 start sites - a start site that schedules nothing is a silent outage on that path"
     grep -n 'pm2 start .*scraper-wake\.sh' "$DEPLOY_SCRIPT" || true
   fi
+fi
+
+# --- Case 14: a wrapper refusal FAILS THE DEPLOY, non-zero, with its reason ---
+# The worst outcome this slice can produce: all three start sites are
+# `pm2 start --no-autorestart`, which returns 0 the moment pm2 forks, so a
+# wrapper that later refuses with exit 78 leaves a GREEN DEPLOY WITH A SCRAPER
+# THAT NEVER RUNS - worse than the original defect, because the new machinery
+# claims to work. The deploy must refuse while someone is watching.
+CRON_PF="$(sed -n '/^preflight_scraper_wake()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$CRON_PF" ]; then
+  fail "case 14: could not extract preflight_scraper_wake() from $DEPLOY_SCRIPT - renamed?"
+else
+  pass "case 14: the deploy defines a wake preflight"
+
+  C14="$(mktemp -d)"
+  mkdir -p "$C14/scripts"
+
+  # (a) A wrapper that REFUSES (exit 78) must make the preflight fail non-zero.
+  printf '%s\n' '#!/bin/sh' 'echo "scraper-wake: FATAL no-node: cannot find node"' 'exit 78' > "$C14/scripts/scraper-wake.sh"
+  chmod +x "$C14/scripts/scraper-wake.sh"
+  (
+    DRY_RUN=0; SLOT=prod; PYTHON_BIN_PATH=/nonexistent
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    fatal() { echo "FATAL: $*" >&2; exit 1; }
+    eval "$CRON_PF"
+    preflight_scraper_wake "$C14/scripts/scraper-wake.sh"
+  ) > "$C14/refuse.log" 2>&1
+  ST14=$?
+  if [ "$ST14" -ne 0 ]; then
+    pass "case 14: a refusing wrapper makes the deploy step exit non-zero ($ST14) - no green deploy with a dead scraper"
+  else
+    fail "case 14: the deploy step exited 0 despite the wrapper refusing - this is the green-deploy-dead-scraper outcome"
+    cat "$C14/refuse.log"
+  fi
+  # signal-ownership R6: the gate prints its REASON before the non-zero exit.
+  if grep -qF 'FATAL no-node' "$C14/refuse.log"; then
+    pass "case 14: the deploy surfaces the wrapper's OWN reason, not a bare 'preflight failed'"
+  else
+    fail "case 14: the wrapper's reason was swallowed - the operator would have to go read a log on the box"
+    cat "$C14/refuse.log"
+  fi
+
+  # (b) A wrapper that PASSES must not block the deploy.
+  printf '%s\n' '#!/bin/sh' 'echo "scraper-wake: check-ok: node=/usr/bin/node"' 'exit 0' > "$C14/scripts/scraper-wake.sh"
+  chmod +x "$C14/scripts/scraper-wake.sh"
+  (
+    DRY_RUN=0; SLOT=prod; PYTHON_BIN_PATH=/nonexistent
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    fatal() { echo "FATAL: $*" >&2; exit 1; }
+    eval "$CRON_PF"
+    preflight_scraper_wake "$C14/scripts/scraper-wake.sh"
+  ) > "$C14/ok.log" 2>&1
+  ST14B=$?
+  if [ "$ST14B" -eq 0 ]; then
+    pass "case 14: a healthy wrapper passes the preflight (the gate is not just always-fail)"
+  else
+    fail "case 14: the preflight failed a HEALTHY wrapper (exit $ST14B) - it would block every deploy"
+    cat "$C14/ok.log"
+  fi
+
+  # (c) A missing or non-executable wrapper is also a refusal, not a skip.
+  rm -f "$C14/scripts/scraper-wake.sh"
+  (
+    DRY_RUN=0; SLOT=prod; PYTHON_BIN_PATH=/nonexistent
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    fatal() { echo "FATAL: $*" >&2; exit 1; }
+    eval "$CRON_PF"
+    preflight_scraper_wake "$C14/scripts/scraper-wake.sh"
+  ) > "$C14/missing.log" 2>&1
+  ST14C=$?
+  if [ "$ST14C" -ne 0 ]; then
+    pass "case 14: a missing wrapper fails the deploy too (exit $ST14C)"
+  else
+    fail "case 14: a MISSING wrapper passed the preflight - the schedule would invoke nothing"
+  fi
+
+  # (d) The preflight must be CALLED on the real path, not merely defined.
+  if grep -vE '^[[:space:]]*[#:]' "$DEPLOY_SCRIPT" | grep -qF 'preflight_scraper_wake "'; then
+    pass "case 14: the preflight is invoked on the real deploy path"
+  else
+    fail "case 14: preflight_scraper_wake is defined but never called - it gates nothing"
+  fi
+
+  rm -rf "$C14"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

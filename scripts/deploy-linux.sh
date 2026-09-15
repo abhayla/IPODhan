@@ -1772,6 +1772,7 @@ restart_pm2() {
   # W-111/W-112: PYTHON_BIN pins the auto-persist PDF/OCR extractor to the
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
+  preflight_scraper_wake "$RELEASE_DIR/scripts/scraper-wake.sh"
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   # W-178 round 2: see resume_scraper()'s comment above — default-expand
   # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
@@ -1781,6 +1782,53 @@ restart_pm2() {
   # The alarm clock. Without this the wrapper above runs once and never again.
   install_scraper_cron
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
+}
+
+# --- Wake preflight: a refusal at RUN time must not ship as a GREEN deploy ---
+# Every scraper start site is `pm2 start --no-autorestart`, and pm2 returns 0 as
+# soon as it has forked. So by the time the wrapper discovers it cannot resolve
+# node, tsx or coreutils `timeout` and refuses with exit 78, the deploy step has
+# ALREADY succeeded. Without this preflight the worst outcome this slice can
+# produce is a GREEN DEPLOY WITH A SCRAPER THAT NEVER RUNS - worse than the
+# defect it replaces, because the new machinery claims to work. signal-
+# ownership.md R6: a gate prints its reason before a non-zero exit.
+#
+# Two different moments, two different mechanisms, deliberately: the wrapper
+# refusing at RUN time is correct (better than running unbounded), and this
+# refuses at DEPLOY time so the failure is visible while someone is watching.
+# It calls the wrapper's OWN `--check`, so the two verdicts come from the same
+# code and cannot drift apart.
+#
+# WHAT IT CATCHES: an unresolvable node, an unresolvable workspace tsx, and a
+# missing `timeout` - i.e. every condition that makes the wrapper exit 78 today.
+# WHAT IT CANNOT CATCH: anything that changes between this check and a wake two
+# hours later (a PATH edit, an uninstalled coreutils, a pruned release dir), and
+# any failure INSIDE the cycle once it starts - this proves the wrapper can
+# start, never that a cycle will succeed.
+preflight_scraper_wake() {
+  local wake_script="$1"
+
+  if (( DRY_RUN )); then
+    log "[dry-run] would run wake preflight: $wake_script --check"
+    return 0
+  fi
+
+  if [ ! -x "$wake_script" ]; then
+    fatal "wake preflight: $wake_script is missing or not executable — the scheduled wake could never run. Nothing was started."
+  fi
+
+  local check_out
+  if check_out="$( cd "$(dirname "$wake_script")/.." && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" "$wake_script" --check data 2>&1 )"; then
+    log "wake preflight OK: $(printf '%s' "$check_out" | tail -n1)"
+    return 0
+  fi
+
+  # Print the wrapper's OWN reason before failing - never a bare "preflight
+  # failed", which would send the operator to read a log that says why on a box
+  # they may not have open.
+  printf '%s
+' "$check_out" >&2
+  fatal "wake preflight FAILED: the wake wrapper cannot run on this box (see its FATAL line above). pm2 would report success and the scraper would never wake. Refusing to finish the deploy."
 }
 
 # --- The scheduled invoker (item 7 slice 1) ---------------------------------
