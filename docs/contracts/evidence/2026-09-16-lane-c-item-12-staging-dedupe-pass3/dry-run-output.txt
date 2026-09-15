@@ -1,0 +1,281 @@
+=== DRY RUN group=gvelectricals keep=9cb00cd6-aae7-4644-aa09-5a3fc51d197e drop=2dfd8026-2725-4351-92dc-462aa8fba879 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-2dfd8026-2725-4351-92dc-462aa8fba879-1789513176632.json
+
+KEEP   g-v-electricals-ltd
+       G.V.Electricals Ltd.   issue_size 422500000.00
+DROP   g-v-electricals-ltd-g-v-electricals-ipo-ct
+       G.V.Electricals Ltd. (G.V. Electricals IPO) CT   issue_size 422500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /g-v-electricals-ltd-g-v-electricals-ipo-ct  ->  /g-v-electricals-ltd
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=gvelectricals keep=9cb00cd6-aae7-4644-aa09-5a3fc51d197e drop=97a5557b-fa46-4507-9135-9c79875d2988 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-97a5557b-fa46-4507-9135-9c79875d2988-1789513181144.json
+
+KEEP   g-v-electricals-ltd
+       G.V.Electricals Ltd.   issue_size 422500000.00
+DROP   g-v-electricals-ltd-g-v-electricals-ipo-lt
+       G.V.Electricals Ltd. (G.V. Electricals IPO) LT   issue_size 422500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /g-v-electricals-ltd-g-v-electricals-ipo-lt  ->  /g-v-electricals-ltd
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=gvelectricals keep=9cb00cd6-aae7-4644-aa09-5a3fc51d197e drop=ef84a7f1-2e85-48e7-aa10-235b6f721fdc ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-ef84a7f1-2e85-48e7-aa10-235b6f721fdc-1789513185409.json
+
+KEEP   g-v-electricals-ltd
+       G.V.Electricals Ltd.   issue_size 422500000.00
+DROP   g-v-electricals-ltd-g-v-electricals-ipo-p
+       G.V.Electricals Ltd. (G.V. Electricals IPO) P   issue_size 422500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /g-v-electricals-ltd-g-v-electricals-ipo-p  ->  /g-v-electricals-ltd
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=hrhygieneproducts keep=708946b8-128c-4b86-8776-46bd696c2825 drop=9450cd8d-3da8-4482-8ff2-8083c6a98804 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-9450cd8d-3da8-4482-8ff2-8083c6a98804-1789513189607.json
+
+KEEP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)   issue_size 539500000.00
+DROP   h-r-hygiene-products-ltd
+       H R Hygiene Products   issue_size 539500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   symbol: -> HRHYGIENE  (source ADMIN, 100)
+   lot_size: -> 1600  (source ADMIN, 100)
+   registrar: -> Purva Sharegistry India Private Limited  (source ADMIN, 100)
+   registrar_id: -> 0f8f6d26-fcf6-48bf-b2f0-a2f768ff49d7  (source ADMIN, 100)
+   lead_managers: -> Marwadi Chandarana Intermediaries Brokers Private  (source ADMIN, 100)
+   allotment_date: -> 2026-08-03  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 2
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+   subscriptions: 328
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /h-r-hygiene-products-ltd  ->  /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=hrhygieneproducts keep=708946b8-128c-4b86-8776-46bd696c2825 drop=e986b271-44c4-4fb0-a846-3a7c60cbda71 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-e986b271-44c4-4fb0-a846-3a7c60cbda71-1789513194869.json
+
+KEEP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)   issue_size 539500000.00
+DROP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p
+       H.R.Hygiene Products Ltd.   issue_size 539500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   verifier_url: -> https://www.chittorgarh.com/ipo/hr-hygiene-products-ipo/2713  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   data_conflicts: 12
+   field_sources: 14
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   ipo_slug_redirects: 2
+
+slug redirect: /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p  ->  /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=hrhygieneproducts keep=708946b8-128c-4b86-8776-46bd696c2825 drop=37f19183-88a5-48da-ae0b-523b8bc27d50 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-37f19183-88a5-48da-ae0b-523b8bc27d50-1789513199324.json
+
+KEEP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)   issue_size 539500000.00
+DROP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO) CT   issue_size 539500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct  ->  /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=shreebalajimalatextiles keep=80a1a765-8f14-4a7d-b92a-f9c831628dec drop=b0344c53-03c6-4490-b699-c5aff49768b3 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-b0344c53-03c6-4490-b699-c5aff49768b3-1789513205235.json
+
+KEEP   shree-balaji-mala-textiles-ltd
+       Shree Balaji (Mala) Textiles Ltd.   issue_size 189000000.00
+DROP   shree-balaji-mala-textiles
+       Shree Balaji Mala Textiles   issue_size 189000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   allotment_date: -> 2026-07-27  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+   subscriptions: 192
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /shree-balaji-mala-textiles  ->  /shree-balaji-mala-textiles-ltd
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=shreebalajimalatextiles keep=80a1a765-8f14-4a7d-b92a-f9c831628dec drop=6fc323b2-804c-411c-8377-0a7ccab5233e ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-6fc323b2-804c-411c-8377-0a7ccab5233e-1789513209454.json
+
+KEEP   shree-balaji-mala-textiles-ltd
+       Shree Balaji (Mala) Textiles Ltd.   issue_size 189000000.00
+DROP   shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct
+       Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO) CT   issue_size 189000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct  ->  /shree-balaji-mala-textiles-ltd
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+=== DRY RUN group=shreebalajimalatextiles keep=80a1a765-8f14-4a7d-b92a-f9c831628dec drop=f71bbd1b-d054-427d-9662-3aa6667876fe ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-f71bbd1b-d054-427d-9662-3aa6667876fe-1789513213443.json
+
+KEEP   shree-balaji-mala-textiles-ltd
+       Shree Balaji (Mala) Textiles Ltd.   issue_size 189000000.00
+DROP   shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p
+       Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO) P   issue_size 189000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p  ->  /shree-balaji-mala-textiles-ltd
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0

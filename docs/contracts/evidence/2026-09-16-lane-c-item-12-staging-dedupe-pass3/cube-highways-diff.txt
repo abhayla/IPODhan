@@ -1,0 +1,41 @@
+Columns that DIFFER between cube-highways-trust (A) and cube-highways-trust-cube-highways-trust-invit (B):
+
+id:
+  A: deef7273-0b43-4745-b8e6-8fdd3ec40b58
+  B: cb6954f8-00a3-452f-a89b-a709ee429da8
+symbol:
+  A: CUBEINVIT
+  B: NULL
+issue_size:
+  A: 0.00
+  B: 50000000000.00
+open_date:
+  A: Sun Jul 19 2026 00:00:00 GMT+0530 (India Standard Time)
+  B: Wed Jul 22 2026 00:00:00 GMT+0530 (India Standard Time)
+close_date:
+  A: Sun Jul 26 2026 00:00:00 GMT+0530 (India Standard Time)
+  B: Fri Jul 24 2026 00:00:00 GMT+0530 (India Standard Time)
+listing_date:
+  A: Wed Jul 29 2026 00:00:00 GMT+0530 (India Standard Time)
+  B: Mon Aug 03 2026 00:00:00 GMT+0530 (India Standard Time)
+created_at:
+  A: Mon Jul 20 2026 07:00:08 GMT+0530 (India Standard Time)
+  B: Thu Aug 20 2026 14:56:05 GMT+0530 (India Standard Time)
+updated_at:
+  A: Sun Aug 02 2026 19:30:42 GMT+0530 (India Standard Time)
+  B: Fri Sep 04 2026 12:00:42 GMT+0530 (India Standard Time)
+slug:
+  A: cube-highways-trust
+  B: cube-highways-trust-cube-highways-trust-invit
+last_scraped_at:
+  A: Sun Aug 02 2026 19:30:42 GMT+0530 (India Standard Time)
+  B: Fri Sep 04 2026 12:00:42 GMT+0530 (India Standard Time)
+allotment_date:
+  A: Mon Jul 27 2026 00:00:00 GMT+0530 (India Standard Time)
+  B: NULL
+offering_type:
+  A: IPO
+  B: INVITS
+verifier_url:
+  A: NULL
+  B: https://www.chittorgarh.com/ipo/cube-highways-trust-invit/3192/

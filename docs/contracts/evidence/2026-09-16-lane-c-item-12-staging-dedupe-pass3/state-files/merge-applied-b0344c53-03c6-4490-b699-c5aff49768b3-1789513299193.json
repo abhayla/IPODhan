@@ -1,0 +1,50 @@
+{
+ "appliedAt": "2026-09-15T23:01:39.193Z",
+ "keepId": "80a1a765-8f14-4a7d-b92a-f9c831628dec",
+ "dropId": "b0344c53-03c6-4490-b699-c5aff49768b3",
+ "keepSlug": "shree-balaji-mala-textiles-ltd",
+ "droppedSlug": "shree-balaji-mala-textiles",
+ "patch": [
+  {
+   "column": "allotment_date",
+   "value": "2026-07-27",
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row b0344c53-03c6-4490-b699-c5aff49768b3"
+  }
+ ],
+ "provenanceWritten": [
+  {
+   "fieldName": "allotmentDate",
+   "source": "ADMIN",
+   "previousSource": null
+  }
+ ],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (80a1a765-8f14-4a7d-b92a-f9c831628dec)"
+  },
+  {
+   "name": "carried field allotment_date",
+   "pass": true,
+   "detail": "expected \"2026-07-27\", found \"2026-07-27\""
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "3 other row(s) share the survivor open_date: shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p, shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct, cube-highways-trust-cube-highways-trust-invit"
+  }
+ ]
+}

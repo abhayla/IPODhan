@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 04:19 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 04:34 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -3042,3 +3042,23 @@ One scheduled cycle and one deploy restart, both at zero, stated as such. The si
 #669 wires the invariant test into CI. #666 (the STALLION refresh tool) passed two adversarial reviews and CI still found two real defects: a direct `ipos` write the ratchet refused, and a production pool with no UTC pin and no UTC timestamp parsing, which would have read every timestamp 5h30 off. Both fixed; CI was the detection, and that is recorded rather than smoothed over.
 
 **Item 12 HELD (old-fold population); items 14 (BLOCKED) and 2 not DONE.** No production data has been written.
+
+
+
+## 2026-09-16 04:34 IST — #672 merged; pass 3 merged nine more twins; Cube Highways is not a duplicate we can prove
+
+### Slice G on main, pass 3 done
+
+#672 merged at 04:26 after two review rounds and two CI-caught test fixes. Pass 3 then merged the nine remaining twin rows of G.V. Electricals, H R Hygiene and Shree Balaji on staging, every VERIFY line PASS, invariant **4 → 1**. The third hold is running, scoped to those three groups.
+
+### Cube Highways: REPORTED
+
+| column | cube-highways-trust | …-cube-highways-trust-invit |
+|---|---|---|
+| offering_type | IPO | INVITS |
+| open / close / listing | 07-19 / 07-26 / 07-29 | 07-22 / 07-24 / 08-03 |
+| symbol / issue_size | CUBEINVIT / 0 | NULL / ₹5,000 cr |
+
+Both sides populated, disagreeing on dates and offering type: **conflicting twins, needs a source**, not merged. The tool would have accepted it in both directions, because the gate compares nothing about offering type or close/listing dates; that gap is filed as the next slice.
+
+**Item 12: 19 of 20 staging groups merged, one REPORTED by decision, third hold pending. Item 14 BLOCKED; item 2 not DONE.** No production data has been written.

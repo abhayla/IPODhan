@@ -1,0 +1,30 @@
+KEEP RULE: most field_sources rows; tie -> non-null bse_ipo_no/isin/symbol; tie -> most documents; tie -> shortest slug; tie -> earliest created_at
+
+GROUP: gvelectricals
+  KEEP: 9cb00cd6-aae7-4644-aa09-5a3fc51d197e (g-v-electricals-ltd) - field_sources=14, symbol=GVELECTRIC
+    -> this is the survivor from tonight's earlier merges (already absorbed twins); wins outright on field_sources count (14 vs 1/1/1)
+  DROP: 2dfd8026-2725-4351-92dc-462aa8fba879 (g-v-electricals-ltd-g-v-electricals-ipo-ct) - field_sources=1
+  DROP: 97a5557b-fa46-4507-9135-9c79875d2988 (g-v-electricals-ltd-g-v-electricals-ipo-lt) - field_sources=1
+  DROP: ef84a7f1-2e85-48e7-aa10-235b6f721fdc (g-v-electricals-ltd-g-v-electricals-ipo-p) - field_sources=1
+
+GROUP: hrhygieneproducts
+  KEEP: 708946b8-128c-4b86-8776-46bd696c2825 (h-r-hygiene-products-ltd-h-r-hygiene-products-ipo) - field_sources=14
+    -> tie with e986b271 (also 14); both symbol/isin/bse_ipo_no NULL, both documents=0; tiebreak on shortest slug:
+       "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo" (50 chars) < "...-ipo-p" (52 chars) -> 708946b8 wins
+    -> NOTE: 9450cd8d (h-r-hygiene-products-ltd, symbol=HRHYGIENE) is NOT the survivor despite having a symbol:
+       it only has field_sources=2 vs 14; field_sources count decides outright before symbol tiebreak applies
+  DROP: 9450cd8d-3da8-4482-8ff2-8083c6a98804 (h-r-hygiene-products-ltd) - field_sources=2 (has symbol HRHYGIENE, but loses on primary criterion)
+  DROP: e986b271-44c4-4fb0-a846-3a7c60cbda71 (h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p) - field_sources=14, lost slug-length tiebreak
+  DROP: 37f19183-88a5-48da-ae0b-523b8bc27d50 (h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct) - field_sources=1
+
+GROUP: shreebalajimalatextiles
+  KEEP: 80a1a765-8f14-4a7d-b92a-f9c831628dec (shree-balaji-mala-textiles-ltd) - field_sources=16, symbol=MALA
+    -> this is the survivor from tonight's earlier merges (already absorbed twins); wins outright on field_sources count (16 vs 1/1/1)
+  DROP: b0344c53-03c6-4490-b699-c5aff49768b3 (shree-balaji-mala-textiles) - field_sources=1
+  DROP: 6fc323b2-804c-411c-8377-0a7ccab5233e (shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct) - field_sources=1
+  DROP: f71bbd1b-d054-427d-9662-3aa6667876fe (shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p) - field_sources=1
+
+GROUP: cubehighwaystrust (DRY RUN ONLY per instructions - no drop decided)
+  deef7273-0b43-4745-b8e6-8fdd3ec40b58 (cube-highways-trust) - field_sources=0, symbol=CUBEINVIT, issue_size=0
+  cb6954f8-00a3-452f-a89b-a709ee429da8 (cube-highways-trust-cube-highways-trust-invit) - field_sources=12, symbol=NULL, issue_size=Rs5,000cr
+  By rule (most field_sources): cb6954f8 would win (12 vs 0), but this group is DRY-RUN ONLY by decision - not applied.

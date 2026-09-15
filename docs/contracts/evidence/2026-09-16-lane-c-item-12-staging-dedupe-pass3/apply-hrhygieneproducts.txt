@@ -1,0 +1,143 @@
+=== APPLY keep=708946b8-128c-4b86-8776-46bd696c2825 drop=9450cd8d-3da8-4482-8ff2-8083c6a98804 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-9450cd8d-3da8-4482-8ff2-8083c6a98804-1789513263681.json
+
+KEEP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)   issue_size 539500000.00
+DROP   h-r-hygiene-products-ltd
+       H R Hygiene Products   issue_size 539500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   symbol: -> HRHYGIENE  (source ADMIN, 100)
+   lot_size: -> 1600  (source ADMIN, 100)
+   registrar: -> Purva Sharegistry India Private Limited  (source ADMIN, 100)
+   registrar_id: -> 0f8f6d26-fcf6-48bf-b2f0-a2f768ff49d7  (source ADMIN, 100)
+   lead_managers: -> Marwadi Chandarana Intermediaries Brokers Private  (source ADMIN, 100)
+   allotment_date: -> 2026-08-03  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 2
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+   subscriptions: 328
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /h-r-hygiene-products-ltd  ->  /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+[Cache] DEL: ipo:id:708946b8-128c-4b86-8776-46bd696c2825, ipo:slug:h-r-hygiene-products-ltd-h-r-hygiene-products-ipo, ipo:id:9450cd8d-3da8-4482-8ff2-8083c6a98804, ipo:slug:h-r-hygiene-products-ltd
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (708946b8-128c-4b86-8776-46bd696c2825)
+VERIFY: PASS — carried field symbol: expected "HRHYGIENE", found "HRHYGIENE"
+VERIFY: PASS — carried field lot_size: expected "1600", found "1600"
+VERIFY: PASS — carried field registrar: expected "Purva Sharegistry India Private Limited", found "Purva Sharegistry India Private Limited"
+VERIFY: PASS — carried field registrar_id: expected "0f8f6d26-fcf6-48bf-b2f0-a2f768ff49d7", found "0f8f6d26-fcf6-48bf-b2f0-a2f768ff49d7"
+VERIFY: PASS — carried field lead_managers: expected "Marwadi Chandarana Intermediaries Brokers Private", found "Marwadi Chandarana Intermediaries Brokers Private"
+VERIFY: PASS — carried field allotment_date: expected "2026-08-03", found "2026-08-03"
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): 3 other row(s) share the survivor open_date: h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p, manipal-health-enterprises-ltd, h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct
+
+APPLIED.
+   provenance rows written: 6
+      symbol: ADMIN (was none)
+      lotSize: ADMIN (was none)
+      registrar: ADMIN (was none)
+      registrarId: ADMIN (was none)
+      leadManagers: ADMIN (was none)
+      allotmentDate: ADMIN (was none)
+   survivor: h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+   rollback: pre-merge snapshot at scripts/state/merge-backup-9450cd8d-3da8-4482-8ff2-8083c6a98804-1789513263681.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).
+EXIT:0
+=== APPLY keep=708946b8-128c-4b86-8776-46bd696c2825 drop=e986b271-44c4-4fb0-a846-3a7c60cbda71 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-e986b271-44c4-4fb0-a846-3a7c60cbda71-1789513270090.json
+
+KEEP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)   issue_size 539500000.00
+DROP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p
+       H.R.Hygiene Products Ltd.   issue_size 539500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   verifier_url: -> https://www.chittorgarh.com/ipo/hr-hygiene-products-ipo/2713  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   data_conflicts: 12
+   field_sources: 14
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   ipo_slug_redirects: 2
+
+slug redirect: /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p  ->  /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+[Cache] DEL: ipo:id:708946b8-128c-4b86-8776-46bd696c2825, ipo:slug:h-r-hygiene-products-ltd-h-r-hygiene-products-ipo, ipo:id:e986b271-44c4-4fb0-a846-3a7c60cbda71, ipo:slug:h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (708946b8-128c-4b86-8776-46bd696c2825)
+VERIFY: PASS — carried field verifier_url: expected "https://www.chittorgarh.com/ipo/hr-hygiene-products-ipo/2713/", found "https://www.chittorgarh.com/ipo/hr-hygiene-products-ipo/2713/"
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): 2 other row(s) share the survivor open_date: manipal-health-enterprises-ltd, h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct
+
+APPLIED.
+   provenance rows written: 1
+      verifierUrl: ADMIN (was none)
+   survivor: h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+   rollback: pre-merge snapshot at scripts/state/merge-backup-e986b271-44c4-4fb0-a846-3a7c60cbda71-1789513270090.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).
+EXIT:0
+=== APPLY keep=708946b8-128c-4b86-8776-46bd696c2825 drop=37f19183-88a5-48da-ae0b-523b8bc27d50 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-37f19183-88a5-48da-ae0b-523b8bc27d50-1789513277326.json
+
+KEEP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)   issue_size 539500000.00
+DROP   h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct
+       H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO) CT   issue_size 539500000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct  ->  /h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+[Cache] DEL: ipo:id:708946b8-128c-4b86-8776-46bd696c2825, ipo:slug:h-r-hygiene-products-ltd-h-r-hygiene-products-ipo, ipo:id:37f19183-88a5-48da-ae0b-523b8bc27d50, ipo:slug:h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (708946b8-128c-4b86-8776-46bd696c2825)
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): 1 other row(s) share the survivor open_date: manipal-health-enterprises-ltd
+
+APPLIED.
+   provenance rows written: 0
+   survivor: h-r-hygiene-products-ltd-h-r-hygiene-products-ipo
+   rollback: pre-merge snapshot at scripts/state/merge-backup-37f19183-88a5-48da-ae0b-523b8bc27d50-1789513277326.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).
+EXIT:0

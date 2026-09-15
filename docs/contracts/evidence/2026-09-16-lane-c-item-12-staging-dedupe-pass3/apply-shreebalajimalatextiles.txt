@@ -1,0 +1,124 @@
+=== APPLY keep=80a1a765-8f14-4a7d-b92a-f9c831628dec drop=b0344c53-03c6-4490-b699-c5aff49768b3 ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-b0344c53-03c6-4490-b699-c5aff49768b3-1789513296777.json
+
+KEEP   shree-balaji-mala-textiles-ltd
+       Shree Balaji (Mala) Textiles Ltd.   issue_size 189000000.00
+DROP   shree-balaji-mala-textiles
+       Shree Balaji Mala Textiles   issue_size 189000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   allotment_date: -> 2026-07-27  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+   subscriptions: 192
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /shree-balaji-mala-textiles  ->  /shree-balaji-mala-textiles-ltd
+[Cache] DEL: ipo:id:80a1a765-8f14-4a7d-b92a-f9c831628dec, ipo:slug:shree-balaji-mala-textiles-ltd, ipo:id:b0344c53-03c6-4490-b699-c5aff49768b3, ipo:slug:shree-balaji-mala-textiles
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (80a1a765-8f14-4a7d-b92a-f9c831628dec)
+VERIFY: PASS — carried field allotment_date: expected "2026-07-27", found "2026-07-27"
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): 3 other row(s) share the survivor open_date: shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p, shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct, cube-highways-trust-cube-highways-trust-invit
+
+APPLIED.
+   provenance rows written: 1
+      allotmentDate: ADMIN (was none)
+   survivor: shree-balaji-mala-textiles-ltd
+   rollback: pre-merge snapshot at scripts/state/merge-backup-b0344c53-03c6-4490-b699-c5aff49768b3-1789513296777.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).
+EXIT:0
+=== APPLY keep=80a1a765-8f14-4a7d-b92a-f9c831628dec drop=6fc323b2-804c-411c-8377-0a7ccab5233e ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-6fc323b2-804c-411c-8377-0a7ccab5233e-1789513303649.json
+
+KEEP   shree-balaji-mala-textiles-ltd
+       Shree Balaji (Mala) Textiles Ltd.   issue_size 189000000.00
+DROP   shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct
+       Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO) CT   issue_size 189000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct  ->  /shree-balaji-mala-textiles-ltd
+[Cache] DEL: ipo:id:80a1a765-8f14-4a7d-b92a-f9c831628dec, ipo:slug:shree-balaji-mala-textiles-ltd, ipo:id:6fc323b2-804c-411c-8377-0a7ccab5233e, ipo:slug:shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (80a1a765-8f14-4a7d-b92a-f9c831628dec)
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): 2 other row(s) share the survivor open_date: shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p, cube-highways-trust-cube-highways-trust-invit
+
+APPLIED.
+   provenance rows written: 0
+   survivor: shree-balaji-mala-textiles-ltd
+   rollback: pre-merge snapshot at scripts/state/merge-backup-6fc323b2-804c-411c-8377-0a7ccab5233e-1789513303649.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).
+EXIT:0
+=== APPLY keep=80a1a765-8f14-4a7d-b92a-f9c831628dec drop=f71bbd1b-d054-427d-9662-3aa6667876fe ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-f71bbd1b-d054-427d-9662-3aa6667876fe-1789513310062.json
+
+KEEP   shree-balaji-mala-textiles-ltd
+       Shree Balaji (Mala) Textiles Ltd.   issue_size 189000000.00
+DROP   shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p
+       Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO) P   issue_size 189000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   field_sources: 1
+   ipo_pipeline_steps: 52
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p  ->  /shree-balaji-mala-textiles-ltd
+[Cache] DEL: ipo:id:80a1a765-8f14-4a7d-b92a-f9c831628dec, ipo:slug:shree-balaji-mala-textiles-ltd, ipo:id:f71bbd1b-d054-427d-9662-3aa6667876fe, ipo:slug:shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (80a1a765-8f14-4a7d-b92a-f9c831628dec)
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): 1 other row(s) share the survivor open_date: cube-highways-trust-cube-highways-trust-invit
+
+APPLIED.
+   provenance rows written: 0
+   survivor: shree-balaji-mala-textiles-ltd
+   rollback: pre-merge snapshot at scripts/state/merge-backup-f71bbd1b-d054-427d-9662-3aa6667876fe-1789513310062.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).
+EXIT:0

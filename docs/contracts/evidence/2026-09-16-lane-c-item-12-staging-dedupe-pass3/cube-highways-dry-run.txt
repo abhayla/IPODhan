@@ -1,0 +1,63 @@
+=== DIRECTION 1: keep=A(cube-highways-trust) drop=B(cube-highways-trust-cube-highways-trust-invit) ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-cb6954f8-00a3-452f-a89b-a709ee429da8-1789513331976.json
+
+KEEP   cube-highways-trust
+       Cube Highways Trust   issue_size 0.00
+DROP   cube-highways-trust-cube-highways-trust-invit
+       Cube Highways Trust   issue_size 50000000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   verifier_url: -> https://www.chittorgarh.com/ipo/cube-highways-trust-invit/31  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   data_conflicts: 34
+   field_sources: 12
+   ipo_pipeline_steps: 9
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /cube-highways-trust-cube-highways-trust-invit  ->  /cube-highways-trust
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0
+
+=== DIRECTION 2: keep=B(cube-highways-trust-cube-highways-trust-invit) drop=A(cube-highways-trust) ===
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-pass3\scraper -> D:\Abhay\Ventures\IPODhan-c12-pass3\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-pass3 | cwd D:\Abhay\Ventures\IPODhan-c12-pass3\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-deef7273-0b43-4745-b8e6-8fdd3ec40b58-1789513337638.json
+
+KEEP   cube-highways-trust-cube-highways-trust-invit
+       Cube Highways Trust   issue_size 50000000000.00
+DROP   cube-highways-trust
+       Cube Highways Trust   issue_size 0.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   symbol: -> CUBEINVIT  (source ADMIN, 100)
+   allotment_date: -> 2026-07-27  (source ADMIN, 100)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   ipo_pipeline_steps: 52
+   subscriptions: 192
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /cube-highways-trust  ->  /cube-highways-trust-cube-highways-trust-invit
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.
+EXIT:0

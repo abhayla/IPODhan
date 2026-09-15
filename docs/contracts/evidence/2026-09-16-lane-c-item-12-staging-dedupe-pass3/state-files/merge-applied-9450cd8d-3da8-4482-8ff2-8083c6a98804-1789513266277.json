@@ -1,0 +1,137 @@
+{
+ "appliedAt": "2026-09-15T23:01:06.277Z",
+ "keepId": "708946b8-128c-4b86-8776-46bd696c2825",
+ "dropId": "9450cd8d-3da8-4482-8ff2-8083c6a98804",
+ "keepSlug": "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo",
+ "droppedSlug": "h-r-hygiene-products-ltd",
+ "patch": [
+  {
+   "column": "symbol",
+   "value": "HRHYGIENE",
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 9450cd8d-3da8-4482-8ff2-8083c6a98804"
+  },
+  {
+   "column": "lot_size",
+   "value": 1600,
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 9450cd8d-3da8-4482-8ff2-8083c6a98804"
+  },
+  {
+   "column": "registrar",
+   "value": "Purva Sharegistry India Private Limited",
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 9450cd8d-3da8-4482-8ff2-8083c6a98804"
+  },
+  {
+   "column": "registrar_id",
+   "value": "0f8f6d26-fcf6-48bf-b2f0-a2f768ff49d7",
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 9450cd8d-3da8-4482-8ff2-8083c6a98804"
+  },
+  {
+   "column": "lead_managers",
+   "value": [
+    "Marwadi Chandarana Intermediaries Brokers Private"
+   ],
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 9450cd8d-3da8-4482-8ff2-8083c6a98804"
+  },
+  {
+   "column": "allotment_date",
+   "value": "2026-08-03",
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 9450cd8d-3da8-4482-8ff2-8083c6a98804"
+  }
+ ],
+ "provenanceWritten": [
+  {
+   "fieldName": "symbol",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "lotSize",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "registrar",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "registrarId",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "leadManagers",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "allotmentDate",
+   "source": "ADMIN",
+   "previousSource": null
+  }
+ ],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (708946b8-128c-4b86-8776-46bd696c2825)"
+  },
+  {
+   "name": "carried field symbol",
+   "pass": true,
+   "detail": "expected \"HRHYGIENE\", found \"HRHYGIENE\""
+  },
+  {
+   "name": "carried field lot_size",
+   "pass": true,
+   "detail": "expected \"1600\", found \"1600\""
+  },
+  {
+   "name": "carried field registrar",
+   "pass": true,
+   "detail": "expected \"Purva Sharegistry India Private Limited\", found \"Purva Sharegistry India Private Limited\""
+  },
+  {
+   "name": "carried field registrar_id",
+   "pass": true,
+   "detail": "expected \"0f8f6d26-fcf6-48bf-b2f0-a2f768ff49d7\", found \"0f8f6d26-fcf6-48bf-b2f0-a2f768ff49d7\""
+  },
+  {
+   "name": "carried field lead_managers",
+   "pass": true,
+   "detail": "expected \"Marwadi Chandarana Intermediaries Brokers Private\", found \"Marwadi Chandarana Intermediaries Brokers Private\""
+  },
+  {
+   "name": "carried field allotment_date",
+   "pass": true,
+   "detail": "expected \"2026-08-03\", found \"2026-08-03\""
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "3 other row(s) share the survivor open_date: h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p, manipal-health-enterprises-ltd, h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct"
+  }
+ ]
+}

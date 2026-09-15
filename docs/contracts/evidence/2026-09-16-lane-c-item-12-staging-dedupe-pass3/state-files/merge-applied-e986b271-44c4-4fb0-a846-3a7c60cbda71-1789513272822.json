@@ -1,0 +1,50 @@
+{
+ "appliedAt": "2026-09-15T23:01:12.822Z",
+ "keepId": "708946b8-128c-4b86-8776-46bd696c2825",
+ "dropId": "e986b271-44c4-4fb0-a846-3a7c60cbda71",
+ "keepSlug": "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo",
+ "droppedSlug": "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p",
+ "patch": [
+  {
+   "column": "verifier_url",
+   "value": "https://www.chittorgarh.com/ipo/hr-hygiene-products-ipo/2713/",
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row e986b271-44c4-4fb0-a846-3a7c60cbda71"
+  }
+ ],
+ "provenanceWritten": [
+  {
+   "fieldName": "verifierUrl",
+   "source": "ADMIN",
+   "previousSource": null
+  }
+ ],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (708946b8-128c-4b86-8776-46bd696c2825)"
+  },
+  {
+   "name": "carried field verifier_url",
+   "pass": true,
+   "detail": "expected \"https://www.chittorgarh.com/ipo/hr-hygiene-products-ipo/2713/\", found \"https://www.chittorgarh.com/ipo/hr-hygiene-products-ipo/2713/\""
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "2 other row(s) share the survivor open_date: manipal-health-enterprises-ltd, h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct"
+  }
+ ]
+}

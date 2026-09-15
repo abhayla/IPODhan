@@ -1,0 +1,31 @@
+{
+ "appliedAt": "2026-09-15T23:01:19.686Z",
+ "keepId": "708946b8-128c-4b86-8776-46bd696c2825",
+ "dropId": "37f19183-88a5-48da-ae0b-523b8bc27d50",
+ "keepSlug": "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo",
+ "droppedSlug": "h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct",
+ "patch": [],
+ "provenanceWritten": [],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (708946b8-128c-4b86-8776-46bd696c2825)"
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "1 other row(s) share the survivor open_date: manipal-health-enterprises-ltd"
+  }
+ ]
+}

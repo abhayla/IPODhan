@@ -1,0 +1,31 @@
+{
+ "appliedAt": "2026-09-15T23:00:28.684Z",
+ "keepId": "9cb00cd6-aae7-4644-aa09-5a3fc51d197e",
+ "dropId": "2dfd8026-2725-4351-92dc-462aa8fba879",
+ "keepSlug": "g-v-electricals-ltd",
+ "droppedSlug": "g-v-electricals-ltd-g-v-electricals-ipo-ct",
+ "patch": [],
+ "provenanceWritten": [],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (9cb00cd6-aae7-4644-aa09-5a3fc51d197e)"
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "3 other row(s) share the survivor open_date: g-v-electricals-ltd-g-v-electricals-ipo-p, g-v-electricals-ltd-g-v-electricals-ipo-lt, fusion-klassroom-edutech-ltd"
+  }
+ ]
+}

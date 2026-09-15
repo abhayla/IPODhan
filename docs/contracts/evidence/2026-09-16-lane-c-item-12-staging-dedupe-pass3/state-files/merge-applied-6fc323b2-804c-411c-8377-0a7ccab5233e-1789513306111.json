@@ -1,0 +1,31 @@
+{
+ "appliedAt": "2026-09-15T23:01:46.111Z",
+ "keepId": "80a1a765-8f14-4a7d-b92a-f9c831628dec",
+ "dropId": "6fc323b2-804c-411c-8377-0a7ccab5233e",
+ "keepSlug": "shree-balaji-mala-textiles-ltd",
+ "droppedSlug": "shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct",
+ "patch": [],
+ "provenanceWritten": [],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (80a1a765-8f14-4a7d-b92a-f9c831628dec)"
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "2 other row(s) share the survivor open_date: shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p, cube-highways-trust-cube-highways-trust-invit"
+  }
+ ]
+}

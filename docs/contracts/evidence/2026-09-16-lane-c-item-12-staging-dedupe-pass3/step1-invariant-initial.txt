@@ -1,0 +1,5 @@
+  VIOLATION: "hrhygieneproducts" opening 2026-07-26..2026-07-29 has 4 rows: h-r-hygiene-products-ltd, h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p, h-r-hygiene-products-ltd-h-r-hygiene-products-ipo, h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-ct (issue sizes 539500000 / 539500000 / 539500000 / 539500000)
+  VIOLATION: "gvelectricals" opening 2026-07-31 has 4 rows: g-v-electricals-ltd, g-v-electricals-ltd-g-v-electricals-ipo-p, g-v-electricals-ltd-g-v-electricals-ipo-lt, g-v-electricals-ltd-g-v-electricals-ipo-ct (issue sizes 422500000 / 422500000 / 422500000 / 422500000)
+  VIOLATION: "shreebalajimalatextiles" opening 2026-07-19..2026-07-22 has 4 rows: shree-balaji-mala-textiles, shree-balaji-mala-textiles-ltd, shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-p, shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-ct (issue sizes 189000000 / 189000000 / 189000000 / 189000000)
+  VIOLATION: "cubehighwaystrust" opening 2026-07-19..2026-07-22 has 2 rows: cube-highways-trust, cube-highways-trust-cube-highways-trust-invit (issue sizes 0 / 50000000000)
+4

@@ -1,0 +1,2 @@
+  VIOLATION: "cubehighwaystrust" opening 2026-07-19..2026-07-22 has 2 rows: cube-highways-trust, cube-highways-trust-cube-highways-trust-invit (issue sizes 0 / 50000000000)
+1
