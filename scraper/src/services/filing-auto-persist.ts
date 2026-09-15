@@ -164,6 +164,24 @@ export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
 ];
 
 /**
+ * NOT_APPLICABLE reporting (lane B item, 2026-09-16). Whether a document type
+ * has any extractor at all — the single source of truth `selectPendingFilings`
+ * uses to skip a row, and the same predicate the audit's not-applicable
+ * reporter (`scripts/lib/not-applicable-documents.mjs`) mirrors so a document
+ * type outside this list is never read as "stuck", only as "not applicable".
+ */
+export function isExtractableDocType(type: string): boolean {
+  return AUTO_PERSIST_DOC_TYPES.includes(String(type ?? '').toUpperCase());
+}
+
+/**
+ * The skip/registry reason for a PENDING document whose type has no
+ * extractor by design (see `isExtractableDocType`). Distinct from a genuine
+ * extraction failure — this document was never a candidate to extract.
+ */
+export const NOT_APPLICABLE_EXTRACTION_REASON = 'no_extractor_for_doc_type';
+
+/**
  * OD-55 (owner, 2026-09-11): there is NO per-document extraction budget.
  * `EXTRACT_TIMEOUT_MS` (10 minutes) was removed, not raised — the owner
  * rejected the timed cap outright, not its size: *"Let the scraper take
@@ -689,7 +707,7 @@ export function selectPendingFilings(
 
   for (const doc of docs) {
     const type = String(doc.type ?? '').toUpperCase();
-    if (!AUTO_PERSIST_DOC_TYPES.includes(type)) {
+    if (!isExtractableDocType(type)) {
       skipped.push(`${type}: not an extractable doc type`);
       continue;
     }

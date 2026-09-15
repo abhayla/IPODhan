@@ -1,0 +1,10 @@
+{
+  "id": "not_applicable_documents_named",
+  "findingClass": "a PENDING document of a type with no extractor is misread as a stuck/backlogged queue instead of a design fact",
+  "round7Findings": [],
+  "failThreshold": "never fails by design — a document type having no extractor is a fact about the pipeline's scope, not a defect. The check's job is naming, not grading: it reports PASS with the count and type breakdown of PENDING documents outside AUTO_PERSIST_DOC_TYPES (scraper/src/services/filing-auto-persist.ts) so nobody has to re-derive that number by hand and misread it as backlog again.",
+  "severity": "P3",
+  "unverifiableWhen": "the documents table cannot be read (query error)",
+  "section": "checks",
+  "why": "Replaces ratios_extraction_yield (retired here — see its entry), which counted RATIOS_BASIS_ISSUE_PRICE documents extracted-with-no-ratio on a type that has no extractor at all, so it reported UNVERIFIABLE/P1 every night for a population that could never move. On 2026-09-15 that read as '38 stuck documents' and cost an hour. This check states the honest fact once, in words that cannot be misread: N documents of never-extracted types (named per type) sit PENDING by design; this is not a queue."
+}

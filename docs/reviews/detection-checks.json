@@ -423,6 +423,15 @@
       "unverifiableWhen": "document_fetch_state table not present"
     },
     {
+      "id": "not_applicable_documents_named",
+      "findingClass": "a PENDING document of a type with no extractor is misread as a stuck/backlogged queue instead of a design fact",
+      "round7Findings": [],
+      "failThreshold": "never fails by design — a document type having no extractor is a fact about the pipeline's scope, not a defect. The check's job is naming, not grading: it reports PASS with the count and type breakdown of PENDING documents outside AUTO_PERSIST_DOC_TYPES (scraper/src/services/filing-auto-persist.ts) so nobody has to re-derive that number by hand and misread it as backlog again.",
+      "severity": "P3",
+      "unverifiableWhen": "the documents table cannot be read (query error)",
+      "why": "Replaces ratios_extraction_yield (retired here — see its entry), which counted RATIOS_BASIS_ISSUE_PRICE documents extracted-with-no-ratio on a type that has no extractor at all, so it reported UNVERIFIABLE/P1 every night for a population that could never move. On 2026-09-15 that read as '38 stuck documents' and cost an hour. This check states the honest fact once, in words that cannot be misread: N documents of never-extracted types (named per type) sit PENDING by design; this is not a queue."
+    },
+    {
       "id": "p_document_provenance_share",
       "findingClass": "the offer-document path stalls and the site falls back to republishing websites' transcriptions of the filing — the document's share of RECENT provenance writes on printed offer-term fields collapses",
       "round7Findings": [],
@@ -449,14 +458,6 @@
       "failThreshold": "any field_sources row whose named field resolves to a column on its parent table (ipos / ipo_details) and whose value in that column IS NULL; generic over columns (read from information_schema) so a field a future scraper starts writing is covered without being added here; NULL only, never falsiness, because 0/false/'' are values a source genuinely supplied",
       "severity": "P1",
       "unverifiableWhen": "field_sources or a parent table is not readable — reported as UNVERIFIABLE with the error, never as a PASS. A field_name that matches no column on the parent table is reported as a NOTE rather than counted: that is a different defect (provenance for a field the table does not have, e.g. ipos.listingExchange) and folding it in would hide it inside this check's zero."
-    },
-    {
-      "id": "ratios_extraction_yield",
-      "findingClass": "a Ratios / Basis-of-Issue-Price document is marked COMPLETED but yielded no current_ratio, so the ratio fields stay empty while the pipeline reports success",
-      "round7Findings": [],
-      "failThreshold": "any document with type RATIOS_BASIS_ISSUE_PRICE and extraction_status COMPLETED whose ipo has financial_data.current_ratio null",
-      "severity": "P1",
-      "unverifiableWhen": "no RATIOS_BASIS_ISSUE_PRICE document has reached COMPLETED — measured 2026-09-11 on staging: 34 such documents exist and every one is PENDING, so the literal check is true of the empty set. Reported UNVERIFIABLE rather than PASS, because a check that cannot fail is not detection, and the detail carries the number that is actually actionable (how many exist and have never been extracted)."
     }
   ],
   "notCoveredByThisManifest": [
@@ -494,6 +495,7 @@
     "PULL-WALK (pull-model verification check PULL-WALK: every phase-1 IPO walked this slot) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_walk' call lands in the audit script.",
     "PULL-WRITE (pull-model verification check PULL-WRITE: plan rows marked SUPPLIED whose write returned skipped) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_write' call lands in the audit script.",
     "PULL-YIELD (pull-model verification check PULL-YIELD: of the fields the offer document should print for a mainboard/SME IPO, how many round 1 supplied) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('pull_yield' call lands in the audit script.",
+    null,
     "REREAD-LATENCY (pull-model verification check REREAD-LATENCY: oldest actionable disagreement with no re-read attempt) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_latency' call lands in the audit script.",
     "REREAD-RECEIPT (pull-model verification check REREAD-RECEIPT: re-reads with a receipt hashed this cycle ÷ re-reads recorded) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_receipt' call lands in the audit script.",
     "REREAD-VERDICT (pull-model verification check REREAD-VERDICT: share of re-reads ending verified_against_document over 7 days) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('reread_verdict' call lands in the audit script."
