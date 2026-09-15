@@ -7,7 +7,7 @@ import {
   toOracleScrips,
   BSE_SCRIP_LIST_URL,
 } from '../../../src/scrapers/bse-scrip-master.js';
-import { resolveSegmentFromMasters } from '../../../src/scrapers/exchange-segment-oracle.js';
+import { resolveSegmentFromMasters, normalizeCompanyName } from '../../../src/scrapers/exchange-segment-oracle.js';
 
 /**
  * Every test here runs against `docs/design/probes/fixtures/bse/ListofScripData.sample.json`
@@ -172,5 +172,35 @@ describe('the fetcher feeds the oracle — end to end on real rows', () => {
       expect(sent.has(s.group as string)).toBe(true);
       expect(['MAINBOARD', 'SME']).not.toContain(s.group);
     }
+  });
+});
+
+/**
+ * Ambiguous names (review finding on PR #655). A name key held by more than one scrip
+ * cannot identify a company, so it is EXCLUDED from `byName` rather than resolved
+ * first-wins — the same refusal `cleanIsin` makes for the literal "NA" ISIN.
+ */
+describe('indexBseScrips — a duplicated name key is excluded, not first-wins', () => {
+  const dupes = [
+    { scripCode: '1', name: 'Twinco Limited', isin: 'INE333C01013', group: 'B', status: 'Active' },
+    { scripCode: '2', name: 'Twinco Ltd', isin: 'INE444D01014', group: 'M', status: 'Active' },
+    { scripCode: '3', name: 'Solo Industries Ltd', isin: 'INE555E01015', group: 'A', status: 'Active' },
+  ];
+
+  it('keeps a duplicated name OUT of byName and records it in ambiguousNames', () => {
+    const m = indexBseScrips(dupes);
+    const key = normalizeCompanyName('Twinco Limited');
+    expect(m.byName.has(key)).toBe(false);
+    expect(m.ambiguousNames.get(key)?.length).toBe(2);
+  });
+
+  it('positive control: a unique name is still indexed', () => {
+    const m = indexBseScrips(dupes);
+    expect(m.byName.get(normalizeCompanyName('Solo Industries Ltd'))?.scripCode).toBe('3');
+    expect(m.ambiguousNames.has(normalizeCompanyName('Solo Industries Ltd'))).toBe(false);
+  });
+
+  it('toOracleScrips still hands over EVERY row — the oracle does the ambiguity check', () => {
+    expect(toOracleScrips(indexBseScrips(dupes)).length).toBe(3);
   });
 });

@@ -153,15 +153,17 @@ describe('resolveSegmentFromMasters', () => {
     expect(r.segment).toBeNull();
     expect(r.via).toBe('BSE/isin/group=TS');
 
-    // Control: the same company WITHOUT the ISIN does reach the name path and resolves,
-    // which proves the assertion above is about ISIN precedence and not about the
-    // fixture simply being unresolvable.
+    // Control: the same company WITHOUT the ISIN reaches the name path - and that path
+    // now REFUSES, because this fixture is two DIFFERENT companies (two ISINs) sharing a
+    // normalised name. It used to answer 'BSE/name/group=TS' on iteration order alone,
+    // which is the first-wins defect #655's review found; the assertion above still
+    // proves ISIN precedence, since only the ISIN path can answer this fixture at all.
     const byName = resolveSegmentFromMasters(
       { isin: null, companyName: 'Ambiguous Holdings Ltd' },
       twoScrips,
     );
-    expect(byName.outcome).toBe('unresolved-group');
-    expect(byName.via).toBe('BSE/name/group=TS');
+    expect(byName.outcome).toBe('ambiguous-name');
+    expect(byName.via).toBeNull();
   });
 
   it('returns no-source for a company in neither master (the never-listed case)', () => {
@@ -190,5 +192,98 @@ describe('resolveSegmentFromMasters', () => {
       const r = resolveSegmentFromMasters({ isin: null, companyName: name }, masters);
       expect(r.reason.length).toBeGreaterThan(10);
     }
+  });
+});
+
+/**
+ * Ambiguous names (review finding on PR #655).
+ *
+ * The same sourced-but-wrong class the `cleanIsin` "NA" fix closed for ISINs, arriving
+ * through the NAME join instead: a normalised name that matches MORE THAN ONE listed
+ * scrip was resolved first-wins in three places, so a lookup could return another
+ * company's board. First-wins is refused even when every candidate agrees on the board,
+ * because agreement is a property of today's feed, not of the join.
+ */
+describe('resolveSegmentFromMasters — an ambiguous name is refused, never first-wins', () => {
+  const EMPTY = { mainboard: [], sme: [] };
+
+  it('refuses a name that is in NSE mainboard AND in a BSE M-group scrip', () => {
+    const r = resolveSegmentFromMasters(
+      { isin: null, companyName: 'Ambico Industries Limited' },
+      {
+        nse: { mainboard: [{ isin: 'INE111A01011', name: 'Ambico Industries Ltd' }], sme: [] },
+        bse: [{ isin: 'INE222B01012', name: 'Ambico Industries Limited', group: 'M' }],
+      },
+    );
+    expect(r.outcome).toBe('ambiguous-name');
+    expect(r.segment).toBeNull();
+    expect(r.via).toBeNull();
+    expect(r.reason).toContain('2 candidates');
+  });
+
+  it('refuses even when every candidate would give the SAME segment', () => {
+    const r = resolveSegmentFromMasters(
+      { isin: null, companyName: 'Twinco Ltd' },
+      {
+        nse: EMPTY,
+        bse: [
+          { isin: 'INE333C01013', name: 'Twinco Limited', group: 'B' },
+          { isin: 'INE444D01014', name: 'Twinco Ltd', group: 'A' },
+        ],
+      },
+    );
+    expect(r.outcome).toBe('ambiguous-name');
+    expect(r.segment).toBeNull();
+  });
+
+  it('treats candidates WITHOUT an ISIN as each distinct', () => {
+    const r = resolveSegmentFromMasters(
+      { isin: null, companyName: 'Noisin Ltd' },
+      {
+        nse: EMPTY,
+        bse: [
+          { isin: '', name: 'Noisin Limited', group: 'B' },
+          { isin: '', name: 'Noisin Ltd', group: 'B' },
+        ],
+      },
+    );
+    expect(r.outcome).toBe('ambiguous-name');
+  });
+
+  it('does NOT refuse the same company appearing in both masters under one ISIN', () => {
+    const r = resolveSegmentFromMasters(
+      { isin: null, companyName: 'Onecorp Limited' },
+      {
+        nse: { mainboard: [{ isin: 'INE555E01015', name: 'Onecorp Ltd' }], sme: [] },
+        bse: [{ isin: 'INE555E01015', name: 'Onecorp Limited', group: 'B' }],
+      },
+    );
+    expect(r.outcome).toBe('resolved');
+    expect(r.segment).toBe('MAINBOARD');
+  });
+
+  it('positive control: a unique name still resolves exactly as before', () => {
+    const r = resolveSegmentFromMasters(
+      { isin: null, companyName: 'Maruti Interior Products Ltd' },
+      masters,
+    );
+    expect(r.outcome).toBe('resolved');
+    expect(r.segment).toBe('SME');
+    expect(r.via).toBe('BSE/name/group=M');
+  });
+
+  it('positive control: the ISIN path is untouched by ambiguity of the name', () => {
+    const r = resolveSegmentFromMasters(
+      { isin: 'INE002A01018', companyName: 'Twinco Ltd' },
+      {
+        nse: masters.nse,
+        bse: [
+          { isin: 'INE333C01013', name: 'Twinco Limited', group: 'B' },
+          { isin: 'INE444D01014', name: 'Twinco Ltd', group: 'A' },
+        ],
+      },
+    );
+    expect(r.outcome).toBe('resolved');
+    expect(r.via).toBe('NSE/EQUITY_L/isin');
   });
 });

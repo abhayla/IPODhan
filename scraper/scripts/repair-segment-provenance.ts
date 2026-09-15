@@ -210,7 +210,13 @@ async function main() {
   // than silently degrading to "nothing is sourceable", which would look identical to
   // an honest run in which no row could be sourced.
   const nseMasters = await fetchNseEquityMasters();
-  const nseRows = [...nseMasters.byName.values()];
+  // EVERY parsed row, not `byName.values()`. The name index holds one entry per name key
+  // and now deliberately EXCLUDES any key claimed by more than one row, so building the
+  // two board lists from it dropped exactly the rows that matter: a company present in
+  // BOTH NSE files used to collapse to its MAIN row (the oracle never saw the SME twin),
+  // and now would vanish from both lists. `rows` is the population; the index is an
+  // identity lookup, and they are not interchangeable.
+  const nseRows = nseMasters.rows;
   const nse = {
     mainboard: nseRows.filter((r) => r.board === 'MAIN').map((r) => ({ isin: r.isin, name: r.name })),
     sme: nseRows.filter((r) => r.board === 'SME').map((r) => ({ isin: r.isin, name: r.name })),

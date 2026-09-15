@@ -49,7 +49,10 @@ export interface BseScripRow {
 export interface BseScripMaster {
   rows: BseScripRow[];
   byIsin: Map<string, BseScripRow>;
+  /** Name keys held by EXACTLY ONE scrip. A duplicated key is absent here, by design. */
   byName: Map<string, BseScripRow>;
+  /** The keys excluded from `byName`, with every scrip that claimed them. */
+  ambiguousNames: Map<string, BseScripRow[]>;
 }
 
 /**
@@ -101,7 +104,15 @@ export function parseBseScripPayload(body: string): BseScripRow[] {
 }
 
 /**
- * Index by ISIN and by normalised name; first occurrence wins, as the NSE master does.
+ * Index by ISIN, and by normalised name WHERE THAT NAME IDENTIFIES ONE SCRIP.
+ *
+ * A NAME KEY HELD BY MORE THAN ONE SCRIP IS EXCLUDED, not resolved first-wins (review
+ * finding on #655). First-wins made `byName.get(key)` return whichever row the feed
+ * happened to list first, so a caller could read another company's group - the same
+ * sourced-but-wrong class `cleanIsin` closes above for the literal "NA" ISIN, arriving
+ * through the name join. The excluded keys are not discarded: they go to
+ * `ambiguousNames`, so a caller can tell "no such company" apart from "more than one",
+ * which are different problems with different fixes.
  *
  * THE NAME KEY IS THE ORACLE'S OWN `normalizeCompanyName`, NOT the shared
  * `normalizeCompanyNameForMatching`. The two disagree on a real case: the shared one
@@ -114,13 +125,22 @@ export function parseBseScripPayload(body: string): BseScripRow[] {
  */
 export function indexBseScrips(rows: BseScripRow[]): BseScripMaster {
   const byIsin = new Map<string, BseScripRow>();
-  const byName = new Map<string, BseScripRow>();
+  const byNameAll = new Map<string, BseScripRow[]>();
   for (const r of rows) {
     if (r.isin && !byIsin.has(r.isin)) byIsin.set(r.isin, r);
     const key = normalizeCompanyName(r.name);
-    if (key && !byName.has(key)) byName.set(key, r);
+    if (!key) continue;
+    const bucket = byNameAll.get(key);
+    if (bucket) bucket.push(r);
+    else byNameAll.set(key, [r]);
   }
-  return { rows, byIsin, byName };
+  const byName = new Map<string, BseScripRow>();
+  const ambiguousNames = new Map<string, BseScripRow[]>();
+  for (const [key, bucket] of byNameAll) {
+    if (bucket.length === 1) byName.set(key, bucket[0]);
+    else ambiguousNames.set(key, bucket);
+  }
+  return { rows, byIsin, byName, ambiguousNames };
 }
 
 /**
