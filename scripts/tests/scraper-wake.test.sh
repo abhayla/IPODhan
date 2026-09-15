@@ -181,16 +181,31 @@ if command -v timeout >/dev/null 2>&1; then
   else
     fail "case 3: the ceiling line does not carry the elapsed time"
   fi
-  # The termination must be real, not merely reported: a wrapper that printed
-  # the line but let the 60s job run to completion would take ~60s here.
-  # Three conditions together, because each alone passes on the wrong thing:
-  # elapsed<30 alone passes on a job that crashed instantly (never reaching the
-  # ceiling at all); THE_JOB_RAN alone proves only that it started; elapsed>=1
-  # proves the ceiling — not an instant failure — is what ended it.
-  if printf '%s' "$OUT3" | grep -qF 'THE_JOB_RAN' && [ "$ELAPSED3" -ge 1 ] && [ "$ELAPSED3" -lt 30 ]; then
-    pass "case 3: the job started, ran into the ceiling, and was TERMINATED there (${ELAPSED3}s, not its full 60s)"
+  # The termination must be real, not merely reported. This assertion used to
+  # measure the HARNESS's wall-clock, and it measured the wrong thing: under
+  # `setsid` the job leads its own process group, so `timeout` correctly kills
+  # the direct child at the ceiling while an orphaned grandchild keeps the
+  # command substitution's pipe open until IT exits. CI proved the wrapper right
+  # and this check wrong - the job log showed
+  #   "ceiling-tripped ... elapsed=2s ... exit=124"
+  # while the harness's own $ELAPSED3 read 61s and failed the case.
+  #
+  # So assert the WRAPPER's own elapsed figure, which is the number under test,
+  # against the ceiling it was given. That is deterministic - it does not race a
+  # sleep against a timeout, and a slower runner cannot change it. The harness
+  # wall-clock is deliberately NOT asserted: it is a property of pipe lifetimes,
+  # not of the ceiling.
+  WRAPPER_ELAPSED3="$(printf '%s\n' "$OUT3" | sed -n 's/.*ceiling-tripped:.*elapsed=\([0-9][0-9]*\)s.*/\1/p' | head -1)"
+  if [ -z "$WRAPPER_ELAPSED3" ]; then
+    fail "case 3: no elapsed figure in the ceiling line - cannot tell whether the ceiling or something else ended the job"
+    printf '%s\n' "$OUT3"
+  elif printf '%s' "$OUT3" | grep -qF 'THE_JOB_RAN' && [ "$WRAPPER_ELAPSED3" -ge 1 ] && [ "$WRAPPER_ELAPSED3" -le 10 ]; then
+    # >=1 proves it ran rather than failing instantly; <=10 proves the 2s ceiling
+    # (not the job's own 60s sleep) is what ended it, with slack for a loaded
+    # runner that is still nowhere near 60.
+    pass "case 3: the job started and the WRAPPER cut it short at ${WRAPPER_ELAPSED3}s against its 2s ceiling, not its own 60s (harness wall-clock ${ELAPSED3}s is pipe lifetime, not job runtime)"
   else
-    fail "case 3: expected a job that started and was cut short by the ceiling; got elapsed=${ELAPSED3}s"
+    fail "case 3: expected the wrapper to end the job at its ceiling; its own elapsed reads ${WRAPPER_ELAPSED3}s"
     printf '%s\n' "$OUT3"
   fi
 else
@@ -845,10 +860,28 @@ else
   fi
 
   # (d) The preflight must be CALLED on the real path, not merely defined.
-  if grep -vE '^[[:space:]]*[#:]' "$DEPLOY_SCRIPT" | grep -qF 'preflight_scraper_wake "'; then
-    pass "case 14: the preflight is invoked on the real deploy path"
+  # The read is SEPARATED from the judgement, deliberately. This assertion
+  # previously collapsed "the call is missing" and "I could not read the file"
+  # into one failure message, and CI then reported "never called" for a call
+  # that was demonstrably present in the tested tree. A check that cannot tell
+  # those apart is the vacuous-pass class we removed twice tonight, inverted
+  # into a vacuous FAIL - equally useless, and more misleading because it
+  # accuses the code.
+  if [ ! -f "$DEPLOY_SCRIPT" ]; then
+    fail "case 14: cannot READ the deploy script at '$DEPLOY_SCRIPT' (cwd=$(pwd)) - this says nothing about whether the preflight is wired"
   else
-    fail "case 14: preflight_scraper_wake is defined but never called - it gates nothing"
+    DEPLOY_LINES14="$(grep -c '' "$DEPLOY_SCRIPT" 2>/dev/null || echo 0)"
+    if [ "${DEPLOY_LINES14:-0}" -lt 100 ]; then
+      fail "case 14: the deploy script at '$DEPLOY_SCRIPT' read as only ${DEPLOY_LINES14:-0} lines - truncated or wrong file, so the wiring check would be meaningless"
+    else
+      PF_CALLS14="$(grep -vE '^[[:space:]]*[#:]' "$DEPLOY_SCRIPT" | grep -cF 'preflight_scraper_wake "' || true)"
+      if [ "${PF_CALLS14:-0}" -ge 1 ]; then
+        pass "case 14: the preflight is invoked on the real deploy path (${PF_CALLS14} call site(s) in ${DEPLOY_LINES14} lines)"
+      else
+        fail "case 14: read ${DEPLOY_LINES14} lines of '$DEPLOY_SCRIPT' but found no preflight_scraper_wake call - it gates nothing"
+        grep -n 'preflight_scraper_wake' "$DEPLOY_SCRIPT" | head -5 || echo "(no mention of preflight_scraper_wake at all)"
+      fi
+    fi
   fi
 
   rm -rf "$C14"
@@ -914,6 +947,46 @@ else
       fail "case 15: index.ts redeclares the ceiling as a literal instead of importing it - that is the third copy, back again"
     else
       pass "case 15: index.ts imports the ceiling rather than redeclaring it"
+    fi
+  fi
+fi
+
+# --- Case 17: WHICH start sites require the preflight, checked not remembered -
+# A REAL finding from review, not a CI artifact: there are three scraper pm2
+# start sites and three cron installs (cases 11/12 pin those), but only ONE
+# preflight call. I argued 706/resume_scraper is exempt because it resumes
+# against the PREVIOUS release, which is already built and therefore already has
+# tsx - and that is exactly the by-construction reasoning that has been wrong
+# twice in this slice. So the exemption is asserted rather than trusted: if the
+# premise stops holding, this fails instead of a deploy silently going green
+# with a scraper that cannot start.
+if [ -f "$DEPLOY_SCRIPT" ]; then
+  RESUME_BODY17="$(sed -n '/^resume_scraper()/,/^}/p' "$DEPLOY_SCRIPT")"
+  RESTART_BODY17="$(sed -n '/^restart_pm2()/,/^}/p' "$DEPLOY_SCRIPT")"
+
+  if [ -z "$RESUME_BODY17" ] || [ -z "$RESTART_BODY17" ]; then
+    fail "case 17: could not extract resume_scraper()/restart_pm2() - cannot check preflight coverage"
+  else
+    # restart_pm2 starts the NEW release, whose node_modules this deploy just
+    # built. It MUST preflight: that is the path where a bad box produces a
+    # green deploy and a dead scraper.
+    if printf '%s\n' "$RESTART_BODY17" | grep -vE '^[[:space:]]*[#:]' | grep -qF 'preflight_scraper_wake'; then
+      pass "case 17: restart_pm2() preflights before starting the NEW release"
+    else
+      fail "case 17: restart_pm2() starts the new release with NO preflight - a box that cannot run the wrapper would deploy green and never scrape"
+    fi
+
+    # resume_scraper is NOT exempt, and writing this check is what proved it.
+    # I had argued it was safe because it resumes a PREVIOUSLY-BUILT release -
+    # but SCRAPER_RESUME_TARGET is set to "new" at the atomic flip, BEFORE
+    # restart_pm2 runs, so a deploy aborting in between resumes against
+    # $RELEASE_DIR with nothing having checked it. The exemption argument was
+    # too broad; the preflight is now on both paths. EVERY start site that can
+    # target a release this deploy built must preflight.
+    if printf '%s\n' "$RESUME_BODY17" | grep -vE '^[[:space:]]*[#:]' | grep -qF 'preflight_scraper_wake'; then
+      pass "case 17: resume_scraper() preflights too (it can target the new release after the flip, so it is not exempt)"
+    else
+      fail "case 17: resume_scraper() has NO preflight, but SCRAPER_RESUME_TARGET is set to new at the flip - an abort between the flip and restart_pm2 would resume an unchecked release"
     fi
   fi
 fi

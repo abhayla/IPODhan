@@ -686,6 +686,21 @@ resume_scraper() {
   if [ ! -x "$PYTHON_BIN_PATH" ]; then
     warn "resume_scraper: PYTHON_BIN=$PYTHON_BIN_PATH — venv missing or not executable; starting the scraper anyway with PYTHON_BIN set to this nonexistent path (an ENOENT spawn is the visible signal — never silently falling back to system python)."
   fi
+  # Preflight here too. I previously argued this path was exempt because it
+  # resumes a PREVIOUSLY-BUILT release - but SCRAPER_RESUME_TARGET is set to
+  # "new" at the atomic flip (line ~1724), BEFORE restart_pm2 runs, so a deploy
+  # that aborts between the flip and the restart resumes against $RELEASE_DIR
+  # with nothing having checked it. That is the green-deploy-dead-scraper case
+  # by another route, and the exemption argument was simply too broad.
+  #
+  # It does NOT fatal() here: this runs from the EXIT trap, where the deploy is
+  # already failing or finishing, and calling fatal() would replace the real
+  # exit code with this one and mask why the deploy failed. A loud warn is the
+  # right level - the deploy's own outcome is already non-zero on that path,
+  # and restart_pm2's preflight is what gates the SUCCESS path.
+  if ! preflight_scraper_wake "$target_dir/scripts/scraper-wake.sh" 2>&1; then
+    warn "resume_scraper: the wake wrapper cannot run from $target_dir — the scraper will NOT wake. See the FATAL line above; fix the box before relying on this release."
+  fi
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   # T-327 P2-7: TZ=UTC is explicit at every pm2 start — pm2 captures the
   # invoking shell's env at start time and pins it for restarts/reload, so
