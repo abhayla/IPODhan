@@ -74,6 +74,7 @@ done
 
 bash -n "$TMP/gate.sh" || { echo "FAIL: the gate step body is not valid bash" >&2; exit 1; }
 
+
 # Throwaway history: base -> docs-only commit -> code commit.
 REPO="$TMP/repo"
 mkdir -p "$REPO"
@@ -107,6 +108,46 @@ chmod +x "$TMP/bin/curl"
 export PATH="$TMP/bin:$PATH"
 
 FAILED=0
+
+# The gate step MUST declare an explicit shell without -e. GitHub Actions'
+# bare `shell: bash` implicitly runs `bash -e -o pipefail`, which is fatal to
+# this script: PORT="$(grep ... "$PORT_FILE" | ...)" with no match (missing
+# file, or a schedule tick where PORT_FILE is unreadable) makes the piped
+# command substitution exit nonzero under pipefail, and `set -e` on a failed
+# command substitution assigned to a variable kills the whole step BEFORE any
+# note() call - a silent exit 1 with zero log output (2026-09-14 through
+# 2026-09-15, 8 consecutive scheduled runs, e.g. run 35000236925). This is
+# the regression: every case below this point in the file (via run_case,
+# which uses plain `bash`) could NOT have caught it - only running the
+# extracted body under the real GHA invocation does.
+if grep -qE "^\s+shell:\s+bash --noprofile --norc -o pipefail \{0\}\s*\$" "$WF"; then
+  echo "PASS: the gate step's shell is explicit and does not carry -e"
+else
+  echo "FAIL: the gate step must declare 'shell: bash --noprofile --norc -o pipefail {0}' (no -e) - GHA's bare 'shell: bash' silently kills this script on any grep/curl miss" >&2
+  FAILED=1
+fi
+
+# Reproduce the actual failure class under the REAL GHA invocation
+# (bash -e -o pipefail is what `shell: bash` means): a genuinely missing
+# PORT_FILE must still warn and deploy, not crash with zero output.
+run_case_under_dash_e() {
+  local name="$1" want="$2"
+  shift 2
+  local outfile="$TMP/oute" sumfile="$TMP/sume" log="$TMP/loge"
+  : > "$outfile"; : > "$sumfile"
+  GITHUB_OUTPUT="$outfile" GITHUB_STEP_SUMMARY="$sumfile" "$@" bash -e -o pipefail "$TMP/gate.sh" > "$log" 2>&1
+  local rc=$?
+  local got
+  got="$(grep -E '^proceed=' "$outfile" 2>/dev/null | tail -n1 | cut -d= -f2)"
+  if [ "$got" = "$want" ]; then
+    echo "PASS: $name -> proceed=$got"
+  else
+    echo "FAIL: $name -> proceed='$got' rc=$rc (wanted '$want') - this is the exact 2026-09-14 regression if rc=2 and the log is empty" >&2
+    sed 's/^/    /' "$log" >&2
+    FAILED=1
+  fi
+}
+run_case_under_dash_e "schedule under bash -e -o pipefail (real GHA shell): PORT_FILE missing -> warn + deploy, never a silent crash" true   env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
 
 run_case() {
   local name="$1" want="$2"

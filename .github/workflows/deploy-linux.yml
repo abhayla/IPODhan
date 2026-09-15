@@ -147,7 +147,16 @@ jobs:
       # silence is not.
       - name: Decide whether a scheduled staging deploy is needed
         id: gate
-        shell: bash
+        # Explicit shell, no -e: this step's own branches decide success vs
+        # failure via `proceed=true|false` + exit 0 on every path, including
+        # "could not read the served sha" and "PORT_FILE missing". GitHub
+        # Actions' bare `shell: bash` implicitly runs `bash -e -o pipefail`,
+        # which turned a failed `PORT="$(grep ... )"` (no match -> pipefail
+        # nonzero -> set -e kills the assignment) into a silent exit 1 with
+        # NO note() output on every schedule tick since 2026-09-14 (signal-
+        # ownership R6: every exit prints its reason). -o pipefail is kept so
+        # a failed curl|node pipe is still detected by the -z check below.
+        shell: bash --noprofile --norc -o pipefail {0}
         env:
           SLOT: ${{ steps.slot.outputs.slot }}
           EVENT_NAME: ${{ github.event_name }}
@@ -168,9 +177,14 @@ jobs:
 
           ROOT="/var/www/ipodhan"
           PORT_FILE="$ROOT/shared/env/staging/web.env.local"
-          PORT="$(grep -E '^PORT=' "$PORT_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"
+          # `|| true` on each fallible pipeline: a failed command substitution
+          # assigned to a variable is fatal under `set -e` (bash quirk - see the
+          # step comment above), so PORT_FILE missing or PORT= absent must not be
+          # allowed to kill the script before the -z/unknown check below can turn
+          # it into a loud, correct "deploying anyway" decision.
+          PORT="$(grep -E '^PORT=' "$PORT_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
           VERSION_URL="http://127.0.0.1:${PORT:-3000}/api/version"
-          SERVED_SHA="$(curl -fsS --max-time 10 "$VERSION_URL" 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const j=JSON.parse(d);console.log(String((j&&j.data&&j.data.sha)||(j&&j.sha)||""));}catch{console.log("");}});')"
+          SERVED_SHA="$(curl -fsS --max-time 10 "$VERSION_URL" 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const j=JSON.parse(d);console.log(String((j&&j.data&&j.data.sha)||(j&&j.sha)||""));}catch{console.log("");}});' || true)"
 
           if [ -z "$SERVED_SHA" ] || [ "$SERVED_SHA" = "unknown" ]; then
             note "WARNING: could not read the sha staging is serving from $VERSION_URL (unreachable, unparseable, empty, or the literal placeholder 'unknown'). Deploying anyway - staging may be down BECAUSE it needs this code. This line is the alert: if it repeats every tick, staging /api/version is broken and the cadence gate is running blind."
