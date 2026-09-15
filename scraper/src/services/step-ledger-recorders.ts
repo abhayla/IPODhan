@@ -521,7 +521,11 @@ export function planExtractionSteps(
   }
 
   // W-133 MAJOR-3: the extractor's own document-level verdict (OK / PARTIAL /
-  // OK_OCR / PARTIAL_OCR / NEEDS_OCR — extract_filing.py's run() now also folds
+  // OK_OCR / PARTIAL_OCR / NEEDS_OCR / INCOMPLETE_PAGES — the last one added by
+  // OD-55 and NOT a synonym for PARTIAL_OCR: PARTIAL_OCR means a field check
+  // failed on a page that WAS read (a confidence statement), INCOMPLETE_PAGES
+  // means the read was stopped before every page was read (a coverage
+  // statement). extract_filing.py's run() now also folds
   // in the shared PDF-financials core's PARTIAL when a headline metric never
   // reaches 2 fiscal years) must be visible in the ledger evidence, not
   // silently consumed. Computed once here so both E9 and D6 below carry it.
@@ -576,6 +580,53 @@ export function planExtractionSteps(
       version: options.version,
       error: 'document has no text layer and the OCR backend was unavailable',
       evidence: { extractionStatus },
+    });
+  } else if (extractionStatus === 'INCOMPLETE_PAGES') {
+    // OD-55. The OCR route RAN and was stopped part-way: some pages were
+    // recovered, some were never read. Before this branch existed such a
+    // document matched neither case above and wrote NO D6 row at all — the
+    // ledger stayed silent about a document that is missing pages, which is
+    // the failure mode this file exists to remove.
+    //
+    // NOT_AVAILABLE_YET rather than FAILED: the pages are re-readable from the
+    // retained PDF (OD-32's seven-day retention exists for exactly this), and
+    // `resolveAttemptsRule` leaves the attempt count alone for this status, so
+    // a ceiling trip does not burn the document's retry budget the way a
+    // FAILED would.
+    //
+    // The evidence carries page NUMBERS, never a count (signal-ownership.md
+    // R1): "412, 413 unread" tells a later pass what to re-read, "2 pages
+    // unread" tells it nothing it can act on.
+    // `unread_pages` is written by extract_filing.py (OD-55) and is not yet on
+    // the `FilingExtraction` type, so it is read defensively: a narrowed
+    // `unknown` read rather than a cast that asserts a shape the type system
+    // cannot see. If the field is missing or malformed, the row still gets
+    // written — with an empty page list, which the check reads as "the
+    // extractor said INCOMPLETE_PAGES but named nothing", a reportable defect
+    // rather than a crash in the ledger writer.
+    const rawUnread: unknown = (extraction as unknown as Record<string, unknown>).unread_pages;
+    const unread: Array<Record<string, unknown>> = Array.isArray(rawUnread)
+      ? rawUnread.filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+      : [];
+    writes.push({
+      stepId: 'D6',
+      status: 'NOT_AVAILABLE_YET',
+      source: options.docType,
+      inputRef: common.inputRef,
+      version: options.version,
+      evidence: {
+        extractionStatus,
+        unreadPages: unread
+          .map((p) => p.page)
+          .filter((p): p is number => typeof p === 'number'),
+        unreadReasons: [
+          ...new Set(
+            unread
+              .map((p) => p.reason)
+              .filter((r): r is string => typeof r === 'string' && r.length > 0)
+          ),
+        ],
+      },
     });
   }
 

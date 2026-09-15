@@ -85,7 +85,13 @@ import {
   markHardFailure,
   isMemoryAbortStderr,
   DEFAULT_MAX_SPAWNS_PER_CYCLE as DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL,
-  EXTRACT_TIMEOUT_MS as EXTRACT_TIMEOUT_MS_REAL,
+  // OD-55: `EXTRACT_TIMEOUT_MS` is GONE — the owner removed the per-document
+  // budget, so there is no `spawns x budget` product left to assert against.
+  // The lock invariant is now sized on ONE document running to the
+  // hung-process ceiling, which is what these tests check instead.
+  HUNG_PROCESS_CEILING_MS as HUNG_PROCESS_CEILING_MS_REAL,
+  CHILD_HUNG_CEILING_MS as CHILD_HUNG_CEILING_MS_REAL,
+  ANCHOR_PASS_RESERVE_MS as ANCHOR_PASS_RESERVE_MS_REAL,
   type AutoPersistDeps,
   type CandidateDocument,
 } from '../../../src/services/filing-auto-persist.js';
@@ -1403,13 +1409,20 @@ describe('processPendingFilings — the per-document extraction deadline (F3)', 
 });
 
 /**
- * F3 static invariant: the cap MUST never let extraction outlive the lock
- * that protects it from a second overlapping cycle. Worst case, every spawn
- * takes the full extractor timeout — that total, plus slack, must stay under
- * the lock TTL.
+ * F3 static invariant: extraction MUST never outlive the lock that protects it
+ * from a second overlapping cycle.
+ *
+ * OD-55 changed what the worst case IS, and that is the whole point of these
+ * tests now. There is no per-document budget to multiply by the spawn count
+ * any more; the document job reads ONE document at a time and the only bound
+ * on that read is the hung-process ceiling. So the worst case is
+ * `ceiling + anchor pass + slack`, and the danger this test exists to catch is
+ * the opposite of the old one: a lock TTL left at its pre-OD-55 value (45 min)
+ * while a document is now allowed to run for two hours would expire MID-READ,
+ * letting a second cycle start on the same document.
  */
-describe('F3 — spawn cap cannot outlive the extraction lock', () => {
-  it('DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS + anchor sidecar + 60s < FILING_EXTRACTION_LOCK_TTL_MS', async () => {
+describe('F3 — extraction cannot outlive the extraction lock', () => {
+  it('HUNG_PROCESS_CEILING_MS + anchor sidecar + 60s < FILING_EXTRACTION_LOCK_TTL_MS', async () => {
     const { FILING_EXTRACTION_LOCK_TTL_MS } = await import('../../../src/services/document-cycle.js');
     const { DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE } = await import('../../../src/services/filing-auto-persist.js');
     const { SIDECAR_TIMEOUT_MS } = await import('../../../src/scrapers/anchor-investors-scraper.js');
@@ -1418,10 +1431,31 @@ describe('F3 — spawn cap cannot outlive the extraction lock', () => {
     // ADDS to the filing worst case rather than sharing it, so the lock TTL
     // must cover both passes back to back, not just the filing one.
     const worstCaseMs =
-      DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL +
+      HUNG_PROCESS_CEILING_MS_REAL +
       DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE * SIDECAR_TIMEOUT_MS +
       60_000;
     expect(worstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
+  });
+
+  // OD-55, the regression this pair of constants exists to prevent: the lock
+  // TTL must be DERIVED from the ceiling, never a literal that someone forgot
+  // to raise when the ceiling moved. A hand-typed 45-min TTL against a 2-hour
+  // ceiling passes no test that only checks "TTL > some old product" — so
+  // assert the derivation itself, and assert it is strictly bigger than the
+  // ceiling it must outlast.
+  it('FILING_EXTRACTION_LOCK_TTL_MS is derived from the ceiling, not a literal that can go stale', async () => {
+    const { FILING_EXTRACTION_LOCK_TTL_MS } = await import('../../../src/services/document-cycle.js');
+    expect(FILING_EXTRACTION_LOCK_TTL_MS).toBe(
+      HUNG_PROCESS_CEILING_MS_REAL + ANCHOR_PASS_RESERVE_MS_REAL + 60_000
+    );
+    expect(FILING_EXTRACTION_LOCK_TTL_MS).toBeGreaterThan(HUNG_PROCESS_CEILING_MS_REAL);
+  });
+
+  // The child half must fire BEFORE the external supervisor's ceiling, or the
+  // parent never gets to write the envelope naming the unread pages: the
+  // outer kill wins the race and the only record is the supervisor's own line.
+  it('the child spawn timeout fires strictly before the external ceiling', () => {
+    expect(CHILD_HUNG_CEILING_MS_REAL).toBeLessThan(HUNG_PROCESS_CEILING_MS_REAL);
   });
 
   // W-168 round 2 (HOLE 1): the test above only ever checked the DEFAULT
@@ -1441,7 +1475,7 @@ describe('F3 — spawn cap cannot outlive the extraction lock', () => {
       // 8 unclamped would be 30min (filing) + 8*120s (16min) + 1min = 47min,
       // OVER the 45-min TTL — proving the raw env value alone is unsafe.
       const requestedWorstCaseMs =
-        DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + 8 * SIDECAR_TIMEOUT_MS + 60_000;
+        HUNG_PROCESS_CEILING_MS_REAL + 8 * SIDECAR_TIMEOUT_MS + 60_000;
       expect(requestedWorstCaseMs).toBeGreaterThan(FILING_EXTRACTION_LOCK_TTL_MS);
 
       const clamped = anchorMaxSpawnsPerCycle();
@@ -1449,7 +1483,7 @@ describe('F3 — spawn cap cannot outlive the extraction lock', () => {
       expect(clamped).toBeLessThan(8);
 
       const actualWorstCaseMs =
-        DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + clamped * SIDECAR_TIMEOUT_MS + 60_000;
+        HUNG_PROCESS_CEILING_MS_REAL + clamped * SIDECAR_TIMEOUT_MS + 60_000;
       expect(actualWorstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
     } finally {
       delete process.env.ANCHOR_MAX_SPAWNS_PER_CYCLE;
@@ -2127,9 +2161,12 @@ describe('W-142 — the outcome map written to documents.extraction_status', () 
     ).toBe(true);
   });
 
-  it('keeps the anchor sidecar timeout inside the extractor budget the lock TTL is sized on', async () => {
+  // OD-55 left the anchor sidecar's own 120s cap alone — it removed the
+  // per-document budget for FILINGS, not for a small allocation letter. The
+  // bound it now has to sit inside is the ceiling.
+  it('keeps the anchor sidecar timeout inside the ceiling the lock TTL is sized on', async () => {
     const { SIDECAR_TIMEOUT_MS } = await import('../../../src/scrapers/anchor-investors-scraper.js');
-    expect(SIDECAR_TIMEOUT_MS).toBeLessThanOrEqual(EXTRACT_TIMEOUT_MS_REAL);
+    expect(SIDECAR_TIMEOUT_MS).toBeLessThanOrEqual(HUNG_PROCESS_CEILING_MS_REAL);
   });
 });
 

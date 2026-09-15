@@ -163,8 +163,43 @@ export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
   ANCHOR_DOC_TYPE,
 ];
 
-/** 10 minutes: an OCR pass over a 600-page RHP is slow, but not unbounded. */
-export const EXTRACT_TIMEOUT_MS = 10 * 60 * 1000;
+/**
+ * OD-55 (owner, 2026-09-11): there is NO per-document extraction budget.
+ * `EXTRACT_TIMEOUT_MS` (10 minutes) was removed, not raised — the owner
+ * rejected the timed cap outright, not its size: *"Let the scraper take
+ * whatever time it needs to scrape each of the documents ... Who set up that
+ * ten-minute limit? I never approved that."* A prospectus whose financials are
+ * drawn pages (ESDS: 555 pages, ~60 needing OCR at ~46 s/page, 3028 s measured
+ * end to end) has to be read completely in the first pass.
+ *
+ * What remains is a HUNG-PROCESS CEILING — a crash guard, not a budget. It
+ * exists to catch a genuinely stuck process (a hung PDF library, a corrupt
+ * file that never returns), never to cap a slow but progressing OCR pass.
+ *
+ * THE CEILING IS EXTERNAL TO THIS PROCESS, and this constant is only its
+ * CHILD HALF. Extraction is a blocking `spawnSync`: while it runs, this
+ * process cannot execute a timer, a signal handler, or a lock release. So a
+ * ceiling implemented ONLY as the spawn's own timeout cannot catch the case
+ * the ceiling exists for — a parent wedged around its child. The authoritative
+ * ceiling is a supervisor OUTSIDE the document-job process (the wake wrapper's
+ * timer / a pm2-level max runtime); `CHILD_HUNG_CEILING_MS` is the inner half
+ * that stops a hung child while the parent is still healthy enough to record
+ * what happened.
+ *
+ * The child half is deliberately set slightly BELOW the external ceiling, so
+ * that on a genuinely hung child the inner timeout fires FIRST and the parent
+ * still gets to write the PARTIAL_OCR envelope. If the outer one wins the race
+ * there is no envelope at all — only the supervisor's own record.
+ */
+export const HUNG_PROCESS_CEILING_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * The inner (child) half of the 2-hour ceiling, below it by
+ * `CEILING_RECORD_MARGIN_MS` so the parent survives the child's death by long
+ * enough to write the envelope naming every unread page.
+ */
+export const CEILING_RECORD_MARGIN_MS = 5 * 60 * 1000;
+export const CHILD_HUNG_CEILING_MS = HUNG_PROCESS_CEILING_MS - CEILING_RECORD_MARGIN_MS;
 
 export const MAX_EXTRACTION_ATTEMPTS = 10;
 export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
@@ -484,7 +519,9 @@ export interface AutoPersistResult {
 
 /**
  * MAJOR-1 fix. Before this, one document cycle could spawn UNBOUNDED python
- * processes: 20 IPOs x 2 filings x up to `EXTRACT_TIMEOUT_MS` (10 min) each
+ * processes: 20 IPOs x 2 filings x up to the per-document extraction budget
+ * (then `EXTRACT_TIMEOUT_MS`, 10 min; removed by OD-55 — see
+ * `HUNG_PROCESS_CEILING_MS`) each
  * could run for hours, and nothing stopped a SECOND cycle from starting
  * extraction on the same IN_PROGRESS rows while the first was still running.
  *
@@ -528,10 +565,38 @@ export const DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE = 1;
  * derived from the same constants the static test checks — never hard-coded
  * — and warns once per call when it had to clamp.
  */
-export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
+/**
+ * OD-55 leaves the ANCHOR sidecar's own 120s cap untouched — it removed the
+ * per-document budget for FILINGS (prospectuses that legitimately take an
+ * hour), not for a small anchor-allocation letter. The lock TTL therefore has
+ * to cover the filing ceiling PLUS the anchor pass that runs after it, or
+ * `maxAnchorSpawnsWithinLockTtl` computes a NEGATIVE budget and silently
+ * clamps every anchor spawn to zero — extraction that looks healthy while no
+ * anchor row is ever written again.
+ *
+ * Sized at `DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE` sidecars; an operator raising
+ * `ANCHOR_MAX_SPAWNS_PER_CYCLE` past what this reserve covers is still clamped
+ * by `maxAnchorSpawnsWithinLockTtl`, exactly as before.
+ */
+export const ANCHOR_PASS_RESERVE_MS = 10 * 60 * 1000;
 
 /** Same 60s slack the F3 static test already reserves for the filing side. */
 export const LOCK_SLACK_MS = 60_000;
+
+/**
+ * OD-55: sized to the hung-process ceiling PLUS slack, never to
+ * `spawns x per-document timeout` — that product no longer exists, because
+ * there is no per-document timeout to multiply. The document job reads ONE
+ * document at a time, so the worst case a lock must cover is one document
+ * running to the ceiling, not `DEFAULT_MAX_SPAWNS_PER_CYCLE` of them.
+ *
+ * The old value (45 min) was derived from 3 spawns x 10 min + slack. Keeping
+ * it while removing the budget would be the actual danger: extraction could
+ * run for two hours while the lock protecting it from a second overlapping
+ * cycle expired at 45 minutes.
+ */
+export const FILING_EXTRACTION_LOCK_TTL_MS =
+  HUNG_PROCESS_CEILING_MS + ANCHOR_PASS_RESERVE_MS + LOCK_SLACK_MS;
 
 /**
  * The largest anchor spawn count that still leaves the filing worst case +
@@ -539,7 +604,9 @@ export const LOCK_SLACK_MS = 60_000;
  * static test can assert against THIS derivation instead of a re-typed copy.
  */
 export function maxAnchorSpawnsWithinLockTtl(sidecarTimeoutMs: number): number {
-  const filingWorstMs = DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS;
+  // OD-55: one document at the ceiling, not `spawns x a per-document budget`.
+  // The document job is sequential and the ceiling bounds ONE document's read.
+  const filingWorstMs = HUNG_PROCESS_CEILING_MS;
   const budgetForAnchors = FILING_EXTRACTION_LOCK_TTL_MS - filingWorstMs - LOCK_SLACK_MS;
   // Strict "<", not "<=": a count whose worst case lands EXACTLY on the
   // budget still leaves zero margin against the TTL, so floor() alone (which
@@ -805,7 +872,7 @@ function spawnExtractor(
   const wrapped = withLowPriority(bin, args);
   const result = spawnSync(wrapped.bin, wrapped.args, {
     encoding: 'utf8',
-    timeout: EXTRACT_TIMEOUT_MS,
+    timeout: CHILD_HUNG_CEILING_MS,
     maxBuffer: 64 * 1024 * 1024,
     cwd: path.dirname(script),
   });
@@ -876,7 +943,8 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
 
   if (result.error) {
     // Staging incident (2026-09-06, ESDS Software RHP, 21.9 MB): a
-    // `spawnSync` timeout (`EXTRACT_TIMEOUT_MS`, 10 min) does NOT always fall
+    // `spawnSync` timeout (then `EXTRACT_TIMEOUT_MS`, 10 min; now
+    // `CHILD_HUNG_CEILING_MS` per OD-55) does NOT always fall
     // through to the `result.status === null` branch below the way the
     // comment there used to claim — Node reports it as a top-level
     // `result.error` with `code === 'ETIMEDOUT'`, caught by THIS branch
@@ -896,8 +964,9 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     // Both are HARD failures: retrying the same document hourly is exactly
     // what took the pm2 daemon down repeatedly.
     //
-    // MINOR-1 (corrected 2026-09-06): a `spawnSync` timeout
-    // (`EXTRACT_TIMEOUT_MS`, 10 min) does NOT reliably land here — Node
+    // MINOR-1 (corrected 2026-09-06): a `spawnSync` timeout (then
+    // `EXTRACT_TIMEOUT_MS`, 10 min; now `CHILD_HUNG_CEILING_MS` per OD-55)
+    // does NOT reliably land here — Node
     // reports it as a top-level `result.error` (code `ETIMEDOUT`), handled by
     // the `if (result.error)` branch ABOVE, which now sets `hardFailure` for
     // that code directly. Accepted: two slow-network documents in a row earn

@@ -449,6 +449,7 @@
     null,
     "E1-SOURCE (pull-model verification check E1-SOURCE: for the ten E-1 fields, field_sources.source is never DRHP) - specified by docs/design/data-sourcing-pull-model.md (\"How we would know it worked\"), not yet implemented in scripts/audit-detection-floor.mjs; owner decision OD-42 build item 10, consumer already named below. Move back to \"section\": \"checks\" once a record('e1_source' call lands in the audit script.",
     null,
+    null,
     "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
     "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
     "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion",
