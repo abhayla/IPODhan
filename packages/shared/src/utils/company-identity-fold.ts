@@ -24,6 +24,48 @@
  * two agree over `IDENTITY_FOLD_FIXTURE`, so the copy cannot drift unnoticed.
  */
 
+/**
+ * How far two rows' open dates may sit apart and still be eligible for a duplicate-IPO merge.
+ *
+ * SINGLE SOURCE OF TRUTH for this number (item 12 slice G). `scripts/lib/repair-invariants/
+ * duplicate-ipo-rows.mjs` keeps its own literal copy (plain node cannot import TypeScript) — see
+ * that file's "WHY 3, MEASURED not guessed" comment for the measurement behind the value.
+ * `scripts/tests/duplicate-ipo-merge-tolerance-parity.test.mjs` asserts the two stay equal. Lives
+ * here (a leaf module with no internal imports) rather than in `duplicate-ipo-merge.ts` so the
+ * parity test's Node-erasable-TS import of the SSOT does not have to resolve that file's own
+ * `./company-identity-fold.js` relative import, which Node's type-stripping loader cannot do
+ * without a compiled sibling.
+ */
+export const OPEN_DATE_TOLERANCE_DAYS = 3;
+
+/**
+ * Read the LOCAL calendar day of an `ipos.open_date` value as `'YYYY-MM-DD'`.
+ *
+ * `open_date` is a Postgres `date` (no time zone). Drizzle's `date()` column mode returns it as a
+ * bare `'YYYY-MM-DD'` string in this schema, but a `Date` instance is handled too for parity with
+ * `scripts/lib/repair-invariants/duplicate-ipo-rows.mjs`'s `isoDay()` (the F-104 class: node-pg
+ * parses a bare `date` into a Date at LOCAL midnight, so `.toISOString()` on it reads back the day
+ * BEFORE the one the server sent whenever the process runs east of UTC, as this one does in IST).
+ * Read the local Y/M/D components of a Date, never a UTC projection of them.
+ */
+export function isoDay(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const m = String(value).match(/^\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : null;
+}
+
+/** Whole calendar days between two `'YYYY-MM-DD'` day strings (both already local-day-read). */
+export function daysBetween(a: string, b: string): number {
+  return Math.abs((new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime()) / 86400000);
+}
+
 /** Corporate-form words and country words that carry no company identity. */
 const NON_IDENTITY_WORDS =
   /\b(private|pvt|limited|ltd|company|co|corporation|corp|incorporated|inc|and|the|of|india|indian)\b/g;

@@ -153,8 +153,12 @@ describe.skipIf(!DATABASE_URL)(`IPORepository.mergeDuplicateInto against real Po
     // timeout teaches people to re-run instead of to read.
   }, 240000);
 
-  it('refuses (throws) when the two rows open on different dates', async () => {
-    // Re-seed a fresh pair with disagreeing open dates to prove the eligibility gate.
+  it('refuses (throws) when the two rows open more than OPEN_DATE_TOLERANCE_DAYS apart', async () => {
+    // Item 12 slice G widened checkMergeEligibility from exact open_date equality to a
+    // 3-day tolerance (packages/shared/src/utils/duplicate-ipo-merge.ts,
+    // OPEN_DATE_TOLERANCE_DAYS). A 1-day spread (the original fixture here) is now WITHIN
+    // tolerance and no longer refuses — this fixture is widened to 5 days apart, beyond the
+    // tolerance, so the refusal path this test exists to exercise is still actually hit.
     const db = drizzle(pool!, { schema });
     const A = '00000000-0000-4000-9000-0000000000b1';
     const B = '00000000-0000-4000-9000-0000000000b2';
@@ -162,11 +166,44 @@ describe.skipIf(!DATABASE_URL)(`IPORepository.mergeDuplicateInto against real Po
       INSERT INTO ipos (id, company_name, slug, offering_type, segment, status, open_date, close_date)
       VALUES
         (${A}::uuid, 'Different Dates Ltd', 't-merge-diffdate-a', 'IPO', 'MAINBOARD', 'OPEN', '2026-09-09', '2026-09-11'),
-        (${B}::uuid, 'Different Dates Ltd', 't-merge-diffdate-b', 'IPO', 'MAINBOARD', 'OPEN', '2026-09-10', '2026-09-12')
+        (${B}::uuid, 'Different Dates Ltd', 't-merge-diffdate-b', 'IPO', 'MAINBOARD', 'OPEN', '2026-09-14', '2026-09-16')
       ON CONFLICT DO NOTHING
     `);
     try {
-      await expect(repo!.mergeDuplicateInto(A, B, { apply: false })).rejects.toThrow(/different dates/);
+      await expect(repo!.mergeDuplicateInto(A, B, { apply: false })).rejects.toThrow(/day\(s\) apart/);
+    } finally {
+      await db.delete(schema.ipos).where(inArray(schema.ipos.id, [A, B]));
+    }
+  });
+
+  it('is eligible on the date check (does NOT refuse for open_date reasons) when the two rows open 2 days apart', async () => {
+    // Positive control for the item 12 slice G widening: 2 days apart is WITHIN the 3-day
+    // tolerance, so the DATE check must not be the reason for any refusal. This test asserts
+    // ONLY that outcome (per the coordinator's instruction) — it may still be refused by some
+    // OTHER check (name fold, a disagreeing identifier, issue_size), which is a different,
+    // unrelated concern this test does not pin either way.
+    const db = drizzle(pool!, { schema });
+    const A = '00000000-0000-4000-9000-0000000000b3';
+    const B = '00000000-0000-4000-9000-0000000000b4';
+    await db.execute(sql`
+      INSERT INTO ipos (id, company_name, slug, offering_type, segment, status, open_date, close_date)
+      VALUES
+        (${A}::uuid, 'Two Day Spread Ltd', 't-merge-2dayspread-a', 'IPO', 'MAINBOARD', 'OPEN', '2026-09-09', '2026-09-11'),
+        (${B}::uuid, 'Two Day Spread Ltd', 't-merge-2dayspread-b', 'IPO', 'MAINBOARD', 'OPEN', '2026-09-11', '2026-09-13')
+      ON CONFLICT DO NOTHING
+    `);
+    try {
+      // Not a throw expectation on the date check specifically — the call may RESOLVE (fully
+      // eligible) or REJECT for some other, unrelated reason; the only thing this test pins
+      // is that the date-tolerance refusal never fires. `expect(...).rejects` itself fails if
+      // the promise resolves, so both outcomes are handled explicitly rather than assumed.
+      let dateRefused = false;
+      try {
+        await repo!.mergeDuplicateInto(A, B, { apply: false });
+      } catch (err) {
+        if (err instanceof Error && /day\(s\) apart/.test(err.message)) dateRefused = true;
+      }
+      expect(dateRefused).toBe(false);
     } finally {
       await db.delete(schema.ipos).where(inArray(schema.ipos.id, [A, B]));
     }
