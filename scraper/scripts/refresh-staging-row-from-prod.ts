@@ -62,7 +62,7 @@
  *     npx tsx scripts/refresh-staging-row-from-prod.ts --slug <slug> --apply        # writes staging
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
-import { db, getRedisClient } from '@ipodhan/shared';
+import { db, getRedisClient, configureUtcTimestampParsing } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { IPORepository, type IPOInsert } from '@ipodhan/shared/repositories';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -73,6 +73,15 @@ import { eq, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { openRepairDb, upsertFieldSource, writeLedgerFile, PRODUCTION_DATABASE_NAME } from './lib/repair-tool.js';
+
+// Read every `timestamp without time zone` value on the SECOND (prod
+// read-only) pool as UTC as well — the outer `db` proxy already does this
+// for itself (packages/shared/src/db/index.ts), but that patch is process-
+// global on the `pg` driver's type parser, not per-pool, so it must still
+// be requested here rather than assumed inherited (T-299 class: "Timestamps
+// off by 5h30m" in the root CLAUDE.md troubleshooting table; every prod
+// pool this tool opens reads naive `updated_at`/`created_at` values).
+configureUtcTimestampParsing();
 
 const UPDATED_BY = 'SYSTEM_LANEC_ITEM14_S6_REFRESH';
 const TOOL_NAME = 'refresh-staging-row-from-prod';
@@ -178,12 +187,26 @@ export function decideStagingWriteRefusal(input: {
 
 /**
  * The exact `pg.PoolConfig.options` string for the read-only production
- * pool. `default_transaction_read_only=on` is a SESSION-level Postgres
+ * pool, kept as a named constant for readability/reuse elsewhere in this
+ * file (the pinning test below and the pool-utc-pin source scan both read
+ * it). `default_transaction_read_only=on` is a SESSION-level Postgres
  * setting: any write statement issued over a connection carrying it fails
  * at the server, regardless of what this file's code happens to call — a
  * guard the database itself enforces, not just a code-review convention.
- * Exported so a test can assert the live pool config carries it (mutation:
- * delete the flag -> the pinning test goes red).
+ *
+ * IMPORTANT: `tests/unit/scripts/pool-utc-pin.test.ts` is a SOURCE-LEVEL
+ * scan: it parses each pg pool constructor call's own config-object
+ * literal and requires the `options:` key's VALUE to literally start with
+ * `'-c timezone=UTC'` inside that literal (a scan that matches the same
+ * constructor-call pattern in prose, like this paragraph would if it
+ * quoted the syntax directly, ends up "detecting" a second bogus call
+ * site — described in words here rather than shown literally, on
+ * purpose). An indirection through this named constant does NOT satisfy
+ * the scan (it cannot evaluate `PROD_POOL_OPTIONS` as a string) — the
+ * literal string is repeated inline on the pool constructor call below,
+ * deliberately duplicating `PROD_POOL_OPTIONS`'s value rather than
+ * referencing it, so the guard (and any reader) can see the pin without
+ * evaluating this module.
  */
 export const PROD_POOL_OPTIONS = '-c timezone=UTC -c default_transaction_read_only=on';
 
@@ -195,7 +218,7 @@ function openProdReadPool(): { pool: Pool; db: NodePgDatabase<typeof schema> } {
   const pool = new Pool({
     connectionString: url,
     max: 2,
-    options: PROD_POOL_OPTIONS,
+    options: '-c timezone=UTC -c default_transaction_read_only=on', // keep in sync with PROD_POOL_OPTIONS above
     connectionTimeoutMillis: 20000,
   });
   return { pool, db: drizzle(pool, { schema }) };
