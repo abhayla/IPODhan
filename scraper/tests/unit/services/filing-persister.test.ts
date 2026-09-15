@@ -1730,6 +1730,59 @@ describe('filing-persister - protected columns never reach a write payload (CRIT
     expect('inventoryTurnover' in fd).toBe(false);
   });
 
+  it('financial_data: a ratio at the numeric(5,2) ceiling is written, one below overflow', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP', {
+        current_ratio: { value: 1.5, passed: true },
+        inventory_turnover: { value: 999.99, passed: true },
+      }),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect(fd.inventoryTurnover).toBe('999.99');
+    expect(fd.currentRatio).toBe('1.5');
+    expect(summary.skipped_no_column.some((x) => x.startsWith('inventory_turnover'))).toBe(false);
+  });
+
+  it('financial_data: a ratio that overflows numeric(5,2) is skipped and recorded, siblings still write', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP', {
+        current_ratio: { value: 1.5, passed: true },
+        inventory_turnover: { value: 1234.5, passed: true },
+      }),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect('inventoryTurnover' in fd).toBe(false);
+    expect(fd.currentRatio).toBe('1.5');
+    expect(
+      summary.skipped_no_column.some((x) => x.startsWith('inventory_turnover') && x.includes('1234.5'))
+    ).toBe(true);
+  });
+
+  it('financial_data: a ratio below the negative numeric(5,2) floor is skipped and recorded', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP', {
+        quick_ratio: { value: -1000, passed: true },
+      }),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect('quickRatio' in fd).toBe(false);
+    expect(
+      summary.skipped_no_column.some((x) => x.startsWith('quick_ratio') && x.includes('-1000'))
+    ).toBe(true);
+  });
+
   it('financial_data: an admin-protected currentRatio stays out of the write', async () => {
     const s = makeDeps();
     s.deps.protectionFilter = protectFields({ financial_data: ['currentRatio'] });

@@ -2615,8 +2615,21 @@ export async function persistFilingExtraction(
   ] as const) {
     const value = num(extraction, field);
     if (value !== null) {
-      (fd as Record<string, unknown>)[column] = round2(value).toString();
-      fdFields += 1;
+      const rounded = round2(value);
+      // financial_data.currentRatio/quickRatio/inventoryTurnover are
+      // numeric(5,2) (schema.ts:567-569) - max magnitude 999.99. A printed
+      // ratio at/above 1000 (or a mis-read digit) throws a Postgres numeric
+      // overflow at insert and aborts the whole financial_data write for
+      // this document, taking the other two ratios and every other
+      // financial_data field down with it. Skip only the offending field.
+      if (!Number.isFinite(rounded) || Math.abs(rounded) > 999.99) {
+        skippedNoColumn.push(
+          `${field} (ratio_out_of_numeric_range:${column}=${rounded})`
+        );
+      } else {
+        (fd as Record<string, unknown>)[column] = rounded.toString();
+        fdFields += 1;
+      }
     }
   }
 
