@@ -11,36 +11,50 @@
  * `IPORepository.mergeDuplicateInto` transaction body against a fake `db`
  * that records the ORDER of its calls, and asserts the dropped `ipos` row's
  * DELETE is issued before any UPDATE that could carry a unique-constrained
- * column onto the survivor. One case per column in CARRY_IF_ABSENT_COLUMNS
- * that intersects a real UNIQUE constraint on `ipos` (checked against
- * packages/shared/src/db/schema.ts + every migration under
- * web/drizzle/migrations/ — today the only such constraint is `ipos_slug_unique`
- * on `slug`, and `slug` is NEVER a carried column, so the intersection is
- * currently empty; the ordering fix and this test both stand as the guard for
- * the day a carried column IS added there). `symbol` is included as a red-line
- * regression case even though it carries no DB-level unique constraint today,
- * because it is exactly the column that crashed the real merge on staging.
+ * column onto the survivor.
+ *
+ * UNIQUE-CONSTRAINT INTERSECTION — CORRECTED (2026-09-16, coordinator
+ * follow-up). `schema.ts` under-declares uniqueness on `ipos`: it has only
+ * `.unique()` on `slug` and a plain (non-unique) `index('idx_ipos_symbol')`
+ * on `symbol`. The LIVE database disagrees — `pg_indexes` on
+ * `ipodhan_staging` lists a real unique index Drizzle's schema never
+ * generated and nothing in `web/drizzle/migrations/` creates:
+ *
+ *     ipos_symbol_key: CREATE UNIQUE INDEX ipos_symbol_key ON public.ipos
+ *                       USING btree (symbol)
+ *
+ * (alongside `ipos_pkey` and `ipos_slug_unique`). That is exactly the
+ * constraint the real staging crash hit (icelectricals, `symbol='ICELCO'` on
+ * both rows). A class check for "which carried columns are unique-constrained"
+ * that only greps `schema.ts` misses this — the class must be read off the
+ * LIVE catalog (`pg_indexes` / `information_schema`), not the schema file,
+ * because Drizzle's schema and the real database have drifted apart on this
+ * exact column. The corrected intersection with `CARRY_IF_ABSENT_COLUMNS` is:
+ *   - `symbol` — unique via the undeclared live index `ipos_symbol_key`.
+ *   - `slug`   — unique via `ipos_slug_unique` (declared in schema.ts AND
+ *                live), but `slug` is never a member of
+ *                `CARRY_IF_ABSENT_COLUMNS` — the merge never carries it, it
+ *                only redirects it — so it contributes nothing to run here.
+ * `schema.ts` is not changed by this PR (the coordinator's instruction) —
+ * fixing the drift itself is a separate, schema-owning change.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { IPORepository } from './ipo-repository';
-import { CARRY_IF_ABSENT_COLUMNS } from '../utils/duplicate-ipo-merge';
 
 const KEEP_ID = '11111111-1111-1111-1111-111111111111';
 const DROP_ID = '22222222-2222-2222-2222-222222222222';
 
 /**
  * Columns in CARRY_IF_ABSENT_COLUMNS that carry a real UNIQUE constraint on
- * `ipos` today. Verified against schema.ts (only `.unique()` call inside the
- * `ipos` pgTable definition is on `slug`) and every migration under
- * web/drizzle/migrations/ (only `ipos_slug_unique` touches `ipos`). `slug` is
- * not itself in CARRY_IF_ABSENT_COLUMNS, so this list is empty by inspection —
- * recorded here, not asserted as non-empty, so a future column added to BOTH
- * a unique constraint and CARRY_IF_ABSENT_COLUMNS is caught by extending this
- * list, not by this test silently vacuously passing.
+ * `ipos` TODAY, read off the live database catalog (`pg_indexes` on
+ * `ipodhan_staging`: `ipos_pkey`, `ipos_slug_unique`, `ipos_symbol_key`) —
+ * not off `schema.ts`, which does not declare `ipos_symbol_key` at all. Only
+ * `symbol` is in this list: `slug` is unique too but is never carried (see
+ * header comment). This is the class this test guards; extend it the moment
+ * another live unique index is found on a carried column, regardless of
+ * whether schema.ts has caught up.
  */
-const UNIQUE_CARRIED_COLUMNS: readonly string[] = CARRY_IF_ABSENT_COLUMNS.filter((c) =>
-  (['slug'] as readonly string[]).includes(c)
-);
+const UNIQUE_CARRIED_COLUMNS: readonly string[] = ['symbol'];
 
 type Op =
   | { kind: 'child-repoint-or-delete'; table: string }
@@ -182,9 +196,9 @@ function buildFakeDb(carriedColumn: string) {
 }
 
 describe('mergeDuplicateInto — dropped-row delete happens before a unique-constrained carried-column UPDATE (DEFECT 2)', () => {
-  const casesToTest = Array.from(new Set([...UNIQUE_CARRIED_COLUMNS, 'symbol']));
-
-  it.each(casesToTest)('column "%s": DELETE on the dropped ipos row is issued before its carried-column UPDATE', async (column) => {
+  // The class guard: every column found unique on the LIVE catalog that is
+  // also carried. Today that is exactly ['symbol'] (see header comment).
+  it.each(UNIQUE_CARRIED_COLUMNS)('column "%s": DELETE on the dropped ipos row is issued before its carried-column UPDATE', async (column) => {
     const { db, ops } = buildFakeDb(column);
     const repo = new IPORepository(db as never, { del: vi.fn() } as never);
 
@@ -201,6 +215,30 @@ describe('mergeDuplicateInto — dropped-row delete happens before a unique-cons
 
     // MUTATION CHECK: reordering the transaction back to UPDATE-then-DELETE
     // (the original bug) makes deleteIdx > updateIdx and this assertion red.
+  });
+
+  // Dedicated, explicitly-named case for `symbol` (coordinator follow-up,
+  // 2026-09-16): the exact column and value shape from the real staging
+  // crash (icelectricals: keep.symbol=null, drop.symbol='ICELCO'), asserted
+  // on its own rather than folded only into the generic parameterized loop
+  // above, so this specific regression is never silently dropped if
+  // UNIQUE_CARRIED_COLUMNS is ever edited.
+  it('symbol: DELETE on the dropped ipos row is issued before the survivor is UPDATEd to carry the dropped row\'s symbol (ipos_symbol_key, live unique index, undeclared in schema.ts)', async () => {
+    const { db, ops } = buildFakeDb('symbol');
+    const repo = new IPORepository(db as never, { del: vi.fn() } as never);
+
+    await repo.mergeDuplicateInto(KEEP_ID, DROP_ID, { apply: true });
+
+    const deleteIdx = ops.findIndex((o) => o.kind === 'delete-drop-ipos-row');
+    const updateSymbolIdx = ops.findIndex((o) => o.kind === 'update-carried-column' && o.column === 'symbol');
+
+    expect(deleteIdx).toBeGreaterThanOrEqual(0);
+    expect(updateSymbolIdx).toBeGreaterThanOrEqual(0);
+    expect(deleteIdx).toBeLessThan(updateSymbolIdx);
+
+    // MUTATION CHECK (verified 2026-09-16): reverting mergeDuplicateInto to
+    // UPDATE-then-DELETE order makes deleteIdx > updateSymbolIdx and this
+    // assertion goes red (`expected 3 to be less than 2` observed).
   });
 
   it('every REPOINT_TABLES / child-table repoint-or-delete statement is also issued before the dropped ipos row delete', async () => {
