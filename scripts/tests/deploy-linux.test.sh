@@ -1762,13 +1762,17 @@ fi
 # ---        restart_pm2()'s and resume_scraper()'s — carries PYTHON_BIN=. -
 # --- Red-then-green: deleting the pip-install line or either PYTHON_BIN= -
 # --- assignment from deploy-linux.sh flips this case to FAIL.
+# Item 7 slice 1: the scraper's pm2 start now invokes scripts/scraper-wake.sh
+# (the lock-skip + 2h-ceiling wrapper) instead of tsx/dist/cli.mjs directly,
+# so the detector below matches on the wrapper. The invariant it guards is
+# unchanged: every REAL scraper pm2 start still carries PYTHON_BIN=.
 STRIPPED16="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
 # W-111 round 2: pip is invoked as "<venv>/bin/python -m pip install", never
 # "<venv>/bin/pip" (a moved venv's pip shebang would still point at its OLD
 # path — see setup_python_venv()'s atomic-swap comment) — match on that
 # shape rather than a literal venv-dir variable name.
 PIP_INSTALL_LINE16="$(emitn "$STRIPPED16" | grep -n -E '/bin/python" -m pip install .*-r "\$req_file"' | head -1 | cut -d: -f1 || true)"
-RESTART_SCRAPER_START_LINE16="$(emitn "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' | tail -1 | cut -d: -f1 || true)"
+RESTART_SCRAPER_START_LINE16="$(emitn "$STRIPPED16" | grep -n -E 'pm2 start .*scraper-wake\.sh' | grep -v '\[dry-run\]' | tail -1 | cut -d: -f1 || true)"
 
 if [ -n "$PIP_INSTALL_LINE16" ] && [ -n "$RESTART_SCRAPER_START_LINE16" ] && [ "$PIP_INSTALL_LINE16" -lt "$RESTART_SCRAPER_START_LINE16" ]; then
   pass "case 16: venv 'pip install -r requirements.txt' (setup_python_venv) appears before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
@@ -1776,7 +1780,7 @@ else
   fail "case 16: expected the venv pip-install step before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
 fi
 
-SCRAPER_START_LINES16="$(emitn "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' || true)"
+SCRAPER_START_LINES16="$(emitn "$STRIPPED16" | grep -n -E 'pm2 start .*scraper-wake\.sh' | grep -v '\[dry-run\]' || true)"
 SCRAPER_START_COUNT16="$(emitn "$SCRAPER_START_LINES16" | grep -c . || true)"
 SCRAPER_START_WITH_PYTHON_BIN16="$(emitn "$SCRAPER_START_LINES16" | grep -c 'PYTHON_BIN=' || true)"
 SCRAPER_START_COUNT16="${SCRAPER_START_COUNT16:-0}"
