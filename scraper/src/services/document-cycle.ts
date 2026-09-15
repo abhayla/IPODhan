@@ -77,11 +77,13 @@ const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
  * W-168 round 2: moved to `filing-auto-persist.ts` (re-exported here
  * unchanged for existing importers) so `anchorMaxSpawnsPerCycle()` can clamp
  * against it without a circular import between the two modules. Still the
- * SAME constant the F3 static test checks: `DEFAULT_MAX_SPAWNS_PER_CYCLE *
- * EXTRACT_TIMEOUT_MS` (worst case, every spawn takes the full extractor
- * timeout) plus the anchor pass's own worst case plus slack MUST stay under
- * this TTL, or a future cap raise could let extraction keep running after
- * the lock protecting it from a second overlapping cycle has already expired.
+ * SAME constant the F3 static test checks. OD-55 changed the worst case it is
+ * checked against: there is no per-document budget to multiply by the spawn
+ * count any more, so the worst case is ONE document running to
+ * `HUNG_PROCESS_CEILING_MS` (2 h) plus the anchor pass's own worst case plus
+ * slack, and that sum MUST stay under this TTL — otherwise a document the
+ * owner has explicitly allowed to take an hour keeps running after the lock
+ * protecting it from a second overlapping cycle has already expired.
  */
 export { FILING_EXTRACTION_LOCK_TTL_MS };
 
@@ -90,8 +92,12 @@ export { FILING_EXTRACTION_LOCK_TTL_MS };
  * cycle, so a signal handler in `index.ts` (SIGTERM/SIGINT, which calls
  * `process.exit` and therefore skips this file's `finally` block below) can
  * still release them before the process dies. Without this, a deploy that
- * signals a running cycle leaves `FILING_EXTRACTION_LOCK_KEY` held for the
- * full 45-minute TTL, starving the next two cycles' extraction step.
+ * signals a running cycle leaves `FILING_EXTRACTION_LOCK_KEY` held for its
+ * full TTL, starving every extraction step until it expires. OD-55 raised the
+ * stake here rather than changing the mechanism: that TTL was 45 minutes (two
+ * lost cycles) and is now the 2-hour ceiling plus slack, so an unreleased lock
+ * costs a whole night of document work instead of an hour. The release path
+ * this registry exists for is what keeps that cost at zero.
  *
  * `registerHeldLock`/`unregisterHeldLock` are called right around the same
  * acquire/finally-release pair that already manages the lock's lifecycle —

@@ -772,8 +772,9 @@ export async function main() {
         const hadError = combinedResult.errors.length > 0;
         const exitCode = hadError ? 1 : 130;
         // W-140: release document-cycle's extraction lock (registered via
-        // registerHeldLock, held for up to FILING_EXTRACTION_LOCK_TTL_MS =
-        // 45 minutes) BEFORE the cycle lock and process.exit — process.exit
+        // registerHeldLock, held for up to FILING_EXTRACTION_LOCK_TTL_MS —
+        // 45 minutes before OD-55, now the 2-hour hung-process ceiling plus
+        // the anchor reserve plus slack) BEFORE the cycle lock and process.exit — process.exit
         // skips document-cycle.ts's own `finally` release, which used to
         // leave this lock held for its full TTL after any signal mid-cycle.
         // W-140 round 2 (W-152): both releases now go through a Redis call
