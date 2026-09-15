@@ -1735,6 +1735,11 @@ restart_pm2() {
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
     log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start scripts/scraper-wake.sh --name $PM2_SCRAPER_APP --no-autorestart (cwd=$release_realpath/scraper, release=$release_realpath)"
+    # The scheduled invoker is emitted on the dry-run path too. Without this
+    # line a dry-run test can prove the pm2 start's shape but says NOTHING
+    # about whether anything ever wakes the wrapper - which is exactly the
+    # hole that let the scheduler go missing in the first place.
+    install_scraper_cron "$release_realpath/scripts/scraper-wake.sh"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1766,7 +1771,69 @@ restart_pm2() {
   # abort on an unbound variable under `set -u` before pm2 ever runs.
   ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
       --no-autorestart )
+  # The alarm clock. Without this the wrapper above runs once and never again.
+  install_scraper_cron "$RELEASE_DIR/scripts/scraper-wake.sh"
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
+}
+
+# --- The scheduled invoker (item 7 slice 1) ---------------------------------
+# WHY THIS EXISTS: pm2's --cron-restart was not only the kill switch, it was
+# also the ALARM CLOCK. It is what woke the scraper every 30 minutes. Removing
+# it (so a document read is no longer force-killed mid-flight, OD-55) takes the
+# scheduler away with it: `pm2 start ... --no-autorestart` runs the wrapper
+# ONCE at deploy and then the app sits exited. Worse, that state looks healthy
+# - an exited app is exactly what pm2 is supposed to show for --no-autorestart
+# - so a scraper that had silently stopped running would raise no alarm at all.
+# The removal and its replacement therefore land together, never apart.
+#
+# OS-level cron, not a systemd timer: the design card deliberately does not
+# choose between them, and this repo already schedules its VPS work through the
+# deploying user's crontab (scripts/vps-prod-verify-cron.sh, vps-data-audit-
+# cron.sh, vps-disk-hygiene.sh). Following the convention that is already on
+# the box beats introducing a second scheduling mechanism for one job.
+#
+# CADENCE IS PRESERVED, NOT CHANGED: the line carries $SCRAPER_CRON, the same
+# per-slot value that fed --cron-restart (*/30 for prod, 15,45 for staging so
+# the two slots' extractors never land in the same minute on a 2-vCPU box -
+# W-178). What changes is the MEANING of the wake: cron now STARTS a cycle and
+# the wrapper skips if one is still running, where before pm2 KILLED whatever
+# was running and started another.
+#
+# IDEMPOTENT AND SLOT-SCOPED: each line carries a unique marker comment
+# (# ipodhan-scraper-wake:<SLOT>), and installing rewrites only lines bearing
+# THIS slot's marker. A prod deploy never disturbs staging's line, and two
+# deploys in a row leave exactly one line, not two.
+SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+SCRAPER_WAKE_LOG="${DEPLOY_SCRAPER_WAKE_LOG:-/var/log/ipodhan-scraper-wake-$SLOT.log}"
+install_scraper_cron() {
+  local wake_script="$1"
+  # The wrapper is cwd-independent by design, so cron needs no `cd`. Output is
+  # appended to a slot-scoped log because a cron job's stdout otherwise goes to
+  # local mail nobody reads - and the skip/ceiling lines ARE the proof artifact
+  # this slice exists to produce, so they must land somewhere greppable.
+  local cron_line="$SCRAPER_CRON $wake_script data >> $SCRAPER_WAKE_LOG 2>&1 $SCRAPER_CRON_MARKER"
+
+  if (( DRY_RUN )); then
+    log "[dry-run] would install crontab line: $cron_line"
+    return 0
+  fi
+
+  if ! command -v crontab >/dev/null 2>&1; then
+    warn "install_scraper_cron: crontab not found on PATH - THE SCRAPER WILL NOT BE WOKEN. pm2 no longer carries --cron-restart, so without this line nothing schedules a cycle. Install cron or add the line by hand: $cron_line"
+    return 0
+  fi
+
+  local existing
+  existing="$(crontab -l 2>/dev/null || true)"
+  # Drop only this slot's previous line, keep every other crontab entry.
+  local kept
+  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" || true)"
+
+  if printf '%s\n%s\n' "$kept" "$cron_line" | grep -v '^$' | crontab -; then
+    log "install_scraper_cron: scheduled the scraper wake for slot '$SLOT' at '$SCRAPER_CRON' -> $wake_script"
+  else
+    warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $cron_line"
+  fi
 }
 
 # T-327F: extracted out of the inline AUTO-ROLLBACK block below so

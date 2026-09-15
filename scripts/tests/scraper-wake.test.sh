@@ -341,6 +341,76 @@ else
   fail "case 8: deploy script not found at $DEPLOY_SCRIPT"
 fi
 
+# --- Case 9: SOMETHING ACTUALLY WAKES THE WRAPPER --------------------------
+# The defect this case exists for: pm2's --cron-restart was not only the kill
+# switch, it was also the ALARM CLOCK - the thing that woke the scraper every
+# 30 minutes. Removing it without installing a replacement scheduler leaves
+# `pm2 start ... --no-autorestart` running the wrapper ONCE at deploy and never
+# again, and that state LOOKS HEALTHY (an exited app is exactly what pm2 shows
+# for --no-autorestart), so a scraper that had silently stopped scraping would
+# raise no alarm. Asserted here so the scheduler's absence can never be silent.
+if [ -f "$DEPLOY_SCRIPT" ]; then
+  if grep -qF 'install_scraper_cron()' "$DEPLOY_SCRIPT"; then
+    pass "case 9: the deploy installs a scheduled invoker (install_scraper_cron)"
+  else
+    fail "case 9: NO scheduled invoker in the deploy - with --cron-restart gone, nothing would ever wake the scraper"
+  fi
+
+  # It must be CALLED, not merely defined - on the real path and the dry-run path.
+  CRON_CALLS="$(grep -c 'install_scraper_cron "' "$DEPLOY_SCRIPT" || true)"
+  if [ "${CRON_CALLS:-0}" -ge 2 ]; then
+    pass "case 9: install_scraper_cron is invoked on both the real and dry-run paths ($CRON_CALLS call sites)"
+  else
+    fail "case 9: install_scraper_cron is defined but invoked only ${CRON_CALLS:-0}x - a definition nothing calls schedules nothing"
+  fi
+
+  # The scheduled line must name the WRAPPER. A cron entry pointing straight at
+  # the tsx entrypoint would wake the scraper but bypass the lock-skip AND the
+  # ceiling - the two guards this whole slice exists to add.
+  if grep -F 'install_scraper_cron "' "$DEPLOY_SCRIPT" | grep -qF 'scraper-wake.sh'; then
+    pass "case 9: the scheduled invoker points at scraper-wake.sh (guards stay in the path)"
+  else
+    fail "case 9: the scheduled invoker does not name scraper-wake.sh"
+  fi
+
+  # Cadence preserved, not silently changed: the line carries SCRAPER_CRON, the
+  # same per-slot value that fed --cron-restart (*/30 prod, 15,45 staging).
+  if grep -F 'cron_line=' "$DEPLOY_SCRIPT" | grep -qF '$SCRAPER_CRON'; then
+    pass "case 9: the scheduled line carries \$SCRAPER_CRON (per-slot cadence preserved)"
+  else
+    fail "case 9: the scheduled line does not carry \$SCRAPER_CRON - the per-slot cadence would be lost"
+  fi
+
+  # End-to-end on the real script: a prod dry-run must EMIT a schedule line at
+  # the prod cadence, and a staging dry-run at staging's offset cadence. This is
+  # the non-static half - it runs deploy-linux.sh and reads what it produced.
+  CRONROOT="$(mktemp -d)"
+  PRODCRON="$(DEPLOY_ROOT="$CRONROOT/p" bash "$DEPLOY_SCRIPT" prod --dry-run --force 2>&1 | grep -i 'would install crontab line' || true)"
+  STAGCRON="$(DEPLOY_ROOT="$CRONROOT/s" bash "$DEPLOY_SCRIPT" staging --dry-run --force 2>&1 | grep -i 'would install crontab line' || true)"
+  rm -rf "$CRONROOT"
+
+  if printf '%s\n' "$PRODCRON" | grep -qF '*/30 * * * *' && printf '%s\n' "$PRODCRON" | grep -qF 'scraper-wake.sh'; then
+    pass "case 9: a prod deploy schedules the wrapper at */30 (the cadence --cron-restart used to carry)"
+  else
+    fail "case 9: a prod deploy emitted no */30 schedule line for the wrapper"
+    printf '%s\n' "$PRODCRON"
+  fi
+  if printf '%s\n' "$STAGCRON" | grep -qF '15,45 * * * *'; then
+    pass "case 9: a staging deploy schedules at the offset 15,45 (slots never extract in the same minute, W-178)"
+  else
+    fail "case 9: a staging deploy did not emit the offset 15,45 schedule line"
+    printf '%s\n' "$STAGCRON"
+  fi
+  # Slot-scoped marker: a prod deploy must not clobber staging's line.
+  if printf '%s\n' "$PRODCRON" | grep -qF 'ipodhan-scraper-wake:prod' && printf '%s\n' "$STAGCRON" | grep -qF 'ipodhan-scraper-wake:staging'; then
+    pass "case 9: each slot's cron line carries its own marker (a deploy rewrites only its own slot)"
+  else
+    fail "case 9: the cron lines are not slot-scoped - one slot's deploy could clobber the other's schedule"
+  fi
+else
+  fail "case 9: deploy script not found at $DEPLOY_SCRIPT"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "scraper-wake.test.sh: FAILED"
   exit 1

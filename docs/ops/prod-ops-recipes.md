@@ -642,3 +642,42 @@ would actually be merged, re-run the gate.
 
 `--force --reason "<20+ chars>"` bypasses, prints every clause that fired, and
 echoes the reason so it lands in the record. Paste that output into the PR body.
+
+## 12. The scraper's wake schedule — it is OS cron now, not pm2 (item 7 slice 1, 2026-09-16)
+
+**What changed.** pm2's `--cron-restart="*/30 * * * *"` used to do two jobs at once: it was the
+only bound on a hung scraper AND the only thing that woke it. It bounded the scraper by *killing*
+it mid-cycle every 30 minutes, which is what OD-55 forbids ("let the scraper take whatever time it
+needs"). Both jobs are now separate and explicit:
+
+| Job | Before | After |
+|---|---|---|
+| Wake the scraper | pm2 `--cron-restart` | OS crontab line, installed by `deploy-linux.sh` |
+| Bound a hung run | pm2 kill at 30 min | `timeout` 2 h inside `scripts/scraper-wake.sh` (OD-55) |
+| Skip an overlapping wake | nothing — it killed and restarted | the wrapper's Redis lock read, which logs why it skipped |
+
+**The line the deploy installs** (rewritten on every deploy, idempotent, scoped to its own slot by
+the trailing marker — a prod deploy never touches staging's line):
+
+```
+*/30 * * * * /var/www/ipodhan/current/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-prod.log 2>&1 # ipodhan-scraper-wake:prod
+15,45 * * * * .../current-staging/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-staging.log 2>&1 # ipodhan-scraper-wake:staging
+```
+
+Staging keeps the `:15/:45` offset so two slots' extractors never land in the same minute on the
+2-vCPU box (W-178).
+
+**Reading it on the box** (read-only; the VPS is production — no ad-hoc runs):
+
+```bash
+crontab -l | grep ipodhan-scraper-wake          # is the wake scheduled at all?
+tail -50 /var/log/ipodhan-scraper-wake-prod.log # what did the last wakes do?
+grep -c wake-skipped  /var/log/ipodhan-scraper-wake-prod.log   # skipped on a held lock
+grep    ceiling-tripped /var/log/ipodhan-scraper-wake-prod.log # hit the 2-hour ceiling
+```
+
+**The failure mode to watch for.** With `--no-autorestart` and no cron line, pm2 shows the scraper
+app as *exited* — which is exactly what a healthy one-shot looks like — while nothing is scraping.
+So `pm2 status` alone can NEVER tell you the wake is alive. **`crontab -l | grep
+ipodhan-scraper-wake` is the check**; if it returns nothing, the scraper is not running at all and
+the deploy's `install_scraper_cron` warn line will say so in the deploy log.
