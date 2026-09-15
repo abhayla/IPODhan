@@ -231,6 +231,77 @@ describe('checkMergeEligibility', () => {
     });
     expect(result.eligible).toBe(true);
   });
+
+  // Tier A finding on #672: cube-highways-trust (issue_size 0, symbol NULL) vs
+  // cube-highways-trust-cube-highways-trust-invit (issue_size Rs 5,000cr) had nothing to refuse
+  // it under the 3-day date tolerance — neither the date check, the name fold, nor the identifier
+  // loop (which only fires when BOTH sides carry a value) catches a one-sided-absent identifier.
+  describe('issue_size agreement (Tier A finding on #672)', () => {
+    it('refuses when both sides carry a non-zero issue_size that differs by more than 1%, naming both values', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '0',
+        dropIssueSize: '50000000000',
+      });
+      // 0 reads as ABSENT, so this pair alone must NOT refuse — the real two-sided-disagreement
+      // case is the next assertion.
+      expect(result.eligible).toBe(true);
+
+      const disagreeing = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '2000000000',
+      });
+      expect(disagreeing.eligible).toBe(false);
+      expect((disagreeing as { reason: string }).reason).toMatch(/issue_size disagrees/);
+      expect((disagreeing as { reason: string }).reason).toMatch(/1000000000/);
+      expect((disagreeing as { reason: string }).reason).toMatch(/2000000000/);
+    });
+
+    it('is eligible when one side is 0 (0 reads as ABSENT, nothing to disagree about)', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '0',
+        dropIssueSize: '50000000000',
+      });
+      expect(result).toEqual({ eligible: true });
+    });
+
+    it('is eligible when one side is NULL (absent)', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: null,
+        dropIssueSize: '50000000000',
+      });
+      expect(result).toEqual({ eligible: true });
+    });
+
+    it('is eligible when both sides carry the same (or near-identical, within 1%) issue_size', () => {
+      const exact = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '1000000000',
+      });
+      expect(exact).toEqual({ eligible: true });
+
+      const withinTolerance = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '1005000000', // 0.5% apart
+      });
+      expect(withinTolerance).toEqual({ eligible: true });
+    });
+
+    it('is eligible when issue_size differs but --set-issue-size + --issue-size-note were given (acknowledged correction)', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '2000000000',
+        issueSizeCorrectionAcknowledged: true,
+      });
+      expect(result).toEqual({ eligible: true });
+    });
+  });
 });
 
 describe('buildProvenanceMap (MAJOR-1, PR #433 review)', () => {

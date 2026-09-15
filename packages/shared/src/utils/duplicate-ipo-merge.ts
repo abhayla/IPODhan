@@ -327,6 +327,44 @@ export interface EligibilityInput {
   dropCompanyName: string | null | undefined;
   forceDifferentName: boolean;
   identifiers: { column: string; keepValue: unknown; dropValue: unknown }[];
+  /** `ipos.issue_size` on each side; NULL and 0 both read as ABSENT (nothing to disagree about). */
+  keepIssueSize?: unknown;
+  dropIssueSize?: unknown;
+  /**
+   * True when the operator passed `--set-issue-size` WITH `--issue-size-note` (the tool's
+   * existing source-backed correction path — `repair-merge-duplicate-ipo.ts`, threaded through
+   * `IPORepository.mergeDuplicateInto`'s `opts.setIssueSize`/`opts.issueSizeNote`). A disagreeing
+   * issue_size is then an ACKNOWLEDGED correction, not a silent guess: the survivor gets the
+   * stated size (applied elsewhere, after eligibility), so the refusal below does not apply.
+   */
+  issueSizeCorrectionAcknowledged?: boolean;
+}
+
+/**
+ * How far two non-zero `issue_size` values may differ (as a fraction of the larger) and still be
+ * "the same number reported slightly differently" rather than two different offers.
+ *
+ * WHY A TOLERANCE. `issue_size` is scraped from multiple sources and rounds differently (crores
+ * vs rupees, "approx" language, mid-book vs final price). A tolerance narrow enough to still catch
+ * a genuinely different IPO's size, wide enough not to refuse ordinary rounding noise.
+ *
+ * WHY 1%. The gap the invariant's cube-highways-trust pair actually needs caught is total
+ * (issue_size 0 vs Rs 5,000cr — the 0 side is ABSENT, not disagreeing, so this constant is not
+ * even reached for that pair). 1% is a conservative placeholder for a genuine two-sided
+ * disagreement: two sources of the same real number should not diverge by more than rounding: a
+ * value with 1% relative tolerance is refused for anything a human would call "a different
+ * number" while tolerating INR-vs-crore rounding at the last significant digit. Not re-measured
+ * against a real disagreeing pair (none was found in the class this fix addresses) — re-measure
+ * if a real false-refusal or false-pass surfaces.
+ */
+export const ISSUE_SIZE_RELATIVE_TOLERANCE = 0.01;
+
+/** NULL, 0, and non-numeric all read as ABSENT — nothing to disagree about. */
+function numericOrAbsent(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n === 0) return null;
+  return n;
 }
 
 export type EligibilityResult = { eligible: true } | { eligible: false; reason: string };
@@ -377,6 +415,23 @@ export function checkMergeEligibility(input: EligibilityInput): EligibilityResul
         eligible: false,
         reason: `${column} disagrees (${String(keepValue)} vs ${String(dropValue)}) — two offers, not one row twice`,
       };
+    }
+  }
+  if (!input.issueSizeCorrectionAcknowledged) {
+    const keepSize = numericOrAbsent(input.keepIssueSize);
+    const dropSize = numericOrAbsent(input.dropIssueSize);
+    if (keepSize !== null && dropSize !== null) {
+      const larger = Math.max(keepSize, dropSize);
+      const relDiff = Math.abs(keepSize - dropSize) / larger;
+      if (relDiff > ISSUE_SIZE_RELATIVE_TOLERANCE) {
+        return {
+          eligible: false,
+          reason:
+            `issue_size disagrees (${keepSize} vs ${dropSize}, ${(relDiff * 100).toFixed(1)}% apart, ` +
+            `more than ${(ISSUE_SIZE_RELATIVE_TOLERANCE * 100).toFixed(0)}% tolerance) — two offers, not one row twice ` +
+            `(pass --set-issue-size with --issue-size-note to acknowledge and correct)`,
+        };
+      }
     }
   }
   return { eligible: true };

@@ -1070,6 +1070,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const jsKey = columnToCamelCase(col) as keyof typeof keep;
         return { column: col, keepValue: keep[jsKey], dropValue: drop[jsKey] };
       }),
+      keepIssueSize: keep.issueSize,
+      dropIssueSize: drop.issueSize,
+      // Acknowledged ONLY when the operator passed BOTH flags — a bare --set-issue-size with no
+      // --issue-size-note is not source-backed and must not silently bypass the disagreement check.
+      issueSizeCorrectionAcknowledged: Boolean(opts.setIssueSize) && Boolean(opts.issueSizeNote),
     });
     if (eligibility.eligible === false) {
       throw new DatabaseError(`mergeDuplicateInto: refused — ${eligibility.reason}`, undefined);

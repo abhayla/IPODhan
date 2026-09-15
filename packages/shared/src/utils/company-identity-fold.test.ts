@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { foldCompanyIdentity, IDENTITY_FOLD_FIXTURE } from './company-identity-fold';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { foldCompanyIdentity, IDENTITY_FOLD_FIXTURE, isoDay, daysBetween } from './company-identity-fold';
 
 /**
  * Item 12 slice A. This module is an EXTRACTION, not a behaviour change: the
@@ -100,5 +100,51 @@ describe('foldCompanyIdentity — the bracketed IPO-name tail (item 12 slice F)'
     expect(foldCompanyIdentity('Kwality Walls (India) Ltd')).toBe('kwalitywalls');
     // A bracketed tail whose text does not end in "IPO" stays.
     expect(foldCompanyIdentity('Acme Ltd (Demerged)')).toBe('acmedemerged');
+  });
+});
+
+
+/**
+ * Item 12 slice G, Tier A finding on #672: the Date branch of isoDay() was untested. node-pg
+ * parses a bare Postgres `date` into a JS Date at LOCAL MIDNIGHT of that calendar day; on an IST
+ * machine (UTC+5:30) that Date's UTC instant is 18:30 the PREVIOUS day. `new Date('2026-07-25T18:30:00.000Z')`
+ * is exactly that shape: the local-midnight-in-IST representation of 2026-07-26. A UTC projection
+ * (`.toISOString().slice(0, 10)`) reads this back as "2026-07-25" — the day BEFORE the one the
+ * server actually sent (the F-104 class). isoDay() must read the LOCAL day, not the UTC day.
+ */
+describe('isoDay — the Date branch (F-104 class, Tier A finding on #672)', () => {
+  // Same TZ-mutation pattern as scraper/tests/unit/scrapers/nse-date-tz.test.ts: isoDay() reads
+  // getFullYear/getMonth/getDate, which are governed by process.env.TZ. Pin to Asia/Kolkata (IST,
+  // UTC+5:30 — the prod scraper's zone) so this test is deterministic under a UTC CI runner, not
+  // an accident of running on an IST laptop.
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    process.env.TZ = 'Asia/Kolkata';
+  });
+  afterEach(() => {
+    process.env.TZ = ORIGINAL_TZ;
+  });
+
+  it("reads node-pg's local-midnight-in-IST Date shape as the LOCAL calendar day, not the UTC day", () => {
+    const nodePgShape = new Date('2026-07-25T18:30:00.000Z');
+    expect(isoDay(nodePgShape)).toBe('2026-07-26');
+  });
+
+  it('daysBetween of two such Dates 3 calendar days apart is 3', () => {
+    const day1 = isoDay(new Date('2026-07-25T18:30:00.000Z')); // local IST day: 2026-07-26
+    const day2 = isoDay(new Date('2026-07-28T18:30:00.000Z')); // local IST day: 2026-07-29
+    expect(day1).toBe('2026-07-26');
+    expect(day2).toBe('2026-07-29');
+    expect(daysBetween(day1!, day2!)).toBe(3);
+  });
+
+  it('a plain YYYY-MM-DD string (the shape this schema actually returns) reads unchanged', () => {
+    expect(isoDay('2026-07-26')).toBe('2026-07-26');
+  });
+
+  it('is null-safe for missing/invalid values', () => {
+    expect(isoDay(null)).toBeNull();
+    expect(isoDay(undefined)).toBeNull();
+    expect(isoDay(new Date('not-a-date'))).toBeNull();
   });
 });
