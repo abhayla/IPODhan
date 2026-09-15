@@ -145,12 +145,17 @@ export default async function duplicateIpoRowsInvariant(pool) {
     };
     for (const r of sorted) {
       if (!cluster.length) { cluster = [r]; continue; }
-      const prev = isoDay(cluster[cluster.length - 1].open_date);
+      // BOUND THE WHOLE CLUSTER, NOT EACH STEP. Comparing only against the PREVIOUS row is
+      // transitive: rows two days apart each would chain indefinitely, so five of them span
+      // eight days inside a group labelled "3-day". Measure from the cluster's FIRST row, so
+      // max(open_date) - min(open_date) <= OPEN_DATE_TOLERANCE_DAYS holds for every group the
+      // invariant reports. (Tier A review of #667, blocker 2.)
+      const first = isoDay(cluster[0].open_date);
       const day = isoDay(r.open_date);
-      const near = prev && day
-        ? Math.abs((new Date(`${day}T00:00:00Z`) - new Date(`${prev}T00:00:00Z`)) / 86400000)
+      const near = first && day
+        ? Math.abs((new Date(`${day}T00:00:00Z`) - new Date(`${first}T00:00:00Z`)) / 86400000)
             <= OPEN_DATE_TOLERANCE_DAYS
-        : (!prev && !day);
+        : (!first && !day);
       if (near) cluster.push(r);
       else { flush(); cluster = [r]; }
     }

@@ -121,3 +121,34 @@ test('a Date at local midnight labels as the day the server sent, not the UTC da
   ]));
   assert.equal(details[0].openDate, '2026-07-31');
 });
+
+// Tier A review of #667, blocker 2. Clustering on the gap between CONSECUTIVE sorted rows is
+// transitive: a chain of rows 2 days apart each never breaks, so five rows could span 8 days —
+// and a longer chain 15 — inside one "3-day" group. The tolerance must bound the WHOLE cluster,
+// not each step, or the invariant claims a spread it never checked.
+test('a chain of rows two days apart does NOT collapse into one group past the bound', async () => {
+  const { count, details } = await duplicateIpoRowsInvariant(poolOf([
+    row('c1', 'Chainco Ltd', '2026-07-01'),
+    row('c2', 'Chainco Ltd. (Chainco IPO)', '2026-07-03'),
+    row('c3', 'Chainco Ltd. (Chainco IPO) CT', '2026-07-05'),
+    row('c4', 'Chainco Ltd. (Chainco IPO) LT', '2026-07-07'),
+    row('c5', 'Chainco Ltd. (Chainco IPO) P', '2026-07-09'),
+  ]));
+  // 2026-07-01..07-09 is an 8-day span: it must NOT be one group.
+  for (const d of details) {
+    const [first, last] = d.openDate.includes('..') ? d.openDate.split('..') : [d.openDate, d.openDate];
+    const span = (new Date(`${last}T00:00:00Z`) - new Date(`${first}T00:00:00Z`)) / 86400000;
+    assert.ok(span <= 3, `group ${d.fold} spans ${span} days, above the 3-day bound: ${d.openDate}`);
+  }
+  assert.ok(count >= 2, `an 8-day chain must split into at least two groups, got ${count}`);
+});
+
+// Positive control for the bound: it must not be so tight that it breaks the real twins.
+test('the bound still keeps the real 3-day twin pair in ONE group', async () => {
+  const { count, details } = await duplicateIpoRowsInvariant(poolOf([
+    row('h1', 'H R Hygiene Products', '2026-07-26'),
+    row('h2', 'H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)', '2026-07-29'),
+  ]));
+  assert.equal(count, 1, `expected one group, got ${JSON.stringify(details)}`);
+  assert.equal(details[0].openDate, '2026-07-26..2026-07-29');
+});
