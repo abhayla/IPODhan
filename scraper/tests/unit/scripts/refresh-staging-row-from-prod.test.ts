@@ -1,22 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+  applyRefresh,
   computeFieldDiffs,
+  countAndFetchBySlug,
   decideProdReadRefusal,
   decideStagingWriteRefusal,
   DEFAULT_FIELDS,
   IPOS_FIELD_COLUMNS,
+  PROD_POOL_OPTIONS,
   STAGING_DATABASE_NAME,
 } from '../../../scripts/refresh-staging-row-from-prod.js';
 import { PRODUCTION_DATABASE_NAME, upsertFieldSource } from '../../../scripts/lib/repair-tool.js';
 
 /**
  * Lane C item 14 slice 6: refresh one stale `ipos` row on staging from
- * production's read path. Four load-bearing behaviors, red before the
- * implementation existed:
- *   1. refuses --apply when the write target is not ipodhan_staging (NO override flag)
- *   2. refuses to start when PROD_DATABASE_URL's own current_database() is not ipodhan
- *   3. dry run computes the field diff against fake pools and writes nothing
- *   4. apply issues the UPDATE and one field_sources provenance row per changed field
+ * production's read path. Tier A review (PR #666) found three MAJORs after
+ * the first pass: (1) the prod pool had no server-enforced read-only guard,
+ * (2) mutations to the apply-body logic survived because it lived inline in
+ * `main()` with no seam to test, (3) the shared repair-tool filename lint
+ * never inspected this file. This test file's structure follows that
+ * finding order.
  */
 
 describe('decideStagingWriteRefusal — the ONLY database this tool ever writes to', () => {
@@ -62,6 +65,16 @@ describe('decideProdReadRefusal — the read source must really be production', 
   });
 });
 
+describe('PROD_POOL_OPTIONS — the prod connection is read-only at the SERVER, not just by convention (finding 1)', () => {
+  it('MUTATION: removing default_transaction_read_only=on turns this red', () => {
+    expect(PROD_POOL_OPTIONS).toMatch(/default_transaction_read_only=on/);
+  });
+
+  it('still sets the session timezone to UTC alongside the read-only flag', () => {
+    expect(PROD_POOL_OPTIONS).toMatch(/timezone=UTC/);
+  });
+});
+
 describe('computeFieldDiffs — dry run computes the diff, writes nothing (no DB)', () => {
   it('marks fields differing between staging and prod values', () => {
     const staging = { price_band_low: 10, price_band_high: 10, issue_size: '43320000.00', lot_size: 4000 };
@@ -89,8 +102,46 @@ describe('computeFieldDiffs — dry run computes the diff, writes nothing (no DB
   });
 });
 
-describe('apply issues one field_sources provenance row per changed field (shared upsertFieldSource)', () => {
-  function mockTx(existingSource: string | null) {
+/** A fake selectable that answers a COUNT query then a row query, in that order. */
+function fakeCountAndFetchDb(count: number, row: Record<string, unknown> | null) {
+  let call = 0;
+  const limit = vi.fn().mockResolvedValue(row ? [row] : []);
+  const whereForRow = vi.fn().mockReturnValue({ limit });
+  const whereForCount = vi.fn().mockResolvedValue([{ n: count }]);
+  const from = vi.fn().mockImplementation(() => {
+    call += 1;
+    // First .from() belongs to the count select, second to the row select.
+    return call === 1 ? { where: whereForCount } : { where: whereForRow };
+  });
+  const select = vi.fn().mockReturnValue({ from });
+  return { select };
+}
+
+describe('countAndFetchBySlug — a COUNT first, never a bare .limit(1) with no ORDER BY (finding 4)', () => {
+  it('returns count=1 and the row when the slug matches exactly one row', async () => {
+    const dbLike = fakeCountAndFetchDb(1, { id: 'ipo-1', companyName: 'STALLION' });
+    const result = await countAndFetchBySlug(dbLike, { id: 1 }, 'stallion-india-fluorochemicals-ltd');
+    expect(result.count).toBe(1);
+    expect(result.row).toEqual({ id: 'ipo-1', companyName: 'STALLION' });
+  });
+
+  it('MUTATION: returns count=0 and a null row when the slug matches nothing (never silently proceeds)', async () => {
+    const dbLike = fakeCountAndFetchDb(0, null);
+    const result = await countAndFetchBySlug(dbLike, { id: 1 }, 'no-such-slug');
+    expect(result.count).toBe(0);
+    expect(result.row).toBeNull();
+  });
+
+  it('MUTATION: returns count=2 and a null row when the slug is ambiguous (never picks an arbitrary row)', async () => {
+    const dbLike = fakeCountAndFetchDb(2, { id: 'ipo-1', companyName: 'DUPLICATE' });
+    const result = await countAndFetchBySlug(dbLike, { id: 1 }, 'ambiguous-slug');
+    expect(result.count).toBe(2);
+    expect(result.row).toBeNull(); // the row fetch is skipped entirely when count !== 1
+  });
+});
+
+describe('applyRefresh — the write body extracted from main(), tested against fakes (finding 2)', () => {
+  function mockTx(existingSource: string | null = null) {
     const limit = vi.fn().mockResolvedValue(existingSource ? [{ source: existingSource }] : []);
     const where = vi.fn().mockReturnValue({ limit });
     const from = vi.fn().mockReturnValue({ where });
@@ -98,29 +149,101 @@ describe('apply issues one field_sources provenance row per changed field (share
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
-    return { select, insert, values, onConflictDoUpdate };
+    const update = vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) });
+    return { select, insert, values, onConflictDoUpdate, update };
   }
 
-  it('MUTATION: writes source ADMIN with a dated "refreshed from production read path" note per changed field', async () => {
+  function baseInput(toWrite: ReturnType<typeof computeFieldDiffs>) {
+    return {
+      slug: 'stallion-india-fluorochemicals-ltd',
+      stagingRow: { id: 'ipo-stallion', companyName: 'STALLION' },
+      toWrite,
+      selectCols: { id: 1 },
+      stamp: '2026-09-16T00:00:00.000Z',
+      writeBackup: vi.fn().mockReturnValue('evidence/backup.json'),
+      writeLedger: vi.fn().mockReturnValue('evidence/applied.json'),
+      upsert: upsertFieldSource,
+    };
+  }
+
+  it('MUTATION: writes the backup BEFORE opening the transaction — call order asserted', async () => {
+    const tx = mockTx();
+    const calls: string[] = [];
+    const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => {
+      calls.push('transaction-start');
+      await fn(tx);
+      calls.push('transaction-end');
+    });
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
+    });
+
+    const diffs = computeFieldDiffs(['price_band_low'], { price_band_low: 10 }, { price_band_low: 85 });
+    const input = baseInput(diffs);
+    const writeBackup = vi.fn().mockImplementation((path: string) => {
+      calls.push('backup-written');
+      return path;
+    });
+
+    await applyRefresh({ transaction, select }, { ...input, writeBackup });
+
+    expect(calls).toEqual(['backup-written', 'transaction-start', 'transaction-end']);
+  });
+
+  it('MUTATION: exactly one upsertFieldSource per changed field, not per row', async () => {
+    const tx = mockTx();
+    const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
+    });
+    const diffs = computeFieldDiffs(
+      ['price_band_low', 'price_band_high', 'issue_size'],
+      { price_band_low: 10, price_band_high: 10, issue_size: '43320000.00' },
+      { price_band_low: 85, price_band_high: 90, issue_size: '1990000000.00' }
+    );
+    const upsert = vi.fn().mockResolvedValue({ previousSource: null });
+    const input = baseInput(diffs);
+
+    await applyRefresh({ transaction, select }, { ...input, upsert });
+
+    expect(upsert).toHaveBeenCalledTimes(3);
+    const fieldsUpserted = upsert.mock.calls.map((c: any[]) => c[1].fieldName).sort();
+    expect(fieldsUpserted).toEqual(['issue_size', 'price_band_high', 'price_band_low']);
+  });
+
+  it('MUTATION: zero differing fields => no UPDATE, no backup, no provenance, wrote=false', async () => {
+    const transaction = vi.fn();
+    const select = vi.fn();
+    const writeBackup = vi.fn();
+    const writeLedger = vi.fn();
+    const upsert = vi.fn();
+
+    const diffs = computeFieldDiffs(['lot_size'], { lot_size: 4000 }, { lot_size: 4000 }); // identical -> 0 differing
+    const input = baseInput(diffs.filter((d) => d.differs)); // mirrors main(): applyRefresh receives only the differing fields
+
+    const result = await applyRefresh({ transaction, select }, { ...input, writeBackup, writeLedger, upsert });
+
+    expect(result.wrote).toBe(false);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(writeBackup).not.toHaveBeenCalled();
+    expect(writeLedger).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('writes the provenance row with source ADMIN and a dated "refreshed from production read path" note', async () => {
     const tx = mockTx(null);
     const diffs = computeFieldDiffs(
       ['price_band_low', 'price_band_high'],
       { price_band_low: 10, price_band_high: 10 },
       { price_band_low: 85, price_band_high: 90 }
-    ).filter((d) => d.differs);
-    expect(diffs).toHaveLength(2);
+    );
+    const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
+    });
+    const input = baseInput(diffs);
 
-    for (const d of diffs) {
-      await upsertFieldSource(tx as any, {
-        ipoId: 'ipo-stallion',
-        fieldName: d.field,
-        source: 'ADMIN',
-        confidence: 100,
-        previousValue: d.stagingValue,
-        dataLineage: { reason: 'refreshed from production read path 2026-09-16T00:00:00.000Z' },
-        updatedBy: 'SYSTEM_LANEC_ITEM14_S6_REFRESH',
-      });
-    }
+    await applyRefresh({ transaction, select }, input);
 
     expect(tx.insert).toHaveBeenCalledTimes(2);
     const firstRow = tx.values.mock.calls[0][0];

@@ -24,19 +24,31 @@
  *     database name, including production, with NO override flag. There is
  *     no `--allow-prod` here: this tool can never write to production by
  *     design, not just by default.
- *   - the READ source is a SECOND, independent, read-only pool opened from
+ *   - the READ source is a SECOND, independent pool opened from
  *     `PROD_DATABASE_URL` (never from `DATABASE_URL`/`DATABASE_HOST`, which
- *     name the write target) and refuses to start unless that pool's own
- *     `current_database()` is `ipodhan` — so a misconfigured env can't
- *     silently source "production" data from staging or a stray database.
+ *     name the write target), opened with
+ *     `-c default_transaction_read_only=on` on the CONNECTION itself (not
+ *     merely "we only call .select() on it" — a session-level guard the
+ *     server enforces, so an accidental write attempt through this pool
+ *     fails at postgres, not just by code review), and refuses to proceed
+ *     unless that pool's own `current_database()` is `ipodhan` — so a
+ *     misconfigured env can't silently source "production" data from
+ *     staging or a stray database.
+ *   - the slug lookup on EITHER slot is a COUNT first, never a bare
+ *     `.limit(1)`: 0 or >1 matching rows on either side refuses with the
+ *     exact count, rather than silently picking an arbitrary row with no
+ *     ORDER BY.
  *
  * dry-run by default (prints the before/after diff per field, writes
  * nothing); `--apply` writes ONLY when the write pool is `ipodhan_staging`.
  * Every changed field gets a `field_sources` row (source `ADMIN`, a dated
  * note) via the shared `upsertFieldSource`; a backup of the staging row is
- * written before the update and a ledger file after, via the shared
+ * written BEFORE the update and a ledger file after, via the shared
  * `writeLedgerFile` — both from `scripts/lib/repair-tool.ts`, not
- * reimplemented here.
+ * reimplemented here. The whole write step (backup -> provenance ->
+ * UPDATE) is `applyRefresh()`, one exported function taking the write/read
+ * executors as parameters, so its call order and skip-when-empty behavior
+ * are unit-testable against fakes without a database.
  *
  * Run from scraper/ with the write pool pointed at staging (tunnel env) AND
  * PROD_DATABASE_URL set to the read-only production connection string:
@@ -52,7 +64,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { openRepairDb, upsertFieldSource, writeLedgerFile, PRODUCTION_DATABASE_NAME } from './lib/repair-tool.js';
@@ -74,6 +86,17 @@ export const IPOS_FIELD_COLUMNS = {
 export type RefreshableField = keyof typeof IPOS_FIELD_COLUMNS;
 
 export const DEFAULT_FIELDS: RefreshableField[] = ['price_band_low', 'price_band_high', 'issue_size', 'lot_size'];
+
+/** Map a CLI field name to its drizzle table-property key (not its DB column name). */
+export function columnKeyFor(field: RefreshableField): string {
+  const map: Record<RefreshableField, string> = {
+    price_band_low: 'priceRangeMin',
+    price_band_high: 'priceRangeMax',
+    issue_size: 'issueSize',
+    lot_size: 'lotSize',
+  };
+  return map[field];
+}
 
 function parseArgs(argv: string[]) {
   const apply = argv.includes('--apply');
@@ -145,13 +168,156 @@ export function decideStagingWriteRefusal(input: {
   return { refuse: false };
 }
 
+/**
+ * The exact `pg.PoolConfig.options` string for the read-only production
+ * pool. `default_transaction_read_only=on` is a SESSION-level Postgres
+ * setting: any write statement issued over a connection carrying it fails
+ * at the server, regardless of what this file's code happens to call — a
+ * guard the database itself enforces, not just a code-review convention.
+ * Exported so a test can assert the live pool config carries it (mutation:
+ * delete the flag -> the pinning test goes red).
+ */
+export const PROD_POOL_OPTIONS = '-c timezone=UTC -c default_transaction_read_only=on';
+
 function openProdReadPool(): { pool: Pool; db: NodePgDatabase<typeof schema> } {
   const url = process.env.PROD_DATABASE_URL;
   if (!url) {
     throw new Error(`${TOOL_NAME}: PROD_DATABASE_URL is not set — cannot open the read-only production pool.`);
   }
-  const pool = new Pool({ connectionString: url, max: 2, options: '-c timezone=UTC', connectionTimeoutMillis: 20000 });
+  const pool = new Pool({
+    connectionString: url,
+    max: 2,
+    options: PROD_POOL_OPTIONS,
+    connectionTimeoutMillis: 20000,
+  });
   return { pool, db: drizzle(pool, { schema }) };
+}
+
+/** Minimal shape either executor (the staging `db` proxy or a fake) needs. */
+export interface SelectableDb {
+  select: (...args: any[]) => any;
+}
+
+export interface CountAndFetchResult<T> {
+  count: number;
+  row: T | null;
+}
+
+/**
+ * COUNT rows matching the slug before trusting any single one of them.
+ * Never a bare `.limit(1)` with no ORDER BY: 0 matches is "no such row", >1
+ * matches is an ambiguous slug (a defect elsewhere) — both are refused by
+ * the caller, neither is silently resolved by picking whichever row the
+ * planner happened to return first.
+ */
+export async function countAndFetchBySlug<T>(
+  dbLike: SelectableDb,
+  selectCols: Record<string, unknown>,
+  slug: string
+): Promise<CountAndFetchResult<T>> {
+  const countRows = await dbLike
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.ipos)
+    .where(eq(schema.ipos.slug, slug));
+  const count = Number(countRows[0]?.n ?? 0);
+  if (count !== 1) {
+    return { count, row: null };
+  }
+  const [row] = await dbLike
+    .select(selectCols as any)
+    .from(schema.ipos)
+    .where(eq(schema.ipos.slug, slug))
+    .limit(1);
+  return { count, row: (row as T) ?? null };
+}
+
+/** Minimal shape of the write-side executors `applyRefresh` needs — real (`db`) or fake. */
+export interface RefreshWriteExecutors {
+  /** Runs the provenance upserts + the ipos UPDATE inside one transaction. */
+  transaction: (fn: (tx: unknown) => Promise<void>) => Promise<void>;
+  /** Re-selects the row after the transaction commits, for the read-back log. */
+  select: (...args: any[]) => any;
+}
+
+export interface ApplyRefreshInput {
+  slug: string;
+  stagingRow: { id: string } & Record<string, unknown>;
+  toWrite: FieldDiff[];
+  selectCols: Record<string, unknown>;
+  stamp: string;
+  writeBackup: (path: string, payload: unknown) => string;
+  writeLedger: (path: string, payload: unknown) => string;
+  upsert: typeof upsertFieldSource;
+}
+
+export interface ApplyRefreshResult {
+  wrote: boolean;
+  backupPath?: string;
+  ledgerPath?: string;
+  readBack?: unknown;
+}
+
+/**
+ * The full write step: backup -> per-field provenance -> UPDATE, all inside
+ * one transaction, then a read-back. Extracted from `main()` and taking its
+ * DB access through `executors` so it is testable against fakes: call
+ * order (backup before the transaction), one `upsertFieldSource` per
+ * changed field, and the 0-differing-fields short-circuit (no UPDATE, no
+ * backup, no provenance) are all assertable without a real database.
+ */
+export async function applyRefresh(
+  executors: RefreshWriteExecutors,
+  input: ApplyRefreshInput
+): Promise<ApplyRefreshResult> {
+  const { slug, stagingRow, toWrite, selectCols, stamp, writeBackup, writeLedger, upsert } = input;
+
+  if (toWrite.length === 0) {
+    // Zero differing fields: no UPDATE, no backup, no provenance row.
+    return { wrote: false };
+  }
+
+  const dateDir = stamp.slice(0, 10);
+  const backupPath = `evidence/${dateDir}-lane-c-item-14-s6-${slug}/before.json`;
+  // Backup MUST be written before the transaction opens — asserted by call
+  // order in the unit test (a mock recording invocation sequence).
+  writeBackup(backupPath, { capturedAt: stamp, slug, row: stagingRow });
+
+  await executors.transaction(async (tx) => {
+    for (const d of toWrite) {
+      await upsert(tx as any, {
+        ipoId: stagingRow.id,
+        fieldName: d.field,
+        source: 'ADMIN',
+        confidence: 100,
+        previousValue: d.stagingValue,
+        dataLineage: {
+          reason: `refreshed from production read path ${stamp}`,
+          tool: TOOL_NAME,
+          slug,
+        },
+        updatedBy: UPDATED_BY,
+      });
+    }
+    await (tx as any)
+      .update(schema.ipos)
+      .set(Object.fromEntries(toWrite.map((d) => [columnKeyFor(d.field), d.prodValue])) as any)
+      .where(eq(schema.ipos.id, stagingRow.id));
+  });
+
+  const [readBack] = await executors
+    .select(selectCols as any)
+    .from(schema.ipos)
+    .where(eq(schema.ipos.slug, slug))
+    .limit(1);
+
+  const ledgerPath = `evidence/${dateDir}-lane-c-item-14-s6-${slug}/applied.json`;
+  writeLedger(ledgerPath, {
+    appliedAt: stamp,
+    slug,
+    written: toWrite.map((d) => ({ field: d.field, from: d.stagingValue, to: d.prodValue })),
+  });
+
+  return { wrote: true, backupPath, ledgerPath, readBack };
 }
 
 async function main() {
@@ -185,7 +351,7 @@ async function main() {
     return;
   }
 
-  // READ-source guard second (independent prod pool).
+  // READ-source guard second (independent, read-only prod pool).
   let prodPool: Pool | undefined;
   let prodDb: NodePgDatabase<typeof schema> | undefined;
   try {
@@ -210,29 +376,35 @@ async function main() {
       ...fields.map((f) => [f, IPOS_FIELD_COLUMNS[f]]),
     ]) as Record<string, unknown>;
 
-    const [stagingRow] = await db
-      .select(selectCols as any)
-      .from(schema.ipos)
-      .where(eq(schema.ipos.slug, slug))
-      .limit(1);
-    if (!stagingRow) {
-      console.error(`${TOOL_NAME}: no ipos row on staging with slug "${slug}".`);
+    const stagingLookup = await countAndFetchBySlug<{ id: string; companyName: string } & Record<string, unknown>>(
+      db,
+      selectCols,
+      slug
+    );
+    if (stagingLookup.count !== 1) {
+      console.error(
+        `${TOOL_NAME}: staging has ${stagingLookup.count} ipos row(s) with slug "${slug}" — refusing (need exactly 1).`
+      );
       process.exit(1);
       return;
     }
-    const [prodRow] = await prodDb
-      .select(selectCols as any)
-      .from(schema.ipos)
-      .where(eq(schema.ipos.slug, slug))
-      .limit(1);
-    if (!prodRow) {
-      console.error(`${TOOL_NAME}: no ipos row on production with slug "${slug}" — nothing to refresh from.`);
+    const prodLookup = await countAndFetchBySlug<{ id: string; companyName: string } & Record<string, unknown>>(
+      prodDb,
+      selectCols,
+      slug
+    );
+    if (prodLookup.count !== 1) {
+      console.error(
+        `${TOOL_NAME}: production has ${prodLookup.count} ipos row(s) with slug "${slug}" — refusing (need exactly 1).`
+      );
       process.exit(1);
       return;
     }
+    const stagingRow = stagingLookup.row!;
+    const prodRow = prodLookup.row!;
 
-    console.log(`staging row: ${(stagingRow as any).companyName} (id ${(stagingRow as any).id})`);
-    console.log(`prod row:    ${(prodRow as any).companyName} (id ${(prodRow as any).id})`);
+    console.log(`staging row: ${stagingRow.companyName} (id ${stagingRow.id})`);
+    console.log(`prod row:    ${prodRow.companyName} (id ${prodRow.id})`);
 
     const diffs = computeFieldDiffs(fields, stagingRow as any, prodRow as any);
     for (const d of diffs) {
@@ -249,58 +421,32 @@ async function main() {
       return;
     }
 
-    if (toWrite.length === 0) {
+    const stamp = new Date().toISOString();
+    const result = await applyRefresh(
+      { transaction: (fn) => db.transaction(fn as any), select: (...args: any[]) => db.select(...args) },
+      {
+        slug,
+        stagingRow,
+        toWrite,
+        selectCols,
+        stamp,
+        writeBackup: writeLedgerFile,
+        writeLedger: writeLedgerFile,
+        upsert: upsertFieldSource,
+      }
+    );
+
+    if (!result.wrote) {
       console.log('\nNothing to write — staging already matches production for the named fields.');
       console.log('='.repeat(80));
       process.exit(0);
       return;
     }
 
-    const stamp = new Date().toISOString();
-    const dateDir = stamp.slice(0, 10);
-    const backupPath = `evidence/${dateDir}-lane-c-item-14-s6-${slug}/before.json`;
-    writeLedgerFile(backupPath, { capturedAt: stamp, slug, row: stagingRow });
-    console.log(`backup written: ${backupPath}`);
-
-    await db.transaction(async (tx) => {
-      for (const d of toWrite) {
-        await upsertFieldSource(tx as any, {
-          ipoId: (stagingRow as any).id,
-          fieldName: d.field,
-          source: 'ADMIN',
-          confidence: 100,
-          previousValue: d.stagingValue,
-          dataLineage: {
-            reason: `refreshed from production read path ${stamp}`,
-            tool: TOOL_NAME,
-            slug,
-          },
-          updatedBy: UPDATED_BY,
-        });
-      }
-      await tx
-        .update(schema.ipos)
-        .set(
-          Object.fromEntries(toWrite.map((d) => [columnKeyFor(d.field), d.prodValue])) as any
-        )
-        .where(eq(schema.ipos.id, (stagingRow as any).id));
-    });
-
-    const [readBack] = await db
-      .select(selectCols as any)
-      .from(schema.ipos)
-      .where(eq(schema.ipos.slug, slug))
-      .limit(1);
+    console.log(`backup written: ${result.backupPath}`);
     console.log('\nread-back after write:');
-    console.log(JSON.stringify(readBack, null, 1));
-
-    const ledgerPath = `evidence/${dateDir}-lane-c-item-14-s6-${slug}/applied.json`;
-    writeLedgerFile(ledgerPath, {
-      appliedAt: stamp,
-      slug,
-      written: toWrite.map((d) => ({ field: d.field, from: d.stagingValue, to: d.prodValue })),
-    });
-    console.log(`ledger written: ${ledgerPath}`);
+    console.log(JSON.stringify(result.readBack, null, 1));
+    console.log(`ledger written: ${result.ledgerPath}`);
 
     console.log('\nAPPLY complete.');
     console.log('='.repeat(80));
@@ -308,17 +454,6 @@ async function main() {
   } finally {
     if (prodPool) await prodPool.end();
   }
-}
-
-/** Map a CLI field name to its drizzle table-property key (not its DB column name). */
-function columnKeyFor(field: RefreshableField): string {
-  const map: Record<RefreshableField, string> = {
-    price_band_low: 'priceRangeMin',
-    price_band_high: 'priceRangeMax',
-    issue_size: 'issueSize',
-    lot_size: 'lotSize',
-  };
-  return map[field];
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
