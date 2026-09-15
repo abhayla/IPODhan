@@ -30,8 +30,17 @@ export type Segment = 'MAINBOARD' | 'SME';
 /** What the oracle concluded, and — always — how. */
 export interface SegmentResolution {
   segment: Segment | null;
-  /** Machine-readable outcome. `unresolved` is NOT `no-source`: see below. */
-  outcome: 'resolved' | 'unresolved-group' | 'no-source';
+  /**
+   * Machine-readable outcome. Four distinct states, none collapsing into another:
+   *   - `resolved`         one company identified, its board evidenced.
+   *   - `ambiguous-name`   the NAME matched MORE THAN ONE distinct listed company, so no
+   *                        lookup can say which board is this company's. Refused, never
+   *                        first-wins - see `resolveSegmentFromMasters`.
+   *   - `unresolved-group` the company WAS found on BSE, but its group has no evidenced
+   *                        meaning.
+   *   - `no-source`        the company is in neither master.
+   */
+  outcome: 'resolved' | 'ambiguous-name' | 'unresolved-group' | 'no-source';
   /** Provenance string for the field_sources row; null when nothing was found. */
   via: string | null;
   /** Human-readable reason, always populated. */
@@ -127,7 +136,37 @@ function indexBy(entries: MasterEntry[]): { byIsin: Map<string, true>; byName: M
  * NSE is consulted before BSE only because its two files answer the board directly with
  * no group mapping in between; where both answer they have never disagreed in the data
  * measured so far, and a disagreement would be a finding, not a tie to break silently.
+ *
+ * THE NAME PATH REFUSES AMBIGUITY (review finding on #655). An earlier version checked
+ * NSE mainboard, then NSE SME, then scanned BSE linearly and returned on the FIRST hit,
+ * so a normalised name held by two different listed companies returned whichever the
+ * iteration reached first - another company's board, sourced and wrong. That is the same
+ * class `cleanIsin` closed for the literal "NA" ISIN, arriving through the name join
+ * instead of the ISIN one. The name path now collects ALL candidates across NSE
+ * mainboard, NSE SME and BSE, and if they are more than one DISTINCT company it returns
+ * `ambiguous-name` with no segment. Distinct = a different ISIN when both carry one; a
+ * candidate WITHOUT an ISIN is its own company, because nothing proves otherwise. The
+ * refusal stands even when every candidate would give the same board: that agreement is
+ * a property of today's feed, not of the join.
+ *
+ * The ISIN path is untouched - an ISIN identifies a security, which is exactly why it is
+ * tried first.
  */
+type NameCandidate = {
+  isin: string;
+  label: string;
+  segment: Segment | null;
+  via: string;
+  group?: string;
+};
+
+function candidateIdentity(c: NameCandidate): string {
+  // No ISIN means nothing proves this candidate is the same company as any other, so it
+  // counts as its own. Keying on the label instead would MERGE two unrelated companies
+  // whose names normalise together - precisely what this detection exists to catch.
+  return c.isin ? `isin:${c.isin}` : `row:${c.label}:${c.via}`;
+}
+
 export function resolveSegmentFromMasters(
   company: { isin?: string | null; companyName?: string | null },
   masters: { nse: NseMasters; bse: BseScrip[] },
@@ -144,41 +183,92 @@ export function resolveSegmentFromMasters(
   if (isin && nseSme.byIsin.has(isin)) {
     return { segment: 'SME', outcome: 'resolved', via: 'NSE/SME_EQUITY_L/isin', reason: 'ISIN is in NSE SME master' };
   }
-  if (name && nseMain.byName.has(name)) {
-    return { segment: 'MAINBOARD', outcome: 'resolved', via: 'NSE/EQUITY_L/name', reason: 'name is in NSE mainboard master' };
-  }
-  if (name && nseSme.byName.has(name)) {
-    return { segment: 'SME', outcome: 'resolved', via: 'NSE/SME_EQUITY_L/name', reason: 'name is in NSE SME master' };
-  }
 
-  for (const keyKind of ['isin', 'name'] as const) {
-    for (const scrip of masters.bse) {
-      const hit =
-        keyKind === 'isin'
-          ? isin && (scrip.isin ?? '').trim().toUpperCase() === isin
-          : name && normalizeCompanyName(scrip.name) === name;
-      if (!hit) continue;
-      const group = (scrip.group ?? '').trim().toUpperCase();
-      const segment = bseGroupToSegment(group);
-      if (segment) {
-        return { segment, outcome: 'resolved', via: `BSE/${keyKind}/group=${group}`, reason: `BSE group ${group} is an evidenced ${segment} group` };
-      }
-      // Found the company, but its group is outside the evidenced mapping. This is a
-      // DIFFERENT state from "not listed anywhere" and must not collapse into it: we
-      // know where the scrip is, we just have no sourced meaning for that group.
-      return {
-        segment: null,
-        outcome: 'unresolved-group',
-        via: `BSE/${keyKind}/group=${group}`,
-        reason: `BSE group ${group || '(blank)'} is not in the evidenced mapping — not guessed`,
-      };
+  for (const scrip of masters.bse) {
+    if (!isin || (scrip.isin ?? '').trim().toUpperCase() !== isin) continue;
+    const group = (scrip.group ?? '').trim().toUpperCase();
+    const segment = bseGroupToSegment(group);
+    if (segment) {
+      return { segment, outcome: 'resolved', via: `BSE/isin/group=${group}`, reason: `BSE group ${group} is an evidenced ${segment} group` };
     }
+    // Found the company, but its group is outside the evidenced mapping. This is a
+    // DIFFERENT state from "not listed anywhere" and must not collapse into it: we know
+    // where the scrip is, we just have no sourced meaning for that group.
+    return {
+      segment: null,
+      outcome: 'unresolved-group',
+      via: `BSE/isin/group=${group}`,
+      reason: `BSE group ${group || '(blank)'} is not in the evidenced mapping - not guessed`,
+    };
   }
 
-  return {
+  const NOT_LISTED: SegmentResolution = {
     segment: null,
     outcome: 'no-source',
     via: null,
-    reason: 'company is in neither exchange master — consistent with an offer that closed without listing',
+    reason: 'company is in neither exchange master - consistent with an offer that closed without listing',
+  };
+  if (!name) return NOT_LISTED;
+
+  const candidates: NameCandidate[] = [];
+  const nseSources: Array<[MasterEntry[], Segment, string]> = [
+    [masters.nse.mainboard, 'MAINBOARD', 'NSE/EQUITY_L/name'],
+    [masters.nse.sme, 'SME', 'NSE/SME_EQUITY_L/name'],
+  ];
+  for (const [entries, segment, via] of nseSources) {
+    for (const e of entries) {
+      if (normalizeCompanyName(e.name) !== name) continue;
+      candidates.push({ isin: (e.isin ?? '').trim().toUpperCase(), label: (e.name ?? '').trim(), segment, via });
+    }
+  }
+  for (const scrip of masters.bse) {
+    if (normalizeCompanyName(scrip.name) !== name) continue;
+    const group = (scrip.group ?? '').trim().toUpperCase();
+    candidates.push({
+      isin: (scrip.isin ?? '').trim().toUpperCase(),
+      label: (scrip.name ?? '').trim(),
+      segment: bseGroupToSegment(group),
+      via: `BSE/name/group=${group}`,
+      group,
+    });
+  }
+
+  const distinct = new Set(candidates.map(candidateIdentity));
+  if (distinct.size > 1) {
+    const shortList = candidates
+      .map((c) => `${c.label || '(unnamed)'}${c.isin ? ' ' + c.isin : ''}${c.group ? ' group=' + c.group : ''}`)
+      .slice(0, 4)
+      .join('; ');
+    return {
+      segment: null,
+      outcome: 'ambiguous-name',
+      via: null,
+      reason:
+        `refused: ambiguous name (${distinct.size} candidates: ${shortList}) - a name held by ` +
+        'more than one listed company cannot identify this one, and first-wins would return ' +
+        'another company\'s board',
+    };
+  }
+
+  // One distinct company. Where both masters carried it (same ISIN, which is what made
+  // the set size 1) the NSE candidate is preferred, because NSE names the board directly
+  // with no group mapping in between.
+  const chosen = candidates.find((c) => c.via.startsWith('NSE/')) ?? candidates[0];
+  if (!chosen) return NOT_LISTED;
+  if (chosen.segment) {
+    return {
+      segment: chosen.segment,
+      outcome: 'resolved',
+      via: chosen.via,
+      reason: chosen.via.startsWith('NSE/')
+        ? `name is in NSE ${chosen.segment === 'SME' ? 'SME' : 'mainboard'} master`
+        : `BSE group ${chosen.group} is an evidenced ${chosen.segment} group`,
+    };
+  }
+  return {
+    segment: null,
+    outcome: 'unresolved-group',
+    via: chosen.via,
+    reason: `BSE group ${chosen.group || '(blank)'} is not in the evidenced mapping - not guessed`,
   };
 }
