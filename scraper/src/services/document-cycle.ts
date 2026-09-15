@@ -52,6 +52,13 @@ import {
   getStoreDir,
 } from './document-store.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { IpoFieldPlanRepository } from '@ipodhan/shared/repositories';
+import { walkFieldPlanForIPO } from './field-plan-walk.js';
+import {
+  buildFieldPlanWalkFetchers,
+  buildFieldPlanWalkOrchestrator,
+  fieldPlanWalkHasFetchers,
+} from './field-plan-walk-deps.js';
 import { initStepLedger } from './step-ledger.js';
 import { recordDocumentRunSteps } from './step-ledger-recorders.js';
 import {
@@ -1506,6 +1513,95 @@ export async function runDocumentCycle(
         logger.info(
           { ...anchorCycleTotals, anchorSpawnBudgetRemaining: anchorSpawnBudget.remaining },
           'Anchor auto-persist summary for this cycle (W-168)'
+        );
+      }
+    }
+
+    // PASS 3 — the field-plan walk (item 6). Runs AFTER extraction for the
+    // same reason PASS 2 runs after discovery: it re-asks fields, and a field
+    // whose answer arrived in a document PASS 2 just extracted should be
+    // asked against that document, not against the state before it.
+    //
+    // Budget: PASS 3 gets whatever is LEFT of the SHARED wake budget after
+    // PASS 1 and PASS 2 — never a fixed budget on top of it — with
+    // `PURGE_RESERVE_MS` still held back for the purge step that runs later
+    // in the same wake (`triggerDocumentPurge` in index.ts). This mirrors
+    // PASS 2's own arithmetic exactly (see `extractionBudgetMs` above); a
+    // fourth reserved slot is how a cycle overruns its wake.
+    //
+    // A zero or negative remainder means PASS 1+2 consumed the wake. That is
+    // logged rather than silently skipped: the staging proof says in so many
+    // words that a quiet plan table must not be read as evidence the walk
+    // works until this line has been checked.
+    const fieldPlanBudgetMs = Math.max(0, wakeBudgetMs - (now() - startedAt) - PURGE_RESERVE_MS);
+    if (FEATURE_FLAGS.ENABLE_FIELD_PLAN_WALK) {
+      if (fieldPlanBudgetMs <= 0) {
+        logger.warn(
+          { wakeBudgetMs, elapsedMs: now() - startedAt, purgeReserveMs: PURGE_RESERVE_MS },
+          'PASS 3 (field-plan walk) got NO budget this cycle — PASS 1+2 consumed the wake. The plan table is unchanged because the walk never ran, not because there was nothing to do.'
+        );
+      } else if (!fieldPlanWalkHasFetchers()) {
+        // The flag is on but no source adapter is registered. Running would
+        // mark every field EXHAUSTED — a TERMINAL state — without a single
+        // source being asked, which is strictly worse than not running.
+        logger.warn(
+          { fieldPlanBudgetMs },
+          'PASS 3 (field-plan walk) is FLAGGED ON but has no registered source fetchers — refusing to run rather than marking every field EXHAUSTED unasked. The per-source adapters are the second half of enabling this (field-plan-walk-deps.ts).'
+        );
+      } else {
+        const fieldPlanStartedAt = now();
+        const fieldPlanDeadlineMs = fieldPlanStartedAt + fieldPlanBudgetMs;
+        const walkRepository = new IpoFieldPlanRepository(db as never, redis as never);
+        const walkTotals = {
+          iposWalked: 0,
+          fieldsAttempted: 0,
+          fieldsSupplied: 0,
+          fieldsExhausted: 0,
+          fieldsWriteSkipped: 0,
+          fieldsSkippedProtected: 0,
+          outcomesRefused: 0,
+        };
+        for (const ipo of candidates) {
+          if (now() >= fieldPlanDeadlineMs) {
+            logger.warn(
+              { fieldPlanBudgetMs, ...walkTotals },
+              'PASS 3 field-plan budget exhausted — remaining IPOs resume next cycle (every settled field is already committed)'
+            );
+            break;
+          }
+          try {
+            const walk = await walkFieldPlanForIPO(
+              ipo.id,
+              {
+                fieldPlanRepository: walkRepository as never,
+                orchestrator: buildFieldPlanWalkOrchestrator(),
+                sourceFetchers: buildFieldPlanWalkFetchers(),
+              },
+              { deadlineMs: fieldPlanDeadlineMs, now }
+            );
+            walkTotals.iposWalked += 1;
+            walkTotals.fieldsAttempted += walk.fieldsAttempted;
+            walkTotals.fieldsSupplied += walk.fieldsSupplied;
+            walkTotals.fieldsExhausted += walk.fieldsExhausted;
+            walkTotals.fieldsWriteSkipped += walk.fieldsWriteSkipped;
+            walkTotals.fieldsSkippedProtected += walk.fieldsSkippedProtected;
+            walkTotals.outcomesRefused += walk.outcomesRefused;
+          } catch (error) {
+            // Non-fatal per IPO, exactly like PASS 2 — one IPO's walk failing
+            // must not stop the rest, and the claim it held goes stale and is
+            // reclaimed rather than stranded.
+            logger.error(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Field-plan walk threw for one IPO (non-fatal) — continuing the cycle'
+            );
+          }
+        }
+        // Logged even when every count is zero: a silent cycle IS the evidence
+        // that the walk ran and found nothing due, which is a different fact
+        // from the walk never running (the branch above).
+        logger.info(
+          { ...walkTotals, fieldPlanBudgetMs, elapsedMs: now() - fieldPlanStartedAt },
+          'PASS 3 field-plan walk summary for this cycle (item 6)'
         );
       }
     }

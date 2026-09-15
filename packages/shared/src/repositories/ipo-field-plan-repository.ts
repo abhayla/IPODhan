@@ -213,6 +213,48 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
+   * Release a claim WITHOUT recording an attempt (item 6, design §2.7).
+   *
+   * The admin-protection skip is explicit that the walk must "skip; do not
+   * store a state" — the field was never asked, so charging an `attempts`
+   * increment would burn its backoff budget, and writing any state would put
+   * a claim the walk deliberately declined into the plan as if it had been
+   * tried. `recordOutcome` cannot express that: every one of its paths writes
+   * a state, and the skipped branch additionally forces `PENDING`, which for
+   * a row that was already, say, NOT_AVAILABLE_YET would silently rewrite it.
+   *
+   * So this clears `claimed_at`/`claim_token` and touches nothing else.
+   * Conditional on the token, for the same reason `recordOutcome` is: a
+   * superseded walker must not release a live claim belonging to the walker
+   * that reclaimed the row.
+   */
+  async releaseClaimUnrecorded(params: {
+    planRowId: string;
+    claimToken: string;
+    now?: Date;
+  }): Promise<{ released: boolean; reason?: 'CLAIM_SUPERSEDED' }> {
+    const now = params.now ?? new Date();
+    try {
+      const result = await this.db.execute(sql`
+        UPDATE ipo_field_plan
+        SET claimed_at = NULL, claim_token = NULL, updated_at = ${now}::timestamptz
+        WHERE id = ${params.planRowId}::uuid
+          AND claim_token = ${params.claimToken}
+        RETURNING id
+      `);
+      const rows = (result as unknown as { rows: Record<string, unknown>[] }).rows ?? [];
+      if (rows.length === 0) return { released: false, reason: 'CLAIM_SUPERSEDED' };
+      return { released: true };
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to release field plan claim for row ${params.planRowId}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
    * Write an attempt's result back onto the plan row.
    *
    * Every path is conditional on `claim_token` still matching: a superseded
