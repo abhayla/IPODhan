@@ -824,7 +824,7 @@ jobs:
       # this job named the two deploy bash suites individually without this
       # one. An unrun suite is not coverage -- a revert of the guard would
       # have gone green. Named explicitly because pr-gate never globs.
-      - name: Run assert-env-keys test suite (rollout-flag liveness gate, #656)
+      - name: "Run assert-env-keys test suite (rollout-flag liveness gate, #656)"
         run: bash scripts/tests/assert-env-keys.test.sh
 
       # Slice s17: deploy-linux.yml no longer triggers on push; staging is
