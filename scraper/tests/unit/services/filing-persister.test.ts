@@ -1691,6 +1691,63 @@ describe('filing-persister - protected columns never reach a write payload (CRIT
     expect(summary.skipped_protected).toContain('financial_data.marketCap');
   });
 
+  // ---------------------------------------------------------------- item 8 s3a
+  it('financial_data: the three issuer ratios reach the row that is written', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP', {
+        current_ratio: { value: 1.54, passed: true },
+        inventory_turnover: { value: 5.587, passed: true },
+        quick_ratio: { value: 0.91, passed: true },
+      }),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect(fd.currentRatio).toBe('1.54');
+    // round2, exactly as every other numeric on this row.
+    expect(fd.inventoryTurnover).toBe('5.59');
+    expect(fd.quickRatio).toBe('0.91');
+    expect(summary.written.financial_data).toBe(1);
+  });
+
+  it('financial_data: a ratio the document never printed is absent, never zero', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP', {
+        current_ratio: { value: null, passed: true },
+        quick_ratio: { value: null, passed: true },
+        inventory_turnover: { value: null, passed: true },
+      }),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect('currentRatio' in fd).toBe(false);
+    expect('quickRatio' in fd).toBe(false);
+    expect('inventoryTurnover' in fd).toBe(false);
+  });
+
+  it('financial_data: an admin-protected currentRatio stays out of the write', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ financial_data: ['currentRatio'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP', {
+        current_ratio: { value: 1.54, passed: true },
+        inventory_turnover: { value: 5.59, passed: true },
+      }),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect('currentRatio' in fd).toBe(false);
+    expect(fd.inventoryTurnover).toBe('5.59');
+    expect(summary.skipped_protected).toContain('financial_data.currentRatio');
+  });
+
   it('financial_statements: a protected revenue keeps the stored value, never the filing value', async () => {
     const s = makeDeps();
     // The statement row is rewritten WHOLE, so a protected column cannot simply

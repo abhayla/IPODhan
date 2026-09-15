@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memory_guard  # noqa: E402 — light (no heavy deps), safe to import first
 import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
+import financial_ratios  # noqa: E402 — pure-python, no heavy deps (item 8b)
 
 # W-178c round 2: how long this process waits to acquire the box lock before
 # giving up as "busy" this cycle — kept independent of ANCHOR_LOCK_WAIT_S
@@ -2622,6 +2623,37 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
                 "peer_list_matches_printed_summary",
                 peer_companies.check_against_printed_summary(found["peers"], page_texts),
             )
+
+    # Item 8b slice 3a. The issuer's OWN ratio note (Companies Act Schedule III),
+    # READ rather than recomputed - see financial_ratios.py's docstring for the
+    # measurement that ruled recomputation out. `read_printed_ratios` returns the
+    # printed values newest period first; the newest is the one the persister
+    # writes, exactly as the by-fy series do.
+    #
+    # Unlike the peer block above this needs no `tables_for_page`: the note is
+    # line-oriented text, so it runs on every prospectus-family document.
+    ratio_pages = financial_ratios.find_ratio_note_pages(page_texts)
+    printed = financial_ratios.read_printed_ratios(page_texts) if ratio_pages else {}
+    ratio_page = ratio_pages[0] if ratio_pages else None
+    for name in ("current_ratio", "inventory_turnover"):
+        values = printed.get(name) or []
+        if not values:
+            # Named causes, not a bare absence: the note may be missing entirely
+            # or present with only the other ratio in it.
+            emit.null(name, "ratio_note_not_in_document" if not ratio_pages
+                      else "ratio_row_not_in_note")
+        else:
+            emit.put(name, values[0], ratio_page, "ratio_read_as_printed",
+                     (True, "as printed: %s" % values[0]))
+
+    # QUICK RATIO is the one derived ratio (no issuer prints it - not a Schedule
+    # III ratio). Its three balance-sheet inputs are not among the fields this
+    # extractor reads: the shared P&L core carries revenue / PAT / EBITDA /
+    # net worth, and no current-assets, inventories or current-liabilities line.
+    # So the derivation is NAMED as unavailable rather than fed guesses - a
+    # quick ratio computed from an invented input looks exactly like a read one.
+    emit.null("quick_ratio", "balance_sheet_inputs_absent:"
+              "current_assets,inventories,current_liabilities")
 
     return {"unit": unit, "fiscal_years": fiscal_years,
             "financial_status": pnl.get("status")}

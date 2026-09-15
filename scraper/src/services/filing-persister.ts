@@ -2603,6 +2603,23 @@ export async function persistFilingExtraction(
       fdFields += 1;
     }
   }
+  // Item 8 slice 3a. The three issuer ratios: two READ from the issuer's own
+  // Schedule III note, one DERIVED (quick ratio - nobody prints it). They are
+  // plain unitless ratios, so unlike netWorth/marketCap they need no
+  // `withUnit`/`toCrore` scaling; they take the same round2().toString() shape
+  // as ronw and peRatio so the numeric(5,2) columns receive what they expect.
+  for (const [field, column] of [
+    ['current_ratio', 'currentRatio'],
+    ['quick_ratio', 'quickRatio'],
+    ['inventory_turnover', 'inventoryTurnover'],
+  ] as const) {
+    const value = num(extraction, field);
+    if (value !== null) {
+      (fd as Record<string, unknown>)[column] = round2(value).toString();
+      fdFields += 1;
+    }
+  }
+
   const peCap = num(extraction, 'pe_at_cap');
   if (peCap !== null) {
     fd.peRatio = peCap.toString();
