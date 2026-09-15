@@ -400,7 +400,8 @@
     {
       "at": "2026-09-11T03:50:29Z",
       "what": "ITEM 8 DONE, 11/11 (one retired). All four clauses of contract line 90 met: proven on Karamtara and Prasol per the owner's 2026-09-11 substitution (ARCIL measurement kept as the evidence); ratios_extraction_yield landed as UNVERIFIABLE-on-empty; #437 recorded OWED-ELSEWHERE with its population measured into four classes; #606/#620/#623 filed with class and detection. Does NOT claim a persisted ratio - blocked on download, not extraction."
-    }
+    },
+    "[2026-09-15T18:29:58.279Z] RESUMED 2026-09-15: lane B is working again. OD-55 part 1 (the per-document extraction budget is GONE) is built and green: 121 tests pass in filing-auto-persist, where the paused tree left 3 failing on a constant that no longer exists. The lock TTL is now DERIVED from the 2-hour hung-process ceiling instead of the old 3-spawns-x-10-minutes product, which matters because a TTL left at 45 minutes would have expired mid-read and let a second cycle start on the same document. Parts 2-4 (external ceiling, unread-page records, OCR priority) next."
   ],
   "items": {
     "8": {
