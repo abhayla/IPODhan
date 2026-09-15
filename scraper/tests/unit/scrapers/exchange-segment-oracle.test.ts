@@ -131,6 +131,39 @@ describe('resolveSegmentFromMasters', () => {
     expect(r.via).toBe('BSE/name/group=X');
   });
 
+  it('an ISIN hit into an unevidenced group STOPS — it does not fall through to a name match', () => {
+    // A Tier B review asked what happens when the ISIN lands on a scrip whose group has
+    // no sourced meaning, while a DIFFERENT scrip in an evidenced group matches by name.
+    // The answer is deliberate: an ISIN identifies the security, so the ISIN hit wins and
+    // we report unresolved-group. Falling through to the name match would resolve a
+    // SECOND scrip and publish a sourced-but-wrong board — the exact class the BSE group
+    // mapping comment says an earlier draft was corrected for.
+    const twoScrips = {
+      nse: { mainboard: [], sme: [] },
+      bse: [
+        { isin: 'INE000TEST01', name: 'Ambiguous Holdings Ltd', group: 'TS' },
+        { isin: 'INE000OTHER9', name: 'Ambiguous Holdings Ltd', group: 'M' },
+      ],
+    };
+    const r = resolveSegmentFromMasters(
+      { isin: 'INE000TEST01', companyName: 'Ambiguous Holdings Ltd' },
+      twoScrips,
+    );
+    expect(r.outcome).toBe('unresolved-group');
+    expect(r.segment).toBeNull();
+    expect(r.via).toBe('BSE/isin/group=TS');
+
+    // Control: the same company WITHOUT the ISIN does reach the name path and resolves,
+    // which proves the assertion above is about ISIN precedence and not about the
+    // fixture simply being unresolvable.
+    const byName = resolveSegmentFromMasters(
+      { isin: null, companyName: 'Ambiguous Holdings Ltd' },
+      twoScrips,
+    );
+    expect(byName.outcome).toBe('unresolved-group');
+    expect(byName.via).toBe('BSE/name/group=TS');
+  });
+
   it('returns no-source for a company in neither master (the never-listed case)', () => {
     // NIRBHAY and PIYUSH measured absent from NSE mainboard, NSE SME and BSE active.
     // This is why item 14's last slices cannot close from a listed-security master.
