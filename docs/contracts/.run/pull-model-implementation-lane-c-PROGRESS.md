@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-11 09:40 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-15 23:46 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2560,3 +2560,61 @@ c14-floormsg (4808 → 4808, 0 deleted), c14-issueprice (4819 → 4819, 0 delete
 
 **LANE C IS PROVEN 0 OF 3.** Items 14, 2 and 12 have zero DONE lines. `LANE C COMPLETE` is not
 appendable and I have not appended it.
+
+
+## RESUMED 2026-09-15
+
+The pause of 2026-09-11 is lifted by the owner's word in this window. Every step of the resume
+file was executed and its result READ, never carried over from the pause note.
+
+**Step 1 - ledger tree.** `ops/impl-loop-c-ledger` fetched and already up to date; nothing had
+moved on it during the pause. The PAUSED entry (ledger 76bfc053) was read in full: in-flight
+state, the three first commands, the proofs owed, and the two owner decisions of 2026-09-11
+(#597 read-path applied and proven / band repair deliberately unbuilt; item 3 retired). Those
+decisions stand and are not re-asked.
+
+**Step 2 - the world as it actually is now.**
+
+| what | value read this turn |
+|---|---|
+| `origin/main` | `6eb37048` |
+| staging served sha | `557e7dc9`, built 2026-09-11T04:09:10Z |
+| main ahead of staging by | 1 commit - `6eb37048`, docs-only (#641) |
+| 14-S6 proof row, re-read live | MODERN DIAGNOSTIC `issuePrice = 90` |
+
+The proof row still reads 90, not the band cap 85, four days after the merge. That is the same
+instrument that could have read 85, so it is still evidence and not a restatement.
+
+Staging is NOT stale in any way that touches this lane: the single missing commit changes only a
+design document. No redeploy is needed for anything lane C is about to prove.
+
+**Worktree sweep, report mode.** 16 trees. Two are mine: `IPODhan-IPODhan-c02-segoracle` (the
+unmerged oracle branch, kept deliberately through the pause) and the ledger tree itself. Neither
+is removable and the sweep proposes no action on either. The other fourteen belong to other lanes
+and are the owner's call, exactly as the sweep prints them.
+
+**Step 3 - the oracle branch.** `feat/pm-c-item02-s3b2-exchange-segment-oracle` rebased from
+`fec061be` onto `origin/main` with no conflict, landing at `4fb87de4`; the diff is unchanged at
+two files, +345 lines (the module and its 16 tests), and was force-with-lease pushed. The gate is
+reproduced in the worktree at T0 before the PR body claimed it - the pause note's "16 tests green"
+is a four-day-old claim, and a supervisor does not relay a claim as a proof.
+
+```
+cd scraper && npx vitest run tests/unit/scrapers/exchange-segment-oracle.test.ts
+Test Files  1 passed (1)    Tests  16 passed (16)    exit=0
+alias-preflight: @ipodhan/shared -> IPODhan-IPODhan-c02-segoracle\packages\shared\src\index.ts
+```
+
+The preflight line matters as much as the count: it proves the tests exercised THIS worktree's
+shared package, not the main checkout's, which is the trap recorded in `worktree-alias-resolves-to-main`.
+
+`npx tsc --noEmit` in `scraper/` exits **2**, and I am recording that as a failure rather than
+filing it under "unrelated": 235 `TS6305`/`TS2307` errors, all in `web/lib/**` and
+`src/utils/validators.ts`, caused by `packages/shared` being uncompiled in this worktree - the exact
+condition CLAUDE.md's troubleshooting table describes. No error names `exchange-segment-oracle.ts`.
+The PR body carries the same statement.
+
+**PR #646 is open.**
+
+**Nothing is DONE by this entry.** Items 14, 2 and 12 still have zero proven lines, exactly as at
+the pause. This entry records a resume, not progress.
