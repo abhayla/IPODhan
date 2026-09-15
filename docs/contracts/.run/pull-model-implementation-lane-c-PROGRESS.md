@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 04:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 05:02 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -3084,3 +3084,23 @@ Night totals for lane C: 7 PRs merged, 4 issues filed, 28 duplicate rows merged 
 Five IPO rows on each slot store the face value as the price band (BANGANGA, MARUTI INTERIOR, MUTHOOT FINCOTP, NIRBHAY, STANBIK). None has a BSE issue number and none appears in Chittorgarh's report of 4,620 offers, so **no sourced band exists to repair from**. Two are Rs1,000-face instruments priced at face, where the offer type is the defect. Four of the five are on the never-listed list already waiting on decision 4. Slice 2-S6 is BLOCKED-UNSOURCEABLE and folded into that decision; detection already names the rows.
 
 **End of night for lane C:** item 12 proven on staging (DONE at the release cut); items 14 and 2 each blocked on decision 4. Seven PRs merged, four issues filed, no production data written. Nothing further in the contract is unblocked without the owner.
+
+
+
+## 2026-09-16 05:02 IST — STANBIK is repairable after all; the reader that said "absent" stops at page 20; three floor RCAs posted
+
+### A correction, and the defect behind it
+
+My 04:51 note called STANBIK AGRO an NCD-shaped row. The three-year re-probe with positive controls finds it in Chittorgarh's FY2025-26 SME report at **Issue Price ₹30**, confirmed on its detail page. Our stored band of 1,000 and face value of 1,000 are both wrong, so STANBIK is repairable from a source. The first probe missed it because the production report-82 reader loops **20 pages of 10** for the current year only and stops silently; FY2025-26 SME runs to about page 55. Three per-field backfills use that reader, so their past "absent" verdicts over long years are suspect. Filed as #686 with its own contract (PR A); the STANBIK repair is a class tool stacked on it (PR B), building now. Prod stays read-only.
+
+### Floor RCA (three checks flipped PASS to FAIL last night)
+
+| check | slot | finding |
+|---|---|---|
+| #682 status vs NSE | **prod, user-visible** | three IPOs shown UPCOMING while NSE has them open; one shown OPEN after NSE closed it; status is set once at ingestion, no open-day transition job |
+| #683 Kheria issue size | slots disagree | prod = shares × band min (NSE), staging = shares × band max (Chittorgarh); a convention mismatch on an unpriced SME, both unproven |
+| #685 live IPOs with no document state | **prod only** | discovery serves open/closed first under a 60 s budget; three new UPCOMING rows rank 34–37 of 38 and the reservation flag is off in prod |
+
+Briefs are on the issues. #682 is the one to put ahead of queued work in the morning.
+
+**Item 12 proven on staging; item 14 blocked; item 2's last slice back in build.** No production data has been written.
