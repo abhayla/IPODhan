@@ -2921,7 +2921,7 @@ ipo_details 213 rows / 213 non-null (21 fixed-price, 192 book-built); provenance
 
 
 
-## 2026-09-16 02:45 IST — #655 landed; the merge tool had two defects; the duplicate invariant cannot see a quarter of its own class
+## 2026-09-16 02:29 IST — #655 landed; the merge tool had two defects; the duplicate invariant cannot see a quarter of its own class
 
 ### #655 merged (f8c36aea, 02:19 IST)
 
