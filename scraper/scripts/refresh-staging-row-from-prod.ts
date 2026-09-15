@@ -38,6 +38,9 @@
  *     `.limit(1)`: 0 or >1 matching rows on either side refuses with the
  *     exact count, rather than silently picking an arbitrary row with no
  *     ORDER BY.
+ *   - a field whose PRODUCTION value is null is never written and never
+ *     gets a provenance row — refreshing "from production" cannot claim a
+ *     source for a value production does not have either.
  *
  * dry-run by default (prints the before/after diff per field, writes
  * nothing); `--apply` writes ONLY when the write pool is `ipodhan_staging`.
@@ -75,28 +78,31 @@ const TOOL_NAME = 'refresh-staging-row-from-prod';
 /** Target database name this tool is EVER allowed to write to. No override exists. */
 export const STAGING_DATABASE_NAME = 'ipodhan_staging';
 
-/** ipos columns this tool knows how to read/write, keyed by CLI field name. */
+/**
+ * ipos columns this tool knows how to read/write, keyed by the SAME camelCase
+ * name as the schema.ts drizzle property AND as `field_sources.field_name`
+ * (the convention every other repair tool in this directory follows —
+ * `backfill-band-provenance-t276.ts` and `repair-field-sources-price-band-
+ * t276.ts` both hard-code 'priceRangeMin'/'priceRangeMax' as the literal
+ * provenance field_name; there is no separate alias layer to translate
+ * through). Deliberately NOT the T-276 dead price-band column pair from an
+ * older schema (prod 2026-08-22: 328 rows, 0 non-null; see
+ * `tests/unit/config/price-band-single-scheme.test.ts` for the exact banned
+ * spellings) — a round-1 bug on this tool used that dead pair as the
+ * CLI/provenance name (lane B / staging review 2026-09-16), which wrote a
+ * provenance row under a name matching no live column, indistinguishable
+ * from a hand-typo. `--fields` on the CLI takes these same camelCase names.
+ */
 export const IPOS_FIELD_COLUMNS = {
-  price_band_low: schema.ipos.priceRangeMin,
-  price_band_high: schema.ipos.priceRangeMax,
-  issue_size: schema.ipos.issueSize,
-  lot_size: schema.ipos.lotSize,
+  priceRangeMin: schema.ipos.priceRangeMin,
+  priceRangeMax: schema.ipos.priceRangeMax,
+  issueSize: schema.ipos.issueSize,
+  lotSize: schema.ipos.lotSize,
 } as const;
 
 export type RefreshableField = keyof typeof IPOS_FIELD_COLUMNS;
 
-export const DEFAULT_FIELDS: RefreshableField[] = ['price_band_low', 'price_band_high', 'issue_size', 'lot_size'];
-
-/** Map a CLI field name to its drizzle table-property key (not its DB column name). */
-export function columnKeyFor(field: RefreshableField): string {
-  const map: Record<RefreshableField, string> = {
-    price_band_low: 'priceRangeMin',
-    price_band_high: 'priceRangeMax',
-    issue_size: 'issueSize',
-    lot_size: 'lotSize',
-  };
-  return map[field];
-}
+export const DEFAULT_FIELDS: RefreshableField[] = ['priceRangeMin', 'priceRangeMax', 'issueSize', 'lotSize'];
 
 function parseArgs(argv: string[]) {
   const apply = argv.includes('--apply');
@@ -271,8 +277,17 @@ export async function applyRefresh(
 ): Promise<ApplyRefreshResult> {
   const { slug, stagingRow, toWrite, selectCols, stamp, writeBackup, writeLedger, upsert } = input;
 
-  if (toWrite.length === 0) {
-    // Zero differing fields: no UPDATE, no backup, no provenance row.
+  // A field whose production value is null is not a value to refresh FROM —
+  // production has nothing to say about it either. Writing a field_sources
+  // row that names ADMIN as the source of a null would claim provenance for
+  // "no value", which is worse than no provenance row at all (round-1 bug on
+  // this tool, lane B / staging review 2026-09-16). These fields are simply
+  // dropped from the write set before anything else runs.
+  const writable = toWrite.filter((d) => d.prodValue !== null);
+
+  if (writable.length === 0) {
+    // Zero writable fields (either nothing differed, or every differing
+    // field's production value is null): no UPDATE, no backup, no provenance.
     return { wrote: false };
   }
 
@@ -283,7 +298,7 @@ export async function applyRefresh(
   writeBackup(backupPath, { capturedAt: stamp, slug, row: stagingRow });
 
   await executors.transaction(async (tx) => {
-    for (const d of toWrite) {
+    for (const d of writable) {
       await upsert(tx as any, {
         ipoId: stagingRow.id,
         fieldName: d.field,
@@ -300,7 +315,7 @@ export async function applyRefresh(
     }
     await (tx as any)
       .update(schema.ipos)
-      .set(Object.fromEntries(toWrite.map((d) => [columnKeyFor(d.field), d.prodValue])) as any)
+      .set(Object.fromEntries(writable.map((d) => [d.field, d.prodValue])) as any)
       .where(eq(schema.ipos.id, stagingRow.id));
   });
 
@@ -314,7 +329,7 @@ export async function applyRefresh(
   writeLedger(ledgerPath, {
     appliedAt: stamp,
     slug,
-    written: toWrite.map((d) => ({ field: d.field, from: d.stagingValue, to: d.prodValue })),
+    written: writable.map((d) => ({ field: d.field, from: d.stagingValue, to: d.prodValue })),
   });
 
   return { wrote: true, backupPath, ledgerPath, readBack };

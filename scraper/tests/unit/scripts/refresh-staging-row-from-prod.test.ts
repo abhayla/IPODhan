@@ -14,12 +14,24 @@ import { PRODUCTION_DATABASE_NAME, upsertFieldSource } from '../../../scripts/li
 
 /**
  * Lane C item 14 slice 6: refresh one stale `ipos` row on staging from
- * production's read path. Tier A review (PR #666) found three MAJORs after
- * the first pass: (1) the prod pool had no server-enforced read-only guard,
- * (2) mutations to the apply-body logic survived because it lived inline in
- * `main()` with no seam to test, (3) the shared repair-tool filename lint
- * never inspected this file. This test file's structure follows that
- * finding order.
+ * production's read path.
+ *
+ * Tier A review round 1 (PR #666) found three MAJORs: (1) the prod pool had
+ * no server-enforced read-only guard, (2) mutations to the apply-body logic
+ * survived because it lived inline in `main()` with no seam to test, (3) the
+ * shared repair-tool filename lint never inspected this file; plus one
+ * MINOR: a bare `.limit(1)` with no ORDER BY on the slug lookup.
+ *
+ * Lane B / staging review round 2 found a further bug the round-1 fix
+ * introduced no test for: `IPOS_FIELD_COLUMNS` was keyed by aliases
+ * (`price_band_low`/`price_band_high`) that are the names of a DEAD column
+ * pair on `ipos` (T-276 — see `price-band-single-scheme.test.ts`), so
+ * `field_sources.field_name` was written as that dead, snake_case alias
+ * instead of the real camelCase drizzle property (`priceRangeMin`/
+ * `priceRangeMax`) every other repair tool in this directory uses. This
+ * file's field-name assertions and the two new describe blocks at the
+ * bottom (exact field_name strings; never write provenance for a null
+ * value) are round 2's fix.
  */
 
 describe('decideStagingWriteRefusal — the ONLY database this tool ever writes to', () => {
@@ -75,30 +87,38 @@ describe('PROD_POOL_OPTIONS — the prod connection is read-only at the SERVER, 
   });
 });
 
+describe('IPOS_FIELD_COLUMNS / DEFAULT_FIELDS — real camelCase column keys, never the dead price_band_low/high alias (round 2)', () => {
+  it('the field keys are the real drizzle/schema camelCase property names', () => {
+    expect(Object.keys(IPOS_FIELD_COLUMNS).sort()).toEqual(
+      ['issueSize', 'lotSize', 'priceRangeMax', 'priceRangeMin'].sort()
+    );
+    expect(DEFAULT_FIELDS.sort()).toEqual(['issueSize', 'lotSize', 'priceRangeMax', 'priceRangeMin'].sort());
+  });
+
+  it('MUTATION: the dead price_band_low/price_band_high alias names never appear as field keys', () => {
+    const keys = Object.keys(IPOS_FIELD_COLUMNS);
+    expect(keys).not.toContain('price_band_low');
+    expect(keys).not.toContain('price_band_high');
+    expect(keys).not.toContain('priceBandLow');
+    expect(keys).not.toContain('priceBandHigh');
+  });
+});
+
 describe('computeFieldDiffs — dry run computes the diff, writes nothing (no DB)', () => {
   it('marks fields differing between staging and prod values', () => {
-    const staging = { price_band_low: 10, price_band_high: 10, issue_size: '43320000.00', lot_size: 4000 };
-    const prod = { price_band_low: 85, price_band_high: 90, issue_size: '1990000000.00', lot_size: 4000 };
+    const staging = { priceRangeMin: 10, priceRangeMax: 10, issueSize: '43320000.00', lotSize: 4000 };
+    const prod = { priceRangeMin: 85, priceRangeMax: 90, issueSize: '1990000000.00', lotSize: 4000 };
     const diffs = computeFieldDiffs(DEFAULT_FIELDS, staging, prod);
-    expect(diffs.find((d) => d.field === 'price_band_low')?.differs).toBe(true);
-    expect(diffs.find((d) => d.field === 'price_band_high')?.differs).toBe(true);
-    expect(diffs.find((d) => d.field === 'issue_size')?.differs).toBe(true);
-    expect(diffs.find((d) => d.field === 'lot_size')?.differs).toBe(false); // same on both
+    expect(diffs.find((d) => d.field === 'priceRangeMin')?.differs).toBe(true);
+    expect(diffs.find((d) => d.field === 'priceRangeMax')?.differs).toBe(true);
+    expect(diffs.find((d) => d.field === 'issueSize')?.differs).toBe(true);
+    expect(diffs.find((d) => d.field === 'lotSize')?.differs).toBe(false); // same on both
   });
 
   it('produces zero differing fields when staging already matches prod', () => {
-    const row = { price_band_low: 85, price_band_high: 90, issue_size: '1990000000.00', lot_size: 4000 };
+    const row = { priceRangeMin: 85, priceRangeMax: 90, issueSize: '1990000000.00', lotSize: 4000 };
     const diffs = computeFieldDiffs(DEFAULT_FIELDS, row, row);
     expect(diffs.every((d) => !d.differs)).toBe(true);
-  });
-
-  it('the four real ipos columns are wired for the default fields', () => {
-    expect(Object.keys(IPOS_FIELD_COLUMNS).sort()).toEqual(
-      ['issue_size', 'lot_size', 'price_band_high', 'price_band_low'].sort()
-    );
-    expect(DEFAULT_FIELDS.sort()).toEqual(
-      ['issue_size', 'lot_size', 'price_band_high', 'price_band_low'].sort()
-    );
   });
 });
 
@@ -178,7 +198,7 @@ describe('applyRefresh — the write body extracted from main(), tested against 
       from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
     });
 
-    const diffs = computeFieldDiffs(['price_band_low'], { price_band_low: 10 }, { price_band_low: 85 });
+    const diffs = computeFieldDiffs(['priceRangeMin'], { priceRangeMin: 10 }, { priceRangeMin: 85 });
     const input = baseInput(diffs);
     const writeBackup = vi.fn().mockImplementation((path: string) => {
       calls.push('backup-written');
@@ -197,9 +217,9 @@ describe('applyRefresh — the write body extracted from main(), tested against 
       from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
     });
     const diffs = computeFieldDiffs(
-      ['price_band_low', 'price_band_high', 'issue_size'],
-      { price_band_low: 10, price_band_high: 10, issue_size: '43320000.00' },
-      { price_band_low: 85, price_band_high: 90, issue_size: '1990000000.00' }
+      ['priceRangeMin', 'priceRangeMax', 'issueSize'],
+      { priceRangeMin: 10, priceRangeMax: 10, issueSize: '43320000.00' },
+      { priceRangeMin: 85, priceRangeMax: 90, issueSize: '1990000000.00' }
     );
     const upsert = vi.fn().mockResolvedValue({ previousSource: null });
     const input = baseInput(diffs);
@@ -208,7 +228,7 @@ describe('applyRefresh — the write body extracted from main(), tested against 
 
     expect(upsert).toHaveBeenCalledTimes(3);
     const fieldsUpserted = upsert.mock.calls.map((c: any[]) => c[1].fieldName).sort();
-    expect(fieldsUpserted).toEqual(['issue_size', 'price_band_high', 'price_band_low']);
+    expect(fieldsUpserted).toEqual(['issueSize', 'priceRangeMax', 'priceRangeMin']);
   });
 
   it('MUTATION: zero differing fields => no UPDATE, no backup, no provenance, wrote=false', async () => {
@@ -218,7 +238,7 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     const writeLedger = vi.fn();
     const upsert = vi.fn();
 
-    const diffs = computeFieldDiffs(['lot_size'], { lot_size: 4000 }, { lot_size: 4000 }); // identical -> 0 differing
+    const diffs = computeFieldDiffs(['lotSize'], { lotSize: 4000 }, { lotSize: 4000 }); // identical -> 0 differing
     const input = baseInput(diffs.filter((d) => d.differs)); // mirrors main(): applyRefresh receives only the differing fields
 
     const result = await applyRefresh({ transaction, select }, { ...input, writeBackup, writeLedger, upsert });
@@ -230,12 +250,12 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it('writes the provenance row with source ADMIN and a dated "refreshed from production read path" note', async () => {
+  it('writes the provenance row with source ADMIN, field_name = the real camelCase column key, and a dated note', async () => {
     const tx = mockTx(null);
     const diffs = computeFieldDiffs(
-      ['price_band_low', 'price_band_high'],
-      { price_band_low: 10, price_band_high: 10 },
-      { price_band_low: 85, price_band_high: 90 }
+      ['priceRangeMin', 'priceRangeMax'],
+      { priceRangeMin: 10, priceRangeMax: 10 },
+      { priceRangeMin: 85, priceRangeMax: 90 }
     );
     const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
     const select = vi.fn().mockReturnValue({
@@ -246,9 +266,58 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     await applyRefresh({ transaction, select }, input);
 
     expect(tx.insert).toHaveBeenCalledTimes(2);
-    const firstRow = tx.values.mock.calls[0][0];
+    const rows = tx.values.mock.calls.map((c: any[]) => c[0]);
+    const fieldNames = rows.map((r: any) => r.fieldName).sort();
+    // MUTATION: exact field_name strings — the real camelCase column keys,
+    // never the dead price_band_low/price_band_high alias.
+    expect(fieldNames).toEqual(['priceRangeMax', 'priceRangeMin']);
+    expect(fieldNames).not.toContain('price_band_low');
+    expect(fieldNames).not.toContain('price_band_high');
+    const firstRow = rows[0];
     expect(firstRow.source).toBe('ADMIN');
     expect(firstRow.dataLineage.reason).toMatch(/refreshed from production read path/);
     expect(firstRow.previousValue).toBe('10');
+  });
+
+  it('MUTATION (finding 2): never writes a provenance row for a field whose production value is null', async () => {
+    const tx = mockTx(null);
+    const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
+    const select = vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
+    });
+    // priceRangeMin differs and prod has a real value; priceRangeMax differs
+    // but prod's value is null — this field must be silently dropped, not
+    // written with a null and not given a provenance row.
+    const diffs = computeFieldDiffs(
+      ['priceRangeMin', 'priceRangeMax'],
+      { priceRangeMin: 10, priceRangeMax: 10 },
+      { priceRangeMin: 85, priceRangeMax: null }
+    );
+    const input = baseInput(diffs);
+
+    const result = await applyRefresh({ transaction, select }, input);
+
+    expect(result.wrote).toBe(true);
+    expect(tx.insert).toHaveBeenCalledTimes(1); // only priceRangeMin
+    const fieldNames = tx.values.mock.calls.map((c: any[]) => c[0].fieldName);
+    expect(fieldNames).toEqual(['priceRangeMin']);
+    expect(fieldNames).not.toContain('priceRangeMax');
+  });
+
+  it('MUTATION (finding 2): when EVERY differing field is null on production, nothing is written at all', async () => {
+    const transaction = vi.fn();
+    const select = vi.fn();
+    const writeBackup = vi.fn();
+    const upsert = vi.fn();
+
+    const diffs = computeFieldDiffs(['priceRangeMax'], { priceRangeMax: 10 }, { priceRangeMax: null });
+    const input = baseInput(diffs);
+
+    const result = await applyRefresh({ transaction, select }, { ...input, writeBackup, upsert });
+
+    expect(result.wrote).toBe(false);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(writeBackup).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
   });
 });
