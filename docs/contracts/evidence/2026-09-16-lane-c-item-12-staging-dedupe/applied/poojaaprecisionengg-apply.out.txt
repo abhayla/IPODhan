@@ -1,0 +1,40 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-5ab395be-660e-47ae-ad3e-f17a0ea15655-1789507613562.json
+
+KEEP   poojaa-precision-engg-ltd
+       Poojaa Precision Engg.Ltd.   issue_size 1598300000.00
+DROP   poojaa-precision-engg-ltd-o
+       Poojaa Precision Engg.Ltd.   issue_size 1598300000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   data_conflicts: 8
+   field_sources: 12
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /poojaa-precision-engg-ltd-o  ->  /poojaa-precision-engg-ltd
+[Cache] DEL: ipo:id:9ee74c6d-0ed2-4004-b4f4-8ca02bff3349, ipo:slug:poojaa-precision-engg-ltd, ipo:id:5ab395be-660e-47ae-ad3e-f17a0ea15655, ipo:slug:poojaa-precision-engg-ltd-o
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (9ee74c6d-0ed2-4004-b4f4-8ca02bff3349)
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): no other rows share the survivor open_date
+
+APPLIED.
+   provenance rows written: 0
+   survivor: poojaa-precision-engg-ltd
+   rollback: pre-merge snapshot at scripts/state/merge-backup-5ab395be-660e-47ae-ad3e-f17a0ea15655-1789507613562.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).

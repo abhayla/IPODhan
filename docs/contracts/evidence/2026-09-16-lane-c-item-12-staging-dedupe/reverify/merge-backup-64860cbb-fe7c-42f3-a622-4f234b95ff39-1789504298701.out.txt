@@ -1,0 +1,6 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (a44246fd-273f-4d75-b6f8-055d15a9e503)
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): no other rows share the survivor open_date

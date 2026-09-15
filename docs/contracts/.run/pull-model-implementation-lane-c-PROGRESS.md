@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 02:53 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 03:11 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2977,3 +2977,17 @@ Fold strips only an IPO-ending parenthetical plus an optional 1–2 letter token
 I removed the merged #664 worktree with the discard-untracked flag and took the ten `merge-applied-*.json` ledgers with it; the `--reverify` mode built tonight needs them. Backups survived, and the merge module exports its carry planner, so pass 2 re-verifies the ten from their backups through the tool itself. Lesson recorded.
 
 **Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
+
+
+
+## 2026-09-16 03:11 IST — #667 and #668 merged; item 12 hold running; #666 caught writing provenance under an alias
+
+### Item 12: 16 merges done on staging, hold running
+
+Pass 2 re-verified all ten earlier merges from their backups through the tool (PR #668, merged 4e54e7d7) and merged the six remaining pairs through the fixed tool, every VERIFY line PASS, invariant **0**. The two-cycle hold started 02:59 IST with baseline 0. The fold widening (PR #667, merged 823dbd1d) now lets the invariant see the "(Company IPO) CT" twins and a genuine "Cube Highways Trust" pair; the merge tool still refuses 3-day-apart twins by design until slice G widens its eligibility under review. The CI wiring for the new invariant test is PR #669, rebased, waiting for a :00-:05 window (05:00, or 04:00 if lane A releases it; crons armed).
+
+### #666 (STALLION refresh tool): four Tier A findings closed, then a fifth found on staging
+
+The first review found the prod pool had **no** read-only guard, three behaviours untested, and the lint never looking at `refresh-*` files. All closed with tests that go red on mutation. Then lane B measured what the tool actually wrote: the values landed in the right columns, but the provenance rows were named after a CLI **alias** (`price_band_low`) that is also a different, empty column. Two rows now claim a source for a null field. Fix in flight, second review after. Lesson of the night: every second key space produced a wrong row.
+
+**Items 14, 2 and 12 still have zero proven lines.** Item 14 BLOCKED on owner decision 4. No production data has been written.

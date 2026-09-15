@@ -1,0 +1,31 @@
+{
+ "appliedAt": "2026-09-15T21:27:54.833Z",
+ "keepId": "06ebc4c3-12c8-4014-86f9-02bdd6bdbdea",
+ "dropId": "e5500ef2-fb67-4893-b839-1a1854a43a1f",
+ "keepSlug": "caliber-mining-and-logistics-ltd",
+ "droppedSlug": "caliber-mining-and-logistics-ltd-o",
+ "patch": [],
+ "provenanceWritten": [],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (06ebc4c3-12c8-4014-86f9-02bdd6bdbdea)"
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "no other rows share the survivor open_date"
+  }
+ ]
+}

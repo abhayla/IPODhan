@@ -1,0 +1,31 @@
+{
+ "appliedAt": "2026-09-15T21:27:23.191Z",
+ "keepId": "29972749-29a3-4a77-8e98-e40b0aa4cdcc",
+ "dropId": "03a62a25-bb82-45f9-82ac-61bf9c4d0616",
+ "keepSlug": "propshop-events-and-exhibitions-ltd",
+ "droppedSlug": "propshop-events-and-exhibitions-ltd-ct",
+ "patch": [],
+ "provenanceWritten": [],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (29972749-29a3-4a77-8e98-e40b0aa4cdcc)"
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "1 other row(s) share the survivor open_date: advance-technoforge-ltd"
+  }
+ ]
+}

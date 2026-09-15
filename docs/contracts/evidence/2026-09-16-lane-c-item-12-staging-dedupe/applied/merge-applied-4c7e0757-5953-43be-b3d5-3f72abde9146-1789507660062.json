@@ -1,0 +1,118 @@
+{
+ "appliedAt": "2026-09-15T21:27:40.062Z",
+ "keepId": "683cb329-f12c-4a78-a532-403073099b09",
+ "dropId": "4c7e0757-5953-43be-b3d5-3f72abde9146",
+ "keepSlug": "atharva-polyplast-ltd",
+ "droppedSlug": "atharva-poly-plast-ltd",
+ "patch": [
+  {
+   "column": "symbol",
+   "value": "ATHARVA",
+   "source": "CHITTORGARH",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 4c7e0757-5953-43be-b3d5-3f72abde9146"
+  },
+  {
+   "column": "lot_size",
+   "value": 2000,
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 4c7e0757-5953-43be-b3d5-3f72abde9146"
+  },
+  {
+   "column": "registrar",
+   "value": "MUFG Intime India Private Limited",
+   "source": "CHITTORGARH",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 4c7e0757-5953-43be-b3d5-3f72abde9146"
+  },
+  {
+   "column": "registrar_id",
+   "value": "2af24602-0819-4949-b9ce-16dd6d648ddc",
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 4c7e0757-5953-43be-b3d5-3f72abde9146"
+  },
+  {
+   "column": "sector",
+   "value": "Plastic Products - Consumer",
+   "source": "CHITTORGARH",
+   "confidence": 80,
+   "note": "carried from the merged duplicate row 4c7e0757-5953-43be-b3d5-3f72abde9146"
+  }
+ ],
+ "provenanceWritten": [
+  {
+   "fieldName": "symbol",
+   "source": "CHITTORGARH",
+   "previousSource": null
+  },
+  {
+   "fieldName": "lotSize",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "registrar",
+   "source": "CHITTORGARH",
+   "previousSource": null
+  },
+  {
+   "fieldName": "registrarId",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "sector",
+   "source": "CHITTORGARH",
+   "previousSource": null
+  }
+ ],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (683cb329-f12c-4a78-a532-403073099b09)"
+  },
+  {
+   "name": "carried field symbol",
+   "pass": true,
+   "detail": "expected \"ATHARVA\", found \"ATHARVA\""
+  },
+  {
+   "name": "carried field lot_size",
+   "pass": true,
+   "detail": "expected \"2000\", found \"2000\""
+  },
+  {
+   "name": "carried field registrar",
+   "pass": true,
+   "detail": "expected \"MUFG Intime India Private Limited\", found \"MUFG Intime India Private Limited\""
+  },
+  {
+   "name": "carried field registrar_id",
+   "pass": true,
+   "detail": "expected \"2af24602-0819-4949-b9ce-16dd6d648ddc\", found \"2af24602-0819-4949-b9ce-16dd6d648ddc\""
+  },
+  {
+   "name": "carried field sector",
+   "pass": true,
+   "detail": "expected \"Plastic Products - Consumer\", found \"Plastic Products - Consumer\""
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "5 other row(s) share the survivor open_date: teja-engineering-industries-ltd, sampark-india-logistics-ltd, vinit-mobile-ltd, seemax-resources-ltd, kratikal-tech-ltd"
+  }
+ ]
+}

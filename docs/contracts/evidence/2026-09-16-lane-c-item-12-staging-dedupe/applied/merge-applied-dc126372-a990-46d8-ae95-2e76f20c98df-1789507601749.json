@@ -1,0 +1,67 @@
+{
+ "appliedAt": "2026-09-15T21:26:41.749Z",
+ "keepId": "b32a1b49-f7cb-4d23-a714-d56d073222c6",
+ "dropId": "dc126372-a990-46d8-ae95-2e76f20c98df",
+ "keepSlug": "indo-mim-ltd",
+ "droppedSlug": "indo-mim-ltd-o",
+ "patch": [
+  {
+   "column": "allotment_date",
+   "value": "2026-07-28",
+   "source": "CHITTORGARH",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row dc126372-a990-46d8-ae95-2e76f20c98df"
+  },
+  {
+   "column": "sector",
+   "value": "Industrial Products",
+   "source": "CHITTORGARH",
+   "confidence": 80,
+   "note": "carried from the merged duplicate row dc126372-a990-46d8-ae95-2e76f20c98df"
+  }
+ ],
+ "provenanceWritten": [
+  {
+   "fieldName": "allotmentDate",
+   "source": "CHITTORGARH",
+   "previousSource": null
+  },
+  {
+   "fieldName": "sector",
+   "source": "CHITTORGARH",
+   "previousSource": null
+  }
+ ],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (b32a1b49-f7cb-4d23-a714-d56d073222c6)"
+  },
+  {
+   "name": "carried field allotment_date",
+   "pass": true,
+   "detail": "expected \"2026-07-28\", found \"2026-07-28\""
+  },
+  {
+   "name": "carried field sector",
+   "pass": true,
+   "detail": "expected \"Industrial Products\", found \"Industrial Products\""
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "2 other row(s) share the survivor open_date: lohia-corp-ltd, xtranet-technologies-ltd"
+  }
+ ]
+}

@@ -1,0 +1,7 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (d767378c-bbd2-426c-842f-0dabf22f9747)
+VERIFY: PASS — carried field sector: expected "Cables - Electricals", found "Cables - Electricals"
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): 2 other row(s) share the survivor open_date: happy-steels-ltd, devson-catalyst-ltd

@@ -1,0 +1,35 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-4c7e0757-5953-43be-b3d5-3f72abde9146-1789507554015.json
+
+KEEP   atharva-polyplast-ltd
+       Atharva Polyplast Ltd.   issue_size 270000000.00
+DROP   atharva-poly-plast-ltd
+       Atharva Polyplast Ltd.   issue_size 270000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   symbol: -> ATHARVA  (source CHITTORGARH, 100)
+   lot_size: -> 2000  (source ADMIN, 100)
+   registrar: -> MUFG Intime India Private Limited  (source CHITTORGARH, 100)
+   registrar_id: -> 2af24602-0819-4949-b9ce-16dd6d648ddc  (source ADMIN, 100)
+   sector: -> Plastic Products - Consumer  (source CHITTORGARH, 80)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   data_conflicts: 54
+   field_sources: 17
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+   subscriptions: 328
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /atharva-poly-plast-ltd  ->  /atharva-polyplast-ltd
+
+DRY RUN — nothing was changed. Re-run with --apply to execute.

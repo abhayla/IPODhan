@@ -1,0 +1,31 @@
+{
+ "appliedAt": "2026-09-15T21:26:55.696Z",
+ "keepId": "9ee74c6d-0ed2-4004-b4f4-8ca02bff3349",
+ "dropId": "5ab395be-660e-47ae-ad3e-f17a0ea15655",
+ "keepSlug": "poojaa-precision-engg-ltd",
+ "droppedSlug": "poojaa-precision-engg-ltd-o",
+ "patch": [],
+ "provenanceWritten": [],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (9ee74c6d-0ed2-4004-b4f4-8ca02bff3349)"
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "no other rows share the survivor open_date"
+  }
+ ]
+}

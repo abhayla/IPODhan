@@ -1,0 +1,40 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2\scraper
+current_database(): ipodhan_staging
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+backup:    scripts/state/merge-backup-e5500ef2-fb67-4893-b839-1a1854a43a1f-1789507672782.json
+
+KEEP   caliber-mining-and-logistics-ltd
+       Caliber Mining & Logistics Ltd.   issue_size 4500000000.00
+DROP   caliber-mining-and-logistics-ltd-o
+       Caliber Mining & Logistics Ltd.   issue_size 4500000000.00
+
+discovered 35 descendant tables (32 carry an ipo id directly)
+
+fields written onto the survivor:
+   (none)
+
+child rows DELETED with the dropped row (scraper output, regenerable):
+   data_conflicts: 8
+   field_sources: 12
+   ipo_pipeline_steps: 52
+   listing_performance: 1
+
+child rows REPOINTED to the survivor (person-created, never deleted):
+   (none)
+
+slug redirect: /caliber-mining-and-logistics-ltd-o  ->  /caliber-mining-and-logistics-ltd
+[Cache] DEL: ipo:id:06ebc4c3-12c8-4014-86f9-02bdd6bdbdea, ipo:slug:caliber-mining-and-logistics-ltd, ipo:id:e5500ef2-fb67-4893-b839-1a1854a43a1f, ipo:slug:caliber-mining-and-logistics-ltd-o
+VERIFY: PASS — dropped row deleted: ipos rows remaining with the dropped id: 0 (expected 0)
+VERIFY: PASS — survivor present: survivor row found (06ebc4c3-12c8-4014-86f9-02bdd6bdbdea)
+VERIFY: PASS — slug redirect present: ipo_slug_redirects row present
+VERIFY: PASS — same-day siblings (informational): no other rows share the survivor open_date
+
+APPLIED.
+   provenance rows written: 0
+   survivor: caliber-mining-and-logistics-ltd
+   rollback: pre-merge snapshot at scripts/state/merge-backup-e5500ef2-fb67-4893-b839-1a1854a43a1f-1789507672782.json
+
+   Repository cache invalidation ran automatically (ipo:id/slug keys + list/search patterns dropped).

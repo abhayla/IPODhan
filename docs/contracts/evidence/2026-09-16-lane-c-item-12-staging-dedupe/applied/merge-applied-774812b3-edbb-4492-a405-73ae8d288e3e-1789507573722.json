@@ -1,0 +1,84 @@
+{
+ "appliedAt": "2026-09-15T21:26:13.722Z",
+ "keepId": "8ca4a075-0c95-48e0-bb90-b1636b55a62a",
+ "dropId": "774812b3-edbb-4492-a405-73ae8d288e3e",
+ "keepSlug": "ic-electricals-co-ltd",
+ "droppedSlug": "ic-electricals-company-ltd",
+ "patch": [
+  {
+   "column": "symbol",
+   "value": "ICELCO",
+   "source": "CHITTORGARH",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 774812b3-edbb-4492-a405-73ae8d288e3e"
+  },
+  {
+   "column": "lot_size",
+   "value": 1200,
+   "source": "ADMIN",
+   "confidence": 100,
+   "note": "carried from the merged duplicate row 774812b3-edbb-4492-a405-73ae8d288e3e"
+  },
+  {
+   "column": "sector",
+   "value": "Other Electrical Equipment",
+   "source": "CHITTORGARH",
+   "confidence": 80,
+   "note": "carried from the merged duplicate row 774812b3-edbb-4492-a405-73ae8d288e3e"
+  }
+ ],
+ "provenanceWritten": [
+  {
+   "fieldName": "symbol",
+   "source": "CHITTORGARH",
+   "previousSource": null
+  },
+  {
+   "fieldName": "lotSize",
+   "source": "ADMIN",
+   "previousSource": null
+  },
+  {
+   "fieldName": "sector",
+   "source": "CHITTORGARH",
+   "previousSource": null
+  }
+ ],
+ "readback": [
+  {
+   "name": "dropped row deleted",
+   "pass": true,
+   "detail": "ipos rows remaining with the dropped id: 0 (expected 0)"
+  },
+  {
+   "name": "survivor present",
+   "pass": true,
+   "detail": "survivor row found (8ca4a075-0c95-48e0-bb90-b1636b55a62a)"
+  },
+  {
+   "name": "carried field symbol",
+   "pass": true,
+   "detail": "expected \"ICELCO\", found \"ICELCO\""
+  },
+  {
+   "name": "carried field lot_size",
+   "pass": true,
+   "detail": "expected \"1200\", found \"1200\""
+  },
+  {
+   "name": "carried field sector",
+   "pass": true,
+   "detail": "expected \"Other Electrical Equipment\", found \"Other Electrical Equipment\""
+  },
+  {
+   "name": "slug redirect present",
+   "pass": true,
+   "detail": "ipo_slug_redirects row present"
+  },
+  {
+   "name": "same-day siblings (informational)",
+   "pass": true,
+   "detail": "no other rows share the survivor open_date"
+  }
+ ]
+}
