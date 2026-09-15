@@ -11,7 +11,7 @@
     8,
     21
   ],
-  "currentItem": 8,
+  "currentItem": "OD-55 ceiling-and-records slice (document job), then the #642 row_key fix, then #623 anchor classes",
   "testDb": {
     "name": "ipodhan_test2",
     "drop": "OWED"
@@ -987,7 +987,7 @@
       "why": "an over-cap refusal returns status 0 and is recorded as timeout, indistinguishable from a network failure"
     }
   ],
-  "lastStateWriteAt": "2026-09-11T03:50:29Z",
+  "lastStateWriteAt": "2026-09-15T18:16:01Z",
   "staleNote": "This file was last accurate at item 22 and was not rewritten on every item transition as the contract requires. Rebuilt at 01:45 on 2026-09-11 from the branch-name derivation the contract specifies (headRefName, never a title search). The neglect is recorded rather than erased: 29 lane B slices had merged while this said 7 PR-gate runs and currentItem 22.",
   "mergedSliceBranchesByItem": {
     "8": 6,
@@ -1025,5 +1025,24 @@
     "ownerDecisionsRecorded": [
       "pdf-lib withdrawn, use pypdf - nothing to revert, pdf-lib was never added"
     ]
+  },
+  "resumed": {
+    "at": "2026-09-15T18:16:01Z",
+    "order": "owner text in this window: 'Resume lane B from the pause of 2026-09-11: read the resume file and follow it exactly, starting with Step 1.'",
+    "orderProvenance": "OWNER TEXT (not a relay) - the first lane-B instruction since the pause that was the owner's own words here",
+    "ledgerBranchWasBehind": 46,
+    "ledgerRebasedOntoMain": "176 replayed, 3 dropped as already upstream, no conflicts; scripts/ops/merge-if-current.mjs exists here only after this rebase",
+    "firstThreeResumeCommandsResult": {
+      "1_gh_pr_checks_642": "all seven checks PASS",
+      "2_merge_if_current_642": "EXIT 5 - REFUSED to judge: 'the typescript package is not resolvable, so clause 2 cannot parse imports'. A refusal, not a pass. Clause 2 is the clause that caught the schema drift on 2026-09-11.",
+      "3_wt_sweep": "16 trees; 2 REMOVE (merged+clean); a THIRD session is active in IPODhan-docs-ceiling on docs/2h-ceiling-is-external-supervisor, created within the hour"
+    },
+    "642Verdict": "STAYS OPEN. Not because the gate refused, but because the reason recorded at the pause stands on its own: row_key landed on ipo_field_plan, the unique key is (ipo_id, table_name, row_key, field_name), and #642 keys its map by table.field. Fix is ~20 lines + 3 tests, queued behind the OD-55 slice."
+  },
+  "designDocConflict": {
+    "at": "2026-09-15T18:16:01Z",
+    "what": "docs/design/data-sourcing-pull-model.md on main, OD-55 bullet 2, says the 2-hour ceiling 'is implemented as the extractor spawn's own timeout ... not by a wrapper polling it from outside'. The resume order says the ceiling is an EXTERNAL supervisor of the document-job process, with the extractor's spawn timeout as the child half.",
+    "resolution": "Building to the ORDER. Not touching that paragraph - a third session (IPODhan-docs-ceiling) is correcting it.",
+    "whyTheOrderIsRight": "extraction is a blocking spawnSync, so a kill of the parent cannot run the parent's lock-release handler; a ceiling living only inside the spawn call cannot catch a parent wedged around its child."
   }
 }
