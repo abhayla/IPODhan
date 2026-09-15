@@ -160,7 +160,7 @@ describe('countAndFetchBySlug — a COUNT first, never a bare .limit(1) with no 
   });
 });
 
-describe('applyRefresh — the write body extracted from main(), tested against fakes (finding 2)', () => {
+describe('applyRefresh — the write body extracted from main(), tested against fakes (finding 2); write-ratchet routing (round 4)', () => {
   function mockTx(existingSource: string | null = null) {
     const limit = vi.fn().mockResolvedValue(existingSource ? [{ source: existingSource }] : []);
     const where = vi.fn().mockReturnValue({ limit });
@@ -169,8 +169,18 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
     const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
     const insert = vi.fn().mockReturnValue({ values });
-    const update = vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) });
-    return { select, insert, values, onConflictDoUpdate, update };
+    return { select, insert, values, onConflictDoUpdate };
+  }
+
+  /**
+   * Fake repository standing in for IPORepository — `applyRefresh` never
+   * calls `db.update(schema.ipos)` directly (round 4: PR #666 CI's write
+   * ratchet, T-316/R0, refused this file as a new direct `ipos` writer). It
+   * must call `applyOfferTerms(id, data)` on whatever `makeRepo(tx)` returns.
+   */
+  function mockRepo() {
+    const applyOfferTerms = vi.fn().mockResolvedValue(undefined);
+    return { applyOfferTerms };
   }
 
   function baseInput(toWrite: ReturnType<typeof computeFieldDiffs>) {
@@ -186,17 +196,22 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     };
   }
 
+  const fakeSelect = () =>
+    vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
+    });
+
   it('MUTATION: writes the backup BEFORE opening the transaction — call order asserted', async () => {
     const tx = mockTx();
+    const repo = mockRepo();
     const calls: string[] = [];
     const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => {
       calls.push('transaction-start');
       await fn(tx);
       calls.push('transaction-end');
     });
-    const select = vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
-    });
+    const select = fakeSelect();
+    const makeRepo = vi.fn().mockReturnValue(repo);
 
     const diffs = computeFieldDiffs(['priceRangeMin'], { priceRangeMin: 10 }, { priceRangeMin: 85 });
     const input = baseInput(diffs);
@@ -205,17 +220,17 @@ describe('applyRefresh — the write body extracted from main(), tested against 
       return path;
     });
 
-    await applyRefresh({ transaction, select }, { ...input, writeBackup });
+    await applyRefresh({ transaction, select, makeRepo }, { ...input, writeBackup });
 
     expect(calls).toEqual(['backup-written', 'transaction-start', 'transaction-end']);
   });
 
   it('MUTATION: exactly one upsertFieldSource per changed field, not per row', async () => {
     const tx = mockTx();
+    const repo = mockRepo();
     const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
-    const select = vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
-    });
+    const select = fakeSelect();
+    const makeRepo = vi.fn().mockReturnValue(repo);
     const diffs = computeFieldDiffs(
       ['priceRangeMin', 'priceRangeMax', 'issueSize'],
       { priceRangeMin: 10, priceRangeMax: 10, issueSize: '43320000.00' },
@@ -224,16 +239,17 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     const upsert = vi.fn().mockResolvedValue({ previousSource: null });
     const input = baseInput(diffs);
 
-    await applyRefresh({ transaction, select }, { ...input, upsert });
+    await applyRefresh({ transaction, select, makeRepo }, { ...input, upsert });
 
     expect(upsert).toHaveBeenCalledTimes(3);
     const fieldsUpserted = upsert.mock.calls.map((c: any[]) => c[1].fieldName).sort();
     expect(fieldsUpserted).toEqual(['issueSize', 'priceRangeMax', 'priceRangeMin']);
   });
 
-  it('MUTATION: zero differing fields => no UPDATE, no backup, no provenance, wrote=false', async () => {
+  it('MUTATION: zero differing fields => no repository call, no backup, no provenance, wrote=false', async () => {
     const transaction = vi.fn();
     const select = vi.fn();
+    const makeRepo = vi.fn();
     const writeBackup = vi.fn();
     const writeLedger = vi.fn();
     const upsert = vi.fn();
@@ -241,10 +257,11 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     const diffs = computeFieldDiffs(['lotSize'], { lotSize: 4000 }, { lotSize: 4000 }); // identical -> 0 differing
     const input = baseInput(diffs.filter((d) => d.differs)); // mirrors main(): applyRefresh receives only the differing fields
 
-    const result = await applyRefresh({ transaction, select }, { ...input, writeBackup, writeLedger, upsert });
+    const result = await applyRefresh({ transaction, select, makeRepo }, { ...input, writeBackup, writeLedger, upsert });
 
     expect(result.wrote).toBe(false);
     expect(transaction).not.toHaveBeenCalled();
+    expect(makeRepo).not.toHaveBeenCalled();
     expect(writeBackup).not.toHaveBeenCalled();
     expect(writeLedger).not.toHaveBeenCalled();
     expect(upsert).not.toHaveBeenCalled();
@@ -252,18 +269,18 @@ describe('applyRefresh — the write body extracted from main(), tested against 
 
   it('writes the provenance row with source ADMIN, field_name = the real camelCase column key, and a dated note', async () => {
     const tx = mockTx(null);
+    const repo = mockRepo();
     const diffs = computeFieldDiffs(
       ['priceRangeMin', 'priceRangeMax'],
       { priceRangeMin: 10, priceRangeMax: 10 },
       { priceRangeMin: 85, priceRangeMax: 90 }
     );
     const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
-    const select = vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
-    });
+    const select = fakeSelect();
+    const makeRepo = vi.fn().mockReturnValue(repo);
     const input = baseInput(diffs);
 
-    await applyRefresh({ transaction, select }, input);
+    await applyRefresh({ transaction, select, makeRepo }, input);
 
     expect(tx.insert).toHaveBeenCalledTimes(2);
     const rows = tx.values.mock.calls.map((c: any[]) => c[0]);
@@ -281,10 +298,10 @@ describe('applyRefresh — the write body extracted from main(), tested against 
 
   it('MUTATION (finding 2): never writes a provenance row for a field whose production value is null', async () => {
     const tx = mockTx(null);
+    const repo = mockRepo();
     const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
-    const select = vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ id: 'ipo-stallion' }]) }) }),
-    });
+    const select = fakeSelect();
+    const makeRepo = vi.fn().mockReturnValue(repo);
     // priceRangeMin differs and prod has a real value; priceRangeMax differs
     // but prod's value is null — this field must be silently dropped, not
     // written with a null and not given a provenance row.
@@ -295,29 +312,63 @@ describe('applyRefresh — the write body extracted from main(), tested against 
     );
     const input = baseInput(diffs);
 
-    const result = await applyRefresh({ transaction, select }, input);
+    const result = await applyRefresh({ transaction, select, makeRepo }, input);
 
     expect(result.wrote).toBe(true);
     expect(tx.insert).toHaveBeenCalledTimes(1); // only priceRangeMin
     const fieldNames = tx.values.mock.calls.map((c: any[]) => c[0].fieldName);
     expect(fieldNames).toEqual(['priceRangeMin']);
     expect(fieldNames).not.toContain('priceRangeMax');
+    // The repository call must reflect the same drop — only the non-null field.
+    expect(repo.applyOfferTerms).toHaveBeenCalledTimes(1);
+    expect(repo.applyOfferTerms.mock.calls[0][1]).toEqual({ priceRangeMin: 85 });
   });
 
   it('MUTATION (finding 2): when EVERY differing field is null on production, nothing is written at all', async () => {
     const transaction = vi.fn();
     const select = vi.fn();
+    const makeRepo = vi.fn();
     const writeBackup = vi.fn();
     const upsert = vi.fn();
 
     const diffs = computeFieldDiffs(['priceRangeMax'], { priceRangeMax: 10 }, { priceRangeMax: null });
     const input = baseInput(diffs);
 
-    const result = await applyRefresh({ transaction, select }, { ...input, writeBackup, upsert });
+    const result = await applyRefresh({ transaction, select, makeRepo }, { ...input, writeBackup, upsert });
 
     expect(result.wrote).toBe(false);
     expect(transaction).not.toHaveBeenCalled();
+    expect(makeRepo).not.toHaveBeenCalled();
     expect(writeBackup).not.toHaveBeenCalled();
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('MUTATION (round 4, write-ratchet routing): the ipos write goes through repo.applyOfferTerms(id, data), never a direct db.update(schema.ipos)', async () => {
+    const tx = mockTx();
+    const repo = mockRepo();
+    const transaction = vi.fn().mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx));
+    const select = fakeSelect();
+    const makeRepo = vi.fn().mockReturnValue(repo);
+    const diffs = computeFieldDiffs(
+      ['priceRangeMin', 'priceRangeMax', 'issueSize', 'lotSize'],
+      { priceRangeMin: 10, priceRangeMax: 10, issueSize: '43320000.00', lotSize: 4000 },
+      { priceRangeMin: 85, priceRangeMax: 90, issueSize: '1990000000.00', lotSize: 4000 } // lotSize unchanged
+    );
+    const input = baseInput(diffs.filter((d) => d.differs)); // mirrors main(): only the 3 differing fields
+
+    await applyRefresh({ transaction, select, makeRepo }, input);
+
+    // makeRepo is called with the TRANSACTION handle, never the outer db —
+    // the repository write must run on the same connection as the
+    // provenance rows (all-or-nothing).
+    expect(makeRepo).toHaveBeenCalledWith(tx);
+    expect(repo.applyOfferTerms).toHaveBeenCalledTimes(1);
+    const [id, data] = repo.applyOfferTerms.mock.calls[0];
+    expect(id).toBe('ipo-stallion');
+    expect(data).toEqual({ priceRangeMin: 85, priceRangeMax: 90, issueSize: '1990000000.00' });
+    // No raw drizzle table access on the transaction handle at all — the
+    // write-ratchet's `drizzle` pattern (`\.(insert|update|delete)\(\s*
+    // (schema\.)?ipos\b`) must never match anything applyRefresh emits.
+    expect((tx as any).update).toBeUndefined();
   });
 });

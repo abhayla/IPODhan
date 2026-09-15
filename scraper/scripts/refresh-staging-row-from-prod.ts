@@ -62,8 +62,9 @@
  *     npx tsx scripts/refresh-staging-row-from-prod.ts --slug <slug> --apply        # writes staging
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
+import { IPORepository, type IPOInsert } from '@ipodhan/shared/repositories';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -237,12 +238,28 @@ export async function countAndFetchBySlug<T>(
   return { count, row: (row as T) ?? null };
 }
 
+/** Minimal shape `applyOfferTerms` needs from a transaction-scoped repository (mirrors repair-price-band-lot-issue-size-t453.ts). */
+export interface OfferTermsRepo {
+  applyOfferTerms(id: string, data: Partial<IPOInsert>): Promise<unknown>;
+}
+
 /** Minimal shape of the write-side executors `applyRefresh` needs — real (`db`) or fake. */
 export interface RefreshWriteExecutors {
-  /** Runs the provenance upserts + the ipos UPDATE inside one transaction. */
+  /** Runs the provenance upserts + the repository-routed ipos update inside one transaction. */
   transaction: (fn: (tx: unknown) => Promise<void>) => Promise<void>;
   /** Re-selects the row after the transaction commits, for the read-back log. */
   select: (...args: any[]) => any;
+  /**
+   * Constructs the repository BOUND TO THE TRANSACTION HANDLE (never the
+   * outer `db`), so `applyOfferTerms`'s own write runs on the same
+   * connection as the provenance rows — the write-ratchet's `repository`
+   * pattern (`ipoRepository\.(create|update|delete|upsert)\(`) is already
+   * baselined for `ipo-repository.ts` itself; a NEW script calling
+   * `db.update(schema.ipos)` directly is what the ratchet's `drizzle`
+   * pattern (T-316/R0) refuses on a file not already in
+   * `config/write-ratchet-baseline.json`.
+   */
+  makeRepo: (tx: unknown) => OfferTermsRepo;
 }
 
 export interface ApplyRefreshInput {
@@ -313,10 +330,17 @@ export async function applyRefresh(
         updatedBy: UPDATED_BY,
       });
     }
-    await (tx as any)
-      .update(schema.ipos)
-      .set(Object.fromEntries(writable.map((d) => [d.field, d.prodValue])) as any)
-      .where(eq(schema.ipos.id, stagingRow.id));
+    // Routed through the shared repository (write-ratchet T-316/R0) rather
+    // than a direct `tx.update(schema.ipos)` — see the RefreshWriteExecutors
+    // doc comment. `makeRepo` binds the repository to THIS transaction
+    // handle, so the update runs on the same connection as the provenance
+    // writes above (all-or-nothing, mirroring applyRepairAtomically in
+    // repair-price-band-lot-issue-size-t453.ts).
+    const repo = executors.makeRepo(tx);
+    await repo.applyOfferTerms(
+      stagingRow.id,
+      Object.fromEntries(writable.map((d) => [d.field, d.prodValue])) as Partial<IPOInsert>
+    );
   });
 
   const [readBack] = await executors
@@ -438,7 +462,11 @@ async function main() {
 
     const stamp = new Date().toISOString();
     const result = await applyRefresh(
-      { transaction: (fn) => db.transaction(fn as any), select: (...args: any[]) => db.select(...args) },
+      {
+        transaction: (fn) => db.transaction(fn as any),
+        select: (...args: any[]) => db.select(...args),
+        makeRepo: (tx) => new IPORepository(tx as any, getRedisClient()),
+      },
       {
         slug,
         stagingRow,
