@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 03:35 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 04:19 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -3022,3 +3022,23 @@ CI refused the tool's direct `ipos` update. It now writes through the repository
 ### Correction 2026-09-16 03:35 IST: item 12's HELD is provisional
 
 The two markers were seven minutes apart and coincide with the 03:08 and 03:09 staging deploys, so they were deploy restarts, not scheduled wakes. Recorded as **HELD-provisional** for the sixteen merges. A second hold is running and must see the scheduled 03:45 and 04:15 cycles before this reads HELD.
+
+
+
+## 2026-09-16 04:19 IST — item 12 HELD on a scheduled cycle; #669 in its window; #666 merged after CI caught two real defects
+
+### Item 12: HELD
+
+```
+cycle 1/2 observed (marker=2026-09-15T22:15:51.203Z): violation count = 0   <- scheduled 03:45 wake
+cycle 2/2 observed (marker=2026-09-15T22:35:21.420Z): violation count = 0   <- deploy-triggered wake after #674
+HELD: violation count stayed 0 across 2 distinct scraper cycle(s).
+```
+
+One scheduled cycle and one deploy restart, both at zero, stated as such. The sixteen old-fold merges held. Four widened-invariant groups still wait on slice G (#672, CI running), then a third hold. Item 12 is not DONE.
+
+### #669 merged at 04:00:28 in the released window; #666 merged at 04:18
+
+#669 wires the invariant test into CI. #666 (the STALLION refresh tool) passed two adversarial reviews and CI still found two real defects: a direct `ipos` write the ratchet refused, and a production pool with no UTC pin and no UTC timestamp parsing, which would have read every timestamp 5h30 off. Both fixed; CI was the detection, and that is recorded rather than smoothed over.
+
+**Item 12 HELD (old-fold population); items 14 (BLOCKED) and 2 not DONE.** No production data has been written.
