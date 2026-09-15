@@ -32,6 +32,28 @@ const NON_IDENTITY_WORDS =
 const PUNCTUATION = /[.,()&'"-]/g;
 
 /**
+ * The scraper's listing-page discovery mints twin rows whose company_name carries
+ * a trailing "(<Company> IPO)" tail, sometimes followed by a 1-2 letter status
+ * token ("CT" / "LT" / "P"). Those rows are the SAME company as the clean row, so
+ * the tail must go before the word strip (item 12 slice F).
+ *
+ * MEASURED, not guessed. Run read-only over every real `ipos.company_name` on
+ * 2026-09-16: on `ipodhan` this strip changes nothing at all (341 named rows,
+ * 341 distinct folds before and after, 0 new collision groups — production has
+ * never carried these tails). On `ipodhan_staging` it creates exactly ONE new
+ * collision group, `gvelectricals`, whose four members are the four real twins;
+ * `hrhygieneproducts` and `shreebalajimalatextiles` were already collisions and
+ * only gain their tailed members. Zero false merges on either slot.
+ *
+ * DELIBERATELY NARROW. The trailing token is stripped ONLY when it follows the
+ * bracketed tail. Stripping a bare trailing 1-2 letter token would merge
+ * "Jay Bee Laminations Ltd. O" into "Jay Bee Laminations Ltd." on the strength of
+ * one letter — and this key decides what a row-deleting repair calls one company.
+ * The bracket text must END in "IPO", so "(India)" and "(Demerged)" are untouched.
+ */
+const BRACKETED_IPO_TAIL = /\s*\([^()]*\bipo\s*\)(?:\s+[A-Za-z]{1,2})?\s*$/i;
+
+/**
  * Fold a company name to its identity key. Null-safe; always returns a string.
  * Two names folding equal are treated as the same company by the duplicate-row
  * repair class — so this erring wide DELETES real rows, and every change here
@@ -39,6 +61,7 @@ const PUNCTUATION = /[.,()&'"-]/g;
  */
 export function foldCompanyIdentity(name: string | null | undefined): string {
   return String(name ?? '')
+    .replace(BRACKETED_IPO_TAIL, '')
     .toLowerCase()
     .replace(PUNCTUATION, ' ')
     .replace(NON_IDENTITY_WORDS, ' ')
@@ -76,5 +99,10 @@ export const IDENTITY_FOLD_FIXTURE: readonly string[] = [
   'Maruti Interior Products Ltd',
   'Twinkle Papers',
   'Jay Bee Laminations Ltd. O',
+  'G.V.Electricals Ltd.',
+  'G.V.Electricals Ltd. (G.V. Electricals IPO) CT',
+  'H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)',
+  'Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO) P',
+  'Acme Ltd (Demerged)',
   'Tata Consultancy Services Private Limited',
 ];
