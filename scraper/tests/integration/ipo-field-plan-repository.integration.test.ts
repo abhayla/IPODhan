@@ -68,6 +68,8 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
   let pool: Pool | null = null;
   let repo: IpoFieldPlanRepository;
   let db: ReturnType<typeof drizzle>;
+  /** A real documents.id, so chosen_document_id FK-references something that exists. */
+  let DOCUMENT_ID: string;
 
   beforeAll(async () => {
     if (!DATABASE_URL) return;
@@ -77,16 +79,28 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     repo = new IpoFieldPlanRepository(db as never, FAKE_REDIS);
 
     await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
+    await db.delete(schema.documents).where(eq(schema.documents.ipoId, IPO_ID));
     await db.delete(schema.ipos).where(inArray(schema.ipos.id, [IPO_ID]));
     await db.execute(sql`
       INSERT INTO ipos (id, company_name, slug, category, status, open_date, close_date)
       VALUES (${IPO_ID}::uuid, 'S3 Field Plan Repo Fixture Ltd.', ${SLUG}, 'MAINBOARD', 'OPEN', '2026-09-14', '2026-09-16')
     `);
+    const [doc] = await db
+      .insert(schema.documents)
+      .values({
+        ipoId: IPO_ID,
+        type: 'RHP',
+        title: 'S3 Fixture RHP',
+        url: 'https://example.test/s3-fixture-rhp.pdf',
+      } as never)
+      .returning({ id: schema.documents.id });
+    DOCUMENT_ID = doc.id;
   }, 60000);
 
   afterAll(async () => {
     if (!pool) return;
     await db.delete(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
+    await db.delete(schema.documents).where(eq(schema.documents.ipoId, IPO_ID));
     await db.delete(schema.ipos).where(inArray(schema.ipos.id, [IPO_ID]));
     await pool.end();
   }, 60000);
@@ -117,6 +131,20 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
   async function readRow(id: string) {
     const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
     return row;
+  }
+
+  /**
+   * Force a row immediately claimable again -- PENDING and due in the past --
+   * regardless of the state/backoff a prior `recordOutcome` left it in. Used
+   * only to set up a SECOND real attempt in the evidence-provenance tests
+   * below -- those tests are about `recordOutcome`'s column-merge behaviour,
+   * not about the walk's own re-queue-to-PENDING step (item 6, a later slice).
+   */
+  async function forceDue(id: string): Promise<void> {
+    await db
+      .update(schema.ipoFieldPlan)
+      .set({ state: 'PENDING', nextDueAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.ipoFieldPlan.id, id));
   }
 
   // ---------------------------------------------------------------- claim ---
@@ -481,5 +509,158 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     const persisted = await readRow(id);
     expect(persisted.state).toBe('EXHAUSTED');
     expect(persisted.nextDueAt).toBeNull();
+  });
+
+  it('records a non-terminal NOT_AVAILABLE_YET state and schedules a backoff retry', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+
+    const before = Date.now();
+    const result = await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'NOT_AVAILABLE_YET',
+    });
+    expect(result.written).toBe(true);
+
+    const persisted = await readRow(id);
+    expect(persisted.state).toBe('NOT_AVAILABLE_YET');
+    expect(persisted.attempts).toBe(1);
+    // non-terminal: the ask is retried, so a next attempt IS scheduled
+    expect(persisted.nextDueAt).not.toBeNull();
+    expect(persisted.nextDueAt!.getTime()).toBeGreaterThan(before);
+  });
+
+  it('records a non-terminal CHECK_FAILED state and schedules a backoff retry', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+
+    const before = Date.now();
+    const result = await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+    });
+    expect(result.written).toBe(true);
+
+    const persisted = await readRow(id);
+    expect(persisted.state).toBe('CHECK_FAILED');
+    expect(persisted.attempts).toBe(1);
+    // non-terminal: the ask is retried, so a next attempt IS scheduled
+    expect(persisted.nextDueAt).not.toBeNull();
+    expect(persisted.nextDueAt!.getTime()).toBeGreaterThan(before);
+  });
+
+  // ------------------------------------------------- evidence provenance ---
+
+  it('THE CLASS: chosen evidence from a second, different-source outcome does NOT splice onto the first source\'s columns', async () => {
+    // Attempt 1: a document-backed source wins.
+    const id = await seedRow();
+    const claim1 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim1!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED', // non-terminal so the row is due again
+      chosen: {
+        source: 'DOC_RHP',
+        rank: 1,
+        documentId: DOCUMENT_ID,
+        documentType: 'RHP',
+        sha256: 'a'.repeat(64),
+        page: 12,
+      },
+    });
+
+    // Attempt 2: a DIFFERENT, non-document-backed source wins. The caller
+    // legitimately omits documentId/documentType/sha256/page because this
+    // source has none of those -- ChosenEvidence makes every field optional.
+    await forceDue(id);
+    const claim2 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    const result = await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim2!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { source: 'CHITTORGARH', rank: 2 },
+    });
+    expect(result.written).toBe(true);
+
+    const persisted = await readRow(id);
+    expect(persisted.chosenSource).toBe('CHITTORGARH');
+    expect(persisted.chosenRank).toBe(2);
+    // THE BUG: these must NOT still carry attempt 1's document evidence --
+    // a row that reads chosen_source='CHITTORGARH' with chosen_document_id
+    // set is a FALSE PROVENANCE RECORD (CHITTORGARH is never document-backed).
+    expect(persisted.chosenDocumentId).toBeNull();
+    expect(persisted.chosenDocumentType).toBeNull();
+    expect(persisted.chosenSha256).toBeNull();
+    expect(persisted.chosenPage).toBeNull();
+  });
+
+  it('a keyed row: chosen evidence from a second outcome does not splice onto the first', async () => {
+    const id = await seedRow({
+      tableName: 'financial_statements',
+      rowKey: 'FY2025',
+      fieldName: 'revenue',
+    });
+    const claim1 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim1!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      chosen: {
+        source: 'DOC_RHP',
+        documentId: DOCUMENT_ID,
+        sha256: 'c'.repeat(64),
+        page: 7,
+      },
+    });
+
+    await forceDue(id);
+    const claim2 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim2!.claimToken!,
+      writeHappened: true,
+      state: 'SUPPLIED',
+      chosen: { source: 'CHITTORGARH' },
+    });
+
+    const persisted = await readRow(id);
+    expect(persisted.chosenSource).toBe('CHITTORGARH');
+    expect(persisted.chosenDocumentId).toBeNull();
+    expect(persisted.chosenSha256).toBeNull();
+    expect(persisted.chosenPage).toBeNull();
+  });
+
+  it('omitting `chosen` entirely leaves all six evidence columns untouched', async () => {
+    const id = await seedRow();
+    const claim1 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim1!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      chosen: { source: 'DOC_RHP', documentId: DOCUMENT_ID, page: 5 },
+    });
+
+    await forceDue(id);
+    const claim2 = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claim2!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED', // no `chosen` at all this time
+    });
+
+    const persisted = await readRow(id);
+    // evidence from attempt 1 is preserved -- no new evidence was offered
+    expect(persisted.chosenSource).toBe('DOC_RHP');
+    expect(persisted.chosenDocumentId).toBe(DOCUMENT_ID);
+    expect(persisted.chosenPage).toBe(5);
   });
 });

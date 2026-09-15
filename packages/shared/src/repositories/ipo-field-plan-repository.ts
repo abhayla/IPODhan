@@ -244,6 +244,19 @@ export class IpoFieldPlanRepository extends BaseRepository {
 
       const state: FieldPlanState = params.state ?? 'PENDING';
       const terminal = TERMINAL_STATES.has(state);
+
+      // Evidence is ONE FACT about ONE winning source, so it is written
+      // all-or-nothing: `chosen` provided at all (even partially) replaces
+      // every one of the six columns from THAT object (fields it omits
+      // become NULL), never merged column-by-column with whatever source's
+      // evidence happened to be sitting there before. Six independent
+      // COALESCE(new, existing) expressions let a partial evidence object
+      // from source B splice onto stale columns still holding source A's
+      // document/sha256/page -- a false provenance record ("B supplied this,
+      // backed by A's document") that every downstream check reads as clean.
+      // `chosen` omitted entirely (params.chosen undefined) leaves all six
+      // columns exactly as they were -- there is no new fact to record.
+      const hasChosen = params.chosen !== undefined;
       const chosen = params.chosen ?? {};
 
       // A real attempt: count it, stamp it, and schedule the next one unless
@@ -263,12 +276,12 @@ export class IpoFieldPlanRepository extends BaseRepository {
                 )::int
               )
             END,
-            chosen_source = COALESCE(${chosen.source ?? null}, chosen_source),
-            chosen_rank = COALESCE(${chosen.rank ?? null}, chosen_rank),
-            chosen_document_id = COALESCE(${chosen.documentId ?? null}::uuid, chosen_document_id),
-            chosen_document_type = COALESCE(${chosen.documentType ?? null}, chosen_document_type),
-            chosen_sha256 = COALESCE(${chosen.sha256 ?? null}, chosen_sha256),
-            chosen_page = COALESCE(${chosen.page ?? null}, chosen_page),
+            chosen_source = CASE WHEN ${hasChosen} THEN ${chosen.source ?? null} ELSE chosen_source END,
+            chosen_rank = CASE WHEN ${hasChosen} THEN ${chosen.rank ?? null} ELSE chosen_rank END,
+            chosen_document_id = CASE WHEN ${hasChosen} THEN ${chosen.documentId ?? null}::uuid ELSE chosen_document_id END,
+            chosen_document_type = CASE WHEN ${hasChosen} THEN ${chosen.documentType ?? null} ELSE chosen_document_type END,
+            chosen_sha256 = CASE WHEN ${hasChosen} THEN ${chosen.sha256 ?? null} ELSE chosen_sha256 END,
+            chosen_page = CASE WHEN ${hasChosen} THEN ${chosen.page ?? null} ELSE chosen_page END,
             claimed_at = NULL,
             claim_token = NULL,
             updated_at = ${now}::timestamptz
