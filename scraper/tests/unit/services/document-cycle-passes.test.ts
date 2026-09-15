@@ -31,6 +31,9 @@ import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/share
 
 const dbExecuteMock = vi.fn();
 const dbInsertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+// Item 5 slice s4: hoisted so tests can assert the field-plan pass called
+// (or did not call) the repository, independent of the vi.mock factory.
+const upsertGeneratedRowsMock = vi.fn().mockResolvedValue({ inserted: 0 });
 
 vi.mock('@ipodhan/shared', () => ({
   db: {
@@ -48,6 +51,9 @@ vi.mock('@ipodhan/shared', () => ({
   IPORepository: vi.fn().mockImplementation(() => ({})),
   IpoPipelineStepsRepository: vi.fn().mockImplementation(() => ({
     findByIpo: vi.fn().mockResolvedValue([]),
+  })),
+  IpoFieldPlanRepository: vi.fn().mockImplementation(() => ({
+    upsertGeneratedRows: (...args: unknown[]) => upsertGeneratedRowsMock(...args),
   })),
 }));
 
@@ -113,9 +119,15 @@ vi.mock('../../../src/services/document-store.js', () => ({
   getMaxRetentionDays: () => 30,
 }));
 
-const FEATURE_FLAGS: { ENABLE_FILING_AUTO_PERSIST: boolean; ENABLE_UPCOMING_DISCOVERY_RESERVATION: boolean } = {
+const FEATURE_FLAGS: {
+  ENABLE_FILING_AUTO_PERSIST: boolean;
+  ENABLE_UPCOMING_DISCOVERY_RESERVATION: boolean;
+  ENABLE_FIELD_PLAN: boolean;
+} = {
   ENABLE_FILING_AUTO_PERSIST: true,
   ENABLE_UPCOMING_DISCOVERY_RESERVATION: false,
+  // Item 5 slice s4: default off, matching the real flag's default in every slot.
+  ENABLE_FIELD_PLAN: false,
 };
 vi.mock('../../../src/config/feature-flags.js', () => ({ FEATURE_FLAGS }));
 
@@ -1014,5 +1026,53 @@ describe('W-135 — enrichListedCandidates counts only incomplete rows toward th
     } finally {
       delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
     }
+  });
+});
+
+// Item 5 slice s4 -- the field-plan generation pass (PASS 3), gated by
+// FEATURE_FLAGS.ENABLE_FIELD_PLAN. MUTATION (b) target: "ignore the flag" --
+// if the pass ever stops checking the flag, the first test here goes red.
+describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_PLAN', () => {
+  beforeEach(() => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1'), candidateRow('ipo-2')] });
+    // A prior describe block (W-135) installs an `ipoId`-parsing
+    // `listForIpo`/`findByIPO` mockImplementation via `vi.mocked(...)` —
+    // `vi.clearAllMocks()` (the file-level beforeEach) clears CALL HISTORY
+    // but never restores the original mockImplementation, so that override
+    // otherwise leaks forward and starves this suite's plain 'ipo-1'/'ipo-2'
+    // candidates down to zero via the unrelated LISTED-enrichment path.
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn().mockResolvedValue([]),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+    vi.mocked(DocumentRepository).mockImplementation(
+      () => ({ findByIPO: vi.fn().mockResolvedValue([]) }) as never
+    );
+  });
+
+  afterEach(() => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = false;
+  });
+
+  it('the flag OFF means zero rows written -- upsertGeneratedRows is never called', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = false;
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(upsertGeneratedRowsMock).not.toHaveBeenCalled();
+  });
+
+  it('the flag ON calls upsertGeneratedRows for each candidate the cycle already selected', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // Two candidates (ipo-1, ipo-2) from the stubbed CANDIDATE_IPOS_SQL rows
+    // above -- no new selection logic, the same `candidates` array pass 1/2
+    // already iterate.
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(2);
   });
 });
