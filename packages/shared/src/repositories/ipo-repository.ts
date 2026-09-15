@@ -44,6 +44,7 @@ import {
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import {
   checkMergeEligibility,
+  buildCarryFieldInputs,
   columnToCamelCase,
   planCarryFields,
   planDescendantTables,
@@ -1115,18 +1116,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       .where(and(eq(fieldSources.ipoId, dropId), eq(fieldSources.tableName, 'ipos')));
     const dropProv = buildProvenanceMap(provRows, dropId);
 
-    const patch = planCarryFields(
-      CARRY_IF_ABSENT_COLUMNS.map((column) => {
-        const jsKey = columnToCamelCase(column) as keyof typeof keep;
-        return {
-          column,
-          keepValue: keep[jsKey],
-          dropValue: drop[jsKey],
-          dropProvenance: dropProv.get(columnToCamelCase(column)),
-        };
-      }),
-      dropId
-    );
+    const patch = planCarryFields(buildCarryFieldInputs(keep, drop, dropProv), dropId);
     if (opts.setIssueSize) {
       patch.push({
         column: 'issue_size',

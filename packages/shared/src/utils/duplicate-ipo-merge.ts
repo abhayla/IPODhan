@@ -190,6 +190,31 @@ export interface CarryFieldPatch {
 }
 
 /**
+ * Builds the `CarryFieldInput[]` for `planCarryFields` from already-fetched
+ * keep/drop `ipos` rows (camelCase-keyed, as `db.select().from(ipos)`
+ * returns them) and the dropped row's provenance map. Extracted from
+ * `IPORepository.mergeDuplicateInto`'s inline `.map(...)` (item 12,
+ * `--reverify-from-backup`) so the apply path and a backup-file re-derive
+ * path build the identical input shape from the identical column list —
+ * one place, not two copies that can drift.
+ */
+export function buildCarryFieldInputs(
+  keep: Record<string, unknown>,
+  drop: Record<string, unknown>,
+  dropProv: Map<string, ProvenanceRow>
+): CarryFieldInput[] {
+  return CARRY_IF_ABSENT_COLUMNS.map((column) => {
+    const jsKey = columnToCamelCase(column);
+    return {
+      column,
+      keepValue: keep[jsKey],
+      dropValue: drop[jsKey],
+      dropProvenance: dropProv.get(jsKey),
+    };
+  });
+}
+
+/**
  * Decides which of `CARRY_IF_ABSENT_COLUMNS` actually get carried onto the
  * survivor: only columns the survivor has NOTHING in, and the dropped row
  * has a value for. Pure — takes already-fetched values/provenance, decides
