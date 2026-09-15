@@ -109,7 +109,22 @@ describe('persist-filing.ts paired run — refusal is wired to process.exit', ()
     errSpy.mockRestore();
   });
 
-  it('exits with the decision exit code and persists NOTHING when the two documents disagree', async () => {
+  // TIMING (measured 2026-09-16 across several runs, and the spread is the point):
+  // this case spawns the real script as a subprocess, so its cost is dominated by
+  // COLD-START COMPILATION, not by the assertions. Warm, it takes 2.1-5.4s; cold
+  // -- first compile, transform ~7s -- it took 17.4s against vitest.config.ts's
+  // global testTimeout of 20_000, i.e. 2.6s of headroom. CI is always cold and
+  // runs every file in PARALLEL, which is the slowest case of all, so this sits
+  // one scheduling accident from going red for reasons unrelated to any change,
+  // in the gate every lane merges through. The sibling win32 case below already
+  // carries its own timeout for the same reason.
+  //
+  // NOT a claim that the test is slow: a mutation narrowing this to 18_000 still
+  // PASSED on a warm cache, which is exactly why a warm local run is not evidence
+  // about CI. Raising the GLOBAL timeout would blunt it for the many fast tests
+  // that should stay strict, so the budget is widened here, where the cold-start
+  // subprocess cost actually is.
+  it('exits with the decision exit code and persists NOTHING when the two documents disagree', { timeout: 45000 }, async () => {
     const { run } = await import('../../../scripts/persist-filing');
     const { decidePairedPersist, checkCrossDocumentAgreement, comparableSeries } = await import(
       '../../../src/services/cross-document-agreement'
