@@ -28,6 +28,17 @@
  * continuing would race it field by field. Every call site here reads the
  * return, counts the refusal, and stops the walk.
  *
+ * THE THIRD FAILURE MODE, and the one the first version of this comment got
+ * WRONG. It claimed `recordOutcome` is called in EVERY branch. That is true of
+ * the branches the walk CHOOSES, and false when the settle call itself throws:
+ * the repository wraps driver errors in a DatabaseError and rethrows, which
+ * propagates past every branch here into document-cycle's per-IPO catch and
+ * leaves `claimed_at` set with no outcome -- invisible for the full staleness
+ * window. Every settle is therefore wrapped: the claim is RELEASED before the
+ * error propagates, so the row is re-claimable immediately rather than
+ * stranded. The accurate statement is: every claim is SETTLED -- recorded,
+ * released, or released-then-rethrown -- never abandoned.
+ *
  * WHAT THIS MODULE DOES NOT DO: it does not fetch (the fetchers are the
  * existing orchestrators), it does not consolidate (item 1's writer does),
  * it does not decide field priority (the manifest did, when items 2/3
@@ -46,14 +57,21 @@ export interface FieldPlanWalkResult {
   ipoId: string;
   fieldsAttempted: number;
   fieldsSupplied: number;
+  /** Retired: every rank gave a DEFINITIVE no. Terminal. */
   fieldsExhausted: number;
+  /** Not retired: at least one rank failed transiently. Re-asked after backoff. */
+  fieldsCheckFailed: number;
   fieldsSkippedProtected: number;
   /** Fields whose write was DROPPED — left PENDING, attempts untouched. */
   fieldsWriteSkipped: number;
   /** Fields re-askable later (NOT_AVAILABLE_YET). */
   fieldsNotAvailableYet: number;
+  /** Of those, how many got a PROVISIONAL value from a lower rank meanwhile. */
+  fieldsProvisional: number;
   /** `recordOutcome` returns that were REFUSED (CLAIM_SUPERSEDED). */
   outcomesRefused: number;
+  /** Settle calls that THREW (the DB was unreachable); the claim was released. */
+  outcomesFailed: number;
   stoppedReason: 'NO_DUE_FIELDS' | 'BUDGET_EXHAUSTED' | 'CLAIM_SUPERSEDED';
 }
 
@@ -68,7 +86,25 @@ export type FieldFetcherAnswer =
     }
   | { outcome: 'NOT_PRINTED' }
   | { outcome: 'NOT_AVAILABLE_YET' }
-  | { outcome: 'CHECK_FAILED'; reason: string };
+  | {
+      outcome: 'CHECK_FAILED';
+      reason: string;
+      /**
+       * Is this failure a fact about THIS MINUTE rather than about the field?
+       *
+       * A fetcher knows which of the two it hit; the walk cannot tell from a
+       * free-text `reason` without guessing, and guessing at the meaning of a
+       * free-text label is how this repo has produced confident wrong answers
+       * before. So the fetcher DECLARES it.
+       *
+       * DEFAULT (omitted) is `true` -- transient -- because the two mistakes
+       * are not symmetric. Treating a definitive failure as transient costs a
+       * re-ask on a doubling backoff. Treating a transient failure as
+       * definitive retires the field forever. An adapter author who has not
+       * thought about it gets the recoverable error.
+       */
+      transient?: boolean;
+    };
 
 export type FieldFetcher = (
   ipoId: string,
@@ -167,10 +203,13 @@ export async function walkFieldPlanForIPO(
     fieldsAttempted: 0,
     fieldsSupplied: 0,
     fieldsExhausted: 0,
+    fieldsCheckFailed: 0,
     fieldsSkippedProtected: 0,
     fieldsWriteSkipped: 0,
     fieldsNotAvailableYet: 0,
+    fieldsProvisional: 0,
     outcomesRefused: 0,
+    outcomesFailed: 0,
     stoppedReason: 'NO_DUE_FIELDS',
   };
 
@@ -244,10 +283,26 @@ export async function walkFieldPlanForIPO(
       }
       if (isProtected) {
         result.fieldsSkippedProtected += 1;
-        const released = await deps.fieldPlanRepository.releaseClaimUnrecorded({
-          planRowId: plan.id,
-          claimToken: plan.claimToken,
-        });
+        // F4: this release IS this branch's settle, so a throw here strands
+        // the claim exactly as a throwing `recordOutcome` would. There is no
+        // second repair to attempt (the repair and the settle are the same
+        // call), so it is counted, logged with its cause, and propagated --
+        // never swallowed into a walk that looks like it skipped cleanly.
+        let released: { released: boolean; reason?: string };
+        try {
+          released = await deps.fieldPlanRepository.releaseClaimUnrecorded({
+            planRowId: plan.id,
+            claimToken: plan.claimToken,
+          });
+        } catch (error) {
+          result.outcomesFailed += 1;
+          result.fieldsSkippedProtected -= 1;
+          logger.error(
+            { ipoId, field: plan.fieldName, error: causeOf(error) },
+            'PASS 3: releasing a protected field THREW — the claim stays set until the staleness window reclaims it'
+          );
+          throw error;
+        }
         if (!released.released) {
           result.outcomesRefused += 1;
           result.stoppedReason = 'CLAIM_SUPERSEDED';
@@ -287,6 +342,33 @@ async function attemptOneField(
     [3, plan.rank3Source],
   ];
   const failures: string[] = [];
+  /**
+   * Did any rank fail for a reason that might not fail again?
+   *
+   * F1 (Tier A review): every all-ranks fallthrough used to record EXHAUSTED,
+   * which is in the repository's TERMINAL_STATES -- `next_due_at` is nulled
+   * and NOTHING reopens the row. So three network timeouts in one pass
+   * permanently retired a field. Nobody decided to retire it; a flaky minute
+   * did.
+   *
+   * The distinction that fixes it is not "how many times has this failed" but
+   * "did every source actually ANSWER". A definitive answer (NOT_PRINTED --
+   * this source never carries this field; a structural CHECK_FAILED -- the
+   * page parsed and the field is not in it) is a fact about the world that
+   * will read the same next pass. A throw, a timeout, or a source with no
+   * adapter registered is a fact about THIS MINUTE.
+   *
+   * Chosen over an attempts-cap deliberately: a cap still retires a field
+   * permanently once N transient failures accumulate, so a genuinely flaky
+   * source is retired on a slower clock rather than not at all, and the row
+   * that gets retired is the one whose source is WORST, not the one whose
+   * answer is settled. Classification makes EXHAUSTED mean what it says --
+   * every source gave a definitive answer. `attempts` still bounds the
+   * transient path via the repository's own doubling backoff (15m -> 6h cap),
+   * so a permanently-broken adapter degrades to one re-ask every six hours
+   * rather than a hot loop.
+   */
+  let sawTransientFailure = false;
 
   for (const [rank, source] of ranks) {
     // No source at this rank for this IPO's type (§2.3.5 capability) — not a
@@ -299,7 +381,12 @@ async function attemptOneField(
       // configuration gap, but it is this RANK's failure, not the field's —
       // ranks 2 and 3 may still answer. Named in the cause so the gap is
       // identifiable from the log line (signal-ownership R6).
+      // TRANSIENT: a missing adapter is a deployment/config state, not the
+      // source answering "this field is not here". Registering the adapter
+      // must be enough to make the field askable again -- retiring it
+      // terminally would mean a config gap silently outlived its own fix.
       failures.push(`rank${rank}:${source}:NO_FETCHER_REGISTERED`);
+      sawTransientFailure = true;
       continue;
     }
 
@@ -307,9 +394,11 @@ async function attemptOneField(
     try {
       answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
     } catch (error) {
-      // A throwing fetcher is this rank's CHECK_FAILED, never an abandoned
-      // claim — falling out of the walk here would strand `claimed_at`.
+      // TRANSIENT: a throw is a socket, a timeout, a 503 -- this minute's
+      // fact, not the field's. Never an abandoned claim either: falling out
+      // of the walk here would strand `claimed_at`.
       failures.push(`rank${rank}:${source}:${causeOf(error)}`);
+      sawTransientFailure = true;
       continue;
     }
 
@@ -319,15 +408,49 @@ async function attemptOneField(
     }
 
     if (answer.outcome === 'CHECK_FAILED') {
-      failures.push(`rank${rank}:${source}:${answer.reason}`);
+      // `transient` defaults to TRUE when the fetcher does not say: see the
+      // field's doc comment for why the two mistakes are not symmetric.
+      const isTransient = answer.transient !== false;
+      failures.push(`rank${rank}:${source}:${answer.reason}${isTransient ? '' : ' (definitive)'}`);
+      if (isTransient) sawTransientFailure = true;
       continue;
     }
 
     if (answer.outcome === 'NOT_AVAILABLE_YET') {
-      // The field exists but is not published yet. It stays due and is
-      // re-asked after the repository's own backoff; no further rank is
-      // tried, because a later-ranked source cannot know it earlier.
+      // The authoritative source has not published this field yet.
+      //
+      // F3 (Tier A review): the first version returned here immediately, on
+      // the reasoning that "a later-ranked source cannot know it earlier".
+      // That was an assumption, never verified, and the card says the
+      // opposite in §2.4's own words: try rank+1 for a PROVISIONAL value. It
+      // is right and the assumption was wrong -- a lower-ranked aggregator
+      // routinely carries an indicative figure before the exchange posts the
+      // authoritative one (GMP and expected listing dates are the obvious
+      // cases). Publishing that value while the ask stays open is strictly
+      // better than publishing nothing.
+      //
+      // The state recorded is NOT_AVAILABLE_YET either way, whether or not a
+      // provisional value was found: it is non-terminal, so the field keeps
+      // being re-asked until the authoritative source answers, and the
+      // provisional value is replaced the moment it does. Recording SUPPLIED
+      // here would close the ask against a value we already know is
+      // second-best.
       result.fieldsNotAvailableYet += 1;
+      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures);
+      if (provisional) {
+        result.fieldsProvisional += 1;
+        logger.info(
+          {
+            ipoId,
+            table: plan.tableName,
+            field: plan.fieldName,
+            authoritativeSource: source,
+            provisionalSource: provisional.source,
+            provisionalRank: provisional.rank,
+          },
+          'PASS 3: authoritative source has not published this field yet — wrote a PROVISIONAL value from a lower rank; the ask stays open'
+        );
+      }
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
@@ -376,13 +499,37 @@ async function attemptOneField(
     });
   }
 
-  // Every rank fell through. §2.6: EXHAUSTED marks the PLAN row only — the
-  // field's existing value in `ipos`/the child table is untouched, because
-  // the walk never called a writer at all on this path.
+  // Every rank fell through. Which of the two fallthroughs this is decides
+  // whether the field is ever asked again, so it is decided explicitly.
+  //
+  // §2.6 holds either way: the field's existing value in `ipos`/the child
+  // table is untouched, because the walk never called a writer on this path.
+  if (sawTransientFailure) {
+    // At least one rank failed for a reason that may not fail again, so this
+    // is NOT a settled answer. CHECK_FAILED is deliberately NOT in the
+    // repository's TERMINAL_STATES: `next_due_at` is set to the doubling
+    // backoff and the field is re-asked. Three timeouts in one pass cost a
+    // delay, not the field.
+    result.fieldsCheckFailed += 1;
+    logger.warn(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
+      'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked after backoff (NOT retired)'
+    );
+    return recordAndClassify(deps, result, {
+      planRowId: plan.id,
+      claimToken: plan.claimToken,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+    });
+  }
+
+  // Every rank ANSWERED, and every answer was "not here". That is a settled
+  // fact about the field, so EXHAUSTED (terminal, `next_due_at` nulled) is
+  // the honest record of it.
   result.fieldsExhausted += 1;
   logger.warn(
     { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
-    'PASS 3: every rank failed for this field — EXHAUSTED (the stored value is kept, never blanked)'
+    'PASS 3: every rank gave a DEFINITIVE no for this field — EXHAUSTED (the stored value is kept, never blanked)'
   );
   return recordAndClassify(deps, result, {
     planRowId: plan.id,
@@ -390,6 +537,53 @@ async function attemptOneField(
     writeHappened: true,
     state: 'EXHAUSTED',
   });
+}
+
+/**
+ * §2.4's provisional fetch: after the authoritative source says NOT_AVAILABLE_YET,
+ * ask the REMAINING lower ranks for an indicative value and write the first one
+ * offered.
+ *
+ * Deliberately best-effort. Everything here is a bonus on top of an ask that
+ * is staying open regardless, so a failure at any step -- a throw, a dropped
+ * write, a source that also has nothing -- costs the provisional value and
+ * NOTHING else. It must never turn a clean NOT_AVAILABLE_YET into an error,
+ * and it never touches the plan row: the caller records the state.
+ */
+async function tryProvisional(
+  ipoId: string,
+  plan: any,
+  authoritativeRank: number,
+  deps: FieldPlanWalkDeps,
+  failures: string[]
+): Promise<{ source: string; rank: number } | null> {
+  const lowerRanks: [number, string | null][] = [
+    [1, plan.rank1Source],
+    [2, plan.rank2Source],
+    [3, plan.rank3Source],
+  ].filter(([r]) => (r as number) > authoritativeRank) as [number, string | null][];
+
+  for (const [rank, source] of lowerRanks) {
+    if (!source) continue;
+    const fetcher = deps.sourceFetchers[source];
+    if (!fetcher) continue;
+    try {
+      const answer = await fetcher(ipoId, plan.tableName, plan.rowKey, plan.fieldName);
+      if (answer.outcome !== 'SUPPLIED') continue;
+      const verdict = await runWrite(ipoId, plan, source, answer, deps);
+      if (verdict.happened === false) {
+        // The provisional write was dropped. The field is re-asked anyway, so
+        // this is noted and abandoned -- never escalated.
+        failures.push(`provisional-rank${rank}:${source}:${verdict.skipReason}`);
+        continue;
+      }
+      return { source, rank };
+    } catch (error) {
+      failures.push(`provisional-rank${rank}:${source}:${causeOf(error)}`);
+      continue;
+    }
+  }
+  return null;
 }
 
 /**
@@ -445,7 +639,31 @@ async function recordAndClassify(
   result: FieldPlanWalkResult,
   params: Record<string, unknown>
 ): Promise<'SETTLED' | 'SUPERSEDED'> {
-  const recorded = await deps.fieldPlanRepository.recordOutcome(params);
+  // F4 (Tier A review): `recordOutcome` wraps any driver error in a
+  // DatabaseError and RETHROWS. Unwrapped, that propagates out of
+  // `walkFieldPlanForIPO` into document-cycle's per-IPO catch -- which logs
+  // and moves on, leaving `claimed_at` and `claim_token` SET with no outcome.
+  // The row is then invisible for the full 30-minute staleness window: not
+  // claimable by the next walk, not settled, not counted anywhere. The claim
+  // that was supposed to make the walk resumable is what strands it.
+  //
+  // So a throwing settle is caught here and the claim is RELEASED before the
+  // error propagates. Release is the right repair rather than a retry: the
+  // attempt's result is lost either way, and a released row is immediately
+  // re-claimable, which is exactly the dropped-write branch's own contract.
+  let recorded: { written: boolean; reason?: string; skipped?: boolean };
+  try {
+    recorded = await deps.fieldPlanRepository.recordOutcome(params);
+  } catch (error) {
+    result.outcomesFailed += 1;
+    unwind(result, params);
+    logger.error(
+      { planRowId: params.planRowId, error: causeOf(error) },
+      'PASS 3: recordOutcome THREW — releasing the claim so the row is re-claimable now rather than stranded for the staleness window'
+    );
+    await releaseQuietly(deps, params, 'recordOutcome threw');
+    throw error;
+  }
   if (!recorded.written) {
     result.outcomesRefused += 1;
     // Undo the optimistic tally: nothing was persisted, so nothing happened.
@@ -459,6 +677,33 @@ async function recordAndClassify(
   return 'SETTLED';
 }
 
+/**
+ * Release a claim on the error path, swallowing a SECOND failure.
+ *
+ * The caller is already propagating the first error; a throw from the repair
+ * would replace the real cause with the repair's cause and still leave the
+ * claim set. Losing the release is survivable -- the staleness window
+ * reclaims the row -- so this is the one place a failure is logged and not
+ * raised.
+ */
+async function releaseQuietly(
+  deps: FieldPlanWalkDeps,
+  params: Record<string, unknown>,
+  why: string
+): Promise<void> {
+  try {
+    await deps.fieldPlanRepository.releaseClaimUnrecorded({
+      planRowId: params.planRowId as string,
+      claimToken: params.claimToken as string,
+    });
+  } catch (releaseError) {
+    logger.error(
+      { planRowId: params.planRowId, why, error: causeOf(releaseError) },
+      'PASS 3: could not release the claim after a failed settle — the row stays claimed until the staleness window reclaims it'
+    );
+  }
+}
+
 /** A refused write means the counter that was just incremented is fiction. */
 function unwind(result: FieldPlanWalkResult, params: Record<string, unknown>): void {
   if (params.writeHappened === false) {
@@ -467,6 +712,8 @@ function unwind(result: FieldPlanWalkResult, params: Record<string, unknown>): v
   }
   if (params.state === 'SUPPLIED') result.fieldsSupplied = Math.max(0, result.fieldsSupplied - 1);
   else if (params.state === 'EXHAUSTED') result.fieldsExhausted = Math.max(0, result.fieldsExhausted - 1);
+  else if (params.state === 'CHECK_FAILED')
+    result.fieldsCheckFailed = Math.max(0, result.fieldsCheckFailed - 1);
   else if (params.state === 'NOT_AVAILABLE_YET')
     result.fieldsNotAvailableYet = Math.max(0, result.fieldsNotAvailableYet - 1);
 }
@@ -476,6 +723,7 @@ function countsOf(r: FieldPlanWalkResult) {
     fieldsAttempted: r.fieldsAttempted,
     fieldsSupplied: r.fieldsSupplied,
     fieldsExhausted: r.fieldsExhausted,
+    fieldsCheckFailed: r.fieldsCheckFailed,
     fieldsWriteSkipped: r.fieldsWriteSkipped,
     fieldsSkippedProtected: r.fieldsSkippedProtected,
   };

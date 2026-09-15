@@ -264,13 +264,18 @@ describe('field-plan walk -- rank fallback', () => {
     expect(repo.recorded[0].chosen.rank).toBe(2);
   });
 
-  it('every rank CHECK_FAILED: records EXHAUSTED once, and never writes a value', async () => {
+  it('every rank DEFINITIVELY CHECK_FAILED: records EXHAUSTED once, and never writes a value', async () => {
     const repo = makeRepo([planRow({ rank3Source: 'CHITTORGARH' })]);
     const orch = makeOrchestrator();
+    const definitive: FieldFetcher = async () => ({
+      outcome: 'CHECK_FAILED',
+      reason: 'the page parsed and the field is not in it',
+      transient: false,
+    });
     const d = deps({
       fieldPlanRepository: repo as any,
       orchestrator: orch as any,
-      sourceFetchers: { NSE: checkFailed, BSE: checkFailed, CHITTORGARH: checkFailed } as any,
+      sourceFetchers: { NSE: definitive, BSE: definitive, CHITTORGARH: definitive } as any,
     });
 
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
@@ -278,8 +283,10 @@ describe('field-plan walk -- rank fallback', () => {
     expect(orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
     expect(orch.consolidatedUpsertChildRows).not.toHaveBeenCalled();
     expect(repo.recorded).toHaveLength(1);
+    // EXHAUSTED is TERMINAL. It is only correct when every source ANSWERED.
     expect(repo.recorded[0].state).toBe('EXHAUSTED');
     expect(result.fieldsExhausted).toBe(1);
+    expect(result.fieldsCheckFailed).toBe(0);
   });
 
   it('a null rank source is skipped, not fetched (the IPO type has no source at that rank)', async () => {
@@ -308,20 +315,73 @@ describe('field-plan walk -- rank fallback', () => {
 });
 
 describe('field-plan walk -- NOT_AVAILABLE_YET', () => {
-  it('records NOT_AVAILABLE_YET (a re-askable state) and stops the rank loop', async () => {
+  it('records NOT_AVAILABLE_YET and TRIES the lower rank for a provisional value (card 2.4)', async () => {
     const repo = makeRepo([planRow()]);
+    const orch = makeOrchestrator();
     const bse = vi.fn(supplied);
     const d = deps({
       fieldPlanRepository: repo as any,
+      orchestrator: orch as any,
       sourceFetchers: { NSE: async () => ({ outcome: 'NOT_AVAILABLE_YET' }), BSE: bse } as any,
     });
 
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
+    // The assertion the first version of this test was MISSING: it created
+    // this spy and never checked it, so the walk's deviation from the card
+    // (returning without trying rank 2) was codified instead of caught.
+    expect(bse).toHaveBeenCalledTimes(1);
+    expect(orch.consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
+    expect(result.fieldsProvisional).toBe(1);
+
+    // The ask STAYS OPEN: the state is the non-terminal NOT_AVAILABLE_YET,
+    // never SUPPLIED -- a provisional value must not close the ask against a
+    // figure we already know is second-best.
     expect(repo.recorded).toHaveLength(1);
     expect(repo.recorded[0].state).toBe('NOT_AVAILABLE_YET');
     expect(repo.recorded[0].writeHappened).toBe(true);
     expect(result.fieldsSupplied).toBe(0);
+  });
+
+  it('a provisional fetch that fails costs the value and nothing else', async () => {
+    const repo = makeRepo([planRow()]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: {
+        NSE: async () => ({ outcome: 'NOT_AVAILABLE_YET' }),
+        BSE: async () => {
+          throw new Error('provisional source down');
+        },
+      } as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsProvisional).toBe(0);
+    expect(repo.recorded[0].state).toBe('NOT_AVAILABLE_YET');
+    expect(result.stoppedReason).toBe('NO_DUE_FIELDS');
+  });
+
+  it('does not try a HIGHER rank as provisional — only ranks below the authoritative one', async () => {
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: 'CHITTORGARH' })]);
+    const nse = vi.fn(supplied);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: {
+        NSE: nse,
+        BSE: async () => ({ outcome: 'NOT_AVAILABLE_YET' }),
+        CHITTORGARH: supplied,
+      } as any,
+    });
+
+    // Rank 1 says NOT_PRINTED so the walk reaches rank 2, which is the
+    // authoritative NOT_AVAILABLE_YET. Rank 1 must not be re-asked.
+    nse.mockImplementation(async () => ({ outcome: 'NOT_PRINTED' }) as any);
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(nse).toHaveBeenCalledTimes(1);
+    expect(result.fieldsProvisional).toBe(1);
   });
 });
 
@@ -389,8 +449,10 @@ describe('field-plan walk -- every branch records an outcome (no stranded claim)
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
     expect(repo.recorded).toHaveLength(1);
-    expect(repo.recorded[0].state).toBe('EXHAUSTED');
-    expect(result.fieldsExhausted).toBe(1);
+    // A THROW is transient, so the field is NOT retired.
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(result.fieldsExhausted).toBe(0);
   });
 
   it('a WRITE that throws still records an outcome rather than abandoning the claim', async () => {
@@ -460,6 +522,146 @@ describe('field-plan walk -- a re-claimable row must not livelock the walk', () 
     expect(result.stoppedReason).toBe('NO_DUE_FIELDS');
     expect(result.fieldsSkippedProtected).toBe(1);
     expect((repo.claimNextDueField as any).mock.calls.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('field-plan walk -- a transient failure must NOT retire a field (F1)', () => {
+  it('survives THREE consecutive passes of all-ranks transient failure and is still due', async () => {
+    // The defect this proves is gone: EXHAUSTED is in TERMINAL_STATES, so the
+    // old code turned three network timeouts in one pass into a permanently
+    // retired field. Nobody decided to retire it; a flaky minute did.
+    const states: string[] = [];
+    for (let pass = 1; pass <= 3; pass++) {
+      const repo = makeRepo([planRow({ rank3Source: 'CHITTORGARH' })]);
+      const d = deps({
+        fieldPlanRepository: repo as any,
+        sourceFetchers: {
+          NSE: async () => {
+            throw new Error('ETIMEDOUT');
+          },
+          BSE: async () => {
+            throw new Error('socket hang up');
+          },
+          CHITTORGARH: async () => {
+            throw new Error('503 from upstream');
+          },
+        } as any,
+      });
+
+      const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+      expect(result.fieldsExhausted).toBe(0);
+      expect(result.fieldsCheckFailed).toBe(1);
+      states.push(repo.recorded[0].state);
+    }
+
+    // CHECK_FAILED is deliberately NOT in the repository's TERMINAL_STATES,
+    // so next_due_at is set to the backoff and the row stays askable. Three
+    // bad passes cost delay, never the field.
+    expect(states).toEqual(['CHECK_FAILED', 'CHECK_FAILED', 'CHECK_FAILED']);
+  });
+
+  it('a missing adapter is transient too — registering it must make the field askable again', async () => {
+    const repo = makeRepo([planRow()]);
+    const d = deps({ fieldPlanRepository: repo as any, sourceFetchers: {} as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(result.fieldsExhausted).toBe(0);
+  });
+
+  it('a CHECK_FAILED answer defaults to TRANSIENT when the fetcher does not say', async () => {
+    // The two mistakes are not symmetric: a definitive failure treated as
+    // transient costs a re-ask; a transient failure treated as definitive
+    // costs the field forever. The default must be the recoverable one.
+    const repo = makeRepo([planRow({ rank2Source: null })]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: async () => ({ outcome: 'CHECK_FAILED', reason: 'unclear' }) } as any,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+  });
+
+  it('ONE transient rank among definitive ones is enough to keep the field alive', async () => {
+    const repo = makeRepo([planRow({ rank3Source: 'CHITTORGARH' })]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: {
+        NSE: async () => ({ outcome: 'CHECK_FAILED', reason: 'not in the page', transient: false }),
+        BSE: async () => ({ outcome: 'NOT_PRINTED' }),
+        CHITTORGARH: async () => {
+          throw new Error('ECONNRESET');
+        },
+      } as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    // Retirement requires EVERY source to have answered. One that did not
+    // answer at all is enough to keep the ask open.
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    expect(result.fieldsExhausted).toBe(0);
+  });
+
+  it('NOT_PRINTED from every rank is DEFINITIVE — that field really is retired', async () => {
+    const repo = makeRepo([planRow({ rank3Source: 'CHITTORGARH' })]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: notPrinted, BSE: notPrinted, CHITTORGARH: notPrinted } as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    // The other arm: if nothing could ever reach EXHAUSTED the fix would have
+    // replaced one wrong answer with another.
+    expect(repo.recorded[0].state).toBe('EXHAUSTED');
+    expect(result.fieldsExhausted).toBe(1);
+  });
+});
+
+describe('field-plan walk -- a THROWING settle must not strand the claim (F4)', () => {
+  it('releases the claim when recordOutcome throws, then propagates', async () => {
+    const repo = makeRepo([planRow()]);
+    repo.recordOutcome = vi.fn(async () => {
+      throw new Error('field_sources unreachable: ECONNREFUSED');
+    }) as any;
+    const d = deps({ fieldPlanRepository: repo as any });
+
+    // The error still reaches document-cycle's per-IPO catch -- it is a real
+    // failure and must not be swallowed -- but the row is released first.
+    await expect(walkFieldPlanForIPO(IPO_ID, d, openBudget())).rejects.toThrow('ECONNREFUSED');
+
+    expect(repo.released).toHaveLength(1);
+    expect(repo.released[0].planRowId).toBe('plan-1');
+    expect(repo.released[0].claimToken).toBe('token-1');
+  });
+
+  it('a release that ALSO throws is swallowed, so the original cause survives', async () => {
+    const repo = makeRepo([planRow()]);
+    repo.recordOutcome = vi.fn(async () => {
+      throw new Error('the original cause');
+    }) as any;
+    repo.releaseClaimUnrecorded = vi.fn(async () => {
+      throw new Error('the repair also failed');
+    }) as any;
+    const d = deps({ fieldPlanRepository: repo as any });
+
+    // The repair's error must never replace the real one.
+    await expect(walkFieldPlanForIPO(IPO_ID, d, openBudget())).rejects.toThrow('the original cause');
+  });
+
+  it('a throwing protected-field release propagates instead of looking like a clean skip', async () => {
+    const repo = makeRepo([planRow()]);
+    repo.releaseClaimUnrecorded = vi.fn(async () => {
+      throw new Error('release failed');
+    }) as any;
+    const d = deps({ fieldPlanRepository: repo as any, protectionFilter: async () => true });
+
+    await expect(walkFieldPlanForIPO(IPO_ID, d, openBudget())).rejects.toThrow('release failed');
   });
 });
 

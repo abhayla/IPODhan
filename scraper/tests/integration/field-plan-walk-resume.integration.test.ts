@@ -353,11 +353,15 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     expect(row.claimToken).toBeNull();
   });
 
-  it('an EXHAUSTED field is re-due after its backoff, and never blanks the stored value (§2.6)', async () => {
+  it('a DEFINITIVE all-ranks failure records EXHAUSTED, terminal, and never blanks the stored value (§2.6)', async () => {
     const id = await seedRow();
 
-    const failing: FieldFetcher = async () => ({ outcome: 'CHECK_FAILED', reason: 'no match' });
-    const result = await walkFieldPlanForIPO(IPO_ID, deps(okOrchestrator(), failing), openBudget());
+    const definitive: FieldFetcher = async () => ({
+      outcome: 'CHECK_FAILED',
+      reason: 'the page parsed and the field is not in it',
+      transient: false,
+    });
+    const result = await walkFieldPlanForIPO(IPO_ID, deps(okOrchestrator(), definitive), openBudget());
 
     expect(result.fieldsExhausted).toBe(1);
     const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
@@ -368,6 +372,27 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     // stored value in `ipos` was never touched (the walk called no writer).
     expect(row.nextDueAt).toBeNull();
     expect(row.chosenSource).toBeNull();
+  });
+
+  it('a TRANSIENT all-ranks failure records CHECK_FAILED and the row is STILL DUE (F1, against the real table)', async () => {
+    const id = await seedRow();
+
+    const flaky: FieldFetcher = async () => {
+      throw new Error('ETIMEDOUT');
+    };
+    const result = await walkFieldPlanForIPO(IPO_ID, deps(okOrchestrator(), flaky), openBudget());
+
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(result.fieldsExhausted).toBe(0);
+
+    const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
+    // The proof a mock cannot give: CHECK_FAILED is NOT in TERMINAL_STATES, so
+    // the repository scheduled a real backoff instead of nulling next_due_at.
+    // A flaky minute costs a delay, never the field.
+    expect(row.state).toBe('CHECK_FAILED');
+    expect(row.nextDueAt).not.toBeNull();
+    expect(row.attempts).toBe(1);
+    expect(row.claimedAt).toBeNull();
   });
 
   it('two concurrent walks never both settle the same field', async () => {

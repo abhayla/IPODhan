@@ -663,4 +663,73 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(persisted.chosenDocumentId).toBe(DOCUMENT_ID);
     expect(persisted.chosenPage).toBe(5);
   });
+
+  // ------------------------------------------- releaseClaimUnrecorded ---
+  //
+  // F2 (Tier A review): this method was added by item 6 AFTER this repository
+  // was reviewed and merged, so the original review never saw it. It is raw
+  // SQL on a production table and its only coverage was a vi.fn() stub, which
+  // exercises none of the SQL. The token check below is the ONLY thing
+  // stopping a superseded walker from releasing a LIVE walker's claim --
+  // deleting it left all 27 unit tests passing.
+
+  it('releaseClaimUnrecorded with a MATCHING token clears both claimed_at and claim_token', async () => {
+    const id = await seedRow();
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+    // Pin the identity: `beforeEach` clears this IPO's rows, but asserting it
+    // makes a surprise (a row from elsewhere) a named failure rather than a
+    // confusing null assertion three lines later.
+    expect(claimed!.id).toBe(id);
+    expect(claimed!.claimToken).toBeTruthy();
+
+    const released = await repo.releaseClaimUnrecorded({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+    });
+
+    expect(released.released).toBe(true);
+    const persisted = await readRow(id);
+    expect(persisted.claimedAt).toBeNull();
+    expect(persisted.claimToken).toBeNull();
+    // The whole point of "unrecorded": NOTHING else moved. No attempt was
+    // charged and no state was written. `next_due_at` keeps whatever the row
+    // already had (seedRow backdates it so the row is due) -- release must not
+    // schedule a backoff, and it must not clear an existing schedule either.
+    expect(persisted.state).toBe('PENDING');
+    expect(persisted.attempts).toBe(0);
+    expect(persisted.lastAttemptAt).toBeNull();
+  });
+
+  it('releaseClaimUnrecorded with a NON-matching token changes nothing and reports the refusal', async () => {
+    const id = await seedRow();
+    const live = await repo.claimNextDueField({ ipoId: IPO_ID });
+    expect(live!.claimToken).toBeTruthy();
+
+    const released = await repo.releaseClaimUnrecorded({
+      planRowId: id,
+      claimToken: '00000000-0000-4000-8000-00000000dead',
+    });
+
+    expect(released.released).toBe(false);
+    expect(released.reason).toBe('CLAIM_SUPERSEDED');
+
+    // The LIVE walker's claim is untouched -- this is the guard's whole job.
+    const persisted = await readRow(id);
+    expect(persisted.claimToken).toBe(live!.claimToken);
+    expect(persisted.claimedAt).not.toBeNull();
+  });
+
+  it('a released row is immediately re-claimable, and by a DIFFERENT token', async () => {
+    const id = await seedRow();
+    const first = await repo.claimNextDueField({ ipoId: IPO_ID });
+    await repo.releaseClaimUnrecorded({ planRowId: id, claimToken: first!.claimToken! });
+
+    const second = await repo.claimNextDueField({ ipoId: IPO_ID });
+
+    expect(second).not.toBeNull();
+    expect(second!.id).toBe(id);
+    expect(second!.claimToken).not.toBe(first!.claimToken);
+    expect((await readRow(id)).attempts).toBe(0);
+  });
+
 });
