@@ -2870,38 +2870,67 @@ fi
 
 echo "deploy-linux.test.sh: all cases passed"
 
-# --- Case 31: W-178 — per-slot scraper cron. Prod keeps */30, staging is ---
-# --- offset to :15/:45 (both slots extracting at :00/:30 starved nginx --
-# --- long enough for Cloudflare to 522), and SCRAPER_CRON_OVERRIDE wins  ---
-# --- over both defaults. Read from the dry-run log's pm2-start line so   ---
-# --- this never spawns a real pm2.                                      ---
+# --- Case 31 (item 7 slice 1, REWRITTEN): the pm2 kill switch is GONE and --
+# --- --no-autorestart SURVIVES. This case previously asserted the OPPOSITE  --
+# --- (that pm2 start carried --cron-restart=<per-slot cron>). That flag was  --
+# --- the only thing bounding a hung scraper, and it bounded it by KILLING it  --
+# --- every 30 minutes - which is exactly what OD-55 ("let the scraper take    --
+# --- whatever time it needs", owner 2026-09-11) forbids. It is removed, and   --
+# --- scripts/scraper-wake.sh's external `timeout` ceiling is the new bound.   --
+# ---                                                                         --
+# --- BOTH halves are asserted, deliberately: dropping the wrong flag is the   --
+# --- realistic mistake here. --no-autorestart going would turn a one-shot     --
+# --- cycle into a hot restart loop; --cron-restart staying would keep the     --
+# --- 30-minute kill that makes the 2-hour ceiling decorative.                 --
 unset SCRAPER_CRON_OVERRIDE 2>/dev/null || true
 
 ROOT31="$(fresh_root)"
 export DEPLOY_ROOT="$ROOT31"
 
 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31-prod.log 2>&1 || fail "case 31: prod dry-run failed"
-if grep -qF -- '--cron-restart=*/30 * * * *' /tmp/deploy-test-31-prod.log; then
-  pass "case 31: prod dry-run pm2 start carries the default */30 * * * * cron"
+
+# Half 1: the kill switch is gone from the scraper's pm2 start line.
+if grep -F -- '--cron-restart' /tmp/deploy-test-31-prod.log >/dev/null 2>&1; then
+  fail "case 31: pm2 start still carries --cron-restart - the 30-minute kill switch is back and the 2-hour ceiling is decorative"
+  grep -F -- '--cron-restart' /tmp/deploy-test-31-prod.log
 else
-  fail "case 31: prod dry-run pm2 start did not carry the default */30 * * * * cron"
+  pass "case 31: pm2 start no longer carries --cron-restart (the kill switch is gone)"
 fi
 
-bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-31-staging.log 2>&1 || fail "case 31: staging dry-run failed"
-if grep -qF -- '--cron-restart=15,45 * * * *' /tmp/deploy-test-31-staging.log; then
-  pass "case 31: staging dry-run pm2 start carries the offset 15,45 * * * * cron (not prod's */30)"
+# Half 2: --no-autorestart survives. Without it the scraper stops being a
+# one-shot and pm2 restarts it the instant each cycle exits - a hot loop.
+if grep -F -- '--no-autorestart' /tmp/deploy-test-31-prod.log >/dev/null 2>&1; then
+  pass "case 31: pm2 start still carries --no-autorestart (still a one-shot, not a restart loop)"
 else
-  fail "case 31: staging dry-run pm2 start did not carry the offset 15,45 * * * * cron"
+  fail "case 31: --no-autorestart was dropped - the scraper would hot-restart on every cycle exit"
 fi
 
-export SCRAPER_CRON_OVERRIDE="7,37 * * * *"
-bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-31-override.log 2>&1 || fail "case 31: override dry-run failed"
-if grep -qF -- '--cron-restart=7,37 * * * *' /tmp/deploy-test-31-override.log; then
-  pass "case 31: SCRAPER_CRON_OVERRIDE wins over the prod default"
+# Half 3: pm2 now starts the WAKE WRAPPER, not the tsx entrypoint directly.
+# This is what makes the lock-skip and the ceiling reachable at all: a pm2
+# entry pointing straight at src/index.ts bypasses both.
+if grep -F -- 'pm2 start scripts/scraper-wake.sh' /tmp/deploy-test-31-prod.log >/dev/null 2>&1; then
+  pass "case 31: pm2 starts scripts/scraper-wake.sh (lock-skip + ceiling are in the path)"
 else
-  fail "case 31: SCRAPER_CRON_OVERRIDE was not honoured on prod dry-run"
+  fail "case 31: pm2 does not start scripts/scraper-wake.sh - the wrapper is not what runs, so neither guard is reachable"
+  grep -F -- 'pm2 start' /tmp/deploy-test-31-prod.log || true
 fi
-unset SCRAPER_CRON_OVERRIDE
+
+# Half 4: STATIC, on the real (non-dry-run) code path. The dry-run log is a
+# separate literal from the real invocation and the two have drifted in this
+# script before (that is why case 8b/11/32e exist). Assert the real pm2 start
+# lines for BOTH scraper start sites - restart_pm2 and resume_scraper - carry
+# no --cron-restart.
+if grep -n 'pm2 start' "$DEPLOY_SCRIPT" | grep -F 'scraper-wake.sh' >/dev/null 2>&1; then
+  pass "case 31: the real (non-dry-run) pm2 start path references scraper-wake.sh"
+else
+  fail "case 31: no real pm2 start line references scraper-wake.sh"
+fi
+if grep -F -- '--cron-restart=' "$DEPLOY_SCRIPT" | grep -F 'pm2 start' >/dev/null 2>&1; then
+  fail "case 31: a real pm2 start line in the deploy script still passes --cron-restart="
+else
+  pass "case 31: no real pm2 start line in the deploy script passes --cron-restart="
+fi
+
 unset DEPLOY_ROOT
 
 # --- Case 31d: W-178 round 2 Opus MINOR-4 — a malformed SCRAPER_CRON_OVERRIDE

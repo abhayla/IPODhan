@@ -703,8 +703,8 @@ resume_scraper() {
   # runs — the TZ=UTC prefix was never the problem; the line never executed.
   # In production SCRAPER_CRON is always set well before this function is
   # ever called, so the fallback here is dead weight on the real deploy path.
-  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all ) \
+  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$target_dir/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
+      --no-autorestart ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
 # Item 01: the EXIT trap now also removes the release directory this
@@ -1734,7 +1734,7 @@ restart_pm2() {
     log "[dry-run] pm2 delete $PM2_WEB_APP"
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=${SCRAPER_CRON:-*/30 * * * *} -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start scripts/scraper-wake.sh --name $PM2_SCRAPER_APP --no-autorestart (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1764,8 +1764,8 @@ restart_pm2() {
   # W-178 round 2: see resume_scraper()'s comment above — default-expand
   # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
   # abort on an unbound variable under `set -u` before pm2 ever runs.
-  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all )
+  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
+      --no-autorestart )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 
