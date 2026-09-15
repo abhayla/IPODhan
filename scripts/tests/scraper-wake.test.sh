@@ -572,10 +572,12 @@ mkdir -p "$C13/emptybin"
 NODE_DIR13="$(dirname "$(command -v node 2>/dev/null || echo /nonexistent/node)")"
 SAFE_PATH13="$(printf '%s' "$PATH" | tr ':' '
 ' | grep -vxF "$NODE_DIR13" | paste -sd: -)"
+# NO SCRAPER_WAKE_CMD here, deliberately: the guard only fires on the REAL
+# launch path, so substituting the job would skip the very thing under test and
+# make the guard untestable - worse than the red CI this ordering change fixes.
 ( PATH="$SAFE_PATH13"; export PATH
   SCRAPER_NODE_BIN="$C13/emptybin/definitely-not-node"; export SCRAPER_NODE_BIN
   SCRAPER_WAKE_FAKE_LOCK_TTL=free; export SCRAPER_WAKE_FAKE_LOCK_TTL
-  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh"; export SCRAPER_WAKE_CMD
   SCRAPER_CEILING_SECONDS=30; export SCRAPER_CEILING_SECONDS
   sh "$WAKE" data
 ) > "$C13/out.log" 2>&1
@@ -595,10 +597,10 @@ else
   printf '%s
 ' "$OUT13"
 fi
-if printf '%s' "$OUT13" | grep -qF 'THE_JOB_RAN'; then
-  fail "case 13: the job RAN despite no usable node - the guard did not guard"
+if printf '%s' "$OUT13" | grep -qF 'wake-complete'; then
+  fail "case 13: the wrapper reported a completed cycle despite no usable node - the guard did not guard"
 else
-  pass "case 13: the job did not run when its interpreter was missing"
+  pass "case 13: no cycle was started when the interpreter was missing"
 fi
 
 # (b) TZ and PYTHON_BIN are what cron does NOT provide and the scraper needs
@@ -689,11 +691,12 @@ fi
 # and only tsx is unresolvable, so the tsx guard is the thing under test.
 NODE_OK13="$(command -v node 2>/dev/null || true)"
 if [ -n "$NODE_OK13" ]; then
+  # Again no SCRAPER_WAKE_CMD - the real launch path is the one that resolves tsx.
   ( SCRAPER_NODE_BIN="$NODE_OK13"; export SCRAPER_NODE_BIN
     SCRAPER_TSX_BIN="$C13/emptybin/definitely-not-tsx.mjs"; export SCRAPER_TSX_BIN
     SCRAPER_DIR="$C13/emptybin"; export SCRAPER_DIR
+    REPO_ROOT="$C13/emptybin"; export REPO_ROOT
     SCRAPER_WAKE_FAKE_LOCK_TTL=free; export SCRAPER_WAKE_FAKE_LOCK_TTL
-    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh"; export SCRAPER_WAKE_CMD
     SCRAPER_CEILING_SECONDS=30; export SCRAPER_CEILING_SECONDS
     sh "$WAKE" data
   ) > "$C13/tsx.log" 2>&1
@@ -706,10 +709,10 @@ if [ -n "$NODE_OK13" ]; then
     printf '%s
 ' "$OUTTSX13"
   fi
-  if printf '%s' "$OUTTSX13" | grep -qF 'THE_JOB_RAN'; then
-    fail "case 13: the job RAN with no usable tsx"
+  if printf '%s' "$OUTTSX13" | grep -qF 'wake-complete'; then
+    fail "case 13: the wrapper reported a completed cycle with no usable tsx"
   else
-    pass "case 13: the job did not run when tsx was unresolvable"
+    pass "case 13: no cycle was started when tsx was unresolvable"
   fi
 else
   fail "case 13: no node on PATH in this harness - cannot isolate the tsx guard"
@@ -849,6 +852,28 @@ else
   fi
 
   rm -rf "$C14"
+fi
+
+# --- Case 16: the CEILING check is unconditional ---------------------------
+# The node/tsx guards are deliberately skipped when SCRAPER_WAKE_CMD substitutes
+# the job (the wrapper will not launch node or tsx, so demanding them checks the
+# wrong thing - that ordering is what turned CI red). The CEILING must NOT get
+# the same treatment: it supervises whatever command runs, substituted or not,
+# and a ceiling that only applies to real launches is a ceiling that never
+# applies in any test, i.e. untested forever.
+if grep -vE '^[[:space:]]*#' "$WAKE" | grep -E 'command -v timeout' | grep -qF 'SCRAPER_WAKE_CMD'; then
+  fail "case 16: the ceiling check is gated on SCRAPER_WAKE_CMD - it must stay unconditional, or the bound applies to nothing a test can observe"
+  grep -nE 'command -v timeout' "$WAKE" || true
+else
+  pass "case 16: the ceiling check is unconditional (it supervises a substituted job too)"
+fi
+# And the skip must apply to the node/tsx guards ONLY - proven by naming them.
+SKIPPED_GUARDS="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE '\[ -z "\$\{SCRAPER_WAKE_CMD:-\}" \] &&' || true)"
+if [ "${SKIPPED_GUARDS:-0}" -eq 2 ]; then
+  pass "case 16: exactly the two launch-only guards (node, tsx) are seam-skipped"
+else
+  fail "case 16: ${SKIPPED_GUARDS:-0} guards are seam-skipped, expected exactly 2 (node and tsx) - a third would be a guard quietly switched off"
+  grep -nE '\[ -z "\$\{SCRAPER_WAKE_CMD:-\}" \] &&' "$WAKE" || true
 fi
 
 # --- Case 15: the shell ceiling and the TypeScript ceiling are the SAME number -

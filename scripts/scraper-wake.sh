@@ -168,6 +168,38 @@ export PATH
 
 # node: prefer an explicit override, then whatever is on PATH. Resolved to an
 # ABSOLUTE path so the value we log is the value that runs.
+# The node/tsx resolution below guards a REAL launch. When SCRAPER_WAKE_CMD is
+# set the wrapper runs that command instead and never invokes node or tsx at
+# all, so demanding them is checking a dependency this run does not have - and
+# it made every behavioural case die at exit 78 on a CI runner that installs no
+# npm dependencies, before reaching the behaviour under test.
+#
+# This is correctness, not a test accommodation: a guard should refuse what it
+# is about to do, never what some other invocation would do. Note it is the SAME
+# environment class the wrapper already handles for cron, one layer out - the
+# bare CI environment rather than the bare cron one.
+#
+# The alternative considered and REJECTED: make CI provide a resolvable tsx.
+# pr-gate's deploy-script-tests job is deliberately dependency-free (checkout
+# only - no setup-node, no npm ci), because it exists to run bash suites on a
+# real Linux host. Adding an npm install to it would make a shell-suite job
+# depend on a build it does not need, and would hide this ordering bug rather
+# than fix it - the wrapper would still be demanding interpreters it is not
+# about to use.
+#
+# The CEILING check further down stays UNCONDITIONAL, because the ceiling
+# supervises whatever command runs, substituted or not (case 16 pins that).
+#
+# COVERAGE, because skipping a guard is only safe if something still proves it:
+# case 13 exercises this resolution with NO seam set - it asserts a REFUSAL, so
+# it never needs a working tsx and can run the real path anywhere. Verified by
+# deleting both guards outright: case 13 goes red. If you ever make case 13 use
+# SCRAPER_WAKE_CMD, this resolution becomes untested - which is worse than the
+# red CI this ordering fixed.
+if [ -n "${SCRAPER_WAKE_CMD:-}" ]; then
+  NODE_BIN="skipped-not-launching-node"
+  TSX_BIN="skipped-not-launching-tsx"
+else
 NODE_BIN="${SCRAPER_NODE_BIN:-}"
 if [ -z "$NODE_BIN" ]; then
   NODE_BIN="$(command -v node 2>/dev/null || true)"
@@ -185,7 +217,11 @@ if [ -z "$TSX_BIN" ]; then
     if [ -f "$_cand" ]; then TSX_BIN="$_cand"; break; fi
   done
 fi
+fi
 
+# PYTHON_BIN is resolved for EVERY run, substituted job or not: the extractor
+# it pins is spawned by the job itself, so a substituted command still wants it
+# and the suite's env-readback cases depend on it.
 # PYTHON_BIN: pins the PDF/OCR extractor to the deploy-managed venv. If the
 # caller did not set it (cron does not), try the venv layout deploy-linux.sh
 # creates, and say so plainly when it cannot be found - an ENOENT spawn is the
@@ -216,11 +252,11 @@ fi
 # cannot run at all, and under cron that would otherwise be a silent no-op
 # repeated every 30 minutes - so refuse LOUDLY and with a non-zero exit that
 # is distinguishable from both a clean finish and the ceiling.
-if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
+if [ -z "${SCRAPER_WAKE_CMD:-}" ] && { [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; }; then
   log "FATAL no-node: cannot find an executable node (PATH=$PATH). Under cron, PATH is minimal and nvm is not sourced - set SCRAPER_NODE_BIN to an absolute path in the cron line. Nothing was run."
   exit 78
 fi
-if [ -z "$TSX_BIN" ] || [ ! -f "$TSX_BIN" ]; then
+if [ -z "${SCRAPER_WAKE_CMD:-}" ] && { [ -z "$TSX_BIN" ] || [ ! -f "$TSX_BIN" ]; }; then
   log "FATAL no-tsx: cannot find tsx/dist/cli.mjs under $SCRAPER_DIR or $REPO_ROOT - set SCRAPER_TSX_BIN in the cron line. Nothing was run."
   exit 78
 fi
