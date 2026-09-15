@@ -107,6 +107,11 @@ function writeConflictBaseline(data) {
 }
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
+// Item 8 slice 3a: the day the ratio reader was actually wired into the
+// extractor. Documents extracted before it could not carry a ratio however
+// healthy the pipeline was, so they are outside this check's population
+// (their backfill is slice 3b).
+const RATIO_WIRING_MERGED_AT = process.env.RATIO_WIRING_MERGED_AT || '2026-09-16';
 
 // installUtcTimestampParsing() MUST run before the pool is created / any
 // query runs — it registers the process-wide OID-1114 parser (see pg-utc.mjs
@@ -869,6 +874,51 @@ async function checkM() {
   record('listed_rotation_stall',
     `no LISTED IPO inside the ${LISTED_ROTATION_WINDOW_DAYS}-day live window is stuck at the front of the rotation: documents on file with 0 fetch-state rows, or due rows with MAX(last_attempt_at) older than ${STALE_ROTATION_HOURS}h`,
     rotationStalled.length === 0 ? 'PASS' : 'FAIL', rotationStalled.slice(0, MAX_OFFENDERS).join('; '));
+
+  // Item 8 slice 3a (#610): does a completed prospectus-family extraction
+  // actually YIELD the issuer's ratios, or does it come back empty in silence?
+  //
+  // `financial_ratios.py` shipped in #638 with zero importers - correct,
+  // tested, and never called - so every extraction produced null ratios and
+  // nothing anywhere said so. That is the class this check watches: not "the
+  // ratio is wrong" but "the reader stopped running and no one noticed".
+  //
+  // PASS needs one of two things per document, never a bare count: a
+  // current_ratio on the row, or a recorded reason for its absence in the E9
+  // evidence (the extractor emits `ratio_note_not_in_document` /
+  // `ratio_row_not_in_note` / `balance_sheet_inputs_absent:...`). An absence
+  // with neither is the failure.
+  //
+  // Scoped to documents extracted AFTER the fix, because the backfill of
+  // already-completed documents is slice 3b: judging pre-fix rows against a
+  // post-fix behaviour would report a permanent FAIL that no night can clear.
+  const ratioRows = await q(`
+    SELECT i.company_name, d.id::text AS document_id, d.type::text AS doc_type,
+           fd.current_ratio IS NOT NULL AS has_ratio,
+           coalesce(s.evidence::text, '') AS step_evidence
+      FROM documents d
+      JOIN ipos i ON i.id = d.ipo_id
+      LEFT JOIN financial_data fd ON fd.ipo_id = d.ipo_id
+      LEFT JOIN ipo_pipeline_steps s ON s.ipo_id = d.ipo_id AND s.step_id = 'E9'
+     WHERE i.${REAL_IPO}
+       AND d.type::text IN ('RHP', 'DRHP', 'PROSPECTUS')
+       AND d.extraction_status = 'COMPLETED'
+       AND d.extracted_at IS NOT NULL
+       AND d.extracted_at >= timestamp '${RATIO_WIRING_MERGED_AT}'
+  `);
+  const ratioSilent = ratioRows
+    .filter((r) => !r.has_ratio && !/ratio_note_not_in_document|ratio_row_not_in_note|balance_sheet_inputs_absent/.test(r.step_evidence))
+    .map((r) => `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)}): no current_ratio and no recorded reason`);
+  for (const v of ratioSilent)
+    notify('issuer_ratio_yield', 'P2', v, 'A completed filing extraction yielded no issuer ratio and named no cause', v);
+  record('issuer_ratio_yield',
+    `every COMPLETED RHP/DRHP/PROSPECTUS extracted since ${RATIO_WIRING_MERGED_AT} carries a current_ratio or a recorded reason for its absence (${ratioRows.length} document(s) in the population)`,
+    ratioRows.length === 0
+      ? 'UNVERIFIABLE'
+      : (ratioSilent.length === 0 ? 'PASS' : 'FAIL'),
+    ratioRows.length === 0
+      ? `no prospectus-family document has completed extraction since ${RATIO_WIRING_MERGED_AT}`
+      : ratioSilent.slice(0, MAX_OFFENDERS).join('; '));
 
   // BRLM count vs the BSE payload (F17). We cannot re-fetch BSE from the audit
   // (read-only, and it would double the traffic), so the comparison is against
