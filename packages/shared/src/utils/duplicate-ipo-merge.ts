@@ -9,7 +9,9 @@
  * from data already fetched, what the merge plan should be.
  */
 
-import { foldCompanyIdentity } from './company-identity-fold.js';
+import { foldCompanyIdentity, OPEN_DATE_TOLERANCE_DAYS, isoDay, daysBetween } from './company-identity-fold.js';
+
+export { OPEN_DATE_TOLERANCE_DAYS };
 
 /** One row of `information_schema` foreign-key metadata: child references parent via col. */
 export interface FkEdge {
@@ -336,11 +338,30 @@ export type EligibilityResult = { eligible: true } | { eligible: false; reason: 
  * this is what stops a merge tool from combining two different offers.
  */
 export function checkMergeEligibility(input: EligibilityInput): EligibilityResult {
-  if (String(input.keepOpenDate) !== String(input.dropOpenDate)) {
+  const keepDay = isoDay(input.keepOpenDate);
+  const dropDay = isoDay(input.dropOpenDate);
+  // Both unreadable (null/absent) keeps the original behaviour: not a refusal on date grounds —
+  // there is nothing to compare, so the other checks decide. Exactly one unreadable IS a refusal:
+  // a merge tool must not guess which side's date to trust.
+  if (keepDay === null && dropDay === null) {
+    // fall through — same as "no open_date on either side", pre-existing behaviour
+  } else if (keepDay === null || dropDay === null) {
     return {
       eligible: false,
-      reason: `the two rows open on different dates (${input.keepOpenDate} vs ${input.dropOpenDate}), so they are two offers`,
+      reason:
+        `cannot compare open dates — ${keepDay === null ? 'keep' : 'drop'} row's open_date is unreadable ` +
+        `(keep=${String(input.keepOpenDate)}, drop=${String(input.dropOpenDate)})`,
     };
+  } else {
+    const spread = daysBetween(keepDay, dropDay);
+    if (spread > OPEN_DATE_TOLERANCE_DAYS) {
+      return {
+        eligible: false,
+        reason:
+          `the two rows open ${spread} day(s) apart (${keepDay} vs ${dropDay}), more than the ` +
+          `${OPEN_DATE_TOLERANCE_DAYS}-day tolerance, so they are two offers`,
+      };
+    }
   }
   if (!input.forceDifferentName && foldCompanyName(input.keepCompanyName) !== foldCompanyName(input.dropCompanyName)) {
     return {

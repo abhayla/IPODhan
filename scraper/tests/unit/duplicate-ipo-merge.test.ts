@@ -175,10 +175,27 @@ describe('checkMergeEligibility', () => {
     expect(checkMergeEligibility(base)).toEqual({ eligible: true });
   });
 
-  it('refuses when open dates differ (two different offers)', () => {
-    const result = checkMergeEligibility({ ...base, dropOpenDate: '2026-09-10' });
+  it('is eligible when open dates are exactly 3 days apart (the invariant tolerance)', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-07-26', dropOpenDate: '2026-07-29' });
+    expect(result).toEqual({ eligible: true });
+  });
+
+  it('refuses when open dates are 4 days apart, naming the spread and the tolerance', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-07-26', dropOpenDate: '2026-07-30' });
     expect(result.eligible).toBe(false);
-    expect((result as { reason: string }).reason).toMatch(/open on different dates/);
+    expect((result as { reason: string }).reason).toMatch(/4 day\(s\) apart/);
+    expect((result as { reason: string }).reason).toMatch(/3-day tolerance/);
+  });
+
+  it('refuses when only one side has a readable open_date', () => {
+    const result = checkMergeEligibility({ ...base, dropOpenDate: null });
+    expect(result.eligible).toBe(false);
+    expect((result as { reason: string }).reason).toMatch(/cannot compare open dates/);
+  });
+
+  it('is eligible (falls through to other checks) when NEITHER side has an open_date', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: null, dropOpenDate: null });
+    expect(result).toEqual({ eligible: true });
   });
 
   it('refuses when names do not fold to the same string, unless forced', () => {
