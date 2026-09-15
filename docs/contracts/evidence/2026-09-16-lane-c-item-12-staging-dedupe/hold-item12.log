@@ -1,0 +1,11 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2\scripts\lib -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c12-dedupe2 -> D:\Abhay\Ventures\IPODhan-c12-dedupe2\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c12-dedupe2 | cwd D:\Abhay\Ventures\IPODhan-c12-dedupe2
+assert-repair-held: recording violation count now (invariant: scripts/lib/repair-invariants/duplicate-ipo-rows.mjs)
+  current violation count: 0
+assert-repair-held: polling for 2 distinct scraper cycle(s), timeout 90min, poll every 60s...
+  cycle 1/2 observed (marker=2026-09-15T21:36:46.178Z): violation count = 0
+  cycle 2/2 observed (marker=2026-09-15T21:43:29.410Z): violation count = 0
+assert-repair-held: per-cycle results:
+  cycle 1: count=0 at 2026-09-15T21:37:02.743Z
+  cycle 2: count=0 at 2026-09-15T21:44:05.490Z
+HELD: violation count stayed 0 across 2 distinct scraper cycle(s).

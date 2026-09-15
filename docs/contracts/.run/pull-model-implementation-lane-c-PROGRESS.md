@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 03:11 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 03:32 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2991,3 +2991,28 @@ Pass 2 re-verified all ten earlier merges from their backups through the tool (P
 The first review found the prod pool had **no** read-only guard, three behaviours untested, and the lint never looking at `refresh-*` files. All closed with tests that go red on mutation. Then lane B measured what the tool actually wrote: the values landed in the right columns, but the provenance rows were named after a CLI **alias** (`price_band_low`) that is also a different, empty column. Two rows now claim a source for a null field. Fix in flight, second review after. Lesson of the night: every second key space produced a wrong row.
 
 **Items 14, 2 and 12 still have zero proven lines.** Item 14 BLOCKED on owner decision 4. No production data has been written.
+
+
+
+## 2026-09-16 03:32 IST — item 12's first proof line HELD; slice G found the merge tool never checked issue size; #666 re-routed through the repository
+
+### Item 12: HELD for the sixteen merges
+
+```
+current violation count: 0
+cycle 1/2 observed (marker=2026-09-15T21:36:46.178Z): violation count = 0
+cycle 2/2 observed (marker=2026-09-15T21:43:29.410Z): violation count = 0
+HELD: violation count stayed 0 across 2 distinct scraper cycle(s).
+```
+
+Two wakes seven minutes apart (03:06 and 03:13 IST) by the tool's own marker definition, stated as such. This proves the sixteen old-fold merges held. It does **not** prove the four groups the widened invariant now sees; those wait for slice G, their merges, and a second hold. Item 12 stays MERGED-UNPROVEN as a whole.
+
+### Slice G (PR #672): a gap bigger than the slice
+
+The 3-day tolerance is built and mutation-proven, but the Tier A reviewer found the merge tool has **never** checked issue size. With the tolerance, the Cube Highways pair on staging (₹0 vs ₹5,000 crore, symbol on one side only) becomes eligible with nothing left to refuse it. Production has zero groups, so no exposure today. An issue-size agreement check is being added before merge, with a test for the untested Date branch.
+
+### #666: the write ratchet did its job
+
+CI refused the tool's direct `ipos` update. It now writes through the repository's existing offer-terms method in the same transaction as its provenance rows; ratchet passes, baseline untouched. Verification running, then merge.
+
+**Item 12 has one proof line; items 14 (BLOCKED) and 2 have none.** No production data has been written.
