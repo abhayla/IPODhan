@@ -1,7 +1,8 @@
 /**
  * Report-82 discovery fallback (P3-7, round-4 review, T-293), shared by the
  * per-field Chittorgarh-detail-page backfill scripts (`backfill-lot-size-
- * chittorgarh-detail.ts`, `backfill-registrar-chittorgarh-detail.ts`).
+ * chittorgarh-detail.ts`, `backfill-registrar-chittorgarh-detail.ts`,
+ * `backfill-issue-size-chittorgarh-detail.ts`).
  *
  * Root cause: those scripts discover a genuine IPO's detail-page slug+id
  * ONLY from report 118 (full historical) — but report 118 carries an IPO
@@ -13,6 +14,20 @@
  * all — covers the current fiscal year INCLUDING upcoming issues, so it
  * closes the discovery gap without touching either field's (already-correct)
  * extractor.
+ *
+ * Fix (#686, 2026-09-16): the reader looped `page <= 20` at an assumed
+ * page size of 10, i.e. a 200-row ceiling — but the live endpoint returns 5
+ * rows/page regardless of the `/10/` path segment, so the REAL ceiling was
+ * 100 rows/offers, and it silently stopped there instead of reaching the end
+ * of the fiscal year. Measured against the live endpoint on 2026-09-16:
+ * FY2025-26 SME alone runs to page 54 (267 rows), FY2025-26 mainboard to
+ * page 21 (103 rows), FY2024-25 SME past page 45 — all three already over
+ * the old cap. The reader now paginates until the first empty page (hard
+ * ceiling 200 pages, to fail loud instead of looping forever if the upstream
+ * shape changes), and dedupes rows by `~URLRewrite_Folder_Name` (the slug —
+ * the only stable per-company key report 82 exposes; there is no separate
+ * numeric id field on the row itself, only the one embedded in the `Company`
+ * anchor href, which is a per-company constant, not a page artifact).
  */
 
 export interface DiscoveryEntry {
@@ -20,14 +35,24 @@ export interface DiscoveryEntry {
   id: string;
 }
 
-/** Fetch report 82 (mainboard or SME) for the current Indian fiscal year, paginated. */
-export async function fetchReport82CurrentYear(category: 'mainboard' | 'sme'): Promise<unknown[]> {
-  const now = new Date();
-  const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-  const range = `${year}-${String((year + 1) % 100).padStart(2, '0')}`;
+const MAX_REPORT82_PAGES = 200;
+
+/** Fetch report 82 (mainboard or SME) for a given Indian fiscal year, paginated to the end. */
+export async function fetchReport82CurrentYear(
+  category: 'mainboard' | 'sme',
+  year?: number
+): Promise<unknown[]> {
+  const resolvedYear = year ?? (() => {
+    const now = new Date();
+    return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  })();
+  const range = `${resolvedYear}-${String((resolvedYear + 1) % 100).padStart(2, '0')}`;
   const rows: unknown[] = [];
-  for (let page = 1; page <= 20; page++) {
-    const u = `https://webnodejs.chittorgarh.com/cloud/report/data-read/82/${page}/10/${year}/${range}/0/${category}/0?search=&v=15-11`;
+  const seenSlugs = new Set<string>();
+  let dupes = 0;
+  let page = 1;
+  for (; page <= MAX_REPORT82_PAGES; page++) {
+    const u = `https://webnodejs.chittorgarh.com/cloud/report/data-read/82/${page}/10/${resolvedYear}/${range}/0/${category}/0?search=&v=15-11`;
     const r = await fetch(u, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -42,9 +67,24 @@ export async function fetchReport82CurrentYear(category: 'mainboard' | 'sme'): P
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pageRows: any[] = d?.reportTableData ?? [];
     if (!pageRows.length) break;
-    rows.push(...pageRows);
+    for (const row of pageRows) {
+      const slug = row?.['~URLRewrite_Folder_Name'] ? String(row['~URLRewrite_Folder_Name']) : '';
+      if (slug && seenSlugs.has(slug)) {
+        dupes++;
+        continue;
+      }
+      if (slug) seenSlugs.add(slug);
+      rows.push(row);
+    }
     await new Promise((res) => setTimeout(res, 300));
   }
+  if (page > MAX_REPORT82_PAGES) {
+    throw new Error(
+      `report 82 ${range} ${category}: hit the ${MAX_REPORT82_PAGES}-page hard ceiling without an empty page — refusing to loop forever`
+    );
+  }
+  // eslint-disable-next-line no-console
+  console.log(`report82 ${range} ${category}: ${page - 1} pages, ${rows.length} rows (${dupes} duplicate rows collapsed)`);
   return rows;
 }
 
