@@ -1,0 +1,353 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c14-refresh\scripts\lib -> D:\Abhay\Ventures\IPODhan-c14-refresh\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c14-refresh | cwd D:\Abhay\Ventures\IPODhan-c14-refresh\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c14-refresh\scraper -> D:\Abhay\Ventures\IPODhan-c14-refresh\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c14-refresh | cwd D:\Abhay\Ventures\IPODhan-c14-refresh\scraper
+================================================================================
+SEGMENT PROVENANCE REPAIR (lane C item 2 slice 3b) — DRY-RUN
+================================================================================
+current_database(): ipodhan
+ipos rows with segment IS NOT NULL: 335
+of those, already carrying a field_sources row for segment: 287
+(field_sources segment rows overall: 292; 5 of them point at rows whose segment is NULL)
+NSE masters: 2585 mainboard, 572 SME
+BSE scrip master: 5155 active equity scrips
+  - RAVINDRA ENERGY LTD [RIGHTS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=rights is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - LEAP India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Teja Engineering Industries Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - MV Electrosystems Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Optimystix Entertainment India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Rays of Belief Limited- For Profit Social Enterprise [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Gulf Lloyds (India) Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Oneindig Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kwick Forensic Solutions Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - National Stock Exchange of India Limited [IPO, UPCOMING] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Priority Jewels Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - INDEL MONEY LIMITED [NCD, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Lumino Industries Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Knack Packaging Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - JAI MATA GLASS LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Poojaa Precision Engg.Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Susan Electricals India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Millworks Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kheria Autocomp Limited [IPO, UPCOMING] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - LCC Projects Limited [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Aequs Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - SHARP INDIA LTD [TENDER, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=tender is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - MINOLTA FINANCE LTD [RIGHTS, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Technocraft Ventures Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Seemax Resources Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - NET PIX SHORTS DIGITAL MEDIA LTD [IPO, LISTED] REPORTED (no write)  segment stays SME (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: unresolved-group — BSE group TS is not in the evidenced mapping - not guessed]
+  - SpectraA Technology Solutions Limited [IPO, UPCOMING] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - KSH International Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Park Medi World Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - SHANTI GOLD INTERNATIONAL LTD [RIGHTS, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - COLINZ LABORATORIES LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - GENESYS INTERNATIONAL CORPORATION LTD [RIGHTS, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - ENS Enterprises Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - KKALPANA PLASTICK LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - RAVELCARE LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Q&T Foods Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Purple wave Infocom Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - ICL FINCORP LIMITED [NCD, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Crazy Snacks Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Prasol Chemicals Ltd. [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Unisem Agritech Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - SI CAPITAL  FINANCIAL SERVICES LTD [RIGHTS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=rights is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Nanta Tech Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Turtlemint Fintech Solutions Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shri Kanha Stainless Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - NEELKANTH ROCKMINERALS LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kanohar Electricals Limited [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Wakefit Innovations Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Dachepalli Publishers Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - DEVINSU TRADING LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - AVADH RAIL INFRA LIMITED [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kratikal Tech Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - KOSAMATTAM FINANCE LIMITED [NCD, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - KLM AXIVA FINVEST LIMITED [NCD, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - RELIABLE VENTURES INDIA LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - BANK OF MAHARASHTRA [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Leapfrog Engineering Services Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Aastha Spintex Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - EPW India Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - WINDLAS BIOTECH LTD [IPO, LISTED] WOULD-WRITE segment=MAINBOARD -> MAINBOARD (apply-sourced): sourced value confirms segment=MAINBOARD (NSE/EQUITY_L/isin)
+  - SMR Jewels Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shyam Dhani Industries Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - CSM Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - UHM Vacation Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Veegaland Developers Ltd. [IPO, OPEN] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - G.V.Electricals Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Neochem Bio Solutions Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Avience Biomedicals Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - H.R.Hygiene Products Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Lohia Corp Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shree Balaji (Mala) Textiles Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Waterways Leisure Tourism Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Advit Jewels Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Q-Line Biotech Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Vinit Mobile Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Flywings Simulator Training Centre Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Liotech Industries Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - PRACHAY CAPITAL LIMITED [NCD, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ncd is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - INDIAN RAILWAY FINANCE CORPORATION LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Ashwini Container Movers Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Dhara Rail Projects Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shreedhar Spinners Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - NIRBHAY COLOURS INDIA LTD [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - MUTHOOT FINCOTP LIMITED [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - EXATO TECHNOLOGIES LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - CLC INDUSTRIES LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - SURYO FOODS  INDUSTRIES LTD [RIGHTS, LISTED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=rights is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - CORONA Remedies Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - K V Toys India Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - DS KULKARNI DEVELOPERS LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Farm Peace Ltd [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - WESTERN OVERSEAS STUDY ABROAD LIMITED [IPO, CLOSED] WOULD-WRITE segment=SME -> SME (apply-sourced): sourced value confirms segment=SME (BSE/name/group=M)
+  - SHIPWAVES ONLINE LIMITED [IPO, CLOSED] WOULD-WRITE segment=SME -> SME (apply-sourced): sourced value confirms segment=SME (BSE/name/group=M)
+  - ICICI Prudential Asset Management Company Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Indo-MIM Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Nephrocare Health Services Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Technocrats Plasma Systems Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - MODERN DIAGNOSTIC AND RESEARCH CENTRE LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Gujarat Kidney and Super Speciality Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Apana Logistics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - BAI-KAKAJI POLYMERS LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - LAPL Automotive Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - GLOBAL OCEAN LOGISTICS INDA LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Molbio Diagnostics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - SANMITRA COMMERCIAL LTD [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - INDIAN OVERSEAS BANK [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Dhoot Transmission Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Aegeus Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - STANBIK AGRO LIMITED [IPO, CLOSED] WOULD-WRITE segment=SME -> SME (apply-sourced): sourced value confirms segment=SME (BSE/name/group=M)
+  - EAST INDIA DRUMS AND BARRELS MANUFACTURING LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - TIMEX GROUP INDIA LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Shankesh Jewellers Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sundrex Oil Company Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - ANDHRA CEMENTS LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - TRAVELS  RENTALS LTD [RIGHTS, LISTED] WOULD-WRITE segment=SME -> NULL (clear-non-ipo): offering_type=rights is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Anubhav Plast Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Glass Wall Systems (India) Limited [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Om Power Transmission Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Power Finance Corporation Limited (Zero Coupon NCD) [NCD, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ncd is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - MORGANITE CRUCIBLE INDIA LTD [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - HINDUSTAN ZINC LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Milky Mist Dairy Food Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - NHPC LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Xtranet Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - AANCHAL ISPAT LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - RAKSAN TRANSFORMERS LIMITED [IPO, OPEN] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - SWAN DEFENCE AND HEAVY INDUSTRIES LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - M R Maniveni Foods Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Purple Style Labs Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - BHARAT HEAVY ELECTRICALS LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - OM GALAXY LIMITED [IPO, OPEN] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Marc Technocrats Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shiprocket Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - CENTURY BUSINESS MEDIA LIMITED [IPO, OPEN] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Exim Routes Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - KWALITY WALLS (INDIA) LTD [IPO, CLOSED] WOULD-WRITE segment=MAINBOARD -> MAINBOARD (apply-sourced): sourced value confirms segment=MAINBOARD (NSE/EQUITY_L/isin)
+  - Utkal Speciality Industries India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Merritronix Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - STRING METAVERSE LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - HMA AGRO INDUSTRIES LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - IIFL Finance Limited [NCD, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ncd is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - BANGANGA PAPER INDUSTRIES LTD [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - AAA TECHNOLOGIES LTD [IPO, LISTED] WOULD-WRITE segment=MAINBOARD -> MAINBOARD (apply-sourced): sourced value confirms segment=MAINBOARD (NSE/EQUITY_L/isin)
+  - Prodocs Solutions Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - PIYUSH LIMITED [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Diksha Polymers Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Manipal Payment and Identity Solutions Limited [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Horizon Reclaim (India) Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - INDUSS FOOD PRODUCTS & EQUIPMENTS LIMITED [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - CMS INFO SYSTEMS LTD [IPO, LISTED] WOULD-WRITE segment=MAINBOARD -> MAINBOARD (apply-sourced): sourced value confirms segment=MAINBOARD (NSE/EQUITY_L/isin)
+  - STALLION INDIA FLUOROCHEMICALS LTD [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Maharaja & Speedex India Limited [IPO, OPEN] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - RESTAURANT BRANDS ASIA LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - ORTIN GLOBAL LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Adon Agro Commodities Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - MIDLAND POLYMERS LTD [TENDER, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=tender is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Jivial Industries Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Rentomojo Limited [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - GRAND FOUNDRY LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - CENTRAL BANK OF INDIA [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - BABA ARTS LTD [TENDER, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=tender is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - COAL INDIA LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - OXFORD INDUSTRIES LTD [TENDER, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=tender is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Amtech Esters Ltd. [IPO, CLOSED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - SARDA PROTEINS LTD [TENDER, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=tender is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - Powerica Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Vahh Chemicals Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Autofurnish Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - IYKOT HITECH TOOLROOM LTD [TENDER, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - SHAH METACORP LTD [RIGHTS, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - WIPRO LTD [BUYBACK, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=buyback is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - NLC INDIA LTD [OFS, CLOSED] WOULD-WRITE segment=MAINBOARD -> NULL (clear-non-ipo): offering_type=ofs is not an IPO-board concept (schema.ts: segment nullable for RIGHTS/InvITs/REITs) — cleared to NULL, provenance recorded
+  - ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Qualiance International Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - APOLLO TECHNO INDUSTRIES LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Vidya Wires Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - LOGICIEL SOLUTIONS LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sri Priyanka Geo Commex [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - MARUTI INTERIOR PRODUCTS LTD [IPO, LISTED] WOULD-WRITE segment=SME -> SME (apply-sourced): sourced value confirms segment=SME (BSE/name/group=M)
+  - Riddhi Display Equipments Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Manika Plastech Limited [IPO, OPEN] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Rays of Belief Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sunshine Pictures Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Madhur Knit Crafts Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sumax Engineering Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - ABH Healthcare Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shakti Polytarp Limited [IPO, OPEN] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Mopshop Distribution Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - LUXURY TIME LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Paluck Technologies Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Skyways Air Services Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Gaja Alternative Asset Management Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Lalithaa Jewellery Mart Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Skytech Infinite Platform Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - COMPLETE SPORTS AND MANAGEMENT INDIA LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Horizon Industrial Parks Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Annu Projects Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - INJECTO POLYMERS LIMITED [IPO, OPEN] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Pramodini Medicare Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Pajson Agro India Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Fascinate Textiles Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sham Foam Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Pranav Constructions Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Ardee Industries Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Anawil Wire & Engineering Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Manipal Health Enterprises Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Advance Technoforge Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Propshop Events & Exhibitions Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Silverstorm Parks & Resorts Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Vama Wovenfab Limited [IPO, OPEN] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Hero Motors Limited [IPO, UPCOMING] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Caliber Mining & Logistics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - MEESHO LIMITED [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Laser Power & Infra Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Dhaval Packaging Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sotefin Bharat Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Metalic Technoforge Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Harikanta Overseas Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sonaselection India Limited [IPO, UPCOMING] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Jindal Supreme (India) Limited [IPO, UPCOMING] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - IC Electricals Co.Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - METHODHUB SOFTWARE LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Simca Advertising Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - SBI Funds Management Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Happy Steels Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Devson Catalyst Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kusumgar Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - SS Retail Limited [IPO, UPCOMING] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Mehul Telecom Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - ADMACH SYSTEMS LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - HRS Aluglaze Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - PNGS Reva Diamond Jewellery Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Vinod Texworld Limited [IPO, CLOSED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Steamhouse India Limited [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Behari Lal Engineering Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Juniper Green Energy Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - E TO E Transportation Infrastructure Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Alpine Texworld Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Fly-Hi Maritime Travels Ltd [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Encompass Design India Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - ESDS Software Solution Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Atharva Polyplast Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Speciality Medicines Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Symbiotec Pharmalab Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Karamtara Engineering Limited [IPO, CLOSED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Hexagon Nutrition Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Hy-Tech Engineers Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kanishk Aluminium India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - INDO SMC Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Value 360 Communications Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Yashhtej Industries (India) Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - CMR Green Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Victory Electric Vehicles International Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Riyaasat Lifestyle Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Defrail Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Vegorama Punjabi Angithi Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Dhanwel Hybrid Seeds Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Manilam Industries India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Helloji Holidays Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Credent Connect N Care Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Tempsens Instruments (India) Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - PHYCHEM TECHNOLOGIES LIMITED [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Fusion Klassroom Edutech Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Genxai Analytics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - GSP Crop Science Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Deepa Jewellers Limited [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Aureate Tradde Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - RFBL Flexi Pack Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Elfin Agro India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Srinibas Pradhan Constructions Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - SEDEMAC Mechatronics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Augmont Enterprises Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Narmadesh Brass Industries Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shree Ram Twistex Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Central Mine Planning & Design Institute Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Grover Jewells Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Rajnandini Fashion India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Emiac Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Gaudium IVF & Women Health Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Marushika Technology Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Striders Impex Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Yaashvi Jewellers Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Highness Microelectronics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Accretion Nutraveda Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Bio Medica Laboratories Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Clean Max Enviro Energy Solutions Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - NFP Sampoorna Foods Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Gabion Technologies India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Twinkle Papers [IPO, LISTED] REPORTED (no write)  segment stays SME (report-unprovenanced-ipo): no source states this IPO row's segment (no field_sources provenance, no verified entry in VERIFIED_IPO_SEGMENT_SOURCES) — REPORTED ONLY, never written. Clearing it would destroy a probably-correct label to express something the missing provenance row already expresses; the gap is closed by the d_segment_provenance detection check, not by guessing or by erasing  [oracle: no-source — company is in neither exchange master - consistent with an offer that closed without listing]
+  - Clay Craft India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Teamtech Formwork Solutions Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Goldline Pharmaceutical Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Safety Controls & Devices Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Amir Chand Jagdish Kumar (Exports) Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Aye Finance Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Apsis Aerocom Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Tipco Engineering India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Mobilise App Lab Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Innovision Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Bharat Coking Coal Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kiaasa Retail Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shayona Engineering Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Novus Loyalty Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - CKK Retail Mart Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Adisoft Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Yaap Digital Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sai Parenteral's Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Fractal Analytics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - PAN HR Solutions Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Biopol Chemicals Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Omnitech Engineering Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shadowfax Technologies Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Rajputana Stainless Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Aritas Vinyl Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Recode Studios Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Acetech E-Commerce Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Accord Transformer & Switchgear Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Fractal Industries Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Armour Security India Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Msafe Equipments Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Digilogic Systems Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Sampark India Logistics Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Avana Electrosystems Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - GRE Renew Enertech Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Yajur Fibres Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Vivid Electromech Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - KRM Ayurveda Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Shanti Inorganics Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Ashutosh Fibre Limited [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - OnEMI Technology Solutions Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+  - Amba Auto Sales & Services Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Hannah Joseph Hospital Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Kasturi Metal Composite Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Brandman Retail Ltd. [IPO, LISTED] REPORTED (no write)  segment stays SME (skip-has-provenance): field_sources already records who set segment — not touched
+  - Amagi Media Labs Ltd. [IPO, LISTED] REPORTED (no write)  segment stays MAINBOARD (skip-has-provenance): field_sources already records who set segment — not touched
+
+rows that WOULD BE WRITTEN: 39 of 335 candidates
+by write action: {"clear-non-ipo":31,"apply-sourced":8}
+rows REPORTED ONLY, never written (report-unprovenanced-ipo — unsourced IPO labels left as-is): 9
+
+DRY-RUN: 39 rows WOULD be written. Re-run with --apply (and --allow-prod against production).
+================================================================================

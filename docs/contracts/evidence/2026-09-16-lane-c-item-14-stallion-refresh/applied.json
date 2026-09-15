@@ -1,0 +1,21 @@
+{
+ "appliedAt": "2026-09-15T21:09:18.375Z",
+ "slug": "stallion-india-fluorochemicals-ltd",
+ "written": [
+  {
+   "field": "price_band_low",
+   "from": 10,
+   "to": 85
+  },
+  {
+   "field": "price_band_high",
+   "from": 10,
+   "to": 90
+  },
+  {
+   "field": "issue_size",
+   "from": "43320000.00",
+   "to": "1990000000.00"
+  }
+ ]
+}

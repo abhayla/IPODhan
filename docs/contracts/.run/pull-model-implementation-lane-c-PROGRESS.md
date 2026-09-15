@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 02:29 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 02:53 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2946,5 +2946,34 @@ Floor after the apply: `c_issue_size_consistency` PASS; `c_issue_size_floor` FAI
 ### The class the invariant cannot see
 
 After the merges, staging still holds **12 rows for 3 companies** (G.V. Electricals ×4, H R Hygiene ×4, Shree Balaji ×4). The twins carry a "(Company IPO) CT / LT / P" name tail that the identity fold keeps, and the invariant keys on exact opening date, so it never groups them. Opus builder dispatched: widen the fold minimally, re-run the zero-false-merge proof over every real name on both slots, date-tolerant invariant with a measured window; repair after #664 lands.
+
+**Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
+
+
+
+## 2026-09-16 02:53 IST — #664 merged; STALLION out of the floor; item 14 BLOCKED by ruling; slice F built; one loss of mine
+
+### #664 merged (c54ef3df, 02:47 IST)
+
+Three test-only hardenings from the Tier A review, reproduced by me (shared 4/4, scraper 36/36), one rebase, gate clean, squash. From now on I rebase **before** the CI watch.
+
+### Item 14: STALLION refreshed by a tool, not a hand UPDATE
+
+A stale staging row versus production is a class, so it got `scraper/scripts/refresh-staging-row-from-prod.ts` (PR #666): staging-only write guard, production read-only and must be named `ipodhan`, provenance per field, backup and ledger through the real repair-tool module. STALLION on staging went 10/10/Rs4.33 cr → 85/90/Rs199 cr, second dry run 0 diffs. Floor after:
+
+| check | result |
+|---|---|
+| `c_issue_size_floor` | FAIL — **NIRBHAY COLOURS INDIA LTD**, **PIYUSH LIMITED** (STALLION gone) |
+| `c_issue_size_consistency` | PASS, 0 |
+
+**Item 14 is BLOCKED** (supervisor ruling): the two remaining names are never-listed offers whose MAINBOARD label no register can source. Owner decision 4 in the morning brief now carries the measured production class: **8 rows** with the same shape (7 CLOSED, Twinkle Papers LISTED), plus NET PIX in an unevidenced BSE group. Supervisor recommends nulling the label on both slots; I recommend BLOCKED-with-identities until the owner has seen the eight names.
+
+### Item 12 slice F built (PR #667): the invariant can now see the twins
+
+Fold strips only an IPO-ending parenthetical plus an optional 1–2 letter token; invariant tolerates a 3-day opening-date spread, measured. **Production: 341 names → 341 identities, zero collision groups, before and after.** Staging: one new fold group (the four G.V. Electricals rows), invariant 6 → 10 groups, the four new ones being the three hand-listed companies plus a genuine "Cube Highways Trust" pair the exact-date key had hidden. Tier A review running; no rows repaired yet.
+
+### The loss
+
+I removed the merged #664 worktree with the discard-untracked flag and took the ten `merge-applied-*.json` ledgers with it; the `--reverify` mode built tonight needs them. Backups survived, and the merge module exports its carry planner, so pass 2 re-verifies the ten from their backups through the tool itself. Lesson recorded.
 
 **Items 14, 2 and 12 still have zero proven lines.** No production data has been written.

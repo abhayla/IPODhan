@@ -1,0 +1,18 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c14-refresh\scripts\lib -> D:\Abhay\Ventures\IPODhan-c14-refresh\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c14-refresh | cwd D:\Abhay\Ventures\IPODhan-c14-refresh\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c14-refresh\scraper -> D:\Abhay\Ventures\IPODhan-c14-refresh\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c14-refresh | cwd D:\Abhay\Ventures\IPODhan-c14-refresh\scraper
+================================================================================
+REFRESH STAGING ROW FROM PROD (lane C item 14 slice 6) — DRY-RUN
+================================================================================
+current_database(): ipodhan_staging
+prod read pool current_database(): ipodhan
+staging row: STALLION INDIA FLUOROCHEMICALS LTD (id 8ea90b3e-93eb-4747-9eb3-d68273ea1df3)
+prod row:    STALLION INDIA FLUOROCHEMICALS LTD (id 8ea90b3e-93eb-4747-9eb3-d68273ea1df3)
+  - price_band_low: staging=10 -> prod=85 (DIFFERS)
+  - price_band_high: staging=10 -> prod=90 (DIFFERS)
+  - issue_size: staging="43320000.00" -> prod="1990000000.00" (DIFFERS)
+  - lot_size: staging=4000 -> prod=4000 (same)
+
+fields differing: 3 of 4
+
+DRY-RUN: 3 field(s) would be refreshed from production. Re-run with --apply.
+================================================================================
