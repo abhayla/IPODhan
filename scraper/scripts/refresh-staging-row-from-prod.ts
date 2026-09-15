@@ -67,6 +67,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { IPORepository, type IPOInsert } from '@ipodhan/shared/repositories';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { SelectedFields } from 'drizzle-orm/pg-core';
 import { Pool } from 'pg';
 import { eq, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
@@ -200,9 +201,18 @@ function openProdReadPool(): { pool: Pool; db: NodePgDatabase<typeof schema> } {
   return { pool, db: drizzle(pool, { schema }) };
 }
 
-/** Minimal shape either executor (the staging `db` proxy or a fake) needs. */
+/**
+ * Minimal shape either executor (the staging `db` proxy or a fake) needs.
+ * Every call site in this file passes exactly ONE column-map argument to
+ * `.select()` — never zero, never a spread — so the signature is typed
+ * as a single required parameter rather than `(...args: any[])`. A rest
+ * parameter spread into drizzle's own overloaded `select()` does not
+ * satisfy "a spread argument must have a tuple type" (T-433 MAJOR-4,
+ * `tsc -p tsconfig.scripts.json`, which — unlike `tsc -p tsconfig.json`
+ * (src/** only) — actually type-checks `scripts/**`).
+ */
 export interface SelectableDb {
-  select: (...args: any[]) => any;
+  select: (columns: SelectedFields) => any;
 }
 
 export interface CountAndFetchResult<T> {
@@ -219,7 +229,7 @@ export interface CountAndFetchResult<T> {
  */
 export async function countAndFetchBySlug<T>(
   dbLike: SelectableDb,
-  selectCols: Record<string, unknown>,
+  selectCols: SelectedFields,
   slug: string
 ): Promise<CountAndFetchResult<T>> {
   const countRows = await dbLike
@@ -231,7 +241,7 @@ export async function countAndFetchBySlug<T>(
     return { count, row: null };
   }
   const [row] = await dbLike
-    .select(selectCols as any)
+    .select(selectCols)
     .from(schema.ipos)
     .where(eq(schema.ipos.slug, slug))
     .limit(1);
@@ -247,8 +257,8 @@ export interface OfferTermsRepo {
 export interface RefreshWriteExecutors {
   /** Runs the provenance upserts + the repository-routed ipos update inside one transaction. */
   transaction: (fn: (tx: unknown) => Promise<void>) => Promise<void>;
-  /** Re-selects the row after the transaction commits, for the read-back log. */
-  select: (...args: any[]) => any;
+  /** Re-selects the row after the transaction commits, for the read-back log. Always called with exactly one column-map argument (see SelectableDb). */
+  select: (columns: SelectedFields) => any;
   /**
    * Constructs the repository BOUND TO THE TRANSACTION HANDLE (never the
    * outer `db`), so `applyOfferTerms`'s own write runs on the same
@@ -266,7 +276,7 @@ export interface ApplyRefreshInput {
   slug: string;
   stagingRow: { id: string } & Record<string, unknown>;
   toWrite: FieldDiff[];
-  selectCols: Record<string, unknown>;
+  selectCols: SelectedFields;
   stamp: string;
   writeBackup: (path: string, payload: unknown) => string;
   writeLedger: (path: string, payload: unknown) => string;
@@ -344,7 +354,7 @@ export async function applyRefresh(
   });
 
   const [readBack] = await executors
-    .select(selectCols as any)
+    .select(selectCols)
     .from(schema.ipos)
     .where(eq(schema.ipos.slug, slug))
     .limit(1);
@@ -408,12 +418,12 @@ async function main() {
       return;
     }
 
-    const selectCols = Object.fromEntries([
+    const selectCols: SelectedFields = Object.fromEntries([
       ['id', schema.ipos.id],
       ['slug', schema.ipos.slug],
       ['companyName', schema.ipos.companyName],
       ...fields.map((f) => [f, IPOS_FIELD_COLUMNS[f]]),
-    ]) as Record<string, unknown>;
+    ]);
 
     const stagingLookup = await countAndFetchBySlug<{ id: string; companyName: string } & Record<string, unknown>>(
       db,
@@ -464,7 +474,7 @@ async function main() {
     const result = await applyRefresh(
       {
         transaction: (fn) => db.transaction(fn as any),
-        select: (...args: any[]) => db.select(...args),
+        select: (columns) => db.select(columns),
         makeRepo: (tx) => new IPORepository(tx as any, getRedisClient()),
       },
       {
