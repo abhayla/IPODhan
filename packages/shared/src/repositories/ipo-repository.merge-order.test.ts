@@ -196,6 +196,17 @@ function buildFakeDb(carriedColumn: string) {
 }
 
 describe('mergeDuplicateInto — dropped-row delete happens before a unique-constrained carried-column UPDATE (DEFECT 2)', () => {
+  // Tier A review finding (1): `it.each(UNIQUE_CARRIED_COLUMNS)` below runs
+  // ZERO cases — and reports as passing, not failing — if that list is ever
+  // emptied (mutant `UNIQUE_CARRIED_COLUMNS = []` SURVIVED). A vitest `it.each`
+  // over an empty array is silently vacuous: it registers no test at all, so
+  // there is nothing for a runner to report red. This standalone assertion
+  // fails LOUDLY the moment the list stops containing the live-catalog class
+  // it exists to encode, independent of how many `it.each` cases run.
+  it('UNIQUE_CARRIED_COLUMNS is not empty and contains "symbol" (guards the it.each below against a silently-vacuous empty list)', () => {
+    expect(UNIQUE_CARRIED_COLUMNS).toContain('symbol');
+  });
+
   // The class guard: every column found unique on the LIVE catalog that is
   // also carried. Today that is exactly ['symbol'] (see header comment).
   it.each(UNIQUE_CARRIED_COLUMNS)('column "%s": DELETE on the dropped ipos row is issued before its carried-column UPDATE', async (column) => {

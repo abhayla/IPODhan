@@ -123,7 +123,7 @@ export async function reverify(ledgerPath: string): Promise<number> {
  * (immediately after commit) and `--reverify` (from a ledger, any time later) — one place that
  * builds the readback inputs from the database, so the two paths cannot drift.
  */
-async function readbackFromDb(input: {
+export async function readbackFromDb(input: {
   keepId: string;
   dropId: string;
   droppedSlug: string;

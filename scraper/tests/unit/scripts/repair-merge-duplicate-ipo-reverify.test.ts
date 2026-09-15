@@ -6,7 +6,7 @@
  * unit-tested here (missing `patch` -> exit 1) — the DB-reading half is
  * exercised by hand against staging, never by this suite.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -56,7 +56,20 @@ describe('reverify — ledger parsing refuses before touching a database', () =>
   // must be refused explicitly, not silently re-verified against an empty
   // patch (which would trivially PASS every "carried field" check and report
   // a false all-clear).
-  it('refuses with exit 1 when the ledger has no "patch" array (pre-patch-field ledger)', async () => {
+  //
+  // Tier A review finding (2): asserting only `expect(code).toBe(1)` is a
+  // weak guard — on a machine WITH a reachable database, deleting the
+  // `!Array.isArray(ledger.patch)` early-return would fall through into
+  // `readbackFromDb` (a real DB call) and could still return a non-1 code
+  // that happens to differ, but on a machine WITHOUT one it would throw an
+  // unhandled rejection instead of returning cleanly — either way the test's
+  // red signal would depend on environment DB reachability, not on a
+  // deliberate assertion about WHICH code path ran. Spying on
+  // `console.error` and asserting the exact refusal message text pins the
+  // test to the ledger-parsing refusal branch specifically: only that branch
+  // ever produces this message, so the test is a real guard on a machine
+  // with OR without a reachable DB.
+  it('refuses with exit 1 when the ledger has no "patch" array (pre-patch-field ledger), via the ledger-parsing refusal path specifically', async () => {
     const file = writeTmpLedger({
       keepId: '11111111-1111-1111-1111-111111111111',
       dropId: '22222222-2222-2222-2222-222222222222',
@@ -66,7 +79,23 @@ describe('reverify — ledger parsing refuses before touching a database', () =>
       provenanceWritten: [],
       readback: [],
     });
-    const code = await reverify(file);
-    expect(code).toBe(1);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const code = await reverify(file);
+      expect(code).toBe(1);
+      // Pins the refusal to the specific early-return branch, not to any
+      // downstream (DB-triggered) failure that could also produce exit 1.
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('has no "patch" array'));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(file));
+      // MUTATION CHECK: deleting the `!Array.isArray(ledger.patch)` branch
+      // makes execution reach `readbackFromDb` — on a DB-reachable machine
+      // this message is never printed and the first assertion above fails;
+      // on a DB-unreachable machine `reverify` throws before returning, and
+      // `await reverify(file)` rejects instead of resolving to a code at
+      // all, which also fails this test (as an uncaught rejection) rather
+      // than silently reporting green.
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
