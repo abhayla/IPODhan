@@ -186,7 +186,32 @@ const CYCLE_LOCK_RESOURCE = 'scraper:cycle';
  * cycle starts) while guaranteeing the TTL is always >= the longest a
  * legitimate cycle can now run.
  */
-const CYCLE_LOCK_TTL_MS = getWakeBudgetMs() + 5 * 60 * 1000;
+/**
+ * Item 7 slice 1 (Tier A review CRITICAL 4): this TTL used to be
+ * `getWakeBudgetMs() + 5 min` (= 25 min), and the comment above says plainly
+ * WHY: "deliberately SHORTER than PM2's 30-minute restart". That restart is
+ * exactly what this slice deletes - the scraper is no longer force-killed at
+ * 30 minutes, it is bounded by the wake wrapper's 2-hour hung-process ceiling
+ * (OD-55). A TTL sized against a restart that no longer exists is a broken
+ * invariant: during the very hang the ceiling is meant to bound, the lock
+ * would expire at 25 minutes and a second cycle could start on top of the
+ * first.
+ *
+ * It is less severe than "any 2-hour job loses its lock", because a live cycle
+ * extends the lock every CYCLE_LOCK_EXTEND_INTERVAL_MS (5 min), so a healthy
+ * long job keeps it. The TTL only lapses when the extender STOPS - which is
+ * precisely the hung case. That is the window being closed here.
+ *
+ * So the TTL is now the ceiling plus slack, and the invariant is restated:
+ * the lock outlives any run the ceiling permits, and the CEILING (not a lock
+ * expiry) is what ends a hung cycle. The slack covers the gap between the
+ * ceiling's SIGTERM and the wrapper's SIGKILL backstop (60s) plus the
+ * signal-handler lock release (W-140).
+ *
+ * Keep this >= the wrapper's SCRAPER_CEILING_SECONDS in scripts/scraper-wake.sh.
+ */
+const CYCLE_LOCK_CEILING_MS = 2 * 60 * 60 * 1000;
+const CYCLE_LOCK_TTL_MS = CYCLE_LOCK_CEILING_MS + 5 * 60 * 1000;
 const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */

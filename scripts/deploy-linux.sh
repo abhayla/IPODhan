@@ -706,6 +706,13 @@ resume_scraper() {
   ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$target_dir/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
       --no-autorestart ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
+  # CRITICAL (Tier A review): this path had NO cron install. resume_scraper
+  # runs from the EXIT trap on every FAILED deploy and every rollback, so the
+  # failure path - the one that matters most - started the wrapper once with
+  # --no-autorestart and scheduled nothing: the same total outage as the
+  # original defect, reached by a different route. The schedule is re-asserted
+  # here against whichever release we actually resumed.
+  install_scraper_cron
 }
 # Item 01: the EXIT trap now also removes the release directory this
 # invocation created when the deploy failed (cleanup_failed_release_dir,
@@ -1739,7 +1746,7 @@ restart_pm2() {
     # line a dry-run test can prove the pm2 start's shape but says NOTHING
     # about whether anything ever wakes the wrapper - which is exactly the
     # hole that let the scheduler go missing in the first place.
-    install_scraper_cron "$release_realpath/scripts/scraper-wake.sh"
+    install_scraper_cron
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1772,7 +1779,7 @@ restart_pm2() {
   ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
       --no-autorestart )
   # The alarm clock. Without this the wrapper above runs once and never again.
-  install_scraper_cron "$RELEASE_DIR/scripts/scraper-wake.sh"
+  install_scraper_cron
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 
@@ -1806,7 +1813,15 @@ restart_pm2() {
 SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
 SCRAPER_WAKE_LOG="${DEPLOY_SCRAPER_WAKE_LOG:-/var/log/ipodhan-scraper-wake-$SLOT.log}"
 install_scraper_cron() {
-  local wake_script="$1"
+  # MAJOR (Tier A review): the scheduled line pins $CURRENT_LINK, never a
+  # release directory. A release dir is deleted by retention pruning after a
+  # rollback or a few deploys, which would leave cron invoking a path that no
+  # longer exists - failing every 30 minutes into a log nobody reads. `current`
+  # is the pointer the deploy flips atomically and never prunes, so the
+  # schedule survives rollbacks and pruning alike. This also makes the code
+  # agree with docs/ops/prod-ops-recipes.md section 12, which already documents
+  # the `current/...` form.
+  local wake_script="${1:-$CURRENT_LINK/scripts/scraper-wake.sh}"
   # The wrapper is cwd-independent by design, so cron needs no `cd`. Output is
   # appended to a slot-scoped log because a cron job's stdout otherwise goes to
   # local mail nobody reads - and the skip/ceiling lines ARE the proof artifact

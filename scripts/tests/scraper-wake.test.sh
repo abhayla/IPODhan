@@ -99,8 +99,8 @@ else
   fail "case 1: no wake-skipped line — a silent skip is indistinguishable from a wake that never fired"
   printf '%s\n' "$OUT1"
 fi
-if printf '%s' "$OUT1" | grep -qF 'lock_key=lock:resource:filing-auto-persist:cycle'; then
-  pass "case 1: the skip line names the lock key (the identity)"
+if printf '%s' "$OUT1" | grep -qF 'lock_key=lock:resource:scraper:cycle'; then
+  pass "case 1: the skip line names the OUTER lock the cycle actually takes (the identity)"
 else
   fail "case 1: the skip line does not name the lock key"
 fi
@@ -140,7 +140,7 @@ else
   fail "case 2: no wake-complete line on a clean finish"
 fi
 # A clean finish must NOT look like a ceiling trip.
-if printf '%s' "$OUT2" | grep -qF 'ceiling-tripped'; then
+if printf '%s' "$OUT2" | grep -qF 'scraper-wake: ceiling-tripped'; then
   fail "case 2: a job that finished cleanly printed the ceiling line"
 else
   pass "case 2: a clean finish prints no ceiling line"
@@ -170,7 +170,7 @@ if command -v timeout >/dev/null 2>&1; then
     fail "case 3: a job past the ceiling exited $ST3, expected 124"
     printf '%s\n' "$OUT3"
   fi
-  if printf '%s' "$OUT3" | grep -qF 'ceiling-tripped'; then
+  if printf '%s' "$OUT3" | grep -qF 'scraper-wake: ceiling-tripped'; then
     pass "case 3: the ceiling trip prints its greppable token (ceiling-tripped)"
   else
     fail "case 3: no ceiling-tripped line — a ceiling that fires silently is unreadable in a log"
@@ -210,7 +210,7 @@ if [ "$ST3B" -eq 3 ]; then
 else
   fail "case 3b: a crashing job exited $ST3B, expected its own 3"
 fi
-if printf '%s' "$OUT3B" | grep -qF 'ceiling-tripped'; then
+if printf '%s' "$OUT3B" | grep -qF 'scraper-wake: ceiling-tripped'; then
   fail "case 3b: a crash was reported as a ceiling trip"
 else
   pass "case 3b: a crash is not reported as a ceiling trip"
@@ -236,30 +236,48 @@ fi
 # PR #644: the ceiling must supervise the job process from outside, not be a
 # value handed to the extractor (a spawn timeout bounds only the child; a hung
 # parent wedges it with nothing watching). Asserted statically on the shape.
-if grep -qE '(^|[^a-zA-Z-])timeout --signal=TERM --kill-after=[0-9]+ "\$SCRAPER_CEILING_SECONDS"' "$WAKE"; then
-  pass "case 5: the ceiling is an external 'timeout' supervising the job process"
+# EVERY branch that launches the job must be timeout-supervised, not merely one
+# of them. There are two (setsid present / absent); a mutation that stripped the
+# ceiling from just one of them survived a "does a timeout exist anywhere" grep.
+JOB_LAUNCHES="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE 'cd "\$SCRAPER_DIR" && exec ' || true)"
+JOB_BOUNDED="$(grep -vE '^[[:space:]]*#' "$WAKE" | grep -cE 'cd "\$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=[0-9]+ "\$SCRAPER_CEILING_SECONDS"' || true)"
+if [ "${JOB_LAUNCHES:-0}" -gt 0 ] && [ "${JOB_LAUNCHES:-0}" = "${JOB_BOUNDED:-0}" ]; then
+  pass "case 5: every job launch is wrapped in the external timeout ceiling (${JOB_BOUNDED}/${JOB_LAUNCHES})"
 else
-  fail "case 5: no external timeout supervisor found — a renamed in-extractor timeout does not satisfy OD-55"
-  grep -n 'timeout' "$WAKE" | head
+  fail "case 5: only ${JOB_BOUNDED:-0} of ${JOB_LAUNCHES:-0} job launches are timeout-supervised - an unbounded branch means a hung job nothing stops"
+  grep -nE 'cd "\$SCRAPER_DIR" && exec ' "$WAKE" || true
 fi
 
-# --- Case 6: the live job is NOT gated on the heavy lock (OD-27) ----------
-# The design's check D17 fails the whole design if the live-figures job is ever
-# described as waiting on or skipped by the heavy lock. Same rule in code.
-OUT6="$(SCRAPER_WAKE_FAKE_LOCK_TTL="free" \
-        SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
-        SCRAPER_CEILING_SECONDS=30 \
-        sh "$WAKE" live 2>&1)"
-if printf '%s' "$OUT6" | grep -qF 'lock:resource:scraper:cycle'; then
-  pass "case 6: a live wake reads the whole-cycle lock, not the document lock (OD-27)"
+# --- Case 6: the lock READ matches the command RUN --------------------------
+# The CRITICAL this case exists for: the wrapper used to read the INNER
+# document lock (filing-auto-persist:cycle) while starting `--source=all`,
+# which takes the OUTER lock (scraper:cycle, index.ts:177/:719). During a
+# running cycle's non-document phase the inner lock reads free, so the wrapper
+# would start a second cycle, that cycle would exit 0 on the outer lock it
+# cannot get, and the wrapper would log `wake-complete` - reporting SUCCESS for
+# a wake that did nothing. Worse than no check at all.
+#
+# Static, and deliberately so: the pairing is a property of the source, and a
+# runtime test with a fake job cannot observe which lock the REAL scraper takes.
+WAKE_LOCK_DEFAULT="$(grep -E '^SCRAPER_LOCK_KEY=' "$WAKE" | head -1)"
+if printf '%s' "$WAKE_LOCK_DEFAULT" | grep -qF 'lock:resource:scraper:cycle'; then
+  pass "case 6: the wrapper reads scraper:cycle - the lock its own --source=all command takes"
 else
-  fail "case 6: a live wake did not read lock:resource:scraper:cycle"
-  printf '%s\n' "$OUT6"
+  fail "case 6: the wrapper's default lock is not scraper:cycle; it would gate on a lock the command it runs does not take"
+  printf '%s
+' "$WAKE_LOCK_DEFAULT"
 fi
-if printf '%s' "$OUT6" | grep -qF 'filing-auto-persist'; then
-  fail "case 6: a live wake read the HEAVY document lock — OD-27 says it must never be gated on it"
+if printf '%s' "$WAKE_LOCK_DEFAULT" | grep -qF 'filing-auto-persist'; then
+  fail "case 6: the wrapper still defaults to the INNER document lock - false-negative machine, see the comment above"
 else
-  pass "case 6: a live wake never touches the heavy document lock"
+  pass "case 6: the wrapper does not gate an outer-lock command on the inner document lock"
+fi
+# And it must not pass a --job flag nothing parses: scraper/src parses no
+# `--job=` today, so forwarding one reads like a feature while doing nothing.
+if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qF -- '--job='; then
+  fail "case 6: the wrapper forwards --job=, which nothing in scraper/src parses - remove it or wire it"
+else
+  pass "case 6: the wrapper does not forward an unparsed --job flag"
 fi
 
 # --- Case 7: cwd-independence --------------------------------------------
@@ -357,9 +375,9 @@ if [ -f "$DEPLOY_SCRIPT" ]; then
   fi
 
   # It must be CALLED, not merely defined - on the real path and the dry-run path.
-  CRON_CALLS="$(grep -c 'install_scraper_cron "' "$DEPLOY_SCRIPT" || true)"
-  if [ "${CRON_CALLS:-0}" -ge 2 ]; then
-    pass "case 9: install_scraper_cron is invoked on both the real and dry-run paths ($CRON_CALLS call sites)"
+  CRON_CALLS="$(grep -cE '^[[:space:]]*install_scraper_cron[[:space:]]*$' "$DEPLOY_SCRIPT" || true)"
+  if [ "${CRON_CALLS:-0}" -ge 3 ]; then
+    pass "case 9: install_scraper_cron is invoked on the real, dry-run AND resume paths ($CRON_CALLS call sites; case 11 counts them against pm2 start sites)"
   else
     fail "case 9: install_scraper_cron is defined but invoked only ${CRON_CALLS:-0}x - a definition nothing calls schedules nothing"
   fi
@@ -367,10 +385,19 @@ if [ -f "$DEPLOY_SCRIPT" ]; then
   # The scheduled line must name the WRAPPER. A cron entry pointing straight at
   # the tsx entrypoint would wake the scraper but bypass the lock-skip AND the
   # ceiling - the two guards this whole slice exists to add.
-  if grep -F 'install_scraper_cron "' "$DEPLOY_SCRIPT" | grep -qF 'scraper-wake.sh'; then
+  # The scheduled line must name the WRAPPER (a cron entry pointing straight at
+  # tsx would wake the scraper but bypass the lock-skip AND the ceiling), and it
+  # must resolve through $CURRENT_LINK, never a release dir that retention
+  # pruning deletes out from under the schedule after a rollback.
+  if grep -F 'local wake_script=' "$DEPLOY_SCRIPT" | grep -qF 'scraper-wake.sh'; then
     pass "case 9: the scheduled invoker points at scraper-wake.sh (guards stay in the path)"
   else
     fail "case 9: the scheduled invoker does not name scraper-wake.sh"
+  fi
+  if grep -F 'local wake_script=' "$DEPLOY_SCRIPT" | grep -qF 'CURRENT_LINK'; then
+    pass "case 9: the scheduled line resolves through \$CURRENT_LINK (survives rollback + release pruning)"
+  else
+    fail "case 9: the scheduled line pins a release dir - pruning would leave cron invoking a deleted path"
   fi
 
   # Cadence preserved, not silently changed: the line carries SCRAPER_CRON, the
@@ -409,6 +436,270 @@ if [ -f "$DEPLOY_SCRIPT" ]; then
   fi
 else
   fail "case 9: deploy script not found at $DEPLOY_SCRIPT"
+fi
+
+# --- Case 10: a crontab line is REALLY WRITTEN ------------------------------
+# THE GAP THIS CLOSES (Tier A review, "Mutation A"): every assertion in case 9
+# is about the deploy script's SOURCE and its dry-run ECHO. Replacing the real
+# `... | crontab -` with `if true; then` left all 36 cases passing. So case 9
+# proved the call sites exist and the line text is right; it never proved a
+# line reaches a crontab. This case runs install_scraper_cron() for real
+# against a FAKE crontab on PATH and reads back what was stored.
+#
+# The function is extracted from the script and eval'd (the case 9b/11/32e
+# pattern already used here for restart_pm2 and resume_scraper), so an edit to
+# deploy-linux.sh is what this test sees.
+CRON_FN="$(sed -n '/^install_scraper_cron()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$CRON_FN" ]; then
+  fail "case 10: could not extract install_scraper_cron() from $DEPLOY_SCRIPT - renamed?"
+else
+  C10="$(mktemp -d)"
+  mkdir -p "$C10/bin"
+  # A fake `crontab` behaving like the real one for the two modes the function
+  # uses: `-l` prints the stored table, `-` stores stdin. Anything else errors,
+  # so a wrong invocation cannot pass quietly.
+  cat > "$C10/bin/crontab" <<'FAKECRON'
+#!/bin/sh
+TAB="$FAKE_CRONTAB_FILE"
+case "${1:-}" in
+  -l) [ -f "$TAB" ] && cat "$TAB"; exit 0 ;;
+  -)  cat > "$TAB"; exit 0 ;;
+  *)  echo "fake crontab: unexpected args: $*" >&2; exit 2 ;;
+esac
+FAKECRON
+  chmod +x "$C10/bin/crontab"
+
+  FAKE_CRONTAB_FILE="$C10/table"
+  export FAKE_CRONTAB_FILE
+  echo '0 3 * * * /usr/local/bin/some-other-job.sh' > "$FAKE_CRONTAB_FILE"
+
+  (
+    PATH="$C10/bin:$PATH"; export PATH
+    DRY_RUN=0
+    SLOT=prod
+    SCRAPER_CRON='*/30 * * * *'
+    CURRENT_LINK="$C10/current"
+    SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+    SCRAPER_WAKE_LOG="$C10/wake.log"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    eval "$CRON_FN"
+    install_scraper_cron
+    install_scraper_cron
+  ) > "$C10/install.log" 2>&1
+
+  STORED="$(cat "$FAKE_CRONTAB_FILE" 2>/dev/null || true)"
+
+  if echo "$STORED" | grep -qF 'scraper-wake.sh'; then
+    pass "case 10: install_scraper_cron REALLY WRITES a crontab line (not just echoes one)"
+  else
+    fail "case 10: no scraper-wake line reached the crontab - the write is a no-op"
+    echo "$STORED"; cat "$C10/install.log"
+  fi
+
+  if echo "$STORED" | grep -F 'scraper-wake.sh' | grep -qF '*/30 * * * *'; then
+    pass "case 10: the stored line carries this slot's cadence"
+  else
+    fail "case 10: the stored line does not carry the slot cadence"
+  fi
+
+  WAKE_LINES10="$(echo "$STORED" | grep -cF 'ipodhan-scraper-wake:prod' || true)"
+  if [ "${WAKE_LINES10:-0}" -eq 1 ]; then
+    pass "case 10: two installs leave exactly one wake line (idempotent)"
+  else
+    fail "case 10: two installs left ${WAKE_LINES10:-0} wake lines - a deploy would keep appending duplicates"
+    echo "$STORED"
+  fi
+
+  if echo "$STORED" | grep -qF 'some-other-job.sh'; then
+    pass "case 10: an unrelated pre-existing crontab entry is preserved"
+  else
+    fail "case 10: the install DESTROYED an unrelated crontab entry"
+    echo "$STORED"
+  fi
+
+  # A crontab write that FAILS must warn loudly, never pass silently.
+  mkdir -p "$C10/bin2"
+  cat > "$C10/bin2/crontab" <<'FAILCRON'
+#!/bin/sh
+case "${1:-}" in
+  -l) exit 0 ;;
+  *)  exit 1 ;;
+esac
+FAILCRON
+  chmod +x "$C10/bin2/crontab"
+  (
+    PATH="$C10/bin2:$PATH"; export PATH
+    DRY_RUN=0; SLOT=prod; SCRAPER_CRON='*/30 * * * *'
+    CURRENT_LINK="$C10/current"
+    SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+    SCRAPER_WAKE_LOG="$C10/wake.log"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    eval "$CRON_FN"
+    install_scraper_cron
+  ) > "$C10/failwrite.log" 2>&1 || true
+  FAILOUT10="$(cat "$C10/failwrite.log" 2>/dev/null || true)"
+  if echo "$FAILOUT10" | grep -qi 'WILL NOT BE WOKEN'; then
+    pass "case 10: a failed crontab write warns that the scraper will not be woken"
+  else
+    fail "case 10: a failed crontab write did not warn - the outage would be silent"
+    echo "$FAILOUT10"
+  fi
+
+  rm -rf "$C10"
+  unset FAKE_CRONTAB_FILE
+fi
+
+# --- Case 13: the bare cron environment cannot silently no-op ---------------
+# CRITICAL 2 (Tier A review): cron runs the wrapper with PATH=/usr/bin:/bin, no
+# login shell, no nvm, no cwd, and none of the env pm2 injects deliberately. A
+# bare `npx tsx` under cron most likely resolves to NOTHING - the line fires,
+# npx is not found, the log grows, and we have shipped a scheduler that never
+# runs. That is the silent failure this whole slice exists to prevent, so a
+# missing interpreter must REFUSE loudly, not proceed.
+#
+# Driven for real: the wrapper is invoked with a PATH that contains no node, and
+# with the overrides pointed at nothing.
+C13="$(mktemp -d)"
+mkdir -p "$C13/emptybin"
+
+# (a) No node anywhere -> refuse, do not run the job.
+# The PATH keeps a usable shell and coreutils (emptying it entirely just means
+# `sh` itself is not found, which tests the harness rather than the wrapper);
+# what it must NOT contain is a resolvable node. SCRAPER_NODE_BIN points at a
+# file that does not exist, so the wrapper's own resolution is what fails.
+NODE_DIR13="$(dirname "$(command -v node 2>/dev/null || echo /nonexistent/node)")"
+SAFE_PATH13="$(printf '%s' "$PATH" | tr ':' '
+' | grep -vxF "$NODE_DIR13" | paste -sd: -)"
+( PATH="$SAFE_PATH13"; export PATH
+  SCRAPER_NODE_BIN="$C13/emptybin/definitely-not-node"; export SCRAPER_NODE_BIN
+  SCRAPER_WAKE_FAKE_LOCK_TTL=free; export SCRAPER_WAKE_FAKE_LOCK_TTL
+  SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh"; export SCRAPER_WAKE_CMD
+  SCRAPER_CEILING_SECONDS=30; export SCRAPER_CEILING_SECONDS
+  sh "$WAKE" data
+) > "$C13/out.log" 2>&1
+ST13=$?
+OUT13="$(cat "$C13/out.log" 2>/dev/null || true)"
+if [ "$ST13" -ne 0 ] && [ "$ST13" -ne 124 ]; then
+  pass "case 13: a missing node REFUSES with a distinct non-zero exit ($ST13), rather than silently doing nothing"
+else
+  fail "case 13: a missing node exited $ST13 - a cron line that no-ops forever is exactly the silent failure this slice exists to prevent"
+  printf '%s
+' "$OUT13"
+fi
+if printf '%s' "$OUT13" | grep -qF 'scraper-wake: FATAL'; then
+  pass "case 13: the refusal says FATAL and why"
+else
+  fail "case 13: the refusal printed no FATAL line - an operator reading the cron log would not know why nothing ran"
+  printf '%s
+' "$OUT13"
+fi
+if printf '%s' "$OUT13" | grep -qF 'THE_JOB_RAN'; then
+  fail "case 13: the job RAN despite no usable node - the guard did not guard"
+else
+  pass "case 13: the job did not run when its interpreter was missing"
+fi
+
+# (b) TZ and PYTHON_BIN are what cron does NOT provide and the scraper needs
+# (an unset TZ is what made NSE dates land a day early for months, T-327 P2-7;
+# an unset PYTHON_BIN silently uses whatever python is on PATH, W-111/W-112).
+if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qE 'export TZ='; then
+  pass "case 13: the wrapper exports TZ itself (cron does not)"
+else
+  fail "case 13: the wrapper does not export TZ - cron would run the scraper in the box's local zone"
+fi
+if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qF 'PYTHON_BIN'; then
+  pass "case 13: the wrapper resolves/exports PYTHON_BIN (cron does not)"
+else
+  fail "case 13: the wrapper never handles PYTHON_BIN - the extractor would fall back to system python under cron"
+fi
+# And it must not depend on `npx`, which under cron would try the network.
+if grep -vE '^[[:space:]]*#' "$WAKE" | grep -qE '(^|[^a-zA-Z-])npx '; then
+  fail "case 13: the wrapper still invokes npx - under cron that resolves to nothing or hits the network"
+else
+  pass "case 13: the wrapper does not depend on npx"
+fi
+
+# (c) The TSX guard, isolated. The node guard runs first, so with node ALSO
+# missing this branch is never reached - a mutation removing it would survive a
+# test that only ever exercises the node path. Here node is deliberately VALID
+# and only tsx is unresolvable, so the tsx guard is the thing under test.
+NODE_OK13="$(command -v node 2>/dev/null || true)"
+if [ -n "$NODE_OK13" ]; then
+  ( SCRAPER_NODE_BIN="$NODE_OK13"; export SCRAPER_NODE_BIN
+    SCRAPER_TSX_BIN="$C13/emptybin/definitely-not-tsx.mjs"; export SCRAPER_TSX_BIN
+    SCRAPER_DIR="$C13/emptybin"; export SCRAPER_DIR
+    SCRAPER_WAKE_FAKE_LOCK_TTL=free; export SCRAPER_WAKE_FAKE_LOCK_TTL
+    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh"; export SCRAPER_WAKE_CMD
+    SCRAPER_CEILING_SECONDS=30; export SCRAPER_CEILING_SECONDS
+    sh "$WAKE" data
+  ) > "$C13/tsx.log" 2>&1
+  STTSX13=$?
+  OUTTSX13="$(cat "$C13/tsx.log" 2>/dev/null || true)"
+  if [ "$STTSX13" -ne 0 ] && [ "$STTSX13" -ne 124 ] && printf '%s' "$OUTTSX13" | grep -qF 'no-tsx'; then
+    pass "case 13: an unresolvable tsx REFUSES with its own FATAL line (exit $STTSX13), node being fine"
+  else
+    fail "case 13: a missing tsx did not refuse (exit $STTSX13) - under cron the cycle would silently never start"
+    printf '%s
+' "$OUTTSX13"
+  fi
+  if printf '%s' "$OUTTSX13" | grep -qF 'THE_JOB_RAN'; then
+    fail "case 13: the job RAN with no usable tsx"
+  else
+    pass "case 13: the job did not run when tsx was unresolvable"
+  fi
+else
+  fail "case 13: no node on PATH in this harness - cannot isolate the tsx guard"
+fi
+
+rm -rf "$C13"
+
+# --- Case 12: the FAILURE path schedules too -------------------------------
+# CRITICAL 1 (Tier A review): resume_scraper() runs from the EXIT trap on every
+# FAILED deploy and every rollback - the path that matters most - and it had a
+# pm2 start with NO cron install, so the failure path started the wrapper once
+# and scheduled nothing: the same total outage as the original defect, by a
+# different route.
+#
+# Counting call sites globally (case 11) is not enough: a count cannot tell you
+# WHICH function each call lives in, so moving or neutering resume_scraper's
+# call while adding one elsewhere would keep the count right and the failure
+# path broken. This extracts each function and asserts the pairing inside it.
+for FN12 in resume_scraper restart_pm2; do
+  BODY12="$(sed -n "/^${FN12}()/,/^}/p" "$DEPLOY_SCRIPT")"
+  if [ -z "$BODY12" ]; then
+    fail "case 12: could not extract ${FN12}() from $DEPLOY_SCRIPT - renamed?"
+    continue
+  fi
+  STARTS12="$(printf '%s
+' "$BODY12" | grep -vE '^[[:space:]]*#' | grep -c 'pm2 start' || true)"
+  CRONS12="$(printf '%s
+' "$BODY12" | grep -vE '^[[:space:]]*[#:]' | grep -cE '^[[:space:]]*install_scraper_cron[[:space:]]*$' || true)"
+  if [ "${STARTS12:-0}" -gt 0 ] && [ "${CRONS12:-0}" -ge 1 ]; then
+    pass "case 12: ${FN12}() starts the scraper AND schedules it (${CRONS12} install for ${STARTS12} start)"
+  else
+    fail "case 12: ${FN12}() has ${STARTS12:-0} pm2 start(s) but ${CRONS12:-0} cron install(s) - that path would start the wrapper once and never schedule it"
+    printf '%s
+' "$BODY12" | grep -nE 'pm2 start|install_scraper_cron' || true
+  fi
+done
+
+# --- Case 11: every pm2 start site has a cron install -----------------------
+# Counted, not fixed at a number: resume_scraper (the EXIT-trap path that runs
+# on every failed deploy and rollback) had a pm2 start and NO cron install, so
+# the failure path scheduled nothing. A fixed expectation goes stale the moment
+# a fourth start site appears; comparing the counts keeps the invariant true as
+# the script grows.
+if [ -f "$DEPLOY_SCRIPT" ]; then
+  PM2_SITES11="$(grep -c 'pm2 start .*scraper-wake\.sh' "$DEPLOY_SCRIPT" || true)"
+  CRON_SITES11="$(grep -vE '^[[:space:]]*[#:]' "$DEPLOY_SCRIPT" | grep -cE '^[[:space:]]*install_scraper_cron[[:space:]]*$' || true)"
+  if [ "${PM2_SITES11:-0}" -gt 0 ] && [ "${PM2_SITES11:-0}" = "${CRON_SITES11:-0}" ]; then
+    pass "case 11: every scraper pm2 start site has a matching cron install (${CRON_SITES11}/${PM2_SITES11})"
+  else
+    fail "case 11: ${CRON_SITES11:-0} cron installs for ${PM2_SITES11:-0} pm2 start sites - a start site that schedules nothing is a silent outage on that path"
+    grep -n 'pm2 start .*scraper-wake\.sh' "$DEPLOY_SCRIPT" || true
+  fi
 fi
 
 if [ "$FAILED" -ne 0 ]; then

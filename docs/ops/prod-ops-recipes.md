@@ -664,6 +664,21 @@ the trailing marker — a prod deploy never touches staging's line):
 15,45 * * * * .../current-staging/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-staging.log 2>&1 # ipodhan-scraper-wake:staging
 ```
 
+The path is the `current` symlink, never a release directory: retention pruning deletes old
+releases, so a schedule pinned to one would start failing silently after a rollback plus a few
+deploys.
+
+**Cron's environment is not pm2's**, and the wrapper compensates for that itself. cron gives
+`PATH=/usr/bin:/bin`, no login shell, no nvm, no cwd — so `npx` typically resolves to nothing. The
+wrapper therefore resolves an absolute `node` and the workspace's own `tsx/dist/cli.mjs`, exports
+`TZ=UTC` (T-327 P2-7) and `PYTHON_BIN` (W-111/W-112), and **refuses with exit 78** rather than
+running without them. Overrides, if the box needs them, go in the cron line:
+`SCRAPER_NODE_BIN=/usr/bin/node SCRAPER_TSX_BIN=/path/to/tsx/dist/cli.mjs PYTHON_BIN=/path/to/venv/bin/python`.
+
+**Exit codes are three distinct readings:** `0` clean finish or a deliberate lock-skip, `124` the
+2-hour ceiling fired, `78` a refusal to start (no `timeout`, no node, no tsx — nothing ran), and
+anything else is the cycle's own crash status.
+
 Staging keeps the `:15/:45` offset so two slots' extractors never land in the same minute on the
 2-vCPU box (W-178).
 

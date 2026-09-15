@@ -49,9 +49,9 @@
 #   *   anything else is the job's own exit status - a crash, propagated
 #
 # Usage: scripts/scraper-wake.sh [data|live|closed] [<extra scraper args>]
-#   The job name selects which lock is read and which --job= flag is passed on.
-#   Omitted, it defaults to `data` (the document/heavy job) - the conservative
-#   default, because that is the job the ceiling exists for.
+#   The job name is accepted and logged as operator intent. It does NOT change
+#   the lock (see the lock section below) and is NOT forwarded to the scraper,
+#   because nothing in scraper/src parses a job flag today.
 
 set -u
 
@@ -68,6 +68,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SCRAPER_DIR="${SCRAPER_DIR:-$REPO_ROOT/scraper}"
+# pm2 passes DEPLOY_SLOT; cron does not. Only used to guess a venv path.
+DEPLOY_SLOT_NAME="${DEPLOY_SLOT:-prod}"
 
 # --- The 2-hour hung-process ceiling (OD-55) -------------------------------
 # 7200 seconds. Overridable ONLY for the test harness; production never sets
@@ -75,49 +77,120 @@ SCRAPER_DIR="${SCRAPER_DIR:-$REPO_ROOT/scraper}"
 # progressing OCR pass should ever reach it.
 SCRAPER_CEILING_SECONDS="${SCRAPER_CEILING_SECONDS:-7200}"
 
-# --- Which job, and therefore which lock ------------------------------------
-# `data` (the heavy/document job) is the default: it is the job the ceiling
-# exists for, so an unqualified wake gets the conservative treatment.
+# --- Which lock this wake must read -----------------------------------------
+# CRITICAL correction (Tier A review): this script must read the lock the job
+# it is ABOUT TO START will actually take, not the lock of the phase we happen
+# to care about. Getting that wrong is worse than having no check at all.
+#
+# What the wrapper starts is `src/index.ts --source=all`, and that acquires
+# CYCLE_LOCK_RESOURCE = 'scraper:cycle' (scraper/src/index.ts:177, taken at
+# :719) for the WHOLE cycle. The document/extraction lock
+# 'filing-auto-persist:cycle' is an INNER lock held only during the extraction
+# phase. Reading the inner lock to decide whether to start an outer cycle is a
+# false-negative machine: during a running cycle's non-document phase the inner
+# lock reads free, the wrapper starts a SECOND cycle, that cycle immediately
+# exits 0 on the scraper:cycle lock it cannot get - and the wrapper then logs
+# `wake-complete`, reporting SUCCESS for a wake that did nothing at all.
+#
+# So: one lock, the outer one, matching the one command this script runs.
+# `lock:resource:` is the prefix the distributed lock applies - the same
+# fully-qualified spelling scripts/deploy-linux.sh's
+# release_scraper_cycle_locks() uses, so the two cannot drift apart. Read
+# only; never taken or released here - the cycle owns its own lock's lifetime.
+#
+# A job argument (data|live|closed) is ACCEPTED and logged for operator
+# intent, but it deliberately does NOT change the lock and is NOT forwarded to
+# the scraper: nothing in scraper/src parses `--job=` today (verified by grep),
+# so passing it would be a fiction that reads like a feature. When the job
+# split of design section 2.1 lands, this is where each job names both the
+# command it runs and the lock that command takes - together, never apart.
 SCRAPER_JOB="data"
 case "${1:-}" in
   data|live|closed) SCRAPER_JOB="$1"; shift ;;
   "") : ;;
-  --*) : ;;                 # a bare flag: leave it for the scraper, keep the default job
+  --*) : ;;
   *) UNKNOWN_JOB="$1"; shift ;;
 esac
 if [ -n "${UNKNOWN_JOB:-}" ]; then
-  # Loud, not fatal: an unrecognised job name must not silently become a
-  # different job's wake. It is reported with the name that was passed, and
-  # the conservative default (data) runs.
-  log "WARN unknown-job: '$UNKNOWN_JOB' is not one of data|live|closed - defaulting to job=data and its lock"
+  log "WARN unknown-job: '$UNKNOWN_JOB' is not one of data|live|closed - proceeding with the default cycle"
 fi
 
-# The locks this script READS are mirrored from the two that already exist -
-# never a second locking scheme, and never taken or released here: each cycle
-# owns its own lock's lifetime.
-#   scraper:cycle              - the whole-cycle lock (scraper/src/index.ts:177,
-#                                CYCLE_LOCK_RESOURCE)
-#   filing-auto-persist:cycle  - the document/extraction lock
-#                                (scraper/src/services/document-cycle.ts:75,
-#                                FILING_EXTRACTION_LOCK_KEY)
-# `lock:resource:` is the prefix the distributed lock applies - the same two
-# fully-qualified keys scripts/deploy-linux.sh's release_scraper_cycle_locks()
-# reads, so this script and that one cannot drift apart on key spelling.
-#
-# A `data` wake reads the DOCUMENT lock: that is the one a long filing read
-# holds, and the whole point of the skip. A `live` wake reads the whole-cycle
-# lock only - per OD-27 the live-figures job must NEVER be gated on the heavy
-# lock, so reading the document lock here would reintroduce exactly the
-# coupling the two-lock split exists to prevent.
-if [ -n "${SCRAPER_LOCK_KEY:-}" ]; then
-  : # explicit operator override wins
-elif [ "$SCRAPER_JOB" = "live" ]; then
-  SCRAPER_LOCK_KEY="lock:resource:scraper:cycle"
-else
-  SCRAPER_LOCK_KEY="lock:resource:filing-auto-persist:cycle"
-fi
+SCRAPER_LOCK_KEY="${SCRAPER_LOCK_KEY:-lock:resource:scraper:cycle}"
 
 SCRAPER_SOURCE="${SCRAPER_SOURCE:-all}"
+
+# --- The cron environment is NOT the pm2 environment ------------------------
+# CRITICAL (Tier A review): cron runs this with PATH=/usr/bin:/bin, no login
+# shell, no nvm rc, no cwd, and none of the variables every `pm2 start` in
+# deploy-linux.sh injects deliberately. A bare `npx tsx` under cron therefore
+# most likely resolves to NOTHING - the line fires, npx is not found, the log
+# grows, nobody notices, and we have shipped a scheduler that never runs. That
+# failure is silent in exactly the way this whole slice exists to prevent, so
+# every input the scraper needs is resolved explicitly here and its absence is
+# LOUD.
+#
+# TZ=UTC (T-327 P2-7) and PYTHON_BIN (W-111/W-112) are not optional niceties:
+# an unset TZ is what made NSE dates land a day early for months, and an unset
+# PYTHON_BIN silently falls back to whatever `python` resolves to instead of
+# the deploy-managed venv. pm2 passes both at every start; cron passes neither.
+export TZ="${TZ:-UTC}"
+
+# PATH: keep anything the caller set (pm2 passes a full PATH), then append the
+# standard locations plus the node that is actually running this deploy, so a
+# cron invocation with the minimal PATH can still find its tools.
+PATH="${PATH:-/usr/bin:/bin}:/usr/local/bin:/usr/local/sbin:/snap/bin"
+export PATH
+
+# node: prefer an explicit override, then whatever is on PATH. Resolved to an
+# ABSOLUTE path so the value we log is the value that runs.
+NODE_BIN="${SCRAPER_NODE_BIN:-}"
+if [ -z "$NODE_BIN" ]; then
+  NODE_BIN="$(command -v node 2>/dev/null || true)"
+fi
+
+# tsx: the workspace copy, wherever npm's hoisting actually put it (the same
+# three candidate roots deploy-linux.sh's resolve_bin() searches). Never `npx`,
+# which under cron would try to fetch from the network on a miss.
+TSX_BIN="${SCRAPER_TSX_BIN:-}"
+if [ -z "$TSX_BIN" ]; then
+  for _cand in \
+    "$SCRAPER_DIR/node_modules/tsx/dist/cli.mjs" \
+    "$REPO_ROOT/node_modules/tsx/dist/cli.mjs" \
+    "$REPO_ROOT/web/node_modules/tsx/dist/cli.mjs"; do
+    if [ -f "$_cand" ]; then TSX_BIN="$_cand"; break; fi
+  done
+fi
+
+# PYTHON_BIN: pins the PDF/OCR extractor to the deploy-managed venv. If the
+# caller did not set it (cron does not), try the venv layout deploy-linux.sh
+# creates, and say so plainly when it cannot be found - an ENOENT spawn is the
+# visible signal, never a silent fallback to system python (W-111 round 2).
+if [ -z "${PYTHON_BIN:-}" ]; then
+  for _cand in \
+    "$REPO_ROOT/../shared/venv/$DEPLOY_SLOT_NAME/bin/python" \
+    "$REPO_ROOT/../../shared/venv/$DEPLOY_SLOT_NAME/bin/python"; do
+    if [ -x "$_cand" ]; then PYTHON_BIN="$_cand"; export PYTHON_BIN; break; fi
+  done
+fi
+if [ -z "${PYTHON_BIN:-}" ]; then
+  log "WARN no-python-bin: PYTHON_BIN is unset and no deploy venv was found - the PDF/OCR extractor will fall back to whatever 'python' resolves to, or fail to spawn. Set PYTHON_BIN in the cron line."
+else
+  export PYTHON_BIN
+fi
+
+# Both interpreters are hard requirements. Missing either means the cycle
+# cannot run at all, and under cron that would otherwise be a silent no-op
+# repeated every 30 minutes - so refuse LOUDLY and with a non-zero exit that
+# is distinguishable from both a clean finish and the ceiling.
+if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
+  log "FATAL no-node: cannot find an executable node (PATH=$PATH). Under cron, PATH is minimal and nvm is not sourced - set SCRAPER_NODE_BIN to an absolute path in the cron line. Nothing was run."
+  exit 78
+fi
+if [ -z "$TSX_BIN" ] || [ ! -f "$TSX_BIN" ]; then
+  log "FATAL no-tsx: cannot find tsx/dist/cli.mjs under $SCRAPER_DIR or $REPO_ROOT - set SCRAPER_TSX_BIN in the cron line. Nothing was run."
+  exit 78
+fi
+
 
 # --- Read the lock ---------------------------------------------------------
 # Returns 0 (held) or 1 (free / unknowable). An UNKNOWABLE lock state is
@@ -194,7 +267,7 @@ STARTED_AT="$(date -u '+%s')"
 
 if [ -z "${SCRAPER_WAKE_CMD:-}" ]; then
   # Production shape: the same tsx entrypoint pm2 used to start directly.
-  set -- npx tsx src/index.ts --source="$SCRAPER_SOURCE" --job="$SCRAPER_JOB" "$@"
+  set -- "$NODE_BIN" "$TSX_BIN" src/index.ts --source="$SCRAPER_SOURCE" "$@"
 else
   # Test seam ONLY: a path to an executable the suite substitutes for the
   # scraper (a sleeper, a fast exiter, a crasher). Deliberately a single
@@ -205,12 +278,40 @@ else
 fi
 
 if command -v timeout >/dev/null 2>&1; then
-  ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=60 "$SCRAPER_CEILING_SECONDS" "$@" )
+  # MINOR (Tier A review), handled defensively: GNU `timeout` signals only its
+  # DIRECT child unless that child leads its own process group. The scraper
+  # spawns a python PDF/OCR extractor, so on a ceiling trip that grandchild
+  # could outlive the kill and keep burning a 2-vCPU box with nothing watching.
+  #
+  # `timeout --foreground` is NOT the fix here (it does the opposite - it
+  # declines to create a new group). The fix is to put the job in its own
+  # process group and signal the GROUP, which is exactly what `setsid` plus
+  # timeout's own `--kill-after` gives: setsid makes the job a session/group
+  # leader, so the signal timeout sends reaches the whole tree.
+  #
+  # UNVERIFIED ON LINUX: I could only exercise this on MSYS/Windows, where the
+  # grandchild did NOT survive the ceiling - a result that says nothing about
+  # Linux process groups. setsid is used because it is correct-by-construction
+  # for the documented semantics, not because I reproduced the orphan here.
+  # The staging soak is where a real ceiling trip can confirm no python
+  # process outlives it.
+  if command -v setsid >/dev/null 2>&1; then
+    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=60 "$SCRAPER_CEILING_SECONDS" setsid "$@" )
+  else
+    log "WARN no-setsid: setsid not on PATH - the ceiling signals only the direct child, so a python extractor grandchild may outlive a ceiling trip. Check for stray processes after any ceiling-tripped line."
+    ( cd "$SCRAPER_DIR" && exec timeout --signal=TERM --kill-after=60 "$SCRAPER_CEILING_SECONDS" "$@" )
+  fi
   STATUS=$?
 else
-  log "WARN no-ceiling: GNU coreutils 'timeout' not found on PATH - the cycle runs UNBOUNDED. On a deploy host this is a defect, not a fallback; install coreutils."
-  ( cd "$SCRAPER_DIR" && exec "$@" )
-  STATUS=$?
+  # REFUSE, do not run unbounded. An earlier version ran the cycle anyway with
+  # a warning, which quietly reintroduced exactly what this slice removes: a
+  # scraper with nothing bounding it. Since pm2 no longer force-restarts at 30
+  # minutes, an unbounded run here could hang indefinitely on a 2-vCPU box that
+  # also serves the site. A missing coreutils on a deploy host is a defect to
+  # fix, never a mode to degrade into - and refusing is loud, where a hang is
+  # silent. Exit 78 (config error), distinct from clean 0 and the ceiling 124.
+  log "FATAL no-ceiling: GNU coreutils 'timeout' is not on PATH, so the 2-hour hung-process ceiling cannot be enforced. REFUSING to start an unbounded cycle - pm2 no longer restarts the scraper, so nothing else would stop it. Install coreutils. Nothing was run."
+  exit 78
 fi
 
 ELAPSED=$(( $(date -u '+%s') - STARTED_AT ))

@@ -76,14 +76,37 @@ describe('CYCLE_LOCK_TTL_MS (index.ts) is derived from the wake budget, not hard
     const match = source.match(/const CYCLE_LOCK_TTL_MS = ([^;]+);/);
     expect(match, 'CYCLE_LOCK_TTL_MS assignment not found in index.ts').not.toBeNull();
     const expression = match![1].trim();
-    expect(expression).toBe('getWakeBudgetMs() + 5 * 60 * 1000');
+    // Item 7 slice 1: the TTL is now derived from the 2-hour hung-process
+    // ceiling, NOT from the wake budget. The old formula
+    // (`getWakeBudgetMs() + 5 * 60 * 1000`, = 25 min) was sized, in its own
+    // words, to stay "SHORTER than PM2's 30-minute restart" — and that restart
+    // is exactly what this slice deletes. A TTL sized against a kill that no
+    // longer happens expires DURING the hang the ceiling is meant to bound,
+    // letting a second cycle start on top of the first.
+    expect(expression).toBe('CYCLE_LOCK_CEILING_MS + 5 * 60 * 1000');
 
-    // And the derived value itself, for the default wake budget: TTL must be
-    // strictly greater than the wake budget (there must be slack) and must
-    // remain shorter than the 30-minute pm2 restart interval (round-3 M1 —
-    // a killed cycle's lock must always be gone before the next cycle starts).
-    const derivedTtl = DEFAULT_WAKE_BUDGET_MS + 5 * 60 * 1000;
+    // The invariant, restated: the lock must outlive any run the ceiling
+    // permits, so that the CEILING — never a lock expiry — is what ends a
+    // hung cycle. The old `< 30 min` assertion is deliberately GONE: it
+    // encoded the pm2 restart this slice removed.
+    const ceilingMs = 2 * 60 * 60 * 1000;
+    const derivedTtl = ceilingMs + 5 * 60 * 1000;
+    expect(derivedTtl).toBeGreaterThan(ceilingMs);
     expect(derivedTtl).toBeGreaterThan(DEFAULT_WAKE_BUDGET_MS);
-    expect(derivedTtl).toBeLessThan(30 * 60 * 1000);
+
+    // And the ceiling constant in index.ts must match the wrapper's own
+    // SCRAPER_CEILING_SECONDS default (7200s) — two numbers in two languages
+    // that must never drift, so each is read from its real source here.
+    const ceilingMatch = source.match(/const CYCLE_LOCK_CEILING_MS = ([^;]+);/);
+    expect(ceilingMatch, 'CYCLE_LOCK_CEILING_MS not found in index.ts').not.toBeNull();
+    expect(ceilingMatch![1].trim()).toBe('2 * 60 * 60 * 1000');
+
+    const wakeScript = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../../../scripts/scraper-wake.sh'),
+      'utf8',
+    );
+    const secondsMatch = wakeScript.match(/SCRAPER_CEILING_SECONDS:-(\d+)/);
+    expect(secondsMatch, 'SCRAPER_CEILING_SECONDS default not found in scraper-wake.sh').not.toBeNull();
+    expect(Number(secondsMatch![1]) * 1000).toBe(ceilingMs);
   });
 });
