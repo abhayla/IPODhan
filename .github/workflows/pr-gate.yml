@@ -430,6 +430,19 @@ jobs:
         # report and the repair disagree about what they are about to delete.
         run: node --test scripts/tests/company-identity-fold-parity.test.mjs
 
+      - name: Duplicate-IPO-rows invariant unit tests (item 12 slice F)
+        # scripts/lib/repair-invariants/duplicate-ipo-rows.mjs is the check that
+        # says whether a duplicate-row repair HELD, so the shape of its answer is
+        # gated here rather than left to a staging run. MUST stay INSIDE the
+        # Node 22 window above: the test imports the invariant, which shares the
+        # company-identity fold with the TypeScript SSOT.
+        #
+        # What it pins: the bracketed "(<Company> IPO)" discovery tail folds away,
+        # a bare trailing token does NOT (that would merge two companies on one
+        # letter), rows within the scrape-window tolerance group as ONE finding,
+        # and a longer chain of rows does not exceed that tolerance in aggregate.
+        run: node --test scripts/tests/duplicate-ipo-rows-invariant.test.mjs
+
       - name: Row-key staleness invariant unit tests (item 12 slice C)
         # scripts/lib/repair-invariants/normalized-name-current.mjs is the tool a
         # 544-row re-key is proven with, so the SHAPE of its answer is gated here
