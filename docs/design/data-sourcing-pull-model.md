@@ -1069,9 +1069,11 @@ partially and re-queued.
   it records **every page it had not yet read, by page number, with the reason it stopped** (timeout
   vs. crash vs. malformed page) — never a bare "N pages unread" count, per `signal-ownership.md` R1.
   Those recorded pages are exactly what the seven-day PDF retention (OD-32, §0.5.1) exists to let a
-  later pass retry. Concretely, the 2-hour ceiling is implemented as the extractor spawn's own
-  timeout, with the per-page skip records written by the extractor process itself on termination —
-  not by a wrapper polling it from outside. The `heavy` lock's TTL is that 2-hour ceiling plus slack,
+  later pass retry. Concretely, the 2-hour ceiling is an external supervisor of the document job
+  process (a wake-wrapper timer or pm2-level max runtime) that watches the parent, with the
+  extractor spawn timeout bounding only the child half — a spawn timeout bounds a child the
+  parent is watching and does nothing when the parent itself wedges. No such supervisor exists in
+  the tree yet (lane A verified 2026-09-11). The `heavy` lock's TTL is that 2-hour ceiling plus slack,
   never a value derived from spawn count × a per-document timeout, because the document job reads one
   document at a time and the timed-spawn-count arithmetic that produced 10/30/90-minute figures no
   longer has a per-document timeout to multiply.
