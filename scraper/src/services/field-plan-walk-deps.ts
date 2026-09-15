@@ -24,13 +24,25 @@
  *   source needs a real adapter written against its own orchestrator, which
  *   is its own slice of work with its own real-source fixtures.
  *
- * With an empty registry the walk is exactly as safe as it is useless: every
- * rank resolves to NO_FETCHER_REGISTERED, every field records EXHAUSTED, and
- * nothing is written. That would be a SILENT waste of a cycle's budget and,
- * worse, would burn every field's attempt budget on work no source was ever
- * asked to do — so PASS 3 refuses to run at all while the registry is empty,
- * and says so in one line. The flag being on is not enough; the adapters are
- * the second half of turning this on.
+ * What WOULD happen if the walk ran on an empty registry — measured from the
+ * code, not assumed: every rank pushes `NO_FETCHER_REGISTERED` into `failures`
+ * and falls through (`field-plan-walk.ts`, the `!fetcher` branch in
+ * `attemptOneField`), so the field reaches the all-ranks-failed branch, which
+ * records `state: 'EXHAUSTED'` with `writeHappened: true`. `recordOutcome`
+ * then charges `attempts = attempts + 1`, stamps `last_attempt_at`, and —
+ * because 'EXHAUSTED' is in the repository's `TERMINAL_STATES` — sets
+ * `next_due_at = NULL`. The cost is therefore not a wasted cycle: it is EVERY
+ * field in the plan permanently retired without one source being asked.
+ *
+ * THE REFUSAL IS CODE, NOT THIS COMMENT. `fieldPlanWalkHasFetchers()` below is
+ * called at PASS 3's entry in `document-cycle.ts` (the
+ * `else if (!fieldPlanWalkHasFetchers())` arm), BEFORE the repository is
+ * constructed and before any claim is taken — claiming and then failing would
+ * still stamp `claimed_at` and burn backoff. The guard is held by
+ * `tests/unit/services/document-cycle-pass3-guard.test.ts`, which asserts the
+ * observable consequence (no claim is ever taken) rather than the log text,
+ * and covers BOTH arms so the guard cannot degrade into a blanket off-switch.
+ * The flag being on is not enough; the adapters are the second half.
  */
 
 import { db, getRedisClient } from '@ipodhan/shared';
