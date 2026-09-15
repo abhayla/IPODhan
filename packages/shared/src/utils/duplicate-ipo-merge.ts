@@ -260,8 +260,13 @@ export function verifyMergeReadback(input: MergeReadbackInput): MergeReadbackChe
   });
 
   for (const p of input.patch) {
-    const jsKey = columnToCamelCase(p.column);
-    const actual = input.survivor ? input.survivor[jsKey] : undefined;
+    // `input.survivor` is built from `db.execute(sql\`select * from ipos ...\`)` — Postgres
+    // returns the RAW column name (snake_case), never the camelCase drizzle field name. Reading
+    // by `columnToCamelCase(p.column)` here always misses on any multi-word column
+    // (allotment_date, verifier_url, ...) and reports a false FAIL after the write already
+    // committed (2026-09-16 staging dedupe: gulflloyds, hrhygieneproducts). Read by the column
+    // name exactly as `p.column` names it — that is what the row actually has.
+    const actual = input.survivor ? input.survivor[p.column] : undefined;
     const pass = input.survivor != null && actual !== null && actual !== undefined && String(actual) === String(p.value);
     checks.push({
       name: `carried field ${p.column}`,

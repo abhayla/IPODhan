@@ -255,10 +255,10 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
     { column: 'cin', value: 'U11111MH2020PLC123456', source: 'ADMIN', confidence: 100, note: 'carried' },
   ];
 
-  it('passes every check on a clean post-apply state', () => {
+  it('passes every check on a clean post-apply state (real row shape: snake_case keys)', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: '2026-09-20', cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: true,
       sameDaySiblingSlugs: [],
@@ -297,7 +297,7 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
   it('fails a carried-field check when the survivor does not actually carry the patched value', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: null, cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: null, cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: true,
       sameDaySiblingSlugs: [],
@@ -310,7 +310,7 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
   it('fails "slug redirect present" when the redirect row is missing', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: '2026-09-20', cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: false,
       sameDaySiblingSlugs: [],
@@ -322,7 +322,7 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
   it('same-day siblings is informational only — never fails the readback', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: '2026-09-20', cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: true,
       sameDaySiblingSlugs: ['some-other-ipo-slug'],
@@ -331,5 +331,42 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
     const check = checks.find((c) => c.name === 'same-day siblings (informational)');
     expect(check?.pass).toBe(true);
     expect(check?.detail).toMatch(/some-other-ipo-slug/);
+  });
+
+  // DEFECT 1 (2026-09-16 staging dedupe repair): survivor rows come from
+  // `db.execute(sql\`select * from ipos ...\`)` in repair-merge-duplicate-ipo.ts,
+  // whose row keys are the RAW SNAKE_CASE column names Postgres returns — never
+  // camelCase. A survivor object built with camelCase keys (as every other test
+  // in this file used) hides the bug; this test uses the real shape.
+  it('reads a snake_case survivor row correctly for a multi-word carried column (real row shape)', () => {
+    const snakeCasePatch: CarryFieldPatch[] = [
+      { column: 'allotment_date', value: '2026-09-20', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { allotment_date: '2026-09-20' },
+      patch: snakeCasePatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field allotment_date');
+    expect(check?.pass).toBe(true);
+  });
+
+  it('still fails a snake_case survivor when the carried value is genuinely missing (positive control)', () => {
+    const snakeCasePatch: CarryFieldPatch[] = [
+      { column: 'allotment_date', value: '2026-09-20', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { allotment_date: null },
+      patch: snakeCasePatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field allotment_date');
+    expect(check?.pass).toBe(false);
   });
 });
