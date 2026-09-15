@@ -1169,6 +1169,46 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     const provenanceWritten: { fieldName: string; source: string; previousSource: string | null }[] = [];
 
     await this.db.transaction(async (tx) => {
+      // --- child tables FIRST: repoint person-created data, delete scraper-derived data --------
+      // Must run before the `ipos` row for dropId is deleted below: most FKs into `ipos` are
+      // ON DELETE CASCADE (schema.ts), so deleting the dropped `ipos` row before this loop would
+      // let Postgres cascade-delete REPOINT_TABLES rows too (user_watchlist, ipo_reviews, ...) —
+      // exactly the person-created data this loop exists to save by repointing, not deleting.
+      for (const table of direct) {
+        const { col } = reach.get(table)!;
+        if (REPOINT_TABLES.has(table)) {
+          // A unique violation means the survivor already holds the equivalent row, so the
+          // dropped row's copy is redundant rather than lost.
+          await tx.execute(sql`savepoint repoint`);
+          try {
+            await tx.execute(sql`
+              update ${sql.identifier(table)} set ${sql.identifier(col)} = ${keepId}
+              where ${sql.identifier(col)} = ${dropId}
+            `);
+            await tx.execute(sql`release savepoint repoint`);
+          } catch (e) {
+            const pgError = e as { code?: string };
+            if (pgError.code !== '23505') throw e;
+            await tx.execute(sql`rollback to savepoint repoint`);
+            await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+          }
+        } else {
+          await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+        }
+      }
+
+      // DEFECT 2 (2026-09-16 staging dedupe): the dropped `ipos` row is deleted here — after
+      // child-table repoint/delete above, but BEFORE any carried-column UPDATE on the survivor
+      // below. A carried value (e.g. symbol) can be identical to a value the dropped row still
+      // holds; writing the survivor's UPDATE first, while the dropped row still exists, makes
+      // both rows hold that value at once — which any unique-constrained column the dropped row
+      // still carries (checked against schema.ts: currently only `slug`, which is never a
+      // carried column; any future addition to CARRY_IF_ABSENT_COLUMNS that is also
+      // unique-constrained would hit this) cannot survive, crashing the whole transaction
+      // (icelectricals, 2026-09-16: symbol='ICELCO' observed on both rows mid-transaction).
+      // Deleting the dropped row first means the carried value only ever exists on the survivor.
+      await tx.delete(ipos).where(eq(ipos.id, dropId));
+
       for (const p of patch) {
         const jsKey = columnToCamelCase(p.column);
         await tx
@@ -1218,31 +1258,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         .insert(ipoSlugRedirects)
         .values({ oldSlug: drop.slug, ipoId: keepId, reason: 'DUPLICATE_MERGE' })
         .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
-
-      for (const table of direct) {
-        const { col } = reach.get(table)!;
-        if (REPOINT_TABLES.has(table)) {
-          // A unique violation means the survivor already holds the equivalent row, so the
-          // dropped row's copy is redundant rather than lost.
-          await tx.execute(sql`savepoint repoint`);
-          try {
-            await tx.execute(sql`
-              update ${sql.identifier(table)} set ${sql.identifier(col)} = ${keepId}
-              where ${sql.identifier(col)} = ${dropId}
-            `);
-            await tx.execute(sql`release savepoint repoint`);
-          } catch (e) {
-            const pgError = e as { code?: string };
-            if (pgError.code !== '23505') throw e;
-            await tx.execute(sql`rollback to savepoint repoint`);
-            await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
-          }
-        } else {
-          await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
-        }
-      }
-
-      await tx.delete(ipos).where(eq(ipos.id, dropId));
+      // Child-table repoint/delete and the dropped `ipos` row delete both already ran above
+      // (DEFECT 2 fix) — before this patch loop, so a unique-constrained carried value never has
+      // to coexist on both rows.
     });
 
     await this.invalidateCache(

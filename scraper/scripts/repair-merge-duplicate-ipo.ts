@@ -44,6 +44,7 @@ import { db, getRedisClient, IPORepository, type MergeDuplicateResult } from '@i
 import { DatabaseError, ProdWriteRefusedError } from '@ipodhan/shared/errors/repository-errors';
 import { verifyMergeReadback, type MergeReadbackCheck } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { sql } from 'drizzle-orm';
+import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
@@ -60,6 +61,103 @@ const KEEP = arg('--keep');
 const DROP = arg('--drop');
 const SET_ISSUE_SIZE = arg('--set-issue-size');
 const ISSUE_SIZE_NOTE = arg('--issue-size-note');
+const REVERIFY_LEDGER = arg('--reverify');
+
+/**
+ * Re-runs `verifyMergeReadback` against a FRESH read of the database, from a
+ * ledger file the tool already wrote on a previous `--apply` run
+ * (`scripts/state/merge-applied-*.json`). Writes nothing. Used to re-check a
+ * merge whose apply-time VERIFY reported a FALSE FAIL (DEFECT 1: the
+ * read-back used to compare the wrong key casing) — the 10 staging ledgers
+ * from the 2026-09-16 run are exactly this case.
+ */
+export async function reverify(ledgerPath: string): Promise<number> {
+  let ledgerRaw: string;
+  try {
+    ledgerRaw = fs.readFileSync(ledgerPath, 'utf8');
+  } catch (err) {
+    console.error(`refused: could not read ledger file "${ledgerPath}": ${err instanceof Error ? err.message : err}`);
+    return 1;
+  }
+  let ledger: {
+    keepId?: unknown;
+    dropId?: unknown;
+    keepSlug?: unknown;
+    droppedSlug?: unknown;
+    patch?: unknown;
+  };
+  try {
+    ledger = JSON.parse(ledgerRaw);
+  } catch (err) {
+    console.error(`refused: ledger file "${ledgerPath}" is not valid JSON: ${err instanceof Error ? err.message : err}`);
+    return 1;
+  }
+
+  if (typeof ledger.keepId !== 'string' || typeof ledger.dropId !== 'string' || typeof ledger.droppedSlug !== 'string') {
+    console.error(`refused: ledger file "${ledgerPath}" is missing keepId/dropId/droppedSlug`);
+    return 1;
+  }
+  if (!Array.isArray(ledger.patch)) {
+    console.error(
+      `refused: ledger file "${ledgerPath}" has no "patch" array — it was written before the patch field was ` +
+        `added to the ledger (2026-09-16), so there is nothing to re-verify a carried-field readback against. ` +
+        `Re-run the original --apply is not an option (it already committed); this ledger cannot be re-verified.`
+    );
+    return 1;
+  }
+
+  const keepId = ledger.keepId as string;
+  const dropId = ledger.dropId as string;
+  const droppedSlug = ledger.droppedSlug as string;
+  const patch = ledger.patch as MergeDuplicateResult['patch'];
+
+  const readback = await readbackFromDb({ keepId, dropId, droppedSlug, patch });
+  readback.forEach((c) => console.log(`VERIFY: ${c.pass ? 'PASS' : 'FAIL'} — ${c.name}: ${c.detail}`));
+  return readback.every((c) => c.pass) ? 0 : 2;
+}
+
+/**
+ * Re-query after commit — the predecessor script did this (git show
+ * 9709f987:scripts/merge-duplicate-ipo.mjs ~L319) and this CLI had silently dropped it: an
+ * "APPLIED." report with nothing that actually re-checked the write. Shared by the apply path
+ * (immediately after commit) and `--reverify` (from a ledger, any time later) — one place that
+ * builds the readback inputs from the database, so the two paths cannot drift.
+ */
+export async function readbackFromDb(input: {
+  keepId: string;
+  dropId: string;
+  droppedSlug: string;
+  patch: MergeDuplicateResult['patch'];
+}): Promise<MergeReadbackCheck[]> {
+  const dropCountResult = await db.execute(sql`select count(*)::int as n from ipos where id = ${input.dropId}`);
+  const dropRowCount = Number((dropCountResult as unknown as { rows: { n: number }[] }).rows?.[0]?.n ?? -1);
+
+  const survivorResult = await db.execute(sql`select * from ipos where id = ${input.keepId}`);
+  const survivor = (survivorResult as unknown as { rows: Record<string, unknown>[] }).rows?.[0];
+
+  const redirectResult = await db.execute(
+    sql`select 1 from ipo_slug_redirects where old_slug = ${input.droppedSlug} and ipo_id = ${input.keepId} limit 1`
+  );
+  const redirectExists = ((redirectResult as unknown as { rows: unknown[] }).rows?.length ?? 0) > 0;
+
+  const sameDayResult = survivor
+    ? await db.execute(
+        sql`select slug from ipos where open_date = ${survivor.open_date} and id <> ${input.keepId}`
+      )
+    : { rows: [] };
+  const sameDaySiblingSlugs = ((sameDayResult as unknown as { rows: { slug: string }[] }).rows ?? []).map(
+    (r) => r.slug
+  );
+
+  return verifyMergeReadback({
+    dropRowCount,
+    survivor,
+    patch: input.patch,
+    redirectExists,
+    sameDaySiblingSlugs,
+    keepId: input.keepId,
+  });
+}
 
 function printPlan(result: MergeDuplicateResult) {
   console.log(`\nKEEP   ${result.keep.slug}`);
@@ -84,8 +182,14 @@ function printPlan(result: MergeDuplicateResult) {
 }
 
 async function main(): Promise<number> {
+  if (REVERIFY_LEDGER) {
+    return reverify(REVERIFY_LEDGER);
+  }
   if (!KEEP || !DROP) {
-    console.error('usage: --keep <uuid> --drop <uuid> [--apply --allow-prod] [--set-issue-size <rupees>]');
+    console.error(
+      'usage: --keep <uuid> --drop <uuid> [--apply --allow-prod] [--set-issue-size <rupees>]\n' +
+        '   or: --reverify <scripts/state/merge-applied-*.json>   (re-checks an already-applied merge, writes nothing)'
+    );
     return 1;
   }
   if (KEEP === DROP) {
@@ -171,36 +275,11 @@ async function main(): Promise<number> {
   }
 
   // --- post-apply readback (MAJOR-2, PR #433 review) ------------------------------------------
-  // Re-query after commit — the predecessor script did this (git show
-  // 9709f987:scripts/merge-duplicate-ipo.mjs ~L319) and this CLI had silently dropped it: an
-  // "APPLIED." report with nothing that actually re-checked the write.
-  const dropCountResult = await db.execute(sql`select count(*)::int as n from ipos where id = ${DROP}`);
-  const dropRowCount = Number(
-    (dropCountResult as unknown as { rows: { n: number }[] }).rows?.[0]?.n ?? -1
-  );
-
-  const survivorResult = await db.execute(sql`select * from ipos where id = ${KEEP}`);
-  const survivor = (survivorResult as unknown as { rows: Record<string, unknown>[] }).rows?.[0];
-
-  const redirectResult = await db.execute(
-    sql`select 1 from ipo_slug_redirects where old_slug = ${plan.drop.slug} and ipo_id = ${KEEP} limit 1`
-  );
-  const redirectExists = ((redirectResult as unknown as { rows: unknown[] }).rows?.length ?? 0) > 0;
-
-  const sameDayResult = await db.execute(
-    sql`select slug from ipos where open_date = ${plan.keep.openDate} and id <> ${KEEP}`
-  );
-  const sameDaySiblingSlugs = (
-    (sameDayResult as unknown as { rows: { slug: string }[] }).rows ?? []
-  ).map((r) => r.slug);
-
-  const readback: MergeReadbackCheck[] = verifyMergeReadback({
-    dropRowCount,
-    survivor,
-    patch: applied.patch,
-    redirectExists,
-    sameDaySiblingSlugs,
+  const readback: MergeReadbackCheck[] = await readbackFromDb({
     keepId: KEEP,
+    dropId: DROP,
+    droppedSlug: plan.drop.slug,
+    patch: applied.patch,
   });
   readback.forEach((c) => console.log(`VERIFY: ${c.pass ? 'PASS' : 'FAIL'} — ${c.name}: ${c.detail}`));
   const readbackOk = readback.every((c) => c.pass);
@@ -211,6 +290,7 @@ async function main(): Promise<number> {
     dropId: DROP,
     keepSlug: applied.keepSlug,
     droppedSlug: applied.droppedSlug,
+    patch: applied.patch,
     provenanceWritten: applied.provenanceWritten,
     readback,
   });
