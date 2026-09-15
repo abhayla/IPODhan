@@ -1405,7 +1405,7 @@ export async function upsertIPO(
         // supplied, at full confidence, with no prior value (there is no prior row).
         if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
           const fieldsToTrack = Object.entries(ipoData)
-            .filter(([, value]) => value !== undefined)
+            .filter(([, value]) => value !== undefined && value !== null)
             .map(([fieldName]) => ({
               fieldName,
               source,

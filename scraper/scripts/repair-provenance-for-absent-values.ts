@@ -1,4 +1,3 @@
-// repair-tool-exempt: 2026-09-16 scripts/lib/repair-tool.ts does not exist yet — all four pre-T-490 tools carry this same exemption; this tool uses the shared FieldSourcesRepository write path rather than re-typing a raw DELETE, and migrates with the others when that module lands.
 /**
  * #654. Delete the `field_sources` rows that claim a source supplied a value
  * which does not exist on the parent row.
@@ -30,7 +29,11 @@
  * `--expect-db <name>` is MANDATORY with `--apply` (#640): the script asks the
  * server which database it is connected to and refuses, before any write, if it
  * does not match. A repair aimed at staging must never land on production
- * because an env var was stale.
+ * because an env var was stale. On TOP of that, `openRepairDb()` (T-490,
+ * scripts/lib/repair-tool.ts) is the shared guard every repair tool goes
+ * through: it independently refuses a prod `--apply` unless `--allow-prod` is
+ * also given, from the SAME pool that will do the writing, never from an env
+ * var. Both guards must pass before a single row is deleted.
  *
  * Deletes go through `FieldSourcesRepository.delete()`, never a raw DELETE:
  * that is the write path the ratchet knows about, and it invalidates the
@@ -51,10 +54,12 @@ import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { FieldSourcesRepository } from '@ipodhan/shared/repositories';
 import { sql } from 'drizzle-orm';
 import provenanceParentNotNullInvariant from '../../scripts/lib/repair-invariants/provenance-parent-not-null.mjs';
+import { openRepairDb } from './lib/repair-tool.js';
 
 const APPLY = process.argv.includes('--apply');
 const expectIdx = process.argv.indexOf('--expect-db');
 const EXPECT_DB: string | undefined = expectIdx >= 0 ? process.argv[expectIdx + 1] : undefined;
+const ALLOW_PROD = process.argv.includes('--allow-prod');
 
 /** camelCase -> snake_case, the convention `field_sources.field_name` uses. */
 function toSnake(name: string): string {
@@ -139,8 +144,16 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const dbInfo = await db.execute(sql`SELECT current_database() AS db, inet_server_port() AS port`);
-  const actualDb = String((dbInfo.rows[0] as { db: string }).db);
+  // T-490: shared guard — asks the SAME pool that will do the writing which
+  // database it is in (never an env var), prints `current_database(): <name>`,
+  // and refuses a prod --apply without --allow-prod. This is the ONLY guard
+  // that reaches decideProdWriteRefusal(); the --expect-db check below is this
+  // tool's OWN additional guard (#640) and stays on top of it, not instead of it.
+  const { dbName: actualDb } = await openRepairDb(db, {
+    apply: APPLY,
+    allowProd: ALLOW_PROD,
+    toolName: 'repair-provenance-for-absent-values',
+  });
   console.log(`database: ${actualDb}  mode: ${APPLY ? 'APPLY' : 'DRY RUN'}`);
 
   if (EXPECT_DB && EXPECT_DB !== actualDb) {

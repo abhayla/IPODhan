@@ -147,7 +147,14 @@ describe('#654 — consolidation never records provenance for a value null on bo
 
   it('a missing incoming value against a REAL stored value still keeps the stored provenance', async () => {
     // The existing early return at ~1298 already handles this and must not
-    // regress: "missing incoming keeps existing" is correct behaviour.
+    // regress: "missing incoming keeps existing" is correct behaviour. Exact
+    // assertions (Tier A review, PR #661): the prior version of this test
+    // only asserted `expect(result).toBeDefined()`, which passes for ANY
+    // truthy return — it would not have gone red if the both-null guard above
+    // (NOTHING_TO_RECORD) were mistakenly widened to also swallow this
+    // still-has-a-real-stored-value case. Assert the specific rejection
+    // reason (NO_INCOMING_VALUE, never NOTHING_TO_RECORD) and that the real
+    // stored value is what survives into consolidatedData.
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       {
         ipoId: IPO_ID,
@@ -173,6 +180,11 @@ describe('#654 — consolidation never records provenance for a value null on bo
       existingData: { symbol: 'QUANTO' },
     });
 
-    expect(result).toBeDefined();
+    const symbolResult = result.fieldResults.find((f) => f.fieldName === 'symbol');
+    expect(symbolResult).toBeDefined();
+    expect(symbolResult!.finalValue).toBe('QUANTO');
+    expect(symbolResult!.rejectedSources?.[0]?.reason).toBe('NO_INCOMING_VALUE');
+    expect(symbolResult!.rejectedSources?.[0]?.reason).not.toBe('NOTHING_TO_RECORD');
+    expect(result.consolidatedData?.symbol).toBe('QUANTO');
   });
 });
