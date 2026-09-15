@@ -148,14 +148,19 @@ jobs:
       - name: Decide whether a scheduled staging deploy is needed
         id: gate
         # Explicit shell, no -e: this step's own branches decide success vs
-        # failure via `proceed=true|false` + exit 0 on every path, including
-        # "could not read the served sha" and "PORT_FILE missing". GitHub
+        # failure via `proceed=true|false` + exit 0 on every path. GitHub
         # Actions' bare `shell: bash` implicitly runs `bash -e -o pipefail`,
-        # which turned a failed `PORT="$(grep ... )"` (no match -> pipefail
-        # nonzero -> set -e kills the assignment) into a silent exit 1 with
-        # NO note() output on every schedule tick since 2026-09-14 (signal-
-        # ownership R6: every exit prints its reason). -o pipefail is kept so
-        # a failed curl|node pipe is still detected by the -z check below.
+        # which is what actually broke every scheduled tick since 2026-09-14
+        # (8 failed runs, e.g. run 35000236925, sha 6eb37048): the real
+        # killer is `DEPLOYABLE="$(printf ... | grep -vE '(\.md$|^docs/)')"`
+        # below - when the changed-file set between the served sha and HEAD
+        # is ALL docs (as it was: 3 files, all under docs/ or .md, between
+        # 557e7dc9 and 6eb37048), `grep -v` matches nothing and exits 1,
+        # which `set -e` treats as fatal to the command substitution, killing
+        # the step before the `-z "$DEPLOYABLE"` skip check ever runs -
+        # a silent exit 1 with NO note() output (signal-ownership R6: every
+        # exit prints its reason). -o pipefail is kept so a failed curl|node
+        # pipe is still detected by the -z check on SERVED_SHA below.
         shell: bash --noprofile --norc -o pipefail {0}
         env:
           SLOT: ${{ steps.slot.outputs.slot }}
@@ -178,16 +183,45 @@ jobs:
           ROOT="/var/www/ipodhan"
           PORT_FILE="$ROOT/shared/env/staging/web.env.local"
           # `|| true` on each fallible pipeline: a failed command substitution
-          # assigned to a variable is fatal under `set -e` (bash quirk - see the
-          # step comment above), so PORT_FILE missing or PORT= absent must not be
-          # allowed to kill the script before the -z/unknown check below can turn
-          # it into a loud, correct "deploying anyway" decision.
+          # assigned to a variable is fatal under `set -e` (the same bash quirk
+          # that broke the DEPLOYABLE line below - see the step comment above).
+          # PORT_FILE is present and readable in production (mode 0600, one
+          # ^PORT= line) as of this incident, but a future missing/unreadable
+          # PORT_FILE or empty PORT= must not be allowed to kill the script
+          # before the -z/unknown check below can turn it into a loud,
+          # correct "deploying anyway" decision - defense in depth, not the
+          # fix for this incident.
           PORT="$(grep -E '^PORT=' "$PORT_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
           VERSION_URL="http://127.0.0.1:${PORT:-3000}/api/version"
           SERVED_SHA="$(curl -fsS --max-time 10 "$VERSION_URL" 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const j=JSON.parse(d);console.log(String((j&&j.data&&j.data.sha)||(j&&j.sha)||""));}catch{console.log("");}});' || true)"
 
           if [ -z "$SERVED_SHA" ] || [ "$SERVED_SHA" = "unknown" ]; then
             note "WARNING: could not read the sha staging is serving from $VERSION_URL (unreachable, unparseable, empty, or the literal placeholder 'unknown'). Deploying anyway - staging may be down BECAUSE it needs this code. This line is the alert: if it repeats every tick, staging /api/version is broken and the cadence gate is running blind."
+
+            # This branch decides to deploy BLIND - it cannot compute the
+            # docs-only skip, so it always deploys, and the only trace of
+            # that decision was this job's log until now (signal-ownership
+            # R6: a log line nobody reads is not detection). Same Notifier
+            # gateway and env vars as the "Alert owner on deploy failure"
+            # step below (D:\Abhay\GLOBAL.md section 2); fail-open - a
+            # Notifier outage must never turn this into a second silent
+            # failure on top of the /api/version read it is reporting.
+            if [ -n "${NOTIFIER_URL:-}" ] && [ -n "${NOTIFIER_KEY:-}" ]; then
+              NOTIFY_BODY="$(node -e '
+                const [url] = process.argv.slice(1);
+                process.stdout.write(JSON.stringify(`Could not read the sha staging is serving from ${url} - deploying blind this tick.`));
+              ' "$VERSION_URL")"
+              NOTIFY_RESPONSE="$(curl -sS -o /dev/null -w '%{http_code}' \
+                -X POST "${NOTIFIER_URL%/}/notify" \
+                -H 'Content-Type: application/json' \
+                -H "X-Api-Key: ${NOTIFIER_KEY}" \
+                --max-time 5 \
+                -d "{\"project\":\"ipodhan\",\"severity\":\"P2\",\"title\":\"schedule guard deploying staging blind\",\"body\":${NOTIFY_BODY},\"type\":\"deploy\",\"dedupeKey\":\"deploy-linux-schedule-guard-blind-${HEAD_SHA}\"}" 2>/dev/null || echo "curl-failed")"
+              note "Notifier /notify HTTP status: $NOTIFY_RESPONSE"
+            else
+              note "WARNING: NOTIFIER_URL/NOTIFIER_KEY not set - cannot page the owner about deploying blind (see runner .env setup in GLOBAL.md section 2)."
+            fi
+
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -214,7 +248,7 @@ jobs:
           # Mirrors the paths-ignore list the old push trigger carried:
           # '**/*.md' -> any path ending .md at any depth; 'docs/**' -> any
           # path under docs/.
-          DEPLOYABLE="$(printf '%s\n' "$CHANGED" | grep -vE '(\.md$|^docs/)')"
+          DEPLOYABLE="$(printf '%s\n' "$CHANGED" | grep -vE '(\.md$|^docs/)' || true)"
           CHANGED_N="$(printf '%s\n' "$CHANGED" | wc -l | tr -d ' ')"
           if [ -z "$DEPLOYABLE" ]; then
             note "Only documentation changed between $SERVED_SHA and $HEAD_SHA ($CHANGED_N file(s), all under docs/ or ending .md) - no deploy this tick, same as the old paths-ignore behaviour."

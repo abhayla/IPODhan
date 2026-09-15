@@ -107,18 +107,23 @@ STUB
 chmod +x "$TMP/bin/curl"
 export PATH="$TMP/bin:$PATH"
 
+json() { printf '{"success":true,"data":{"sha":"%s","builtAt":null}}' "$1"; }
+
 FAILED=0
 
 # The gate step MUST declare an explicit shell without -e. GitHub Actions'
-# bare `shell: bash` implicitly runs `bash -e -o pipefail`, which is fatal to
-# this script: PORT="$(grep ... "$PORT_FILE" | ...)" with no match (missing
-# file, or a schedule tick where PORT_FILE is unreadable) makes the piped
-# command substitution exit nonzero under pipefail, and `set -e` on a failed
-# command substitution assigned to a variable kills the whole step BEFORE any
-# note() call - a silent exit 1 with zero log output (2026-09-14 through
-# 2026-09-15, 8 consecutive scheduled runs, e.g. run 35000236925). This is
-# the regression: every case below this point in the file (via run_case,
-# which uses plain `bash`) could NOT have caught it - only running the
+# bare `shell: bash` implicitly runs `bash -e -o pipefail`. The real
+# 2026-09-14/15 incident (8 consecutive scheduled runs failed, e.g. run
+# 35000236925, sha 6eb37048) was NOT a missing PORT_FILE - on the runner
+# /var/www/ipodhan/shared/env/staging/web.env.local exists, mode 0600, with
+# exactly one ^PORT= line, and staging on :3012 answered 557e7dc9. The
+# actual killer is the DEPLOYABLE grep -v filter further down: git diff
+# --name-only 557e7dc9 6eb37048 is three docs-only files, grep -v matches
+# nothing against an all-docs changed set, exits 1, and `set -e` on a
+# failed command substitution assigned to a variable kills the step BEFORE
+# the -z "$DEPLOYABLE" skip check ever runs - a silent exit 1, zero note()
+# output. Every case below this point in the file (via run_case, which
+# uses plain `bash`, no -e) could NOT have caught this - only running the
 # extracted body under the real GHA invocation does.
 if grep -qE "^\s+shell:\s+bash --noprofile --norc -o pipefail \{0\}\s*\$" "$WF"; then
   echo "PASS: the gate step's shell is explicit and does not carry -e"
@@ -147,7 +152,16 @@ run_case_under_dash_e() {
     FAILED=1
   fi
 }
-run_case_under_dash_e "schedule under bash -e -o pipefail (real GHA shell): PORT_FILE missing -> warn + deploy, never a silent crash" true   env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
+# THE REAL REGRESSION (2026-09-14/15): staging serves BASE, HEAD is DOCS
+# (a docs-only commit) - the changed set is 100% excluded by
+# grep -vE '(\.md$|^docs/)', so grep -v exits 1. This is the exact shape
+# of the incident (all changed files docs-only) and must deploy=false
+# LOUDLY, not crash silently.
+run_case_under_dash_e "schedule under bash -e -o pipefail (real GHA shell): ALL changed files are docs-only -> skip loudly, never a silent crash (the actual 2026-09-14 regression)" false   env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
+# Defense-in-depth coverage kept alongside the real regression above: a
+# genuinely missing/unreadable PORT_FILE has the identical `set -e` hazard
+# even though it was NOT what actually failed on the runner this time.
+run_case_under_dash_e "schedule under bash -e -o pipefail (real GHA shell): PORT_FILE missing -> warn + deploy, never a silent crash (defense in depth, not this incident)" true   env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
 
 run_case() {
   local name="$1" want="$2"
@@ -182,8 +196,6 @@ assert_summary_mentions() {
     FAILED=1
   fi
 }
-
-json() { printf '{"success":true,"data":{"sha":"%s","builtAt":null}}' "$1"; }
 
 # --- workflow_dispatch is untouched: it is the ONLY route to prod, and the ---
 # --- gate must never turn a human's deploy into a no-op.                  ---
