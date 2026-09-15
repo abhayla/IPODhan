@@ -72,7 +72,16 @@ import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-serve
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 import { checkPriceBand } from './lib/substance-checks.mjs';
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
-import { collectRatiosYield, RATIOS_YIELD_NAME } from './lib/ratios-extraction-yield.mjs';
+import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
+
+// The three filing-extractor types this specific stuck-detection query cares about
+// (never the anchor report or PRICE_BAND_AD — this check is about `scripts/extract_filing.py`
+// candidates going stuck, not every AUTO_PERSIST candidate). Derived from the same
+// mirror `not-applicable-documents.mjs` keeps, so there is one list in the audit for
+// "what does the filing extractor handle" instead of a second hand-copied literal.
+const FILING_EXTRACTOR_STUCK_TYPES = EXTRACTABLE_DOC_TYPES_MIRROR.filter(
+  (t) => t !== 'ANCHOR_ALLOCATION_REPORT' && t !== 'PRICE_BAND_AD'
+);
 import {
   classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
   REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
@@ -797,8 +806,8 @@ async function checkM() {
       LEFT JOIN document_fetch_state fs ON fs.ipo_id = d.ipo_id AND fs.doc_type = d.type
      WHERE i.${REAL_IPO}
        AND i.status IN ('UPCOMING','OPEN','CLOSED','LISTED')
-       AND d.type IN ('DRHP','RHP','PROSPECTUS')
-  `);
+       AND d.type = ANY($1)
+  `, [FILING_EXTRACTOR_STUCK_TYPES]);
   const nowMs = Date.now();
   const extractionStuck = extractionStuckRows
     .map((r) => ({
@@ -1587,21 +1596,16 @@ async function checkR_provenanceParentNotNull() {
       : `${result.count} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
 }
 
-async function checkRatiosExtractionYield() {
+async function checkNotApplicableDocuments() {
   let result;
   try {
-    result = await collectRatiosYield(q);
+    result = await collectNotApplicableDocuments(q);
   } catch (e) {
-    record('ratios_extraction_yield', RATIOS_YIELD_NAME, 'UNVERIFIABLE',
-      `documents/financial_data not readable: ${e.message}`);
+    record('not_applicable_documents_named', NOT_APPLICABLE_CHECK_NAME, 'UNVERIFIABLE',
+      `documents not readable: ${e.message}`);
     return;
   }
-  for (const offender of result.offenders) {
-    notify('ratios_extraction_yield', 'P1', offender.slice(0, 120),
-      'a Ratios document extracted but produced no current_ratio', offender);
-  }
-  record('ratios_extraction_yield', RATIOS_YIELD_NAME, result.status,
-    result.detail + (result.offenders.length ? `: ${result.offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+  record('not_applicable_documents_named', NOT_APPLICABLE_CHECK_NAME, result.status, result.detail);
 }
 
 async function main() {
@@ -1630,7 +1634,7 @@ async function main() {
   await checkP();
   await checkQ_rowKeyCoverage();
   await checkR_provenanceParentNotNull();
-  await checkRatiosExtractionYield();
+  await checkNotApplicableDocuments();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
