@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 00:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 01:59 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2888,5 +2888,33 @@ A sub-500-byte `200` is rejected as the JS-shell signature the probe documented.
 Its last two slices needed sourced segments for the BSE rows. Six of them now have one, pending
 #655's merge. That is **progress toward** item 14, not item 14 done, and the remaining 19 rows are
 still unsourced — 17 of them permanently, being absent from every listed master.
+
+**Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
+
+
+
+## 2026-09-16 01:56 IST — relaunch #2: the review found the class the NA fix missed, and staging finally serves the build item 12 was waiting for
+
+Relaunched after the 00:51 freeze (a board write from a local file opens an approval dialog; inline from now on). The uncommitted 00:51 ledger turn is pushed (`eacd3f0e`), board at v77.
+
+### #655 — one medium finding, verified, fixed in-PR before merge
+
+The Tier B review passed the PR with one finding: a normalised name held by more than one scrip resolves **first-wins**. Reading the code myself: the oracle never uses the BSE name index — it scans the scrip list and returns on the first hit — and the NSE master's first-wins index hides an SME twin from the oracle because the repair script builds its lists from that index. Same sourced-but-wrong class as the "NA" defect, through the name join instead of the ISIN join. Supervisor and I agree: **refuse ambiguous names**, in all three places, red-first tests, live collision count recorded as a fact. Opus builder running in the PR worktree. **#655 is not merged.**
+
+### Item 12 — one of three tables provable, and the invariant needs 12 merges
+
+Staging serves main (`904063b5`), so lane A's consolidator is live. Against the 09-11 baseline of 0 / 0 / none keyed provenance rows:
+
+| table | keyed row_key rows now | verdict |
+|---|---|---|
+| ipo_intermediaries | 497 (336 of 338 writes since 09-14; the 2 unkeyed are table-level `rows` provenance, singleton by design) | class HOLDS |
+| promoters | 0 — no write since 09-09; lane A records the extraction has no promoters field | extractor gap, lane A |
+| peer_companies | still no provenance rows at all (321 rows) | separate question, as named 09-11 |
+
+The duplicate-row invariant prints **12 groups / 29 rows** on staging, every one a slug-suffix twin with identical opening date and issue size. Sonnet worker merging them **on staging only** through the guarded tool, keep rule fixed by me, then the unscoped 2-cycle hold.
+
+### Item 2 — 2-S7's owed read is in, guard held
+
+ipo_details 213 rows / 213 non-null (21 fixed-price, 192 book-built); provenance CHITTORGARH 190, DRHP 23; IPOs with **both** sources on issue_type: **0**. Chittorgarh cycle 2026-09-15 15:15Z SUCCESS 23/0. Item 2 still not DONE — 2-S3b2 lands with #655, 2-S6 is planned.
 
 **Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
