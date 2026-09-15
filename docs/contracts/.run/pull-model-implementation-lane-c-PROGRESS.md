@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 00:29 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 00:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2810,5 +2810,83 @@ intact (tracked 4823 → 4823, deleted-on-disk 0). Merges at 00:25 and 00:27 IST
 Recorded from lane A for later: a test that spawns a real script pays cold-start compilation —
 17.4s cold against a 20s global timeout is 2.6s of headroom, and the fix is a per-test budget, not a
 global bump. None of my tests spawn a subprocess today.
+
+**Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
+
+
+
+## 2026-09-16 00:50 IST — the BSE half, and a defect mutation testing found that review would not have
+
+PR **#655** open: `feat/pm-c-item02-s3b3-bse-scrip-master`, commit `affd8608`. Not merged — the
+`:50–:05` no-push window for lane A's `pr-gate.yml` PR opened as I pushed, so the merge waits.
+
+### What it does
+
+The oracle resolves an IPO's board from either exchange's master. Its BSE half had **no source** —
+`repair-segment-provenance` passed it an empty list, so every BSE-only company resolved to
+`no-source`. All 29 unprovenanced rows are BSE-listed and only the 4 with an ISIN resolved via NSE.
+This is the other 25.
+
+### Proof — staging dry run, before → after
+
+```
+rows that WOULD BE WRITTEN:   4 → 10 of 348    by write action: {"apply-sourced":10}
+rows REPORTED ONLY:          25 → 19
+```
+
+The six added are H R HYGIENE, SHIPWAVES ONLINE, WESTERN OVERSEAS STUDY ABROAD, STANBIK AGRO,
+MARUTI INTERIOR PRODUCTS and TRAVELS RENTALS — each via `BSE/name/group=M`, each **confirming** its
+stored SME label rather than changing it. Exactly the six the probe's fixture predicted.
+
+The 19 refusals are now **fully explained** instead of lumped together: **17** absent from both
+masters, **1** in group X, **1** in group TS. SURYO FOODS upgraded from a bare `no-source` to
+`BSE group X is not in the evidenced mapping — not guessed`. That is a better signal, not a
+cosmetic one: it names the next action (evidence group X) instead of hiding it behind "no source".
+
+### The defect mutation testing found, and review would not have
+
+I ran a mutation that **survived**: swapping `byIsin` from first-wins to last-wins changed nothing,
+because the fixture has no duplicate ISINs. A surviving mutant is a question, not a pass, so I asked
+the live feed whether duplicates exist at all.
+
+**They do — exactly one, and it is not a duplicate.** The literal string `"NA"`, which BSE writes as
+a *placeholder* for "no ISIN", on two unrelated companies: Chase Bright Steel and Pushpsons
+Industries. My parser was treating it as an identifier and indexing both under the same key, so a
+lookup for one could have returned **the other company's board**.
+
+That is the sourced-but-wrong class this entire slice exists to prevent — arriving through the
+**join** rather than the group mapping, which is why neither the oracle's tests nor a diff review
+would have caught it. Live tally: 5152 real ISINs, 1 empty, 2 `"NA"`. `cleanIsin` now accepts only
+`IN` + 10 alphanumerics; anything else is absence.
+
+### Every guard proven able to fail
+
+| mutation | result |
+|---|---|
+| fetcher maps group `X` → `B` | 2 tests fail (group tally, refusal test) |
+| `cleanIsin` accepts anything | 2 tests fail (placeholder, malformed) |
+| `byIsin` last-wins | **survived** → led to the `"NA"` defect above |
+
+Source restored and re-verified after each. **40/40** across the three affected suites;
+`tsc --noEmit -p scraper` → **0 errors** naming the changed files.
+
+### Two design calls worth recording
+
+**The fetcher never decides what a group MEANS.** It hands `GROUP` over verbatim and the oracle
+keeps that judgement. Only 3901 of 5155 scrips (75.7%) sit in an evidenced group — X alone is 1160 —
+so a fetcher that "helpfully" mapped X to MAINBOARD would reintroduce the class the oracle's header
+records an earlier draft being corrected for. A test asserts it never emits `MAINBOARD`/`SME` as a
+group value.
+
+**Fetch failure is fatal**, deliberately differing from `nse-equity-master.ts`, which catches its
+error and returns a partial map. An empty master resolves every company to `no-source` —
+indistinguishable from an honest run where nothing was sourceable, so the caller gets no signal.
+A sub-500-byte `200` is rejected as the JS-shell signature the probe documented.
+
+### Where item 14 stands
+
+Its last two slices needed sourced segments for the BSE rows. Six of them now have one, pending
+#655's merge. That is **progress toward** item 14, not item 14 done, and the remaining 19 rows are
+still unsourced — 17 of them permanently, being absent from every listed master.
 
 **Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
