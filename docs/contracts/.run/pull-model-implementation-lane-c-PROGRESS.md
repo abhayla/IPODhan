@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 04:34 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 04:47 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -3062,3 +3062,17 @@ One scheduled cycle and one deploy restart, both at zero, stated as such. The si
 Both sides populated, disagreeing on dates and offering type: **conflicting twins, needs a source**, not merged. The tool would have accepted it in both directions, because the gate compares nothing about offering type or close/listing dates; that gap is filed as the next slice.
 
 **Item 12: 19 of 20 staging groups merged, one REPORTED by decision, third hold pending. Item 14 BLOCKED; item 2 not DONE.** No production data has been written.
+
+
+
+## 2026-09-16 04:47 IST — item 12 proven on staging: third hold HELD on the scheduled 04:45 wake
+
+```
+cycle 1/2 observed (marker=2026-09-15T23:06:11.352Z): violation count = 0   <- after the ade679f2 staging deploy
+cycle 2/2 observed (marker=2026-09-15T23:15:41.901Z): violation count = 0   <- scheduled 04:45 wake
+HELD: violation count stayed 0 across 2 distinct scraper cycle(s).
+```
+
+**Item 12 on staging: 19 of 20 duplicate groups merged and held across three holds; the 20th (Cube Highways) is a source question, not a merge.** Not DONE: the fixes are on main and staging, not on production, and a fix is not fixed until the release cut carries it and prod's invariant still reads 0 under the widened key. Promoters and peer companies remain separate open questions on the row-key half.
+
+Night totals for lane C: 7 PRs merged, 4 issues filed, 28 duplicate rows merged and 10 provenance rows applied on staging, one stale staging row refreshed from production, **no production data written**. The coordination tree is the only lane C worktree left.
