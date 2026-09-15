@@ -2400,3 +2400,79 @@ describe('extraction timeout — staging incident regression (ESDS Software, ipo
     warn.mockRestore();
   });
 });
+
+// ------------------------------------------- OD-55: an incomplete read must be re-read
+//
+// Tier B review of PR #652 found this, and it defeated the whole slice: the
+// extractor now NAMES the pages a stopped read missed, and then the caller
+// marked the document COMPLETED anyway. `selectPendingFilings`'s `alreadyDone`
+// gate skips a COMPLETED document at the same EXTRACTOR_VERSION forever, and
+// bumping EXTRACTOR_VERSION is forbidden (it revives all 24 blocked documents).
+// So the named pages were guaranteed never to be read again — a signal with no
+// consumer, which is worse than no signal: the ledger row asserts the pages are
+// re-readable while the gate ensures they are not.
+//
+// Class: every doc_type, both segments, both slots, and every row the pipeline
+// writes after this — any document whose envelope carries INCOMPLETE_PAGES.
+describe('OD-55 — a document whose read was stopped is left re-readable, not marked COMPLETED', () => {
+  const incomplete = (): FilingExtraction =>
+    ({
+      ...extraction(),
+      extraction_status: 'INCOMPLETE_PAGES',
+      unread_pages: [
+        { page: 412, reason: 'ceiling_reached' },
+        { page: 413, reason: 'ceiling_reached' },
+      ],
+    }) as never;
+
+  it('does NOT stamp COMPLETED when pages were never read', async () => {
+    const d = deps({ runExtractor: vi.fn(() => ({ ok: true as const, extraction: incomplete() })) });
+    await processPendingFilings(IPO, d);
+
+    const completed = stateCalls(d).filter((c) => c.status === 'COMPLETED');
+    expect(completed).toHaveLength(0);
+  });
+
+  it('still PERSISTS the pages it did read — the partial read is kept, not discarded', async () => {
+    const d = deps({ runExtractor: vi.fn(() => ({ ok: true as const, extraction: incomplete() })) });
+    const r = await processPendingFilings(IPO, d);
+
+    // The whole reason the extractor swallows the interrupt: ~45 minutes of
+    // recovered pages must not be thrown away. Rows reach the persister.
+    expect(d.persistFiling).toHaveBeenCalledTimes(1);
+    expect(r.persisted).toBe(1);
+  });
+
+  it('leaves the document eligible for a later cycle, with the unread pages named in the error', async () => {
+    const d = deps({ runExtractor: vi.fn(() => ({ ok: true as const, extraction: incomplete() })) });
+    await processPendingFilings(IPO, d);
+
+    const last = stateCalls(d).at(-1);
+    // Identities, never a count (signal-ownership.md R1): the stamp a human or
+    // a later pass reads must say WHICH pages are missing.
+    expect(String(last.error)).toContain('412');
+    expect(String(last.error)).toContain('413');
+    expect(String(last.error)).toContain('ceiling_reached');
+  });
+
+  it('preserves the retry count so a document that always trips the ceiling backs off', async () => {
+    // The trap this closes: resetting retryCount to 0 (what a COMPLETED stamp
+    // does) while leaving the document eligible would re-run a two-hour
+    // extraction EVERY cycle, forever, with no backoff — far worse than the
+    // bug it replaces. Keeping the count lets the existing exponential
+    // backoff and the MAX_EXTRACTION_ATTEMPTS ceiling do their job.
+    const d = deps({ runExtractor: vi.fn(() => ({ ok: true as const, extraction: incomplete() })) });
+    await processPendingFilings(IPO, d);
+
+    const last = stateCalls(d).at(-1);
+    expect(last.retryCount).toBeGreaterThan(0);
+  });
+
+  it('a COMPLETE read is still stamped COMPLETED — the guard fires only on a stopped read', async () => {
+    // Positive control. A change that left every document re-readable would
+    // pass all four tests above and re-extract the entire corpus every cycle.
+    const d = deps();
+    await processPendingFilings(IPO, d);
+    expect(stateCalls(d).some((c) => c.status === 'COMPLETED' && c.retryCount === 0)).toBe(true);
+  });
+});

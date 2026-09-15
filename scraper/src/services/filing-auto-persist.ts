@@ -2032,6 +2032,61 @@ export async function processPendingFilings(
     );
 
     const now = new Date();
+    // OD-55 (Tier B review of #652): a read that was STOPPED before every page
+    // was read must NOT be stamped COMPLETED, because `selectPendingFilings`'s
+    // `alreadyDone` gate skips a COMPLETED document at the same
+    // EXTRACTOR_VERSION forever — and bumping EXTRACTOR_VERSION is not an
+    // option (it revives all 24 blocked documents). Without this branch the
+    // extractor named the missing pages and the gate then guaranteed they were
+    // never read again: a signal with no consumer, which is worse than no
+    // signal, because the ledger row asserts the pages are re-readable while
+    // the gate ensures they are not.
+    //
+    // The rows that WERE read are already persisted above (`result.persisted++`
+    // has run) — the partial read is kept, exactly as the extractor swallowing
+    // its interrupt intends. Only the "nothing left to do" stamp is withheld.
+    //
+    // FAILED, not a sixth status value, and retryCount PRESERVED rather than
+    // reset: that reuses the existing exponential backoff
+    // (`documentExtractionBlocked`, 15 min doubling to a 6 h cap) and the
+    // MAX_EXTRACTION_ATTEMPTS(10) -> MANUAL_REVIEW parking that already work.
+    // Resetting the count to 0 while leaving the document eligible would
+    // re-run a two-hour extraction every single cycle, forever, with no
+    // backoff — far worse than the defect it replaces.
+    const unreadRaw: unknown = (extraction as unknown as Record<string, unknown>).unread_pages;
+    const unreadPages: Array<Record<string, unknown>> = Array.isArray(unreadRaw)
+      ? unreadRaw.filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+      : [];
+    if (unreadPages.length > 0) {
+      // The identities, never a count (signal-ownership.md R1): this string is
+      // what a human and the next cycle read, and "40 pages unread" would tell
+      // neither of them which pages to re-read.
+      const pages = unreadPages
+        .map((p) => p.page)
+        .filter((p): p is number => typeof p === 'number');
+      const reasons = [
+        ...new Set(
+          unreadPages
+            .map((p) => p.reason)
+            .filter((r): r is string => typeof r === 'string' && r.length > 0)
+        ),
+      ];
+      logger.warn(
+        { ipoId: ipo.id, docType, unreadPages: pages, reasons, retryCount: (doc.retryCount ?? 0) + 1 },
+        'Filing read was stopped before every page was read — rows persisted, document left re-readable (OD-55)'
+      );
+      await deps
+        .setDocumentExtractionState({
+          documentId: doc.id,
+          status: 'FAILED',
+          error: `INCOMPLETE_PAGES: ${pages.length} page(s) never read [${pages.join(',')}] (${reasons.join(',')})`.slice(0, 1000),
+          retryCount: (doc.retryCount ?? 0) + 1,
+          pageRows: pageRowsFromExtraction(doc.id, extraction as never),
+        })
+        .catch(() => undefined);
+      continue;
+    }
+
     // MAJOR-A: a successful extraction resets this document's own retry
     // counter to 0 — a document that failed nine times and then succeeded
     // must not carry that history into its next unrelated extraction attempt
