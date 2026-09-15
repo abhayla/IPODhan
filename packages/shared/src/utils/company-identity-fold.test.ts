@@ -50,3 +50,55 @@ describe('foldCompanyIdentity', () => {
     for (const name of IDENTITY_FOLD_FIXTURE) expect(typeof name).toBe('string');
   });
 });
+
+/**
+ * Item 12 slice F. The scraper's listing-page discovery minted twin rows whose
+ * company_name carries a trailing "(<Company> IPO)" tail, sometimes followed by
+ * a 1-2 letter status token ("CT" / "LT" / "P"). Those twins folded to a
+ * DIFFERENT identity than the clean row, so the duplicate-row invariant never
+ * saw them as one company: staging carried 12 rows for 3 companies on
+ * 2026-09-16 (read from ipodhan_staging, ids below).
+ */
+describe('foldCompanyIdentity — the bracketed IPO-name tail (item 12 slice F)', () => {
+  const STAGING_TWINS_2026_09_16: ReadonlyArray<readonly [string, string]> = [
+    ['G.V.Electricals Ltd.', '9cb00cd6'],
+    ['G.V.Electricals Ltd. (G.V. Electricals IPO) CT', '2dfd8026'],
+    ['G.V.Electricals Ltd. (G.V. Electricals IPO) LT', '97a5557b'],
+    ['G.V.Electricals Ltd. (G.V. Electricals IPO) P', 'ef84a7f1'],
+    ['H R Hygiene Products', '9450cd8d'],
+    ['H.R.Hygiene Products Ltd.', 'e986b271'],
+    ['H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)', '708946b8'],
+    ['H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO) CT', '37f19183'],
+    ['Shree Balaji (Mala) Textiles Ltd.', '80a1a765'],
+    ['Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO) CT', '6fc323b2'],
+    ['Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO) P', 'f71bbd1b'],
+    ['Shree Balaji Mala Textiles', 'b0344c53'],
+  ];
+
+  it('folds the 12 real staging rows to exactly 3 company identities', () => {
+    const keys = new Set(STAGING_TWINS_2026_09_16.map(([name]) => foldCompanyIdentity(name)));
+    expect([...keys].sort()).toEqual(['gvelectricals', 'hrhygieneproducts', 'shreebalajimalatextiles']);
+  });
+
+  it('strips the bracketed tail with and without a trailing status token', () => {
+    const clean = foldCompanyIdentity('G.V.Electricals Ltd.');
+    for (const tail of ['', ' CT', ' LT', ' P', ' ct']) {
+      expect(foldCompanyIdentity(`G.V.Electricals Ltd. (G.V. Electricals IPO)${tail}`)).toBe(clean);
+    }
+  });
+
+  it('does NOT strip a bare trailing 1-2 letter token without the bracketed tail', () => {
+    // "Jay Bee Laminations Ltd. O" is a real fixture name; stripping a bare
+    // trailing token would merge "Foo P" into "Foo" on nothing but a letter.
+    expect(foldCompanyIdentity('Jay Bee Laminations Ltd. O')).not.toBe(
+      foldCompanyIdentity('Jay Bee Laminations Ltd.'),
+    );
+  });
+
+  it('does NOT strip a bracketed tail that is not an IPO-name tail', () => {
+    // "(India)" is a real part of a name and is handled by the word strip, not here.
+    expect(foldCompanyIdentity('Kwality Walls (India) Ltd')).toBe('kwalitywalls');
+    // A bracketed tail whose text does not end in "IPO" stays.
+    expect(foldCompanyIdentity('Acme Ltd (Demerged)')).toBe('acmedemerged');
+  });
+});
