@@ -2455,17 +2455,51 @@ describe('OD-55 — a document whose read was stopped is left re-readable, not m
     expect(String(last.error)).toContain('ceiling_reached');
   });
 
-  it('preserves the retry count so a document that always trips the ceiling backs off', async () => {
-    // The trap this closes: resetting retryCount to 0 (what a COMPLETED stamp
-    // does) while leaving the document eligible would re-run a two-hour
-    // extraction EVERY cycle, forever, with no backoff — far worse than the
-    // bug it replaces. Keeping the count lets the existing exponential
-    // backoff and the MAX_EXTRACTION_ATTEMPTS ceiling do their job.
+  it('does not double-count the attempt — retryCount is the one already stamped at IN_PROGRESS', async () => {
+    // The trap this closes, found by the Tier B review of the first fix and
+    // reproduced before fixing: `doc.retryCount` is ALREADY incremented when
+    // the IN_PROGRESS stamp is written (`doc.retryCount = newRetryCount`), and
+    // every other failure site in this file therefore either omits the key or
+    // passes that value unchanged. Adding `+ 1` here made a fresh document
+    // report retryCount 2 on its FIRST attempt, burning the 10-attempt budget
+    // in 5 cycles. An assertion of `> 0` passed while being wrong — which is
+    // why this asserts the exact number.
     const d = deps({ runExtractor: vi.fn(() => ({ ok: true as const, extraction: incomplete() })) });
     await processPendingFilings(IPO, d);
 
+    const inProgress = stateCalls(d).find((c) => c.status === 'IN_PROGRESS');
     const last = stateCalls(d).at(-1);
-    expect(last.retryCount).toBeGreaterThan(0);
+    expect(inProgress.retryCount).toBe(1);
+    expect(last.status).toBe('FAILED');
+    // The SAME count, not one more: the attempt was counted once, at the stamp.
+    expect(last.retryCount ?? inProgress.retryCount).toBe(1);
+  });
+
+  it('parks as MANUAL_REVIEW at MAX_EXTRACTION_ATTEMPTS instead of retrying forever', async () => {
+    // The second half of the same review finding: the first fix wrote
+    // `status: 'FAILED'` unconditionally and never called `classifyFailure`,
+    // so `documentExtractionBlocked` — which has no attempt cap of its own for
+    // a FAILED row — would back the document off on a capped 6h/24h cadence
+    // FOREVER. A page that can never be read would be retried until the end of
+    // time. Going through classifyFailure is what makes the parking real.
+    const d = deps({
+      loadDocuments: vi.fn(async () => [doc({ retryCount: MAX_EXTRACTION_ATTEMPTS - 1 })]),
+      runExtractor: vi.fn(() => ({ ok: true as const, extraction: incomplete() })),
+    });
+    await processPendingFilings(IPO, d);
+
+    const last = stateCalls(d).at(-1);
+    expect(last.status).toBe('MANUAL_REVIEW');
+    expect(String(last.error)).toContain(EXTRACTION_BLOCKED_ERROR);
+  });
+
+  it('still reports FAILED, not MANUAL_REVIEW, while attempts remain', async () => {
+    // Positive control on the parking: a change that parked on every
+    // incomplete read would pass the test above and take a document out of
+    // service on its first ceiling trip.
+    const d = deps({ runExtractor: vi.fn(() => ({ ok: true as const, extraction: incomplete() })) });
+    await processPendingFilings(IPO, d);
+    expect(stateCalls(d).at(-1).status).toBe('FAILED');
   });
 
   it('a COMPLETE read is still stamped COMPLETED — the guard fires only on a stopped read', async () => {

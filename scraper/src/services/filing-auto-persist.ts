@@ -2046,8 +2046,9 @@ export async function processPendingFilings(
     // has run) — the partial read is kept, exactly as the extractor swallowing
     // its interrupt intends. Only the "nothing left to do" stamp is withheld.
     //
-    // FAILED, not a sixth status value, and retryCount PRESERVED rather than
-    // reset: that reuses the existing exponential backoff
+    // FAILED (or MANUAL_REVIEW once attempts run out) rather than a sixth
+    // status value, and the attempt count LEFT as stamped rather than reset:
+    // that reuses the existing exponential backoff
     // (`documentExtractionBlocked`, 15 min doubling to a 6 h cap) and the
     // MAX_EXTRACTION_ATTEMPTS(10) -> MANUAL_REVIEW parking that already work.
     // Resetting the count to 0 while leaving the document eligible would
@@ -2071,16 +2072,40 @@ export async function processPendingFilings(
             .filter((r): r is string => typeof r === 'string' && r.length > 0)
         ),
       ];
+      // Through `classifyFailure`, exactly like the other three failure sites
+      // in this function, for two reasons the Tier B review of the first
+      // version of this fix proved by running the test rather than reading it:
+      //
+      //  1. `doc.retryCount` is ALREADY the count stamped at IN_PROGRESS
+      //     (`doc.retryCount = newRetryCount` above), so adding 1 here counted
+      //     the same attempt twice — a fresh document reported retryCount 2 on
+      //     its FIRST ceiling trip and burned the 10-attempt budget in 5
+      //     cycles. `retryCount` is therefore passed only when parking, which
+      //     is what every other site here does.
+      //  2. Writing `status: 'FAILED'` unconditionally meant a document that
+      //     can NEVER read a page (a corrupt page, not a slow one) would back
+      //     off on the capped 6h/24h cadence forever and never park:
+      //     `documentExtractionBlocked` has no attempt cap of its own for a
+      //     FAILED row — the cap lives in `classifyFailure`.
+      const incompleteError = `INCOMPLETE_PAGES: ${pages.length} page(s) never read [${pages.join(',')}] (${reasons.join(',')})`;
+      const classifiedIncomplete = classifyFailure(doc.retryCount ?? 0, version, incompleteError);
       logger.warn(
-        { ipoId: ipo.id, docType, unreadPages: pages, reasons, retryCount: (doc.retryCount ?? 0) + 1 },
+        {
+          ipoId: ipo.id,
+          docType,
+          unreadPages: pages,
+          reasons,
+          retryCount: doc.retryCount ?? 0,
+          status: classifiedIncomplete.status,
+        },
         'Filing read was stopped before every page was read — rows persisted, document left re-readable (OD-55)'
       );
       await deps
         .setDocumentExtractionState({
           documentId: doc.id,
-          status: 'FAILED',
-          error: `INCOMPLETE_PAGES: ${pages.length} page(s) never read [${pages.join(',')}] (${reasons.join(',')})`.slice(0, 1000),
-          retryCount: (doc.retryCount ?? 0) + 1,
+          status: classifiedIncomplete.status,
+          error: classifiedIncomplete.error.slice(0, 1000),
+          ...(classifiedIncomplete.status === 'MANUAL_REVIEW' ? { retryCount: doc.retryCount } : {}),
           pageRows: pageRowsFromExtraction(doc.id, extraction as never),
         })
         .catch(() => undefined);
