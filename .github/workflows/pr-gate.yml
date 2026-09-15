@@ -125,14 +125,11 @@ jobs:
           node --test scripts/tests/detection-floor-issue-size-select.test.mjs
           node --test scripts/tests/check-design-consistency-exit.test.mjs
 
-      - name: Ratios extraction-yield check self-test (lane B item 8)
-        # The check this guards was specified as "current_ratio non-null for
-        # every COMPLETED Ratios document". Measured on staging 2026-09-11: 34
-        # such documents exist and every one is PENDING, so the literal reading
-        # is true of the EMPTY SET and would page green forever while the
-        # feature had never run. These tests pin the empty population to
-        # UNVERIFIABLE rather than PASS; flipping it back kills three of them.
-        run: node --test scripts/tests/ratios-extraction-yield.test.mjs
+      - name: "NOT_APPLICABLE documents check self-test (lane B, #677)"
+        # ratios_extraction_yield was retired on 2026-09-16 (#677): its population,
+        # RATIOS_BASIS_ISSUE_PRICE, has no extractor by design, so the check could never
+        # move. The module now NAMES never-extractable PENDING documents by type.
+        run: node --test scripts/tests/not-applicable-documents.test.mjs
 
       - name: Row-key coverage classifier self-test (F-101)
         # The pure classifier's unit proofs ran NOWHERE in CI: a check that
