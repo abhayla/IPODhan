@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-15 23:46 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 00:02 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2618,3 +2618,86 @@ The PR body carries the same statement.
 
 **Nothing is DONE by this entry.** Items 14, 2 and 12 still have zero proven lines, exactly as at
 the pause. This entry records a resume, not progress.
+
+
+
+## 2026-09-15 — relaunch, and the Tier B review of #646
+
+**Why this turn exists.** The first launch of this session at 23:40 IST inherited the
+supervisor's child-session marker and ran without `--dangerously-skip-permissions`, so it froze
+on a permission prompt nobody was there to answer. This is the relaunch. Every claim below was
+re-read from disk or measured this turn; nothing was carried over from the addendum's summary.
+
+**One correction to the supervisor's addendum.** It recorded the board write of `run/meta-c` as
+NOT done. It was done. I read the artifact DB: `run/meta-c` is at **version 74**, `updatedAt`
+`2026-09-15T18:16:57Z`, and every field matches `.board-payload-owed.json` verbatim — same
+`runState`, same `lastUpdate` `2026-09-15T23:46:21+05:30`, same `openBranches` naming #646 @
+`4fb87de4`. Two independent signs agree: the sentinel `.board-write-owed` was already gone, and
+`lane-c-record.py` refuses to run while a sentinel stands, so a missed board write would have
+blocked this very entry. I deleted the stale payload file rather than republish an identical
+version 75.
+
+**The review, and where I did not take it at its word.** #646 had no review, so a Tier B
+(Sonnet, diff-only) ran per R9. It returned **"covers the class: NO"** — and I did not relay that
+verdict, because the reviewer's own report contradicts it: it calls the item *"a coverage gap in
+the test suite, not a demonstrated bug"*, rates it **Low**, and states it answered NO only
+because it read the brief's "untested edge behaviour counts against class coverage" literally.
+That is an instruction applied mechanically, not a defect found.
+
+The finding itself: the BSE loop runs a full ISIN pass before any name pass, so an ISIN hit onto
+a scrip in an unevidenced group (`TS`/`X`) returns `unresolved-group` without trying a name match
+that might land in an evidenced group.
+
+**My class verdict, in my own words: covers the class — YES. ISIN-before-name is by design, and
+it is now pinned by a test.** An ISIN identifies the security. Once the ISIN matches, that IS the
+scrip. Falling through to a name match would resolve a *second, different* scrip and publish a
+sourced-but-wrong board — precisely the class the module header records an earlier draft being
+corrected for, when it assumed group X meant MAINBOARD and inflated the sourceable count by three
+rows. A sourced-but-wrong value is worse than an unsourced one.
+
+**Measured on staging rather than argued** (read-only, through the 15432 tunnel):
+
+| question | answer |
+|---|---|
+| duplicate ISINs across `ipos` rows | **0** |
+| the 29 unprovenanced IPO rows, by ISIN presence | **25 carry no ISIN, 4 do** |
+
+So 25 of the 29 rows this slice exists to serve reach the name path directly and never touch the
+flagged branch. The scenario is unreachable on today's data.
+
+**What I changed anyway, because the reviewer was right about one thing.** Nothing *pinned* the
+precedence, so a future edit could silently reverse it. Commit `4ff4015f` adds one test.
+
+It is an instrument, not a restatement, and I proved that before trusting it: mutating the loop
+to `['name','isin']` fails that test **and only that test** — 16 passed, 1 failed. The source was
+restored and re-verified at `['isin','name']` afterwards. The test also carries a control
+assertion showing the fixture IS reachable by name, so the primary assertion is about precedence
+and not about an unresolvable fixture.
+
+```
+cd scraper && npx vitest run tests/unit/scrapers/exchange-segment-oracle.test.ts
+Test Files  1 passed (1)    Tests  17 passed (17)    exit=0
+alias-preflight: @ipodhan/shared -> IPODhan-IPODhan-c02-segoracle\packages\shared\src\index.ts
+```
+
+The preflight line is part of the proof: it shows the tests ran against THIS worktree's shared
+package, not the main checkout's — the trap recorded in `worktree-alias-resolves-to-main`.
+
+Committed through the hooks; no bypass. The disagreement and the measurements are on the PR as a
+comment, so the record survives this session.
+
+**The integration point for 2-S3b2, read this turn.** `repair-segment-provenance.ts` sources IPO
+rows from `VERIFIED_IPO_SEGMENT_SOURCES` (line 77) — a hand-filled per-slug map, **empty by
+default**, consulted at line 191. That map is exactly what the oracle replaces. The tool's two
+populations are already correctly split and documented: non-IPO rows are cleared to NULL with a
+`field_sources` reason row, IPO rows are only written when genuinely sourced. The candidate query
+is `segment IS NOT NULL` (line 177); widening it to re-check already-sourced rows is a separate
+change from the oracle wiring.
+
+Staging population as it stands: **326 IPO rows with a segment**, of which **29** carry no
+provenance row. NIRBHAY COLOURS and PIYUSH both still read `MAINBOARD` with `isin: null` and
+status CLOSED — never-listed, in neither master, unsourceable from any listed master, exactly as
+the contract says.
+
+**Nothing is DONE by this entry.** Items 14, 2 and 12 still have zero proven lines. A merged test
+is not a proven item. No production data has been written, in this turn or anywhere in this lane.
