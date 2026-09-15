@@ -76,6 +76,10 @@ function makeIpoRepository(createReturn: any) {
     findByNormalizedName: vi.fn().mockResolvedValue(null),
     findBySlug: vi.fn().mockResolvedValue(null),
     findByFuzzyName: vi.fn().mockResolvedValue(null),
+    // Reached only when the scrape carries a real `symbol`: the dedup pass
+    // looks for an existing row with that symbol before inserting. The #654
+    // positive controls are the first tests here to supply one.
+    findBySymbol: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockResolvedValue(createReturn),
     update: vi.fn(),
   } as any;
@@ -108,6 +112,82 @@ describe('upsertIPO — create path (T-292)', () => {
     const fieldNames = fields.map((f: any) => f.fieldName);
     expect(fieldNames).toContain('companyName');
     expect(fieldNames).toContain('offeringType');
+  });
+
+  // ---------------------------------------------------------------- #654
+  //
+  // The insert path built its provenance rows with
+  // `.filter(([, value]) => value !== undefined)`, which drops `undefined` but
+  // KEEPS `null`. Every Chittorgarh `str()` helper returns `null` for an empty
+  // cell (never `undefined`), so a scraper reporting "I looked and there is no
+  // NSE symbol" produced a field_sources row at hard-coded confidence 100
+  // claiming the field was supplied — while `ipos.symbol` was correctly null.
+  //
+  // Measured on ipodhan_staging: 61 IPOs carry a field_sources row naming a
+  // field whose parent value is null (LISTED 32, CLOSED 21, UPCOMING 5,
+  // OPEN 3). Two are live: Quanto Agroworld (OPEN) and Axiom Gas (UPCOMING),
+  // and both fail NSE document discovery with `no_symbol` while the provenance
+  // ledger says the symbol was sourced.
+  //
+  // Class: every field_sources row the INSERT path creates whose parent field
+  // is null — every table the persister inserts, rows written before this fix
+  // and rows it will write after it.
+  describe('#654 — provenance is never recorded for a value that never landed', () => {
+    it('does not track a field the scrape explicitly reported as null', async () => {
+      const ipoRepository = makeIpoRepository({ id: 'new-ipo-id', slug: 'mopshop-distribution-ltd' });
+
+      await upsertIPO(ipoRepository, makeScrapedIPO({ symbol: null }), 'CHITTORGARH');
+
+      const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
+      const names = fields.map((f: any) => f.fieldName);
+      expect(names).not.toContain('symbol');
+    });
+
+    it('still does not track an absent (undefined) field — the original behaviour is kept', async () => {
+      const ipoRepository = makeIpoRepository({ id: 'new-ipo-id', slug: 'mopshop-distribution-ltd' });
+
+      await upsertIPO(ipoRepository, makeScrapedIPO({ symbol: undefined }), 'CHITTORGARH');
+
+      const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
+      expect(fields.map((f: any) => f.fieldName)).not.toContain('symbol');
+    });
+
+    it('DOES track a field that carries a real value — the positive control', async () => {
+      // Without this, tightening the filter until it dropped everything would
+      // pass both tests above and silently stop recording all provenance.
+      const ipoRepository = makeIpoRepository({ id: 'new-ipo-id', slug: 'mopshop-distribution-ltd' });
+
+      await upsertIPO(ipoRepository, makeScrapedIPO({ symbol: 'MOPSHOP' }), 'CHITTORGARH');
+
+      const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
+      const symbolRow = fields.find((f: any) => f.fieldName === 'symbol');
+      expect(symbolRow).toBeDefined();
+      expect(symbolRow.source).toBe('CHITTORGARH');
+    });
+
+    it('a field the persister itself rejects is not tracked — the value never reaches the row', async () => {
+      // Measured while writing these tests, and it corrects what I first
+      // assumed: `issueSize: 0` is NOT a falsy-value bug. `coercePositiveOrNull`
+      // turns it into null before `ipoData` is built (an IPO with a zero issue
+      // size is meaningless), so `issueSize: safeIssueSize !== null ? ... :
+      // undefined` makes it `undefined` and the filter drops it. Not tracking
+      // it is CORRECT: no value reached the row, so there is nothing to claim.
+      //
+      // This is the insert path's version of the #654 rule, and it already
+      // holds. The defect was never here — it is in the consolidation write
+      // path, where a field null on BOTH sides fell through to the provenance
+      // write (see consolidation-null-provenance.test.ts).
+      const ipoRepository = makeIpoRepository({ id: 'new-ipo-id', slug: 'mopshop-distribution-ltd' });
+
+      await upsertIPO(ipoRepository, makeScrapedIPO({ issueSize: 0 }), 'CHITTORGARH');
+
+      const [, , fields] = bulkTrackFieldUpdatesMock.mock.calls[0];
+      const names = fields.map((f: any) => f.fieldName);
+      expect(names).not.toContain('issueSize');
+      // And the row that DID land is still tracked, so this is not a
+      // everything-dropped false pass.
+      expect(names).toContain('companyName');
+    });
   });
 
   it('rejects an SME-segment row created as FPO — corrects to IPO before insert (P1-1)', async () => {

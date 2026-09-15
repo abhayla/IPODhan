@@ -1496,6 +1496,47 @@ async function checkQ_rowKeyCoverage() {
     result.detail + (result.offenders.length ? `: ${result.offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
+// #654 — a provenance row that names a field whose parent value is NULL is a
+// FALSE CLAIM: it says a source supplied a value that does not exist, and an
+// audit reading field_sources reports the field as sourced and healthy. Two
+// IPOs OPEN/UPCOMING on 2026-09-15 got no NSE documents because their symbol
+// was missing while the ledger said CHITTORGARH supplied it.
+//
+// The query is GENERIC OVER COLUMNS on purpose: the first measurement of this
+// class counted `symbol` alone and reported 61 rows against a real 650. It
+// reads the column list from information_schema and checks every field_name
+// present in field_sources, so a field a future scraper starts writing is
+// covered without anyone remembering to add it here.
+//
+// NULL only, never falsiness: 0, false and '' are values a source genuinely
+// supplied, and a row naming one of them is TRUE.
+const PROVENANCE_PARENT_NAME =
+  'no field_sources row names a field whose value on the parent row is NULL (a source cannot have supplied a value that does not exist)';
+
+async function checkR_provenanceParentNotNull() {
+  let result;
+  try {
+    const mod = await import('./lib/repair-invariants/provenance-parent-not-null.mjs');
+    result = await mod.default(pool);
+  } catch (e) {
+    record('r_provenance_parent_not_null', PROVENANCE_PARENT_NAME, 'UNVERIFIABLE',
+      `field_sources or its parent tables not readable: ${e.message}`);
+    return;
+  }
+  const offenders = result.details
+    .filter((d) => !d.unmapped && d.rows > 0)
+    .map((d) => `${d.table}.${d.column}=${d.rows}`);
+  for (const offender of offenders) {
+    notify('r_provenance_parent_not_null', 'P1', offender.slice(0, 120),
+      'provenance claims a value the parent row does not have', offender);
+  }
+  record('r_provenance_parent_not_null', PROVENANCE_PARENT_NAME,
+    result.count === 0 ? 'PASS' : 'FAIL',
+    result.count === 0
+      ? 'no provenance row names a null parent field'
+      : `${result.count} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
+}
+
 async function checkRatiosExtractionYield() {
   let result;
   try {
@@ -1538,6 +1579,7 @@ async function main() {
   checkO();
   await checkP();
   await checkQ_rowKeyCoverage();
+  await checkR_provenanceParentNotNull();
   await checkRatiosExtractionYield();
 
   const failed = results.filter((r) => r.status === 'FAIL');
