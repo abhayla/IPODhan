@@ -1,0 +1,7 @@
+  VIOLATION: "icelectricals" opening Fri Jul 03 has 2 rows: ic-electricals-co-ltd, ic-electricals-company-ltd (issue sizes 479100000 / 479100000)
+  VIOLATION: "indomim" opening Thu Jul 23 has 2 rows: indo-mim-ltd, indo-mim-ltd-o (issue sizes 38121100000 / 38121100000)
+  VIOLATION: "poojaaprecisionengg" opening Tue Jul 28 has 2 rows: poojaa-precision-engg-ltd-o, poojaa-precision-engg-ltd (issue sizes 1598300000 / 1598300000)
+  VIOLATION: "propshopeventsexhibitions" opening Mon Jul 27 has 2 rows: propshop-events-and-exhibitions-ltd-ct, propshop-events-and-exhibitions-ltd (issue sizes 285700000 / 285700000)
+  VIOLATION: "atharvapolyplast" opening Tue Jun 30 has 2 rows: atharva-polyplast-ltd, atharva-poly-plast-ltd (issue sizes 270000000 / 270000000)
+  VIOLATION: "calibermininglogistics" opening Fri Jul 17 has 2 rows: caliber-mining-and-logistics-ltd-o, caliber-mining-and-logistics-ltd (issue sizes 4500000000 / 4500000000)
+6

@@ -1,0 +1,42 @@
+Lane C item 12 - staging dedupe apply summary (2026-09-16)
+Preflight: 12 VIOLATION groups, count line "12"
+
+APPLIED (exit 0, VERIFY block present, invariant re-check = 0 for that fold):
+1. gulflloyds: keep 0813fe46-bd13-4345-a692-c2ad324ea5d5 (gulf-lloyds-india-ltd-ct), drop 088b0c41 (gulf-lloyds-india-ltd)
+   VERIFY: dropped-row-deleted PASS, survivor-present PASS, carried-field allotment_date FAIL (read-back "undefined"; write itself committed - see note), slug-redirect PASS. Scoped invariant after: 0.
+2. laserpowerinfra: keep d767378c (laser-power-and-infra-ltd), drop b133f2c9 (laser-power-and-infra-ltd-o)
+   VERIFY: all PASS including carried field sector. Scoped invariant after: 0.
+3. hrhygieneproducts (drop 1 of 2): keep e986b271 (...-ipo-p), drop 6c59d53b (...-ipo-o)
+   VERIFY: dropped-row-deleted PASS, survivor-present PASS, carried-field verifier_url FAIL (read-back "undefined"; trailing-slash mismatch between written and expected value), slug-redirect PASS.
+4. hrhygieneproducts (drop 2 of 2): keep e986b271, drop c72b720f (...-ipo-lt)
+   VERIFY: all PASS. Scoped invariant after (both drops): 0.
+5. shreebalajimalatextiles (drop 1 of 3): keep 80a1a765, drop a315822a — all VERIFY PASS
+6. shreebalajimalatextiles (drop 2 of 3): keep 80a1a765, drop 7beadc12 — all VERIFY PASS
+7. shreebalajimalatextiles (drop 3 of 3): keep 80a1a765, drop 1d2edb30 — all VERIFY PASS. Scoped invariant after: 0.
+8. gvelectricals (drop 1 of 2): keep 9cb00cd6, drop 9aa0c381 — all VERIFY PASS incl. carried field sector
+9. gvelectricals (drop 2 of 2): keep 9cb00cd6, drop cc9f6035 — all VERIFY PASS
+10. silverstormparksresorts: keep a44246fd, drop 64860cbb — all VERIFY PASS. Scoped invariant after (gv+silverstorm not individually re-checked scoped, confirmed via final unscoped run below).
+
+FAILED / STOPPED (exit 2, transaction rolled back, no partial write):
+11. icelectricals: keep 8ca4a075-0c95-48e0-bb90-b1636b55a62a (ic-electricals-co-ltd), drop 774812b3 (ic-electricals-company-ltd)
+    Dry run (exit 0) was clean and showed: symbol -> ICELCO, lot_size -> 1200, sector -> Other Electrical Equipment
+    Apply crashed: "Failed query: update ipos set symbol=$1 ... where id=$3" params (ICELCO, ..., keep-id)
+    Root cause (observed, not fixed): the DROP row (774812b3) already has symbol='ICELCO' and a unique constraint
+    on ipos.symbol prevented the KEEP row from being updated to the same value before the drop row was deleted
+    (or a trigger/index ordering issue) — the tool's dry-run does not simulate the actual write order/constraints.
+    Verified post-crash: both rows intact, unmodified (8ca4a075.symbol=null, 774812b3.symbol='ICELCO'), no data loss.
+    Per brief instruction "If any run exits 2, stop and report" — STOPPED HERE. Did not attempt the remaining
+    5 dry-run-clean pairs (indomim, poojaaprecisionengg, propshopeventsexhibitions, atharvapolyplast,
+    calibermininglogistics) even though their dry runs were exit 0, because those were never applied.
+
+NOT ATTEMPTED (dry-run was exit 0 clean, but stopped before apply per the exit-2 stop instruction):
+- indomim: keep b32a1b49, drop dc126372
+- poojaaprecisionengg: keep 9ee74c6d, drop 5ab395be
+- propshopeventsexhibitions: keep 29972749, drop 03a62a25
+- atharvapolyplast: keep 683cb329, drop 4c7e0757
+- calibermininglogistics: keep 06ebc4c3, drop e5500ef2
+
+FINAL UNSCOPED INVARIANT: 6 remaining violations (icelectricals + the 5 not-attempted groups). See final-invariant-run.txt.
+
+HOLD SCRIPT: NOT STARTED. Brief step 7 was contingent on reaching a clean/complete state; stopping per the
+exit-2 instruction takes priority over starting the background hold on a partially-repaired invariant.

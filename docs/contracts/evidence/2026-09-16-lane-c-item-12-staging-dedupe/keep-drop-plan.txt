@@ -1,0 +1,40 @@
+FOLD: gulflloyds
+  KEEP: 0813fe46-bd13-4345-a692-c2ad324ea5d5 | gulf-lloyds-india-ltd-ct (fs=13) [rule: most field_sources]
+  DROP: 088b0c41-b617-4698-8009-8b4f7d4bf974 | gulf-lloyds-india-ltd (fs=10)
+FOLD: laserpowerinfra
+  KEEP: d767378c-bbd2-426c-842f-0dabf22f9747 | laser-power-and-infra-ltd (fs=13) [rule: tie(fs,ids,doc) -> shortest slug]
+  DROP: b133f2c9-8041-45a2-9b41-4967547afafe | laser-power-and-infra-ltd-o (fs=13)
+FOLD: hrhygieneproducts
+  KEEP: e986b271-44c4-4fb0-a846-3a7c60cbda71 | h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-p (fs=13) [rule: tie(fs,ids,doc) -> shortest slug]
+  DROP: 6c59d53b-c6e4-48e1-8c5a-4ff99cc37c66 | h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-o (fs=12)
+  DROP: c72b720f-c0b3-4833-93f8-80b547b3eedf | h-r-hygiene-products-ltd-h-r-hygiene-products-ipo-lt (fs=13)
+FOLD: shreebalajimalatextiles
+  KEEP: 80a1a765-8f14-4a7d-b92a-f9c831628dec | shree-balaji-mala-textiles-ltd (fs=16) [rule: most field_sources]
+  DROP: a315822a-4084-4a40-be7a-26e2385c3ddf | shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo (fs=13)
+  DROP: 7beadc12-720f-4427-a7e2-eef85fb5f662 | shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-lt (fs=9)
+  DROP: 1d2edb30-de60-47cf-bcdc-5c0bfbba524b | shree-balaji-mala-textiles-ltd-shree-balaji-mala-ipo-o (fs=10)
+FOLD: gvelectricals
+  KEEP: 9cb00cd6-aae7-4644-aa09-5a3fc51d197e | g-v-electricals-ltd (fs=13) [rule: tie(fs,ids,doc) -> shortest slug]
+  DROP: 9aa0c381-3f1c-4ccf-9b97-d636bc341b67 | g-v-electricals-ltd-g-v-electricals-ipo (fs=13)
+  DROP: cc9f6035-19aa-41bc-a17c-4aafde1533ba | g-v-electricals-ltd-g-v-electricals-ipo-o (fs=13)
+FOLD: silverstormparksresorts
+  KEEP: a44246fd-273f-4d75-b6f8-055d15a9e503 | silverstorm-parks-and-resorts-ltd (fs=17) [rule: most field_sources]
+  DROP: 64860cbb-fe7c-42f3-a622-4f234b95ff39 | silverstorm-parks-and-resorts-ltd-o (fs=12)
+FOLD: icelectricals
+  KEEP: 8ca4a075-0c95-48e0-bb90-b1636b55a62a | ic-electricals-co-ltd (fs=19) [rule: most field_sources]
+  DROP: 774812b3-edbb-4492-a405-73ae8d288e3e | ic-electricals-company-ltd (fs=15)
+FOLD: indomim
+  KEEP: b32a1b49-f7cb-4d23-a714-d56d073222c6 | indo-mim-ltd (fs=15) [rule: most field_sources]
+  DROP: dc126372-a990-46d8-ae95-2e76f20c98df | indo-mim-ltd-o (fs=14)
+FOLD: poojaaprecisionengg
+  KEEP: 9ee74c6d-0ed2-4004-b4f4-8ca02bff3349 | poojaa-precision-engg-ltd (fs=17) [rule: most field_sources]
+  DROP: 5ab395be-660e-47ae-ad3e-f17a0ea15655 | poojaa-precision-engg-ltd-o (fs=12)
+FOLD: propshopeventsexhibitions
+  KEEP: 29972749-29a3-4a77-8e98-e40b0aa4cdcc | propshop-events-and-exhibitions-ltd (fs=15) [rule: most field_sources]
+  DROP: 03a62a25-bb82-45f9-82ac-61bf9c4d0616 | propshop-events-and-exhibitions-ltd-ct (fs=12)
+FOLD: atharvapolyplast
+  KEEP: 683cb329-f12c-4a78-a532-403073099b09 | atharva-polyplast-ltd (fs=19) [rule: most field_sources]
+  DROP: 4c7e0757-5953-43be-b3d5-3f72abde9146 | atharva-poly-plast-ltd (fs=17)
+FOLD: calibermininglogistics
+  KEEP: 06ebc4c3-12c8-4014-86f9-02bdd6bdbdea | caliber-mining-and-logistics-ltd (fs=17) [rule: most field_sources]
+  DROP: e5500ef2-fb67-4893-b839-1a1854a43a1f | caliber-mining-and-logistics-ltd-o (fs=12)

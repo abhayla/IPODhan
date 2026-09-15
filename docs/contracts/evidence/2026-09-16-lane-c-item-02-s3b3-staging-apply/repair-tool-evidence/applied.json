@@ -1,0 +1,66 @@
+{
+ "appliedAt": "2026-09-15T20:53:11.907Z",
+ "written": 10,
+ "decisions": [
+  {
+   "id": "9450cd8d-3da8-4482-8ff2-8083c6a98804",
+   "companyName": "H R Hygiene Products",
+   "action": "apply-sourced",
+   "newSegment": "SME"
+  },
+  {
+   "id": "1f75fec6-3379-4c90-b0aa-4822ca1c2f76",
+   "companyName": "WINDLAS BIOTECH LTD",
+   "action": "apply-sourced",
+   "newSegment": "MAINBOARD"
+  },
+  {
+   "id": "b5da17c1-547c-4f60-a49e-a07768800bf0",
+   "companyName": "AAA TECHNOLOGIES LTD",
+   "action": "apply-sourced",
+   "newSegment": "MAINBOARD"
+  },
+  {
+   "id": "5c9cc0e5-5527-49c8-aba3-62dc5770b445",
+   "companyName": "SHIPWAVES ONLINE LIMITED",
+   "action": "apply-sourced",
+   "newSegment": "SME"
+  },
+  {
+   "id": "589756ff-1c1c-4987-ae77-fbee280292cc",
+   "companyName": "WESTERN OVERSEAS STUDY ABROAD LIMITED",
+   "action": "apply-sourced",
+   "newSegment": "SME"
+  },
+  {
+   "id": "f536b84c-01b1-4d8b-9e7f-baeeacdcab14",
+   "companyName": "STANBIK AGRO LIMITED",
+   "action": "apply-sourced",
+   "newSegment": "SME"
+  },
+  {
+   "id": "f69afe91-3fe5-421f-ba8e-aa94f00eadce",
+   "companyName": "TRAVELS  RENTALS LTD",
+   "action": "apply-sourced",
+   "newSegment": "SME"
+  },
+  {
+   "id": "a98a8a28-45df-4f89-bea6-1e1527b9fd91",
+   "companyName": "KWALITY WALLS (INDIA) LTD",
+   "action": "apply-sourced",
+   "newSegment": "MAINBOARD"
+  },
+  {
+   "id": "a4a9205e-3ea7-4f56-9ee3-64bab4c971b8",
+   "companyName": "CMS INFO SYSTEMS LTD",
+   "action": "apply-sourced",
+   "newSegment": "MAINBOARD"
+  },
+  {
+   "id": "c6fd0474-b06b-49a1-a27f-5d96e337c76f",
+   "companyName": "MARUTI INTERIOR PRODUCTS LTD",
+   "action": "apply-sourced",
+   "newSegment": "SME"
+  }
+ ]
+}

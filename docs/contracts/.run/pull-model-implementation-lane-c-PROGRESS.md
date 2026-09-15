@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 01:59 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 02:29 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2916,5 +2916,35 @@ The duplicate-row invariant prints **12 groups / 29 rows** on staging, every one
 ### Item 2 — 2-S7's owed read is in, guard held
 
 ipo_details 213 rows / 213 non-null (21 fixed-price, 192 book-built); provenance CHITTORGARH 190, DRHP 23; IPOs with **both** sources on issue_type: **0**. Chittorgarh cycle 2026-09-15 15:15Z SUCCESS 23/0. Item 2 still not DONE — 2-S3b2 lands with #655, 2-S6 is planned.
+
+**Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
+
+
+
+## 2026-09-16 02:45 IST — #655 landed; the merge tool had two defects; the duplicate invariant cannot see a quarter of its own class
+
+### #655 merged (f8c36aea, 02:19 IST)
+
+The ambiguity fix landed first: a name matching more than one distinct listed company is now **refused** (`ambiguous-name`), never first-wins, in the oracle and both master indexes. Live count that settles why: BSE has **26 duplicated name keys** today, two of them spanning an SME group and a non-SME group. A fresh Sonnet reproduced the gate (54/54, 0 type errors) and reviewed the delta: PASS. The merge gate refused once because the CI workflow moved on main; one clean rebase, CI green, merged. Worktree removed, main checkout intact.
+
+### Item 12 staging de-duplication: 10 merges done, then two tool defects
+
+10 of 14 pairs merged; invariant 12 → 6. The worker stopped at a real exit 2: the tool copies a unique `symbol` onto the survivor **before** deleting the row that still holds it. And its VERIFY read-back indexes the survivor with camelCase keys on a snake_case row, so every multi-word carried column reads "undefined" and it exits 2 after a committed write. I read both flagged survivors on staging by hand: the values are there. **No data lost.** Both fixed in PR #664 (red-first, mutation-proven ordering test, a `--reverify` mode), Tier A review running. Issue #662.
+
+### Schema drift, measured
+
+Staging has `ipos_symbol_key UNIQUE(symbol)`; the schema file does not declare it. The drift audit compares columns only, so it cannot see this. Issue #665, owner lane A.
+
+### Item 2 slice 3b3 staging apply: 10 confirmed, 0 left to write
+
+Dry run 10 of 338 → apply exit 0 → dry run 0 of 338. All ten writes confirm the stored label; none changed a value.
+
+### Item 14 does not flip
+
+Floor after the apply: `c_issue_size_consistency` PASS; `c_issue_size_floor` FAIL on **NIRBHAY COLOURS, STALLION INDIA FLUOROCHEMICALS, PIYUSH**. NIRBHAY and PIYUSH are the never-listed pair, unsourceable from any master. STALLION is the stale staging row already fixed on production.
+
+### The class the invariant cannot see
+
+After the merges, staging still holds **12 rows for 3 companies** (G.V. Electricals ×4, H R Hygiene ×4, Shree Balaji ×4). The twins carry a "(Company IPO) CT / LT / P" name tail that the identity fold keeps, and the invariant keys on exact opening date, so it never groups them. Opus builder dispatched: widen the fold minimally, re-run the zero-false-merge proof over every real name on both slots, date-tolerant invariant with a measured window; repair after #664 lands.
 
 **Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
