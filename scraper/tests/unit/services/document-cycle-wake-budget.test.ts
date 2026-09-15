@@ -64,7 +64,7 @@ describe('wake-budget arithmetic invariant', () => {
 });
 
 describe('CYCLE_LOCK_TTL_MS (index.ts) is derived from the wake budget, not hardcoded separately', () => {
-  it('the lock TTL formula is >= wakeBudget + 5min for every wake budget, so a legitimate cycle never outlives its lock', () => {
+  it('the lock TTL formula is >= wakeBudget + 5min for every wake budget, so a legitimate cycle never outlives its lock', async () => {
     // index.ts is not imported directly here (its module-level side effects —
     // process.exit on invalid source/env, DB client construction — make it
     // expensive to import safely in a unit test; index-due-step-scheduler-
@@ -97,9 +97,22 @@ describe('CYCLE_LOCK_TTL_MS (index.ts) is derived from the wake budget, not hard
     // And the ceiling constant in index.ts must match the wrapper's own
     // SCRAPER_CEILING_SECONDS default (7200s) — two numbers in two languages
     // that must never drift, so each is read from its real source here.
+    // The ceiling is DEFINED ONCE, in filing-auto-persist.ts (OD-55's semantic
+    // home), and index.ts re-exports it. Asserting the source TEXT here would
+    // pin the expression and go red the moment the definition moves - which is
+    // exactly what happened when it did. Assert the IDENTITY instead: the two
+    // names must be the same value, because a second literal is the defect.
     const ceilingMatch = source.match(/const CYCLE_LOCK_CEILING_MS = ([^;]+);/);
     expect(ceilingMatch, 'CYCLE_LOCK_CEILING_MS not found in index.ts').not.toBeNull();
-    expect(ceilingMatch![1].trim()).toBe('2 * 60 * 60 * 1000');
+    expect(
+      ceilingMatch![1].trim(),
+      'index.ts must IMPORT the ceiling, never redeclare it as a literal — the number lived in three places and nothing compared them',
+    ).not.toMatch(/\d\s*\*/);
+
+    const { HUNG_PROCESS_CEILING_MS } = await import('../../../src/services/filing-auto-persist.js');
+    const { CYCLE_LOCK_CEILING_MS } = await import('../../../src/index.js');
+    expect(CYCLE_LOCK_CEILING_MS).toBe(HUNG_PROCESS_CEILING_MS);
+    expect(HUNG_PROCESS_CEILING_MS).toBe(ceilingMs);
 
     const wakeScript = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), '../../../../scripts/scraper-wake.sh'),

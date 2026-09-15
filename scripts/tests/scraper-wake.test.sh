@@ -851,6 +851,48 @@ else
   rm -rf "$C14"
 fi
 
+# --- Case 15: the shell ceiling and the TypeScript ceiling are the SAME number -
+# OD-55 defines the 2-hour ceiling ONCE, but it is stated in two languages and a
+# shell script cannot import a TypeScript constant - that is a real language
+# boundary, not laziness. So it is GUARDED instead. Today the values agree and
+# nothing is broken; this exists for the day OD-55 is revised (two hours is a
+# fresh decision that could move to three, or to ninety minutes), because
+# whoever changes it will change one side and miss the other, and the failure is
+# SILENT AND WORSE THAN EITHER VALUE ALONE: the wrapper kills the process at one
+# duration while the locks are sized for another, so either the lock expires
+# while the job still runs (two cycles writing concurrently - the exact thing the
+# lock prevents) or it outlives the ceiling by an hour and blocks every wake.
+# Neither errors. Both look healthy.
+TS_CEIL_FILE="$SCRIPT_DIR/../../scraper/src/services/filing-auto-persist.ts"
+if [ ! -f "$TS_CEIL_FILE" ]; then
+  fail "case 15: cannot find filing-auto-persist.ts at $TS_CEIL_FILE - the cross-language ceiling guard cannot run"
+else
+  # HUNG_PROCESS_CEILING_MS is the single definition; index.ts imports it.
+  TS_CEIL_EXPR="$(grep -E '^export const HUNG_PROCESS_CEILING_MS = ' "$TS_CEIL_FILE" | head -1 | sed -e 's/.*= //' -e 's/;.*//')"
+  TS_CEIL_MS="$(printf '%s\n' "$TS_CEIL_EXPR" | awk -F'[^0-9]+' '{ p=1; for (i=1;i<=NF;i++) if ($i != "") p*=$i; print p }')"
+  SH_CEIL_SECS="$(grep -E '^SCRAPER_CEILING_SECONDS=' "$WAKE" | head -1 | sed -e 's/.*:-//' -e 's/}.*//' -e 's/"//g')"
+
+  if [ -z "$TS_CEIL_MS" ] || [ "$TS_CEIL_MS" = "0" ]; then
+    fail "case 15: could not parse HUNG_PROCESS_CEILING_MS from $TS_CEIL_FILE (expr '$TS_CEIL_EXPR') - the guard would pass vacuously"
+  elif [ -z "$SH_CEIL_SECS" ]; then
+    fail "case 15: could not parse SCRAPER_CEILING_SECONDS default from the wrapper - the guard would pass vacuously"
+  elif [ "$(( SH_CEIL_SECS * 1000 ))" = "$TS_CEIL_MS" ]; then
+    pass "case 15: the shell ceiling (${SH_CEIL_SECS}s) equals the TypeScript ceiling (${TS_CEIL_MS}ms) - one number, two languages, compared"
+  else
+    fail "case 15: CEILING MISMATCH - the wrapper kills at ${SH_CEIL_SECS}s ($(( SH_CEIL_SECS / 60 )) min) but the locks are sized for ${TS_CEIL_MS}ms ($(( TS_CEIL_MS / 60000 )) min). One side of OD-55 was changed without the other; this fails silently in production."
+  fi
+
+  # And index.ts must not have quietly reintroduced a literal of its own.
+  IDX_CEIL="$SCRIPT_DIR/../../scraper/src/index.ts"
+  if [ -f "$IDX_CEIL" ]; then
+    if grep -E '^export const CYCLE_LOCK_CEILING_MS = ' "$IDX_CEIL" | grep -qE '[0-9]+[[:space:]]*\*'; then
+      fail "case 15: index.ts redeclares the ceiling as a literal instead of importing it - that is the third copy, back again"
+    else
+      pass "case 15: index.ts imports the ceiling rather than redeclaring it"
+    fi
+  fi
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "scraper-wake.test.sh: FAILED"
   exit 1

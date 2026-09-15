@@ -17,6 +17,7 @@ import {
   runIssueTypeFillJob,
   makeIssueTypeJobDeps,
 } from './services/chittorgarh-issue-type-job.js';
+import { HUNG_PROCESS_CEILING_MS } from './services/filing-auto-persist.js';
 import { makeIpoDetailsWriter } from './services/filing-persist-deps.js';
 import { FieldSourcesRepository, filterProtectedFields } from '@ipodhan/shared';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
@@ -211,15 +212,25 @@ const CYCLE_LOCK_RESOURCE = 'scraper:cycle';
  * Keep this >= the wrapper's SCRAPER_CEILING_SECONDS in scripts/scraper-wake.sh.
  */
 /**
- * EXPORTED so tests assert the RELATIONSHIP against this single definition
+ * EXPORTED so tests assert the RELATIONSHIP against the one definition
  * instead of re-typing the number. The 25-minute value used to live as a
  * literal in three separate files; two were updated when the TTL was raised
  * and the third (index-due-step-scheduler-wiring.test.ts) was missed, turning
  * CI red. A literal copied into a test is a second source of truth that goes
- * stale silently, so there is exactly one here and every other reader imports
- * it.
+ * stale silently. The TTL is defined once HERE; the CEILING it derives from is
+ * defined once in filing-auto-persist.ts and imported above - this file does
+ * NOT redeclare it. (An earlier version of this comment claimed "exactly one
+ * here and every other reader imports it", which was true WITHIN this file and
+ * false ACROSS the two - the ceiling existed three times, counting the shell
+ * wrapper. scripts/tests/scraper-wake.test.sh case 15 guards the shell copy,
+ * which cannot import a TS constant across the language boundary.)
  */
-export const CYCLE_LOCK_CEILING_MS = 2 * 60 * 60 * 1000;
+// Re-exported, NOT redeclared. OD-55 defines the 2-hour ceiling ONCE and its
+// honest home is filing-auto-persist.ts, where the document-extraction
+// semantics live. This file imports it so a future revision of OD-55 (two
+// hours is a fresh decision that could move) changes ONE number. The
+// re-export keeps existing importers of CYCLE_LOCK_CEILING_MS working.
+export const CYCLE_LOCK_CEILING_MS = HUNG_PROCESS_CEILING_MS;
 export const CYCLE_LOCK_TTL_MS = CYCLE_LOCK_CEILING_MS + 5 * 60 * 1000;
 const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 
