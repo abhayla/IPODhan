@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 00:02 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 00:29 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -2701,3 +2701,114 @@ the contract says.
 
 **Nothing is DONE by this entry.** Items 14, 2 and 12 still have zero proven lines. A merged test
 is not a proven item. No production data has been written, in this turn or anywhere in this lane.
+
+
+
+## 2026-09-16 00:27 IST — 2-S3b2 landed, and the BSE blocker turned out not to be one
+
+Two PRs merged this turn. Neither makes an item DONE, and I am not claiming otherwise.
+
+### What landed
+
+| PR | merge sha | what |
+|---|---|---|
+| #650 | `37ad0294` | the repair tool sources an IPO's board from the NSE masters instead of a hand-filled map |
+| #651 | `28262696` | the BSE reachability probe, with a real fixture — the 2-S3b3 precondition |
+
+### 2-S3b2 (#650) — the wiring, and two things I found while doing it
+
+`repair-segment-provenance.ts` could only source an IPO row's segment from
+`VERIFIED_IPO_SEGMENT_SOURCES`, a per-slug map an operator fills in **by hand**. It ships empty, so
+in practice **no IPO row was ever sourceable** and all 29 unprovenanced rows were reported-only
+forever. The oracle from #646 now supplies that value.
+
+**Class:** every `ipos` row with a non-NULL segment — all offering types, all statuses, rows written
+before this change and rows the pipeline writes after it. Non-IPO rows → NULL with a reason row
+(unchanged). IPO rows → written only when the oracle resolves. A row it cannot source stays
+REPORTED and untouched.
+
+**Proof — staging dry run through the 15432 tunnel:**
+
+```
+NSE masters: 2582 mainboard, 572 SME
+ipos rows with segment IS NOT NULL: 348
+of those, already carrying a field_sources row for segment: 319
+(field_sources segment rows overall: 348; 29 point at rows whose segment is NULL)
+rows that WOULD BE WRITTEN: 4 of 348    by write action: {"apply-sourced":4}
+rows REPORTED ONLY, never written: 25
+```
+
+The four are WINDLAS BIOTECH, AAA TECHNOLOGIES, KWALITY WALLS (INDIA) and CMS INFO SYSTEMS, each
+via `NSE/EQUITY_L/isin`, each **confirming** its stored MAINBOARD label rather than changing it.
+They are exactly the four of 29 rows carrying an ISIN — predicted from a live NSE probe *before* the
+run, then reproduced by the tool itself.
+
+**Two findings beyond the wiring**, both shipped because the alternative was shipping a lie:
+
+1. **Provenance was going to misattribute.** Every write recorded `source: 'ADMIN'`. An
+   oracle-resolved row now records `'NSE'` with the oracle's outcome/via/reason in `dataLineage`.
+   ADMIN would have made a master-sourced value indistinguishable from a hand-entered one — the
+   entire purpose of the field.
+2. **A pre-existing counter lied.** The line *"of those, already carrying a field_sources row"*
+   printed `provenancedIds.size` — every provenanced id in the TABLE, not the intersection with the
+   candidates. Measured: 348 candidates, 348 provenanced ids, but only **319** candidates actually
+   carry one; **29 provenanced ids point at NULL-segment rows**. The two 348s are a coincidence that
+   made a wrong line read as right — and it is the same 29 rows this slice is about.
+
+**Failing test first, honoured:** reverting the reason line to the hardcoded map name fails the
+attribution test and **only** that test (10 passed, 1 failed). 28/28 across both suites after
+restore; `tsc --noEmit -p scraper` reports 0 errors naming the changed file.
+
+### A correction to the supervisor's ruling, which the code would not allow
+
+The ruling said the 25 refused rows should each get a `field_sources` reason row naming `no-source`.
+They must not, and I did not build it that way. The tool writes `field_sources` only for rows in
+`toTouch`. A provenance row for a row we never wrote would **claim provenance for an untouched
+value** — and the ABSENCE of that row is precisely what `d_segment_provenance` detects. Writing one
+would blind the check to its own class. Each refused row now PRINTS the oracle's real reason inline
+instead, so it is visible and actionable without being falsely provenanced.
+
+### 2-S3b3 (#651) — the probe, and the answer nobody had
+
+I expected to write an owner decision saying BSE was unreachable. The measurement said otherwise.
+
+**Is BSE's listed-scrip list, with a per-scrip GROUP, reachable without a browser? YES.**
+
+| endpoint | result |
+|---|---|
+| `ListOfScrips.csv` | HTTP 404, no group |
+| `ListofScripData` API (Equity/Active) | HTTP 200, **5155 records**, `GROUP` present |
+| `ListofScripData` (`Group=M`) | HTTP 200, 397 records, `GROUP` present |
+
+It carries `ISIN_NUMBER` **and** `GROUP` — exactly what the oracle joins on. The probe flags any
+sub-500-byte body as a JS shell so a tiny 200 can never read as a working endpoint; neither 200
+tripped it.
+
+**Coverage the live feed actually has:** only **3901 of 5155 (75.7%)** sit in a group whose meaning
+the oracle has evidenced. The eight with no evidenced meaning are IP, MS, P, R, TS, X, Y, ZP — group
+X alone is 1160 scrips. Those resolve to `unresolved-group`, as designed.
+
+**What it means for the 25 rows, checked against the fixture rather than assumed:** 6 resolve as SME
+via group M; 2 land in unevidenced groups — NET PIX (`TS`) and SURYO FOODS (`X`), the two cases the
+oracle already refuses **by name in its own tests**, now confirmed from the live feed rather than
+from its comments; 11 are in neither master, including NIRBHAY COLOURS and PIYUSH, which the
+contract calls never-listed — now confirmed against a real 5155-row master.
+
+The committed fixture is 53 unmodified rows trimmed **by the probe itself** (the live payload is
+1.8 MB): every company the 25 rows depend on, plus up to three per group so all 15 groups appear.
+Re-running the probe in a clean worktree regenerates it **byte-for-byte**, so it is a reproducible
+artifact and not a one-off capture.
+
+**No fetcher is written yet, and item 14 stays owed on it.** The fetcher brief comes next, written
+against this committed fixture — which is the point of doing the probe first.
+
+### Housekeeping
+
+Both worktrees removed via `wt-rm.ps1` the session their use ended; each printed the main checkout
+intact (tracked 4823 → 4823, deleted-on-disk 0). Merges at 00:25 and 00:27 IST, outside the
+:50–:05 workflow window; lane A's `pr-gate.yml` PR is coming and I am holding pushes in that window.
+Recorded from lane A for later: a test that spawns a real script pays cold-start compilation —
+17.4s cold against a 20s global timeout is 2.6s of headroom, and the fix is a per-test budget, not a
+global bump. None of my tests spawn a subprocess today.
+
+**Items 14, 2 and 12 still have zero proven lines.** No production data has been written.
