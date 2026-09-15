@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 04:47 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 04:51 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -3076,3 +3076,11 @@ HELD: violation count stayed 0 across 2 distinct scraper cycle(s).
 **Item 12 on staging: 19 of 20 duplicate groups merged and held across three holds; the 20th (Cube Highways) is a source question, not a merge.** Not DONE: the fixes are on main and staging, not on production, and a fix is not fixed until the release cut carries it and prod's invariant still reads 0 under the widened key. Promoters and peer companies remain separate open questions on the row-key half.
 
 Night totals for lane C: 7 PRs merged, 4 issues filed, 28 duplicate rows merged and 10 provenance rows applied on staging, one stale staging row refreshed from production, **no production data written**. The coordination tree is the only lane C worktree left.
+
+
+
+## 2026-09-16 04:51 IST — 2-S6 measured: no source exists for the face-value bands; the class is owner decision 4
+
+Five IPO rows on each slot store the face value as the price band (BANGANGA, MARUTI INTERIOR, MUTHOOT FINCOTP, NIRBHAY, STANBIK). None has a BSE issue number and none appears in Chittorgarh's report of 4,620 offers, so **no sourced band exists to repair from**. Two are Rs1,000-face instruments priced at face, where the offer type is the defect. Four of the five are on the never-listed list already waiting on decision 4. Slice 2-S6 is BLOCKED-UNSOURCEABLE and folded into that decision; detection already names the rows.
+
+**End of night for lane C:** item 12 proven on staging (DONE at the release cut); items 14 and 2 each blocked on decision 4. Seven PRs merged, four issues filed, no production data written. Nothing further in the contract is unblocked without the owner.
