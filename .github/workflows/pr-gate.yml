@@ -813,6 +813,20 @@ jobs:
       - name: Run require-release-branch test suite
         run: bash scripts/deploy/tests/require-release-branch.test.sh
 
+      # Issue #656: the rollout-flag liveness gate (assert_rollout_flags_live,
+      # T-297 D9 / #193) is what refuses a deploy when a `// LIVE-GATE`
+      # percentage is 0 or a `// PROD-REQUIRED-TRUE` flag is not literally
+      # 'true' -- the T-282 class where CONSOLIDATION_PERCENTAGE=0 silently
+      # voids the whole consolidation pipeline and every downstream reading
+      # is a clean-looking zero. The guard and its cases have existed since
+      # #352 (hardened over four T-467 rounds), but NOTHING in CI ran them:
+      # the `gate` job runs only the node self-tests under scripts/tests, and
+      # this job named the two deploy bash suites individually without this
+      # one. An unrun suite is not coverage -- a revert of the guard would
+      # have gone green. Named explicitly because pr-gate never globs.
+      - name: "Run assert-env-keys test suite (rollout-flag liveness gate, #656)"
+        run: bash scripts/tests/assert-env-keys.test.sh
+
       # Slice s17: deploy-linux.yml no longer triggers on push; staging is
       # deployed by a 15-minute poll that fires only when main's head differs
       # from the sha staging serves. Both ways that gate can break are silent
