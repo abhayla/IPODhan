@@ -163,6 +163,12 @@ export async function assertConnectedDatabase(
   if (decision.refuse) {
     err(decision.reason!);
     exit(2);
+    // GUARD (control flow, not decoration): `return` so this function's own
+    // contract is "a refusal stops here", rather than relying on `process.exit`
+    // being fatal. `exit` is injectable (io.exit) and the tests inject a
+    // NON-fatal one; without this return a refused run would fall through to
+    // the caller and reach the write paths under any non-fatal exit.
+    return;
   }
 }
 

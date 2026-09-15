@@ -112,6 +112,34 @@ describe('assertConnectedDatabase — mocked connection', () => {
     expect(errs[0]).toContain('ipodhan_test');
   });
 
+  // GUARD (a refusal must STOP, not merely report): `exit` is injectable, and
+  // every test here injects a NON-fatal one. If the mismatch branch only calls
+  // exit(2) without returning, this function keeps going and its caller reaches
+  // the write paths -- the exact failure a production `process.exit` hides.
+  // Asserting the exit code alone cannot see that; this asserts execution ended.
+  it('stops executing after a mismatch refusal, rather than relying on exit being fatal', async () => {
+    const execute = vi.fn(async () => ({ rows: [{ db: 'ipodhan_test', host: null, port: null }] }));
+    const logs: string[] = [];
+    let exitCode: number | undefined;
+
+    const returned = await assertConnectedDatabase({ execute }, 'ipodhan_staging', true, {
+      log: (l) => logs.push(l),
+      error: () => {},
+      exit: (c) => {
+        exitCode = c;
+      },
+    });
+
+    expect(exitCode).toBe(2);
+    // It resolves rather than throwing, so a caller CANNOT distinguish refusal
+    // from success by exception -- which is why the `return` is what protects it.
+    expect(returned).toBeUndefined();
+    // The connection was probed exactly once: no work happened after the refusal.
+    expect(execute).toHaveBeenCalledTimes(1);
+    // And the target line was printed exactly once, before the refusal -- not twice.
+    expect(logs.filter((l) => l.includes('persist-filing target ->'))).toHaveLength(1);
+  });
+
   it('proceeds (no exit) when --expect-db matches the connected database, even under --apply', async () => {
     const execute = vi.fn(async () => ({ rows: [{ db: 'ipodhan_test' }] }));
     let exitCode: number | undefined;
