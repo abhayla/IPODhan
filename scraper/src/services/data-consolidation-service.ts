@@ -2662,14 +2662,15 @@ export class DataConsolidationService {
 }
 
 /**
- * Export types for external use
+ * Export types for external use.
+ * `ConsolidateIPODataInput`/`ConsolidationResult`/`FieldConsolidationResult`
+ * are already `export interface` at their definitions -- re-listing them here
+ * was a duplicate export of the same name (TS2484), only surfaced once
+ * something else in this file (round 6's `normalizeChosen` export) made
+ * `type-check:scripts` actually run clean past it. Only `ConflictInfo`
+ * (defined without `export`) actually needs this block.
  */
-export type {
-  ConsolidateIPODataInput,
-  ConsolidationResult,
-  FieldConsolidationResult,
-  ConflictInfo,
-};
+export type { ConflictInfo };
 
 /**
  * camelCase JS field name -> snake_case DB column name. `validation-rules.json`
