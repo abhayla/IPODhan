@@ -629,7 +629,7 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       // were read and then failed the arithmetic, which is CELL damage.
       // Both keep the words "investor rows" so #703's classifier, which
       // matches /only \d+ investor rows?/, still groups them.
-      reason: `only ${candidates.length} candidate investor rows could be read from the anchor report`,
+      reason: `only ${candidates.length} investor rows could be read from the anchor report (candidate stage)`,
     };
   }
 
