@@ -29,6 +29,15 @@ import { eq, and, isNotNull, inArray } from 'drizzle-orm';
  */
 const JOB_CONFIG = {
   name: 'anchor-investors-job',
+  // SCOPED OUT of item 7 slice 1, deliberately and on the record. This is a
+  // third 45-minute lock on the same long PDF work, and the TTL reasoning that
+  // raised CYCLE_LOCK_TTL_MS and FILING_EXTRACTION_LOCK_TTL_MS above the
+  // 2-hour ceiling applies to it in principle. It is NOT raised here because
+  // this job has ZERO callers (verified by grep across scraper/: nothing
+  // imports or invokes anchor-investors-job outside this file), so it is not
+  // on the wake path the ceiling bounds and changing it would be an untested
+  // edit to dead code. If it is ever wired up, this TTL must be raised with it
+  // or a long anchor pass will lose its lock mid-run.
   lockTTL: 45 * 60, // 45 minutes (long-running PDF processing)
   rateLimit: 5000,   // 5 seconds between IPOs
   batchSize: 50,      // Process max 50 IPOs per run

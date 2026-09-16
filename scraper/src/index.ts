@@ -17,6 +17,7 @@ import {
   runIssueTypeFillJob,
   makeIssueTypeJobDeps,
 } from './services/chittorgarh-issue-type-job.js';
+import { HUNG_PROCESS_CEILING_MS } from './services/filing-auto-persist.js';
 import { makeIpoDetailsWriter } from './services/filing-persist-deps.js';
 import { FieldSourcesRepository, filterProtectedFields } from '@ipodhan/shared';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
@@ -186,7 +187,51 @@ const CYCLE_LOCK_RESOURCE = 'scraper:cycle';
  * cycle starts) while guaranteeing the TTL is always >= the longest a
  * legitimate cycle can now run.
  */
-const CYCLE_LOCK_TTL_MS = getWakeBudgetMs() + 5 * 60 * 1000;
+/**
+ * Item 7 slice 1 (Tier A review CRITICAL 4): this TTL used to be
+ * `getWakeBudgetMs() + 5 min` (= 25 min), and the comment above says plainly
+ * WHY: "deliberately SHORTER than PM2's 30-minute restart". That restart is
+ * exactly what this slice deletes - the scraper is no longer force-killed at
+ * 30 minutes, it is bounded by the wake wrapper's 2-hour hung-process ceiling
+ * (OD-55). A TTL sized against a restart that no longer exists is a broken
+ * invariant: during the very hang the ceiling is meant to bound, the lock
+ * would expire at 25 minutes and a second cycle could start on top of the
+ * first.
+ *
+ * It is less severe than "any 2-hour job loses its lock", because a live cycle
+ * extends the lock every CYCLE_LOCK_EXTEND_INTERVAL_MS (5 min), so a healthy
+ * long job keeps it. The TTL only lapses when the extender STOPS - which is
+ * precisely the hung case. That is the window being closed here.
+ *
+ * So the TTL is now the ceiling plus slack, and the invariant is restated:
+ * the lock outlives any run the ceiling permits, and the CEILING (not a lock
+ * expiry) is what ends a hung cycle. The slack covers the gap between the
+ * ceiling's SIGTERM and the wrapper's SIGKILL backstop (60s) plus the
+ * signal-handler lock release (W-140).
+ *
+ * Keep this >= the wrapper's SCRAPER_CEILING_SECONDS in scripts/scraper-wake.sh.
+ */
+/**
+ * EXPORTED so tests assert the RELATIONSHIP against the one definition
+ * instead of re-typing the number. The 25-minute value used to live as a
+ * literal in three separate files; two were updated when the TTL was raised
+ * and the third (index-due-step-scheduler-wiring.test.ts) was missed, turning
+ * CI red. A literal copied into a test is a second source of truth that goes
+ * stale silently. The TTL is defined once HERE; the CEILING it derives from is
+ * defined once in filing-auto-persist.ts and imported above - this file does
+ * NOT redeclare it. (An earlier version of this comment claimed "exactly one
+ * here and every other reader imports it", which was true WITHIN this file and
+ * false ACROSS the two - the ceiling existed three times, counting the shell
+ * wrapper. scripts/tests/scraper-wake.test.sh case 15 guards the shell copy,
+ * which cannot import a TS constant across the language boundary.)
+ */
+// Re-exported, NOT redeclared. OD-55 defines the 2-hour ceiling ONCE and its
+// honest home is filing-auto-persist.ts, where the document-extraction
+// semantics live. This file imports it so a future revision of OD-55 (two
+// hours is a fresh decision that could move) changes ONE number. The
+// re-export keeps existing importers of CYCLE_LOCK_CEILING_MS working.
+export const CYCLE_LOCK_CEILING_MS = HUNG_PROCESS_CEILING_MS;
+export const CYCLE_LOCK_TTL_MS = CYCLE_LOCK_CEILING_MS + 5 * 60 * 1000;
 const CYCLE_LOCK_EXTEND_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */
