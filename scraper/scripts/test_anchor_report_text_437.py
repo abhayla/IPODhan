@@ -119,7 +119,11 @@ def test_lcc_reads_the_life_insurance_row_it_prints():
     rows = ocr_table_page_rows(_pages("LCCPROJECT")[1])
     assert len(rows["centres"]) == 1
     rendered = render_rows(rows)
-    assert "1 4.99,92,224" in rendered or "14,99,92,224" in rendered
+    # The OCR prints this as "1 4.99,92,224" - a space dropped INSIDE the
+    # digit run. Since #437 slice 2 the sidecar closes that space before the
+    # cell leaves python, so the rendered figure carries all nine digits in
+    # one run and `parseAmount` reads 14,99,92,224 from it.
+    assert "14.99,92,224" in rendered or "14,99,92,224" in rendered
 
 
 def test_the_percent_column_is_marked_as_a_percentage():

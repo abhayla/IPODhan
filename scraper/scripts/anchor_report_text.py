@@ -686,6 +686,99 @@ def _looks_like_bare_percent(text):
         return False
     return 0.0 < value <= 100.0
 
+# --------------------------------------------------------------------------- #
+# #437 slice 2 - the OCR-split numeric cell
+#
+# A 300-dpi scan of an anchor letter does two things to a printed number that
+# the parser downstream cannot undo on its own:
+#
+#  1. It scatters whitespace THROUGH the digit run, because the glyphs of one
+#     printed figure are recognised as separate words: "6, 8 5.03 2" is the
+#     printed 6,85,032 and "1 1 62,800" is the printed 11,62,800. Every
+#     consumer of these cells (parseAmount, parsePercent, splitPriceAndAmount)
+#     already drops separators, so the SPACES alone are harmless to the value -
+#     but `_looks_like_bare_percent` below is applied to the cell BEFORE the
+#     TypeScript side ever sees it, and a spaced-out cell fails it.
+#
+#  2. Where an investor NAME wraps onto a second printed sub-line, the sidecar
+#     merges the two sub-lines of the numeric cell as well, so the one printed
+#     figure reads TWICE: "9. 17 9.17" for a single 9.17, "50,650,302
+#     50,650,302" for a single amount. That doubled cell is not a percentage by
+#     any test, so the row loses its percent cell, `readRow` drops the row from
+#     the candidate list, and the shrunken candidate total then makes every
+#     OTHER row's printed percentage look inflated - which is the
+#     "prints 18.10% but holds 22.16% of the anchor portion" refusal on
+#     GLOTTIS, LCCPROJECT and LUMINO, and half of the per-row price
+#     disagreements on JSIPL and HEROMOTORS.
+#
+# Nothing here invents a digit. Whitespace inside a digit run is removed, and a
+# cell whose text is EXACTLY one string written twice is collapsed to the one
+# string. A cell that is two DIFFERENT figures (two investors merged into one
+# band by the geometry) is left exactly as read, and its row stays refused -
+# picking one of two real figures would be a guess, not a read.
+# --------------------------------------------------------------------------- #
+_DIGIT_RUN_SPACE_RE = re.compile(r"(?<=[\d.,])[ 	]+(?=[\d.,])")
+
+
+def collapse_digit_spaces(text):
+    """Remove whitespace that sits INSIDE a run of digits and separators.
+
+    Space between a digit and a LETTER is left alone, so "10,00,14,672.00 HMC"
+    keeps its trailing letterhead shrapnel visible rather than being welded on
+    to the number.
+    """
+    previous, out = None, text
+    while out != previous:
+        previous, out = out, _DIGIT_RUN_SPACE_RE.sub("", out)
+    return out
+
+
+# A COMPLETE printed figure, as the letter prints one: GROUPED (Indian
+# 12,34,567 or Western 1,162,800), with an optional two-digit decimal tail, no
+# leading zero. Two of THESE separated by a space are two different investors'
+# figures the row geometry merged into one cell - never one figure the scanner
+# split, because the scanner splits a figure INSIDE a group ("1 00,000,800",
+# "3 92,63 8") and each side of such a split fails this test: "1" carries no
+# grouping and "00,000,800" leads with a zero.
+_WHOLE_FIGURE_RE = re.compile(
+    r"^[1-9]\d{0,2}(?:,\d{2})+,\d{3}(?:\.\d{2})?$"
+    r"|^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d{2})?$")
+
+
+def _is_whole_figure(token):
+    return bool(_WHOLE_FIGURE_RE.match(token))
+
+
+def _collapse_exact_repeat(text):
+    """"9.179.17" -> "9.17". Only an EXACT doubling, never a near one."""
+    n = len(text)
+    if n >= 2 and n % 2 == 0 and text[:n // 2] == text[n // 2:]:
+        return text[:n // 2]
+    return text
+
+
+def repair_numeric_cell(text):
+    """The two OCR separator repairs, in the order they have to run.
+
+    The de-duplication is applied AFTER the space collapse: the two copies of
+    the figure are rarely spaced identically ("9. 17" then "9.17"), so they are
+    only equal once the spaces are gone.
+    """
+    if not text or not any(c.isdigit() for c in text):
+        return text
+    stripped = text.strip()
+    # Two COMPLETE printed figures side by side are two investors the row
+    # geometry merged, not one figure the scanner split. Welding them would
+    # manufacture a number neither investor was allocated, so the cell is
+    # returned untouched and the row stays refused downstream.
+    tokens = stripped.split()
+    if len(tokens) > 1 and all(_is_whole_figure(t) for t in tokens):
+        if len(set(tokens)) > 1:
+            return stripped
+        return tokens[0]
+    return _collapse_exact_repeat(collapse_digit_spaces(stripped))
+
+
 TOTAL_RE = re.compile(r"^(grand\s*)?tota[lI1]?s?\.?$", re.IGNORECASE)
 _NUMERIC_CELL_RE = re.compile(r"^[\d\s.,%()/R-]+$", re.IGNORECASE)
 _PREAMBLE_TOTAL_RE = re.compile(
@@ -1032,7 +1125,9 @@ def ocr_table_page_rows(ocr_lines):
         return " ".join(t for _c, _x, t in sorted(parts, key=lambda p: (p[0], p[1])))
 
     def column_text(row, idx):
-        text = joined(row["cells"].get(idx, []))
+        # #437 slice 2: repair the OCR's separator damage BEFORE the percent
+        # test below, which a spaced-out or doubled cell silently fails.
+        text = repair_numeric_cell(joined(row["cells"].get(idx, [])))
         # Restore the percent glyph the scan printed only in the header, so
         # the cell reads as a percentage downstream. Never invented: the
         # column is the one the printed layout puts right of the share count,
