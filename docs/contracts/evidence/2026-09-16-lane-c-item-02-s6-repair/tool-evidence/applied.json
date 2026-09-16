@@ -1,0 +1,21 @@
+{
+ "appliedAt": "2026-09-16T00:08:55.534Z",
+ "slug": "stanbik-agro-ltd",
+ "written": [
+  {
+   "field": "priceRangeMin",
+   "from": 1000,
+   "to": 30
+  },
+  {
+   "field": "priceRangeMax",
+   "from": 1000,
+   "to": 30
+  },
+  {
+   "field": "faceValue",
+   "from": 1000,
+   "to": 10
+  }
+ ]
+}

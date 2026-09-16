@@ -1,0 +1,28 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c02-s6\scripts\lib -> D:\Abhay\Ventures\IPODhan-c02-s6\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c02-s6 | cwd D:\Abhay\Ventures\IPODhan-c02-s6\scraper
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c02-s6\scraper -> D:\Abhay\Ventures\IPODhan-c02-s6\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c02-s6 | cwd D:\Abhay\Ventures\IPODhan-c02-s6\scraper
+================================================================================
+FACE-VALUE-AS-BAND REPAIR (lane C item 2 slice 6) — APPLY
+================================================================================
+current_database(): ipodhan_staging
+class rows (db=ipodhan_staging): 5
+fetching Chittorgarh report 82 (FY2024-25 / FY2025-26 / FY2026-27, mainboard + SME)...
+report82 2024-25 mainboard: 19 pages, 91 rows (1 duplicate rows collapsed)
+report82 2024-25 sme: 48 pages, 240 rows (0 duplicate rows collapsed)
+report82 2025-26 mainboard: 21 pages, 103 rows (0 duplicate rows collapsed)
+report82 2025-26 sme: 54 pages, 267 rows (0 duplicate rows collapsed)
+report-82 fetch failed for FY2026 mainboard, skipping this bucket: report 82 2026-27 mainboard: hit the 200-page hard ceiling without an empty page — refusing to loop forever
+report-82 fetch failed for FY2026 sme, skipping this bucket: report 82 2026-27 sme: hit the 200-page hard ceiling without an empty page — refusing to loop forever
+report-82 candidates collected: 701
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+nirbhay-colours-india-ltd: NO SOURCE — no report-82 row across the three FYs matches "NIRBHAY COLOURS INDIA LTD"
+muthoot-fincotp-ltd: NO SOURCE — no report-82 row across the three FYs matches "MUTHOOT FINCOTP LIMITED"
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+stanbik-agro-ltd: resolved issue price 30.00 (2025 sme, https://www.chittorgarh.com/ipo/stanbik-agro-ipo/2602/); face_value=10
+[Cache] DEL: ipo:id:f536b84c-01b1-4d8b-9e7f-baeeacdcab14, ipo:slug:stanbik-agro-ltd
+[Cache] DEL: ipo:id:f536b84c-01b1-4d8b-9e7f-baeeacdcab14, ipo:slug:stanbik-agro-ltd
+  APPLIED: wrote [priceRangeMin, priceRangeMax, faceValue] — backup evidence/2026-09-16-lane-c-item-02-s6-stanbik-agro-ltd/before.json, ledger evidence/2026-09-16-lane-c-item-02-s6-stanbik-agro-ltd/applied.json
+banganga-paper-industries-ltd: NO SOURCE — no report-82 row across the three FYs matches "BANGANGA PAPER INDUSTRIES LTD"
+maruti-interior-products-ltd: NO SOURCE — no report-82 row across the three FYs matches "MARUTI INTERIOR PRODUCTS LTD"
+================================================================================
+APPLY complete.
