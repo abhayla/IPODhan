@@ -319,6 +319,26 @@ export const FEATURE_FLAGS = {
   ENABLE_FILING_AUTO_PERSIST: process.env.ENABLE_FILING_AUTO_PERSIST === 'true',
 
   /**
+   * Item 6 -- PASS 3, the pull walk over `ipo_field_plan`
+   * (`field-plan-walk.ts`, wired into `document-cycle.ts`).
+   *
+   * DELIBERATELY DISTINCT from item 5's plan-row generation. The plan table
+   * can exist and be populated by items 2/3's generator long before anything
+   * is trusted to WALK it: generating a row is a statement of what should be
+   * asked; walking it is a live write path that re-sources published fields
+   * three times a day with no human in the loop. Collapsing the two into one
+   * flag would mean the only way to populate the plan is to also start
+   * writing from it, which removes the observation window the rollout needs.
+   *
+   * Rollout: staging first, for at least one full data-job cycle over a
+   * representative IPO set (MAINBOARD + SME, OPEN + UPCOMING, and at least
+   * one IPO with a multi-year `financial_statements` plan row so the keyed
+   * row-key path is exercised); prod is a separate owner decision (GATE).
+   * Default: false
+   */
+  ENABLE_FIELD_PLAN_WALK: process.env.ENABLE_FIELD_PLAN_WALK === 'true',
+
+  /**
    * D-15 lift: let SME candidates through the SAME auto-persist door as
    * MAINBOARD, instead of the unconditional skip in `processPendingFilings`
    * (which otherwise writes an E1 ledger row with evidence reason

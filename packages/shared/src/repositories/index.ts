@@ -23,6 +23,23 @@ export type {
   FieldExtractionFailureRecord,
 } from './field-extraction-failures-repository';
 export { DocumentFetchStateRepository } from './document-fetch-state-repository';
+// Item 6: the field-plan walk (scraper PASS 3) is the first consumer, and it
+// reaches the class through this barrel -- the package's `exports` map has no
+// `./repositories/ipo-field-plan-repository` subpath, so a deep import
+// resolves in tsc and then fails at RUNTIME under vitest's resolver.
+export {
+  IpoFieldPlanRepository,
+  FIELD_PLAN_CLAIM_STALE_MINUTES,
+  fieldPlanBackoffMinutes,
+} from './ipo-field-plan-repository';
+export type {
+  IpoFieldPlanRow,
+  FieldPlanState,
+  ChosenEvidence,
+  RecordOutcomeParams,
+  RecordOutcomeResult,
+  ClaimNextDueFieldParams,
+} from './ipo-field-plan-repository';
 export type {
   IDocumentFetchStateStore,
   DocumentFetchStateRow,
