@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { istDateIso } from '@/lib/utils/ist-date';
 import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { IPO, ListingPerformance, IPOScore, GMPRecord, Subscription, FinancialData } from '@/lib/db/types';
@@ -264,7 +265,7 @@ export function CSVExporter({
       const url = URL.createObjectURL(blob);
 
       // Generate filename with timestamp
-      const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const timestamp = istDateIso(new Date()); // YYYY-MM-DD
       const finalFilename = filename
         ? `${filename}-${timestamp}.csv`
         : `ipodhan-export-${timestamp}.csv`;
@@ -324,7 +325,7 @@ export async function exportIPOsToCSV(
   filename?: string,
   includeFields: CSVField[] = DEFAULT_FIELDS
 ): Promise<void> {
-  const timestamp = new Date().toISOString().split('T')[0];
+  const timestamp = istDateIso(new Date());
   const finalFilename = filename
     ? `${filename}-${timestamp}.csv`
     : `ipodhan-export-${timestamp}.csv`;

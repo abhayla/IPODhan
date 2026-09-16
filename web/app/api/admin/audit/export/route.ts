@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { exportAuditLogsCSV } from '@/lib/services/audit-log-service';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { istDateIso } from '@/lib/utils/ist-date';
 
 /**
  * GET /api/admin/audit/export
@@ -55,7 +56,7 @@ export const GET = withAdminAuth(async (request: NextRequest) => {
     });
 
     // Generate filename with timestamp
-    const timestamp = new Date().toISOString().split('T')[0];
+    const timestamp = istDateIso(new Date());
     const filename = `audit-logs-${timestamp}.csv`;
 
     // Return CSV file
