@@ -1117,7 +1117,7 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
   // `fieldPlanBudgetMs <= 0` guard -- it proves the pass skips when there
   // was NO budget to begin with, not that a pass which RUNS TOO LONG stops
   // mid-loop. This test targets the BETWEEN-IPO check itself
-  // (`now() - fieldPlanStartedAt >= fieldPlanBudgetMs`), the one that
+  // (`now() - fieldPlanStartedAt >= fieldPlanGenBudgetMs`), the one that
   // actually protects a candidate set that grows or a DB latency spike.
   // Same fake-clock pattern as the W-136 LISTED-reservation-deadline test
   // above: a mutable `clock`, `now = () => clock`, advanced by the mock the
@@ -1158,7 +1158,7 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
       expect.arrayContaining([expect.objectContaining({ ipoId: 'ipo-1' })])
     );
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ fieldPlanBudgetMs: 50, processed: 1, remaining: 2 }),
+      expect.objectContaining({ fieldPlanGenBudgetMs: 50, processed: 1, remaining: 2 }),
       expect.stringContaining('Field-plan generation budget exhausted')
     );
   });
