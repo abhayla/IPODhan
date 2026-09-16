@@ -636,8 +636,18 @@ export function validateValidationRulesAtStartup(
   rulesPath?: string,
   enabled: boolean = FEATURE_FLAGS.ENABLE_FIELD_EXTRACTION_VALIDATION
 ): void {
-  if (!enabled) return;
-  loadValidationRules(rulesPath);
+  if (!enabled) {
+    logger.info(
+      { flag: 'ENABLE_FIELD_EXTRACTION_VALIDATION', enabled: false, rulesLoaded: null },
+      'field-extraction validation flag state'
+    );
+    return;
+  }
+  const rules = loadValidationRules(rulesPath);
+  logger.info(
+    { flag: 'ENABLE_FIELD_EXTRACTION_VALIDATION', enabled: true, rulesLoaded: rules.length },
+    'field-extraction validation flag state'
+  );
 }
 
 /**
