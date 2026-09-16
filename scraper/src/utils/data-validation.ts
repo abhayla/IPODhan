@@ -101,8 +101,11 @@ function isLotWithinSebiRetailWindow(data: IPODataToValidate): boolean {
 }
 
 function sebiRetailWindowFloorMessage(data: IPODataToValidate, source: string): string {
-  if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE' || !data.segment) {
+  if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE') {
     return `lot_size = ${data.lotSize} is below minimum threshold (10) and no price band is on record to check it against the SEBI retail-value window. Likely scraper error. Source: ${source}`;
+  }
+  if (!data.segment) {
+    return `lot_size = ${data.lotSize} is below minimum threshold (10) and no segment (MAINBOARD/SME) is on record to pick the right SEBI retail-value window. Likely scraper error. Source: ${source}`;
   }
   const window = data.segment === 'MAINBOARD' ? SEBI_RETAIL_WINDOW.MAINBOARD : SEBI_RETAIL_WINDOW.SME;
   const minInvestment = (data.lotSize as number) * data.priceRangeMax;
@@ -535,7 +538,7 @@ export function validateIPOData(
   if (data.lotSize && data.priceRangeMax && data.issueType !== 'FIXED_PRICE') {
     const minInvestment = data.lotSize * data.priceRangeMax;
 
-    if (data.segment === 'MAINBOARD' && (minInvestment < 10000 || minInvestment > 16000)) {
+    if (data.segment === 'MAINBOARD' && (minInvestment < SEBI_RETAIL_WINDOW.MAINBOARD.min || minInvestment > SEBI_RETAIL_WINDOW.MAINBOARD.max)) {
       errors.push({
         field: 'lotEconomics',
         rule: 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD',
@@ -543,7 +546,7 @@ export function validateIPOData(
         message: `MAINBOARD minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Reg 32(1) retail range (~₹10,000-₹16,000). This lot/band pair is arithmetically impossible for a genuine book-built mainboard IPO — reject and flag for reclassification (#P1-4: ICICI Prudential AMC/STALLION/MORGANITE shape).`,
         expected: true,
       });
-    } else if (data.segment === 'SME' && (minInvestment < 100000 || minInvestment > 200000)) {
+    } else if (data.segment === 'SME' && (minInvestment < SEBI_RETAIL_WINDOW.SME.min || minInvestment > SEBI_RETAIL_WINDOW.SME.max)) {
       errors.push({
         field: 'lotEconomics',
         rule: 'LOT_ECONOMICS_IMPOSSIBLE_SME',

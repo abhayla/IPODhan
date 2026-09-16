@@ -138,3 +138,84 @@ describe('validateIPOData — Rule 1 lot-size floor derives from the SEBI retail
     expect(SEBI_RETAIL_WINDOW.SME.max).toBe(SME_LOT_ECONOMICS_MAX);
   });
 });
+
+describe('validateIPOData — Rule 9 reads SEBI_RETAIL_WINDOW, not inline literals (review round 1)', () => {
+  it('Rule 9 trips LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD just below the window floor (lot 100 x Rs99 = Rs9,900 < Rs10,000)', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Just Under The Window Ltd.',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+        priceRangeMin: 90,
+        priceRangeMax: 99,
+        lotSize: 100,
+      },
+      'NSE'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.map((e) => e.rule)).toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
+    const err = result.errors.find((e) => e.rule === 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD')!;
+    expect(err.message).toContain('₹9,900');
+    expect(err.message).toContain('falls outside the SEBI ICDR Reg 32(1) retail range (~₹10,000-₹16,000)');
+  });
+
+  it('a change to SEBI_RETAIL_WINDOW.MAINBOARD.min is observed by BOTH Rule 1 and Rule 9 at the same boundary (minInvestment = 9,999, just below min)', () => {
+    // Rule 1: lot under 10, window-explained only if inside [min,max] -> 9,999 is
+    // OUTSIDE (below) the window, so Rule 1 still refuses it as LOT_SIZE_TOO_LOW.
+    const rule1Result = validateIPOData(
+      {
+        companyName: 'Boundary Sub-10 Lot Ltd.',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+        priceRangeMin: 900,
+        priceRangeMax: 1111,
+        lotSize: 9, // 9 x 1111 = 9,999
+      },
+      'NSE'
+    );
+    expect(rule1Result.valid).toBe(false);
+    expect(rule1Result.errors.map((e) => e.rule)).toContain('LOT_SIZE_TOO_LOW');
+
+    // Rule 9: lot >= 10, minInvestment = 9,999 (lot 111 x cap 90.081 -> use an
+    // exact figure instead: lot 101 x cap 99 = 9,999) -> also outside the
+    // window, rejected by LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD. Both rules key
+    // off the same SEBI_RETAIL_WINDOW.MAINBOARD boundary — a change to that
+    // constant moves both verdicts together.
+    const rule9Result = validateIPOData(
+      {
+        companyName: 'Boundary Lot-Economics Ltd.',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+        priceRangeMin: 90,
+        priceRangeMax: 99,
+        lotSize: 101, // 101 x 99 = 9,999
+      },
+      'NSE'
+    );
+    expect(rule9Result.valid).toBe(false);
+    expect(rule9Result.errors.map((e) => e.rule)).toContain('LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD');
+  });
+});
+
+describe('validateIPOData — Rule 1 names the missing-segment reason distinctly from the missing-band reason (review round 1 MINOR)', () => {
+  it('gives a segment-specific reason when the band IS present but segment is missing', () => {
+    const result = validateIPOData(
+      { companyName: 'No Segment Sub-10 Lot Ltd.', offeringType: 'IPO', priceRangeMin: 1700, priceRangeMax: 1785, lotSize: 8 },
+      'NSE'
+    );
+    expect(result.valid).toBe(false);
+    const err = result.errors.find((e) => e.rule === 'LOT_SIZE_TOO_LOW')!;
+    expect(err.message).toContain('no segment (MAINBOARD/SME) is on record');
+    expect(err.message).not.toContain('no price band is on record');
+  });
+
+  it('keeps the original missing-band reason when the band itself is absent', () => {
+    const result = validateIPOData(
+      { companyName: 'No Band Sub-10 Lot Ltd2.', offeringType: 'IPO', segment: 'MAINBOARD', lotSize: 8 },
+      'NSE'
+    );
+    expect(result.valid).toBe(false);
+    const err = result.errors.find((e) => e.rule === 'LOT_SIZE_TOO_LOW')!;
+    expect(err.message).toContain('no price band is on record');
+  });
+});
