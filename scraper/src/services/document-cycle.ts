@@ -22,7 +22,8 @@
 
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
-import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository } from '@ipodhan/shared';
+import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository, IpoFieldPlanRepository } from '@ipodhan/shared';
+import { generateFieldPlan } from './field-plan-generator.js';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
@@ -52,7 +53,6 @@ import {
   getStoreDir,
 } from './document-store.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
-import { IpoFieldPlanRepository } from '@ipodhan/shared/repositories';
 import { walkFieldPlanForIPO } from './field-plan-walk.js';
 import {
   buildFieldPlanWalkFetchers,
@@ -830,7 +830,7 @@ async function enrichRotatingCandidates(
 export const CANDIDATE_IPOS_SQL = `
     SELECT i.id, i.company_name, i.slug, i.symbol, i.segment, i.status, i.price_range_min,
            i.price_range_max, i.open_date, i.listing_date, i.bse_ipo_no,
-           i.company_website, i.verifier_url, i.lead_managers
+           i.company_website, i.verifier_url, i.lead_managers, i.listing_exchanges
       FROM ipos i
       LEFT JOIN (
         SELECT ipo_id, MAX(last_attempt_at) AS last_activity
@@ -912,6 +912,11 @@ export async function loadCandidateIpos(deps: {
       // write-once without a second query per IPO — the runner itself never
       // reads it.
       leadManagers: Array.isArray(r.lead_managers) ? (r.lead_managers as string[]) : null,
+      // Item 5 slice s4: carried only so the field-plan generator can
+      // resolve this IPO's own type key — the runner itself never reads it.
+      listingExchanges: Array.isArray(r.listing_exchanges)
+        ? (r.listing_exchanges as ('NSE' | 'BSE')[])
+        : null,
       issue: deriveIssueShape(r),
       // W-122: carried only to drive the urgency ordering below; the runner
       // itself never reads these two fields.
@@ -1026,6 +1031,12 @@ export async function runDocumentCycle(
     budgetMs?: number;
     /** Explicit override — bypasses the shared wake-budget arithmetic below (tests / callers that know better). */
     extractionBudgetMs?: number;
+    /**
+     * Item 5 slice s4 review fix: explicit override for PASS 3's ceiling,
+     * mirroring `extractionBudgetMs` exactly (tests / callers that know
+     * better bypass the shared wake-budget arithmetic below).
+     */
+    fieldPlanBudgetMs?: number;
     now?: () => number;
     /** Cadence D-13 calendar gate — one shared wake budget for discovery + extraction. Test-injectable. */
     wakeBudgetMs?: number;
@@ -1043,6 +1054,7 @@ export async function runDocumentCycle(
   const documents = new DocumentRepository(db as never, redis as never);
   const ipoRepository = new IPORepository(db as never, redis as never);
   const stepsRepository = new IpoPipelineStepsRepository(db as never, redis as never);
+  const fieldPlanRepository = new IpoFieldPlanRepository(db as never, redis as never);
   const counter = new NetworkCounter();
 
   // Built lazily and reused across IPOs: the dependency set opens repositories
@@ -1517,6 +1529,89 @@ export async function runDocumentCycle(
       }
     }
 
+    // PASS 2.5 — field-plan generation (item 5 slice s4). Runs BEFORE the
+    // field-plan walk (PASS 3, item 6): the walk consumes the rows this
+    // writes, so generating after it would leave every new row unasked until
+    // the NEXT cycle. Over the SAME
+    // `candidates` the cycle already selected — no new selection logic.
+    // RECONCILED, NEVER REGENERATED: `upsertGeneratedRows` inserts only rows
+    // for (ipo, table, row_key, field) keys that do not already exist
+    // (design §2.3), so a second pass over an IPO whose rows are already
+    // planned writes nothing and mutates nothing. Non-fatal per IPO — one
+    // IPO's plan-generation failure must not stop the rest of the cycle.
+    //
+    // Review fix (Tier B, #693): mirrors PASS 2's ceiling exactly rather
+    // than inventing a third convention — PASS 3 takes whatever remains of
+    // the shared wake budget after PASS 1 + PASS 2, checked BETWEEN IPOs.
+    // A zero-or-negative remainder is LOGGED and the whole pass is skipped
+    // (never silently iterated with an already-blown deadline) — the flag
+    // ships OFF and the per-IPO cost is small today, but "add the ceiling
+    // before flipping the flag" is a promise with nothing enforcing it, so
+    // it is built now while it is cheap and risk-free.
+    // PASS 2.5 runs BEFORE the walk, so its ceiling must also hold back
+    // `PURGE_RESERVE_MS` -- generation that ate the whole wake would starve
+    // the very walk that consumes the rows it just wrote.
+    const fieldPlanGenBudgetMs =
+      options.fieldPlanBudgetMs ??
+      Math.max(0, wakeBudgetMs - (now() - startedAt) - PURGE_RESERVE_MS);
+    if (FEATURE_FLAGS.ENABLE_FIELD_PLAN) {
+      if (fieldPlanGenBudgetMs <= 0) {
+        logger.warn(
+          { fieldPlanGenBudgetMs },
+          'Field-plan generation skipped — no wake budget remains after discovery/extraction (item 5 slice s4)'
+        );
+      } else {
+        const fieldPlanStartedAt = now();
+        const fieldPlanTotals = { ipos: 0, rowsInserted: 0, failed: 0 };
+        for (const ipo of candidates) {
+          if (now() - fieldPlanStartedAt >= fieldPlanGenBudgetMs) {
+            logger.warn(
+              {
+                fieldPlanGenBudgetMs,
+                processed: fieldPlanTotals.ipos,
+                remaining: candidates.length - fieldPlanTotals.ipos,
+              },
+              'Field-plan generation budget exhausted — remaining IPOs resume next cycle (item 5 slice s4)'
+            );
+            break;
+          }
+          try {
+            const rows = generateFieldPlan({
+              id: ipo.id,
+              segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
+              listingExchanges: ipo.listingExchanges ?? null,
+            });
+            if (rows.length === 0) continue;
+            const { inserted } = await fieldPlanRepository.upsertGeneratedRows(
+              rows.map((r) => ({
+                ipoId: r.ipoId,
+                tableName: r.tableName,
+                rowKey: '',
+                fieldName: r.fieldName,
+                rank1Source: r.rank1Source,
+                rank2Source: r.rank2Source,
+                rank3Source: r.rank3Source,
+                manifestVersion: r.manifestVersion,
+              }))
+            );
+            fieldPlanTotals.ipos++;
+            fieldPlanTotals.rowsInserted += inserted;
+          } catch (error) {
+            fieldPlanTotals.failed++;
+            logger.error(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Field-plan generation threw (non-fatal) — continuing the cycle'
+            );
+          }
+        }
+        // UNCONDITIONAL on purpose. A summary gated on `rowsInserted > 0`
+        // goes silent on exactly the cycle the reconciled-not-regenerated
+        // proof reads -- the second wake, where zero new rows IS the expected
+        // result -- making "everything was already planned" look identical to
+        // "PASS 2.5 never ran". A pass that ran always says so.
+        logger.info(fieldPlanTotals, 'PASS 2.5 field-plan generation summary for this cycle (item 5 slice s4)');
+      }
+    }
     // PASS 3 — the field-plan walk (item 6). Runs AFTER extraction for the
     // same reason PASS 2 runs after discovery: it re-asks fields, and a field
     // whose answer arrived in a document PASS 2 just extracted should be

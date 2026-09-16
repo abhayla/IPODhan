@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/shared';
+import logger from '../../../src/utils/logger.js';
 
 // ---------------------------------------------------------------------------
 // Mocks — every dependency runDocumentCycle touches, fake-deps style (see
@@ -31,6 +32,9 @@ import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/share
 
 const dbExecuteMock = vi.fn();
 const dbInsertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+// Item 5 slice s4: hoisted so tests can assert the field-plan pass called
+// (or did not call) the repository, independent of the vi.mock factory.
+const upsertGeneratedRowsMock = vi.fn().mockResolvedValue({ inserted: 0 });
 
 vi.mock('@ipodhan/shared', () => ({
   db: {
@@ -48,6 +52,9 @@ vi.mock('@ipodhan/shared', () => ({
   IPORepository: vi.fn().mockImplementation(() => ({})),
   IpoPipelineStepsRepository: vi.fn().mockImplementation(() => ({
     findByIpo: vi.fn().mockResolvedValue([]),
+  })),
+  IpoFieldPlanRepository: vi.fn().mockImplementation(() => ({
+    upsertGeneratedRows: (...args: unknown[]) => upsertGeneratedRowsMock(...args),
   })),
 }));
 
@@ -113,9 +120,15 @@ vi.mock('../../../src/services/document-store.js', () => ({
   getMaxRetentionDays: () => 30,
 }));
 
-const FEATURE_FLAGS: { ENABLE_FILING_AUTO_PERSIST: boolean; ENABLE_UPCOMING_DISCOVERY_RESERVATION: boolean } = {
+const FEATURE_FLAGS: {
+  ENABLE_FILING_AUTO_PERSIST: boolean;
+  ENABLE_UPCOMING_DISCOVERY_RESERVATION: boolean;
+  ENABLE_FIELD_PLAN: boolean;
+} = {
   ENABLE_FILING_AUTO_PERSIST: true,
   ENABLE_UPCOMING_DISCOVERY_RESERVATION: false,
+  // Item 5 slice s4: default off, matching the real flag's default in every slot.
+  ENABLE_FIELD_PLAN: false,
 };
 vi.mock('../../../src/config/feature-flags.js', () => ({ FEATURE_FLAGS }));
 
@@ -1014,5 +1027,159 @@ describe('W-135 — enrichListedCandidates counts only incomplete rows toward th
     } finally {
       delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
     }
+  });
+});
+
+// Item 5 slice s4 -- the field-plan generation pass (PASS 3), gated by
+// FEATURE_FLAGS.ENABLE_FIELD_PLAN. MUTATION (b) target: "ignore the flag" --
+// if the pass ever stops checking the flag, the first test here goes red.
+describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_PLAN', () => {
+  beforeEach(() => {
+    dbExecuteMock.mockResolvedValue({ rows: [candidateRow('ipo-1'), candidateRow('ipo-2')] });
+    // A prior describe block (W-135) installs an `ipoId`-parsing
+    // `listForIpo`/`findByIPO` mockImplementation via `vi.mocked(...)` —
+    // `vi.clearAllMocks()` (the file-level beforeEach) clears CALL HISTORY
+    // but never restores the original mockImplementation, so that override
+    // otherwise leaks forward and starves this suite's plain 'ipo-1'/'ipo-2'
+    // candidates down to zero via the unrelated LISTED-enrichment path.
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn().mockResolvedValue([]),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+    vi.mocked(DocumentRepository).mockImplementation(
+      () => ({ findByIPO: vi.fn().mockResolvedValue([]) }) as never
+    );
+  });
+
+  afterEach(() => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = false;
+  });
+
+  it('the flag OFF means zero rows written -- upsertGeneratedRows is never called', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = false;
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(upsertGeneratedRowsMock).not.toHaveBeenCalled();
+  });
+
+  it('the flag ON calls upsertGeneratedRows for each candidate the cycle already selected', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // Two candidates (ipo-1, ipo-2) from the stubbed CANDIDATE_IPOS_SQL rows
+    // above -- no new selection logic, the same `candidates` array pass 1/2
+    // already iterate.
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(2);
+  });
+
+  // Review fix (Tier B, #693): PASS 3 had no wall-clock ceiling -- a bare
+  // `for (const ipo of candidates)` with no deadline check, while PASS 1
+  // checks budgetMs and PASS 2 checks extractionBudgetMs. This test fails
+  // if that check is ever removed again.
+  it('with a deadline already exceeded, NO candidate is processed and the reason is logged', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    // fieldPlanBudgetMs: 0 mirrors extractionBudgetMs's explicit-override
+    // shape exactly -- the deadline is already exceeded before the loop's
+    // first iteration, at `now() - fieldPlanStartedAt (0) >= 0`.
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999, fieldPlanBudgetMs: 0 });
+
+    expect(upsertGeneratedRowsMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldPlanGenBudgetMs: 0 }),
+      expect.stringContaining('Field-plan generation skipped')
+    );
+  });
+
+  // Review Low (#693): the try/catch's per-IPO isolation looked right but
+  // was never asserted -- inferred is not asserted.
+  // The reconciled-not-regenerated proof reads TWO consecutive wakes: rows
+  // inserted on the first, zero on the second with the table unchanged. That
+  // second wake is only evidence if the pass SAYS it ran -- a summary gated on
+  // `rowsInserted > 0` logs nothing on exactly the cycle the proof depends on,
+  // making "generated nothing because everything was already planned"
+  // indistinguishable from "PASS 2.5 never ran at all".
+  it('a cycle that inserts ZERO rows still logs its summary — silence must not be ambiguous', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    upsertGeneratedRowsMock.mockResolvedValue({ inserted: 0 });
+    const infoSpy = vi.spyOn(logger, 'info');
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(upsertGeneratedRowsMock).toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ rowsInserted: 0, failed: 0 }),
+      expect.stringContaining('PASS 2.5 field-plan generation summary')
+    );
+  });
+
+  it('one IPO throwing during upsertGeneratedRows does not stop a sibling IPO from getting its rows', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    upsertGeneratedRowsMock.mockImplementationOnce(() => {
+      throw new Error('boom -- ipo-1 upsert failed');
+    });
+    upsertGeneratedRowsMock.mockResolvedValueOnce({ inserted: 3 });
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // Both candidates were still offered to the pass -- ipo-1's throw did
+    // not break the loop before ipo-2's turn.
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(2);
+  });
+
+  // Coordinator review: the pre-loop test above only kills the
+  // `fieldPlanBudgetMs <= 0` guard -- it proves the pass skips when there
+  // was NO budget to begin with, not that a pass which RUNS TOO LONG stops
+  // mid-loop. This test targets the BETWEEN-IPO check itself
+  // (`now() - fieldPlanStartedAt >= fieldPlanGenBudgetMs`), the one that
+  // actually protects a candidate set that grows or a DB latency spike.
+  // Same fake-clock pattern as the W-136 LISTED-reservation-deadline test
+  // above: a mutable `clock`, `now = () => clock`, advanced by the mock the
+  // loop calls each iteration -- not a fixed now() call-count sequence,
+  // which would be brittle to any unrelated now() call added elsewhere in
+  // the cycle.
+  it('a clock that advances past the budget PARTWAY THROUGH stops the loop -- later candidates are not offered and the reason is logged', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1'), candidateRow('ipo-2'), candidateRow('ipo-3')],
+    });
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    let clock = 0;
+    const now = () => clock;
+    upsertGeneratedRowsMock.mockImplementation(() => {
+      clock += 100; // each upsert call "takes" 100ms
+      return Promise.resolve({ inserted: 1 });
+    });
+
+    // fieldPlanBudgetMs: 150 -- fits candidate 1 (0ms elapsed at its check),
+    // does NOT fit candidate 2 or 3 (100ms already elapsed exceeds nothing
+    // yet, but by candidate 2's check the loop has already spent 100ms and
+    // the NEXT iteration's check trips at 100 < 150 -- so give it one more
+    // margin: use budget 50 so candidate 1's post-call 100ms already trips
+    // candidate 2's pre-iteration check).
+    await runDocumentCycle({
+      budgetMs: 999_999,
+      extractionBudgetMs: 999_999,
+      fieldPlanBudgetMs: 50,
+      now,
+    });
+
+    // Only ipo-1 was offered -- the loop BROKE before ipo-2/ipo-3's turn,
+    // it did not skip one and continue to the next.
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(1);
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ ipoId: 'ipo-1' })])
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldPlanGenBudgetMs: 50, processed: 1, remaining: 2 }),
+      expect.stringContaining('Field-plan generation budget exhausted')
+    );
   });
 });

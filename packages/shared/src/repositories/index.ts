@@ -39,6 +39,8 @@ export type {
   RecordOutcomeParams,
   RecordOutcomeResult,
   ClaimNextDueFieldParams,
+  GeneratedFieldPlanRow,
+  UpsertGeneratedRowsResult,
 } from './ipo-field-plan-repository';
 export type {
   IDocumentFetchStateStore,
