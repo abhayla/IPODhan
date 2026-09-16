@@ -165,7 +165,21 @@ export class DataConsolidationOrchestrator {
     // re-resolves independently. `undefined` (the default) means "no
     // pre-resolution supplied" — resolve it here, as before, for callers
     // that invoke this method directly.
-    preResolvedIPO?: IPO | null
+    preResolvedIPO?: IPO | null,
+    // Review round 3 (MAJOR, fabricated provenance): a caller with a
+    // narrower claim than "the whole scrapedIPO shape" — the field-plan
+    // walk spreads the pre-resolved row's OWN identity fields into its
+    // payload so computeIpoIdentitySlug (below) and resolveIpoRow have a
+    // real companyName even when only ONE field was actually fetched (review
+    // round 2, RCA1). Without this filter, every one of those identity
+    // fields also entered consolidation as THIS write's claim under
+    // `source`/`confidence` — up to 7 spurious trackFieldSource confirmation
+    // calls (data-consolidation-service.ts Case 2) plus a fresh field_sources
+    // row for any untracked identity value, for a write that supplied ONE
+    // field. `undefined` (every existing caller) is BYTE-IDENTICAL to
+    // today's unfiltered behaviour — the filter is applied only when present,
+    // camelCase keys matching mapScrapedIPOToConsolidationInput's output.
+    onlyFields?: string[]
   ): Promise<ConsolidatedUpsertResult> {
     const startTime = Date.now();
     // T-478 round 3 (item 3): OFS-aware slug (see computeIpoIdentitySlug's
@@ -246,7 +260,20 @@ export class DataConsolidationOrchestrator {
       }
 
       // Prepare incoming data for consolidation
-      const incomingData = this.mapScrapedIPOToConsolidationInput(scrapedIPO, source);
+      let incomingData = this.mapScrapedIPOToConsolidationInput(scrapedIPO, source);
+      // Review round 3: filter to exactly the caller's claim, AFTER slug
+      // computation and identity resolution above — the full scrapedIPO
+      // shape (identity fields included) is still what resolved `existingIPO`
+      // and computed `slug`; only what reaches consolidateIPOData as THIS
+      // write's claim is narrowed. An empty array is a real claim of
+      // "nothing" (filters to {}), not "unfiltered" — only `undefined`
+      // (the parameter omitted) is unfiltered.
+      if (onlyFields !== undefined) {
+        const allowed = new Set(onlyFields);
+        incomingData = Object.fromEntries(
+          Object.entries(incomingData).filter(([key]) => allowed.has(key))
+        );
+      }
 
       // Consolidate IPO main table data
       const consolidationResult =

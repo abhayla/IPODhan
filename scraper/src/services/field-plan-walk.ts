@@ -89,6 +89,24 @@ export interface FieldPlanWalkResult {
   /** Settle calls that THREW (the DB was unreachable); the claim was released. */
   outcomesFailed: number;
   stoppedReason: 'NO_DUE_FIELDS' | 'BUDGET_EXHAUSTED' | 'CLAIM_SUPERSEDED';
+  /**
+   * Identities behind `fieldsWriteSkipped` (review round 2, signal-ownership
+   * R1: a count is not a reading). `document-cycle.ts`'s PASS 3 summary
+   * names these, capped, the same way `BlockedDocumentDetail` already does
+   * for extraction_blocked/extraction_failed (#623) — a caller aggregating
+   * this across every IPO's walk in the cycle is what makes "13 rows
+   * wrongly EXHAUSTED" a readable line instead of a number a human has to
+   * go query for.
+   */
+  droppedWrites: Array<{
+    tableName: string;
+    rowKey: string;
+    fieldName: string;
+    source: string;
+    skipReason: string;
+  }>;
+  /** Identities behind `fieldsExhausted` — the exact class RCA2's 13 wrongly-retired rows sat in. */
+  exhaustedFields: Array<{ tableName: string; rowKey: string; fieldName: string }>;
 }
 
 export type FieldFetcherAnswer =
@@ -151,7 +169,27 @@ export interface FieldPlanWalkRepository {
 
 /** The slice of item 1's orchestrator the walk uses. */
 export interface FieldPlanWalkOrchestrator {
-  consolidatedUpsertIPO(scraped: any, source: any, confidence?: number): Promise<any>;
+  /**
+   * `preResolvedIPO` (review round 2, RCA1): `consolidatedUpsertIPO`
+   * unconditionally calls `computeIpoIdentitySlug(scrapedIPO)` before it even
+   * looks at this argument, so the payload MUST carry real identity fields
+   * (companyName at minimum) even when a pre-resolved row is supplied. The
+   * walk's `runWrite` builds that payload from the row `preResolvedIPO`
+   * itself names — see `identityFieldsFor` below.
+   *
+   * `onlyFields` (review round 3, MAJOR): those SAME spread-in identity
+   * fields would otherwise enter consolidation as this write's OWN claim
+   * under `source`/`confidence` — fabricated provenance for fields the walk
+   * never fetched. The walk always passes exactly `[camelField]`, the one
+   * field it actually supplied.
+   */
+  consolidatedUpsertIPO(
+    scraped: any,
+    source: any,
+    confidence?: number,
+    preResolvedIPO?: any,
+    onlyFields?: string[]
+  ): Promise<any>;
   consolidatedUpsertChildRows(
     ipoId: string,
     tableName: any,
@@ -162,12 +200,25 @@ export interface FieldPlanWalkOrchestrator {
   ): Promise<any>;
 }
 
+/** The slice of IPORepository the walk needs to pre-resolve identity for a singleton write. */
+export interface FieldPlanWalkIPORepository {
+  findById(ipoId: string): Promise<any | null>;
+}
+
 export interface FieldPlanWalkDeps {
   fieldPlanRepository: FieldPlanWalkRepository;
   orchestrator: FieldPlanWalkOrchestrator;
   /** One fetcher per rank-eligible source name, keyed as the manifest names it. */
   sourceFetchers: Record<string, FieldFetcher>;
   protectionFilter?: ProtectionFilter;
+  /**
+   * Review round 2, RCA1: the walk's own write path needs the SAME existing
+   * row the DOC fetcher already reads (findById is Redis-cached, so this is
+   * not a second query pattern) — `consolidatedUpsertIPO({ id, [field]: value
+   * })` alone has no companyName/symbol/isin, so it can never resolve to an
+   * existing row and falls into a CREATE that throws on NOT NULL columns.
+   */
+  ipoRepository: FieldPlanWalkIPORepository;
 }
 
 export interface FieldPlanWalkBudget {
@@ -227,6 +278,8 @@ export async function walkFieldPlanForIPO(
     outcomesRefused: 0,
     outcomesFailed: 0,
     stoppedReason: 'NO_DUE_FIELDS',
+    droppedWrites: [],
+    exhaustedFields: [],
   };
 
   /**
@@ -485,6 +538,13 @@ async function attemptOneField(
       // the ask changed: PENDING, `attempts` untouched, claim released, and
       // the field is immediately re-claimable.
       result.fieldsWriteSkipped += 1;
+      result.droppedWrites.push({
+        tableName: plan.tableName,
+        rowKey: plan.rowKey,
+        fieldName: plan.fieldName,
+        source,
+        skipReason: verdict.skipReason,
+      });
       logger.warn(
         {
           ipoId,
@@ -543,6 +603,7 @@ async function attemptOneField(
   // fact about the field, so EXHAUSTED (terminal, `next_due_at` nulled) is
   // the honest record of it.
   result.fieldsExhausted += 1;
+  result.exhaustedFields.push({ tableName: plan.tableName, rowKey: plan.rowKey, fieldName: plan.fieldName });
   logger.warn(
     { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
     'PASS 3: every rank gave a DEFINITIVE no for this field — EXHAUSTED (the stored value is kept, never blanked)'
@@ -603,6 +664,36 @@ async function tryProvisional(
 }
 
 /**
+ * The identity fields `computeIpoIdentitySlug` and `resolveIpoRow` read off a
+ * `ScrapedIPO`-shaped payload (data-consolidation-orchestrator.ts:158-231,
+ * data-persister.ts's `computeIpoIdentitySlug`) — read STRAIGHT off the
+ * existing row so the walk's write is never a guess at what the row's
+ * identity is. `computeIpoIdentitySlug` runs BEFORE the pre-resolved-row
+ * short-circuit (it is the distributed-lock key), so `companyName` is
+ * REQUIRED even though `preResolvedIPO` will make `resolveIpoRow` itself
+ * unreachable.
+ *
+ * `offeringTypeExplicit` is deliberately NOT set: that flag exists to guard
+ * an INCOMING scrape's classification against downgrading an existing
+ * corporate-action row (see `resolveOfferingTypeKeepingClassification` in
+ * the orchestrator) — this write is not a new scrape, it already resolved to
+ * `existing`, and OFS-slug-year still reads `offeringType`/open/close dates
+ * off the existing row when the OFS branch applies.
+ */
+function identityFieldsFor(existing: Record<string, unknown>): Record<string, unknown> {
+  return {
+    companyName: existing.companyName,
+    symbol: existing.symbol ?? null,
+    isin: existing.isin ?? null,
+    offeringType: existing.offeringType,
+    openDate: existing.openDate ?? null,
+    closeDate: existing.closeDate ?? null,
+    priceRangeMin: existing.priceRangeMin ?? null,
+    segment: existing.segment ?? null,
+  };
+}
+
+/**
  * Call the EXISTING consolidated writer for this row shape and reduce its
  * return to a two-way verdict. A dropped write is the silent one, so it is
  * detected from the RESULT, never assumed from the absence of a throw.
@@ -616,9 +707,24 @@ async function runWrite(
 ): Promise<WriteVerdict> {
   try {
     if (SINGLETON_IPO_TABLES.has(plan.tableName)) {
+      // Review round 2, RCA1: never write `{ id, [field]: value }` alone —
+      // computeIpoIdentitySlug needs companyName even with a pre-resolved
+      // row, and resolveIpoRow (skipped here) is what a missing
+      // preResolvedIPO would fall back to, landing in a CREATE that throws.
+      const existing = await deps.ipoRepository.findById(ipoId);
+      if (!existing) {
+        return { happened: false, skipReason: 'ipo row missing' };
+      }
+      const camelFieldName = toCamelFieldName(plan.fieldName);
       const r = await deps.orchestrator.consolidatedUpsertIPO(
-        { id: ipoId, [toCamelFieldName(plan.fieldName)]: answer.value },
-        source as any
+        { id: ipoId, ...identityFieldsFor(existing), [camelFieldName]: answer.value },
+        source as any,
+        100,
+        existing,
+        // Review round 3 (MAJOR): the identity fields above are for the lock
+        // slug / resolveIpoRow ONLY, never a claim this write is making —
+        // consolidate exactly the one field this write actually supplied.
+        [camelFieldName]
       );
       if (r?.skipped) return { happened: false, skipReason: r.skipReason ?? 'SKIPPED' };
       return { happened: true };
@@ -724,11 +830,15 @@ async function releaseQuietly(
 function unwind(result: FieldPlanWalkResult, params: Record<string, unknown>): void {
   if (params.writeHappened === false) {
     result.fieldsWriteSkipped = Math.max(0, result.fieldsWriteSkipped - 1);
+    // The identity this same branch just pushed is fiction too (review round 2).
+    result.droppedWrites.pop();
     return;
   }
   if (params.state === 'SUPPLIED') result.fieldsSupplied = Math.max(0, result.fieldsSupplied - 1);
-  else if (params.state === 'EXHAUSTED') result.fieldsExhausted = Math.max(0, result.fieldsExhausted - 1);
-  else if (params.state === 'CHECK_FAILED')
+  else if (params.state === 'EXHAUSTED') {
+    result.fieldsExhausted = Math.max(0, result.fieldsExhausted - 1);
+    result.exhaustedFields.pop();
+  } else if (params.state === 'CHECK_FAILED')
     result.fieldsCheckFailed = Math.max(0, result.fieldsCheckFailed - 1);
   else if (params.state === 'NOT_AVAILABLE_YET')
     result.fieldsNotAvailableYet = Math.max(0, result.fieldsNotAvailableYet - 1);

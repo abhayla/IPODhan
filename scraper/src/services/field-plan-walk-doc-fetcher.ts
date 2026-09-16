@@ -196,14 +196,37 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       };
     }
 
+    // Review round 2, RCA2 (staging wake 619660c3, 13 rows wrongly EXHAUSTED
+    // on the first real walk): absence of a field_sources provenance row on
+    // a COMPLETED document is an EXTRACTOR gap (item 13 -- a general DOC ->
+    // field_sources backfill -- is not built), NEVER evidence the document
+    // does not print the field. Every DRHP prints issue_size / fresh_issue /
+    // ofs_issue / min_investment; the fetcher simply has no way to tell
+    // "not printed" apart from "not yet extracted" from the ABSENCE of a
+    // row. NOT_PRINTED is upstream's signal for a DEFINITIVE no (it can
+    // retire the field terminally via EXHAUSTED); a coverage gap must never
+    // wear that costume. The ONLY thing that may answer NOT_PRINTED here is
+    // `capability.DOC.capable === false`, already checked at the top of this
+    // function before provenance is ever read (review round 1, M2).
+    //
+    // Same reasoning covers a cross-family provenance row a few lines below
+    // (RCA2 also folds that case in): a document was found from a DIFFERENT
+    // family than the manifest wants, so DOC has no fresher document family
+    // to check -- but that is STILL not a settled "not printed", because the
+    // wanted family may simply not be extracted yet.
     if (!provenance || provenance.source !== 'DRHP') {
       // Every filing doc type writes field_sources.source as 'DRHP' (the
       // SOURCE ENUM NOTE in filing-persister.ts) — a provenance row that
       // exists but is NOT 'DRHP' means a non-document source (e.g. ADMIN,
       // BSE, CHITTORGARH from an earlier direct write) currently owns this
-      // field, which is the same as "the document did not supply it" from
-      // DOC's point of view.
-      return { outcome: 'NOT_PRINTED' };
+      // field. That is still not a DOC answer, but it must never read as a
+      // DEFINITIVE "not printed" either -- extraction may simply not have
+      // reached this field yet.
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: `no document provenance for ${camelFieldName} on ${manifestDocType} (extractor gap or field absent) — not retired`,
+        transient: true,
+      };
     }
 
     const lineage = (provenance.dataLineage ?? {}) as {
@@ -214,11 +237,15 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
 
     // A provenance row from a DIFFERENT document family than the manifest
     // wants (e.g. financial_statements.revenue sourced from a PROSPECTUS
-    // when the manifest wants RHP-family evidence) is not this field's
-    // answer to give — DOC has no fresher document to check, so this is a
-    // settled "not printed by the wanted family" rather than a re-askable gap.
+    // when the manifest wants RHP-family evidence) is the SAME ambiguity as
+    // no provenance at all (RCA2) — CHECK_FAILED transient, never a settled
+    // NOT_PRINTED.
     if (lineage.docType && !family.includes(lineage.docType)) {
-      return { outcome: 'NOT_PRINTED' };
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: `no document provenance for ${camelFieldName} on ${manifestDocType} (extractor gap or field absent) — not retired`,
+        transient: true,
+      };
     }
 
     const read = await readColumnValue(deps, ipoId, tableName, camelFieldName);

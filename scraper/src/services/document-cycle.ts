@@ -1790,6 +1790,24 @@ export async function runDocumentCycle(
           outcomesRefused: 0,
           outcomesFailed: 0,
         };
+        // Review round 2 (signal-ownership R1: a count is not a reading) --
+        // identities behind fieldsWriteSkipped/fieldsExhausted across every
+        // IPO's walk this cycle, capped the same way BlockedDocumentDetail
+        // (#623) caps its own name list, so the summary line stays readable
+        // even on a bad cycle rather than growing unbounded.
+        const MAX_WALK_IDENTITY_LINES = 50;
+        const droppedWriteLines: string[] = [];
+        const exhaustedFieldLines: string[] = [];
+        // Review round 3, MINOR-3 (real cost): these two used to be called
+        // INSIDE `for (const ipo of candidates)` below, so the BSE board and
+        // Chittorgarh list were re-fetched once per IPO (40x per cycle on
+        // staging), defeating ruling 33's per-cycle memo entirely —
+        // `field-plan-walk-deps.ts`'s own header says "PASS 3 builds it once
+        // per cycle"; the call site did not match its own contract. Hoisted
+        // above the loop: built once, the SAME instances handed to every
+        // IPO's walk.
+        const fieldPlanOrchestrator = buildFieldPlanWalkOrchestrator();
+        const fieldPlanFetchers = buildFieldPlanWalkFetchers();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             logger.warn(
@@ -1803,8 +1821,14 @@ export async function runDocumentCycle(
               ipo.id,
               {
                 fieldPlanRepository: walkRepository as never,
-                orchestrator: buildFieldPlanWalkOrchestrator(),
-                sourceFetchers: buildFieldPlanWalkFetchers(),
+                orchestrator: fieldPlanOrchestrator,
+                sourceFetchers: fieldPlanFetchers,
+                // Review round 2, RCA1: the walk's write path needs the
+                // existing row's identity to write through `preResolvedIPO`
+                // rather than falling into consolidatedUpsertIPO's CREATE
+                // path — reuse the SAME repository instance this function
+                // already opened (line ~1161), never a second one.
+                ipoRepository,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );
@@ -1819,6 +1843,16 @@ export async function runDocumentCycle(
             walkTotals.fieldsSkippedProtected += walk.fieldsSkippedProtected;
             walkTotals.outcomesRefused += walk.outcomesRefused;
             walkTotals.outcomesFailed += walk.outcomesFailed;
+            if (droppedWriteLines.length < MAX_WALK_IDENTITY_LINES) {
+              for (const d of walk.droppedWrites) {
+                droppedWriteLines.push(`${ipo.id}:${d.tableName}.${d.fieldName} (source=${d.source}, ${d.skipReason})`);
+              }
+            }
+            if (exhaustedFieldLines.length < MAX_WALK_IDENTITY_LINES) {
+              for (const e of walk.exhaustedFields) {
+                exhaustedFieldLines.push(`${ipo.id}:${e.tableName}.${e.fieldName}`);
+              }
+            }
           } catch (error) {
             // Non-fatal per IPO, exactly like PASS 2 — one IPO's walk failing
             // must not stop the rest, and the claim it held goes stale and is
@@ -1833,7 +1867,15 @@ export async function runDocumentCycle(
         // that the walk ran and found nothing due, which is a different fact
         // from the walk never running (the branch above).
         logger.info(
-          { ...walkTotals, fieldPlanBudgetMs, elapsedMs: now() - fieldPlanStartedAt },
+          {
+            ...walkTotals,
+            fieldPlanBudgetMs,
+            elapsedMs: now() - fieldPlanStartedAt,
+            // Review round 2 (signal-ownership R1): identities, not just
+            // counts — capped at MAX_WALK_IDENTITY_LINES per class.
+            droppedWrites: droppedWriteLines,
+            exhaustedFields: exhaustedFieldLines,
+          },
           'PASS 3 field-plan walk summary for this cycle (item 6)'
         );
       }

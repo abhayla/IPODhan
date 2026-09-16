@@ -219,11 +219,38 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     } as never;
   }
 
+  /**
+   * Review round 4 (CI red, run 35125498227): `runWrite`'s singleton-table
+   * branch (review round 2, RCA1) unconditionally calls
+   * `deps.ipoRepository.findById(ipoId)` before it ever reaches the
+   * orchestrator this file stubs — this `deps()` helper had no
+   * `ipoRepository` at all, so that call threw
+   * "Cannot read properties of undefined (reading 'findById')" and EVERY
+   * write in this suite was dropped before `okOrchestrator()` was ever
+   * called, regardless of what it was stubbed to return.
+   *
+   * `beforeAll` already seeds a real `ipos` row for `IPO_ID` (line ~133) —
+   * this reads that SAME row back through the minimal
+   * `FieldPlanWalkIPORepository` shape (`{ findById }`) the walk actually
+   * needs, rather than adding a new seam: `deps.ipoRepository` already
+   * existed as an injection point since round 2, it was simply never wired
+   * here. No production code changed for this fix.
+   */
+  function ipoRepositoryStub() {
+    return {
+      findById: async (id: string) => {
+        const [row] = await db.select().from(schema.ipos).where(eq(schema.ipos.id, id));
+        return row ?? null;
+      },
+    };
+  }
+
   function deps(orchestrator: any, fetcher: FieldFetcher = suppliedFetcher) {
     return {
       fieldPlanRepository: repo as never,
       orchestrator,
       sourceFetchers: { NSE: fetcher, BSE: fetcher },
+      ipoRepository: ipoRepositoryStub() as never,
     };
   }
 

@@ -96,11 +96,18 @@ export function buildChittorgarhFetcher(
     const camelFieldName = columnToCamelCase(fieldName);
     const key = `${tableName}.${camelFieldName}`;
     if (!CHITTORGARH_SERVEABLE_FIELDS.has(key)) {
-      // Manifest marks this capable, but the list-scrape shape this fetcher
-      // reads (ruling 33's whole-IPO call) does not carry it. Named per-field
-      // in the module header and the PR body — a future detail-page adapter
-      // is its own slice, not silently assumed here.
-      return { outcome: 'NOT_PRINTED' };
+      // Review round 2, RCA2 extended: manifest says capable.CHITTORGARH.capable
+      // is TRUE for this field, but the list-scrape shape this fetcher reads
+      // (ruling 33's whole-IPO call) does not carry it yet — a coverage gap
+      // in THIS fetcher's code (a future detail-page adapter is its own
+      // slice), not a manifest "no". Only capability.CHITTORGARH.capable ===
+      // false (checked above) may answer NOT_PRINTED; a code limitation must
+      // stay re-askable, CHECK_FAILED transient.
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: `CHITTORGARH has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+        transient: true,
+      };
     }
 
     let resolved: Awaited<ReturnType<ChittorgarhFieldFetcherState['resolveIPO']>>;
@@ -130,6 +137,15 @@ export function buildChittorgarhFetcher(
       return { outcome: 'SUPPLIED', value: row.issueSize };
     }
 
-    return { outcome: 'NOT_PRINTED' };
+    // Unreachable today (CHITTORGARH_SERVEABLE_FIELDS names only issueSize,
+    // and the gate above already answers CHECK_FAILED transient for
+    // anything else) — kept as a defensive fallback with the SAME
+    // review-round-2 reasoning: a field this fetcher's mapping branch does
+    // not handle is a coverage gap, never a manifest no.
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `CHITTORGARH has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+      transient: true,
+    };
   };
 }

@@ -67,7 +67,13 @@ describe('BSE fetcher — capability + serveable-field gating', () => {
     expect(fetchBSEBoardMock).not.toHaveBeenCalled();
   });
 
-  it('answers NOT_PRINTED for a manifest-capable field the mapped ScrapedIPO shape does not carry (e.g. fresh_issue)', async () => {
+  // Review round 2, RCA2 extended: the manifest says CAPABLE for this field
+  // (capability.BSE.capable === true), but the FETCHER's own mapped shape
+  // does not carry it yet — a code limitation, not a manifest "no". Only
+  // capability.BSE.capable === false may answer NOT_PRINTED (checked above);
+  // this must be CHECK_FAILED transient, re-askable once the mapping is
+  // extended, never a definitive no over a coverage gap.
+  it('answers CHECK_FAILED transient for a manifest-capable field the mapped ScrapedIPO shape does not carry yet (e.g. fresh_issue)', async () => {
     fetchBSEBoardMock.mockResolvedValue([listRow]);
     const state = new BseFieldFetcherState();
     const fetcher = buildBseFetcher(
@@ -75,7 +81,13 @@ describe('BSE fetcher — capability + serveable-field gating', () => {
       state
     );
     const answer = await fetcher(IPO_ID, 'ipo_details', '', 'fresh_issue');
-    expect(answer).toEqual({ outcome: 'NOT_PRINTED' });
+    expect(answer).toEqual({
+      outcome: 'CHECK_FAILED',
+      reason: 'BSE has no mapped field for ipo_details.freshIssue yet (coverage gap, not a manifest no)',
+      transient: true,
+    });
+    // Never fetched the board for a field it structurally cannot serve.
+    expect(fetchBSEBoardMock).not.toHaveBeenCalled();
   });
 });
 

@@ -59,8 +59,18 @@ describe('DOC fetcher — no document yet', () => {
   });
 });
 
-describe('DOC fetcher — document COMPLETED, no provenance', () => {
-  it('answers NOT_PRINTED when field_sources has no row for this field', async () => {
+describe('DOC fetcher — document COMPLETED, no provenance (review round 2, RCA2)', () => {
+  // RCA2 (staging wake 619660c3): absence of a field_sources provenance row
+  // on a COMPLETED document is an EXTRACTOR gap (item 13 is not built yet),
+  // NEVER evidence the document does not print the field -- every DRHP
+  // prints issue_size/fresh_issue/ofs_issue/min_investment, and the fetcher
+  // does not know whether "no provenance row" means "not printed" or "not
+  // yet extracted". Retiring the field (NOT_PRINTED, which upstream
+  // eventually becomes EXHAUSTED) over a gap in OUR OWN extraction pipeline
+  // wrongly retired 13 real rows on the first staging wake. The ONLY thing
+  // that may answer NOT_PRINTED is `capability.DOC.capable === false`
+  // (checked earlier in this function, before provenance is ever read).
+  it('answers CHECK_FAILED, transient, when field_sources has no row for this field (extractor gap, never a definitive no)', async () => {
     const deps = makeDeps({
       documentRepository: {
         findByIPO: vi.fn().mockResolvedValue([
@@ -71,10 +81,14 @@ describe('DOC fetcher — document COMPLETED, no provenance', () => {
     });
     const fetcher = buildDocFetcher(deps);
     const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
-    expect(answer).toEqual({ outcome: 'NOT_PRINTED' });
+    expect(answer).toEqual({
+      outcome: 'CHECK_FAILED',
+      reason: 'no document provenance for issueSize on PRICE_BAND_AD (extractor gap or field absent) — not retired',
+      transient: true,
+    });
   });
 
-  it('answers NOT_PRINTED when the provenance row is not sourced from a document (source !== DRHP)', async () => {
+  it('answers CHECK_FAILED, transient (never NOT_PRINTED, never SUPPLIED) when the provenance row is not sourced from a document (source !== DRHP)', async () => {
     const deps = makeDeps({
       documentRepository: {
         findByIPO: vi.fn().mockResolvedValue([
@@ -87,12 +101,17 @@ describe('DOC fetcher — document COMPLETED, no provenance', () => {
     });
     const fetcher = buildDocFetcher(deps);
     const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
-    expect(answer).toEqual({ outcome: 'NOT_PRINTED' });
+    expect(answer).toEqual({
+      outcome: 'CHECK_FAILED',
+      reason: 'no document provenance for issueSize on PRICE_BAND_AD (extractor gap or field absent) — not retired',
+      transient: true,
+    });
   });
 
-  // Review round 1, C2 (CRITICAL, mutation-tested): a mutation that widened
-  // the guard from "provenance missing OR source !== DRHP" to just
-  // "provenance missing" (dropping the source check entirely) left the
+  // Review round 1, C2 (CRITICAL, mutation-tested) -- updated for RCA2's
+  // outcome change (CHECK_FAILED transient, not NOT_PRINTED). A mutation
+  // that widened the guard from "provenance missing OR source !== DRHP" to
+  // just "provenance missing" (dropping the source check entirely) left the
   // original 9 tests green, because none of them supplied a NON-NULL,
   // non-DRHP provenance row for every source that can legitimately own a
   // field ahead of DOC. Every source that can currently write field_sources
@@ -100,7 +119,7 @@ describe('DOC fetcher — document COMPLETED, no provenance', () => {
   // a mutated fetcher never carries a documentId for an answer that did not
   // come from a document.
   it.each(['CHITTORGARH', 'BSE', 'ADMIN'] as const)(
-    'answers NOT_PRINTED, never SUPPLIED, and carries no documentId when provenance.source is %s',
+    'answers CHECK_FAILED transient, never SUPPLIED, and carries no documentId when provenance.source is %s',
     async (source) => {
       const deps = makeDeps({
         documentRepository: {
@@ -122,7 +141,8 @@ describe('DOC fetcher — document COMPLETED, no provenance', () => {
       });
       const fetcher = buildDocFetcher(deps);
       const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
-      expect(answer.outcome).toBe('NOT_PRINTED');
+      expect(answer.outcome).toBe('CHECK_FAILED');
+      expect((answer as { transient?: boolean }).transient).toBe(true);
       expect(answer).not.toHaveProperty('documentId');
     }
   );
@@ -157,7 +177,11 @@ describe('DOC fetcher — SUPPLIED', () => {
     expect(findByFieldMock).toHaveBeenCalledWith(IPO_ID, 'ipos', 'issueSize', '');
   });
 
-  it('answers NOT_PRINTED when the provenance docType is from a different family than the manifest wants', async () => {
+  // Review round 2, RCA2: a cross-family provenance row is the SAME
+  // ambiguity as "no provenance row" -- the field might genuinely not be in
+  // the wanted family's document, or the wanted family simply has not been
+  // extracted yet (extractor gap). Neither is a settled "not printed".
+  it('answers CHECK_FAILED, transient, when the provenance docType is from a different family than the manifest wants', async () => {
     const deps = makeDeps({
       manifestDocumentType: () => 'RHP',
       documentRepository: {
@@ -171,7 +195,11 @@ describe('DOC fetcher — SUPPLIED', () => {
     });
     const fetcher = buildDocFetcher(deps);
     const answer = await fetcher(IPO_ID, 'financial_statements', 'FY2026', 'revenue');
-    expect(answer).toEqual({ outcome: 'NOT_PRINTED' });
+    expect(answer).toEqual({
+      outcome: 'CHECK_FAILED',
+      reason: 'no document provenance for revenue on RHP (extractor gap or field absent) — not retired',
+      transient: true,
+    });
   });
 });
 
