@@ -75,6 +75,12 @@ import { IpoRiskFactorsRepository } from '@ipodhan/shared/repositories/ipo-risk-
 import { FinancialStatementsRepository } from '@ipodhan/shared/repositories/financial-statements-repository';
 import { BrlmTrackRecordRepository } from '@ipodhan/shared/repositories/brlm-track-record-repository';
 import { SEARCH_CONFIG, SLUG_FALLBACK_MIN_SIMILARITY } from '@/lib/config/search';
+import { FieldProvenanceLine } from '@/components/ipo-detail/FieldProvenanceLine';
+import {
+  IpoFieldPlanRepository,
+  summariseFieldGroup,
+} from '@/lib/repositories/ipo-field-plan-repository';
+import { PROVENANCE_FIELD_GROUPS } from '@/lib/services/provenance-field-groups';
 import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import type { IPODetailResponse } from '@/lib/db/types';
 import {
@@ -214,6 +220,14 @@ async function getScoreDisplayModel(
  * not HTTP API calls. This follows the 3-layer architecture:
  * Server Component → Repository (not Server Component → HTTP → API → Repository)
  */
+// Every other ISR page in this app sets its own window explicitly (the home
+// page 300, the sitemap 900, /history 3600); this one never did, so a corrected
+// number could sit behind an indefinite static cache. 300 matches the home
+// page, which links to this one — the two should not disagree about how old a
+// figure may be. OD-40's per-cycle revalidate call is what makes a correction
+// appear sooner than this; this is the floor for when that call does not run.
+export const revalidate = 300;
+
 export default async function IPODetailPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const { tab } = await searchParams;
@@ -222,6 +236,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const redis = getRedisClient();
   const ipoRepository = new IPORepository(db, redis);
   const reviewRepository = new ReviewRepository(db, redis);
+  const fieldPlanRepository = new IpoFieldPlanRepository(db, redis);
 
   // A retired slug (name-pollution cleanup, dedup merge, admin rename) 308s to
   // its IPO's current slug instead of falling through to fuzzy/404 (P3-1, T-278).
@@ -350,6 +365,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     riskFactorRows,
     financialStatementRows,
     brlmTrackRecordRows,
+    fieldProvenance,
   ] = await Promise.all([
     safeLoad(() => new IpoValuationRepository(db, redis).listByIpo(ipo.id), []),
     safeLoad(() => new PromotersRepository(db, redis).listPromotersByIpo(ipo.id), []),
@@ -358,7 +374,18 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     safeLoad(() => new IpoRiskFactorsRepository(db, redis).listByIpo(ipo.id), []),
     safeLoad(() => new FinancialStatementsRepository(db, redis).listByIpo(ipo.id), []),
     safeLoad(() => new BrlmTrackRecordRepository(db, redis).listBySourceIpo(ipo.id), []),
+    // Empty on any failure: a page that cannot say where a number came from
+    // still shows the number. The provenance line is a caveat on the facts, not
+    // a gate on them (safeLoad, same as every other block above).
+    safeLoad(() => fieldPlanRepository.getIPOProvenanceMap(ipo.id), {}),
   ]);
+
+  // OD-39: one line per key-facts block. summariseFieldGroup returns null when
+  // the block's fields have no plan rows yet, and the component renders nothing
+  // for null — so an IPO whose plan has not run shows exactly what it shows
+  // today, with no placeholder anywhere.
+  const provenanceFor = (block: keyof typeof PROVENANCE_FIELD_GROUPS) =>
+    summariseFieldGroup(fieldProvenance, PROVENANCE_FIELD_GROUPS[block]);
 
   // The prospectus supersedes the price-band ad when both were extracted.
   const valuation =
@@ -597,6 +624,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 2. Fact ribbon (spec D2/G4) — replaces the three stat cards */}
             <FactRibbon cells={ribbonCells} />
+            <FieldProvenanceLine provenance={provenanceFor('factRibbon')} />
 
             {/* 2a. IPO Details Table */}
             <section id="details" className="scroll-mt-28">
@@ -615,6 +643,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               freshIssueSize={ipoDetails?.freshIssue ? Number(ipoDetails.freshIssue) : null}
               offerForSaleSize={ipoDetails?.ofsIssue ? Number(ipoDetails.ofsIssue) : null}
             />
+            <FieldProvenanceLine provenance={provenanceFor('ipoDetailsTable')} />
             </section>
 
             {/* Apply CTA surfaced next to the key facts — was buried below every
@@ -625,14 +654,17 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 3. Issue Structure Section */}
             {(hasIssueStructure || valuation) && (
-              <IssueStructureSection
-                ipoDetails={ipoDetails || null}
-                valuation={valuation}
-                faceValue={ipo.faceValue ?? null}
-                peerAveragePe={peerAveragePe}
-                lotSize={ipo.lotSize}
-                priceRangeMax={ipo.priceRangeMax}
-              />
+              <>
+                <IssueStructureSection
+                  ipoDetails={ipoDetails || null}
+                  valuation={valuation}
+                  faceValue={ipo.faceValue ?? null}
+                  peerAveragePe={peerAveragePe}
+                  lotSize={ipo.lotSize}
+                  priceRangeMax={ipo.priceRangeMax}
+                />
+                <FieldProvenanceLine provenance={provenanceFor('issueStructure')} />
+              </>
             )}
 
             {/* 3a. Lot Details Section */}
@@ -643,6 +675,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               faceValue={ipo.faceValue}
               minBidQuantity={null}
             />
+            <FieldProvenanceLine provenance={provenanceFor('lotDetails')} />
 
             {/* 4. Company Overview (was inside the removed tabs) */}
             {hasCompanyOverview && (
@@ -814,6 +847,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
              listingPerformance.listingPrice !== null &&
              listingPerformance.listingGainPercent !== null && (
               /* 16a. Listing Details Section */
+              <>
               <ListingDetailsSection
                 listingDate={ipo.listingDate}
                 symbol={ipo.symbol}
@@ -828,6 +862,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 listingClosePrice={toNum(listingPerformance.listingClosePrice)}
                 lastTradedPrice={toNum(listingPerformance.lastTradedPrice)}
               />
+              <FieldProvenanceLine provenance={provenanceFor('listingDetails')} />
+              </>
             )}
 
             {/* Apply CTA lives above the fold now (after IPODetailsTable) */}

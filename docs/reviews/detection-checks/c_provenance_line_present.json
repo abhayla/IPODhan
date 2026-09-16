@@ -1,0 +1,10 @@
+{
+  "id": "c_provenance_line_present",
+  "findingClass": "a provenance record exists in ipo_field_plan and reaches no pixel of the page - the write-then-never-read class item 21 exists to close",
+  "round7Findings": [],
+  "failThreshold": "on staging, for a sample of IPO detail pages whose IPO has at least one ipo_field_plan row naming a chosen_source, the rendered HTML contains neither 'confirmed' nor 'being rechecked' under any key-facts block",
+  "severity": "P2",
+  "unverifiableWhen": "no IPO on staging has an ipo_field_plan row with a non-null chosen_source - the population is empty, so the check reports UNVERIFIABLE, never PASS",
+  "section": "notCoveredByThisManifest",
+  "notCoveredReason": "specified by item 21 slice 4 (the provenance line shipped 2026-09-11); no record('c_provenance_line_present') call exists in scripts/audit-detection-floor.mjs yet, because the check needs a staging fetch of a rendered detail page and lane B paused before that was built. Listing it under checks while nothing records it would read as wider coverage than the floor actually has (audit-detection-floor.test.mjs case 79)."
+}
