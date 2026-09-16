@@ -49,6 +49,9 @@
  */
 
 import { logger } from '../utils/logger.js';
+import { normalizeChosen } from './data-consolidation-service.js';
+import { areEquivalent } from './normalization-engine.js';
+import { getFieldRules } from '../config/field-priority-matrix.js';
 
 /**
  * `plan.fieldName` is the manifest's raw snake_case key
@@ -227,9 +230,26 @@ export interface FieldPlanWalkBudget {
   now: () => number;
 }
 
-/** What a write attempt concluded, shaped so every branch is explicit. */
+/**
+ * Review round 5, item A: `runWrite` returning `{ happened: true }` used to
+ * be trusted as "the consolidator stored our value" — but the write path is
+ * a CONSOLIDATED writer (item 1), not a dumb setter: when a higher-priority
+ * source's value is already stored (e.g. CHITTORGARH outranks BSE for
+ * issue_size, T-453), `consolidatedUpsertIPO` KEEPS the existing value and
+ * still returns `skipped: false` — the write "happened" in the sense that no
+ * lock/create error occurred, but OUR value never landed. Recording SUPPLIED
+ * from that return alone put 7 false rows on staging (review round 5): the
+ * plan said "sourced from BSE", `field_sources` said CHITTORGARH.
+ *
+ * `happened` and `accepted` are now separate questions. `accepted: false`
+ * means the write reached the consolidator without a lock/create/DB error,
+ * but the consolidator's OWN result disagrees that OUR source/value won —
+ * this is a settled, re-askable fact (CHECK_FAILED, transient), never a
+ * PENDING drop (this write did not fail to happen; it happened and lost).
+ */
 type WriteVerdict =
-  | { happened: true }
+  | { happened: true; accepted: true }
+  | { happened: true; accepted: false; reason: string }
   | { happened: false; skipReason: string };
 
 /**
@@ -565,6 +585,35 @@ async function attemptOneField(
       });
     }
 
+    if (verdict.accepted === false) {
+      // Review round 5, item A: the write REACHED the consolidator, but the
+      // consolidator's OWN result says a DIFFERENT source's value won
+      // (matrix priority) — recording SUPPLIED here is exactly the false-
+      // clean-state class this walk exists to guard against, just from a
+      // NEW direction (round 2 covered `skipped: true`; this covers
+      // `skipped: false` with a losing value). Settled and re-askable, never
+      // a PENDING drop: the write DID happen, it simply did not win.
+      result.fieldsCheckFailed += 1;
+      logger.warn(
+        {
+          ipoId,
+          table: plan.tableName,
+          rowKey: plan.rowKey,
+          field: plan.fieldName,
+          source,
+          rank,
+          reason: verdict.reason,
+        },
+        'PASS 3: the write reached the consolidator but LOST to a higher-priority source — CHECK_FAILED, re-asked after backoff, NOT recorded as SUPPLIED'
+      );
+      return recordAndClassify(deps, result, {
+        planRowId: plan.id,
+        claimToken: plan.claimToken,
+        writeHappened: true,
+        state: 'CHECK_FAILED',
+      });
+    }
+
     result.fieldsSupplied += 1;
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
@@ -654,6 +703,15 @@ async function tryProvisional(
         failures.push(`provisional-rank${rank}:${source}:${verdict.skipReason}`);
         continue;
       }
+      if (verdict.accepted === false) {
+        // Review round 5, item A: a provisional write that LOST to a
+        // higher-priority source is the same "abandon, never escalate" shape
+        // as a dropped one -- the ask stays open regardless (this function's
+        // whole contract), so a losing provisional value costs nothing but
+        // itself.
+        failures.push(`provisional-rank${rank}:${source}:${verdict.reason}`);
+        continue;
+      }
       return { source, rank };
     } catch (error) {
       failures.push(`provisional-rank${rank}:${source}:${causeOf(error)}`);
@@ -694,9 +752,71 @@ function identityFieldsFor(existing: Record<string, unknown>): Record<string, un
 }
 
 /**
+ * The manifest names sources `DOC`/`BSE`/`CHITTORGARH`; `consolidateIPOData`'s
+ * `FieldConsolidationResult.chosenSource` is a `scraper_source` ENUM value
+ * (`field-priority-matrix.ts`'s `ScraperSource`) — every filing document type
+ * writes as `DRHP` (filing-persister.ts's SOURCE ENUM NOTE;
+ * `scraperSourceForDocType` always returns `'DRHP'`). This mapping is used
+ * ONLY for the agreement check below; `chosen_source` on the plan row still
+ * stores the manifest word (`'DOC'`), matching `evidenceFor` and the proof
+ * tool's own DOC<->DRHP mapping (review round 5, item B) — one canonical
+ * mapping, referenced from both places rather than duplicated.
+ */
+export function mapManifestSourceToScraperSource(manifestSource: string): string {
+  return manifestSource === 'DOC' ? 'DRHP' : manifestSource;
+}
+
+/**
+ * Does the consolidator's OWN field result say OUR source/value won? Reads
+ * `fieldResults` (both write shapes carry it — the singleton path via
+ * `ConsolidatedUpsertResult.consolidation.fieldResults`, the child-row path
+ * via the per-row `fieldResults` review round 5 added to
+ * `ChildRowConsolidationResult`) and compares `chosenSource` (mapped) and
+ * `finalValue` against what THIS write supplied. No result found for the
+ * field at all (the fallback/degenerate path, which does not populate
+ * `fieldResults`) is its own explicit "cannot verify" answer, never treated
+ * as agreement.
+ */
+function checkConsolidatorAgreed(
+  fieldResults: Array<{ fieldName: string; finalValue: unknown; chosenSource: string }> | undefined,
+  camelFieldName: string,
+  source: string,
+  suppliedValue: unknown
+): { accepted: true } | { accepted: false; reason: string } {
+  const result = fieldResults?.find((f) => f.fieldName === camelFieldName);
+  if (!result) {
+    return { accepted: false, reason: 'no field result returned' };
+  }
+  const wantedSource = mapManifestSourceToScraperSource(source);
+  // Review round 6, item 2 (MAJOR): a raw `!==` compares a JS value
+  // (`suppliedValue`) against a pg round-trip (`result.finalValue` — NUMERIC
+  // reads back as a STRING "6800000000.00", a date column as a `Date`), so a
+  // genuine win read as LOST and the row re-asked forever. Reuse the SAME
+  // normalize+areEquivalent pair data-consolidation-service.ts already uses
+  // for its own write-suppression decision (S-02 §5) — imported, not
+  // re-implemented, so the two files can never disagree on "did this change".
+  const rules = getFieldRules(camelFieldName);
+  const normalizedFinal = normalizeChosen(camelFieldName, result.finalValue, rules);
+  const normalizedSupplied = normalizeChosen(camelFieldName, suppliedValue, rules);
+  if (result.chosenSource !== wantedSource || !areEquivalent(normalizedFinal, normalizedSupplied)) {
+    return {
+      accepted: false,
+      reason: `consolidator kept ${result.chosenSource} value ${JSON.stringify(result.finalValue)} over ${wantedSource} ${JSON.stringify(suppliedValue)} (matrix priority; PULL-WRITE)`,
+    };
+  }
+  return { accepted: true };
+}
+
+/**
  * Call the EXISTING consolidated writer for this row shape and reduce its
- * return to a two-way verdict. A dropped write is the silent one, so it is
- * detected from the RESULT, never assumed from the absence of a throw.
+ * return to a THREE-way verdict (review round 5, item A). A dropped write
+ * (lock/create/DB error) is detected from the RESULT, never assumed from the
+ * absence of a throw. A write that reached the consolidator but LOST to a
+ * higher-priority source's stored value (matrix priority, e.g. CHITTORGARH
+ * outranking BSE for issue_size, T-453) is a SEPARATE, settled fact — never
+ * conflated with "happened" the way it used to be, which is what recorded
+ * SUPPLIED against 7 rows on staging whose value the consolidator did not
+ * actually accept.
  */
 async function runWrite(
   ipoId: string,
@@ -706,6 +826,7 @@ async function runWrite(
   deps: FieldPlanWalkDeps
 ): Promise<WriteVerdict> {
   try {
+    const camelFieldName = toCamelFieldName(plan.fieldName);
     if (SINGLETON_IPO_TABLES.has(plan.tableName)) {
       // Review round 2, RCA1: never write `{ id, [field]: value }` alone —
       // computeIpoIdentitySlug needs companyName even with a pre-resolved
@@ -715,7 +836,6 @@ async function runWrite(
       if (!existing) {
         return { happened: false, skipReason: 'ipo row missing' };
       }
-      const camelFieldName = toCamelFieldName(plan.fieldName);
       const r = await deps.orchestrator.consolidatedUpsertIPO(
         { id: ipoId, ...identityFieldsFor(existing), [camelFieldName]: answer.value },
         source as any,
@@ -727,13 +847,20 @@ async function runWrite(
         [camelFieldName]
       );
       if (r?.skipped) return { happened: false, skipReason: r.skipReason ?? 'SKIPPED' };
-      return { happened: true };
+      const verdict = checkConsolidatorAgreed(
+        r?.consolidation?.fieldResults,
+        camelFieldName,
+        source,
+        answer.value
+      );
+      if (verdict.accepted === false) return { happened: true, accepted: false, reason: verdict.reason };
+      return { happened: true, accepted: true };
     }
 
     const r = await deps.orchestrator.consolidatedUpsertChildRows(
       ipoId,
       plan.tableName as any,
-      [{ rowKey: plan.rowKey, data: { [toCamelFieldName(plan.fieldName)]: answer.value } }],
+      [{ rowKey: plan.rowKey, data: { [camelFieldName]: answer.value } }],
       source as any,
       answer.documentType
     );
@@ -743,7 +870,14 @@ async function runWrite(
     if (!row || row.skipped) {
       return { happened: false, skipReason: row?.skipReason ?? 'NO_ROW_RETURNED' };
     }
-    return { happened: true };
+    const verdict = checkConsolidatorAgreed(
+      (row as { fieldResults?: Array<{ fieldName: string; finalValue: unknown; chosenSource: string }> }).fieldResults,
+      camelFieldName,
+      source,
+      answer.value
+    );
+    if (verdict.accepted === false) return { happened: true, accepted: false, reason: verdict.reason };
+    return { happened: true, accepted: true };
   } catch (error) {
     // A THROWING write is a dropped write too — the same rule applies, and
     // the cause travels with it (signal-ownership R6).

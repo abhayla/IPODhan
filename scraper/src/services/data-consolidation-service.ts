@@ -386,8 +386,15 @@ function outranksUntrackedValue(fieldName: string, source: ScraperSource): boole
   return rank < worstRank;
 }
 
-/** W-24 helper: normalize a resolved value for the "did anything change?" test. */
-function normalizeChosen(fieldName: string, value: any, rules: FieldRules): any {
+/**
+ * W-24 helper: normalize a resolved value for the "did anything change?" test.
+ * Exported (review round 6, item 2) so field-plan-walk.ts's PULL-WRITE
+ * agreement check compares like-for-like instead of a raw `!==` between a JS
+ * value and a pg round-trip (NUMERIC -> string, date -> Date) — the exact
+ * false-loss class this same file fixed for the row-update decision (S-02 §5,
+ * above).
+ */
+export function normalizeChosen(fieldName: string, value: any, rules: FieldRules): any {
   return value !== null && value !== undefined ? normalize(fieldName, value, rules) : null;
 }
 
@@ -1359,6 +1366,13 @@ export class DataConsolidationService {
       // previously silent — the field was dropped with no log line, so a
       // valid write (e.g. a legal lot under the old min:10 floor) vanished
       // with no trace in the run log. Make the skip visible.
+      //
+      // Review round 8: this call was lost in round 6's edit to this same
+      // file (a working-copy mixup while isolating an unrelated TS2484
+      // diagnosis in round 7 restored a stale intermediate version of this
+      // file that predated stage 1 round 3's addition, then only the
+      // narrowly-scoped normalizeChosen export was manually reapplied on
+      // top — this block was not). Restored verbatim from commit 98fcc55c.
       logger.warn(
         {
           ipoId,
@@ -2671,14 +2685,15 @@ export class DataConsolidationService {
 }
 
 /**
- * Export types for external use
+ * Export types for external use.
+ * `ConsolidateIPODataInput`/`ConsolidationResult`/`FieldConsolidationResult`
+ * are already `export interface` at their definitions -- re-listing them here
+ * was a duplicate export of the same name (TS2484), only surfaced once
+ * something else in this file (round 6's `normalizeChosen` export) made
+ * `type-check:scripts` actually run clean past it. Only `ConflictInfo`
+ * (defined without `export`) actually needs this block.
  */
-export type {
-  ConsolidateIPODataInput,
-  ConsolidationResult,
-  FieldConsolidationResult,
-  ConflictInfo,
-};
+export type { ConflictInfo };
 
 /**
  * camelCase JS field name -> snake_case DB column name. `validation-rules.json`
