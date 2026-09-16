@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
+import { istDayIso } from './lib/ist-day.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -178,7 +179,7 @@ const STATE_DIR = process.env.DETECTION_FLOOR_STATE_DIR
   || (existsSync('/root/data-audit-ipodhan/state') ? '/root/data-audit-ipodhan/state' : tmpdir());
 const STATE_FILE = join(STATE_DIR, 'detection-floor-last-run.json');
 const FINDINGS_FILE = join(STATE_DIR, 'findings-latest.json');
-const RUN_DATE = new Date().toISOString().slice(0, 10);
+const RUN_DATE = istDayIso();
 const REPORT_PATH = join(STATE_DIR, `run-${RUN_DATE}.log`);
 
 // Cap per check so one runaway check (e.g. a full-table sweep with thousands

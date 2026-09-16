@@ -100,6 +100,29 @@ describe('checkCrossSourceDisagreements', () => {
     expect(body.title).toContain('priceRangeMin');
   });
 
+  it('#687: dedupe key uses the IST day, not the UTC day (2026-09-15T20:30:00Z is 02:00 IST on the 16th)', async () => {
+    const db = makeDb(
+      [{ id: 'ipo-1', companyName: 'Acme Ltd' }],
+      [
+        {
+          ipoId: 'ipo-1',
+          fieldName: 'priceRangeMin',
+          source1: 'NSE',
+          value1: '100',
+          source2: 'BSE',
+          value2: '105',
+        },
+      ]
+    );
+
+    await checkCrossSourceDisagreements(db, new Date('2026-09-15T20:30:00Z'));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.dedupeKey).toMatch(/2026-09-16$/);
+  });
+
   it('aggregates GMP (non-HIGH-value) disagreements into a single P2 notifyOwner call', async () => {
     const db = makeDb(
       [
