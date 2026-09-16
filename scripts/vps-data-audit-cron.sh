@@ -73,7 +73,10 @@ set -uo pipefail
 DIR="/root/data-audit-ipodhan"
 REPO="$DIR/repo"
 STATE_DIR="$DIR/state"
-DATE_TAG="$(date +%F)"
+# #687 slice 2: VPS clock is UTC but the nightly run fires 02:00-03:45 IST
+# (still the previous UTC day) -- use the IST calendar day, not the host clock,
+# so the floor state file and run log land on the day the run actually happened in IST.
+DATE_TAG="$(TZ=Asia/Kolkata date +%F)"
 LOG="$STATE_DIR/run-$DATE_TAG.log"
 NOTIFIER_ENV="/root/notifier/.env"
 PROD_ENV="/var/www/ipodhan/shared/env/prod/web.env.local"
