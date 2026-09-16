@@ -330,6 +330,45 @@ needed — this item's whole point is adding one.
 
 ## Staging proof
 
+**Three preconditions, not one — read them from the slot's env BEFORE the flip (2026-09-16).** The
+item-4 gate lives *inside* `consolidateField` (`data-consolidation-service.ts:1178`), which is only
+reached when consolidation itself ran. `consolidateIPOData` returns `fallbackConsolidation` — never
+reaching the validator — unless **both** of these also hold:
+
+| Flag | Where | Trap |
+|---|---|---|
+| `ENABLE_FIELD_EXTRACTION_VALIDATION` | `feature-flags.ts:458` | the one this card is about |
+| `ENABLE_DATA_CONSOLIDATION` | `feature-flags.ts:158`, `// PROD-REQUIRED-TRUE` | not literally `'true'` → whole consolidation path skipped |
+| `CONSOLIDATION_PERCENTAGE` | `feature-flags.ts:493`, `// LIVE-GATE` | **defaults to `0`**, and `0` "silently disables the whole consolidation pipeline" (T-282) |
+
+If either of the latter two is off, the cycle runs, `field_extraction_failures` reads **zero rows**,
+and the reader concludes "the gate does not false-positive" when **nothing ran at all**. Nothing
+today catches this: the `assert_rollout_flags_live` guard described at `feature-flags.ts:462-468` has
+no implementation (#656).
+
+**And a fourth, inside the gate itself:** `getValidationRules()` catches a rules-load failure, logs
+`"validation rules failed to load at write time — gate disabled for this process, values are KEPT"`,
+and returns an **empty** rule set. So a zero-row result is ambiguous between "no violations" and "the
+gate never ran". The proof must therefore also carry gate-was-live evidence — the four rules loaded,
+or an observed PASS / `NO_RULE_APPLIES` path — or the green cannot fail and proves nothing.
+
+**The fixture must arrive through a real consolidation call, never a SQL `INSERT`.** A row inserted
+directly into `ipos` never passes through `consolidateField`, so it is never judged and writes no
+failure row.
+
+**Why the wrong offering type is the trick, not decoration.** `scraper/config/validation-rules.json`
+holds four rules, two of them on `ipos.face_value`:
+
+- `face_value_equity_enum` — offering types `IPO`/`FPO`/`RIGHTS`/`IPP`/`QIP`/`PREFERENTIAL`,
+  assertion `ENUM(value, [1, 2, 5, 10])`.
+- `face_value_debt_positive` — offering types `NCD`/`BONDS`, assertion `RANGE(value, 0, 100000)`.
+
+So `face_value = 1000` **passes** as an NCD and **fails** the moment the offering type says `IPO`.
+The same value is correct under one rule and wrong under the other, which is what makes it a clean
+one-rule trigger. Note also that `consolidateIPOData` defaults an absent offering type to `'UNKNOWN'`
+**on purpose** (so an unknown type matches no offering-scoped rule and the value is KEPT) — the
+fixture must therefore pass `offeringType: 'IPO'` explicitly, or it silently matches nothing.
+
 The exact line: after deploying with `ENABLE_FIELD_EXTRACTION_VALIDATION=true` on staging and
 letting one real due-step cycle run (`docs/ops/prod-ops-recipes.md`'s staging-cycle-read recipe),
 query staging for
