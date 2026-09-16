@@ -34,9 +34,11 @@
  */
 // Item 1 slice s14 -- FIRST import on purpose (see lib/repair-tool.ts).
 import '../../scripts/lib/alias-preflight-auto.mjs';
+import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, inArray } from 'drizzle-orm';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   openRepairDb,
   queryCurrentDatabase,
@@ -176,11 +178,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const { db, closePool } = await import('./lib/db-handle.js').catch(async () => {
-    const shared = await import('@ipodhan/shared/db');
-    return { db: (shared as any).db, closePool: async (): Promise<void> => {} };
-  });
-
   try {
     const actual = await queryCurrentDatabase(db as ExecuteLike);
     if (actual.toLowerCase() !== cli.expectDb.toLowerCase()) {
@@ -200,7 +197,7 @@ async function main(): Promise<void> {
       .select({
         id: schema.documents.id,
         ipoId: schema.documents.ipoId,
-        ipoName: schema.ipos.name,
+        ipoName: schema.ipos.companyName,
         ipoSlug: schema.ipos.slug,
         type: schema.documents.type,
         extractionStatus: schema.documents.extractionStatus,
@@ -274,12 +271,14 @@ async function main(): Promise<void> {
     console.log(`${TOOL}: reset ${requeue.length} documents to ${REQUEUED_STATUS}:`);
     for (const d of requeue) console.log(`  ${d.document.ipoName ?? d.document.ipoId} [doc ${d.document.id}]`);
   } finally {
-    await closePool?.();
+    // The shared pool is process-wide; a repair tool that closed it would
+    // break any caller importing this module for its pure parts.
   }
 }
 
 // Only run when invoked directly, so the unit test can import the pure parts.
-if (process.argv[1] && process.argv[1].includes('requeue-anchor-zero-rows')) {
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
   main().catch((e) => {
     console.error(`${TOOL}: ${e?.message ?? e}`);
     process.exit(1);
