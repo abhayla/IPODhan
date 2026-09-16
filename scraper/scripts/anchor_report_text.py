@@ -252,6 +252,15 @@ def page_text(words, bands):
 # --------------------------------------------------------------------------- #
 NAME_QUALITY_FLOOR = 0.3
 OCR_DPI = 300
+# #437 slice 4: a page whose rebuilt table has an investor row with NO share
+# cell at all (the OCR printed nothing readable there, not a corrupted digit)
+# is re-OCR'd once at this higher DPI and rebuilt, on the theory that a
+# sharper scan reads the cell the first pass missed entirely. Used only as a
+# RETRY - the 300-dpi rebuild is always tried first, and the retry's result
+# replaces it only if the retry actually fills every share cell the first
+# pass left empty (never partially, never at the cost of a cell that DID
+# read at 300 dpi).
+RETRY_OCR_DPI = 400
 
 # Words a run of OCR letter-shrapnel is allowed to be re-joined into. Anything
 # outside this list is NOT invented: "M OTI LA OS WA" stays as it is and the
@@ -1193,6 +1202,43 @@ def ocr_table_page_rows(ocr_lines):
     }
 
 
+def _plain_ocr_lines(ocr_lines):
+    """Free text from OCR line boxes (#437 slice 4): y-bands, left to right.
+
+    `_plain` (above) reads pdfplumber WORD dicts (`top`/`x0` fields); OCR
+    lines carry a `box` polygon instead (`_line_geometry`) and are already
+    line-shaped rather than word-shaped, so they need their own renderer,
+    not a call into `_plain`.
+    """
+    lines = [ln for ln in ocr_lines if (ln.get("text") or "").strip()]
+    if not lines:
+        return ""
+    entries = []
+    for ln in lines:
+        x0, top, _x1, _bottom = _line_geometry(ln)
+        entries.append({"top": top, "x0": x0, "text": ln["text"]})
+    rows = _clusters(entries, lambda e: e["top"], ROW_GAP_PT)
+    return NL.join(
+        " ".join(e["text"] for e in sorted(r, key=lambda e: e["x0"])) for r in rows
+    )
+
+
+def rebuilt_rows_missing_a_share_cell(rows):
+    """True when `ocr_table_page_rows`'s rebuild has an investor row with NO
+    readable share cell at all (#437 slice 4).
+
+    `share_idx` is always the LOWEST qualifying value column (`_share_column`
+    picks the leftmost long-integer column right of the name), so `columns[0]`
+    is the shares column whenever the table rebuilt at all. `rows` is the dict
+    `ocr_table_page_rows` returns, or None for a page with no printed table -
+    the latter is not this function's concern and reads as "nothing missing".
+    """
+    if not rows or not rows.get("columns"):
+        return False
+    shares_column = rows["columns"][0]
+    return any((cell or "").strip() == "" for cell in shares_column)
+
+
 def extract(path, ocr=True):
     pages_words = []
     with pdfplumber.open(path) as pdf:
@@ -1208,10 +1254,21 @@ def extract(path, ocr=True):
     scanned = [
         i for i, rows in enumerate(pages) if page_needs_ocr(rows, pages_words[i])
     ]
+    # #437 slice 4: the OCR'd plain text of a scanned page that never rebuilds
+    # a table at all (a cover letter, a signature page - `ocr_full_page_rows`
+    # returns None for these by design, per the comment below). Before this,
+    # such a page fell through to `_plain(pages_words[i])`, which is the
+    # PDFPLUMBER text layer - empty for a pure image scan - so a scanned
+    # cover page's preamble sentence ("Out of the total allocation of
+    # 42,83,755 Equity Shares...") never reached `fullText` at all, even
+    # though the OCR read it fine. Tracked per page so the final render can
+    # use it as the fallback for exactly those pages.
+    ocr_plain_text = {}
     if ocr and scanned:
         import ocr_pages  # local: the OCR stack is only needed on damaged scans
 
         if ocr_pages.backend_available():
+            retry_pages = []
             for page in ocr_pages.ocr_pdf_page_boxes(path, scanned, dpi=OCR_DPI):
                 idx = page["page"]
                 if pages[idx] is not None:
@@ -1222,13 +1279,33 @@ def extract(path, ocr=True):
                     # supplementing a name column with no row geometry to
                     # attach to. `ocr_full_page_rows` is header-anchored since
                     # #437, so a cover page returns None here (and falls
-                    # through to plain OCR text) instead of inventing rows out
-                    # of the letterhead's phone numbers.
+                    # through to the OCR's own plain text below) instead of
+                    # inventing rows out of the letterhead's phone numbers.
                     pages[idx] = ocr_full_page_rows(page["lines"])
+                    if pages[idx] is None:
+                        ocr_plain_text[idx] = _plain_ocr_lines(page["lines"])
+                    elif rebuilt_rows_missing_a_share_cell(pages[idx]):
+                        retry_pages.append(idx)
+
+            # #437 slice 4: one 400-dpi retry, ONLY for pages whose 300-dpi
+            # rebuild left an investor row with no readable share cell at
+            # all. A sharper scan sometimes reads the cell the first pass
+            # missed outright; it never REPLACES a page that already read
+            # cleanly, and it is discarded (the 300-dpi rebuild kept) unless
+            # it actually clears every gap the first pass left - a retry
+            # that fixes one row and breaks another is not an improvement.
+            if retry_pages:
+                for page in ocr_pages.ocr_pdf_page_boxes(
+                    path, retry_pages, dpi=RETRY_OCR_DPI
+                ):
+                    idx = page["page"]
+                    retried = ocr_full_page_rows(page["lines"])
+                    if not rebuilt_rows_missing_a_share_cell(retried):
+                        pages[idx] = retried
 
     return [
-        render_rows(rows) if rows else (_plain(w) if w else "")
-        for rows, w in zip(pages, pages_words)
+        render_rows(rows) if rows else (ocr_plain_text.get(i) or (_plain(w) if w else ""))
+        for i, (rows, w) in enumerate(zip(pages, pages_words))
     ]
 
 

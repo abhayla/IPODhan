@@ -288,10 +288,18 @@ export async function scrapeAnchorInvestorsDetailed(
     const bidDate = report.letterDate;
     const mutualFunds = new Set(report.mutualFundShares);
 
+    // #437 slice 4: no persisted-row column carries `derivedFromTotal` yet,
+    // so this log line is the only record of which row(s) had their share
+    // count derived from the preamble total rather than read off the page.
+    const derivedRows = report.rows.filter((row) => row.derivedFromTotal);
     logger.info(
       `[Anchor Investors] ${companyName}: ${report.rows.length} investors, ` +
         `${report.totalShares} shares at Rs ${report.bidPrice}, ` +
-        `Rs ${(report.totalAmountRupees / RUPEES_PER_CRORE).toFixed(2)} Cr`
+        `Rs ${(report.totalAmountRupees / RUPEES_PER_CRORE).toFixed(2)} Cr` +
+        (derivedRows.length > 0
+          ? `, ${derivedRows.length} row(s) derived from the preamble total (no printed share cell): ` +
+            derivedRows.map((row) => `${row.name || row.shares}`).join('; ')
+          : '')
     );
 
     const data: AnchorInvestorData = {
