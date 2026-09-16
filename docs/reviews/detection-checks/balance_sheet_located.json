@@ -1,0 +1,11 @@
+{
+  "id": "balance_sheet_located",
+  "findingClass": "an RHP is extracted but its restated balance sheet was never located, so current assets, current liabilities and inventories are silently absent and no ratio can be derived",
+  "round7Findings": [],
+  "failThreshold": "a COMPLETED RHP/DRHP/PROSPECTUS extraction whose envelope carries no balanceSheetPage, or whose financial_data row has all three of current_ratio, quick_ratio and inventory_turnover null",
+  "severity": "P2",
+  "unverifiableWhen": "no filing has been persisted with balance-sheet lines yet - measured 2026-09-11 on staging: 174 financial_data rows, ZERO carrying any of the three ratios, and document_pages empty",
+  "section": "notCoveredByThisManifest",
+  "why": "Design-time, and deliberately NOT in `checks` until the audit script can actually record it. Item 8b slice 1 (this change) teaches the extractor to READ the three lines; slice 2 derives and persists the ratios. Until a row can carry a ratio there is nothing for a nightly audit to look at, and an entry in `checks` with no record() call is a paper check that reads as wider coverage than the floor really has. It moves to `checks` with its record('balance_sheet_located') call when 8b-2 lands.",
+  "locatorNote": "The check is worth having because locating the statement is where this can fail quietly. Measured on the Karamtara RHP: 20 pages match the heading 'statement of assets and liabilities' and exactly ONE is the statement, so a locator that trusts the heading alone is wrong 19 times out of 20 - and a wrong page yields plausible numbers, not an error."
+}

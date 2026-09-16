@@ -5,5 +5,8 @@
   "failThreshold": "any document with type RATIOS_BASIS_ISSUE_PRICE and extraction_status COMPLETED whose ipo has financial_data.current_ratio null",
   "severity": "P1",
   "unverifiableWhen": "no RATIOS_BASIS_ISSUE_PRICE document has reached COMPLETED — measured 2026-09-11 on staging: 34 such documents exist and every one is PENDING, so the literal check is true of the empty set. Reported UNVERIFIABLE rather than PASS, because a check that cannot fail is not detection, and the detail carries the number that is actually actionable (how many exist and have never been extracted).",
-  "section": "checks"
+  "section": "notCoveredByThisManifest",
+  "retiredBy": "issuer_ratio_yield (#670)",
+  "retiredReason": "RATIOS_BASIS_ISSUE_PRICE has no extractor in scraper/src/services/filing-auto-persist.ts (AUTO_PERSIST_DOC_TYPES) by design, so this check measured a population that can never move and paged UNVERIFIABLE/P1 every night (cost an hour on 2026-09-15, misread as 38 stuck documents); issuer_ratio_yield reads the real ratio population (RHP/DRHP/PROSPECTUS financial_data rows), and not_applicable_documents_named now names this PENDING count honestly instead of grading it.",
+  "note": "Retired 2026-09-16: RATIOS_BASIS_ISSUE_PRICE has no extractor in scraper/src/services/filing-auto-persist.ts (AUTO_PERSIST_DOC_TYPES) by design, so this check measured a population that can never move and paged UNVERIFIABLE/P1 every night (cost an hour on 2026-09-15, misread as 38 stuck documents); issuer_ratio_yield reads the real ratio population (RHP/DRHP/PROSPECTUS financial_data rows), and not_applicable_documents_named now names this PENDING count honestly instead of grading it. Replaced by issuer_ratio_yield (#670); the never-extractable population is now named by not_applicable_documents_named."
 }

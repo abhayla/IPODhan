@@ -50,6 +50,7 @@ import logger from '../utils/logger.js';
 import * as schema from '@ipodhan/shared/db/schema';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { financialStatementsRowKey, ipoDetailsRowKey, ipoValuationRowKey } from './child-row-keys.js';
+import { createChildRowNoter } from './child-row-unresolved-noter.js';
 import type { ConsolidatedChildRowsResult, ChildRowInput, ChildConsolidationTable } from './data-consolidation-orchestrator.js';
 
 // ---------------------------------------------------------------- extraction
@@ -186,12 +187,15 @@ export interface FilingPersisterDeps {
    * the orchestrator needs a repository set and a Redis handle this module has
    * no business owning, and because a test must be able to observe the call.
    *
-   * Optional: with `ENABLE_CHILD_TABLE_CONSOLIDATION` off (every slot but
-   * staging today) nothing calls it. With the flag ON and this absent, the
-   * write falls back to the pre-slice path and logs an error — a wiring defect
-   * must not cost the write.
+   * REQUIRED as of F-101. It was optional, and that `?` is the ONLY reason
+   * `buildFilingPersistDeps` could omit it for thirty slices while everything
+   * still type-checked: every staging cycle logged `no childRowConsolidator
+   * injected` and wrote child rows with no provenance. A missing wire must be a
+   * COMPILE error, not a runtime fallback. The runtime fallback branches below
+   * remain as defence in depth for a cast or a JS caller — they are no longer
+   * the thing that is supposed to catch this.
    */
-  childRowConsolidator?: {
+  childRowConsolidator: {
     consolidatedUpsertChildRows(
       ipoId: string,
       tableName: ChildConsolidationTable,
@@ -748,28 +752,11 @@ const NO_COLUMN_FIELDS: Record<string, string> = {
 /**
  * F-101 — the sentinel row key the fallback paths file provenance under.
  *
- * `field_sources` could not distinguish "the row-keyed child writer is switched
- * OFF" from "the row-keyed child writer ran and FAILED": both left one
- * catch-all row under `row_key = ''`, written by the legacy
- * `trackField(table, 'rows')` call that still sits beside the consolidated
- * writer. No change to the audit check can separate them — the information is
- * not in the data, it is only in the writer. So the writer records it.
- *
- * The key is deliberately prefixed: `row-key-coverage-checks.mjs` flips a pair
- * from UNVERIFIABLE into enforcement the moment ONE non-empty row_key exists
- * for it, and every DERIVED key is then missing — so a failed writer reads FAIL
- * where it used to read as an unstarted one.
- *
- * Truncated to `field_sources.row_key`'s varchar(200); the prefix and the cause
- * class survive truncation because they lead.
+ * Defined in `child-row-unresolved-noter.ts` since slice s7c (the anchor
+ * persister needs the same sentinel and importing it from here would be a
+ * cycle) and re-exported unchanged so this module's public surface is the same.
  */
-export const UNRESOLVED_ROW_KEY_PREFIX = 'unresolved:';
-const ROW_KEY_MAX_LENGTH = 200;
-
-export function unresolvedRowKey(reason: string): string {
-  const key = `${UNRESOLVED_ROW_KEY_PREFIX}${reason.replace(/\s+/g, ' ').trim()}`;
-  return key.length <= ROW_KEY_MAX_LENGTH ? key : key.slice(0, ROW_KEY_MAX_LENGTH);
-}
+export { UNRESOLVED_ROW_KEY_PREFIX, unresolvedRowKey } from './child-row-unresolved-noter.js';
 
 // ------------------------------------------------------------------ the work
 
@@ -874,33 +861,22 @@ export async function persistFilingExtraction(
    * the row. A marker write that fails is logged as an error, because it
    * silently re-opens the hole this exists to close.
    */
-  const markChildRowsUnresolved = async (
-    tableName: ChildConsolidationTable,
-    reason: string
-  ): Promise<void> => {
-    if (!apply) return;
-    const rowKey = unresolvedRowKey(reason);
-    try {
-      await deps.fieldSources.trackFieldUpdate({
-        ipoId,
-        tableName,
-        rowKey,
-        fieldName: 'rows',
-        source,
-        // NOT tier 1a: nothing about these rows was resolved against a rank.
-        confidence: 0,
-        previousValue: null,
-        previousSource: null,
-        dataLineage: { ...lineage, unresolvedReason: reason },
-        updatedBy: 'FILING_PERSISTER',
-      });
-    } catch (error) {
-      logger.error(
-        { err: error, ipoId, tableName, rowKey },
-        '[FilingPersister] could not file the unresolved-row provenance marker — this pair still reads as "writer not live" to the row-key coverage check'
-      );
-    }
-  };
+  /**
+   * Slice s7c: both helpers moved to `child-row-unresolved-noter.ts` so the
+   * anchor persister — a separate service with its own deps interface — files
+   * the identical marker instead of hand-rolling a fourth variant. Behaviour
+   * here is unchanged; `lineage` is passed as a getter because its `const` is
+   * declared further down this function.
+   */
+  const { markChildRowsUnresolved, noteConsolidationThrew } = createChildRowNoter({
+    apply,
+    ipoId,
+    source,
+    lineage: () => lineage,
+    fieldSources: deps.fieldSources,
+    updatedBy: 'FILING_PERSISTER',
+    logPrefix: '[FilingPersister]',
+  });
 
   const consolidateChildRows = async (
     tableName: ChildConsolidationTable,
@@ -947,21 +923,12 @@ export async function persistFilingExtraction(
         options.docType
       );
     } catch (error) {
-      const cause = (error as { cause?: { message?: string } } | undefined)?.cause?.message;
-      const why = `consolidation failed: ${(error as Error)?.message ?? 'unknown'}${
-        cause ? ` <- ${cause}` : ''
-      }`;
-      logger.error(
-        { err: error, cause, ipoId, tableName, rowKeys: entries.map((e) => e.rowKey) },
-        '[FilingPersister] child-row consolidation failed — writing the rows unresolved'
-      );
+      const why = await noteConsolidationThrew(tableName, error, {
+        rowKeys: entries.map((e) => e.rowKey),
+      });
       for (const entry of entries) {
         unresolvedChildRows.push(`${tableName} ${entry.rowKey} (${why})`);
       }
-      await markChildRowsUnresolved(
-        tableName,
-        `consolidation-threw: ${(error as Error)?.message ?? 'unknown'}${cause ? ` <- ${cause}` : ''}`
-      );
       return;
     }
 
@@ -1532,15 +1499,25 @@ export async function persistFilingExtraction(
           );
           await markChildRowsUnresolved('ipo_details', 'no-consolidator-injected');
         } else {
-          const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
-            ipoId,
-            'ipo_details',
-            [{ rowKey: ipoDetailsRowKey(), data: detailsWritable }],
-            source,
-            options.docType
-          );
-          const decided = resolved.rows[0];
-          if (decided && decided.skipped) {
+          let resolved: ConsolidatedChildRowsResult | undefined;
+          try {
+            resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+              ipoId,
+              'ipo_details',
+              [{ rowKey: ipoDetailsRowKey(), data: detailsWritable }],
+              source,
+              options.docType
+            );
+          } catch (error) {
+            // `detailsPayload` is left as `detailsWritable` — exactly what the
+            // no-consolidator fallback leaves it as — so the row is still
+            // WRITTEN, unresolved, and the persist carries on to the next table.
+            await noteConsolidationThrew('ipo_details', error, { table: 'ipo_details' });
+          }
+          const decided = resolved?.rows[0];
+          if (resolved === undefined) {
+            // The throw was handled above; nothing to resolve, keep the payload.
+          } else if (decided && decided.skipped) {
             skippedFailedCheck.push(`ipo_details (consolidation skipped: ${decided.skipReason})`);
             await markChildRowsUnresolved(
               'ipo_details',
@@ -1874,26 +1851,39 @@ export async function persistFilingExtraction(
               );
               continue;
             }
-            const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
-              ipoId,
-              'financial_statements',
-              [
-                {
-                  rowKey,
-                  existingRowId: (prior as { id?: string } | undefined)?.id,
-                  data: carried,
-                  existingData: prior
-                    ? Object.fromEntries(
-                        STATEMENT_COLUMNS.map((c) => [c, (prior as unknown as Record<string, unknown>)[c]])
-                      )
-                    : undefined,
-                },
-              ],
-              source,
-              options.docType
-            );
-            const decided = resolved.rows[0];
-            if (decided && decided.skipped) {
+            let resolved: ConsolidatedChildRowsResult | undefined;
+            try {
+              resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+                ipoId,
+                'financial_statements',
+                [
+                  {
+                    rowKey,
+                    existingRowId: (prior as { id?: string } | undefined)?.id,
+                    data: carried,
+                    existingData: prior
+                      ? Object.fromEntries(
+                          STATEMENT_COLUMNS.map((c) => [
+                            c,
+                            (prior as unknown as Record<string, unknown>)[c],
+                          ])
+                        )
+                      : undefined,
+                  },
+                ],
+                source,
+                options.docType
+              );
+            } catch (error) {
+              // `statementRow` is left as built — exactly what the
+              // no-consolidator fallback leaves it as — so the row is still
+              // WRITTEN, unresolved, and the remaining fiscal years still run.
+              await noteConsolidationThrew('financial_statements', error, { fiscalYear, basis });
+            }
+            const decided = resolved?.rows[0];
+            if (resolved === undefined) {
+              // The throw was handled above; keep the row this extraction built.
+            } else if (decided && decided.skipped) {
               skippedFailedCheck.push(
                 `financial_statements FY${fiscalYear}/${basis} (consolidation skipped: ${decided.skipReason})`
               );
@@ -2003,15 +1993,28 @@ export async function persistFilingExtraction(
             skippedFailedCheck.push('ipo_valuation (no row key — not written)');
             w = {};
           } else {
-            const resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
-              ipoId,
-              'ipo_valuation',
-              [{ rowKey: valuationRowKey, data: valuationWritable }],
-              source,
-              options.docType
-            );
-            const decided = resolved.rows[0];
-            if (decided && decided.skipped) {
+            let resolved: ConsolidatedChildRowsResult | undefined;
+            try {
+              resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+                ipoId,
+                'ipo_valuation',
+                [{ rowKey: valuationRowKey, data: valuationWritable }],
+                source,
+                options.docType
+              );
+            } catch (error) {
+              // `w` is left as `valuationWritable` — exactly what the
+              // no-consolidator fallback leaves it as — so the row is still
+              // WRITTEN, unresolved, and the persist carries on.
+              await noteConsolidationThrew('ipo_valuation', error, {
+                table: 'ipo_valuation',
+                pricingEvent,
+              });
+            }
+            const decided = resolved?.rows[0];
+            if (resolved === undefined) {
+              // The throw was handled above; keep the filtered payload.
+            } else if (decided && decided.skipped) {
               skippedFailedCheck.push(
                 `ipo_valuation (consolidation skipped: ${decided.skipReason})`
               );
@@ -2600,6 +2603,36 @@ export async function persistFilingExtraction(
       fdFields += 1;
     }
   }
+  // Item 8 slice 3a. The three issuer ratios: two READ from the issuer's own
+  // Schedule III note, one DERIVED (quick ratio - nobody prints it). They are
+  // plain unitless ratios, so unlike netWorth/marketCap they need no
+  // `withUnit`/`toCrore` scaling; they take the same round2().toString() shape
+  // as ronw and peRatio so the numeric(5,2) columns receive what they expect.
+  for (const [field, column] of [
+    ['current_ratio', 'currentRatio'],
+    ['quick_ratio', 'quickRatio'],
+    ['inventory_turnover', 'inventoryTurnover'],
+  ] as const) {
+    const value = num(extraction, field);
+    if (value !== null) {
+      const rounded = round2(value);
+      // financial_data.currentRatio/quickRatio/inventoryTurnover are
+      // numeric(5,2) (schema.ts:567-569) - max magnitude 999.99. A printed
+      // ratio at/above 1000 (or a mis-read digit) throws a Postgres numeric
+      // overflow at insert and aborts the whole financial_data write for
+      // this document, taking the other two ratios and every other
+      // financial_data field down with it. Skip only the offending field.
+      if (!Number.isFinite(rounded) || Math.abs(rounded) > 999.99) {
+        skippedNoColumn.push(
+          `${field} (ratio_out_of_numeric_range:${column}=${rounded})`
+        );
+      } else {
+        (fd as Record<string, unknown>)[column] = rounded.toString();
+        fdFields += 1;
+      }
+    }
+  }
+
   const peCap = num(extraction, 'pe_at_cap');
   if (peCap !== null) {
     fd.peRatio = peCap.toString();

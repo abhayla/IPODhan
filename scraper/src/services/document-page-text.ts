@@ -45,14 +45,28 @@ export function pageRowsFromExtraction(
     if (!Array.isArray(entry) || entry.length < 2) continue;
     const [rawNumber, rawText] = entry;
 
-    // The extractor's own page numbers are kept, never re-indexed: a citation
-    // says "page 118", and renumbering sparse pages 1..n would silently move
-    // every stored citation to a different page.
-    if (typeof rawNumber !== 'number' || !Number.isInteger(rawNumber) || rawNumber <= 0) continue;
+    // The extractor sends a ZERO-BASED index, not a printed page number:
+    // extract_filing.py:2688 is `for i, p in enumerate(pdf.pages)`. A stored
+    // page_number is meant to be the page a reader would turn to, so the +1
+    // happens HERE, once, and nowhere else.
+    //
+    // This edge is the right boundary and the extractor is not, because the
+    // zero-based index is load-bearing on the python side: the peer-table
+    // reader's `find_peer_section_page` hands its page_texts index straight to
+    // `pdf.pages[index]` (extract_filing.py:2725), and pdfplumber's list is
+    // zero-based. Making the extractor emit 1-based numbers would send that
+    // reader to the wrong page - where it would still find a table, and say
+    // nothing.
+    //
+    // Sparse numbering is still preserved rather than compacted to 1..n, which
+    // was the original comment's real concern: empty pages are dropped below,
+    // and renumbering the survivors would move every citation.
+    if (typeof rawNumber !== 'number' || !Number.isInteger(rawNumber) || rawNumber < 0) continue;
+    const pageNumber = rawNumber + 1;
     // The unique constraint is (document_id, page_number). One duplicate would
     // abort the whole insert and lose every page for this document, so the
     // first wins here rather than at the database.
-    if (seen.has(rawNumber)) continue;
+    if (seen.has(pageNumber)) continue;
 
     // postgres `text` cannot hold a NUL byte; the extractor already strips them
     // from field values, and page text goes through the same rule.
@@ -62,8 +76,8 @@ export function pageRowsFromExtraction(
     // will act on.
     if (text.trim() === '') continue;
 
-    seen.add(rawNumber);
-    rows.push({ documentId, pageNumber: rawNumber, text });
+    seen.add(pageNumber);
+    rows.push({ documentId, pageNumber, text });
   }
 
   return rows;

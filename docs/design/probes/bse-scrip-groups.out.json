@@ -1,0 +1,197 @@
+{
+  "probedAt": "2026-09-15T18:54:24.156Z",
+  "verdict": {
+    "question": "Is BSE's listed-scrip list, WITH a per-scrip GROUP, reachable mechanically (no browser)?",
+    "answer": "YES",
+    "usableEndpoints": [
+      {
+        "url": "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w?Group=&Scripcode=&industry=&segment=Equity&status=Active",
+        "records": 5155,
+        "groupKey": "GROUP",
+        "distinctGroups": [
+          "A",
+          "B",
+          "IP",
+          "M",
+          "MS",
+          "MT",
+          "P",
+          "R",
+          "T",
+          "TS",
+          "X",
+          "XT",
+          "Y",
+          "Z",
+          "ZP"
+        ]
+      },
+      {
+        "url": "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w?Group=M&Scripcode=&industry=&segment=Equity&status=Active",
+        "records": 397,
+        "groupKey": "GROUP",
+        "distinctGroups": [
+          "M"
+        ]
+      }
+    ],
+    "groupsWithNoEvidencedMeaning": [
+      "IP",
+      "MS",
+      "P",
+      "R",
+      "TS",
+      "X",
+      "Y",
+      "ZP"
+    ],
+    "note": "A fetcher is buildable against the usable endpoint(s) above. The fixture saved next to this output is the real payload a parser brief must be written against."
+  },
+  "attempts": [
+    {
+      "what": "ListOfScrips CSV (the public \"List of Securities\" download)",
+      "url": "https://www.bseindia.com/downloads/ipo/ListOfScrips.csv",
+      "at": "2026-09-15T18:53:49.686Z",
+      "status": 404,
+      "ok": false,
+      "bytes": 8328,
+      "attempts": 3,
+      "error": null,
+      "carriesGroup": false
+    },
+    {
+      "what": "ListOfScripData API (segment=Equity, status=Active)",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w?Group=&Scripcode=&industry=&segment=Equity&status=Active",
+      "at": "2026-09-15T18:54:20.849Z",
+      "status": 200,
+      "ok": true,
+      "bytes": 1808402,
+      "attempts": 1,
+      "error": null,
+      "records": 5155,
+      "keys": [
+        "SCRIP_CD",
+        "Scrip_Name",
+        "Status",
+        "GROUP",
+        "FACE_VALUE",
+        "ISIN_NUMBER",
+        "INDUSTRY",
+        "scrip_id",
+        "Segment",
+        "NSURL",
+        "Issuer_Name",
+        "Mktcap"
+      ],
+      "groupKey": "GROUP",
+      "groupSamples": [
+        {
+          "name": "ABB India Ltd",
+          "isin": "INE117A01022",
+          "group": "A"
+        },
+        {
+          "name": "Aegis Logistics Ltd",
+          "isin": "INE208C01025",
+          "group": "A"
+        },
+        {
+          "name": "Amara Raja Energy & Mobility Ltd",
+          "isin": "INE885A01032",
+          "group": "A"
+        },
+        {
+          "name": "Ambalal Sarabhai Enterprises Ltd",
+          "isin": "INE432A01017",
+          "group": "T"
+        },
+        {
+          "name": "Andhra Petrochemicals Ltd",
+          "isin": "INE714B01016",
+          "group": "X"
+        }
+      ],
+      "distinctGroups": [
+        "A",
+        "B",
+        "IP",
+        "M",
+        "MS",
+        "MT",
+        "P",
+        "R",
+        "T",
+        "TS",
+        "X",
+        "XT",
+        "Y",
+        "Z",
+        "ZP"
+      ],
+      "fixture": "fixtures/bse/ListofScripData.sample.json",
+      "fixtureIsTrim": true,
+      "looksLikeJsShell": false,
+      "carriesGroup": true
+    },
+    {
+      "what": "SME scrips (ListofScripData, segment=MainBoard vs SME is a Group filter)",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w?Group=M&Scripcode=&industry=&segment=Equity&status=Active",
+      "at": "2026-09-15T18:54:23.554Z",
+      "status": 200,
+      "ok": true,
+      "bytes": 138852,
+      "attempts": 1,
+      "error": null,
+      "records": 397,
+      "keys": [
+        "SCRIP_CD",
+        "Scrip_Name",
+        "Status",
+        "GROUP",
+        "FACE_VALUE",
+        "ISIN_NUMBER",
+        "INDUSTRY",
+        "scrip_id",
+        "Segment",
+        "NSURL",
+        "Issuer_Name",
+        "Mktcap"
+      ],
+      "groupKey": "GROUP",
+      "groupSamples": [
+        {
+          "name": "Shanti Guru Industries Ltd",
+          "isin": "INE892L01019",
+          "group": "M"
+        },
+        {
+          "name": "Bothra Metals & Alloys Ltd",
+          "isin": "INE583M01012",
+          "group": "M"
+        },
+        {
+          "name": "GCM Commodity & Derivatives Ltd",
+          "isin": "INE200P01016",
+          "group": "M"
+        },
+        {
+          "name": "Stellar Capital Services Ltd",
+          "isin": "INE325P01011",
+          "group": "M"
+        },
+        {
+          "name": "Polymac Thermoformers Ltd",
+          "isin": "INE826P01018",
+          "group": "M"
+        }
+      ],
+      "distinctGroups": [
+        "M"
+      ],
+      "fixture": null,
+      "fixtureIsTrim": false,
+      "looksLikeJsShell": false,
+      "carriesGroup": true
+    }
+  ]
+}

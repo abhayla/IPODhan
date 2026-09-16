@@ -1,12 +1,17 @@
 # Item 7 — The job scheduler and the budgets
 
+**Updated 2026-09-11 for OD-55 (supervisor): document job unbounded per document; see §2.1.**
+
 ## Purpose
 
 After this ships, the scraper runs as three named jobs on the owner's cadence (data 00:00/08:00/14:00
 IST, live-figures every 30 min 10:00–18:30 IST gated on at least one OPEN IPO, closed-IPO 22:00 IST),
-no job ever force-kills a cycle in progress, and the extraction/wake/lock budgets are raised to numbers
-that are *derived* from a new invariant (never start an extraction unless the remaining wake budget can
-absorb its full timeout) rather than typed and hoped to fit.
+no job ever force-kills a cycle in progress, and the document job's own lock has its TTL derived from
+the 2-hour hung-process ceiling — not from a per-document extraction timeout, which OD-55 (owner,
+2026-09-11) removes outright. There is no `EXTRACT_TIMEOUT_MS` and no wake-budget cap on extraction:
+the document job reads each filing to completion, unbounded, runs under its own lock that never delays
+the live-figures job, records any unread page by page number and reason if the 2-hour hung-process
+ceiling trips, runs OCR single-threaded at low priority, and stays outside market hours by default.
 
 ## Serves
 
@@ -37,8 +42,8 @@ hours stale" over a weekend under the old gate) if it was not intended.
 
 | Path | State | Change |
 |---|---|---|
-| `scraper/src/services/filing-auto-persist.ts` | exists | `EXTRACT_TIMEOUT_MS` (line 166, `10 * 60 * 1000`) → `30 * 60 * 1000`. `FILING_EXTRACTION_LOCK_TTL_MS` (line 530, `45 * 60 * 1000`) → derived value below (rounds to `60 * 60 * 1000`). `maxAnchorSpawnsWithinLockTtl` (line 540-547) re-derived — see Interfaces. The per-document deadline check inside `processPendingFilings` (lines 1571, 1639, and the anchor pass at 1565-1576) changes from `now() >= deps.deadlineMs` to the new never-start-without-full-budget invariant — see Interfaces. |
-| `scraper/src/services/document-cycle.ts` | exists | `DEFAULT_WAKE_BUDGET_MS` (line 158, `20 * 60 * 1000`) → `50 * 60 * 1000`. `getWakeBudgetMs()` (line 182) unchanged in shape — only its default and its `DOCUMENT_CYCLE_WAKE_BUDGET_MS` env override ceiling need re-documenting. `extractionBudgetMs` computation (line 1232-1234, `Math.min(DEFAULT_EXTRACTION_BUDGET_MS, wakeBudgetMs - (now() - startedAt) - PURGE_RESERVE_MS)`) and `deadlineMs = extractionStartedAt + extractionBudgetMs` (line 1263) feed the new invariant — no change to this file's arithmetic itself, but `DEFAULT_EXTRACTION_BUDGET_MS` (cited, not yet read this session — **the design does not say this constant's value; read it before implementing, do not assume it scales automatically with the wake budget**). |
+| `scraper/src/services/filing-auto-persist.ts` | exists | **OD-55 (owner, 2026-09-11): `EXTRACT_TIMEOUT_MS` (line 166) is REMOVED, not raised to 30 min** — there is no typed per-document extraction budget. The document job runs under its own lock, derived from the 2-hour hung-process ceiling (a crash guard, not a budget) plus slack, never from spawn-count × timeout. `FILING_EXTRACTION_LOCK_TTL_MS` (line 530) becomes the 2-hour ceiling + `LOCK_SLACK_MS`. `maxAnchorSpawnsWithinLockTtl` (line 540-547) re-derived against the ceiling, not against a wake budget — see Interfaces. The per-document deadline check inside `processPendingFilings` (lines 1571, 1639, and the anchor pass at 1565-1576) enforces only the hung-process ceiling and writes a per-page skip record (page number + reason) on trip — never a bare unread-page count. OCR invocation runs single-threaded at low process priority. |
+| `scraper/src/services/document-cycle.ts` | exists | **OD-55: no wake-budget cap on document extraction** — `DEFAULT_WAKE_BUDGET_MS` (line 158) is not raised to 50 min for the purpose of bounding extraction; the document job stays outside market hours by default and is not throughput-capped by a wake window for reading a filing. `extractionBudgetMs` computation (line 1232-1234) and `deadlineMs = extractionStartedAt + extractionBudgetMs` (line 1263) are re-derived against the 2-hour hung-process ceiling instead of a wake-budget-minus-elapsed expression — see Interfaces. `DEFAULT_EXTRACTION_BUDGET_MS` (cited, not yet read this session) must be re-read against this rule before implementing, not assumed to still exist as a wake-scaled budget. |
 | `scraper/src/index.ts` | exists | `CYCLE_LOCK_TTL_MS` (line 179, `getWakeBudgetMs() + 5 * 60 * 1000`) is *unchanged code* — it derives to 55 min automatically once `getWakeBudgetMs()` returns 50 min. The market-hours gate at line 343 (`isMarketHoursIST(now)`) and the aggregator-cadence block (lines 371-395) are subsumed by the new live-figures job (§2.1) — this item replaces the single `main()` due-step cycle's internal slot logic with dispatch on an explicit `--job=data\|live\|closed` argument (see Interfaces; **the design does not name this flag or any replacement CLI shape** — recommended here as the smallest change that reuses the existing one-shot-process-per-invocation model in lines 463-560, rather than inventing a long-running daemon). |
 | `scraper/src/scheduler/due-step-cycle.ts` | exists | `DISCOVERY_SLOTS_IST_MINUTES` (line 15, `[08:30, 11:00, 14:00, 17:30]`) is D-13's cadence, explicitly superseded by OD-19 (§2.1: "This supersedes D-13's timing for everything below"). Becomes the **data job's** three slots `[00:00, 08:00, 14:00]` (minutes `[0, 480, 840]`). The live-figures window (currently `isMarketHoursIST`, weekday 10:00-17:00) extends to 10:00-18:30 and drops the OPEN-IPO gate from "zero network calls if zero OPEN" (already present, lines 353-359) — that check is *kept*, not removed; only the window widens. |
 | `scripts/deploy-linux.sh` | exists | Lines 231-239 (`SCRAPER_CRON` computed per `$SLOT`) and line 681-683 / 1376 (`pm2 start ... --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}"`) — the whole `--cron-restart` mechanism is removed (see PM2 change below). |
@@ -256,12 +261,12 @@ cannot land until this item's scheduler and budgets exist.
 
 <!-- generated by docs/design/apply-rule-ownership.mjs - edits inside this block are overwritten -->
 
-26 rule(s) from `docs/design/rules.json`, generated by
+28 rule(s) from `docs/design/rules.json`, generated by
 `node docs/design/apply-rule-ownership.mjs --apply` from `rule-ownership.json`.
 
 | Design section | Rule ids |
 |---|---|
-| §2.1 | R-001, R-002, R-003, R-004, R-005, R-006, R-007, R-008, R-009, R-010, R-011, R-012, R-013, R-014, R-015, R-016, R-017, R-018 |
+| §2.1 | R-002, R-003, R-004, R-005, R-006, R-007, R-010, R-011, R-012, R-013, R-014, R-015, R-016, R-181, R-182, R-183, R-184, R-185, R-187, R-188 |
 | §2.1.3 | R-019, R-020 |
 | §5.1 | R-102, R-103, R-104 |
 | §7.4 | R-146, R-147, R-148 |

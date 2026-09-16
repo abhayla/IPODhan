@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { istDayIso } from './lib/ist-day.mjs';
 import {
   checkSitemapCompleteness,
   checkDuplicateSlugs,
@@ -239,7 +240,7 @@ async function run() {
     `${openCount} open`);
 
   // 5. No OPEN IPO has a close date in the past (#4)
-  const today = new Date().toISOString().slice(0, 10);
+  const today = istDayIso();
   const staleOpen = (open.json?.data || []).filter(i => i.closeDate && i.closeDate < today);
   record('no OPEN IPO past its close date', staleOpen.length === 0,
     staleOpen.length ? `${staleOpen.length} stale (e.g. ${staleOpen[0].slug})` : 'none');

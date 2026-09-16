@@ -1,0 +1,205 @@
+<<<PAGE 18>>>
+CERTAIN CONVENTIONS, PRESENTATION OF FINANCIAL, INDUSTRY AND MARKET DATA
+Certain Conventions
+All references to “India” contained in this Red Herring Prospectus are to the Republic of India and its territories and possessions
+and all references herein to the “Government”, “Indian Government”, “GoI”, “Central Government” or the “State Government” are
+to the Government of India, central or state, as applicable.
+All references to the:
+(i) “U.S.”, “US”, “U.S.A.” or “United States” are to the United States of America and its territories and possessions;
+(ii) “Italy” are to the Italy and its territories and possessions.
+(iii) “Saudi Arabia” are to the Kingdom of Saudi Arabia and its territories and possessions.
+In this Red Herring Prospectus, unless otherwise specified:
+• any time mentioned is in IST;
+• all references to a year are to a calendar year; and
+• all references to page numbers are to the page numbers of this Red Herring Prospectus.
+Financial Data
+Our Company’s financial year commences on April 1 and ends on March 31 of the next year. Unless stated otherwise, all references
+to a year in this Red Herring Prospectus are to a calendar year and references to the terms Fiscal or Fiscal Year or Financial Year
+are to the 12 months ended March 31 of such year.
+Unless stated otherwise or where the context otherwise requires, the financial information and financial ratios in this Red Herring
+Prospectus is derived from the Restated Consolidated Financial Information.
+Restated Consolidated Financial Information of our Group and its associates comprising the restated consolidated statement of assets
+and liabilities as at March 31, 2026, March 31, 2025 and March 31, 2024, the restated consolidated statement of profit and loss
+(including other comprehensive income), the restated consolidated statement of changes in equity, the restated consolidated
+statement of cash flow for the financial years ended March 31, 2026, March 31, 2025 and March 31, 2024, the summary statement
+of material accounting policies and other explanatory information, prepared in accordance with Ind AS and as per requirement of
+Section 26 of Part I of Chapter III of the Companies Act, 2013, SEBI ICDR Regulations, as amended and the Guidance Note on
+‘Reports in Company Prospectuses (Revised 2019)’ issued by the Institute of Chartered Accountants of India, as amended from
+time to time.
+For further information, see “Restated Consolidated Financial Information” beginning on page 329.
+There are significant differences between Ind AS, Indian GAAP, US GAAP and IFRS. Our Company does not provide reconciliation
+of its financial information to IFRS or US GAAP. Our Company has not attempted to explain those differences or quantify their
+impact on the financial data included in this Red Herring Prospectus and it is urged that you consult your own advisors regarding
+such differences and their impact on our Company’s financial data. For details in connection with risks involving differences
+between Ind AS, U.S. GAAP and IFRS see “Risk Factors – External Risk Factors – 68. Significant differences exist between Ind
+AS and other accounting principles, such as Indian GAAP, U.S. GAAP and IFRS, which investors may be more familiar with and
+may consider material to their assessment of our financial condition.” on page 61. The degree to which the financial information
+included in this Red Herring Prospectus will provide meaningful information is entirely dependent on the reader’s level of familiarity
+with Indian accounting policies and practices, the Companies Act, 2013, Ind AS and the SEBI ICDR Regulations. Any reliance by
+persons not familiar with Indian accounting policies and practices on the financial disclosures presented in this Red Herring
+Prospectus should accordingly be limited.
+In this Red Herring Prospectus, any discrepancies in any table between the total and the sums of the amounts listed are due to
+rounding off. All figures in decimals have been rounded off to the second decimal place and all percentage figures have been rounded
+off to two decimal places. However, where any figures that may have been sourced from third-party industry sources are rounded
+off to other than two decimal points in their respective sources, such figures appear in this Red Herring Prospectus as rounded-off
+to such number of decimal points as provided in such respective sources.
+Unless the context otherwise indicates, any percentage amounts, or ratios (excluding certain operational metrics) as set forth in “Risk
+Factors”, “Our Business” and “Management’s Discussion and Analysis of Financial Condition and Results of Operations”
+beginning on pages 19, 244 and 395, respectively, and elsewhere in this Red Herring Prospectus have been calculated on the basis
+of amounts derived from our Restated Consolidated Financial Information, as applicable.
+14
+<<<PAGE 73>>>
+SUMMARY OF RESTATED CONSOLIDATED STATEMENT OF ASSETS AND LIABILITIES
+(all amounts are in ₹ million, unless otherwise stated)
+Particulars As at March 31, 2026 As at March 31, 2025 As at March 31, 2024
+ASSETS
+(1) Non-current assets
+(a) Property, plant & equipment 11,642.70 6,418.21 5,693.55
+(b) Right-of-use assets 663.85 24.85 5.19
+(c) Capital work in progress 4,845.86 1,942.45 169.48
+(d) Goodwill 34.12 28.79 28.10
+(e) Other intangible assets 41.93 7.75 5.45
+(f) Investment in properties under development - - 474.14
+(g) Intangible assets under development 1.38 17.03 0.39
+(h) Financial assets
+(i) Non-current investments 93.43 42.61 4.51
+(ii) Other non-current financial assets 98.82 79.25 59.29
+(i) Deferred Tax Assets 13.92 3.88 -
+(j) Other non-current assets 1,486.70 786.65 248.94
+Total of non-current assets 18,922.71 9,351.47 6,689.04
+(2) Current assets
+(a) Inventories 5,718.18 6,915.69 5,285.85
+(b) Financial assets
+(i) Current investments 0.60 0.41 1.98
+(ii) Trade receivables 13,160.95 9,346.23 5,685.14
+(iii) Cash and cash equivalents 748.50 308.29 98.77
+(iv) Bank balance other than (iii) above 683.18 319.15 325.48
+(v) Loans 79.68 81.45 7.44
+(vi) Other current financial assets 261.87 124.27 132.27
+(c) Other current assets 1,846.70 1,178.91 219.65
+Total of current assets 22,499.66 18,274.40 11,756.58
+Total assets 41,422.37 27,625.87 18,445.62
+EQUITY AND LIABILITIES
+Equity
+(a) Equity Share capital 2,922.95 2,922.95 55.33
+(b) Other equity 9,276.22 6,908.91 5,479.05
+Total equity 12,199.17 9,831.86 5,534.38
+Liabilities
+Non-current liabilities
+(a) Financial liabilities
+(i) Borrowings 5,666.50 2,182.01 1,469.05
+(ii) Lease liability 627.58 13.48 -
+(b) Provisions 106.08 76.03 67.90
+(c) Deferred tax liabilities (net) 380.10 309.57 286.07
+(d) Other non-current liabilities 1,771.36 - 571.03
+Total non-current liabilities 8,551.62 2,581.09 2,394.05
+Current liabilities
+(a) Financial liabilities
+(i) Borrowings 4,634.79 3,380.75 3,616.09
+(ii) Lease liability 119.46 12.60 0.09
+(iii) Trade payables
+i. Total outstanding dues of micro and small 250.61 131.72 191.36
+enterprises
+ii. Total outstanding dues other than micro and small 12,996.39 10,220.01 5,913.13
+enterprises
+(iv) Other current financial liabilities 511.42 232.09 106.67
+(b) Other current liabilities 1,967.52 989.42 408.77
+(c) Provisions 28.75 23.19 53.25
+(d) Current tax liabilities (Net) 162.64 223.14 227.83
+Total current liabilities 20,671.58 15,212.92 10,517.19
+Total equity and liabilities 41,422.37 27,625.87 18,445.62
+69
+<<<PAGE 74>>>
+SUMMARY OF RESTATED CONSOLIDATED STATEMENT OF PROFIT AND LOSS
+(all amounts are in ₹ million, unless otherwise stated)
+Particulars For the year For the year For the year
+ended March ended March ended March
+31, 2026 31, 2025 31, 2024
+Income
+Revenue from operations 43,119.76 31,584.45 24,251.50
+Other income 43.81 69.12 19.66
+Total income (I) 43,163.57 31,653.57 24,271.16
+Expenses
+Cost of material consumed 25,736.41 21,298.21 17,437.89
+Changes in inventories of finished goods and work-in-progress (535.53) 6.41 (208.97)
+Employee benefit expenses 2,039.49 1,497.13 1,137.89
+Finance cost 1,405.20 1,277.72 928.52
+Depreciation and amortisation expense 507.59 376.99 346.05
+Other expenses 10,898.22 5,314.38 3,255.41
+Total expenses (II) 40,051.38 29,770.84 22,896.79
+Profit before share of profit/(loss) of Associates and tax (III = I - II) 3,112.19 1,882.73 1,374.37
+Share of Profit/(Loss) of Associates (IV) (0.07) (0.02) -
+Profit before tax (V = III + IV) 3,112.12 1,882.71 1,374.37
+Tax expenses (VI)
+Current tax 763.64 469.56 353.86
+Deferred tax 60.94 19.83 (5.99)
+Profit after tax (VII = V - VI) 2,287.54 1,393.32 1,026.50
+Other comprehensive income / (loss) -
+(a) Items that will not be reclassified to statement of profit and loss
+i. Remeasurement of defined benefit obligations 6.98 (0.46) 1.47
+ii. Income tax relating to above - - -
+(b) Items that will be reclassified to statement of profit and loss
+i. Revaluation of equity investment 0.18 (0.56) 0.40
+ii. Income tax relating to above (0.05) 0.14 (0.14)
+Total comprehensive income / (loss) (VIII) 7.11 (0.88) 1.73
+Total comprehensive income (VII+VIII). (comprising profit and other 2,294.65 1,392.44 1,028.23
+comprehensive income / (loss)
+Basic / diluted earnings per share (face value of ₹ 10 each) 7.83 4.90 3.64
+70
+<<<PAGE 75>>>
+SUMMARY OF RESTATED CONSOLIDATED STATEMENT OF CASH FLOWS
+(all amounts are in ₹ million, unless otherwise stated)
+Particulars For the year ended For the year ended For the year ended
+March 31, 2026 March 31, 2025 March 31, 2024
+Cash flows from Operating Activities
+Net Profit After Tax 2,287.54 1,393.32 1,026.50
+Adjustment for:
+Income Tax Expense 824.58 489.39 347.87
+Depreciation and amortisation expense 507.59 376.99 346.05
+Interest Income (42.79) (22.41) (22.90)
+Interest and Bank Charges 1,440.23 1,298.44 951.42
+Loss/(Profit) on Sale of Assets 19.48 (42.30) 8.13
+Loss/(Profit) on Sale of Investment (9.98) (20.54) -
+Effect of foreign Currency Fluctuation 47.63 (6.94) (1.62)
+Dividend Income (0.01) (0.01) -
+Operating Profit before Working Capital Changes 5074.27 3,465.94 2,655.45
+Adjustment for (Increase)/decrease in operating assets:
+Inventories 1,197.51 (1,629.84) 14.84
+Trade Receivables (3,814.72) (3,661.09) (2,516.71)
+Other Financial Assets & Current Assets (816.38) (1,027.45) 375.77
+Adjustment for Increase/(decrease) in operating liabilities:
+Trade Payables 2,895.27 4,247.24 1,600.40
+Financial Liabilities & Other Current Liabilities 1,334.49 714.92 (758.23)
+Current Provisions 12.49 (30.38) 14.19
+Non-Financial Liabilities & Other Non-Current Liabilities 1,663.09 (587.86) (785.90)
+Non-Current Provisions 30.05 8.13 5.95
+Cash Generated from Operations 7,576.07 1,499.61 605.76
+Direct Tax (Paid)/Refund during the year (824.59) (474.46) (205.53)
+Net Cash from/(used in) Operating Activities 6,751.48 1,025.15 400.23
+Cash flows from Investing Activities
+Purchase of PPE/CWIP(net)/Intangible Assets(net) (9,256.64) (3,372.93) (1,165.30)
+Sale of PPE 30.91 140.17 29.36
+Dividend Income 0.01 0.01 -
+Interest Income 45.55 23.28 22.90
+Bank balances (including non-current) not considered as cash and cash (373.60) (12.33) (65.82)
+equivalents(net)
+Purchase of Investment (778.46) (59.07)
+Sale of Investment 759.98 10.69 -
+Investment in Associates (22.37) (38.10) -
+Sale of Investment in Properties - 485.00 -
+Net Cash from / (Used in) Investing Activities (9,594.62) (2,764.21) (1,237.93)
+Cash flow from Financing Activities
+Proceeds from issue of equity share - 3,142.70 -
+IPO Issue Expense (44.75) (143.37) -
+Repayment of other than short-term borrowings (560.84) (555.15) (406.06)
+Proceeds from other than short-term borrowings 4,552.15 1,361.63 682.08
+Increase/(Decrease) in Secured Borrowing(net) 875.00 (364.33) 1,558.13
+Increase/(Decrease) in Unsecured Borrowing (127.78) 35.47 (22.57)
+Interest and Bank Charges (1,410.43) (1,294.78) (931.04)
+Dividend payment - (233.59) -
+Net Cash from / (Used in) Financing Activities 3,283.35 1,948.58 880.54
+Net Increase / (decrease) in Cash & Cash Equivalents 440.21 209.52 42.84
+Cash and cash equivalents at the beginning of the year 308.29 98.77 55.93
+Cash and cash equivalents at the end of the year (refer note 10) 748.50 308.29 98.77
+Net Increase / (decrease) in Cash & Cash Equivalents 440.21 209.52 42.84
+71

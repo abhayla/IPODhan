@@ -192,7 +192,10 @@ export function buildBoardWrites({ lane, nowIso, note, item, itemStatus, itemNot
     writes.push({
       op: 'update',
       collection: 'items',
-      doc_id: `item-${item}`,
+      // The board's item documents are zero-padded (item-01 .. item-22). Without this,
+      // items 1..9 built `item-4` and the update failed against a document that does not
+      // exist - which is how item 4's DONE write was lost. Items 10+ hid it for a whole night.
+      doc_id: `item-${String(item).padStart(2, '0')}`,
       data: {
         status: itemStatus,
         updatedAt: nowIso,

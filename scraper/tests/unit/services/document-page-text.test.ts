@@ -25,24 +25,31 @@ const NUL = String.fromCharCode(0);
 
 describe('pageRowsFromExtraction', () => {
   it('returns one row per page that has text', () => {
-    const rows = pageRowsFromExtraction(doc, { page_texts: [[1, 'alpha'], [2, 'beta']] });
+    // The inputs are EXTRACTOR INDICES, which are zero-based
+    // (extract_filing.py:2688 is `for i, p in enumerate(pdf.pages)`), so index
+    // 0 is printed page 1. These expectations were written when this suite
+    // assumed the extractor sent printed page numbers; it does not, and never
+    // did.
+    const rows = pageRowsFromExtraction(doc, { page_texts: [[0, 'alpha'], [1, 'beta']] });
     expect(rows).toEqual([
       { documentId: doc, pageNumber: 1, text: 'alpha' },
       { documentId: doc, pageNumber: 2, text: 'beta' },
     ]);
   });
 
-  it('keeps the extractor page numbers - a citation says "page 118", not "the 118th row"', () => {
-    // Pages arrive sparse when only some carried text. Renumbering them 1..n
-    // would silently move every stored citation.
+  it('stores the PRINTED page - a citation says "page 118", not "the 118th row"', () => {
+    // Pages arrive sparse when only some carried text, and sparseness is still
+    // preserved - renumbering the survivors 1..n would move every citation.
+    // What changed: the extractor's index is converted to the printed page
+    // once, at this edge, so index 17 is page 18.
     const rows = pageRowsFromExtraction(doc, { page_texts: [[17, 'a'], [94, 'b'], [383, 'c']] });
-    expect(rows.map((r) => r.pageNumber)).toEqual([17, 94, 383]);
+    expect(rows.map((r) => r.pageNumber)).toEqual([18, 95, 384]);
   });
 
   it('drops pages with NO text rather than storing empty rows', () => {
     // An empty row would satisfy "the text is saved" and satisfy nothing else.
     const rows = pageRowsFromExtraction(doc, {
-      page_texts: [[1, 'alpha'], [2, ''], [3, '   '], [4, null]],
+      page_texts: [[0, 'alpha'], [1, ''], [2, '   '], [3, null]],
     });
     expect(rows.map((r) => r.pageNumber)).toEqual([1]);
   });
@@ -71,11 +78,14 @@ describe('pageRowsFromExtraction', () => {
     expect(rows[0].text).toBe('first');
   });
 
-  it('ignores a page number that is not a positive integer', () => {
+  it('ignores an index that is not a non-negative integer', () => {
+    // Index 0 is NO LONGER rejected: it is the cover page. This assertion used
+    // to demand that it be thrown away, which is the defect this slice fixes -
+    // every document silently lost its first page and nothing ever errored.
     const rows = pageRowsFromExtraction(doc, {
-      page_texts: [[0, 'zero'], [-3, 'neg'], [1.5, 'frac'], ['x' as never, 'str'], [2, 'ok']],
+      page_texts: [[-3, 'neg'], [1.5, 'frac'], ['x' as never, 'str'], [0, 'cover'], [1, 'ok']],
     });
-    expect(rows.map((r) => r.pageNumber)).toEqual([2]);
+    expect(rows.map((r) => r.pageNumber)).toEqual([1, 2]);
   });
 });
 

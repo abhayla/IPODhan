@@ -94,6 +94,20 @@ test('buildBoardWrites adds an items/item-NN write, with lane b using meta-b', (
   assert.deepEqual(writes[1], { op: 'update', collection: 'items', doc_id: 'item-20', data: { status: 'MERGED', updatedAt: FIXED_NOW, note: 'done', lane: 'B' } });
 });
 
+// The board's item documents are zero-padded to two digits (item-01 .. item-22).
+// The test above uses item 20, so it could never have caught a padding bug — and did
+// not: item 4's DONE write failed against the live board because this built `item-4`.
+// Items 1..9 are the whole affected class, across all three lanes.
+test('a SINGLE-DIGIT item is zero-padded to the two-digit document id the board uses', () => {
+  const writes = buildBoardWrites({ lane: 'a', nowIso: FIXED_NOW, note: 'hello', item: '4', itemStatus: 'DONE' });
+  assert.equal(writes[1].doc_id, 'item-04');
+});
+
+test('a two-digit item is left alone, and a leading-zero input stays two digits', () => {
+  assert.equal(buildBoardWrites({ lane: 'a', nowIso: FIXED_NOW, note: 'x', item: '22', itemStatus: 'DONE' })[1].doc_id, 'item-22');
+  assert.equal(buildBoardWrites({ lane: 'a', nowIso: FIXED_NOW, note: 'x', item: '04', itemStatus: 'DONE' })[1].doc_id, 'item-04');
+});
+
 // ---------------------------------------------------------------------------
 // Arg parsing — the "caller cannot supply a timestamp" guard
 // ---------------------------------------------------------------------------

@@ -27,6 +27,27 @@ import type { AnchorInvestorData } from '../scrapers/anchor-investors-scraper.js
 import { createAnchorInvestors } from './data-persister.js';
 import { recordLiveStep } from './step-ledger-recorders.js';
 import logger from '../utils/logger.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { anchorInvestorsRowKey } from './child-row-keys.js';
+import {
+  createChildRowNoter,
+  type UnresolvedNoterFieldSources,
+  type UnresolvedNoterSource,
+} from './child-row-unresolved-noter.js';
+import type {
+  ChildConsolidationTable,
+  ChildRowInput,
+  ConsolidatedChildRowsResult,
+} from './data-consolidation-orchestrator.js';
+
+/**
+ * The consolidation source rank for an anchor allocation report. `DRHP` is what
+ * `scraperSourceForDocType` returns for every filing doc type and what this
+ * persister already passes to the admin protection gate — stated once here so
+ * the two calls cannot drift apart.
+ */
+const ANCHOR_SOURCE: UnresolvedNoterSource = 'DRHP';
+const ANCHOR_DOC_TYPE = 'ANCHOR_ALLOCATION_REPORT';
 
 export interface AnchorPersistOptions {
   companyName: string;
@@ -68,6 +89,29 @@ export interface AnchorPersisterDeps {
     data: Record<string, unknown>,
     scraperName: string
   ) => Promise<{ filtered: Record<string, unknown> }>;
+  /**
+   * Item 1 slice s7c — `DataConsolidationOrchestrator`, narrowed to the one
+   * method this module calls, so `anchor_investors` files provenance like the
+   * other seven child tables of the item-1 contract.
+   *
+   * Optional, unlike the filing persister's (which is REQUIRED since F-101):
+   * this persister's only production caller is `runAnchorAutoPersist`, which
+   * threads the filing door's already-built deps, and the manual CLI door
+   * builds its deps elsewhere. An absent consolidator under an ON flag is not
+   * silent — it writes the row and files the `unresolved:` marker, exactly as
+   * the filing persister's own fallback branch does.
+   */
+  childRowConsolidator?: {
+    consolidatedUpsertChildRows(
+      ipoId: string,
+      tableName: ChildConsolidationTable,
+      rows: ChildRowInput[],
+      source: string,
+      docType?: string
+    ): Promise<ConsolidatedChildRowsResult>;
+  };
+  /** Where the `unresolved:` provenance marker is filed. */
+  fieldSources?: UnresolvedNoterFieldSources;
 }
 
 /**
@@ -106,6 +150,13 @@ export interface AnchorPersistSummary {
    * verdict and this list only for which reconciliations were unavailable.
    */
   notCheckable: string[];
+  /**
+   * Item 1 slice s7c. Present ONLY when child-row consolidation ran and could
+   * not resolve the row (no consolidator injected, the consolidator threw, or
+   * it skipped the row). The anchor row itself is still written in every one of
+   * those cases; this reports that its provenance is a marker, not a resolution.
+   */
+  unresolvedChildRows?: string[];
   /** Populated only when a gate failed; the run wrote nothing. */
   refusedReason: string | null;
   /** W-142: which gate refused, stated structurally — never parsed out of `refusedReason`. */
@@ -506,16 +557,24 @@ export async function persistAnchorReport(
   // Admin field protection. Whole-row semantics: createAnchorInvestors rewrites
   // every column of the single anchor row, so a protected field cannot survive a
   // partial write — if any is protected, nothing is written.
+  /**
+   * Every column this persister writes, in one object. Built once and used by
+   * BOTH gates that reason about the whole row: admin field protection (which
+   * refuses the write if any column is protected, because the row is rewritten
+   * whole) and the s7c consolidation call (which files provenance per column).
+   */
+  const anchorRowPayload: Record<string, unknown> = {
+    bidDate: data.bidDate,
+    totalSharesOffered: data.totalSharesOffered,
+    totalAmountRaised: data.totalAmountRaised,
+    anchorInvestorsCount: data.anchorInvestorsCount,
+    lockIn50PercentDate: data.lockIn50PercentDate,
+    lockInRemainingDate: data.lockInRemainingDate,
+    investorList: publishableRows,
+  };
+
   if (deps.protectionFilter) {
-    const payload: Record<string, unknown> = {
-      bidDate: data.bidDate,
-      totalSharesOffered: data.totalSharesOffered,
-      totalAmountRaised: data.totalAmountRaised,
-      anchorInvestorsCount: data.anchorInvestorsCount,
-      lockIn50PercentDate: data.lockIn50PercentDate,
-      lockInRemainingDate: data.lockInRemainingDate,
-      investorList: publishableRows,
-    };
+    const payload = anchorRowPayload;
     const result = await deps.protectionFilter(ipoId, 'anchor_investors', payload, 'DRHP');
     const kept = result.filtered as Record<string, unknown>;
     const blocked = Object.keys(payload).filter((c) => !(c in kept));
@@ -533,6 +592,67 @@ export async function persistAnchorReport(
         refusedReason: reason,
         refusedKind: 'protected_field',
       };
+    }
+  }
+
+  // ---- Item 1 slice s7c: the eighth child table's provenance --------------
+  //
+  // Flag OFF: nothing below runs and the write is byte-identical to the
+  // pre-s7c one. Flag ON: every column of the anchor row is sent to the
+  // consolidator so `field_sources` carries a row per (ipo, anchor_investors,
+  // '', column) — the provenance the other seven tables already file.
+  //
+  // NO VALUE IS MERGED BACK, and that is a decision, not an omission. This
+  // row's seven columns are ONE arithmetic unit: `runAnchorChecks` passes only
+  // because the investor rows sum to the printed totals and the lock-in dates
+  // sit after the bid date. Taking one column's value from a different source
+  // while the rest come from this read would publish a row whose own gates no
+  // longer close — an anchor book whose investors do not add up. The day a
+  // second source writes this table, the merge-back has to be decided for the
+  // row AS A SET (re-run `runAnchorChecks` over the merged row), never field by
+  // field. Until then the resolved values are expected to equal this run's,
+  // since this persister is the table's only writer.
+  const unresolvedChildRows: string[] = [];
+  if (apply && FEATURE_FLAGS.ENABLE_CHILD_TABLE_CONSOLIDATION) {
+    const noter = createChildRowNoter({
+      apply,
+      ipoId,
+      source: ANCHOR_SOURCE,
+      lineage: () => ({ method: 'ANCHOR_ALLOCATION_REPORT', docType: ANCHOR_DOC_TYPE }),
+      fieldSources: deps.fieldSources,
+      updatedBy: 'ANCHOR_PERSISTER',
+      logPrefix: '[AnchorPersister]',
+    });
+    const rowKey = anchorInvestorsRowKey();
+    if (!deps.childRowConsolidator) {
+      logger.error(
+        { ipoId, table: 'anchor_investors' },
+        '[AnchorPersister] ENABLE_CHILD_TABLE_CONSOLIDATION is on but no childRowConsolidator was injected — falling back to the unresolved write'
+      );
+      unresolvedChildRows.push(`anchor_investors ${rowKey} (no childRowConsolidator injected)`);
+      await noter.markChildRowsUnresolved('anchor_investors', 'no-consolidator-injected');
+    } else {
+      let resolved: ConsolidatedChildRowsResult | undefined;
+      try {
+        resolved = await deps.childRowConsolidator.consolidatedUpsertChildRows(
+          ipoId,
+          'anchor_investors',
+          [{ rowKey, data: anchorRowPayload }],
+          ANCHOR_SOURCE,
+          ANCHOR_DOC_TYPE
+        );
+      } catch (error) {
+        // The row is still written below, unchanged — losing provenance is the
+        // cheap loss, losing the anchor table off the live page is not.
+        const why = await noter.noteConsolidationThrew('anchor_investors', error, { rowKey });
+        unresolvedChildRows.push(`anchor_investors ${rowKey} (${why})`);
+      }
+      const decided = resolved?.rows[0];
+      if (resolved !== undefined && (!decided || decided.skipped)) {
+        const reason = decided?.skipReason ?? 'NO_RESULT';
+        unresolvedChildRows.push(`anchor_investors ${rowKey} (consolidation skipped: ${reason})`);
+        await noter.markChildRowsUnresolved('anchor_investors', `consolidation-skipped: ${reason}`);
+      }
     }
   }
 
@@ -575,6 +695,9 @@ export async function persistAnchorReport(
   }
 
   return {
+    // Only when consolidation ran and something went wrong. Absent otherwise,
+    // so the flag-OFF summary is byte-identical to the pre-s7c one.
+    ...(unresolvedChildRows.length > 0 ? { unresolvedChildRows } : {}),
     written: 1,
     investorsWritten: publishableRows.length,
     totals,

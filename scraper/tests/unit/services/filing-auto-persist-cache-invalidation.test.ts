@@ -50,6 +50,13 @@ vi.mock('@ipodhan/shared', () => ({
   FinancialDataRepository: vi.fn(),
   FieldSourcesRepository: vi.fn(),
   IpoRiskFactorsRepository: vi.fn(),
+  // F-101: buildFilingPersistDeps now constructs the child-row consolidator,
+  // which needs this. The partial mock is what made this file fail at module
+  // load the moment production wiring changed - which is the test doing its job.
+  DataConflictsRepository: vi.fn(),
+}));
+vi.mock('@ipodhan/shared/repositories/listing-performance-repository', () => ({
+  ListingPerformanceRepository: vi.fn(),
 }));
 vi.mock('@ipodhan/shared/db/schema', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;

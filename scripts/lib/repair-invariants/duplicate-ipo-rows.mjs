@@ -40,16 +40,71 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const LIVE_STATUSES = ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'];
 
 /**
+ * How far two rows' open dates may sit apart and still be the same IPO.
+ *
+ * WHY A TOLERANCE AT ALL. Grouping on fold + EXACT open date splits a twin pair whose two
+ * sources disagree about the open day, which is exactly what happened: on ipodhan_staging
+ * "H R Hygiene Products" sits at 2026-07-26 against its three twins at 2026-07-29, and
+ * "Shree Balaji Mala Textiles" at 2026-07-19 against its three at 2026-07-22 — both a 3-day
+ * spread, both invisible to an exact-date group.
+ *
+ * WHY 3, MEASURED not guessed (read-only sweep of both slots, 2026-09-16). Live rows under
+ * the widened fold, violation groups by window: staging 0d/1d/2d -> 9, 3d -> 10, 4d/5d/7d ->
+ * 10 (no further growth); ipodhan -> 0 at EVERY window. 3 is the smallest window that unifies
+ * the real twins, and widening past it to a week adds nothing, so there is no evidence for a
+ * looser value. The single group 3d adds over 2d is `cubehighwaystrust` — two LISTED MAINBOARD
+ * rows with the identical name "Cube Highways Trust" (slugs cube-highways-trust @2026-07-19 and
+ * cube-highways-trust-cube-highways-trust-invit @2026-07-22), a genuine duplicate, not a false
+ * merge. Re-measure before changing this number.
+ */
+const OPEN_DATE_TOLERANCE_DAYS = 3;
+
+/**
  * Fold a company name to its identity. Corporate-form words and the country carry no identity;
  * "Asset Reconstruction Co.(India) Ltd." and "ASSET RECONSTRUCTION COMPANY (INDIA) LIMITED" are
- * the same company and must fold to the same string.
+ * the same company and must fold to the same string. Item 12 slice F also strips the trailing
+ * "(<Company> IPO)" tail (with an optional 1-2 letter status token after it) that listing-page
+ * discovery appends to a twin row.
  */
+// Hand copy of BRACKETED_IPO_TAIL in the TypeScript SSOT. Kept in parity by
+// scripts/tests/company-identity-fold-parity.test.mjs.
+const BRACKETED_IPO_TAIL = /\s*\([^()]*\bipo\s*\)(?:\s+[A-Za-z]{1,2})?\s*$/i;
+
 export function foldName(s) {
   return String(s || '')
+    .replace(BRACKETED_IPO_TAIL, '')
     .toLowerCase()
     .replace(/[.,()&'"-]/g, ' ')
     .replace(/\b(private|pvt|limited|ltd|company|co|corporation|corp|incorporated|inc|and|the|of|india|indian)\b/g, ' ')
     .replace(/\s+/g, '');
+}
+
+/**
+ * `open_date` reaches this module as EITHER a 'YYYY-MM-DD' string or a Date, and BOTH shapes
+ * were mishandled before item 12 slice F:
+ *
+ *  1. `String(aDate).slice(0, 10)` on a Date yields "Sun Jul 26" — a useless label, and a
+ *     truncated string for the day-difference maths to parse.
+ *  2. `aDate.toISOString().slice(0, 10)` is ALSO wrong here (F-104, the class the header of
+ *     `scripts/audit/fold-collision-report.mjs` records): node-pg parses a bare `date` into a
+ *     Date at LOCAL midnight, so on this IST machine the UTC day is the day BEFORE the one the
+ *     server sent — a run on 2026-09-16 printed 2026-07-30 for a row whose open_date is
+ *     2026-07-31.
+ *
+ * A bare `date` carries no time zone; the calendar day the server sent is the LOCAL day of that
+ * Date. Read the local Y/M/D components, never a UTC projection of them.
+ */
+function isoDay(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const m = String(value).match(/^\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : null;
 }
 
 /**
@@ -64,14 +119,47 @@ export default async function duplicateIpoRowsInvariant(pool) {
     [LIVE_STATUSES],
   );
 
-  const groups = new Map();
+  // Group by fold, then split each fold's rows into date CLUSTERS: consecutive rows whose
+  // open dates are no more than OPEN_DATE_TOLERANCE_DAYS apart belong to one cluster. A row
+  // with no open date clusters only with other dateless rows of the same fold.
+  const byFold = new Map();
   for (const r of rows) {
     const fold = foldName(r.company_name);
     if (!fold) continue;                       // a nameless row is a different defect
-    const day = r.open_date ? String(r.open_date).slice(0, 10) : 'no-open-date';
-    const key = `${fold}|${day}`;
-    if (!groups.has(key)) groups.set(key, { fold, openDate: day, rows: [] });
-    groups.get(key).rows.push(r);
+    if (!byFold.has(fold)) byFold.set(fold, []);
+    byFold.get(fold).push(r);
+  }
+
+  const groups = new Map();
+  for (const [fold, members] of byFold) {
+    const sorted = [...members].sort((a, b) =>
+      String(isoDay(a.open_date) ?? '').localeCompare(String(isoDay(b.open_date) ?? '')));
+    let cluster = [];
+    let seq = 0;
+    const flush = () => {
+      if (!cluster.length) return;
+      const days = cluster.map((r) => isoDay(r.open_date) ?? 'no-open-date');
+      const label = days[0] === days[days.length - 1] ? days[0] : `${days[0]}..${days[days.length - 1]}`;
+      groups.set(`${fold}|${seq++}`, { fold, openDate: label, rows: cluster });
+      cluster = [];
+    };
+    for (const r of sorted) {
+      if (!cluster.length) { cluster = [r]; continue; }
+      // BOUND THE WHOLE CLUSTER, NOT EACH STEP. Comparing only against the PREVIOUS row is
+      // transitive: rows two days apart each would chain indefinitely, so five of them span
+      // eight days inside a group labelled "3-day". Measure from the cluster's FIRST row, so
+      // max(open_date) - min(open_date) <= OPEN_DATE_TOLERANCE_DAYS holds for every group the
+      // invariant reports. (Tier A review of #667, blocker 2.)
+      const first = isoDay(cluster[0].open_date);
+      const day = isoDay(r.open_date);
+      const near = first && day
+        ? Math.abs((new Date(`${day}T00:00:00Z`) - new Date(`${first}T00:00:00Z`)) / 86400000)
+            <= OPEN_DATE_TOLERANCE_DAYS
+        : (!first && !day);
+      if (near) cluster.push(r);
+      else { flush(); cluster = [r]; }
+    }
+    flush();
   }
 
   const scope = (process.env.DUPLICATE_INVARIANT_FOLDS || '')

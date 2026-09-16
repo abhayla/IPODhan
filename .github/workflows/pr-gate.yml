@@ -70,7 +70,7 @@ jobs:
         # stop catching that pattern class. No deps needed (Node builtins only).
         run: node --test scripts/tests/check-write-ratchet.test.mjs
 
-      - name: Web integration baseline gate self-test (item 1 slice s3d, issue #461)
+      - name: "Web integration baseline gate self-test (item 1 slice s3d, issue #461)"
         # Mutation-proof: scripts/tests/check-web-integration-baseline.test.mjs
         # imports the actual exported functions (extractFailingFiles,
         # normalizeFileName, diffAgainstBaseline) from the checker script, so a
@@ -81,14 +81,14 @@ jobs:
         # (issue #461). No deps needed (Node builtins only).
         run: node --test scripts/tests/check-web-integration-baseline.test.mjs
 
-      - name: Scripts type-check exclude shrink-only guard (issue #434)
+      - name: "Scripts type-check exclude shrink-only guard (issue #434)"
         # config/scripts-typecheck-exclude-baseline.json is the only
         # legitimate source of scraper/tsconfig.scripts.json exclusions; a
         # hand-added exclusion or a grown exclude count turns this red. No
         # deps needed (Node builtins only).
         run: node --test scripts/tests/scripts-typecheck-exclude-shrink.test.mjs
 
-      - name: Substance-check self-tests (#597, #601, #608)
+      - name: "Substance-check self-tests (#597, #601, #608)"
         # These three were UNWIRED and therefore never ran in CI - they passed
         # by not being in the pipeline, which is the wire-or-retire shape this
         # repo already has a failure class for. Found 2026-09-11 while checking
@@ -120,16 +120,16 @@ jobs:
         # nightly checks), so weakening/deleting a predicate turns this red
         # before it can silently stop catching that finding class again. No
         # deps needed (Node builtins only).
-        run: node --test scripts/tests/audit-detection-floor.test.mjs
+        run: |
+          node --test scripts/tests/audit-detection-floor.test.mjs
+          node --test scripts/tests/detection-floor-issue-size-select.test.mjs
+          node --test scripts/tests/check-design-consistency-exit.test.mjs
 
-      - name: Ratios extraction-yield check self-test (lane B item 8)
-        # The check this guards was specified as "current_ratio non-null for
-        # every COMPLETED Ratios document". Measured on staging 2026-09-11: 34
-        # such documents exist and every one is PENDING, so the literal reading
-        # is true of the EMPTY SET and would page green forever while the
-        # feature had never run. These tests pin the empty population to
-        # UNVERIFIABLE rather than PASS; flipping it back kills three of them.
-        run: node --test scripts/tests/ratios-extraction-yield.test.mjs
+      - name: "NOT_APPLICABLE documents check self-test (lane B, #677)"
+        # ratios_extraction_yield was retired on 2026-09-16 (#677): its population,
+        # RATIOS_BASIS_ISSUE_PRICE, has no extractor by design, so the check could never
+        # move. The module now NAMES never-extractable PENDING documents by type.
+        run: node --test scripts/tests/not-applicable-documents.test.mjs
 
       - name: Row-key coverage classifier self-test (F-101)
         # The pure classifier's unit proofs ran NOWHERE in CI: a check that
@@ -428,6 +428,19 @@ jobs:
         # report and the repair disagree about what they are about to delete.
         run: node --test scripts/tests/company-identity-fold-parity.test.mjs
 
+      - name: Duplicate-IPO-rows invariant unit tests (item 12 slice F)
+        # scripts/lib/repair-invariants/duplicate-ipo-rows.mjs is the check that
+        # says whether a duplicate-row repair HELD, so the shape of its answer is
+        # gated here rather than left to a staging run. MUST stay INSIDE the
+        # Node 22 window above: the test imports the invariant, which shares the
+        # company-identity fold with the TypeScript SSOT.
+        #
+        # What it pins: the bracketed "(<Company> IPO)" discovery tail folds away,
+        # a bare trailing token does NOT (that would merge two companies on one
+        # letter), rows within the scrape-window tolerance group as ONE finding,
+        # and a longer chain of rows does not exceed that tolerance in aggregate.
+        run: node --test scripts/tests/duplicate-ipo-rows-invariant.test.mjs
+
       - name: Row-key staleness invariant unit tests (item 12 slice C)
         # scripts/lib/repair-invariants/normalized-name-current.mjs is the tool a
         # 544-row re-key is proven with, so the SHAPE of its answer is gated here
@@ -440,6 +453,26 @@ jobs:
         # row - and still FAILS. If it returned zero, a backfill that silently
         # never ran would read as a clean gate.
         run: node --test scripts/tests/normalized-name-current.test.mjs
+
+      - name: Heading-hash runtime invariant self-test (item 1 slice s13)
+        # This file was MERGED (fc2f8776) and had never run in CI. Its whole
+        # subject is a runtime invariant - that a stored ipo_risk_factors
+        # heading_hash still re-computes to itself under the current function -
+        # and the guard for it did not execute on any PR. A guard that never
+        # runs is the same class of defect as the hole it guards against.
+        #
+        # Same Node 22 constraint as its sibling above: it imports
+        # headingHashForRiskFactor from the TypeScript SSOT via erasable type
+        # stripping, so on Node 20 it cannot load at all.
+        run: node --test scripts/tests/heading-hash-current.test.mjs
+
+      - name: Ledger record-event self-test (#581)
+        # Also merged and never run in CI. It pins the coupling that stops the
+        # status board going stale behind the ledger, and the zero-padding fix
+        # (item-4 vs item-04) WITHOUT which every item numbered 1..9 silently
+        # failed to write - a bug the only pre-existing test could not catch
+        # because it used item 20, a two-digit number.
+        run: node --test scripts/tests/record-event.test.mjs
 
       - name: Setup Node.js 20 (restore pinned version for the rest of the job)
         uses: actions/setup-node@v4
@@ -502,7 +535,7 @@ jobs:
         run: npx vitest run
         working-directory: ./packages/shared
 
-      - name: Run TZ-explicit case driver (issue #478)
+      - name: "Run TZ-explicit case driver (issue #478)"
         # The TZ-explicit case file (tests/tz-cases/*.tzcase.test.ts) is
         # deliberately excluded from vitest.config.ts's own include glob
         # (vitest.tzcase.config.ts) and only ever meaningful when spawned by
@@ -544,7 +577,7 @@ jobs:
         run: npx vitest run --config vitest.config.ts
         working-directory: ./scraper
 
-      - name: Run pipeline stage harness (test ladder, issue #258)
+      - name: "Run pipeline stage harness (test ladder, issue #258)"
         # T-481: the stage-isolated harness implementing
         # docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6 - one
         # fixture-in/expected-output-file-out test per pipeline stage. These
@@ -691,7 +724,7 @@ jobs:
                 console.log('row-key coverage DB check: reachable, current_database()=' + rows[0].db);
                 return c.end();
               })
-              .catch((e) => { console.error('row-key coverage DB unreachable — failing, not skipping:', e.message); process.exit(1); });
+              .catch((e) => { console.error('row-key coverage DB unreachable - failing, not skipping:', e.message); process.exit(1); });
           "
           node --test scripts/tests/row-key-coverage.db.test.mjs
 
@@ -739,6 +772,10 @@ jobs:
           tests/integration/peer-company-replace-atomicity.integration.test.ts
           tests/integration/field-sources-row-key-provenance.integration.test.ts
           tests/integration/field-sources-row-key-unique.integration.test.ts
+          tests/integration/ipo-field-plan-row-key-unique.integration.test.ts
+          tests/integration/ipo-field-plan-repository.integration.test.ts
+          tests/integration/field-plan-walk-resume.integration.test.ts
+          tests/integration/field-plan-generation-wiring.integration.test.ts
           tests/integration/normalizer-sql-agreement.integration.test.ts
           tests/integration/derived-key-recompute-guard.integration.test.ts
           tests/integration/alternative-sources.integration.test.ts
@@ -775,6 +812,20 @@ jobs:
 
       - name: Run require-release-branch test suite
         run: bash scripts/deploy/tests/require-release-branch.test.sh
+
+      # Issue #656: the rollout-flag liveness gate (assert_rollout_flags_live,
+      # T-297 D9 / #193) is what refuses a deploy when a `// LIVE-GATE`
+      # percentage is 0 or a `// PROD-REQUIRED-TRUE` flag is not literally
+      # 'true' -- the T-282 class where CONSOLIDATION_PERCENTAGE=0 silently
+      # voids the whole consolidation pipeline and every downstream reading
+      # is a clean-looking zero. The guard and its cases have existed since
+      # #352 (hardened over four T-467 rounds), but NOTHING in CI ran them:
+      # the `gate` job runs only the node self-tests under scripts/tests, and
+      # this job named the two deploy bash suites individually without this
+      # one. An unrun suite is not coverage -- a revert of the guard would
+      # have gone green. Named explicitly because pr-gate never globs.
+      - name: "Run assert-env-keys test suite (rollout-flag liveness gate, #656)"
+        run: bash scripts/tests/assert-env-keys.test.sh
 
       # Slice s17: deploy-linux.yml no longer triggers on push; staging is
       # deployed by a 15-minute poll that fires only when main's head differs

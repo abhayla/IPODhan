@@ -112,8 +112,18 @@ export async function runHealthCheck(
   }
 }
 
-/** camelCase key for the ScraperHealth map, matching the pre-T-195 nse/bse/apiFallback naming convention. */
-function healthKey(source: ScraperSource): string {
+/**
+ * camelCase key for the ScraperHealth map, matching the pre-T-195
+ * nse/bse/apiFallback naming convention.
+ *
+ * Exported for the test that asserts this job covers EVERY source declared in
+ * freshness-slo.ts. That test previously hardcoded the six key names, so when
+ * item 16 slice 2 removed the retired Moneycontrol SLO the test failed on a
+ * literal rather than on the behaviour it names. Asserting through this
+ * function keeps its stated intent - follow the config, do not hardcode - and
+ * means the next source added or retired needs no edit here.
+ */
+export function healthKey(source: ScraperSource): string {
   const map: Partial<Record<ScraperSource, string>> = {
     API_FALLBACK: 'apiFallback',
     INVESTORGAIN_GMP: 'investorgainGmp',

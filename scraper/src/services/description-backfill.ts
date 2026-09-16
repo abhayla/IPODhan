@@ -8,6 +8,7 @@
  * company_description + sector make consolidation manage them.
  */
 import type { ScrapedIPO } from '../utils/validators.js';
+import { istDateIso } from '../scheduler/due-step-cycle.js';
 
 export interface DescBackfillIpo {
   id: string;
@@ -46,7 +47,7 @@ export function buildDescriptionScrapedIPO(ipo: DescBackfillIpo, description: st
         ? parseFloat(ipo.issueSize) || 0
         : ipo.issueSize;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = istDateIso(new Date());
   return {
     companyName: ipo.companyName,
     issueSize: issueSizeNum,

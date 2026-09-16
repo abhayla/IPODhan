@@ -103,13 +103,6 @@ export const FRESHNESS_SLOS: FreshnessSLO[] = [
       'priceRangeMin/priceRangeMax/open_date/close_date sources[1] (field-priority-matrix.ts) — same class/SLO as NSE.',
   },
   {
-    source: 'MONEYCONTROL',
-    dataClass: 'listed-company-statics',
-    maxStalenessMs: LISTED_STATICS_MAX_STALENESS_MS,
-    justification:
-      'Broad supplementary coverage, lower-criticality than the NSE/BSE/GMP specialists; matches CacheTTL.REFERENCE (7d) for slow-changing reference data.',
-  },
-  {
     source: 'API_FALLBACK',
     dataClass: 'listed-company-statics',
     maxStalenessMs: LISTED_STATICS_MAX_STALENESS_MS,
@@ -167,12 +160,6 @@ export const DUE_STEP_FRESHNESS_SLOS: FreshnessSLO[] = [
     dataClass: 'open-ipo-price-band-dates',
     maxStalenessMs: DUE_STEP_DISCOVERY_MAX_STALENESS_MS,
     justification: 'Due-step scheduler: same discovery slots as NSE (round-3 C4).',
-  },
-  {
-    source: 'MONEYCONTROL',
-    dataClass: 'listed-company-statics',
-    maxStalenessMs: DUE_STEP_DAILY_MAX_STALENESS_MS,
-    justification: 'Due-step scheduler: aggregator refresh cadence is once per 24h (round-3 C4).',
   },
   {
     source: 'API_FALLBACK',

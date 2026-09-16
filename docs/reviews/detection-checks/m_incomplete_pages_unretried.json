@@ -1,0 +1,11 @@
+{
+  "id": "m_incomplete_pages_unretried",
+  "findingClass": "a document whose read was STOPPED before every page was read (extraction envelope status INCOMPLETE_PAGES, D6 ledger row NOT_AVAILABLE_YET with unreadPages) is never re-read, so the filing is permanently missing the pages the ceiling cut — and unlike m_extraction_stuck this document does NOT look stuck: it completed, its fields persisted, and every existing terminal-state check reads it as healthy",
+  "round7Findings": [],
+  "sourceTask": "OD-55 (owner, 2026-09-11) ceiling-and-records slice, lane B — the per-document extraction budget was removed and replaced by a 2-hour hung-process ceiling that names its unread pages; nothing yet watches whether those named pages are ever read",
+  "registryClass": "silent-terminal-state-invisible-to-audit",
+  "failThreshold": "any document with a D6 ledger row whose evidence carries a non-empty unreadPages array, where the document's retained PDF still exists (OD-32's seven-day window) and no later extraction at the same or higher EXTRACTOR_VERSION has produced an envelope without unreadPages for that sha256, for more than 48h",
+  "severity": "P1",
+  "unverifiableWhen": "the retained PDF has already been purged (past OD-32's seven-day window) — the pages can no longer be re-read from it, so the finding is a permanent data gap to report rather than a retry to schedule; the check must say WHICH of the two it found, never fold them together",
+  "section": "notCoveredByThisManifest"
+}

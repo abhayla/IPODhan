@@ -76,3 +76,41 @@ export function ipoValuationRowKey(
   if (trimmed === '') return null;
   return trimmed;
 }
+
+/**
+ * `anchor_investors` — the row key is the reserved singleton sentinel `''`.
+ *
+ * Derived from what the table actually declares, which is NOT what the other
+ * three were derived from. `anchor_investors` (packages/shared/src/db/
+ * schema.ts:1368-1391, migration 0022_add_anchor_investors.sql) carries NO
+ * unique constraint at all — only the `ipos` foreign key, three CHECK
+ * constraints on the totals, and two plain btree indexes
+ * (`idx_anchor_investors_ipo_id`, `idx_anchor_investors_bid_date`). An index is
+ * not a uniqueness declaration, so the database would accept two rows for one
+ * IPO.
+ *
+ * What makes the row a singleton is the WRITER, and the writer is the thing
+ * provenance must describe: `createAnchorInvestors` (data-persister.ts:2000)
+ * resolves the row by `findByIPOId(ipoId)` and UPDATES it when it exists,
+ * inserting only when it does not. `ipo_id` alone is therefore the identity
+ * every write of this table uses, which is exactly the condition
+ * `SINGLETON_ROW_CHILD_TABLES` describes (`anchor_investors` is already a
+ * member). The schema's own section header says the same: "TABLE 19:
+ * ANCHOR_INVESTORS (One-to-One)".
+ *
+ * WHY NOT `bid_date`, the only other NOT NULL non-total column: it is a FIELD
+ * this persister consolidates, and a key must never be a value the writer can
+ * rewrite — a corrected bid date would move the row's identity while the writer
+ * kept updating the same physical row, orphaning the old key's provenance.
+ *
+ * WHY NOT the investor name: investors are not rows here. `investor_list` is a
+ * single jsonb column (`IndividualInvestor[]`) on the one anchor row, so there
+ * is no per-investor row to key and `rowKeyForName` has nothing to key. The day
+ * investors become their own table, that table gets its own key function.
+ *
+ * A function rather than an inline `''` so the justification has one home and a
+ * future unique constraint that widens the identity has one place to break.
+ */
+export function anchorInvestorsRowKey(): string {
+  return '';
+}

@@ -16,6 +16,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runHealthCheck } from '../../../../src/scheduler/jobs/health-check.js';
 import { FRESHNESS_SLOS } from '../../../../src/config/freshness-slo.js';
+import { healthKey } from '../../../../src/scheduler/jobs/health-check.js';
 
 function makeRedis(consecutiveFailures: Record<string, number> = {}) {
   return {
@@ -113,12 +114,21 @@ describe('runHealthCheck (T-195 staleness fix)', () => {
     const result = await runHealthCheck(redis, repo);
 
     const keys = Object.keys(result.scrapers).sort();
-    expect(keys).toContain('moneycontrol');
-    expect(keys).toContain('chittorgarh');
-    expect(keys).toContain('investorgainGmp');
+
+    // Derived from the config this test is named after, not hardcoded. It used
+    // to list the six key names literally, so when item 16 slice 2 removed the
+    // RETIRED Moneycontrol SLO the test failed on a literal while the
+    // behaviour it describes - cover every declared source - was still correct.
+    // A test that has to be edited whenever the config legitimately changes is
+    // pinning the wrong thing.
+    const expected = FRESHNESS_SLOS.map((slo) => healthKey(slo.source)).sort();
+    expect(keys).toEqual(expected);
+
+    // ...and it must not be vacuous: an empty SLO set would make the line above
+    // pass while the health check reported nothing at all.
+    expect(expected.length).toBeGreaterThan(3);
     expect(keys).toContain('nse');
     expect(keys).toContain('bse');
-    expect(keys).toContain('apiFallback');
   });
 
   it('returns UNKNOWN status without throwing when the repository read fails unexpectedly', async () => {

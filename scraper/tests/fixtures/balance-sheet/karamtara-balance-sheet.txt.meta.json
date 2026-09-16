@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://www.sebi.gov.in/sebi_data/attachdocs/sep-2026/1788514905936.pdf",
+  "capturedAt": "2026-09-11",
+  "ipoId": "karamtara-engineering",
+  "company": "Karamtara Engineering Limited",
+  "note": "RHP pages 18, 73, 74, 75, each captured for a reason. p73 is the 'Summary of Restated Consolidated Statement of Assets and Liabilities' - the real balance sheet. p74 is the restated P&L, without which there is no column structure to align any row against. p75 is the cash-flow statement, which carries a SECOND row labelled 'Inventories' (1,197.51 (1,629.84) 14.84) - the movement, not the stock balance - that passes the clean-data-row guard exactly like the real one. p18 carries the heading 'statement of assets and liabilities' with no statement at all: measured on this document, 20 pages match that heading and exactly ONE is the statement, so a locator using the heading alone is wrong 19 times out of 20. Text layer only; the 17,662,879-byte PDF is not committed (sha256 383e037890536599866aad760d14412ee13748e3fb8c28e62a83f5ab38cf000e, size matches the staging documents row exactly)."
+}
