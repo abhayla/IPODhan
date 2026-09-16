@@ -336,6 +336,112 @@ export interface DocumentCycleSummary {
   calendarGateReason: CalendarGateReason | null;
 }
 
+/**
+ * #623: `extraction_blocked=N`/`extraction_failed=N` was a bare count while the
+ * cause of every blocked document already sits in `documents.extraction_error`
+ * (signal-ownership R1/R6 — a number is not a reading). This classifies that
+ * stored reason into one of a small set of classes so the cycle summary can name
+ * WHICH kind of block it is: a validator correctly refusing bad data (class 3 in
+ * #623) reads very differently from a document parked after exhausting retries
+ * (class 4) or a photographed PDF with no text layer (class 2). `other` is the
+ * explicit fallback for a reason string that matches none of the known shapes —
+ * it must never be silently misfiled into one of the named classes.
+ */
+export type BlockedReasonClass =
+  | 'zero_rows'
+  | 'no_text'
+  | 'validation_refusal'
+  | 'parked_after_attempts'
+  | 'other';
+
+/**
+ * Classifies a `documents.extraction_error` string into a `BlockedReasonClass`.
+ * Order matters: `parked_after_attempts` and `zero_rows`/`no_text` are checked
+ * before the broader `validation_refusal` patterns so a retry-exhaustion message
+ * that happens to mention e.g. "mismatch" is still filed under
+ * `parked_after_attempts`, not `validation_refusal`.
+ */
+export function classifyBlockedReason(reason: string | null | undefined): BlockedReasonClass {
+  if (!reason) return 'other';
+  if (/blocked_after_\d+_attempts/i.test(reason)) return 'parked_after_attempts';
+  if (/only \d+ investor rows?/i.test(reason)) return 'zero_rows';
+  if (/no text/i.test(reason)) return 'no_text';
+  if (/mismatch|disagreed|unreadable|unresolvable|mangled/i.test(reason)) return 'validation_refusal';
+  return 'other';
+}
+
+/**
+ * #623: one blocked document's identity + reason, collected during the F4 tally
+ * loop so the cycle summary can name names instead of printing a bare count.
+ */
+export interface BlockedDocumentDetail {
+  documentId: string;
+  companyName: string;
+  docType: string;
+  status: 'MANUAL_REVIEW' | 'FAILED';
+  reason: string | null;
+  reasonClass: BlockedReasonClass;
+}
+
+const MAX_NAMES_PER_CLASS_LINE = 20;
+const MAX_BLOCKED_DOCUMENTS_IN_SUMMARY = 50;
+
+/**
+ * #623: one line per reason class naming the blocked documents in it (capped),
+ * plus one line per `parked_after_attempts` document naming its own reason
+ * verbatim (attempts/version live inside that string already — see class 4 in
+ * #623, e.g. `blocked_after_10_attempts@extract_filing.py@2026-09-03`). Returns
+ * `[]` when nothing is blocked, so a clean cycle logs no extra lines at all.
+ */
+export function formatBlockedDocumentLines(details: BlockedDocumentDetail[]): string[] {
+  if (details.length === 0) return [];
+
+  const byClass = new Map<BlockedReasonClass, BlockedDocumentDetail[]>();
+  for (const d of details) {
+    const list = byClass.get(d.reasonClass) ?? [];
+    list.push(d);
+    byClass.set(d.reasonClass, list);
+  }
+
+  const lines: string[] = [];
+  const classOrder: BlockedReasonClass[] = [
+    'zero_rows',
+    'no_text',
+    'validation_refusal',
+    'parked_after_attempts',
+    'other',
+  ];
+  for (const cls of classOrder) {
+    const group = byClass.get(cls);
+    if (!group || group.length === 0) continue;
+    const names = group.map((d) => `${d.companyName}(${d.docType})`);
+    const shown = names.slice(0, MAX_NAMES_PER_CLASS_LINE);
+    const suffix = names.length > MAX_NAMES_PER_CLASS_LINE ? ` +${names.length - MAX_NAMES_PER_CLASS_LINE} more` : '';
+    lines.push(`extraction_blocked[${cls}]=${group.length}: ${shown.join(' ')}${suffix}`);
+  }
+
+  const parked = byClass.get('parked_after_attempts') ?? [];
+  for (const d of parked) {
+    lines.push(`extraction_blocked[parked_after_attempts] ${d.companyName}(${d.docType}): ${d.reason}`);
+  }
+
+  return lines;
+}
+
+/**
+ * #623: `scraper_logs.error_message` counts-by-class suffix, e.g.
+ * ` (zero_rows=8 validation_refusal=6 parked_after_attempts=2)`. Empty string
+ * when nothing is blocked, so a clean cycle's errorMessage stays exactly
+ * `null` (see the call site) rather than gaining a stray empty parenthesis.
+ */
+export function formatBlockedByClassSuffix(details: BlockedDocumentDetail[]): string {
+  if (details.length === 0) return '';
+  const counts = new Map<BlockedReasonClass, number>();
+  for (const d of details) counts.set(d.reasonClass, (counts.get(d.reasonClass) ?? 0) + 1);
+  const parts = [...counts.entries()].map(([cls, n]) => `${cls}=${n}`);
+  return ` (${parts.join(' ')})`;
+}
+
 /** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0` — the ledger `reason`. */
 export function formatCycleReason(s: DocumentCycleSummary): string {
   return (
@@ -1167,6 +1273,9 @@ export async function runDocumentCycle(
     // the loop right before `summarize()`.
     let extractionBlocked = 0;
     let extractionFailed = 0;
+    // #623: identities + reasons behind the two counters above, collected in
+    // the same post-pass-2 tally loop so the cycle summary can name names.
+    const blockedDocumentDetails: BlockedDocumentDetail[] = [];
 
     // PASS 1 — discovery, exactly as before (ledger hooks, hints, demotion),
     // under the discovery budget. W-102: this pass no longer runs extraction
@@ -1740,8 +1849,31 @@ export async function runDocumentCycle(
       try {
         for (const d of await documents.findByIPO(ipo.id)) {
           const extractionStatus = (d as { extractionStatus?: string | null }).extractionStatus;
-          if (extractionStatus === 'MANUAL_REVIEW') extractionBlocked++;
-          else if (extractionStatus === 'FAILED') extractionFailed++;
+          const extractionError = (d as { extractionError?: string | null }).extractionError ?? null;
+          const docType = (d as { type?: string }).type ?? 'UNKNOWN';
+          if (extractionStatus === 'MANUAL_REVIEW') {
+            extractionBlocked++;
+            blockedDocumentDetails.push({
+              documentId: d.id,
+              companyName: ipo.companyName,
+              docType,
+              status: 'MANUAL_REVIEW',
+              reason: extractionError,
+              reasonClass: classifyBlockedReason(extractionError),
+            });
+          } else if (extractionStatus === 'FAILED') {
+            extractionFailed++;
+            if (extractionError) {
+              blockedDocumentDetails.push({
+                documentId: d.id,
+                companyName: ipo.companyName,
+                docType,
+                status: 'FAILED',
+                reason: extractionError,
+                reasonClass: classifyBlockedReason(extractionError),
+              });
+            }
+          }
         }
       } catch (error) {
         logger.warn(
@@ -1749,6 +1881,12 @@ export async function runDocumentCycle(
           'Could not load document extraction status for the cycle summary (non-fatal)'
         );
       }
+    }
+
+    // #623: name every blocked document and its reason, grouped by class, right
+    // after the existing bare-count summary line — see formatBlockedDocumentLines.
+    for (const line of formatBlockedDocumentLines(blockedDocumentDetails)) {
+      logger.info({ source: 'DOCUMENTS' }, line);
     }
 
     const summary = summarize(
@@ -1787,7 +1925,14 @@ export async function runDocumentCycle(
         recordsProcessed: summary.found,
         recordsFailed: summary.blocked,
         durationMs: summary.durationMs,
-        errorMessage: summary.extractionBlocked > 0 ? `extraction_blocked=${summary.extractionBlocked}` : null,
+        // #623: `scraper_logs` has no free-form JSON metadata column (text
+        // columns only — see errorMessage below), so the class breakdown rides
+        // in errorMessage as a compact suffix rather than a structured field;
+        // the full per-document detail lives in the log lines above, not here.
+        errorMessage:
+          summary.extractionBlocked > 0
+            ? `extraction_blocked=${summary.extractionBlocked}${formatBlockedByClassSuffix(blockedDocumentDetails)}`
+            : null,
       } as never);
     } catch (error) {
       logger.error(
