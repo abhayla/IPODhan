@@ -81,6 +81,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
         this.db
           .select({
             tableName: ipoFieldPlan.tableName,
+            rowKey: ipoFieldPlan.rowKey,
             fieldName: ipoFieldPlan.fieldName,
             state: ipoFieldPlan.state,
             chosenSource: ipoFieldPlan.chosenSource,
@@ -96,7 +97,14 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const out: Record<string, FieldProvenance> = {};
     for (const row of rows ?? []) {
       if (!row.chosenSource) continue;
-      const key = `${row.tableName}.${row.fieldName}`;
+      // A singleton table's row_key is '' (see the schema comment on
+      // ipoFieldPlan.rowKey), so its key collapses to the historical
+      // `table.field` shape and every existing lookup (PROVENANCE_FIELD_GROUPS,
+      // the manifest) still resolves. A multi-row table (financial_statements
+      // per fiscal year) gets the row key threaded in, so two rows for the
+      // same table.field never collapse onto one entry.
+      const rowKey: string = (row.rowKey as string | undefined) ?? '';
+      const key = rowKey ? `${row.tableName}.${rowKey}.${row.fieldName}` : `${row.tableName}.${row.fieldName}`;
       const due = row.verifyDueAt ? new Date(row.verifyDueAt) : null;
       out[key] = {
         key,

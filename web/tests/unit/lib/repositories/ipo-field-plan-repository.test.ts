@@ -94,6 +94,36 @@ describe('IpoFieldPlanRepository.getIPOProvenanceMap', () => {
   it('returns an empty map rather than throwing when the IPO has no plan rows at all', async () => {
     expect(await makeRepo([]).getIPOProvenanceMap(IPO, NOW)).toEqual({});
   });
+
+  it('keeps two rows for the same table.field distinct when they carry different row keys — a multi-row table (e.g. financial_statements per fiscal year) must not collapse onto one key', async () => {
+    const rows = [
+      row({
+        tableName: 'financial_statements',
+        fieldName: 'revenue',
+        rowKey: 'FY2024',
+        chosenSource: 'DOC',
+        updatedAt: new Date('2026-09-01T00:00:00Z'),
+      }),
+      row({
+        tableName: 'financial_statements',
+        fieldName: 'revenue',
+        rowKey: 'FY2025',
+        chosenSource: 'BSE',
+        updatedAt: new Date('2026-09-05T00:00:00Z'),
+      }),
+    ];
+    const map = await makeRepo(rows).getIPOProvenanceMap(IPO, NOW);
+    const keys = Object.keys(map).sort();
+    expect(keys).toEqual(['financial_statements.FY2024.revenue', 'financial_statements.FY2025.revenue']);
+    expect(map['financial_statements.FY2024.revenue'].chosenSource).toBe('DOC');
+    expect(map['financial_statements.FY2025.revenue'].chosenSource).toBe('BSE');
+  });
+
+  it('resolves a singleton field (row_key "") exactly as before, keyed table.field with no row-key segment', async () => {
+    const map = await makeRepo([row({ rowKey: '' })]).getIPOProvenanceMap(IPO, NOW);
+    expect(Object.keys(map)).toEqual(['ipos.issue_size']);
+    expect(map['ipos.issue_size'].chosenSource).toBe('DOC');
+  });
 });
 
 describe('summariseFieldGroup — one line under a block that shows several fields', () => {
@@ -137,5 +167,24 @@ describe('summariseFieldGroup — one line under a block that shows several fiel
   it('ignores a key the block lists but the plan has no row for', () => {
     const got = summariseFieldGroup({ [fresh.key]: fresh }, [fresh.key, 'ipos.nonexistent']);
     expect(got?.confirmedAt).toEqual(new Date('2026-09-06T00:00:00Z'));
+  });
+
+  it('does not arbitrarily pick a row for a multi-row table when no explicit row key is given — a bare table.field lookup against a keyed map must miss, not silently resolve to whichever row happened to load', () => {
+    const multiRowMap = {
+      'financial_statements.FY2024.revenue': {
+        ...fresh,
+        key: 'financial_statements.FY2024.revenue',
+        tableName: 'financial_statements',
+        fieldName: 'revenue',
+      },
+      'financial_statements.FY2025.revenue': {
+        ...older,
+        key: 'financial_statements.FY2025.revenue',
+        tableName: 'financial_statements',
+        fieldName: 'revenue',
+      },
+    };
+    const got = summariseFieldGroup(multiRowMap, ['financial_statements.revenue']);
+    expect(got).toBeNull();
   });
 });
