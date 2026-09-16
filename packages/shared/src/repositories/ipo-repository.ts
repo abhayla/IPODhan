@@ -961,6 +961,22 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Repair-tool entry point (lane C item 2 slice 6 — face-value-as-band
+   * class): write ONLY `faceValue`. A sibling of `applyOfferTerms` rather
+   * than folding `faceValue` into it, because the two are sourced from
+   * DIFFERENT signals in the repair tool that calls them (the offer terms
+   * from report 82's Issue Price; the face value from the detail page) and
+   * a caller correcting one must never be tempted to pass a stale/undefined
+   * value for the other through a shared, wider parameter shape. Same
+   * write-ratchet rationale as `applyOfferTerms`: this method is the
+   * already-baselined write path a new repair script routes through,
+   * instead of a direct `db.update(ipos)`.
+   */
+  async applyFaceValue(id: string, faceValue: number): Promise<IPO> {
+    return this.update(id, { faceValue });
+  }
+
+  /**
    * Delete IPO by ID
    */
   async delete(id: string): Promise<void> {

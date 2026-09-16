@@ -4,6 +4,7 @@ import {
   extractRegistrarFromDetailHtml,
   extractAllotmentDateFromDetailHtml,
   extractIssueSizeFromDetailHtml,
+  extractFaceValueFromDetailHtml,
 } from '../../../src/scrapers/chittorgarh-detail-fields.js';
 
 describe('extractLotSizeFromDetailHtml', () => {
@@ -205,5 +206,28 @@ describe('extractIssueSizeFromDetailHtml', () => {
     expect(
       extractIssueSizeFromDetailHtml(html, { floor: 100_000_000, priceRangeMax: 429 })
     ).toBe(7_200_000_000);
+  });
+});
+
+describe('extractFaceValueFromDetailHtml', () => {
+  it('extracts face value from the keyword-popup anchor layout with HTML comments (real SME page shape, stanbik-agro-ipo/2602)', () => {
+    const html =
+      '<span data-component="keyword-popup" data-record-id="279"><a title="Face Value" href="/keyword/face-value/279/">Face Value</a></span></td><td class="text-end"><span class="text-end">\u20b9<!-- -->10<!-- --> per share</span></td>';
+    expect(extractFaceValueFromDetailHtml(html)).toBe(10);
+  });
+
+  it('extracts a three-digit face value', () => {
+    const html = 'Face Value</a></span></td><td class="text-end"><span class="text-end">\u20b9100 per share</span></td>';
+    expect(extractFaceValueFromDetailHtml(html)).toBe(100);
+  });
+
+  it('rejects an implausible face value above the domain-sane ceiling', () => {
+    const html = 'Face Value</a></span></td><td class="text-end"><span class="text-end">\u20b95000 per share</span></td>';
+    expect(extractFaceValueFromDetailHtml(html)).toBeNull();
+  });
+
+  it('returns null when the Face Value label is absent', () => {
+    expect(extractFaceValueFromDetailHtml('<td>Registrar</td><td>Bigshare</td>')).toBeNull();
+    expect(extractFaceValueFromDetailHtml('')).toBeNull();
   });
 });
