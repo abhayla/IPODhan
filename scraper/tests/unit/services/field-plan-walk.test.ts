@@ -5,6 +5,12 @@ import {
   type FieldFetcher,
   type FieldPlanWalkDeps,
 } from '../../../src/services/field-plan-walk.js';
+import { logger } from '../../../src/utils/logger.js';
+import {
+  fieldResult,
+  consolidatedUpsertResultFixture,
+  consolidatedChildRowsResultFixture,
+} from '../../helpers/consolidation-result-fixture.js';
 
 /**
  * Item 6 -- the walk that asks ONE field at a time and commits each field's
@@ -123,38 +129,18 @@ function makeOrchestrator(
   const consolidatedUpsertIPO = vi.fn(async (scraped: any, source: any, _confidence?: any, _preResolved?: any, onlyFields?: string[]) => {
     if (ipoResult !== undefined) return ipoResult;
     const field = onlyFields?.[0];
-    const fieldResults = field
-      ? [{ fieldName: field, finalValue: scraped[field], chosenSource: source, hadConflict: false }]
-      : [];
-    return {
+    return consolidatedUpsertResultFixture({
       ipoId: IPO_ID,
-      isNew: false,
-      locked: true,
-      skipped: false,
-      consolidation: { fieldResults },
-    };
+      fieldResults: field ? [fieldResult(field, scraped[field], source)] : [],
+    });
   });
   const consolidatedUpsertChildRows = vi.fn(async (_ipoId: string, _tableName: any, rows: any[], source: any) => {
     if (childResult !== undefined) return childResult;
     const row = rows[0];
     const field = Object.keys(row.data)[0];
-    return {
-      rowsProcessed: 1,
-      rowsUpdated: 1,
-      rowsSkipped: 0,
-      conflictsDetected: 0,
-      rows: [
-        {
-          rowKey: row.rowKey,
-          consolidatedData: row.data,
-          fieldResults: [{ fieldName: field, finalValue: row.data[field], chosenSource: source, hadConflict: false }],
-          fieldsProcessed: 1,
-          fieldsUpdated: 1,
-          conflictsDetected: 0,
-          skipped: false,
-        },
-      ],
-    };
+    return consolidatedChildRowsResultFixture(row.rowKey, [fieldResult(field, row.data[field], source)], {
+      consolidatedData: row.data,
+    });
   });
   return { consolidatedUpsertIPO, consolidatedUpsertChildRows };
 }
@@ -1121,6 +1107,100 @@ describe('field-plan walk -- records SUPPLIED only when the consolidator\'s OWN 
           },
         ],
       })),
+    };
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { BSE: supplied } as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(0);
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+  });
+});
+
+describe('field-plan walk -- the value-half of the guard is pinned by a mutation-provable test (review round 6, item 1)', () => {
+  it('a DIFFERENT finalValue with the SAME chosenSource is still a LOSS -- CHECK_FAILED, cause names both values', async () => {
+    // chosenSource DOES match (BSE) but finalValue does NOT (999 vs the
+    // supplied 10) -- this is the exact case that stays green if the
+    // `|| result.finalValue !== suppliedValue` half of the guard is ever
+    // deleted, because `result.chosenSource !== wantedSource` alone would
+    // read `false` and the row would be wrongly marked SUPPLIED.
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size', rank1Source: 'BSE' })]);
+    const orch = {
+      consolidatedUpsertIPO: vi.fn(async () => ({
+        ipoId: IPO_ID,
+        isNew: false,
+        locked: true,
+        skipped: false,
+        consolidation: {
+          fieldResults: [{ fieldName: 'issueSize', finalValue: 999, chosenSource: 'BSE', hadConflict: false }],
+        },
+      })),
+      consolidatedUpsertChildRows: vi.fn(),
+    };
+    const warnSpy = vi.spyOn(logger, 'warn');
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { BSE: supplied } as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(0);
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+    // The CHECK_FAILED cause (never persisted to the plan row -- only
+    // logged, per PASS 3's existing convention) must name BOTH values so a
+    // human reading the log can tell a value-mismatch loss from a
+    // source-mismatch loss.
+    const lostCall = warnSpy.mock.calls.find(
+      (c: any) => typeof c[1] === 'string' && c[1].includes('LOST to a higher-priority source')
+    );
+    expect(lostCall).toBeDefined();
+    expect((lostCall as any)[0].reason).toContain('999');
+    expect((lostCall as any)[0].reason).toContain('10');
+    warnSpy.mockRestore();
+  });
+});
+
+describe('field-plan walk -- the win/loss comparison normalizes before comparing (review round 6, item 2: false loss)', () => {
+  it('WIN: finalValue is the pg round-trip STRING form of the supplied number ("10.00" vs 10) -- SUPPLIED, not a false loss', async () => {
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size', rank1Source: 'BSE' })]);
+    const orch = {
+      consolidatedUpsertIPO: vi.fn(async () => ({
+        ipoId: IPO_ID,
+        isNew: false,
+        locked: true,
+        skipped: false,
+        // A NUMERIC(15,2) column round-trips as a string -- this is exactly
+        // what data-consolidation-service.ts's CONFIRMED_UNTRACKED path
+        // returns (finalValue: storedValue, chosenSource: incomingSource)
+        // for a genuine win.
+        consolidation: {
+          fieldResults: [{ fieldName: 'issueSize', finalValue: '10.00', chosenSource: 'BSE', hadConflict: false }],
+        },
+      })),
+      consolidatedUpsertChildRows: vi.fn(),
+    };
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { BSE: supplied } as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    expect(result.fieldsCheckFailed).toBe(0);
+    expect(repo.recorded[0].state).toBe('SUPPLIED');
+  });
+
+  it('LOSS: finalValue is a genuinely DIFFERENT stored value ("1000.00" vs supplied 10) -- CHECK_FAILED, a real mismatch survives normalization', async () => {
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size', rank1Source: 'BSE' })]);
+    const orch = {
+      consolidatedUpsertIPO: vi.fn(async () => ({
+        ipoId: IPO_ID,
+        isNew: false,
+        locked: true,
+        skipped: false,
+        consolidation: {
+          fieldResults: [{ fieldName: 'issueSize', finalValue: '1000.00', chosenSource: 'BSE', hadConflict: true }],
+        },
+      })),
+      consolidatedUpsertChildRows: vi.fn(),
     };
     const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, sourceFetchers: { BSE: supplied } as any });
 

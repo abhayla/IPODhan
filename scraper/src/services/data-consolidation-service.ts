@@ -386,8 +386,15 @@ function outranksUntrackedValue(fieldName: string, source: ScraperSource): boole
   return rank < worstRank;
 }
 
-/** W-24 helper: normalize a resolved value for the "did anything change?" test. */
-function normalizeChosen(fieldName: string, value: any, rules: FieldRules): any {
+/**
+ * W-24 helper: normalize a resolved value for the "did anything change?" test.
+ * Exported (review round 6, item 2) so field-plan-walk.ts's PULL-WRITE
+ * agreement check compares like-for-like instead of a raw `!==` between a JS
+ * value and a pg round-trip (NUMERIC -> string, date -> Date) — the exact
+ * false-loss class this same file fixed for the row-update decision (S-02 §5,
+ * above).
+ */
+export function normalizeChosen(fieldName: string, value: any, rules: FieldRules): any {
   return value !== null && value !== undefined ? normalize(fieldName, value, rules) : null;
 }
 
@@ -1355,22 +1362,6 @@ export class DataConsolidationService {
 
     // Validate incoming value
     if (!validateValue(normalizedIncoming, rules)) {
-      // Stage 1 round 3 (signal-ownership.md R6): a matrix-level refusal was
-      // previously silent — the field was dropped with no log line, so a
-      // valid write (e.g. a legal lot under the old min:10 floor) vanished
-      // with no trace in the run log. Make the skip visible.
-      logger.warn(
-        {
-          ipoId,
-          tableName,
-          fieldName,
-          value: normalizedIncoming,
-          source: incomingSource,
-          rule: rules.validation,
-        },
-        '[DataConsolidation] matrix validation refused a field value - field skipped'
-      );
-
       return {
         fieldName,
         finalValue: storedValue, // Keep existing

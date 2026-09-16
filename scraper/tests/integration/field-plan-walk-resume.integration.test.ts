@@ -12,6 +12,11 @@ import {
   FIELD_PLAN_CLAIM_STALE_MINUTES,
 } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
 import { walkFieldPlanForIPO, type FieldFetcher } from '../../src/services/field-plan-walk.js';
+import {
+  fieldResult,
+  consolidatedUpsertResultFixture,
+  consolidatedChildRowsResultFixture,
+} from '../helpers/consolidation-result-fixture.js';
 
 /**
  * Item 6 -- the walk, run against the REAL repository and a REAL
@@ -170,24 +175,52 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     return db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.ipoId, IPO_ID));
   }
 
-  /** A write path that always succeeds. */
+  /**
+   * A write path that always WINS -- the consolidator's own `fieldResults`
+   * confirm `chosenSource`/`finalValue` match what was supplied, echoing the
+   * REAL shape (review round 6 addendum: this used to omit `consolidation`
+   * entirely, which after round 5/6's `fieldResults`-agreement fix made
+   * every field here read as CHECK_FAILED via "no field result returned" --
+   * 4 failures, all "expected +0 to be N" SUPPLIED -- because a stub built
+   * loosely from `as never` had silently drifted from the real writer
+   * contract three times in one night. Built from the shared, REAL-interface
+   * fixture so it cannot drift again without a type error.
+   */
   function okOrchestrator() {
     return {
-      consolidatedUpsertIPO: async () => ({ ipoId: IPO_ID, isNew: false, locked: true, skipped: false }),
-      consolidatedUpsertChildRows: async (_i: string, _t: string, rows: any[]) => ({
-        rowsProcessed: rows.length,
-        rowsUpdated: rows.length,
-        rowsSkipped: 0,
-        conflictsDetected: 0,
-        rows: rows.map((r) => ({
-          rowKey: r.rowKey,
-          consolidatedData: r.data,
-          fieldsProcessed: 1,
-          fieldsUpdated: 1,
-          conflictsDetected: 0,
-          skipped: false,
-        })),
-      }),
+      consolidatedUpsertIPO: async (scraped: any, source: any, _c?: any, _p?: any, onlyFields?: string[]) => {
+        const field = onlyFields?.[0];
+        return consolidatedUpsertResultFixture({
+          ipoId: IPO_ID,
+          fieldResults: field ? [fieldResult(field, scraped[field], source)] : [],
+        });
+      },
+      consolidatedUpsertChildRows: async (_i: string, _t: string, rows: any[], source: any) => {
+        const row = rows[0];
+        const field = Object.keys(row.data)[0];
+        return consolidatedChildRowsResultFixture(row.rowKey, [fieldResult(field, row.data[field], source)], {
+          consolidatedData: row.data,
+        });
+      },
+    } as never;
+  }
+
+  /**
+   * A write path that REACHES the consolidator but LOSES to a different,
+   * already-stored source's value (matrix priority) -- the round 5/6 class.
+   * The row must be re-askable (CHECK_FAILED, transient), NEVER retired and
+   * NEVER SUPPLIED, which is exactly what the resume/concurrency contract
+   * this suite proves must hold for every losing outcome too.
+   */
+  function losingOrchestrator() {
+    return {
+      consolidatedUpsertIPO: async () =>
+        consolidatedUpsertResultFixture({
+          ipoId: IPO_ID,
+          fieldResults: [fieldResult('issueSize', 999999, 'CHITTORGARH')],
+        }),
+      consolidatedUpsertChildRows: async (_i: string, _t: string, rows: any[]) =>
+        consolidatedChildRowsResultFixture(rows[0].rowKey, [fieldResult('revenue', 999999, 'CHITTORGARH')]),
     } as never;
   }
 
@@ -290,6 +323,30 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     expect(row.attempts).toBe(0);
     expect(row.lastAttemptAt).toBeNull();
     expect(row.claimedAt).toBeNull();
+    expect(row.chosenSource).toBeNull();
+  });
+
+  it('a write that LOSES to a higher-priority source (round 5/6 class, against the REAL fixture) records CHECK_FAILED with a real backoff, NEVER SUPPLIED, NEVER EXHAUSTED, and leaves no stranded claim', async () => {
+    const id = await seedRow();
+
+    const result = await walkFieldPlanForIPO(IPO_ID, deps(losingOrchestrator()), openBudget());
+
+    expect(result.fieldsSupplied).toBe(0);
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(result.fieldsExhausted).toBe(0);
+    expect(result.fieldsWriteSkipped).toBe(0);
+
+    const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
+    // Settled and re-askable -- CHECK_FAILED (not TERMINAL_STATES), so
+    // recordOutcome scheduled a real backoff instead of nulling next_due_at
+    // (same proof pattern as the TRANSIENT-failure case below, now for the
+    // "reached the writer but lost the priority race" class).
+    expect(row.state).toBe('CHECK_FAILED');
+    expect(row.nextDueAt).not.toBeNull();
+    expect(row.attempts).toBe(1);
+    expect(row.claimedAt).toBeNull();
+    expect(row.claimToken).toBeNull();
+    // Never carries chosen_source -- the field was NOT actually sourced from NSE.
     expect(row.chosenSource).toBeNull();
   });
 

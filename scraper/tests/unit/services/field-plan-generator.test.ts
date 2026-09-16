@@ -67,10 +67,18 @@ describe('generateFieldPlan - over the real manifest', () => {
   it('fills ranks in manifest order and nulls the unused rank columns', () => {
     const rows = generateFieldPlan(MAINBOARD_IPO, manifest);
     const issueSize = rowFor(rows, 'ipos', 'issue_size')!;
+    // Review round 5, item C: BSE removed from ipos.issue_size's rank
+    // (capability.BSE.capable flipped to false) -- a fresh plan for a NEW
+    // IPO now fills rank2 as CHITTORGARH and leaves rank3 unused, matching
+    // field-manifest-loader.test.ts's same fix. This is DISTINCT from the
+    // round 6 operational note (issue TBD): EXISTING plan rows persisted
+    // before this manifest change keep rank2_source=BSE forever (ON
+    // CONFLICT DO NOTHING, manifest_version still 1) -- that reconciliation
+    // is the next slice's job, not this generator's.
     expect([issueSize.rank1Source, issueSize.rank2Source, issueSize.rank3Source]).toEqual([
       'DOC',
-      'BSE',
       'CHITTORGARH',
+      null,
     ]);
     const minInvestment = rowFor(rows, 'ipo_details', 'min_investment')!;
     expect([minInvestment.rank1Source, minInvestment.rank2Source, minInvestment.rank3Source]).toEqual([

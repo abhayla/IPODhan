@@ -49,6 +49,9 @@
  */
 
 import { logger } from '../utils/logger.js';
+import { normalizeChosen } from './data-consolidation-service.js';
+import { areEquivalent } from './normalization-engine.js';
+import { getFieldRules } from '../config/field-priority-matrix.js';
 
 /**
  * `plan.fieldName` is the manifest's raw snake_case key
@@ -785,7 +788,17 @@ function checkConsolidatorAgreed(
     return { accepted: false, reason: 'no field result returned' };
   }
   const wantedSource = mapManifestSourceToScraperSource(source);
-  if (result.chosenSource !== wantedSource || result.finalValue !== suppliedValue) {
+  // Review round 6, item 2 (MAJOR): a raw `!==` compares a JS value
+  // (`suppliedValue`) against a pg round-trip (`result.finalValue` — NUMERIC
+  // reads back as a STRING "6800000000.00", a date column as a `Date`), so a
+  // genuine win read as LOST and the row re-asked forever. Reuse the SAME
+  // normalize+areEquivalent pair data-consolidation-service.ts already uses
+  // for its own write-suppression decision (S-02 §5) — imported, not
+  // re-implemented, so the two files can never disagree on "did this change".
+  const rules = getFieldRules(camelFieldName);
+  const normalizedFinal = normalizeChosen(camelFieldName, result.finalValue, rules);
+  const normalizedSupplied = normalizeChosen(camelFieldName, suppliedValue, rules);
+  if (result.chosenSource !== wantedSource || !areEquivalent(normalizedFinal, normalizedSupplied)) {
     return {
       accepted: false,
       reason: `consolidator kept ${result.chosenSource} value ${JSON.stringify(result.finalValue)} over ${wantedSource} ${JSON.stringify(suppliedValue)} (matrix priority; PULL-WRITE)`,
