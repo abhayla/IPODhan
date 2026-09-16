@@ -24,6 +24,7 @@ import type { ChittorgarhIPO } from '../utils/validators.js';
 // `plan.fieldName` is the manifest's snake_case key; `ChittorgarhIPO`'s
 // fields are camelCase.
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
+import { logger } from '../utils/logger.js';
 
 const CHITTORGARH_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
 
@@ -43,16 +44,38 @@ export class ChittorgarhFieldFetcherState {
     return this.list;
   }
 
-  async resolveIPO(deps: ChittorgarhFetcherDeps, ipoId: string): Promise<ChittorgarhIPO | null> {
+  /**
+   * Three outcomes, never a guess (review round 1, M1). Unlike BSE, the
+   * Chittorgarh list shape carries NO symbol/isin at all, so an ambiguous
+   * name match here has no fallback confirmation to try — any 2+ match is
+   * always `ambiguous`, never resolvable to `found`.
+   */
+  async resolveIPO(
+    deps: ChittorgarhFetcherDeps,
+    ipoId: string
+  ): Promise<
+    | { status: 'found'; row: ChittorgarhIPO }
+    | { status: 'not_found' }
+    | { status: 'ambiguous'; cause: string }
+  > {
     const ipo = await deps.ipoRepository.findById(ipoId);
-    if (!ipo) return null;
+    if (!ipo) return { status: 'not_found' };
     const companyName = (ipo as unknown as { companyName?: string | null }).companyName;
-    if (!companyName) return null;
+    if (!companyName) return { status: 'not_found' };
 
     const list = await this.getList();
     const target = normalizeCompanyNameForMatching(companyName);
-    const match = list.find((row) => normalizeCompanyNameForMatching(row.companyName) === target);
-    return match ?? null;
+    const matches = list.filter((row) => normalizeCompanyNameForMatching(row.companyName) === target);
+
+    if (matches.length === 1) return { status: 'found', row: matches[0] };
+    if (matches.length > 1) {
+      const names = matches.map((r) => r.companyName).join(', ');
+      return {
+        status: 'ambiguous',
+        cause: `ambiguous name match: ${matches.length} rows (${names})`,
+      };
+    }
+    return { status: 'not_found' };
   }
 }
 
@@ -80,15 +103,25 @@ export function buildChittorgarhFetcher(
       return { outcome: 'NOT_PRINTED' };
     }
 
-    let row: ChittorgarhIPO | null;
+    let resolved: Awaited<ReturnType<ChittorgarhFieldFetcherState['resolveIPO']>>;
     try {
-      row = await state.resolveIPO(deps, ipoId);
+      resolved = await state.resolveIPO(deps, ipoId);
     } catch (error) {
       return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error) };
     }
-    if (!row) {
+    if (resolved.status === 'not_found') {
       return { outcome: 'NOT_AVAILABLE_YET' };
     }
+    if (resolved.status === 'ambiguous') {
+      // Never guess (signal-ownership R6: cause logged, not fabricated as a
+      // reason field NOT_AVAILABLE_YET's fixed shape does not carry).
+      logger.warn(
+        { ipoId, tableName, fieldName, cause: resolved.cause },
+        'PASS 3 CHITTORGARH fetcher: refusing to guess'
+      );
+      return { outcome: 'NOT_AVAILABLE_YET' };
+    }
+    const row = resolved.row;
 
     if (camelFieldName === 'issueSize') {
       if (row.issueSize === undefined || row.issueSize === null) {

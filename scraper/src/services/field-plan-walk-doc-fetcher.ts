@@ -66,6 +66,23 @@ export interface DocFetcherDeps {
   documentRepository: DocumentRepository;
   /** Manifest lookup: `${tableName}.${fieldName}` -> documentType, e.g. 'PRICE_BAND_AD'. */
   manifestDocumentType: (tableName: string, fieldName: string) => string | undefined;
+  /**
+   * Manifest lookup: is `${tableName}.${fieldName}` marked
+   * `capability.DOC.capable`? (Review round 1, M2 — BSE and CHITTORGARH both
+   * already gate on their own capability flag before touching anything;
+   * DOC did not, so a field the manifest marks DOC-incapable would still
+   * read `field_sources` and could answer SUPPLIED against a source the
+   * manifest says DOC has no business answering for.)
+   */
+  isDocCapable: (tableName: string, fieldName: string) => boolean;
+  /**
+   * Reads the current `ipo_details` row (review round 1, m1). `ipo_details`
+   * has no shared repository class — `filing-persist-deps.ts`'s own comment
+   * says so ("ipo_details has no repository - this is the single write path
+   * for it") — so this reads through the SAME direct-query convention that
+   * write path uses, never a raw ad-hoc query invented here.
+   */
+  ipoDetailsReader: { findByIpoId(ipoId: string): Promise<Record<string, unknown> | null> };
 }
 
 interface MinimalDocument {
@@ -92,31 +109,38 @@ function hasCompletedDocument(
 }
 
 /**
- * Read the CURRENT value of one column off the row the plan references,
- * through the repositories — never a raw query. `ipos` is a singleton row
- * per IPO; every other table's current value for the walk's slice (item 5
- * field-plan rows only ever cover `ipos`/`ipo_details` in this manifest, per
- * the brief's Class) is read the same way once a repository exists for it.
+ * Read the CURRENT value of one column off the row the plan references.
+ * `ipos` is a singleton row per IPO, read through the repository; `ipo_details`
+ * is a singleton row per IPO with no shared repository class, read through
+ * `deps.ipoDetailsReader` (review round 1, m1 — previously `undefined` for
+ * EVERY non-`ipos` table, which made `ipo_details.fresh_issue`/`.ofs_issue`/
+ * `.min_investment` answer NOT_PRINTED from DOC even with real DRHP
+ * provenance, a coverage gap dressed as a settled answer). A table with no
+ * read path yet (e.g. `financial_statements`, a KEYED child table) is named
+ * explicitly as `not_implemented` so the caller can tell "this table has no
+ * value" apart from "this fetcher cannot read this table yet" — the first is
+ * NOT_PRINTED (definitive), the second must never look definitive.
  */
 async function readColumnValue(
   deps: DocFetcherDeps,
   ipoId: string,
   tableName: string,
   camelFieldName: string
-): Promise<unknown> {
+): Promise<{ status: 'ok'; value: unknown } | { status: 'not_implemented' }> {
   if (tableName === 'ipos') {
     const ipo = await deps.ipoRepository.findById(ipoId);
-    return ipo ? (ipo as unknown as Record<string, unknown>)[camelFieldName] ?? null : null;
+    return { status: 'ok', value: ipo ? (ipo as unknown as Record<string, unknown>)[camelFieldName] ?? null : null };
   }
-  // Non-`ipos` tables in this slice's Class (`ipo_details`) have no
-  // dedicated shared repository to read a single column from without
-  // duplicating a second write path (YAGNI — see engineering-roles.md). The
-  // provenance row itself is sufficient to answer SUPPLIED: `field_sources`
-  // does not carry the value, only who sourced it, so a table this fetcher
-  // cannot read its current value for answers NOT_PRINTED rather than
-  // guessing — the honest "cannot verify a value not disprovable as printed"
-  // answer, never a fabricated SUPPLIED with no value attached.
-  return undefined;
+  if (tableName === 'ipo_details') {
+    const row = await deps.ipoDetailsReader.findByIpoId(ipoId);
+    return { status: 'ok', value: row ? row[camelFieldName] ?? null : null };
+  }
+  // Every other table in this slice's Class (financial_statements, a KEYED
+  // child table with no read path yet) has no implementation. This must
+  // NEVER read as NOT_PRINTED -- that would retire the field's coverage
+  // permanently-looking while the real reason is "nobody wrote this read
+  // yet", masking a coverage gap as a settled source answer.
+  return { status: 'not_implemented' };
 }
 
 export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
@@ -126,15 +150,23 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
     rowKey: string,
     fieldName: string
   ): Promise<FieldFetcherAnswer> {
+    if (!deps.isDocCapable(tableName, fieldName)) {
+      return { outcome: 'NOT_PRINTED' };
+    }
+
     // `fieldName` here is the plan row's manifest key — snake_case.
     const camelFieldName = columnToCamelCase(fieldName);
     const manifestDocType = deps.manifestDocumentType(tableName, fieldName);
     if (!manifestDocType) {
       // No documentType declared for this field in the manifest — DOC cannot
-      // answer it structurally. A CHECK_FAILED, DEFINITIVE (this will not
-      // change without a manifest edit), rather than NOT_PRINTED (which
-      // implies a document WAS checked).
-      return { outcome: 'CHECK_FAILED', reason: 'no documentType in manifest for this field', transient: false };
+      // answer it structurally. TRANSIENT, not definitive (review round 1,
+      // m2): this is a fact about the MANIFEST's current state, which can be
+      // edited at any time to add a documentType — treating it as definitive
+      // would retire the field terminally over a config gap a later manifest
+      // change fixes, the exact class F1 already fixed for a missing source
+      // adapter. NOT_PRINTED is also wrong here: that implies a document WAS
+      // checked, and none was.
+      return { outcome: 'CHECK_FAILED', reason: 'no documentType in manifest for this field', transient: true };
     }
 
     const family = DOC_TYPE_FAMILY[manifestDocType] ?? [manifestDocType];
@@ -189,18 +221,27 @@ export function buildDocFetcher(deps: DocFetcherDeps): FieldFetcher {
       return { outcome: 'NOT_PRINTED' };
     }
 
-    const value = await readColumnValue(deps, ipoId, tableName, camelFieldName);
-    if (value === undefined || value === null) {
+    const read = await readColumnValue(deps, ipoId, tableName, camelFieldName);
+    if (read.status === 'not_implemented') {
+      // A provenance row exists, but this fetcher has no read path for this
+      // table yet (m1) — a coverage gap, never a settled "not here". CHECK_FAILED
+      // transient keeps the field re-askable (backoff) rather than retiring it.
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: `DOC column read not implemented for ${tableName}`,
+        transient: true,
+      };
+    }
+    if (read.value === undefined || read.value === null) {
       // A provenance row exists (the field WAS sourced from a document at
-      // some point) but the live column is empty now — most likely a table
-      // this fetcher cannot read (see readColumnValue). Never fabricate a
+      // some point) but the live column is empty now. Never fabricate a
       // SUPPLIED with no value.
       return { outcome: 'NOT_PRINTED' };
     }
 
     return {
       outcome: 'SUPPLIED',
-      value,
+      value: read.value,
       documentId: lineage.documentId ?? completedDoc.id,
       documentType: lineage.docType ?? completedDoc.type,
       sha256: lineage.sourceSha ?? completedDoc.sha256 ?? undefined,

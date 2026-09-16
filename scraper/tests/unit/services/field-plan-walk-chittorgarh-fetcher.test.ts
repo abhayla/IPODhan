@@ -112,6 +112,31 @@ describe('CHITTORGARH fetcher — no match', () => {
   });
 });
 
+// Review round 1, M1 (MAJOR): the CHITTORGARH list shape carries no
+// symbol/isin, so a normalised-name collision (`normalizeCompanyNameForMatching`
+// folds 'SIS Limited' and 'SIS Ltd' to the same key) can NEVER be resolved
+// here — `.find()` silently picking the first match is a guess with no
+// fallback confirmation available. Every ambiguous match must answer
+// NOT_AVAILABLE_YET, never a guessed SUPPLIED.
+describe('CHITTORGARH fetcher — ambiguous name match refuses to guess', () => {
+  it('two list rows normalise to the same key — NOT_AVAILABLE_YET, never the first row picked', async () => {
+    scrapeChittorgarhIPOsMock.mockResolvedValue({
+      ipos: [
+        { companyName: 'SIS Limited', issueSize: 1111 },
+        { companyName: 'SIS Ltd', issueSize: 2222 },
+      ],
+      errors: [],
+    });
+    const state = new ChittorgarhFieldFetcherState();
+    const fetcher = buildChittorgarhFetcher(
+      { ipoRepository: makeIpoRepository('SIS Limited'), isChittorgarhCapable: () => true },
+      state
+    );
+    const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
+    expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+  });
+});
+
 describe('CHITTORGARH fetcher — transient failures', () => {
   it('a scrape throw answers CHECK_FAILED (transient default)', async () => {
     scrapeChittorgarhIPOsMock.mockRejectedValue(new Error('ETIMEDOUT'));

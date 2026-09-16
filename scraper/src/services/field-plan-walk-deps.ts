@@ -47,18 +47,41 @@ import {
   DataConflictsRepository,
   DocumentRepository,
 } from '@ipodhan/shared';
+import { eq } from 'drizzle-orm';
+import * as schema from '@ipodhan/shared/db/schema';
 // Deep import, matching `filing-persist-deps.ts`: the barrel exports only the
 // INTERFACE (`IListingPerformanceRepository`), not the class.
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import { DataConsolidationOrchestrator } from './data-consolidation-orchestrator.js';
 import type { FieldFetcher, FieldPlanWalkOrchestrator } from './field-plan-walk.js';
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
-import { buildDocFetcher } from './field-plan-walk-doc-fetcher.js';
+import { buildDocFetcher, type DocFetcherDeps } from './field-plan-walk-doc-fetcher.js';
 import { buildBseFetcher, BseFieldFetcherState } from './field-plan-walk-bse-fetcher.js';
 import {
   buildChittorgarhFetcher,
   ChittorgarhFieldFetcherState,
 } from './field-plan-walk-chittorgarh-fetcher.js';
+
+/**
+ * Review round 1, m1: `ipo_details` has no shared repository class —
+ * `filing-persist-deps.ts`'s `makeIpoDetailsWriter` comment says so verbatim
+ * ("ipo_details has no repository - this is the single write path for it").
+ * This is the READ-side equivalent, same direct-query convention, so the
+ * walk's DOC fetcher can answer for `ipo_details` fields instead of treating
+ * every one of them as unreadable.
+ */
+function makeIpoDetailsReader(): DocFetcherDeps['ipoDetailsReader'] {
+  return {
+    async findByIpoId(ipoId: string) {
+      const rows = await db
+        .select()
+        .from(schema.ipoDetails)
+        .where(eq(schema.ipoDetails.ipoId, ipoId))
+        .limit(1);
+      return (rows[0] as unknown as Record<string, unknown>) ?? null;
+    },
+  };
+}
 
 /**
  * Item 1's consolidated writer, the SAME entry points every other write path
@@ -120,6 +143,8 @@ export function buildFieldPlanWalkFetchers(
     ipoRepository,
     documentRepository,
     manifestDocumentType: (tableName, fieldName) => manifestFieldEntry(tableName, fieldName)?.documentType,
+    isDocCapable: isCapable('DOC'),
+    ipoDetailsReader: makeIpoDetailsReader(),
   });
 
   const bseState = new BseFieldFetcherState();

@@ -11,9 +11,29 @@ function makeDeps(overrides: Partial<DocFetcherDeps> = {}): DocFetcherDeps {
     ipoRepository: { findById: vi.fn().mockResolvedValue(null) } as any,
     documentRepository: { findByIPO: vi.fn().mockResolvedValue([]) } as any,
     manifestDocumentType: () => 'PRICE_BAND_AD',
+    isDocCapable: () => true,
+    ipoDetailsReader: { findByIpoId: vi.fn().mockResolvedValue(null) } as any,
     ...overrides,
   };
 }
+
+// Review round 1, M2 (MAJOR): DOC never checked capability.DOC.capable —
+// unlike BSE and CHITTORGARH, which both gate on their own capability flag
+// before touching provenance. A field the manifest marks DOC-incapable must
+// answer NOT_PRINTED without ever reading field_sources.
+describe('DOC fetcher — capability gating', () => {
+  it('answers NOT_PRINTED when capability.DOC.capable is false, without touching provenance', async () => {
+    const findByFieldMock = vi.fn().mockResolvedValue({ source: 'DRHP', dataLineage: null });
+    const deps = makeDeps({
+      isDocCapable: () => false,
+      fieldSources: { findByField: findByFieldMock } as any,
+    });
+    const fetcher = buildDocFetcher(deps);
+    const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
+    expect(answer).toEqual({ outcome: 'NOT_PRINTED' });
+    expect(findByFieldMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('DOC fetcher — no document yet', () => {
   it('answers NOT_AVAILABLE_YET when no COMPLETED document of the wanted family exists', async () => {
@@ -69,6 +89,43 @@ describe('DOC fetcher — document COMPLETED, no provenance', () => {
     const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
     expect(answer).toEqual({ outcome: 'NOT_PRINTED' });
   });
+
+  // Review round 1, C2 (CRITICAL, mutation-tested): a mutation that widened
+  // the guard from "provenance missing OR source !== DRHP" to just
+  // "provenance missing" (dropping the source check entirely) left the
+  // original 9 tests green, because none of them supplied a NON-NULL,
+  // non-DRHP provenance row for every source that can legitimately own a
+  // field ahead of DOC. Every source that can currently write field_sources
+  // MUST be covered here, individually, asserting BOTH the outcome and that
+  // a mutated fetcher never carries a documentId for an answer that did not
+  // come from a document.
+  it.each(['CHITTORGARH', 'BSE', 'ADMIN'] as const)(
+    'answers NOT_PRINTED, never SUPPLIED, and carries no documentId when provenance.source is %s',
+    async (source) => {
+      const deps = makeDeps({
+        documentRepository: {
+          findByIPO: vi.fn().mockResolvedValue([
+            { id: 'doc-1', type: 'PRICE_BAND_AD', extractionStatus: 'COMPLETED', isActive: true, sha256: null },
+          ]),
+        } as any,
+        // A REAL column value, so a mutated guard that lets this fall through
+        // cannot be masked by readColumnValue's own "no value -> NOT_PRINTED"
+        // branch — the guard itself, not a downstream branch, must be what
+        // stops this from reading SUPPLIED.
+        ipoRepository: { findById: vi.fn().mockResolvedValue({ issueSize: '999999999' }) } as any,
+        fieldSources: {
+          findByField: vi.fn().mockResolvedValue({
+            source,
+            dataLineage: null,
+          }),
+        } as any,
+      });
+      const fetcher = buildDocFetcher(deps);
+      const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
+      expect(answer.outcome).toBe('NOT_PRINTED');
+      expect(answer).not.toHaveProperty('documentId');
+    }
+  );
 });
 
 describe('DOC fetcher — SUPPLIED', () => {
@@ -119,14 +176,20 @@ describe('DOC fetcher — SUPPLIED', () => {
 });
 
 describe('DOC fetcher — no manifest documentType declared', () => {
-  it('answers CHECK_FAILED, DEFINITIVE, rather than guessing', async () => {
+  // Review round 1, m2 (MINOR): a manifest gap (no documentType declared for
+  // this field) is a fact about the MANIFEST, not about the field's DEFINITIVE
+  // absence from every document. A manifest edit can add a documentType at any
+  // time, so this must stay re-askable (CHECK_FAILED, transient: true), never
+  // terminal-looking. The prior version asserted transient: false here, which
+  // was itself the defect this round found.
+  it('answers CHECK_FAILED, TRANSIENT (a manifest gap, not a definitive per-field fact)', async () => {
     const deps = makeDeps({ manifestDocumentType: () => undefined });
     const fetcher = buildDocFetcher(deps);
     const answer = await fetcher(IPO_ID, 'subscriptions', '', 'total_subscription');
     expect(answer).toEqual({
       outcome: 'CHECK_FAILED',
       reason: 'no documentType in manifest for this field',
-      transient: false,
+      transient: true,
     });
   });
 });
@@ -153,5 +216,61 @@ describe('DOC fetcher — read failures are transient, never thrown', () => {
     const fetcher = buildDocFetcher(deps);
     const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
     expect(answer).toEqual({ outcome: 'CHECK_FAILED', reason: 'pool exhausted' });
+  });
+});
+
+// Review round 1, m1 (MINOR but decides what cycle 1 does): readColumnValue
+// used to return `undefined` for EVERY non-`ipos` table, so a `ipo_details`
+// field with real DRHP provenance would read the column as absent and answer
+// NOT_PRINTED even though the document DID supply it — and with BSE/
+// CHITTORGARH also answering NOT_PRINTED (they don't carry fresh/ofs/min-
+// investment either), the field records EXHAUSTED (terminal) on cycle 1.
+// That is a coverage gap wearing a "source answered" costume.
+describe('DOC fetcher — ipo_details column reads (review round 1, m1)', () => {
+  it('reads a real ipo_details column value through ipoDetailsReader and answers SUPPLIED', async () => {
+    const deps = makeDeps({
+      documentRepository: {
+        findByIPO: vi.fn().mockResolvedValue([
+          { id: 'doc-1', type: 'PRICE_BAND_AD', extractionStatus: 'COMPLETED', isActive: true, sha256: null },
+        ]),
+      } as any,
+      fieldSources: {
+        findByField: vi.fn().mockResolvedValue({
+          source: 'DRHP',
+          dataLineage: { docType: 'PRICE_BAND_AD', documentId: 'doc-1' },
+        }),
+      } as any,
+      ipoDetailsReader: { findByIpoId: vi.fn().mockResolvedValue({ freshIssue: '5000000000' }) } as any,
+    });
+    const fetcher = buildDocFetcher(deps);
+    const answer = await fetcher(IPO_ID, 'ipo_details', '', 'fresh_issue');
+    expect(answer).toEqual({
+      outcome: 'SUPPLIED',
+      value: '5000000000',
+      documentId: 'doc-1',
+      documentType: 'PRICE_BAND_AD',
+      sha256: undefined,
+    });
+  });
+
+  it('a table with no read implementation (e.g. financial_statements) answers CHECK_FAILED, transient, naming the table — never NOT_PRINTED', async () => {
+    const deps = makeDeps({
+      documentRepository: {
+        findByIPO: vi.fn().mockResolvedValue([
+          { id: 'doc-1', type: 'RHP', extractionStatus: 'COMPLETED', isActive: true, sha256: null },
+        ]),
+      } as any,
+      manifestDocumentType: () => 'RHP',
+      fieldSources: {
+        findByField: vi.fn().mockResolvedValue({ source: 'DRHP', dataLineage: { docType: 'RHP' } }),
+      } as any,
+    });
+    const fetcher = buildDocFetcher(deps);
+    const answer = await fetcher(IPO_ID, 'financial_statements', 'FY2026', 'revenue');
+    expect(answer).toEqual({
+      outcome: 'CHECK_FAILED',
+      reason: 'DOC column read not implemented for financial_statements',
+      transient: true,
+    });
   });
 });

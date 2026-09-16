@@ -138,3 +138,46 @@ describe('BSE fetcher — transient failures', () => {
     expect(answer).toEqual({ outcome: 'CHECK_FAILED', reason: 'BSE API HTTP 503' });
   });
 });
+
+// Review round 1, M1 (MAJOR): normalizeCompanyNameForMatching('SIS Limited')
+// and ('SIS Ltd') both normalise to 'sis' -- two DIFFERENT companies can
+// collide on the normalised key. Picking nameMatches[0] when neither
+// symbol nor isin confirms exactly one row is a GUESS that can silently
+// attach one IPO's issue_size to another IPO's plan row. The walk must
+// refuse to guess: NOT_AVAILABLE_YET, never a guessed SUPPLIED.
+describe('BSE fetcher — ambiguous name match refuses to guess', () => {
+  it('two board rows normalise to the same key and neither symbol nor isin confirms one — NOT_AVAILABLE_YET, never a guess', async () => {
+    const rowA = { ...listRow, IPO_NO: 9001, Scrip_name: 'SIS Limited' };
+    const rowB = { ...listRow, IPO_NO: 9002, Scrip_name: 'SIS Ltd' };
+    fetchBSEBoardMock.mockResolvedValue([rowA, rowB]);
+    const state = new BseFieldFetcherState();
+    const fetcher = buildBseFetcher(
+      { ipoRepository: makeIpoRepository('SIS Limited', null), isBseCapable: () => true },
+      state
+    );
+
+    const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
+
+    expect(answer).toEqual({ outcome: 'NOT_AVAILABLE_YET' });
+    // Never guessed a detail fetch for either ambiguous row.
+    expect(fetchBSEDetailMock).not.toHaveBeenCalled();
+  });
+
+  it('an ambiguous name match IS resolved when the symbol confirms exactly one row', async () => {
+    const rowA = { ...listRow, IPO_NO: 9001, Scrip_name: 'SIS Limited' };
+    const rowB = { ...listRow, IPO_NO: 9002, Scrip_name: 'SIS Ltd' };
+    fetchBSEBoardMock.mockResolvedValue([rowA, rowB]);
+    fetchBSEDetailMock.mockImplementation(async (ipoNo: number) =>
+      ipoNo === 9002 ? { ...detailRow, Symbol: 'SISL' } : { ...detailRow, Symbol: 'OTHR' }
+    );
+    const state = new BseFieldFetcherState();
+    const fetcher = buildBseFetcher(
+      { ipoRepository: makeIpoRepository('SIS Limited', 'SISL'), isBseCapable: () => true },
+      state
+    );
+
+    const answer = await fetcher(IPO_ID, 'ipos', '', 'issue_size');
+
+    expect(answer.outcome).toBe('SUPPLIED');
+  });
+});

@@ -9,15 +9,23 @@
 //   1. every ipo_field_plan row, grouped by state (PENDING / SUPPLIED / EXHAUSTED / CHECK_FAILED /
 //      NOT_AVAILABLE_YET / ...) — so "the walk ran" is a real count, not a log line (signal-ownership R1).
 //   2. for every SUPPLIED row: table.field, the value ON THE ROW right now, the chosen_source and
-//      chosen_document_type the plan recorded, and an INDEPENDENT RE-READ of the same fact:
-//        - chosen_source DRHP  -> the field_sources row's source + updated_at (the provenance
-//          the walk's DOC fetcher answered from, read a second time, never re-parsing a PDF — OD-33).
-//        - chosen_source BSE   -> a LIVE call to BSE's detail API for that IPO, mapped the same way
-//          the fetcher itself maps it (mapBSEToScrapedIPO), so the proof cannot pass by re-reading the
-//          walk's own cached memo.
+//      chosen_document_type the plan recorded, and an INDEPENDENT re-read of the same fact against a
+//      LIVE call, never field_sources itself (review round 1: re-reading field_sources for a
+//      chosen_source DRHP row proves only that the fetcher read back its own write, not that the
+//      WRITTEN VALUE is correct):
+//        - chosen_source DRHP or BSE -> a LIVE call to BSE's detail API for that IPO, mapped the same
+//          way the fetcher itself maps it (mapBSEToScrapedIPO). DOC and BSE both check against BSE
+//          because DOC's own claim (the PBA prints the offer total) and BSE's claim are about the
+//          SAME published number; Chittorgarh's list scrape is the other independent source below.
 //        - chosen_source CHITTORGARH -> a LIVE call to the Chittorgarh list API, same comparison.
-//      MATCH/MISMATCH is printed for every one, and the summary line's mismatch count is what
-//      Rule 5 (proof-must-be-able-to-fail) needs: this proof exits 1 on ANY mismatch.
+//      Three outcomes, printed for every SUPPLIED row and tracked SEPARATELY in the summary:
+//        - MATCH: the live value is within 0.5% of the value on the row.
+//        - MISMATCH: the live value differs by more than 0.5%, or the independent check itself
+//          failed (CHECK_FAILED counts as a mismatch — a check that could not run is not proof).
+//        - PROVENANCE-ONLY: no independent source prints this field at all (e.g. a field only DOC
+//          can ever answer) — NOT counted as a match, so it can never inflate the pass count.
+//      Rule 5 (proof-must-be-able-to-fail) needs a count that can actually be wrong: this proof
+//      exits 1 on ANY mismatch, or fewer than 3 IPOs with at least one MATCH.
 //
 // `--expect-db <name>` is MANDATORY (mirrors scraper/scripts/lib/repair-tool.ts's guard) — this
 // asks the pool itself, via `current_database()`, never trusting an env var to describe itself.
@@ -26,8 +34,8 @@
 // the VPS) IN PROCESS — never printed, never committed, same convention as every probe under
 // docs/design/probes/_lib.mjs.
 //
-// Exit codes: 0 pass (>=3 IPOs with SUPPLIED rows, 0 mismatches); 1 the proof read ran but failed
-// (too few SUPPLIED IPOs, or a mismatch); 2 usage/guard refusal (no --expect-db, wrong database).
+// Exit codes: 0 pass (>=3 IPOs with at least one MATCH, 0 mismatches); 1 the proof read ran but
+// failed (too few IPOs with a MATCH, or a mismatch); 2 usage/guard refusal (no --expect-db, wrong database).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -178,8 +186,19 @@ async function main() {
   }
 
   const pool = await openReadOnlyPool(expectDb);
+  // Review round 1: the DOC arm used to re-read field_sources — the SAME
+  // table the DOC fetcher itself answered from — which proves the fetcher
+  // read its own write correctly, never that the WRITTEN VALUE is right.
+  // matches / mismatches / provenanceOnly are now tracked separately: a
+  // DOC-supplied ipos.issue_size is compared against the LIVE BSE detail
+  // value when BSE prints it (MATCH within 0.5% / MISMATCH); where no
+  // independent source prints the field, it is PROVENANCE-ONLY and never
+  // counted toward "IPOs with a MATCH".
+  let matches = 0;
   let mismatches = 0;
+  let provenanceOnly = 0;
   let iposWithSupplied = 0;
+  let iposWithMatch = 0;
   let exhaustedTotal = 0;
 
   try {
@@ -225,6 +244,7 @@ async function main() {
 
       const suppliedRows = planRows.filter((r) => r.state === 'SUPPLIED');
       if (suppliedRows.length > 0) iposWithSupplied += 1;
+      let ipoHasMatch = false;
 
       for (const row of suppliedRows) {
         const camelField = row.field_name.replace(/_([a-z])/g, (_m, c) => c.toUpperCase());
@@ -236,46 +256,74 @@ async function main() {
         ).catch((e) => ({ rows: [{ value: `<read failed: ${e.message}>` }] }));
         const value = row.table_name === 'ipos' ? valRows[0]?.value : valRows[0]?.[camelField.toLowerCase()];
 
-        let reread = { found: false };
-        let matchLabel = 'SKIP (no independent re-read implemented for this source)';
+        let matchLabel = 'PROVENANCE-ONLY (no independent source prints this field)';
+        let category = 'provenance-only';
         try {
-          if (row.chosen_source === 'DRHP') {
-            const { rows: fs_ } = await pool.query(
-              `select source, updated_at, data_lineage from field_sources
-                where ipo_id = $1 and table_name = $2 and row_key = $3 and field_name = $4`,
-              [ipo.id, row.table_name, row.row_key, camelField]
-            );
-            reread = fs_[0]
-              ? { found: true, source: fs_[0].source, updatedAt: fs_[0].updated_at }
-              : { found: false };
-            matchLabel = reread.found && reread.source === 'DRHP' ? 'MATCH' : 'MISMATCH';
-          } else if (row.chosen_source === 'BSE') {
-            reread = await independentReReadBSE(ipo.company_name);
-            matchLabel =
-              reread.found && String(reread.issueSize) === String(value) ? 'MATCH' : 'MISMATCH';
+          if (row.chosen_source === 'BSE' || row.chosen_source === 'DRHP') {
+            // The independent check for a DOC-supplied answer is a LIVE BSE
+            // read, never field_sources (that table is the fetcher's own
+            // write — re-reading it proves nothing about the WRITTEN VALUE,
+            // only that the fetcher read back what it just wrote). BSE is
+            // used as the independent oracle whenever it prints the field,
+            // regardless of which source (DOC or BSE) the plan credits.
+            const reread = await independentReReadBSE(ipo.company_name);
+            if (reread.found && reread.issueSize != null && value != null) {
+              const ours = Number(value);
+              const theirs = Number(reread.issueSize);
+              const pctDiff = theirs === 0 ? (ours === 0 ? 0 : Infinity) : Math.abs(ours - theirs) / Math.abs(theirs);
+              if (pctDiff <= 0.005) {
+                matchLabel = `MATCH (BSE live=${reread.issueSize}, within 0.5%)`;
+                category = 'match';
+              } else {
+                matchLabel = `MISMATCH (BSE live=${reread.issueSize}, ours=${value}, diff=${(pctDiff * 100).toFixed(2)}%)`;
+                category = 'mismatch';
+              }
+            }
+            // BSE has nothing for this IPO/field -> stays PROVENANCE-ONLY.
           } else if (row.chosen_source === 'CHITTORGARH') {
-            reread = await independentReReadChittorgarh(ipo.company_name);
-            matchLabel =
-              reread.found && String(reread.issueSize) === String(value) ? 'MATCH' : 'MISMATCH';
+            const reread = await independentReReadChittorgarh(ipo.company_name);
+            if (reread.found && reread.issueSize != null && value != null) {
+              const ours = Number(value);
+              const theirs = Number(reread.issueSize);
+              const pctDiff = theirs === 0 ? (ours === 0 ? 0 : Infinity) : Math.abs(ours - theirs) / Math.abs(theirs);
+              if (pctDiff <= 0.005) {
+                matchLabel = `MATCH (Chittorgarh live=${reread.issueSize}, within 0.5%)`;
+                category = 'match';
+              } else {
+                matchLabel = `MISMATCH (Chittorgarh live=${reread.issueSize}, ours=${value}, diff=${(pctDiff * 100).toFixed(2)}%)`;
+                category = 'mismatch';
+              }
+            }
           }
         } catch (e) {
           matchLabel = `CHECK_FAILED (${e.message})`;
+          category = 'mismatch'; // a check that could not run is not a proof of correctness
         }
 
-        if (matchLabel === 'MISMATCH' || matchLabel.startsWith('CHECK_FAILED')) mismatches += 1;
+        if (category === 'match') {
+          matches += 1;
+          ipoHasMatch = true;
+        } else if (category === 'mismatch') {
+          mismatches += 1;
+        } else {
+          provenanceOnly += 1;
+        }
 
         console.log(
           `  SUPPLIED ${row.table_name}.${camelField} = ${value} ` +
             `(source=${row.chosen_source} docType=${row.chosen_document_type ?? '-'}) -> ${matchLabel}`
         );
       }
+
+      if (ipoHasMatch) iposWithMatch += 1;
     }
 
     console.log(
-      `\nIPOs with SUPPLIED: ${iposWithSupplied}; mismatches: ${mismatches}; EXHAUSTED: ${exhaustedTotal}`
+      `\nIPOs with SUPPLIED: ${iposWithSupplied}; IPOs with at least one MATCH: ${iposWithMatch}; ` +
+        `matches: ${matches}; mismatches: ${mismatches}; provenance-only: ${provenanceOnly}; EXHAUSTED: ${exhaustedTotal}`
     );
 
-    if (iposWithSupplied < 3 || mismatches > 0) {
+    if (iposWithMatch < 3 || mismatches > 0) {
       process.exitCode = 1;
     }
   } finally {

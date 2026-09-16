@@ -40,6 +40,7 @@ import {
 // `plan.fieldName` is the manifest's snake_case key; `mapBSEToScrapedIPO`'s
 // ScrapedIPO fields are camelCase.
 import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
+import { logger } from '../utils/logger.js';
 
 /** `${tableName}.${fieldName}` -> true when BSE's mapped ScrapedIPO actually carries it. */
 const BSE_SERVEABLE_FIELDS: ReadonlySet<string> = new Set(['ipos.issueSize']);
@@ -74,9 +75,27 @@ export class BseFieldFetcherState {
     return p;
   }
 
-  async resolveRow(deps: BseFetcherDeps, ipoId: string): Promise<BSEListRow | null> {
+  /**
+   * Three outcomes, never a guess (review round 1, M1):
+   * `found` — exactly one row, confirmed either by a unique normalised-name
+   * match or by symbol/isin. `not_found` — nothing plausible on the board.
+   * `ambiguous` — 2+ rows share the normalised name and neither symbol nor
+   * isin narrows it to exactly one; `normalizeCompanyNameForMatching('SIS
+   * Limited')` and `('SIS Ltd')` both fold to `sis`, so two DIFFERENT
+   * companies can collide on the key that used to be trusted as unique. A
+   * silent `[0]` pick here would attach one IPO's BSE data to another IPO's
+   * plan row — worse than not answering.
+   */
+  async resolveRow(
+    deps: BseFetcherDeps,
+    ipoId: string
+  ): Promise<
+    | { status: 'found'; row: BSEListRow }
+    | { status: 'not_found' }
+    | { status: 'ambiguous'; cause: string }
+  > {
     const ipo = await deps.ipoRepository.findById(ipoId);
-    if (!ipo) return null;
+    if (!ipo) return { status: 'not_found' };
     const board = await this.getBoard();
 
     const symbol = (ipo as unknown as { symbol?: string | null }).symbol;
@@ -93,20 +112,30 @@ export class BseFieldFetcherState {
     const nameMatches = board.filter(
       (r) => normalizeCompanyNameForMatching(r.Scrip_name || '') === normalizedTarget
     );
-    if (nameMatches.length === 1) return nameMatches[0];
+    if (nameMatches.length === 1) return { status: 'found', row: nameMatches[0] };
 
-    if (symbol || isin) {
-      for (const row of nameMatches.length > 0 ? nameMatches : board) {
+    if (nameMatches.length > 1 && (symbol || isin)) {
+      for (const row of nameMatches) {
         const detail = await this.getDetail(row.IPO_NO);
         if (!detail) continue;
-        if (symbol && detail.Symbol?.trim().toUpperCase() === symbol.trim().toUpperCase()) return row;
+        if (symbol && detail.Symbol?.trim().toUpperCase() === symbol.trim().toUpperCase()) {
+          return { status: 'found', row };
+        }
         // BSE's detail payload carries no ISIN field today; isin match is a
         // declared no-op until one is found, kept as a named branch so a
         // future detail field slots in here rather than a rewrite.
       }
     }
 
-    return nameMatches[0] ?? null;
+    if (nameMatches.length > 1) {
+      const names = nameMatches.map((r) => r.Scrip_name).join(', ');
+      return {
+        status: 'ambiguous',
+        cause: `ambiguous name match: ${nameMatches.length} rows (${names})`,
+      };
+    }
+
+    return { status: 'not_found' };
   }
 
   async detailFor(row: BSEListRow) {
@@ -134,15 +163,26 @@ export function buildBseFetcher(deps: BseFetcherDeps, state: BseFieldFetcherStat
       return { outcome: 'NOT_PRINTED' };
     }
 
-    let row: BSEListRow | null;
+    let resolved: Awaited<ReturnType<BseFieldFetcherState['resolveRow']>>;
     try {
-      row = await state.resolveRow(deps, ipoId);
+      resolved = await state.resolveRow(deps, ipoId);
     } catch (error) {
       return { outcome: 'CHECK_FAILED', reason: error instanceof Error ? error.message : String(error) };
     }
-    if (!row) {
+    if (resolved.status === 'not_found') {
       return { outcome: 'NOT_AVAILABLE_YET' };
     }
+    if (resolved.status === 'ambiguous') {
+      // Never guess: an ambiguous match is not a definitive "not here" (a
+      // future symbol/isin resolution, or the ambiguity resolving itself as
+      // one IPO lists, could still answer this), so it is re-askable, not
+      // terminal. `NOT_AVAILABLE_YET` carries no reason field (its shape is
+      // fixed across every fetcher), so the cause is logged here instead
+      // (signal-ownership R6: every failure carries its cause).
+      logger.warn({ ipoId, tableName, fieldName, cause: resolved.cause }, 'PASS 3 BSE fetcher: refusing to guess');
+      return { outcome: 'NOT_AVAILABLE_YET' };
+    }
+    const row = resolved.row;
 
     let detail;
     try {
