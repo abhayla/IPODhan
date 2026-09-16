@@ -39,7 +39,12 @@ describe('CHITTORGARH fetcher — capability + serveable-field gating', () => {
     expect(scrapeChittorgarhIPOsMock).not.toHaveBeenCalled();
   });
 
-  it('answers NOT_PRINTED for financial_statements.revenue — the list scrape carries no financial series', async () => {
+  // Review round 2, RCA2 extended: manifest says capable.CHITTORGARH.capable
+  // is TRUE for financial_statements.revenue, but the list-scrape shape this
+  // fetcher reads does not carry it — a code limitation (a detail-page
+  // adapter is its own future slice), not a manifest "no". Only
+  // capability.CHITTORGARH.capable === false may answer NOT_PRINTED.
+  it('answers CHECK_FAILED transient for financial_statements.revenue — the list scrape carries no financial series yet (coverage gap, not a manifest no)', async () => {
     scrapeChittorgarhIPOsMock.mockResolvedValue({ ipos: [], errors: [] });
     const state = new ChittorgarhFieldFetcherState();
     const fetcher = buildChittorgarhFetcher(
@@ -47,7 +52,13 @@ describe('CHITTORGARH fetcher — capability + serveable-field gating', () => {
       state
     );
     const answer = await fetcher(IPO_ID, 'financial_statements', 'FY2026', 'revenue');
-    expect(answer).toEqual({ outcome: 'NOT_PRINTED' });
+    expect(answer).toEqual({
+      outcome: 'CHECK_FAILED',
+      reason: 'CHITTORGARH has no mapped field for financial_statements.revenue yet (coverage gap, not a manifest no)',
+      transient: true,
+    });
+    // Never fetched the list for a field it structurally cannot serve.
+    expect(scrapeChittorgarhIPOsMock).not.toHaveBeenCalled();
   });
 });
 

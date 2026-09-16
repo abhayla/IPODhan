@@ -117,11 +117,34 @@ const supplied: FieldFetcher = async () => ({ outcome: 'SUPPLIED', value: 10, do
 const notPrinted: FieldFetcher = async () => ({ outcome: 'NOT_PRINTED' });
 const checkFailed: FieldFetcher = async () => ({ outcome: 'CHECK_FAILED', reason: 'regex did not match' });
 
+/** A resolved IPO row with the identity fields consolidatedUpsertIPO's
+ *  unconditional computeIpoIdentitySlug() call and the pre-resolved-row
+ *  contract both need. */
+function makeExistingIpo(overrides: Record<string, unknown> = {}) {
+  return {
+    id: IPO_ID,
+    companyName: 'Test Company Limited',
+    symbol: 'TESTCO',
+    isin: 'INE000A00001',
+    offeringType: 'IPO',
+    openDate: '2026-09-01',
+    closeDate: '2026-09-03',
+    priceRangeMin: 100,
+    segment: 'MAINBOARD',
+    ...overrides,
+  };
+}
+
+function makeIpoRepository(existing: unknown = makeExistingIpo()) {
+  return { findById: vi.fn(async () => existing) };
+}
+
 function deps(over: Partial<FieldPlanWalkDeps> = {}): FieldPlanWalkDeps {
   return {
     fieldPlanRepository: makeRepo([]) as any,
     orchestrator: makeOrchestrator() as any,
     sourceFetchers: { NSE: supplied, BSE: supplied, CHITTORGARH: supplied } as any,
+    ipoRepository: makeIpoRepository() as any,
     ...over,
   } as FieldPlanWalkDeps;
 }
@@ -215,6 +238,11 @@ describe('field-plan walk -- the dropped-write branch (the false-clean-state gua
     expect(repo.recorded[0].chosen).toBeUndefined();
     expect(result.fieldsSupplied).toBe(0);
     expect(result.fieldsWriteSkipped).toBe(1);
+    // Review round 2 (signal-ownership R1: a count is not a reading) — the
+    // dropped write must be identifiable, not just counted.
+    expect(result.droppedWrites).toEqual([
+      { tableName: 'ipos', rowKey: '', fieldName: 'issue_size', source: 'NSE', skipReason: 'LOCK_NOT_ACQUIRED' },
+    ]);
   });
 
   it('treats a skipped CHILD-ROW write the same way (both row shapes, one rule)', async () => {
@@ -287,6 +315,10 @@ describe('field-plan walk -- rank fallback', () => {
     expect(repo.recorded[0].state).toBe('EXHAUSTED');
     expect(result.fieldsExhausted).toBe(1);
     expect(result.fieldsCheckFailed).toBe(0);
+    // Review round 2 (signal-ownership R1): an EXHAUSTED field must be
+    // identifiable, not just counted — this is exactly the class RCA2's 13
+    // wrongly-retired rows sat in.
+    expect(result.exhaustedFields).toEqual([{ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' }]);
   });
 
   it('a null rank source is skipped, not fetched (the IPO type has no source at that rank)', async () => {
@@ -841,5 +873,74 @@ describe('field-plan walk -- writes the CAMELCASE key, never the plan row\'s raw
     const [, , rows] = orch.consolidatedUpsertChildRows.mock.calls[0];
     expect(rows[0].data).toHaveProperty('freshIssue', 10);
     expect(rows[0].data).not.toHaveProperty('fresh_issue');
+  });
+});
+
+// Review round 2, RCA1 (CRITICAL, staging wake 619660c3): `{ id: ipoId,
+// [camelField]: value }` carries no identity fields (companyName, symbol,
+// isin, ...), so consolidatedUpsertIPO's unconditional
+// computeIpoIdentitySlug(scrapedIPO) call gets an undefined companyName and
+// resolveIpoRow (never given a preResolvedIPO) resolves nothing -> CREATE
+// path -> `Failed to create IPO` on a NOT NULL violation. Fixed: the walk
+// loads the existing row once (IPORepository.findById, cached) and sends
+// BOTH the identity fields off that row AND the row itself as the 4th
+// (preResolvedIPO) argument, so consolidatedUpsertIPO can never independently
+// re-resolve or fall into CREATE for an existing IPO.
+describe('field-plan walk -- writes through the pre-resolved IPO identity (review round 2, RCA1)', () => {
+  it('the ipos write payload carries the existing row\'s identity fields, and the 4th arg is the pre-resolved row', async () => {
+    const existing = makeExistingIpo();
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' })]);
+    const orch = makeOrchestrator();
+    const ipoRepository = makeIpoRepository(existing);
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, ipoRepository: ipoRepository as any });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(orch.consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
+    const [payload, , , preResolvedIPO] = orch.consolidatedUpsertIPO.mock.calls[0];
+    expect(payload.companyName).toBe(existing.companyName);
+    expect(payload.symbol).toBe(existing.symbol);
+    expect(payload.isin).toBe(existing.isin);
+    expect(payload.issueSize).toBe(10);
+    expect(preResolvedIPO).toBe(existing);
+  });
+
+  it('a stub orchestrator that THROWS when preResolvedIPO is absent only goes green with the fix', async () => {
+    const existing = makeExistingIpo();
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' })]);
+    const strictOrchestrator = {
+      consolidatedUpsertIPO: vi.fn(async (_scraped: any, _source: any, _confidence: any, preResolvedIPO: any) => {
+        if (preResolvedIPO === undefined || preResolvedIPO === null) {
+          throw new Error('consolidatedUpsertIPO called with no preResolvedIPO -- would re-resolve identity independently');
+        }
+        return { ipoId: IPO_ID, isNew: false, locked: true, skipped: false };
+      }),
+      consolidatedUpsertChildRows: vi.fn(),
+    };
+    const ipoRepository = makeIpoRepository(existing);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: strictOrchestrator as any,
+      ipoRepository: ipoRepository as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    expect(strictOrchestrator.consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
+  });
+
+  it('the existing IPO row missing (findById returns null) records CHECK_FAILED with cause "ipo row missing", never a create attempt', async () => {
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' })]);
+    const orch = makeOrchestrator();
+    const ipoRepository = makeIpoRepository(null);
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, ipoRepository: ipoRepository as any });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
+    expect(repo.recorded).toHaveLength(1);
+    expect(repo.recorded[0].writeHappened).toBe(false);
+    expect(repo.recorded[0].skipReason).toContain('ipo row missing');
   });
 });

@@ -157,10 +157,18 @@ export function buildBseFetcher(deps: BseFetcherDeps, state: BseFieldFetcherStat
     const camelFieldName = columnToCamelCase(fieldName);
     const key = `${tableName}.${camelFieldName}`;
     if (!BSE_SERVEABLE_FIELDS.has(key)) {
-      // Manifest says capable, but the mapped ScrapedIPO shape has nothing
-      // for this field — see module header. Definitive: no re-ask will
-      // change what `mapBSEToScrapedIPO` returns without a code change.
-      return { outcome: 'NOT_PRINTED' };
+      // Review round 2, RCA2 extended: manifest says capable.BSE.capable is
+      // TRUE for this field, but the mapped ScrapedIPO shape has nothing for
+      // it yet — a coverage gap in THIS fetcher's code, not a manifest "no".
+      // Only capability.BSE.capable === false (checked above) may answer
+      // NOT_PRINTED; a code limitation must stay re-askable, CHECK_FAILED
+      // transient, so extending the mapping later does not require a manual
+      // requeue of every field it retired.
+      return {
+        outcome: 'CHECK_FAILED',
+        reason: `BSE has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+        transient: true,
+      };
     }
 
     let resolved: Awaited<ReturnType<BseFieldFetcherState['resolveRow']>>;
@@ -202,6 +210,15 @@ export function buildBseFetcher(deps: BseFetcherDeps, state: BseFieldFetcherStat
       return { outcome: 'SUPPLIED', value: scraped.issueSize };
     }
 
-    return { outcome: 'NOT_PRINTED' };
+    // Unreachable today (BSE_SERVEABLE_FIELDS names only issueSize, and the
+    // gate above already answers CHECK_FAILED transient for anything else) —
+    // kept as a defensive fallback with the SAME review-round-2 reasoning:
+    // a field this fetcher's mapping branch does not handle is a coverage
+    // gap, never a manifest no.
+    return {
+      outcome: 'CHECK_FAILED',
+      reason: `BSE has no mapped field for ${key} yet (coverage gap, not a manifest no)`,
+      transient: true,
+    };
   };
 }
