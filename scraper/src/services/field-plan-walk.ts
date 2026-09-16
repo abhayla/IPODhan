@@ -50,6 +50,22 @@
 
 import { logger } from '../utils/logger.js';
 
+/**
+ * `plan.fieldName` is the manifest's raw snake_case key
+ * (field-plan-generator.ts takes it verbatim from `table.field_name`);
+ * `consolidatedUpsertIPO`/`consolidatedUpsertChildRows` (and everything they
+ * call) read camelCase fields off the payload
+ * (data-consolidation-orchestrator.ts reads `scrapedIPO.issueSize`, never
+ * `scrapedIPO['issue_size']`). Writing the raw snake_case key writes a field
+ * the mapper never reads — no throw, no `skipped: true`, just a silent
+ * no-op — so `runWrite` below saw `happened: true` for a write that changed
+ * nothing, and the plan row was recorded SUPPLIED against a value that was
+ * never persisted (review round 1, C1).
+ */
+function toCamelFieldName(fieldName: string): string {
+  return fieldName.replace(/_([a-z])/g, (_match, ch: string) => ch.toUpperCase());
+}
+
 /** Which write path a plan row's table takes. */
 const SINGLETON_IPO_TABLES: ReadonlySet<string> = new Set(['ipos', 'ipo']);
 
@@ -601,7 +617,7 @@ async function runWrite(
   try {
     if (SINGLETON_IPO_TABLES.has(plan.tableName)) {
       const r = await deps.orchestrator.consolidatedUpsertIPO(
-        { id: ipoId, [plan.fieldName]: answer.value },
+        { id: ipoId, [toCamelFieldName(plan.fieldName)]: answer.value },
         source as any
       );
       if (r?.skipped) return { happened: false, skipReason: r.skipReason ?? 'SKIPPED' };
@@ -611,7 +627,7 @@ async function runWrite(
     const r = await deps.orchestrator.consolidatedUpsertChildRows(
       ipoId,
       plan.tableName as any,
-      [{ rowKey: plan.rowKey, data: { [plan.fieldName]: answer.value } }],
+      [{ rowKey: plan.rowKey, data: { [toCamelFieldName(plan.fieldName)]: answer.value } }],
       source as any,
       answer.documentType
     );

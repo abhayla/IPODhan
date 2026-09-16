@@ -806,3 +806,40 @@ describe('field-plan walk -- the shared wake budget', () => {
     expect(settled).toBe(claims);
   });
 });
+
+// Review round 1, C1 (CRITICAL): plan.fieldName is the manifest's raw snake_case
+// key ('issue_size'); consolidatedUpsertIPO/consolidatedUpsertChildRows expect
+// camelCase (issueSize) -- data-consolidation-orchestrator.ts reads
+// scrapedIPO.issueSize, never scrapedIPO['issue_size']. A snake_case write key
+// writes NOTHING the orchestrator's mapper reads, while runWrite still sees no
+// throw and no skipped:true -- so a dropped write is recorded as SUPPLIED, the
+// exact false-clean-state class this module's own header warns about.
+describe('field-plan walk -- writes the CAMELCASE key, never the plan row\'s raw snake_case key', () => {
+  it('ipos (singleton) path: converts issue_size -> issueSize in the write payload', async () => {
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' })]);
+    const orch = makeOrchestrator();
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(orch.consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
+    const [payload] = orch.consolidatedUpsertIPO.mock.calls[0];
+    expect(payload).toHaveProperty('issueSize', 10);
+    expect(payload).not.toHaveProperty('issue_size');
+  });
+
+  it('child-row (keyed) path: converts fresh_issue -> freshIssue in the row data', async () => {
+    const repo = makeRepo([
+      planRow({ tableName: 'ipo_details', rowKey: '', fieldName: 'fresh_issue' }),
+    ]);
+    const orch = makeOrchestrator();
+    const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(orch.consolidatedUpsertChildRows).toHaveBeenCalledTimes(1);
+    const [, , rows] = orch.consolidatedUpsertChildRows.mock.calls[0];
+    expect(rows[0].data).toHaveProperty('freshIssue', 10);
+    expect(rows[0].data).not.toHaveProperty('fresh_issue');
+  });
+});
