@@ -128,6 +128,30 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 - The `postgres` superuser is localhost-only on the DB host; through the tunnel it still works, but use
   `ipodhan_app` for app tables anyway.
 
+### Running a scraper integration test against `ipodhan_test` (item 5 slice s4, 2026-09-16)
+There is **no `scraper/.env.test` file, and there never was one to find** — `vitest.integration.config.ts`
+does load `.env.test`, but the credentials for this laptop live in `GLOBAL.env` above every repo, not in a
+repo-local dotenv. Looking for the file is a reasonable instinct that wastes time here.
+
+```bash
+cd scraper
+PW=$(grep '^IPODHAN_APP_DB_PASSWORD=' /d/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" \
+REDIS_URL="redis://localhost:6379/15" \
+npx vitest run -c vitest.integration.config.ts tests/integration/<file>.integration.test.ts
+```
+
+Four traps, each of which looks like a broken suite rather than a mistake:
+1. Use `localhost:15432` — the sanctioned tunnel. Pointing at the DB host directly is refused by a
+   non-overridable denylist; a second tunnel on 5432 is undocumented — do not use it.
+2. `REDIS_URL` is required **even for suites that never touch Redis**.
+3. **The one that matters most:** with `DATABASE_URL` unset the suite prints "Tests  no tests" and
+   **exits 0**. A run that executed nothing looks like a pass to anything checking only the exit code —
+   always read the test COUNT, never just the exit status; "no tests" is a skipped suite, not a green one.
+4. Files sharing a table must run ONE AT A TIME — `ipo_field_plan`'s `FOR UPDATE SKIP LOCKED` claim is
+   designed to return nothing under contention, so a parallel run of two suites hitting the same table
+   produces a fake failure.
+
 ## 8. Data repair tools (productized; never hand SQL)
 
 ### 8a. Migration journal date repair (GitHub #442) — supersedes the T-403 round-3 exemption

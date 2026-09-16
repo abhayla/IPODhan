@@ -38,7 +38,14 @@ import { loadFieldManifest } from '../../src/config/field-manifest-loader';
  *
  * SKIPS CLEANLY when no database is configured.
  *
- * To run:
+ * To run (see docs/ops/prod-ops-recipes.md section 7 for the four traps --
+ * there is NO scraper/.env.test; credentials live in GLOBAL.env; DATABASE_URL
+ * unset prints "no tests" and exits 0, which looks like a pass; run ONE
+ * ipo_field_plan integration file at a time, never in parallel):
+ *   cd scraper
+ *   PW=$(grep '^IPODHAN_APP_DB_PASSWORD=' /d/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+ *   DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" \
+ *   REDIS_URL="redis://localhost:6379/15" \
  *   npx vitest run -c vitest.integration.config.ts \
  *     tests/integration/field-plan-generation-wiring.integration.test.ts
  */
@@ -46,9 +53,9 @@ import { loadFieldManifest } from '../../src/config/field-manifest-loader';
 const DATABASE_URL = process.env.DATABASE_URL;
 const RUN_LABEL = DATABASE_URL ? 'live' : 'item-5-slice-s4: SKIPPED -- DATABASE_URL not set';
 
-const MAINBOARD_IPO_ID = '00000000-0000-4000-8000-0000000s4001';
-const SME_BSE_IPO_ID = '00000000-0000-4000-8000-0000000s4002';
-const SME_NSE_IPO_ID = '00000000-0000-4000-8000-0000000s4003';
+const MAINBOARD_IPO_ID = '00000000-0000-4000-8000-000000054001';
+const SME_BSE_IPO_ID = '00000000-0000-4000-8000-000000054002';
+const SME_NSE_IPO_ID = '00000000-0000-4000-8000-000000054003';
 
 /** Redis is never touched by this repository; BaseRepository only needs the handle. */
 const FAKE_REDIS = {} as never;
