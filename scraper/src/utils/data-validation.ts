@@ -64,6 +64,55 @@ export interface IPODataToValidate {
 }
 
 /**
+ * SEBI retail-lot window per segment (lot_size x price_range_max, Rs).
+ * MUST stay in sync with MAINBOARD_LOT_ECONOMICS_MIN/MAX and
+ * SME_LOT_ECONOMICS_MIN/MAX in scripts/lib/substance-checks.mjs (Rule 9's
+ * DB-read-side companion, W-171) — a unit test asserts the two agree
+ * (data-validation-lot-floor-sebi-window.test.ts).
+ */
+export const SEBI_RETAIL_WINDOW = {
+  MAINBOARD: { min: 10000, max: 16000 },
+  SME: { min: 100000, max: 200000 },
+} as const;
+
+/**
+ * T-lot-floor: a lot_size under 10 is not automatically a scraper error — a
+ * high-priced mainboard issue (cap above roughly Rs1,400-1,600) legally has a
+ * single-digit lot, because SEBI ICDR Reg 32(1) sizes the retail lot by VALUE
+ * (lot x cap price), not by unit count. Live sample: NATIONAL STOCK EXCHANGE
+ * OF INDIA LIMITED, band Rs1,700-1,785, lot 8 -> Rs14,280, inside the
+ * Rs10,000-16,000 MAINBOARD window. Rule 1's old fixed "< 10" floor rejected
+ * this legal row on every staging cycle. This helper returns true only when
+ * the lot/band pair is independently explained by the SEBI window; a
+ * FIXED_PRICE issue is exempt (its minimum investment is not bounded the
+ * same way book-building is — same exemption as Rule 9 below), and a missing
+ * band falls back to the old numeric floor (returns false, so Rule 1 still
+ * refuses lots under 10 with nothing to check them against).
+ */
+function isLotWithinSebiRetailWindow(data: IPODataToValidate): boolean {
+  if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE') return false;
+  const window =
+    data.segment === 'MAINBOARD' ? SEBI_RETAIL_WINDOW.MAINBOARD :
+    data.segment === 'SME' ? SEBI_RETAIL_WINDOW.SME :
+    null;
+  if (!window) return false;
+  const minInvestment = (data.lotSize as number) * data.priceRangeMax;
+  return minInvestment >= window.min && minInvestment <= window.max;
+}
+
+function sebiRetailWindowFloorMessage(data: IPODataToValidate, source: string): string {
+  if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE') {
+    return `lot_size = ${data.lotSize} is below minimum threshold (10) and no price band is on record to check it against the SEBI retail-value window. Likely scraper error. Source: ${source}`;
+  }
+  if (!data.segment) {
+    return `lot_size = ${data.lotSize} is below minimum threshold (10) and no segment (MAINBOARD/SME) is on record to pick the right SEBI retail-value window. Likely scraper error. Source: ${source}`;
+  }
+  const window = data.segment === 'MAINBOARD' ? SEBI_RETAIL_WINDOW.MAINBOARD : SEBI_RETAIL_WINDOW.SME;
+  const minInvestment = (data.lotSize as number) * data.priceRangeMax;
+  return `lot_size = ${data.lotSize} is below minimum threshold (10) and lot ${data.lotSize} x band-cap ₹${data.priceRangeMax} = ₹${minInvestment.toLocaleString('en-IN')} falls outside the SEBI ${data.segment} retail range (₹${window.min.toLocaleString('en-IN')}-₹${window.max.toLocaleString('en-IN')}). Likely scraper error. Source: ${source}`;
+}
+
+/**
  * Validate IPO data from scrapers
  * Implements all validation rules to ensure data quality
  */
@@ -85,12 +134,19 @@ export function validateIPOData(
         severity: 'ERROR',
         message: `lot_size = 1 is NEVER valid for IPOs (SEBI violation). Source: ${source}`,
       });
-    } else if (data.lotSize < 10) {
+    } else if (data.lotSize < 1) {
       errors.push({
         field: 'lotSize',
         rule: 'LOT_SIZE_TOO_LOW',
         severity: 'ERROR',
-        message: `lot_size = ${data.lotSize} is below minimum threshold (10). Likely scraper error.`,
+        message: `lot_size = ${data.lotSize} is below minimum threshold (1). Likely scraper error.`,
+      });
+    } else if (data.lotSize < 10 && !isLotWithinSebiRetailWindow(data)) {
+      errors.push({
+        field: 'lotSize',
+        rule: 'LOT_SIZE_TOO_LOW',
+        severity: 'ERROR',
+        message: sebiRetailWindowFloorMessage(data, source),
       });
     } else if (data.segment === 'MAINBOARD' && data.lotSize < 50) {
       warnings.push({
@@ -482,7 +538,7 @@ export function validateIPOData(
   if (data.lotSize && data.priceRangeMax && data.issueType !== 'FIXED_PRICE') {
     const minInvestment = data.lotSize * data.priceRangeMax;
 
-    if (data.segment === 'MAINBOARD' && (minInvestment < 10000 || minInvestment > 16000)) {
+    if (data.segment === 'MAINBOARD' && (minInvestment < SEBI_RETAIL_WINDOW.MAINBOARD.min || minInvestment > SEBI_RETAIL_WINDOW.MAINBOARD.max)) {
       errors.push({
         field: 'lotEconomics',
         rule: 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD',
@@ -490,7 +546,7 @@ export function validateIPOData(
         message: `MAINBOARD minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Reg 32(1) retail range (~₹10,000-₹16,000). This lot/band pair is arithmetically impossible for a genuine book-built mainboard IPO — reject and flag for reclassification (#P1-4: ICICI Prudential AMC/STALLION/MORGANITE shape).`,
         expected: true,
       });
-    } else if (data.segment === 'SME' && (minInvestment < 100000 || minInvestment > 200000)) {
+    } else if (data.segment === 'SME' && (minInvestment < SEBI_RETAIL_WINDOW.SME.min || minInvestment > SEBI_RETAIL_WINDOW.SME.max)) {
       errors.push({
         field: 'lotEconomics',
         rule: 'LOT_ECONOMICS_IMPOSSIBLE_SME',
