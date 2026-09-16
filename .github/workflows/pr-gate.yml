@@ -853,6 +853,20 @@ jobs:
       - name: Run staging-cadence gate test suite
         run: bash scripts/tests/deploy-linux-schedule-gate.test.sh
 
+      # 2026-09-16 (owner standing rule "staging deploys in windows, not per
+      # merge"): the cron timer that replaced the removed push/schedule
+      # triggers, the manual button that replaced "just dispatch it", and the
+      # deploy-linux.sh cron-install idempotency they both depend on. Named
+      # explicitly, same as every other suite in this job - pr-gate never globs.
+      - name: Run staging window cron install test suite (deploy-linux.sh)
+        run: bash scripts/tests/staging-window-cron.test.sh
+
+      - name: Run staging window deploy script test suite (VPS cron payload)
+        run: bash scripts/tests/staging-window-deploy.test.sh
+
+      - name: Run staging-now manual button test suite (capped 2/day)
+        run: bash scripts/tests/deploy-staging-now.test.sh
+
       # Item 7 slice 1: scripts/scraper-wake.sh replaced pm2's --cron-restart,
       # which was the only thing bounding a hung scraper on prod. Both of the
       # wrapper's guards fail SILENTLY - a lock-skip that stops printing its
