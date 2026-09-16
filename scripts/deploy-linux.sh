@@ -728,6 +728,7 @@ resume_scraper() {
   # original defect, reached by a different route. The schedule is re-asserted
   # here against whichever release we actually resumed.
   install_scraper_cron
+  install_staging_window_cron # no-op for prod; re-asserts the window line on a staging resume/rollback the same way the scraper wake line is re-asserted above
 }
 # Item 01: the EXIT trap now also removes the release directory this
 # invocation created when the deploy failed (cleanup_failed_release_dir,
@@ -1762,6 +1763,7 @@ restart_pm2() {
     # about whether anything ever wakes the wrapper - which is exactly the
     # hole that let the scheduler go missing in the first place.
     install_scraper_cron
+    install_staging_window_cron # no-op for prod; dry-run path mirrors the real one, same reasoning as above
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1796,6 +1798,7 @@ restart_pm2() {
       --no-autorestart )
   # The alarm clock. Without this the wrapper above runs once and never again.
   install_scraper_cron
+  install_staging_window_cron # no-op for prod; installs/refreshes the staging window line on every successful staging deploy
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 
@@ -1911,6 +1914,61 @@ install_scraper_cron() {
     log "install_scraper_cron: scheduled the scraper wake for slot '$SLOT' at '$SCRAPER_CRON' -> $wake_script"
   else
     warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $cron_line"
+  fi
+}
+
+# Staging window deploy cron (owner standing rule 2026-09-16, "staging
+# deploys in windows, not per merge"). Mirrors install_scraper_cron's
+# idempotent, marker-scoped pattern exactly, for the same reason: this
+# function runs on EVERY staging deploy (including the failure/resume path),
+# so "install once by hand" would silently stop being true the first time
+# someone reprovisions the box.
+#
+# STAGING SLOT ONLY. A prod deploy must never install this line - prod is
+# reached only by an explicit human workflow_dispatch, never a cron window
+# (the workflow's own `decide` job also refuses mode=window against
+# slot=prod, in .github/workflows/deploy-linux.yml - this is defense in
+# depth, not the only guard).
+#
+# TIMEZONE: the box's system/crontab timezone is Asia/Calcutta (IST) - see
+# docs/ops/prod-ops-recipes.md and .claude/rules/utc-naive-timestamp-
+# normalization.md, and the existing scraper-wake cron line above, which
+# also carries no TZ prefix and is documented in IST. The window times are
+# therefore written directly as 13:30 and 21:30 IST with no CRON_TZ= prefix,
+# matching that convention. If the box's crontab timezone is ever changed to
+# UTC, this line (and the scraper-wake line) both need updating together.
+STAGING_WINDOW_CRON_MARKER="# ipodhan-staging-window"
+STAGING_WINDOW_CRON="${STAGING_WINDOW_CRON_OVERRIDE:-30 13,21 * * *}" # 13:30 and 21:30 IST
+STAGING_WINDOW_LOG="${DEPLOY_STAGING_WINDOW_LOG:-/var/log/ipodhan-staging-window.log}"
+install_staging_window_cron() {
+  if [ "$SLOT" != "staging" ]; then
+    return 0
+  fi
+
+  local window_script="${1:-$CURRENT_LINK/scripts/ops/staging-window-deploy.sh}"
+  local cron_line="$STAGING_WINDOW_CRON $window_script >> $STAGING_WINDOW_LOG 2>&1 $STAGING_WINDOW_CRON_MARKER"
+
+  if (( DRY_RUN )); then
+    log "[dry-run] would install crontab line: $cron_line"
+    return 0
+  fi
+
+  if ! command -v crontab >/dev/null 2>&1; then
+    warn "install_staging_window_cron: crontab not found on PATH - STAGING WILL NOT AUTO-DEPLOY ON A WINDOW. Install cron or add the line by hand: $cron_line"
+    return 0
+  fi
+
+  local existing
+  existing="$(crontab -l 2>/dev/null || true)"
+  # Drop only the previous staging-window line, keep every other entry
+  # (including the scraper-wake line and any other slot's crontab entries).
+  local kept
+  kept="$(printf '%s\n' "$existing" | grep -vF "$STAGING_WINDOW_CRON_MARKER" || true)"
+
+  if printf '%s\n%s\n' "$kept" "$cron_line" | grep -v '^$' | crontab -; then
+    log "install_staging_window_cron: scheduled the staging window deploy at '$STAGING_WINDOW_CRON' -> $window_script"
+  else
+    warn "install_staging_window_cron: crontab write FAILED - STAGING WILL NOT AUTO-DEPLOY ON A WINDOW. Add by hand: $cron_line"
   fi
 }
 

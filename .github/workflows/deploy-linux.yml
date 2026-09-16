@@ -8,7 +8,7 @@ name: Deploy Linux (Migration M3)
 # headers — does not apply here).
 #
 # THE GUARD THIS FILE EXISTS TO ENFORCE: no automatic trigger EVER deploys
-# prod. The scheduled staging poll below always deploys staging, no
+# prod. The staging window/manual dispatch below always deploys staging, no
 # exceptions, no input can override it. The ONLY way to deploy prod is an
 # explicit `workflow_dispatch` run with slot=prod chosen by a human in the
 # Actions tab — that is the M4 cutover button, owned by the migration
@@ -19,50 +19,38 @@ name: Deploy Linux (Migration M3)
 # a deliberate workflow_dispatch with slot=prod does, and that is a later
 # migration phase's call, not this PR's.
 #
-# CADENCE (slice s17, 2026-09-10). This workflow used to trigger on every
-# `push` to main, so a burst of merges was a burst of full `npm ci` +
-# `next build` runs on the SAME 2-vCPU box that serves production: 34
-# staging deploys on 2026-09-10, 44 on 09-07, 31 on 09-06 and on 09-03.
-# The `push` trigger is replaced by a 15-minute poll that deploys staging
-# only when main's head differs from the sha staging is actually serving,
-# so merges inside one window collapse into a single deploy. The interval
-# is a recorded decision, not a default: a 60-minute poll would add up to
-# an hour of latency to EVERY staging proof, and contract decision 10
-# requires each of 22 items to be proven on a staging cycle, so proofs are
-# already the bottleneck. See the PR body for the full numbers.
+# CADENCE (2026-09-16, owner standing rule "staging deploys in windows, not
+# per merge"). This workflow has no automatic trigger at all any more. Two
+# earlier automatic mechanisms were tried and both cost the box real load
+# without buying reliability:
 #
-# This is an INTERIM measure. Item 23 (build in CI, ship an artifact) is
-# the real fix for the box's load — once a deploy is unpack-and-flip
-# rather than install-and-build, its cost collapses and the cadence
-# matters much less.
+#   * `push` (through slice s20, 2026-09-11): every push to main ran a full
+#     `npm ci` + `next build` on the SAME 2-vCPU box that serves production
+#     — 34 staging deploys on 2026-09-10, 44 on 09-07, 31 on 09-06/09-03.
+#   * GitHub's `schedule` trigger (slice s17, 2026-09-10 → removed here):
+#     proven unreliable on THIS repo's Actions setup — measured twice, an
+#     hour apart, via `gh run list --workflow deploy-linux.yml`: 29 `push`
+#     events, 1 `workflow_dispatch`, ZERO `schedule` runs. It never fired.
 #
-# GitHub's `schedule` trigger is best-effort: runs can be delayed, and
-# occasionally dropped, when Actions is under load. A missed tick means
-# staging is up to one more interval behind, never a wrong deploy — the
-# next tick still sees the same sha difference and deploys.
+# The owner's rule: staging deploys in scheduled WINDOWS, driven by a timer
+# that is proven to actually fire — the VPS's own root crontab (see
+# `scripts/ops/staging-window-deploy.sh`, installed by
+# `scripts/deploy-linux.sh`'s `install_scraper_cron`-style idempotent cron
+# line). The cron entry runs `gh workflow run deploy-linux.yml -f
+# mode=window`, which lands here as an ordinary `workflow_dispatch` — this
+# workflow itself has NO automatic trigger, only `workflow_dispatch`. A
+# `mode=window` dispatch still runs the served-vs-head + docs-only skip
+# logic below (so two windows in the same cycle, or a window with nothing
+# new, correctly no-op); a `mode=manual` dispatch (the capped manual button,
+# `scripts/ops/deploy-staging-now.sh`) always deploys unconditionally, same
+# as every dispatch did before this change.
 #
-# PUSH TRIGGER RESTORED (s20, 2026-09-11). The `schedule` trigger above has
-# NEVER fired since it landed at 19:04:54Z (#549) — measured twice, an hour
-# apart, via `gh run list --workflow deploy-linux.yml`: 29 `push` events, 1
-# `workflow_dispatch`, zero `schedule`. Staging had no automatic deploy at
-# all for over an hour. `push` is restored below, exactly as it was before
-# #549 (including the `paths-ignore` list). The `schedule` block is KEPT,
-# not deleted: if GitHub does register it later it is harmless — the
-# `decide` job below compares staging's served sha against main's head, so
-# a late scheduled tick arriving after a push already deployed finds
-# `served == head` and skips. Two triggers, no double deploy.
+# This is still an INTERIM measure for the box's load. Item 23 (build in CI,
+# ship an artifact) is the real fix — once a deploy is unpack-and-flip
+# rather than install-and-build, its cost collapses and cadence matters far
+# less.
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-  schedule:
-    # Every 15 minutes. Best-effort, see the CADENCE note above. Has never
-    # actually fired (see PUSH TRIGGER RESTORED above) — kept as a harmless
-    # backstop in case GitHub starts registering it.
-    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       slot:
@@ -74,27 +62,26 @@ on:
         description: 'Commit-ish to deploy (blank = HEAD of the checked-out ref)'
         type: string
         default: ''
+      mode:
+        description: 'manual = always deploy (default); window = staging-only cron window, applies the served-vs-head/docs-only skip and refuses slot=prod'
+        type: choice
+        options: [manual, window]
+        default: manual
 
-# One in-flight deploy per SLOT. This expression used to read
-# `github.event_name == 'schedule' && 'staging' || inputs.slot` (from #549,
-# when `push` had been removed). With `push` restored (s20), a push event
-# is neither `schedule` nor a dispatch, so `inputs.slot` is EMPTY on a push
-# and the group would collapse to the bare string "deploy-linux-" — which
-# would NOT serialise a push deploy against a manual `slot=staging`
-# dispatch on the same box, a real double-deploy hazard. The expression now
-# treats BOTH `push` and `schedule` as staging: push -> deploy-linux-staging,
-# schedule -> deploy-linux-staging, dispatch -> deploy-linux-<chosen slot>.
+# One in-flight deploy per SLOT. There is no automatic trigger any more, so
+# every event reaching this workflow is a workflow_dispatch and `inputs.slot`
+# is always populated - the group is simply deploy-linux-<chosen slot>.
 concurrency:
-  group: deploy-linux-${{ (github.event_name == 'push' || github.event_name == 'schedule') && 'staging' || inputs.slot }}
+  group: deploy-linux-${{ inputs.slot }}
   cancel-in-progress: false # never cancel a deploy mid-flight (release dirs are immutable, but a cancelled npm/next build can leave a half-built release)
 
 jobs:
-  # Cheap gate job (no install, no build). It resolves the slot and, on a
-  # scheduled tick, decides whether there is anything to deploy at all. It
-  # runs on every event so `needs.decide` is never "skipped" and the
+  # Cheap gate job (no install, no build). It resolves the slot and, for a
+  # `mode=window` dispatch, decides whether there is anything to deploy at
+  # all. It runs on every event so `needs.decide` is never "skipped" and the
   # `deploy` job's `if:` is a plain boolean test.
   decide:
-    name: Decide (${{ github.event_name == 'schedule' && 'staging (schedule guard)' || inputs.slot }})
+    name: Decide (${{ inputs.slot }}, mode=${{ inputs.mode }})
     runs-on: [self-hosted, linux, ipodhan]
     timeout-minutes: 5
     outputs:
@@ -107,25 +94,34 @@ jobs:
         with:
           fetch-depth: 0 # the gate below diffs main's head against the served sha
 
-      - name: Resolve deploy slot (schedule -> staging, ALWAYS; no input can change this)
+      - name: Resolve deploy slot
         id: slot
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "slot=${{ inputs.slot }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "slot=staging" >> "$GITHUB_OUTPUT"
-          fi
+          echo "slot=${{ inputs.slot }}" >> "$GITHUB_OUTPUT"
 
-      # The poll itself. A workflow_dispatch ALWAYS proceeds - a human asked
-      # for it, and this step must not become a way for a manual deploy
-      # (the only route to prod) to silently no-op.
+      # A window must never touch prod - the cron timer exists only to keep
+      # STAGING fresh on a schedule; the only route to prod is a human
+      # dispatching mode=manual (or omitting mode) with slot=prod. Fails the
+      # job loudly rather than silently downgrading to a no-op, so a
+      # misconfigured cron line cannot ship to prod unnoticed.
+      - name: Refuse a window dispatch against prod
+        if: inputs.mode == 'window' && inputs.slot == 'prod'
+        shell: bash
+        run: |
+          echo "FATAL: mode=window may only target slot=staging. A staging cron window must never deploy prod - the only route to prod is a manual (mode=manual, the default) workflow_dispatch with slot=prod." >&2
+          exit 1
+
+      # A `mode=manual` dispatch ALWAYS proceeds - a human asked for it (or
+      # the capped manual button did, on the human's behalf), and this step
+      # must not become a way for a manual deploy (the only route to prod)
+      # to silently no-op.
       #
-      # On a schedule the question is "does staging already serve main's
-      # head?". The served sha is read from staging's own /api/version on
-      # this box (the same endpoint and port file the deploy's own
-      # verification step uses). Three outcomes:
+      # On a `mode=window` dispatch the question is "does staging already
+      # serve main's head?". The served sha is read from staging's own
+      # /api/version on this box (the same endpoint and port file the
+      # deploy's own verification step uses). Three outcomes:
       #
       #   * served == head        -> nothing to deploy, skip.
       #   * only docs/** or *.md  -> skip. This preserves the behaviour of
@@ -145,7 +141,7 @@ jobs:
       # that quietly stops deploying is how a broken staging goes unnoticed
       # for a day. Erring toward a deploy is recoverable; erring toward
       # silence is not.
-      - name: Decide whether a scheduled staging deploy is needed
+      - name: Decide whether a window staging deploy is needed
         id: gate
         # Explicit shell, no -e: this step's own branches decide success vs
         # failure via `proceed=true|false` + exit 0 on every path. GitHub
@@ -164,7 +160,7 @@ jobs:
         shell: bash --noprofile --norc -o pipefail {0}
         env:
           SLOT: ${{ steps.slot.outputs.slot }}
-          EVENT_NAME: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -uo pipefail
@@ -174,8 +170,8 @@ jobs:
             if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$1" >> "$GITHUB_STEP_SUMMARY"; fi
           }
 
-          if [ "$EVENT_NAME" != "schedule" ]; then
-            note "Event is '$EVENT_NAME' (not a scheduled poll) - deploying slot '$SLOT' unconditionally."
+          if [ "$MODE" != "window" ]; then
+            note "Mode is '$MODE' (not a cron window) - deploying slot '$SLOT' unconditionally."
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -216,7 +212,7 @@ jobs:
                 -H 'Content-Type: application/json' \
                 -H "X-Api-Key: ${NOTIFIER_KEY}" \
                 --max-time 5 \
-                -d "{\"project\":\"ipodhan\",\"severity\":\"P2\",\"title\":\"schedule guard deploying staging blind\",\"body\":${NOTIFY_BODY},\"type\":\"deploy\",\"dedupeKey\":\"deploy-linux-schedule-guard-blind-${HEAD_SHA}\"}" 2>/dev/null || echo "curl-failed")"
+                -d "{\"project\":\"ipodhan\",\"severity\":\"P2\",\"title\":\"window guard deploying staging blind\",\"body\":${NOTIFY_BODY},\"type\":\"deploy\",\"dedupeKey\":\"deploy-linux-window-guard-blind-${HEAD_SHA}\"}" 2>/dev/null || echo "curl-failed")"
               note "Notifier /notify HTTP status: $NOTIFY_RESPONSE"
             else
               note "WARNING: NOTIFIER_URL/NOTIFIER_KEY not set - cannot page the owner about deploying blind (see runner .env setup in GLOBAL.md section 2)."

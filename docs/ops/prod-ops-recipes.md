@@ -67,7 +67,7 @@ Rollback = the same command with `-f ref=<previous sha>` (must be an ancestor on
 or `scripts/ops/deploy-and-watch.sh <date> <sha> --rollback-to <prev-sha>` to control which sha the
 printed rollback command names.
 The deploy log IS the Actions run log (`scripts/deploy-linux.sh` prints `==> ...` lines); nothing is written on the box.
-NEVER push a non-md file straight to `main`: the write-ratchet (`scripts/check-write-ratchet.mjs`) scans the whole tree incl. docs/, and a raw-SQL template pushed to main on 2026-09-06 turned every open PR gate red. Code-like files go through a PR. Every push to `main` auto-deploys staging EXCEPT markdown-only pushes (`paths-ignore: '**/*.md'`), so ledger/docs pushes are free; batch code pushes.
+NEVER push a non-md file straight to `main`: the write-ratchet (`scripts/check-write-ratchet.mjs`) scans the whole tree incl. docs/, and a raw-SQL template pushed to main on 2026-09-06 turned every open PR gate red. Code-like files go through a PR. Staging no longer auto-deploys on push at all — see §14 for the current cadence (windows at 13:30/21:30 IST, plus a manual button capped 2/day).
 Tag after verification: `git tag -a prod-<date> <sha> -m "..." && git push origin prod-<date>` (a tag push does not deploy).
 
 ## 4. Post-deploy verification
@@ -931,3 +931,52 @@ node scripts/assert-repair-held.mjs provenance-parent-not-null --cycles 2 --expe
 node scripts/assert-repair-held.mjs segment-provenance --cycles 2 --expect-db ipodhan
 node scripts/assert-repair-held.mjs face-value-band-chittorgarh --cycles 2 --expect-db ipodhan
 ```
+
+## 14. Staging windows and the manual button (owner standing rule 2026-09-16, "staging deploys in windows, not per merge")
+
+**What changed.** Staging used to auto-deploy on every push to `main` (34 deploys on 2026-09-10
+alone), then on a GitHub `schedule` poll that was measured to NEVER actually fire on this repo's
+Actions setup (29 `push` runs, 1 `workflow_dispatch`, 0 `schedule` runs — see the header of
+`.github/workflows/deploy-linux.yml`). Both automatic triggers are gone. `deploy-linux.yml` has no
+automatic trigger at all now — only `workflow_dispatch`, with a `mode` input (`manual` default,
+or `window`). The reliable timer is the box's own root crontab, the same mechanism the scraper
+wake already uses.
+
+**The two windows.** 13:30 and 21:30 IST, installed by `scripts/deploy-linux.sh`'s
+`install_staging_window_cron` (staging slot only — a prod deploy never installs or touches this
+line), idempotent and marker-scoped exactly like the scraper wake line:
+
+```
+30 13,21 * * * /var/www/ipodhan/current-staging/scripts/ops/staging-window-deploy.sh >> /var/log/ipodhan-staging-window.log 2>&1 # ipodhan-staging-window
+```
+
+The payload, `scripts/ops/staging-window-deploy.sh`, runs `gh workflow run deploy-linux.yml -f
+slot=staging -f mode=window` and gets out of the way — it never waits for the run. A `mode=window`
+dispatch still runs the served-vs-head + docs-only skip gate (same logic that used to run only on
+`schedule`), so a window with nothing new to deploy correctly no-ops rather than rebuilding
+unchanged code.
+
+**The manual button.** `scripts/ops/deploy-staging-now.sh --reason "<text>"`, run from a laptop
+with `gh` authenticated. Dispatches with `mode=manual` (always deploys unconditionally, same as
+every dispatch did before this change). Capped at **2 dispatches per calendar day** — a per-day
+JSON counter at `scripts/ops/state/staging-now-YYYY-MM-DD.json` (gitignored, laptop-local). A 3rd
+dispatch the same day is refused, printing the first two reasons; `--override` bypasses the cap
+and is logged as an override in the same state file. `--dry-run` prints the exact `gh` command
+without dispatching or counting.
+
+**Reading a window run:**
+
+```bash
+tail -50 /var/log/ipodhan-staging-window.log            # did the cron fire, did gh accept the dispatch?
+gh run list --workflow deploy-linux.yml --limit 5        # the runs themselves — look for mode=window
+gh run view <run-id> --log | grep -A3 'Decide whether a window staging deploy is needed'
+crontab -l | grep ipodhan-staging-window                 # is the window actually scheduled?
+```
+
+A run whose `decide` job printed `no deploy this tick` (served already matches head, or the only
+changes are docs) is a correct skip, not a failure — the workflow still exits green.
+
+**Prod is untouched.** The `decide` job refuses any `mode=window` dispatch against `slot=prod`
+outright (separate step, fails loudly) — a window can only ever reach staging; the only route to
+prod remains an explicit human `workflow_dispatch` with `slot=prod` from a `release/prod-<date>`
+branch (W-141, unchanged by this rule).
