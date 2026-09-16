@@ -622,7 +622,14 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   if (candidates.length < MIN_ROWS) {
     return {
       ok: false,
-      reason: `only ${candidates.length} investor rows could be read from the anchor report`,
+      // Distinct from the post-reconciliation message below (#437): THIS one
+      // means the page text never yielded a readable row at all - the table
+      // was not rebuilt, or was rebuilt into prose. That is an EXTRACTION
+      // failure and the fix lives in the sidecar. The other one means rows
+      // were read and then failed the arithmetic, which is CELL damage.
+      // Both keep the words "investor rows" so #703's classifier, which
+      // matches /only \d+ investor rows?/, still groups them.
+      reason: `only ${candidates.length} investor rows could be read from the anchor report (candidate stage)`,
     };
   }
 
@@ -690,7 +697,7 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   if (rows.length < MIN_ROWS) {
     return {
       ok: false,
-      reason: `only ${rows.length} investor rows could be read from the anchor report`,
+      reason: `only ${rows.length} investor rows survived reconciliation of the anchor report (${rowErrors} failed)`,
     };
   }
 
