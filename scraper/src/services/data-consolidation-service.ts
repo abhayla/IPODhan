@@ -1355,6 +1355,22 @@ export class DataConsolidationService {
 
     // Validate incoming value
     if (!validateValue(normalizedIncoming, rules)) {
+      // Stage 1 round 3 (signal-ownership.md R6): a matrix-level refusal was
+      // previously silent — the field was dropped with no log line, so a
+      // valid write (e.g. a legal lot under the old min:10 floor) vanished
+      // with no trace in the run log. Make the skip visible.
+      logger.warn(
+        {
+          ipoId,
+          tableName,
+          fieldName,
+          value: normalizedIncoming,
+          source: incomingSource,
+          rule: rules.validation,
+        },
+        '[DataConsolidation] matrix validation refused a field value - field skipped'
+      );
+
       return {
         fieldName,
         finalValue: storedValue, // Keep existing

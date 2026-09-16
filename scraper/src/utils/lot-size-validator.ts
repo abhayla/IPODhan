@@ -16,7 +16,14 @@
 import logger from './logger.js';
 
 /**
- * Typical lot size ranges for Indian IPOs (based on historical data)
+ * Typical lot size ranges for Indian IPOs (based on historical data).
+ *
+ * WARN-ONLY (data-persister.ts:915) — this never blocks a write. The single
+ * source of the LEGAL lot-size rule (lot x cap price within the SEBI retail
+ * window) is `SEBI_RETAIL_WINDOW` in data-validation.ts, enforced by
+ * `validateIPOData` and the nightly `d_lot_band_window` audit. These ranges
+ * only flag values outside the HISTORICALLY typical band for a heads-up —
+ * they are not, and must not become, a hard legal floor (stage 1 round 3).
  */
 export const LOT_SIZE_RANGES = {
   MAINBOARD: {
