@@ -7,6 +7,7 @@
 
 import { eq, and, gte, lte, or, asc } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
+import { istDayIso } from '../utils/ist-day';
 import { marketHolidays } from '../db/schema';
 import type { MarketHoliday, Exchange } from '../db/types';
 
@@ -55,8 +56,9 @@ export class MarketHolidayRepository extends BaseRepository {
             }
 
             if (filters?.upcoming) {
-              // Get current date in YYYY-MM-DD format
-              const today = new Date().toISOString().split('T')[0];
+              // "Today" is the IST calendar day (#687 slice 3) — a UTC read
+              // is wrong between 00:00 and 05:30 IST every day.
+              const today = istDayIso();
               conditions.push(gte(marketHolidays.date, today));
             }
 
@@ -91,7 +93,7 @@ export class MarketHolidayRepository extends BaseRepository {
         return this.executeQuery(
           'findUpcomingMarketHolidays',
           async () => {
-            const today = new Date().toISOString().split('T')[0];
+            const today = istDayIso();
 
             const results = await this.db
               .select()

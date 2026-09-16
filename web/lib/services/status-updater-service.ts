@@ -16,6 +16,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { getIPOBySlugKey, getIPOByIdKey } from '@/lib/cache/cache-keys';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { revalidateForSlugs } from './page-revalidation-service';
+import { istDateIso } from '@/lib/utils/ist-date';
 
 export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED';
 
@@ -154,15 +155,17 @@ export async function revalidateAfterStatusChange(
 }
 
 export async function updateIPOStatuses(
-  deps?: { revalidatePath?: (path: string) => void }
+  deps?: { revalidatePath?: (path: string) => void; now?: Date }
 ): Promise<StatusUpdateResult> {
   console.log('[Status Updater] Starting status update...');
 
   const db = await getDb();
   const redis = getRedisClient();
   const conflictsRepo = new DataConflictsRepository(db, redis);
-  const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const now = deps?.now ?? new Date();
+  // GitHub #682: open_date/close_date/listing_date are IST calendar dates;
+  // the UTC calendar day was wrong for up to 5h30m a day (00:00-05:30 IST).
+  const today = istDateIso(now);
 
   const rows = await db
     .select({
@@ -264,7 +267,7 @@ export async function updateIPOStatuses(
     updatedIPOs,
   };
 
-  console.log('[Status Updater] Completed:', { total: result.total });
+  console.log('[Status Updater] Completed:', { total: result.total, istDay: today });
   return result;
 }
 
@@ -272,14 +275,16 @@ export async function updateIPOStatuses(
  * Count IPOs whose stored status differs from their computed target status
  * (i.e. how many updateIPOStatuses would change), for monitoring. Read-only.
  */
-export async function getOutdatedStatusCount(): Promise<{
+export async function getOutdatedStatusCount(now: Date = new Date()): Promise<{
   upcomingToOpen: number;
   openToClosed: number;
   closedToListed: number;
   total: number;
 }> {
   const db = await getDb();
-  const today = new Date().toISOString().split('T')[0];
+  // GitHub #682: same IST-day fix as updateIPOStatuses — this must agree with
+  // it or the monitor and the writer disagree about what's "outdated".
+  const today = istDateIso(now);
 
   const rows = await db
     .select({

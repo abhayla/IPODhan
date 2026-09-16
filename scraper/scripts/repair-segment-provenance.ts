@@ -59,6 +59,9 @@ import { and, eq, isNotNull } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
+import { fetchNseEquityMasters } from '../src/scrapers/nse-equity-master.js';
+import { resolveSegmentFromMasters, type SegmentResolution } from '../src/scrapers/exchange-segment-oracle.js';
+import { fetchBseScripMaster, toOracleScrips } from '../src/scrapers/bse-scrip-master.js';
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
@@ -84,6 +87,8 @@ export interface SegmentProvenanceRow {
   hasSegmentProvenance: boolean;
   /** Only meaningful for offeringType === 'IPO'; a manually-verified value. */
   sourcedSegment?: SegmentValue;
+  /** Where sourcedSegment came from, for the reason line: an oracle `via` or the map. */
+  sourcedVia?: string;
 }
 
 export type SegmentRepairAction =
@@ -138,7 +143,9 @@ export function decideSegmentProvenance(row: SegmentProvenanceRow): SegmentRepai
       action: 'apply-sourced',
       touch: true,
       newSegment: row.sourcedSegment,
-      reason: `sourced value confirms segment=${row.sourcedSegment} (VERIFIED_IPO_SEGMENT_SOURCES)`,
+      reason:
+        `sourced value confirms segment=${row.sourcedSegment} ` +
+        `(${row.sourcedVia ?? 'VERIFIED_IPO_SEGMENT_SOURCES'})`,
     };
   }
   return {
@@ -172,6 +179,7 @@ async function main() {
       offeringType: schema.ipos.offeringType,
       segment: schema.ipos.segment,
       status: schema.ipos.status,
+      isin: schema.ipos.isin,
     })
     .from(schema.ipos)
     .where(isNotNull(schema.ipos.segment));
@@ -182,13 +190,75 @@ async function main() {
     .where(and(eq(schema.fieldSources.tableName, 'ipos'), eq(schema.fieldSources.fieldName, 'segment')));
   const provenancedIds = new Set(provenanced.map((r) => r.ipoId));
 
+  // COUNT THE INTERSECTION, NOT THE TABLE. `provenancedIds.size` is every ipo_id with a
+  // segment provenance row anywhere - including rows whose segment is NULL, which are not
+  // candidates at all. Printing it after "of those" claims a subset relationship that does
+  // not hold. Measured on staging 2026-09-16: 348 candidates, 348 provenanced ids, but only
+  // 319 candidates actually carry one - 29 provenanced ids point at NULL-segment rows. The
+  // two 348s are a coincidence that made a wrong line read as right.
+  const candidatesWithProvenance = candidates.filter((r) => provenancedIds.has(r.id)).length;
   console.log(`ipos rows with segment IS NOT NULL: ${candidates.length}`);
-  console.log(`of those, already carrying a field_sources row for segment: ${provenancedIds.size}`);
+  console.log(`of those, already carrying a field_sources row for segment: ${candidatesWithProvenance}`);
+  console.log(
+    `(field_sources segment rows overall: ${provenancedIds.size}; ` +
+    `${provenancedIds.size - candidatesWithProvenance} of them point at rows whose segment is NULL)`
+  );
 
-  const decisions: Array<{ row: (typeof candidates)[number]; decision: SegmentRepairDecision }> = [];
+  // The exchanges' own listed-security masters, fetched ONCE for the whole batch.
+  // This is what replaces the hand-filled VERIFIED_IPO_SEGMENT_SOURCES map for IPO
+  // rows: membership of NSE's two files IS the board. A fetch failure is fatal rather
+  // than silently degrading to "nothing is sourceable", which would look identical to
+  // an honest run in which no row could be sourced.
+  const nseMasters = await fetchNseEquityMasters();
+  // EVERY parsed row, not `byName.values()`. The name index holds one entry per name key
+  // and now deliberately EXCLUDES any key claimed by more than one row, so building the
+  // two board lists from it dropped exactly the rows that matter: a company present in
+  // BOTH NSE files used to collapse to its MAIN row (the oracle never saw the SME twin),
+  // and now would vanish from both lists. `rows` is the population; the index is an
+  // identity lookup, and they are not interchangeable.
+  const nseRows = nseMasters.rows;
+  const nse = {
+    mainboard: nseRows.filter((r) => r.board === 'MAIN').map((r) => ({ isin: r.isin, name: r.name })),
+    sme: nseRows.filter((r) => r.board === 'SME').map((r) => ({ isin: r.isin, name: r.name })),
+  };
+  if (nse.mainboard.length === 0 || nse.sme.length === 0) {
+    throw new Error(
+      `NSE masters came back empty (mainboard ${nse.mainboard.length}, sme ${nse.sme.length}) — ` +
+      'refusing to run: an empty master resolves every row to no-source, which is indistinguishable ' +
+      'from an honest run where nothing was sourceable'
+    );
+  }
+  console.log(`NSE masters: ${nse.mainboard.length} mainboard, ${nse.sme.length} SME`);
+
+  // BSE's active-scrip list, with each scrip's GROUP (slice 2-S3b3). Like the NSE half
+  // above, a fetch failure is fatal: `fetchBseScripMaster` throws rather than returning
+  // an empty master, because an empty master resolves every BSE company to `no-source`,
+  // which is indistinguishable from an honest run in which nothing was sourceable.
+  const bseMaster = await fetchBseScripMaster();
+  const bse = toOracleScrips(bseMaster);
+  console.log(`BSE scrip master: ${bse.length} active equity scrips`);
+
+  const decisions: Array<{
+    row: (typeof candidates)[number];
+    decision: SegmentRepairDecision;
+    resolution?: SegmentResolution;
+  }> = [];
   for (const row of candidates) {
     const hasSegmentProvenance = provenancedIds.has(row.id);
-    const sourcedSegment = row.offeringType === 'IPO' ? VERIFIED_IPO_SEGMENT_SOURCES[row.slug] : undefined;
+    let resolution: SegmentResolution | undefined;
+    let sourcedSegment: SegmentValue | undefined;
+    if (row.offeringType === 'IPO') {
+      // A hand-verified entry still wins: an operator who checked a specific company
+      // outranks a master lookup, and the map is the documented override path.
+      sourcedSegment = VERIFIED_IPO_SEGMENT_SOURCES[row.slug];
+      if (sourcedSegment === undefined) {
+        resolution = resolveSegmentFromMasters(
+          { isin: row.isin, companyName: row.companyName },
+          { nse, bse }
+        );
+        sourcedSegment = resolution.segment ?? undefined;
+      }
+    }
     const decision = decideSegmentProvenance({
       id: row.id,
       companyName: row.companyName,
@@ -196,13 +266,21 @@ async function main() {
       segment: row.segment,
       hasSegmentProvenance,
       sourcedSegment,
+      sourcedVia: resolution?.via ?? undefined,
     });
-    decisions.push({ row, decision });
+    decisions.push({ row, decision, resolution });
     const label = decision.touch
       ? `WOULD-WRITE segment=${row.segment} -> ${decision.newSegment ?? 'NULL'}`
       : `REPORTED (no write)  segment stays ${row.segment}`;
+    // Print WHY the oracle could not source a reported IPO row. A bare "no source"
+    // cannot be acted on; "in neither exchange master" and "BSE group TS is not in the
+    // evidenced mapping" point at different next steps.
+    const oracleNote =
+      !decision.touch && resolution && resolution.outcome !== 'resolved'
+        ? `  [oracle: ${resolution.outcome} — ${resolution.reason}]`
+        : '';
     console.log(
-      `  - ${row.companyName} [${row.offeringType}, ${row.status}] ${label} (${decision.action}): ${decision.reason}`
+      `  - ${row.companyName} [${row.offeringType}, ${row.status}] ${label} (${decision.action}): ${decision.reason}${oracleNote}`
     );
   }
 
@@ -236,16 +314,24 @@ async function main() {
   console.log(`backup written: ${backupPath}`);
 
   await db.transaction(async (tx) => {
-    for (const { row, decision } of toTouch) {
+    for (const { row, decision, resolution } of toTouch) {
+      // The provenance row must name where the value ACTUALLY came from. A row the
+      // oracle resolved is sourced by the exchange master, not by an admin; recording
+      // 'ADMIN' for it would make a machine-sourced value indistinguishable from a
+      // hand-entered one, and the whole point of this field is that distinction.
+      const sourcedByOracle = decision.action === 'apply-sourced' && resolution?.outcome === 'resolved';
       await upsertFieldSource(tx as any, {
         ipoId: row.id,
         fieldName: 'segment',
-        source: 'ADMIN',
+        source: sourcedByOracle ? 'NSE' : 'ADMIN',
         confidence: 100,
         previousValue: row.segment,
         dataLineage: {
           reason: decision.reason,
           action: decision.action,
+          ...(resolution
+            ? { oracle: { outcome: resolution.outcome, via: resolution.via, reason: resolution.reason } }
+            : {}),
           repairedBy: UPDATED_BY,
           repairedAt: new Date().toISOString(),
         },

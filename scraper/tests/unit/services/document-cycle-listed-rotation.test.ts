@@ -43,6 +43,9 @@ vi.mock('@ipodhan/shared', () => ({
   IpoPipelineStepsRepository: vi.fn().mockImplementation(() => ({
     findByIpo: vi.fn().mockResolvedValue([]),
   })),
+  IpoFieldPlanRepository: vi.fn().mockImplementation(() => ({
+    upsertGeneratedRows: vi.fn().mockResolvedValue({ inserted: 0 }),
+  })),
 }));
 
 vi.mock('../../../src/services/data-persister.js', () => ({

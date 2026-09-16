@@ -1677,10 +1677,13 @@ export const ipoSlugRedirects = pgTable(
 //   * rank1/2/3_source are varchar, NOT scraper_source. The manifest's SourceCode namespace
 //     (DOC, REG, PRICE_BAND_AD, ...) is wider than the scraper_source pgEnum (which has no DOC),
 //     and coercing one into the other would silently drop the document rank.
-//   * the key is (ipo_id, table_name, field_name) as §2.3 states. Tables that hold more than one
-//     row per IPO (financial_statements, subscriptions) therefore get ONE plan row, not one per
-//     child row — unlike field_sources, which carries a row_key. That is what the design says;
-//     it is called out here so a later slice widens it deliberately rather than by accident.
+//   * item 5 slice 2 (#618) widened the key to (ipo_id, table_name, row_key, field_name) — the
+//     key stated above as (ipo_id, table_name, field_name) collided across fiscal years for
+//     financial_statements (both years' `revenue` plan row map to the same key), so this table
+//     could not record "FY2023 supplied, FY2024 never printed". row_key is the SAME
+//     discriminator field_sources already uses (sentinel '' for singleton tables), not a
+//     `fiscal_year` column: Postgres treats NULL as DISTINCT in a UNIQUE constraint, so a
+//     nullable fiscal_year would let every non-yearly field insert unlimited duplicate rows.
 export const fieldPlanStateEnum = pgEnum('field_plan_state', [
   'PENDING',
   'SUPPLIED',
@@ -1700,6 +1703,13 @@ export const ipoFieldPlan = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     tableName: varchar('table_name', { length: 100 }).notNull(),
+    // Same discriminator field_sources uses (see SINGLETON_ROW_CHILD_TABLES,
+    // scraper/src/services/child-row-keys.ts): '' for a singleton table,
+    // the child row's real identity (e.g. a fiscal year) otherwise. NOT a
+    // `fiscal_year` column -- Postgres treats NULL as DISTINCT in a UNIQUE
+    // constraint, so a nullable fiscal_year would let every non-yearly field
+    // (the majority) insert unlimited duplicate rows.
+    rowKey: varchar('row_key', { length: 200 }).notNull().default(''),
     fieldName: varchar('field_name', { length: 100 }).notNull(),
 
     // ---- the ranks, resolved for THIS IPO's type ----
@@ -1748,6 +1758,7 @@ export const ipoFieldPlan = pgTable(
     uniqueFieldPerIpo: unique('unique_ipo_field_plan').on(
       table.ipoId,
       table.tableName,
+      table.rowKey,
       table.fieldName
     ),
     ipoIdIdx: index('idx_ipo_field_plan_ipo_id').on(table.ipoId),

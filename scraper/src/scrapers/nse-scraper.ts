@@ -6,6 +6,7 @@ import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { scrapeNSEAPI, testNSEAPIConnection } from './nse-api-client.js';
 import { notifyOwner } from '../services/owner-notify.js';
 import { detectOfferingType, detectSegmentFromExchange } from '../utils/detect-offering-type.js';
+import { istDateIso } from '../scheduler/due-step-cycle.js';
 
 const NSE_URL = config.scraper.nseUrl;
 
@@ -110,7 +111,8 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
         logger.debug({ tabIndex }, `Extracting IPOs from tab ${tabIndex}`);
 
         // Extract IPO data from current tab
-        const tabIPOs = await page.evaluate(() => {
+        const today = istDateIso(new Date());
+        const tabIPOs = await page.evaluate((today: string) => {
           const ipos: any[] = [];
 
           // Find all tables in the active tab
@@ -161,6 +163,11 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
             jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
           };
+          // #687 slice 2: `today` (IST calendar day) is computed once in
+          // Node via `istDateIso` and passed into this page.evaluate() closure
+          // as an argument — page.evaluate() cannot import across the
+          // browser-context serialization boundary, so the value crosses as
+          // a parameter instead of being recomputed inline.
           const parseNSEDate = (dateStr: string): string => {
             try {
               const cleaned = dateStr.trim();
@@ -189,9 +196,9 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
               }
 
               // Default to current date if parsing fails
-              return new Date().toISOString().split('T')[0];
+              return today;
             } catch (error) {
-              return new Date().toISOString().split('T')[0];
+              return today;
             }
           };
 
@@ -254,7 +261,6 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             }
           } else {
             // Fallback: determine from dates
-            const today = new Date().toISOString().split('T')[0];
             if (listingDate && today >= listingDate) {
               status = 'LISTED';
             } else if (today >= openDate && today <= closeDate) {
@@ -320,7 +326,7 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
       }
 
           return ipos;
-        });
+        }, today);
 
         // Add IPOs from this tab to the master list
         allIPOs.push(...tabIPOs);
