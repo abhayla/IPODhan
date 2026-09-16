@@ -860,3 +860,74 @@ tail -f /var/log/ipodhan-scraper-wake-prod.log
 The deploy already clears both keys on every deploy (`release_scraper_cycle_locks()` in
 `deploy-linux.sh`, atomically and only if the token still matches), so a deploy is the safe way to
 clear a stale lock when one is due anyway.
+
+### 8e. 2026-09-16 production repair session (#661, item 2 slice 3b, #692) — BLOCKED, not applied
+
+Owner-approved repair session for three classes (provenance-for-absent-values #661/#684, segment
+provenance item-2-s3b #650/#655, STANBIK face-value-as-band #692/#515). All three read cleanly on
+prod but **none applied** — every write path shares `scraper/scripts/lib/repair-tool.ts`'s
+`upsertFieldSource()`, which targets `field_sources.row_key`, a column `schema.ts` declares and a
+regular (non-gated) journaled migration (`20260910043758_salty_shen.sql`, tag
+`20260910043758_salty_shen` in `meta/_journal.json`) adds — but production has never run it. See
+`### 8c-note` above: the *constraint swap* (`_gated/E1_row_key_unique_constraints.sql`) is
+deliberately gated; the plain `ADD COLUMN row_key` migration is NOT gated and should be live on
+prod but isn't. `npm run audit:schema-drift` against prod (tunnel) confirms independently:
+`[MISSING_COLUMN] "field_sources.row_key"`, `[MISSING_COLUMN] "data_conflicts.row_key"`, plus
+dozens of missing indexes/unique constraints across dependant tables — production's applied
+migrations are behind main by more than this one column.
+
+**Repair 1 — provenance-for-absent-values (#661/#684).**
+```bash
+cd scraper && npx tsx scripts/repair-provenance-for-absent-values.ts          # dry-run
+```
+`current_database(): ipodhan` printed. BEFORE count printed partially (450 across 12 fields,
+in progress toward the PR's measured 453/13) before the SELECT itself crashed:
+`column fs.row_key does not exist` (`42703`) on the 13th field (`openDate`). Never reached
+`--apply`. **STOP — not applied.**
+
+**Repair 2 — segment provenance (item 2 slice 3b, #650/#655).**
+```bash
+cd scraper && npx tsx scripts/repair-segment-provenance.ts                                    # dry-run
+cd scraper && npx tsx scripts/repair-segment-provenance.ts --apply --allow-prod               # apply
+```
+Dry-run: `current_database(): ipodhan`, **39 rows WOULD be written of 335 candidates** —
+`{"clear-non-ipo":31,"apply-sourced":8}`. The 8 `apply-sourced` rows are exactly the ones named in
+#650/#655 (WINDLAS BIOTECH, KWALITY WALLS, AAA TECHNOLOGIES, CMS INFO SYSTEMS via NSE; WESTERN
+OVERSEAS STUDY ABROAD, SHIPWAVES ONLINE, STANBIK AGRO, MARUTI INTERIOR PRODUCTS via BSE); the 31
+`clear-non-ipo` rows are pre-existing, PR-documented tool behaviour ("Non-IPO rows → cleared to
+NULL... unchanged behaviour", PR #661 body) — not a new/unexplained population, so this did NOT
+trip the stop condition. Apply crashed on the FIRST insert (`RAVINDRA ENERGY LTD`, offering_type
+rights): `column "row_key" of relation "field_sources" does not exist`. The insert runs inside
+`NodePgSession.transaction()` — Postgres aborts the whole transaction on error, so nothing
+committed. Read-back dry-run after the crash reconfirmed **39 of 335, unchanged**. **STOP — not
+applied, no partial write.**
+
+**Repair 3 — STANBIK face-value-as-band (item 2 slice 6, #692/#515).**
+```bash
+cd scraper && npx tsx scripts/repair-face-value-band-chittorgarh.ts --slug stanbik-agro-ltd                              # dry-run
+cd scraper && npx tsx scripts/repair-face-value-band-chittorgarh.ts --slug stanbik-agro-ltd --apply --expect-db ipodhan --allow-prod   # apply
+```
+Dry-run (takes ~4-5 min live-fetching Chittorgarh report 82 across FY2024-25/2025-26/2026-27,
+FY2026-27 mainboard+SME buckets fail gracefully at the 200-page ceiling per the tool's documented
+resilience fix): `current_database(): ipodhan`, class rows = 1, resolved
+`stanbik-agro-ltd: issue price 30.00 (2025 sme, .../stanbik-agro-ipo/2602/); face_value=10` —
+matches the PR body exactly. Apply: `ALLOW-PROD: writing against "ipodhan"`, resolved the same
+price, then `BROKE writing stanbik-agro-ltd: ... column "row_key" of relation "field_sources" does
+not exist` (tool's own per-row error handling, exit 2). Read-back dry-run after: class rows still
+1, same resolution — unchanged. **STOP — not applied, no partial write.**
+
+**Unblock:** run the journaled (non-gated) migrations against prod — at minimum
+`20260910043758_salty_shen` (adds `field_sources.row_key`, `data_conflicts.row_key`) — via the
+normal `db:migrate` path, on the owner's word (schema DDL against prod is outside a data-repair
+brief's authority; `audit:schema-drift` names the full gap, most of which is unrelated missing
+indexes/constraints, not just `row_key`). Once applied, re-run all three dry-runs (expect the same
+identities/counts measured here — 453ish provenance rows across 13 fields, 39 segment rows
+[8 apply-sourced + 31 clear-non-ipo], 1 STANBIK row) then `--apply --allow-prod`, then the
+`assert-repair-held.mjs --cycles 2` prod hold for each, per the owner brief.
+
+**Prod hold command (not started — nothing applied to hold):**
+```bash
+node scripts/assert-repair-held.mjs provenance-parent-not-null --cycles 2 --expect-db ipodhan
+node scripts/assert-repair-held.mjs segment-provenance --cycles 2 --expect-db ipodhan
+node scripts/assert-repair-held.mjs face-value-band-chittorgarh --cycles 2 --expect-db ipodhan
+```
