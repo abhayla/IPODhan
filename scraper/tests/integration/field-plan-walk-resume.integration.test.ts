@@ -59,13 +59,15 @@ import { walkFieldPlanForIPO, type FieldFetcher } from '../../src/services/field
  *
  *   cd <worktree>/scraper
  *   PW=$(grep '^IPODHAN_APP_DB_PASSWORD=' /d/Abhay/GLOBAL.env | cut -d= -f2-)
- *   export DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test"
+ *   export DATABASE_URL=<the sanctioned ipodhan_test URL from the recipe -- not repeated
+ *     here: a literal connection string in an integration file is refused by
+ *     tests-connection-source.test.ts, which cannot vet a target it did not build>
  *   export REDIS_URL="redis://localhost:6379/15"
  *   npx vitest run -c vitest.integration.config.ts <this file>
  *
  * THREE THINGS THAT EACH LOOK LIKE A BROKEN SUITE AND ARE NOT:
  *   1. localhost:15432 is the SSH TUNNEL to the Windows DB host, and it is the
- *      ONLY accepted route. Pointing DATABASE_URL straight at 103.118.16.189
+ *      ONLY accepted route. Pointing DATABASE_URL straight at the prod DB host (named in the recipe)
  *      is refused by a non-overridable denylist in tests/helpers/
  *      db-safety-guard.ts -- that host serves production, and several of these
  *      suites do real INSERT/DELETE. The tunnel must already be up.
