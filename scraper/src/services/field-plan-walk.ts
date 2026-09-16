@@ -718,14 +718,24 @@ function unwind(result: FieldPlanWalkResult, params: Record<string, unknown>): v
     result.fieldsNotAvailableYet = Math.max(0, result.fieldsNotAvailableYet - 1);
 }
 
+/**
+ * Every counter, so the budget-exhaustion line is a COMPLETE reading of the
+ * partial pass rather than a flattering subset of it. Omitting
+ * `fieldsCheckFailed`/`outcomesFailed` here would hide exactly the two states
+ * that say the pass went badly (signal-ownership R1/R3).
+ */
 function countsOf(r: FieldPlanWalkResult) {
   return {
     fieldsAttempted: r.fieldsAttempted,
     fieldsSupplied: r.fieldsSupplied,
     fieldsExhausted: r.fieldsExhausted,
     fieldsCheckFailed: r.fieldsCheckFailed,
+    fieldsNotAvailableYet: r.fieldsNotAvailableYet,
+    fieldsProvisional: r.fieldsProvisional,
     fieldsWriteSkipped: r.fieldsWriteSkipped,
     fieldsSkippedProtected: r.fieldsSkippedProtected,
+    outcomesRefused: r.outcomesRefused,
+    outcomesFailed: r.outcomesFailed,
   };
 }
 

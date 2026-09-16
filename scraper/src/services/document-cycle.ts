@@ -1541,9 +1541,19 @@ export async function runDocumentCycle(
           'PASS 3 (field-plan walk) got NO budget this cycle — PASS 1+2 consumed the wake. The plan table is unchanged because the walk never ran, not because there was nothing to do.'
         );
       } else if (!fieldPlanWalkHasFetchers()) {
-        // The flag is on but no source adapter is registered. Running would
-        // mark every field EXHAUSTED — a TERMINAL state — without a single
-        // source being asked, which is strictly worse than not running.
+        // The flag is on but no source adapter is registered.
+        //
+        // The ORIGINAL reason was that running would mark every field
+        // EXHAUSTED, a terminal state. That is no longer what happens: since
+        // the F1 fix a missing adapter is classified TRANSIENT, so an
+        // unguarded run would record the non-terminal CHECK_FAILED and the
+        // fields would stay askable. The refusal is still right, for a
+        // smaller and now-accurate reason: every field would be claimed,
+        // charged an attempt, and pushed onto a doubling backoff for work no
+        // source was ever asked to do -- pointless churn that also delays the
+        // first real pass once the adapters land. It is no longer a
+        // data-destroying bug, so the guard is cheap insurance rather than
+        // the last line of defence.
         logger.warn(
           { fieldPlanBudgetMs },
           'PASS 3 (field-plan walk) is FLAGGED ON but has no registered source fetchers — refusing to run rather than marking every field EXHAUSTED unasked. The per-source adapters are the second half of enabling this (field-plan-walk-deps.ts).'
@@ -1552,14 +1562,29 @@ export async function runDocumentCycle(
         const fieldPlanStartedAt = now();
         const fieldPlanDeadlineMs = fieldPlanStartedAt + fieldPlanBudgetMs;
         const walkRepository = new IpoFieldPlanRepository(db as never, redis as never);
+        // Every counter the walk returns is aggregated here, because a
+        // counter with no consumer is not detection, it is a variable
+        // (signal-ownership R1/R3). Two of these decide whether this pass was
+        // healthy at all:
+        //   fieldsCheckFailed -- the number that distinguishes "the walk is
+        //     working" from "every field is failing transiently and being
+        //     re-asked forever on a 6h backoff". Without it the F1 fix is
+        //     invisible: the plan looks busy and nothing is ever supplied.
+        //   outcomesFailed -- the DB-unreachable signal F4 exists to surface.
+        //     If this is non-zero the walk is releasing claims it could not
+        //     settle, and no other line says so.
         const walkTotals = {
           iposWalked: 0,
           fieldsAttempted: 0,
           fieldsSupplied: 0,
           fieldsExhausted: 0,
+          fieldsCheckFailed: 0,
+          fieldsNotAvailableYet: 0,
+          fieldsProvisional: 0,
           fieldsWriteSkipped: 0,
           fieldsSkippedProtected: 0,
           outcomesRefused: 0,
+          outcomesFailed: 0,
         };
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
@@ -1583,9 +1608,13 @@ export async function runDocumentCycle(
             walkTotals.fieldsAttempted += walk.fieldsAttempted;
             walkTotals.fieldsSupplied += walk.fieldsSupplied;
             walkTotals.fieldsExhausted += walk.fieldsExhausted;
+            walkTotals.fieldsCheckFailed += walk.fieldsCheckFailed;
+            walkTotals.fieldsNotAvailableYet += walk.fieldsNotAvailableYet;
+            walkTotals.fieldsProvisional += walk.fieldsProvisional;
             walkTotals.fieldsWriteSkipped += walk.fieldsWriteSkipped;
             walkTotals.fieldsSkippedProtected += walk.fieldsSkippedProtected;
             walkTotals.outcomesRefused += walk.outcomesRefused;
+            walkTotals.outcomesFailed += walk.outcomesFailed;
           } catch (error) {
             // Non-fatal per IPO, exactly like PASS 2 — one IPO's walk failing
             // must not stop the rest, and the claim it held goes stale and is

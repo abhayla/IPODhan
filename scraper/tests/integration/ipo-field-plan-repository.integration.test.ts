@@ -35,6 +35,27 @@ import {
  *
  * SKIPS CLEANLY when no database is configured.
  *
+ * HOW TO RUN THIS (there is NO scraper/.env.test -- the guard reads the
+ * environment, and the credentials live in GLOBAL.env, above every repo):
+ *
+ *   cd <worktree>/scraper
+ *   PW=$(grep '^IPODHAN_APP_DB_PASSWORD=' /d/Abhay/GLOBAL.env | cut -d= -f2-)
+ *   export DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test"
+ *   export REDIS_URL="redis://localhost:6379/15"
+ *   npx vitest run -c vitest.integration.config.ts <this file>
+ *
+ * THREE THINGS THAT EACH LOOK LIKE A BROKEN SUITE AND ARE NOT:
+ *   1. localhost:15432 is the SSH TUNNEL to the Windows DB host, and it is the
+ *      ONLY accepted route. Pointing DATABASE_URL straight at 103.118.16.189
+ *      is refused by a non-overridable denylist in tests/helpers/
+ *      db-safety-guard.ts -- that host serves production, and several of these
+ *      suites do real INSERT/DELETE. The tunnel must already be up.
+ *   2. REDIS_URL must be set even for suites that never touch Redis; the
+ *      global guard refuses to run without a confirmed non-production target.
+ *   3. With DATABASE_URL unset the suite SKIPS rather than fails
+ *      (describe.skipIf), so a silent pass is not a green run.
+ 
+ *
  * To run:
  *   npx vitest run -c vitest.integration.config.ts \
  *     tests/integration/ipo-field-plan-repository.integration.test.ts

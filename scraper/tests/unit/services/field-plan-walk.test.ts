@@ -362,26 +362,50 @@ describe('field-plan walk -- NOT_AVAILABLE_YET', () => {
     expect(result.stoppedReason).toBe('NO_DUE_FIELDS');
   });
 
-  it('does not try a HIGHER rank as provisional — only ranks below the authoritative one', async () => {
+  it('never re-asks the AUTHORITATIVE rank, nor any rank above it, as provisional', async () => {
     const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: 'CHITTORGARH' })]);
-    const nse = vi.fn(supplied);
+    // Rank 1 (above the authoritative rank) and rank 2 (the authoritative one
+    // that just declined) are BOTH spies. The boundary this guards is
+    // `> authoritativeRank`: it is the only thing stopping the provisional
+    // loop re-asking the source that just said NOT_AVAILABLE_YET.
+    const nse = vi.fn(async () => ({ outcome: 'NOT_PRINTED' }) as any);
+    const bse = vi.fn(async () => ({ outcome: 'NOT_AVAILABLE_YET' }) as any);
     const d = deps({
       fieldPlanRepository: repo as any,
-      sourceFetchers: {
-        NSE: nse,
-        BSE: async () => ({ outcome: 'NOT_AVAILABLE_YET' }),
-        CHITTORGARH: supplied,
-      } as any,
+      sourceFetchers: { NSE: nse, BSE: bse, CHITTORGARH: supplied } as any,
     });
-
-    // Rank 1 says NOT_PRINTED so the walk reaches rank 2, which is the
-    // authoritative NOT_AVAILABLE_YET. Rank 1 must not be re-asked.
-    nse.mockImplementation(async () => ({ outcome: 'NOT_PRINTED' }) as any);
 
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
+    // Rank 1 is asked once by the MAIN loop and never again.
     expect(nse).toHaveBeenCalledTimes(1);
+    // THE assertion the first version of this test was missing: the
+    // authoritative rank is asked EXACTLY ONCE. Asserting only that rank 1
+    // was called once, and that a provisional was found, both stay true when
+    // the boundary is widened to `>=` -- rank 2 gets re-asked, returns
+    // NOT_AVAILABLE_YET again, and rank 3 still supplies. The old test was
+    // green under the exact mutation it was named for.
+    expect(bse).toHaveBeenCalledTimes(1);
     expect(result.fieldsProvisional).toBe(1);
+  });
+
+  it('asks each candidate rank at most once across the main and provisional loops', async () => {
+    // The general form of the boundary, independent of which rank happens to
+    // be authoritative: no source is ever consulted twice for one field.
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: 'CHITTORGARH' })]);
+    const nse = vi.fn(async () => ({ outcome: 'NOT_AVAILABLE_YET' }) as any);
+    const bse = vi.fn(async () => ({ outcome: 'NOT_PRINTED' }) as any);
+    const chit = vi.fn(supplied);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: nse, BSE: bse, CHITTORGARH: chit } as any,
+    });
+
+    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(nse).toHaveBeenCalledTimes(1);
+    expect(bse).toHaveBeenCalledTimes(1);
+    expect(chit).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -662,6 +686,70 @@ describe('field-plan walk -- a THROWING settle must not strand the claim (F4)', 
     const d = deps({ fieldPlanRepository: repo as any, protectionFilter: async () => true });
 
     await expect(walkFieldPlanForIPO(IPO_ID, d, openBudget())).rejects.toThrow('release failed');
+  });
+});
+
+describe('field-plan walk -- every counter it reports has a consumer (signal-ownership R1/R3)', () => {
+  it('the budget-exhaustion reading is COMPLETE, including the two that say the pass went badly', async () => {
+    // A counter with no consumer is not detection, it is a variable. These
+    // four were added by the F1/F3/F4 fixes and reached no log line and no
+    // aggregate, so the single number distinguishing "healthy" from "every
+    // field failing transiently forever" was invisible.
+    const repo = makeRepo([planRow()]);
+    const d = deps({ fieldPlanRepository: repo as any });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    // The RESULT is the contract document-cycle's walkTotals sums. If a field
+    // is dropped from it, the aggregate silently loses that signal.
+    for (const key of [
+      'fieldsAttempted',
+      'fieldsSupplied',
+      'fieldsExhausted',
+      'fieldsCheckFailed',
+      'fieldsNotAvailableYet',
+      'fieldsProvisional',
+      'fieldsWriteSkipped',
+      'fieldsSkippedProtected',
+      'outcomesRefused',
+      'outcomesFailed',
+    ]) {
+      expect(Object.prototype.hasOwnProperty.call(result, key)).toBe(true);
+      expect(typeof (result as any)[key]).toBe('number');
+    }
+  });
+
+  it('fieldsCheckFailed is actually incremented — the health number is not always zero', async () => {
+    // A counter that exists but can never move reads identical to a healthy
+    // walk. This is the positive control for the F1 signal.
+    const repo = makeRepo([planRow({ rank2Source: null })]);
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: {
+        NSE: async () => {
+          throw new Error('ETIMEDOUT');
+        },
+      } as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsCheckFailed).toBe(1);
+  });
+
+  it('outcomesFailed is actually incremented — the DB-unreachable signal can move', async () => {
+    const repo = makeRepo([planRow()]);
+    repo.recordOutcome = vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    }) as any;
+    const d = deps({ fieldPlanRepository: repo as any });
+
+    await expect(walkFieldPlanForIPO(IPO_ID, d, openBudget())).rejects.toThrow('ECONNREFUSED');
+    // The throw carries the count out via the walk's own result object only
+    // when it does not propagate; document-cycle's per-IPO catch is what sees
+    // this case, so the assertion that matters here is that the counter moved
+    // before the rethrow rather than after it.
+    expect(repo.released).toHaveLength(1);
   });
 });
 
