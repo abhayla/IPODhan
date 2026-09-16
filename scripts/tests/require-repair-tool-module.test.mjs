@@ -16,6 +16,17 @@ test('TOOL_FILENAME_PATTERN matches refresh-*.ts alongside repair-*.ts and backf
   assert.equal(TOOL_FILENAME_PATTERN.test('backfill-price-bands.ts'), true);
 });
 
+// Review round 3, MINOR-1: requeue-exhausted-plan-rows.ts (like the earlier
+// requeue-anchor-zero-rows.ts) resets rows to PENDING for another pass — the
+// SAME class of write this gate exists to catch (--expect-db, dry-run
+// default, prod refused without --allow-prod). "requeue" was missing from
+// the pattern, so a requeue-*.ts tool could carry no guard and the lint
+// would stay silent.
+test('TOOL_FILENAME_PATTERN matches requeue-*.ts', () => {
+  assert.equal(TOOL_FILENAME_PATTERN.test('requeue-exhausted-plan-rows.ts'), true);
+  assert.equal(TOOL_FILENAME_PATTERN.test('requeue-anchor-zero-rows.ts'), true);
+});
+
 test('TOOL_FILENAME_PATTERN does not match unrelated scripts', () => {
   assert.equal(TOOL_FILENAME_PATTERN.test('add-missing-registrars-t300.ts'), false);
   assert.equal(TOOL_FILENAME_PATTERN.test('index.ts'), false);

@@ -1798,6 +1798,16 @@ export async function runDocumentCycle(
         const MAX_WALK_IDENTITY_LINES = 50;
         const droppedWriteLines: string[] = [];
         const exhaustedFieldLines: string[] = [];
+        // Review round 3, MINOR-3 (real cost): these two used to be called
+        // INSIDE `for (const ipo of candidates)` below, so the BSE board and
+        // Chittorgarh list were re-fetched once per IPO (40x per cycle on
+        // staging), defeating ruling 33's per-cycle memo entirely —
+        // `field-plan-walk-deps.ts`'s own header says "PASS 3 builds it once
+        // per cycle"; the call site did not match its own contract. Hoisted
+        // above the loop: built once, the SAME instances handed to every
+        // IPO's walk.
+        const fieldPlanOrchestrator = buildFieldPlanWalkOrchestrator();
+        const fieldPlanFetchers = buildFieldPlanWalkFetchers();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             logger.warn(
@@ -1811,8 +1821,8 @@ export async function runDocumentCycle(
               ipo.id,
               {
                 fieldPlanRepository: walkRepository as never,
-                orchestrator: buildFieldPlanWalkOrchestrator(),
-                sourceFetchers: buildFieldPlanWalkFetchers(),
+                orchestrator: fieldPlanOrchestrator,
+                sourceFetchers: fieldPlanFetchers,
                 // Review round 2, RCA1: the walk's write path needs the
                 // existing row's identity to write through `preResolvedIPO`
                 // rather than falling into consolidatedUpsertIPO's CREATE

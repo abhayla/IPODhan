@@ -189,12 +189,13 @@ vi.mock('../../../src/utils/distributed-lock.js', () => ({
  */
 let hasFetchers = false;
 const buildFieldPlanWalkFetchersMock = vi.fn(() => (hasFetchers ? { NSE: async () => ({ outcome: 'NOT_PRINTED' }) } : {}));
+const buildFieldPlanWalkOrchestratorMock = vi.fn().mockImplementation(() => ({
+  consolidatedUpsertIPO: vi.fn(),
+  consolidatedUpsertChildRows: vi.fn(),
+}));
 vi.mock('../../../src/services/field-plan-walk-deps.js', () => ({
   buildFieldPlanWalkFetchers: (...args: unknown[]) => buildFieldPlanWalkFetchersMock(...args),
-  buildFieldPlanWalkOrchestrator: vi.fn().mockImplementation(() => ({
-    consolidatedUpsertIPO: vi.fn(),
-    consolidatedUpsertChildRows: vi.fn(),
-  })),
+  buildFieldPlanWalkOrchestrator: (...args: unknown[]) => buildFieldPlanWalkOrchestratorMock(...args),
   fieldPlanWalkHasFetchers: (fetchers?: Record<string, unknown>) =>
     Object.keys(fetchers ?? buildFieldPlanWalkFetchersMock()).length > 0,
 }));
@@ -362,5 +363,30 @@ describe('PASS 3 DOES run once the registry is populated (the guard is not a bla
     await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
 
     expect(claimNextDueFieldMock).not.toHaveBeenCalled();
+  });
+
+  // Review round 3, MINOR-3 (real cost): buildFieldPlanWalkOrchestrator() and
+  // buildFieldPlanWalkFetchers() used to be called INSIDE
+  // `for (const ipo of candidates)`, so the BSE board / Chittorgarh list
+  // fetch each IPO's walk re-triggers (ruling 33's per-cycle memo is
+  // defeated -- 40x per cycle instead of once). Both builders must be
+  // invoked exactly ONCE per cycle, however many IPOs are walked.
+  it('builds the orchestrator and the fetchers ONCE per cycle, not once per IPO', async () => {
+    hasFetchers = true;
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1'), candidateRow('ipo-2'), candidateRow('ipo-3')],
+    });
+
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+
+    expect(claimNextDueFieldMock).toHaveBeenCalled();
+    expect(buildFieldPlanWalkOrchestratorMock).toHaveBeenCalledTimes(1);
+    // 2, not 3+: ONE call is `fieldPlanWalkHasFetchers()`'s own default-arg
+    // guard check (`buildFieldPlanWalkFetchers()` called with no args before
+    // the loop even starts, unrelated to this bug), the OTHER is the single
+    // per-cycle build the loop now reuses for every IPO. Never N+1 for N
+    // candidate IPOs, which is what the per-IPO rebuild bug produced (5 for
+    // 3 IPOs: 1 guard-check + 1-per-IPO).
+    expect(buildFieldPlanWalkFetchersMock).toHaveBeenCalledTimes(2);
   });
 });

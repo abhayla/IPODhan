@@ -22,7 +22,11 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /** Files that must import the module (basename match), relative to SCRIPTS_DIR. */
-export const TOOL_FILENAME_PATTERN = /^(repair|backfill|refresh)-.*\.ts$/;
+// Review round 3, MINOR-1: "requeue" added — requeue-exhausted-plan-rows.ts
+// (and the earlier requeue-anchor-zero-rows.ts) reset rows for another pass,
+// the same class of write this gate exists to guard (--expect-db, dry-run
+// default, prod refused without --allow-prod).
+export const TOOL_FILENAME_PATTERN = /^(repair|backfill|refresh|requeue)-.*\.ts$/;
 
 /** Any import specifier that resolves to the shared module. */
 export const MODULE_IMPORT_PATTERN = /^[ 	]*import\s[\s\S]{0,400}?from\s+['"][^'"]*lib\/repair-tool(\.js)?['"]/m;

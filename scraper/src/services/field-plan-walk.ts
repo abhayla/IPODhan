@@ -176,12 +176,19 @@ export interface FieldPlanWalkOrchestrator {
    * (companyName at minimum) even when a pre-resolved row is supplied. The
    * walk's `runWrite` builds that payload from the row `preResolvedIPO`
    * itself names — see `identityFieldsFor` below.
+   *
+   * `onlyFields` (review round 3, MAJOR): those SAME spread-in identity
+   * fields would otherwise enter consolidation as this write's OWN claim
+   * under `source`/`confidence` — fabricated provenance for fields the walk
+   * never fetched. The walk always passes exactly `[camelField]`, the one
+   * field it actually supplied.
    */
   consolidatedUpsertIPO(
     scraped: any,
     source: any,
     confidence?: number,
-    preResolvedIPO?: any
+    preResolvedIPO?: any,
+    onlyFields?: string[]
   ): Promise<any>;
   consolidatedUpsertChildRows(
     ipoId: string,
@@ -708,11 +715,16 @@ async function runWrite(
       if (!existing) {
         return { happened: false, skipReason: 'ipo row missing' };
       }
+      const camelFieldName = toCamelFieldName(plan.fieldName);
       const r = await deps.orchestrator.consolidatedUpsertIPO(
-        { id: ipoId, ...identityFieldsFor(existing), [toCamelFieldName(plan.fieldName)]: answer.value },
+        { id: ipoId, ...identityFieldsFor(existing), [camelFieldName]: answer.value },
         source as any,
         100,
-        existing
+        existing,
+        // Review round 3 (MAJOR): the identity fields above are for the lock
+        // slug / resolveIpoRow ONLY, never a claim this write is making —
+        // consolidate exactly the one field this write actually supplied.
+        [camelFieldName]
       );
       if (r?.skipped) return { happened: false, skipReason: r.skipReason ?? 'SKIPPED' };
       return { happened: true };

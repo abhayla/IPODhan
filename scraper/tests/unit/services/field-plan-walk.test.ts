@@ -855,9 +855,14 @@ describe('field-plan walk -- writes the CAMELCASE key, never the plan row\'s raw
     await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
     expect(orch.consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
-    const [payload] = orch.consolidatedUpsertIPO.mock.calls[0];
+    const [payload, , , , onlyFields] = orch.consolidatedUpsertIPO.mock.calls[0];
     expect(payload).toHaveProperty('issueSize', 10);
     expect(payload).not.toHaveProperty('issue_size');
+    // Review round 3 (MAJOR): the 5th arg narrows consolidation to exactly
+    // the one field this write actually supplied — the identity fields
+    // spread into the payload (review round 2, RCA1) are for the lock slug
+    // and resolveIpoRow ONLY, never a claim this write is making.
+    expect(onlyFields).toEqual(['issueSize']);
   });
 
   it('child-row (keyed) path: converts fresh_issue -> freshIssue in the row data', async () => {
