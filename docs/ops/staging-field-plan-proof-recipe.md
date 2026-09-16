@@ -1,0 +1,69 @@
+# Staging proof recipe: field-plan generation (PASS 2.5) and the walk (PASS 3)
+
+Written 2026-09-16 before the run, so the steps are the ones actually executed.
+Folds into `docs/ops/prod-ops-recipes.md` in the morning batch.
+
+**Scope: STAGING ONLY.** Prod's env is not touched by any step here. Neither flag
+is a required key in `scripts/assert-env-keys.sh` (verified: zero matches), and the
+flag-liveness report only covers required keys and never fails a deploy — so adding
+these lines is additive and changes no deploy behaviour.
+
+## What is being proven, and why in this order
+
+1. **Generation writes rows** — `ENABLE_FIELD_PLAN=true`, walk flag still OFF.
+2. **Generation reconciles, never regenerates** — a second wake inserts zero and
+   leaves the table unchanged.
+3. **The walk consumes them** — `ENABLE_FIELD_PLAN_WALK=true`. This is the step
+   that pays #678's owed proof; it cannot be taken earlier, because a walk with
+   no plan rows to read proves nothing.
+
+## The trap this recipe exists to avoid
+
+A row count alone is not evidence. Generation is PASS 2.5, second-to-last in the
+wake, so a cycle where PASS 1+2 consume the budget skips it and says so. Three
+distinct outcomes look identical in the table and are distinguishable ONLY in the log:
+
+| Log line | Means |
+|---|---|
+| `PASS 2.5 field-plan generation summary for this cycle` | it RAN (payload carries `ipos`, `rowsInserted`, `failed`) |
+| `Field-plan generation skipped — no wake budget remains` | never ran; PASS 1+2 ate the wake |
+| `Field-plan generation budget exhausted — remaining IPOs resume next cycle` | ran, stopped partway between IPOs |
+
+The summary is logged **unconditionally** (fixed at 55b36ace) precisely so that
+wake 2 of the reconciled-not-regenerated proof, where zero rows is the CORRECT
+result, still announces that the pass ran. Read the line first, the count second,
+and name the cycle each came from.
+
+## Steps
+
+    # 1. add the flag (staging slot only)
+    ssh <staging host>
+    F=/root/ipodhan/shared/env/staging/scraper.env
+    cp "$F" "$F.bak-$(date +%Y%m%d-%H%M)"      # restore path, never git checkout
+    grep -q '^ENABLE_FIELD_PLAN=' "$F" || echo 'ENABLE_FIELD_PLAN=true' >> "$F"
+    grep -n 'ENABLE_FIELD_PLAN' "$F"           # read it back
+
+    # 2. restart the staging scraper app ONLY
+    pm2 restart ipodhan-scraper-staging --update-env
+    pm2 describe ipodhan-scraper-staging | grep -i 'status\|script'
+
+    # 3. wake 1 — read the LINE, then the count
+    pm2 logs ipodhan-scraper-staging --nostream --lines 400 \
+      | grep -E 'PASS 2.5 field-plan generation summary|Field-plan generation (skipped|budget exhausted)'
+    # then, through the 15432 tunnel, against ipodhan_staging:
+    #   select count(*) from ipo_field_plan;
+
+    # 4. wake 2 (next scheduled wake) — same two reads
+    #    PASS: summary present with rowsInserted=0, count unchanged from step 3.
+    #    A missing summary line is NOT a pass; it means the pass did not run.
+
+    # 5. only then: ENABLE_FIELD_PLAN_WALK=true, same add + restart, and read
+    #    'PASS 3 field-plan walk summary for this cycle (item 6)'.
+    #    fieldsCheckFailed and outcomesFailed are the two counters that say the
+    #    pass went badly even when it looks busy.
+
+## Rollback
+
+Restore the `.bak` written in step 1 and `pm2 restart ipodhan-scraper-staging
+--update-env`. Both flags default to false when the key is absent
+(`process.env.X === 'true'`), so removing the line is a complete rollback.
