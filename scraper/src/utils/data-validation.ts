@@ -88,27 +88,45 @@ export const SEBI_RETAIL_WINDOW = {
  * same way book-building is — same exemption as Rule 9 below), and a missing
  * band falls back to the old numeric floor (returns false, so Rule 1 still
  * refuses lots under 10 with nothing to check them against).
+ *
+ * Round 2 (T-lot-floor follow-up): the same live row proved this rule cannot
+ * key on `data.segment` — the BSE/NSE discovery payload `validateIPOData` is
+ * actually called with (bse-scraper-orchestrator-v2.ts:213 via validators.ts,
+ * nse-scraper-orchestrator-v2.ts:243, ipo-alerts-fallback-orchestrator-v2.ts:107,
+ * pipelines/data-validation-pipeline.ts:125 all pass the raw scraper object)
+ * carries no `segment` even when the DB row already has one. When segment is
+ * missing, a lot that is legal under EITHER SEBI window (MAINBOARD or SME) is
+ * not a scraper error — Rule 9 still checks the exact segment once one is on
+ * record downstream. A band is still required (nothing to check a bare lot
+ * number against), and lot < 1 / lot === 1 are refused earlier regardless.
  */
 function isLotWithinSebiRetailWindow(data: IPODataToValidate): boolean {
   if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE') return false;
-  const window =
-    data.segment === 'MAINBOARD' ? SEBI_RETAIL_WINDOW.MAINBOARD :
-    data.segment === 'SME' ? SEBI_RETAIL_WINDOW.SME :
-    null;
-  if (!window) return false;
   const minInvestment = (data.lotSize as number) * data.priceRangeMax;
-  return minInvestment >= window.min && minInvestment <= window.max;
+  if (data.segment === 'MAINBOARD') {
+    return minInvestment >= SEBI_RETAIL_WINDOW.MAINBOARD.min && minInvestment <= SEBI_RETAIL_WINDOW.MAINBOARD.max;
+  }
+  if (data.segment === 'SME') {
+    return minInvestment >= SEBI_RETAIL_WINDOW.SME.min && minInvestment <= SEBI_RETAIL_WINDOW.SME.max;
+  }
+  // Unknown segment: accept if the lot is legal under ANY SEBI retail
+  // window — a lot legal under either segment's rules is not a scraper
+  // error just because the payload omits which segment it is.
+  const inMainboardWindow =
+    minInvestment >= SEBI_RETAIL_WINDOW.MAINBOARD.min && minInvestment <= SEBI_RETAIL_WINDOW.MAINBOARD.max;
+  const inSmeWindow = minInvestment >= SEBI_RETAIL_WINDOW.SME.min && minInvestment <= SEBI_RETAIL_WINDOW.SME.max;
+  return inMainboardWindow || inSmeWindow;
 }
 
 function sebiRetailWindowFloorMessage(data: IPODataToValidate, source: string): string {
   if (!data.priceRangeMax || data.issueType === 'FIXED_PRICE') {
     return `lot_size = ${data.lotSize} is below minimum threshold (10) and no price band is on record to check it against the SEBI retail-value window. Likely scraper error. Source: ${source}`;
   }
+  const minInvestment = (data.lotSize as number) * data.priceRangeMax;
   if (!data.segment) {
-    return `lot_size = ${data.lotSize} is below minimum threshold (10) and no segment (MAINBOARD/SME) is on record to pick the right SEBI retail-value window. Likely scraper error. Source: ${source}`;
+    return `lot_size = ${data.lotSize} is below minimum threshold (10) and lot ${data.lotSize} x band-cap ₹${data.priceRangeMax} = ₹${minInvestment.toLocaleString('en-IN')} falls outside every SEBI retail range (no segment on record — tested against MAINBOARD ₹${SEBI_RETAIL_WINDOW.MAINBOARD.min.toLocaleString('en-IN')}-₹${SEBI_RETAIL_WINDOW.MAINBOARD.max.toLocaleString('en-IN')} and SME ₹${SEBI_RETAIL_WINDOW.SME.min.toLocaleString('en-IN')}-₹${SEBI_RETAIL_WINDOW.SME.max.toLocaleString('en-IN')}). Likely scraper error. Source: ${source}`;
   }
   const window = data.segment === 'MAINBOARD' ? SEBI_RETAIL_WINDOW.MAINBOARD : SEBI_RETAIL_WINDOW.SME;
-  const minInvestment = (data.lotSize as number) * data.priceRangeMax;
   return `lot_size = ${data.lotSize} is below minimum threshold (10) and lot ${data.lotSize} x band-cap ₹${data.priceRangeMax} = ₹${minInvestment.toLocaleString('en-IN')} falls outside the SEBI ${data.segment} retail range (₹${window.min.toLocaleString('en-IN')}-₹${window.max.toLocaleString('en-IN')}). Likely scraper error. Source: ${source}`;
 }
 
