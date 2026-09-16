@@ -1,0 +1,11 @@
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c02-s6\scripts\lib -> D:\Abhay\Ventures\IPODhan-c02-s6\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c02-s6 | cwd D:\Abhay\Ventures\IPODhan-c02-s6
+alias-preflight: @ipodhan/shared from D:\Abhay\Ventures\IPODhan-c02-s6 -> D:\Abhay\Ventures\IPODhan-c02-s6\packages\shared\src\index.ts | checkout D:\Abhay\Ventures\IPODhan-c02-s6 | cwd D:\Abhay\Ventures\IPODhan-c02-s6
+assert-repair-held: recording violation count now (invariant: node scripts/.scratch/stanbik-held.cjs)
+  current violation count: 0
+assert-repair-held: polling for 2 distinct scraper cycle(s), timeout 120min, poll every 60s...
+  cycle 1/2 observed (marker=2026-09-16T00:35:56.353Z): violation count = 0
+  cycle 2/2 observed (marker=2026-09-16T00:44:09.834Z): violation count = 0
+assert-repair-held: per-cycle results:
+  cycle 1: count=0 at 2026-09-16T00:36:35.350Z
+  cycle 2: count=0 at 2026-09-16T00:44:38.301Z
+HELD: violation count stayed 0 across 2 distinct scraper cycle(s).
