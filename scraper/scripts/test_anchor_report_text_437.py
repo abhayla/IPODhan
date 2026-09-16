@@ -43,7 +43,13 @@ FIXTURES = os.path.join(
 # investor rows the table pages must yield. The row counts were read off the
 # OCR lines by hand - see the module docstring for the source URLs.
 LETTERS = {
-    "LCCPROJECT": {"table": {0: 9, 1: 1}, "cover": []},
+    # Page 0 count moved 9 -> 10 in #437 slice 3: row 3 of the old rebuild
+    # merged two investors ("...PCC-CITADEL CAPITAL FUND" and "...PCC- ELITE
+    # CAPITAL FUND") into one spine row because Elite's share cell prints
+    # "6,8 § ,03 2" - the OCR misread a "," as "§", which failed the strict
+    # numeric-cell test and so never became its own spine seed. See
+    # test_anchor_row_geometry_437.py for the row-level assertions.
+    "LCCPROJECT": {"table": {0: 10, 1: 1}, "cover": []},
     "JSIPL": {"table": {0: 5}, "cover": []},
     "LUMINO": {"table": {0: 10, 1: 19, 2: 23, 3: 6}, "cover": [4]},
     "HEROMOTORS": {"table": {0: 14, 1: 10, 2: 13}, "cover": [3]},

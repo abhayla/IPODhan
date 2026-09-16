@@ -921,6 +921,50 @@ def _is_numeric_cell(text):
         c.isdigit() for c in text)
 
 
+# #437 slice 3 - a grouped number the scan corrupted at the SEPARATOR position.
+#
+# `_is_numeric_cell` is intentionally strict: it also decides whether a HEADER
+# or DATA line is a column label vs. a data cell, and loosening it there would
+# let a numeric-looking label (a date, a phone number) leak into the table.
+# But `_share_column` and the spine seeding below ask a narrower question -
+# "is this a long grouped figure (a share count), even if the scan mangled one
+# separator glyph into noise?" - measured on LCC row 3: two investors with
+# IDENTICAL share counts print at 10,00,14,672 / 10,00,I4,672 (Citadel) and
+# 10,00,14,672 / 10,00,§4,672 (Elite); "§" is not in `_NUMERIC_CELL_RE`'s
+# class, so the second cell failed `_is_numeric_cell` outright and never
+# became its own spine seed - Elite's whole row merged into Citadel's.
+#
+# The test below still refuses to invent a digit: it only asks whether the
+# text, with any single run of non-digit "noise" characters between two digit
+# groups collapsed away, reads as a grouped integer of the right length. A
+# name cell (mostly letters) never has enough digits to pass the ratio floor.
+_GROUPED_NUMBER_NOISE_RE = re.compile(r"[^0-9.,]")
+
+
+def _looks_like_grouped_number(text, min_digits=4):
+    """A share/serial-shaped cell even where one separator glyph is corrupted.
+
+    Loosely: at least `min_digits` digits, and digits are the large majority
+    of the non-space characters (rules out a name cell that merely contains a
+    stray digit or two).
+    """
+    if not text:
+        return False
+    compact = re.sub(r"\s+", "", text)
+    digits = sum(1 for c in compact if c.isdigit())
+    if digits < min_digits:
+        return False
+    non_space = len(compact)
+    noise = len(_GROUPED_NUMBER_NOISE_RE.findall(compact))
+    # Every non-digit character must be a plausible separator/noise glyph
+    # (never a letter), and noise stays a small minority of the cell so a
+    # cell like "CRAFT EMERGING MARKET 4" (a name with a stray digit) cannot
+    # pass.
+    if noise > 0 and noise / float(non_space) > 0.3:
+        return False
+    return digits / float(non_space) >= 0.6
+
+
 # A row is anchored on its SHARES cell, never on a y band of everything.
 #
 # Measured on all five letters: the numeric cells of one investor sit on (or
@@ -964,8 +1008,7 @@ def _share_column(bands, anchors, name_idx):
             continue
         score = 0
         for e in _column_cells(bands, anchors, idx):
-            digits = re.sub(r"[^0-9]", "", e["text"])
-            if _is_numeric_cell(e["text"]) and len(digits) >= 4 and "%" not in e["text"]:
+            if _looks_like_grouped_number(e["text"]) and "%" not in e["text"]:
                 score += 1
         if score >= MIN_SPINE_CELLS:
             return idx
@@ -1062,9 +1105,12 @@ def ocr_table_page_rows(ocr_lines):
         seeds += [e for e in _column_cells(bands, anchors, serial_idx)
                   if SERIAL_RE.match(e["text"].strip())]
     for e in sorted(seeds, key=lambda e: e["centre"]):
-        digits = re.sub(r"[^0-9]", "", e["text"])
-        is_share = (_is_numeric_cell(e["text"]) and len(digits) >= 4
-                    and "%" not in e["text"])
+        # #437 slice 3: a share cell corrupted at the separator ("§" for ","
+        # on LCC row 3's second investor) still counts as a share seed - see
+        # `_looks_like_grouped_number`. Using the strict `_is_numeric_cell`
+        # here silently dropped that seed and merged two investors into one
+        # spine row.
+        is_share = _looks_like_grouped_number(e["text"]) and "%" not in e["text"]
         is_serial = bool(SERIAL_RE.match(e["text"].strip()))
         if not (is_share or is_serial):
             continue
