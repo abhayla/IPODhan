@@ -1031,6 +1031,12 @@ export async function runDocumentCycle(
     budgetMs?: number;
     /** Explicit override — bypasses the shared wake-budget arithmetic below (tests / callers that know better). */
     extractionBudgetMs?: number;
+    /**
+     * Item 5 slice s4 review fix: explicit override for PASS 3's ceiling,
+     * mirroring `extractionBudgetMs` exactly (tests / callers that know
+     * better bypass the shared wake-budget arithmetic below).
+     */
+    fieldPlanBudgetMs?: number;
     now?: () => number;
     /** Cadence D-13 calendar gate — one shared wake budget for discovery + extraction. Test-injectable. */
     wakeBudgetMs?: number;
@@ -1533,40 +1539,74 @@ export async function runDocumentCycle(
     // (design §2.3), so a second pass over an IPO whose rows are already
     // planned writes nothing and mutates nothing. Non-fatal per IPO — one
     // IPO's plan-generation failure must not stop the rest of the cycle.
+    //
+    // Review fix (Tier B, #693): mirrors PASS 2's ceiling exactly rather
+    // than inventing a third convention — PASS 3 takes whatever remains of
+    // the shared wake budget after PASS 1 + PASS 2, checked BETWEEN IPOs.
+    // A zero-or-negative remainder is LOGGED and the whole pass is skipped
+    // (never silently iterated with an already-blown deadline) — the flag
+    // ships OFF and the per-IPO cost is small today, but "add the ceiling
+    // before flipping the flag" is a promise with nothing enforcing it, so
+    // it is built now while it is cheap and risk-free.
+    // PASS 2.5 runs BEFORE the walk, so its ceiling must also hold back
+    // `PURGE_RESERVE_MS` -- generation that ate the whole wake would starve
+    // the very walk that consumes the rows it just wrote.
+    const fieldPlanGenBudgetMs =
+      options.fieldPlanBudgetMs ??
+      Math.max(0, wakeBudgetMs - (now() - startedAt) - PURGE_RESERVE_MS);
     if (FEATURE_FLAGS.ENABLE_FIELD_PLAN) {
-      const fieldPlanTotals = { ipos: 0, rowsInserted: 0, failed: 0 };
-      for (const ipo of candidates) {
-        try {
-          const rows = generateFieldPlan({
-            id: ipo.id,
-            segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
-            listingExchanges: ipo.listingExchanges ?? null,
-          });
-          if (rows.length === 0) continue;
-          const { inserted } = await fieldPlanRepository.upsertGeneratedRows(
-            rows.map((r) => ({
-              ipoId: r.ipoId,
-              tableName: r.tableName,
-              rowKey: '',
-              fieldName: r.fieldName,
-              rank1Source: r.rank1Source,
-              rank2Source: r.rank2Source,
-              rank3Source: r.rank3Source,
-              manifestVersion: r.manifestVersion,
-            }))
-          );
-          fieldPlanTotals.ipos++;
-          fieldPlanTotals.rowsInserted += inserted;
-        } catch (error) {
-          fieldPlanTotals.failed++;
-          logger.error(
-            { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
-            'Field-plan generation threw (non-fatal) — continuing the cycle'
-          );
+      if (fieldPlanGenBudgetMs <= 0) {
+        logger.warn(
+          { fieldPlanGenBudgetMs },
+          'Field-plan generation skipped — no wake budget remains after discovery/extraction (item 5 slice s4)'
+        );
+      } else {
+        const fieldPlanStartedAt = now();
+        const fieldPlanTotals = { ipos: 0, rowsInserted: 0, failed: 0 };
+        for (const ipo of candidates) {
+          if (now() - fieldPlanStartedAt >= fieldPlanGenBudgetMs) {
+            logger.warn(
+              {
+                fieldPlanGenBudgetMs,
+                processed: fieldPlanTotals.ipos,
+                remaining: candidates.length - fieldPlanTotals.ipos,
+              },
+              'Field-plan generation budget exhausted — remaining IPOs resume next cycle (item 5 slice s4)'
+            );
+            break;
+          }
+          try {
+            const rows = generateFieldPlan({
+              id: ipo.id,
+              segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
+              listingExchanges: ipo.listingExchanges ?? null,
+            });
+            if (rows.length === 0) continue;
+            const { inserted } = await fieldPlanRepository.upsertGeneratedRows(
+              rows.map((r) => ({
+                ipoId: r.ipoId,
+                tableName: r.tableName,
+                rowKey: '',
+                fieldName: r.fieldName,
+                rank1Source: r.rank1Source,
+                rank2Source: r.rank2Source,
+                rank3Source: r.rank3Source,
+                manifestVersion: r.manifestVersion,
+              }))
+            );
+            fieldPlanTotals.ipos++;
+            fieldPlanTotals.rowsInserted += inserted;
+          } catch (error) {
+            fieldPlanTotals.failed++;
+            logger.error(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Field-plan generation threw (non-fatal) — continuing the cycle'
+            );
+          }
         }
-      }
-      if (fieldPlanTotals.rowsInserted > 0 || fieldPlanTotals.failed > 0) {
-        logger.info(fieldPlanTotals, 'PASS 2.5 field-plan generation summary for this cycle (item 5 slice s4)');
+        if (fieldPlanTotals.rowsInserted > 0 || fieldPlanTotals.failed > 0) {
+          logger.info(fieldPlanTotals, 'PASS 2.5 field-plan generation summary for this cycle (item 5 slice s4)');
+        }
       }
     }
     // PASS 3 — the field-plan walk (item 6). Runs AFTER extraction for the

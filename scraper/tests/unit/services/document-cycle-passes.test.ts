@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/shared';
+import logger from '../../../src/utils/logger.js';
 
 // ---------------------------------------------------------------------------
 // Mocks — every dependency runDocumentCycle touches, fake-deps style (see
@@ -1073,6 +1074,42 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
     // Two candidates (ipo-1, ipo-2) from the stubbed CANDIDATE_IPOS_SQL rows
     // above -- no new selection logic, the same `candidates` array pass 1/2
     // already iterate.
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(2);
+  });
+
+  // Review fix (Tier B, #693): PASS 3 had no wall-clock ceiling -- a bare
+  // `for (const ipo of candidates)` with no deadline check, while PASS 1
+  // checks budgetMs and PASS 2 checks extractionBudgetMs. This test fails
+  // if that check is ever removed again.
+  it('with a deadline already exceeded, NO candidate is processed and the reason is logged', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    // fieldPlanBudgetMs: 0 mirrors extractionBudgetMs's explicit-override
+    // shape exactly -- the deadline is already exceeded before the loop's
+    // first iteration, at `now() - fieldPlanStartedAt (0) >= 0`.
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999, fieldPlanBudgetMs: 0 });
+
+    expect(upsertGeneratedRowsMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldPlanGenBudgetMs: 0 }),
+      expect.stringContaining('Field-plan generation skipped')
+    );
+  });
+
+  // Review Low (#693): the try/catch's per-IPO isolation looked right but
+  // was never asserted -- inferred is not asserted.
+  it('one IPO throwing during upsertGeneratedRows does not stop a sibling IPO from getting its rows', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    upsertGeneratedRowsMock.mockImplementationOnce(() => {
+      throw new Error('boom -- ipo-1 upsert failed');
+    });
+    upsertGeneratedRowsMock.mockResolvedValueOnce({ inserted: 3 });
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // Both candidates were still offered to the pass -- ipo-1's throw did
+    // not break the loop before ipo-2's turn.
     expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(2);
   });
 });
