@@ -7,6 +7,7 @@ import {
   resolveIssuePrice,
   parseStrictIssuePrice,
   decideExpectDbRefusal,
+  decideBlankUnsourcedBand,
   collectReport82Candidates,
   applyRowRepair,
   type Report82Candidate,
@@ -306,6 +307,42 @@ describe('applyRowRepair — the write body', () => {
     });
     const faceValueCalls = upsertSpy.mock.calls.filter(([, params]) => (params as Record<string, unknown>).fieldName === 'faceValue');
     expect(faceValueCalls).toHaveLength(0);
+  });
+});
+
+/**
+ * `--blank-unsourced` (decision 4 / delta-2 ruling 32): matches ruling 32's
+ * prod list — BANGANGA, MUTHOOT FINCOTP, NIRBHAY COLOURS resolve to
+ * 'no-source' from this tool (report 82 carries no matching company name for
+ * them, per #515) and are blank candidates; an `ambiguous` outcome is a
+ * refusal to pick between candidates, never evidence of unsourceability, and
+ * must NOT be blanked.
+ */
+describe('decideBlankUnsourcedBand — ruling 32', () => {
+  it('blanks a no-source outcome', () => {
+    const d = decideBlankUnsourcedBand({ status: 'no-source' });
+    expect(d.action).toBe('blank');
+  });
+
+  it('does NOT blank an ambiguous outcome — a refusal to pick, not evidence of unsourceability', () => {
+    const d = decideBlankUnsourcedBand({
+      status: 'ambiguous',
+      candidates: [
+        { companyName: 'X', issuePriceRaw: '30', detailUrl: null, year: 2025, category: 'sme' },
+        { companyName: 'X', issuePriceRaw: '35', detailUrl: null, year: 2026, category: 'sme' },
+      ],
+    });
+    expect(d.action).toBe('skip-not-no-source');
+  });
+
+  it('does NOT blank a resolved outcome', () => {
+    const d = decideBlankUnsourcedBand({
+      status: 'resolved',
+      issuePrice: 30,
+      detailUrl: null,
+      source: { companyName: 'X', issuePriceRaw: '30', detailUrl: null, year: 2025, category: 'sme' },
+    });
+    expect(d.action).toBe('skip-not-no-source');
   });
 });
 

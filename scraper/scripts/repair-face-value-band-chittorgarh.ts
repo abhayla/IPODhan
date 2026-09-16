@@ -56,6 +56,19 @@
  *   npx tsx scripts/repair-face-value-band-chittorgarh.ts                      # dry-run, whole class
  *   npx tsx scripts/repair-face-value-band-chittorgarh.ts --slug stanbik-agro-ltd
  *   npx tsx scripts/repair-face-value-band-chittorgarh.ts --apply --expect-db ipodhan_staging
+ *
+ * `--blank-unsourced` (decision 4 / delta-2 ruling 32, 2026-09-16): for a
+ * class row this tool resolves to 'no-source' (never 'ambiguous' — an
+ * ambiguous match is a refusal to guess between candidates, not evidence the
+ * price is unsourceable), NULL the price band (`priceRangeMin`,
+ * `priceRangeMax`) instead of leaving the face-value-mis-filed band in
+ * place. `face_value` itself is untouched either way — this tool only ever
+ * resolves it from a detail page, never blanks it. Writes NO field_sources
+ * row for the blanked fields, mirroring `repair-segment-provenance.ts`'s
+ * mode of the same name: the absence is what `d_lot_band_window` (and any
+ * future band-provenance check) detects, never a placeholder reason row
+ * (O-16 / #658, "delete-only").
+ *   npx tsx scripts/repair-face-value-band-chittorgarh.ts --apply --expect-db ipodhan_staging --blank-unsourced
  */
 import '../../scripts/lib/alias-preflight-auto.mjs';
 import { db, getRedisClient, configureUtcTimestampParsing } from '@ipodhan/shared';
@@ -65,7 +78,7 @@ import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-n
 import { eq, sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
-import { openRepairDb, upsertFieldSource, writeLedgerFile, queryCurrentDatabase } from './lib/repair-tool.js';
+import { assertNoSchemaDrift, openRepairDb, upsertFieldSource, writeLedgerFile, queryCurrentDatabase } from './lib/repair-tool.js';
 import { fetchReport82CurrentYear } from './lib/chittorgarh-report82-discovery.js';
 import { extractFaceValueFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
 
@@ -374,6 +387,32 @@ export function decideExpectDbRefusal(input: {
   return { refuse: false };
 }
 
+export type BlankUnsourcedBandAction = 'blank' | 'skip-not-no-source';
+
+export interface BlankUnsourcedBandDecision {
+  action: BlankUnsourcedBandAction;
+  reason: string;
+}
+
+/**
+ * Pure per-row decision for `--blank-unsourced` (ruling 32) — no DB,
+ * unit-testable in isolation. Only a `no-source` outcome is blanked; an
+ * `ambiguous` outcome is a refusal to pick between candidates (not evidence
+ * the row is unsourceable) and is left for a human, never blanked.
+ */
+export function decideBlankUnsourcedBand(outcome: ResolveOutcome): BlankUnsourcedBandDecision {
+  if (outcome.status === 'no-source') {
+    return {
+      action: 'blank',
+      reason: 'no report-82 row across the three fiscal years matches this company — blanking price band to NULL, no provenance row written',
+    };
+  }
+  return {
+    action: 'skip-not-no-source',
+    reason: `outcome is '${outcome.status}', not 'no-source' — not a --blank-unsourced candidate`,
+  };
+}
+
 function readFlag(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
   return idx >= 0 ? process.argv[idx + 1] : undefined;
@@ -401,14 +440,16 @@ async function fetchDetailFaceValue(url: string | null): Promise<{ value: number
 async function main() {
   const APPLY = process.argv.includes('--apply');
   const ALLOW_PROD = process.argv.includes('--allow-prod');
+  const BLANK_UNSOURCED = process.argv.includes('--blank-unsourced');
   const slug = readFlag('slug');
   const expectDb = readFlag('expect-db');
 
   console.log('='.repeat(80));
-  console.log(`FACE-VALUE-AS-BAND REPAIR (lane C item 2 slice 6) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
+  console.log(`FACE-VALUE-AS-BAND REPAIR (lane C item 2 slice 6) — ${APPLY ? 'APPLY' : 'DRY-RUN'}${BLANK_UNSOURCED ? ' [--blank-unsourced]' : ''}`);
   console.log('='.repeat(80));
 
   const { dbName } = await openRepairDb(db, { apply: APPLY, allowProd: ALLOW_PROD, toolName: TOOL_NAME });
+  await assertNoSchemaDrift(db, { apply: APPLY, toolName: TOOL_NAME });
 
   const expectDbDecision = decideExpectDbRefusal({ apply: APPLY, expectDb, dbName });
   if (expectDbDecision.refuse) {
@@ -450,6 +491,32 @@ async function main() {
     const outcome = resolveIssuePrice(row.companyName, candidates, normalizeCompanyNameForMatching);
     if (outcome.status === 'no-source') {
       console.log(`${row.slug}: NO SOURCE — no report-82 row across the three FYs matches "${row.companyName}"`);
+      if (BLANK_UNSOURCED) {
+        const blankDecision = decideBlankUnsourcedBand(outcome);
+        console.log(`  --blank-unsourced [${blankDecision.action}]: ${blankDecision.reason}`);
+        if (blankDecision.action === 'blank') {
+          if (!APPLY) continue;
+          try {
+            const dateDir = stamp.slice(0, 10);
+            const backupPath = `evidence/${dateDir}-decision4-blank-unsourced-${row.slug}/before.json`;
+            writeLedgerFile(backupPath, { capturedAt: stamp, row });
+            await (db as any).transaction(async (tx: unknown) => {
+              const repo = new IPORepository(tx as any, redisClient);
+              // No field_sources row for either blanked column — the absence is
+              // what d_lot_band_window (and any future band-provenance check)
+              // detects; O-16 / #658 is "delete-only", never a reason row.
+              await repo.applyOfferTerms(row.id, { priceRangeMin: null, priceRangeMax: null });
+            });
+            const ledgerPath = `evidence/${dateDir}-decision4-blank-unsourced-${row.slug}/applied.json`;
+            writeLedgerFile(ledgerPath, { appliedAt: stamp, slug: row.slug, blanked: ['priceRangeMin', 'priceRangeMax'] });
+            anyWrote = true;
+            console.log(`  BLANKED: priceRangeMin/priceRangeMax -> NULL — backup ${backupPath}, ledger ${ledgerPath}`);
+          } catch (e) {
+            anyBroke = true;
+            console.error(`  BROKE blanking ${row.slug}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+      }
       continue;
     }
     if (outcome.status === 'ambiguous') {
