@@ -51,15 +51,28 @@ pm2-scheduled-one-shot-scraper.md). It does not do that here.
 ## Steps
 
     # 1. add the flag (staging slot only)
-    ssh <staging host>
-    F=/root/ipodhan/shared/env/staging/scraper.env
+    # host alias per prod-ops-recipes.md; the VPS is production, read paths only
+    # except this one sanctioned staging write.
+    # PATH VERIFIED ON THE BOX 2026-09-16. Do NOT derive it from deploy-linux.sh's
+    # $ROOT/shared/env/$SLOT: that resolves to /var/www/ipodhan/shared/env-staging
+    # (hyphen, not a slot subdirectory), and my first draft of this recipe guessed
+    # /root/ipodhan/shared/env/staging/ -- wrong in both halves. A flag written to a
+    # non-existent path creates the file, exits 0, and changes nothing.
+    F=/var/www/ipodhan/shared/env-staging/scraper.env
+    ssh -o BatchMode=yes rfp-vps "test -f $F && echo PATH_OK"   # refuse to proceed without this
     cp "$F" "$F.bak-$(date +%Y%m%d-%H%M)"      # restore path, never git checkout
     grep -q '^ENABLE_FIELD_PLAN=' "$F" || echo 'ENABLE_FIELD_PLAN=true' >> "$F"
     grep -n 'ENABLE_FIELD_PLAN' "$F"           # read it back
 
-    # 2. restart the staging scraper app ONLY
-    pm2 restart ipodhan-scraper-staging --update-env
-    pm2 describe ipodhan-scraper-staging | grep -i 'status\|script'
+    # 2. DO NOT `pm2 restart` to pick up the flag.
+    # ipodhan-scraper-staging is the scheduled ONE-SHOT pattern: autorestart
+    # false, `cron restart 15,45 * * * *`, normally sitting in state `stopped`
+    # between wakes (verified on the box 2026-09-16). A restart would START A
+    # SCRAPE IMMEDIATELY -- a different code path from the scheduled wake this
+    # proof claims to measure, and one that skips whatever the cron wake sets up.
+    # pm2's cron restart re-reads the env when it fires, so the flag is picked
+    # up by the NEXT natural wake at :15 or :45. Wait for it.
+    ssh -o BatchMode=yes rfp-vps "pm2 describe ipodhan-scraper-staging --no-color       | grep -iE 'cron restart|script path'"   # confirm the release sha in the path
 
     # 3. wake 1 — read the LINE, then the count
     pm2 logs ipodhan-scraper-staging --nostream --lines 400 \
