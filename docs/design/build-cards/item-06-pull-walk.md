@@ -266,6 +266,30 @@ PULL-NOOP detection check ships unable to do its one job.
 | §2.6 | R-077, R-078 |
 | §2.8 | R-079 |
 
+## Deviations from this card, declared (item 6 implementation, Tier A review round 1)
+
+**1. The all-ranks fallthrough does NOT always record EXHAUSTED.** The pseudocode above says
+`state: 'EXHAUSTED'` for every fallthrough. `EXHAUSTED` is in the repository's `TERMINAL_STATES`
+(item 5), so that nulls `next_due_at` and nothing ever reopens the row — meaning three network
+timeouts in a single pass would permanently retire a field. Nobody would have decided to retire it;
+a flaky minute would. The implementation therefore splits the fallthrough by whether every rank
+actually ANSWERED:
+
+- every rank gave a DEFINITIVE no (`NOT_PRINTED`, or a `CHECK_FAILED` the fetcher marks
+  `transient: false`) -> `EXHAUSTED`, terminal, as the card says;
+- any rank failed TRANSIENTLY (a throw, a timeout, a missing adapter, or a `CHECK_FAILED` that does
+  not declare itself definitive) -> `CHECK_FAILED`, which is deliberately NOT terminal, so the field
+  is re-asked after the repository's doubling backoff.
+
+`FieldFetcherAnswer`'s `CHECK_FAILED` variant gains an optional `transient?: boolean`, defaulting to
+`true` when omitted, because the two mistakes are not symmetric: a definitive failure treated as
+transient costs one re-ask; a transient failure treated as definitive costs the field forever.
+Chosen over an attempts-cap because a cap still retires the field permanently, just on a slower
+clock, and retires the row whose SOURCE is worst rather than the row whose ANSWER is settled.
+
+**2. `releaseClaimUnrecorded` is a third repository method**, as this card's own "gap this pseudocode
+surfaces" section proposed. Now implemented, with integration coverage on its token check.
+
 ## Known gaps
 
 None recorded yet. A finding this item owns but does not close is written here, with its

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { istDateIso } from '@/lib/utils/ist-date';
 import Link from 'next/link';
 import { adminGet, adminFetch } from '@/lib/admin/admin-api-client';
 
@@ -134,7 +135,7 @@ export default function AuditLogPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `audit-logs-${istDateIso(new Date())}.csv`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

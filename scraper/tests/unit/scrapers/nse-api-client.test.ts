@@ -10,8 +10,10 @@
  * this direct unit test (no other behavior change).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { parsePriceRange, computeNSEIssueSizeRupees } from '../../../src/scrapers/nse-api-client.js';
+import { parseNSEDate, determineStatus } from '../../../src/scrapers/nse-api-client.js';
+import { istDateIso } from '../../../src/scheduler/due-step-cycle.js';
 
 describe('nse-api-client parsePriceRange (T-308 fix)', () => {
   it('parses a genuine "X to Y" range', () => {
@@ -161,5 +163,33 @@ describe('transformIPOData sector (T-455 fix, real NSE fixture)', () => {
     };
     const result = transformIPOData(data, 'ipo');
     expect(result.sector).toBeUndefined();
+  });
+});
+
+describe('nse-api-client today derivation uses the IST day (#687 slice 2)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('parseNSEDate falls back to the IST today, not the UTC today, on missing input', () => {
+    // Mocked instant 2026-09-15T20:30:00Z = 02:00 IST on 2026-09-16 — a naive
+    // `new Date().toISOString().split('T')[0]` reads UTC day 2026-09-15, one
+    // day BEHIND the real IST calendar day.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+    expect(istDateIso(new Date())).toBe('2026-09-16');
+
+    expect(parseNSEDate(null)).toBe('2026-09-16');
+    expect(parseNSEDate(undefined)).toBe('2026-09-16');
+    expect(parseNSEDate('not-a-real-date-at-all-####')).toBe('2026-09-16');
+  });
+
+  it('determineStatus classifies a row opening today-in-IST as OPEN, not UPCOMING', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+
+    // No statusStr supplied -> falls through to the date ladder.
+    const status = determineStatus(null, '2026-09-16', '2026-09-18');
+    expect(status).toBe('OPEN');
   });
 });

@@ -61,6 +61,7 @@ import logger from '../src/utils/logger.js';
 import { openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
 import { fetchNseEquityMasters } from '../src/scrapers/nse-equity-master.js';
 import { resolveSegmentFromMasters, type SegmentResolution } from '../src/scrapers/exchange-segment-oracle.js';
+import { fetchBseScripMaster, toOracleScrips } from '../src/scrapers/bse-scrip-master.js';
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
@@ -209,7 +210,13 @@ async function main() {
   // than silently degrading to "nothing is sourceable", which would look identical to
   // an honest run in which no row could be sourced.
   const nseMasters = await fetchNseEquityMasters();
-  const nseRows = [...nseMasters.byName.values()];
+  // EVERY parsed row, not `byName.values()`. The name index holds one entry per name key
+  // and now deliberately EXCLUDES any key claimed by more than one row, so building the
+  // two board lists from it dropped exactly the rows that matter: a company present in
+  // BOTH NSE files used to collapse to its MAIN row (the oracle never saw the SME twin),
+  // and now would vanish from both lists. `rows` is the population; the index is an
+  // identity lookup, and they are not interchangeable.
+  const nseRows = nseMasters.rows;
   const nse = {
     mainboard: nseRows.filter((r) => r.board === 'MAIN').map((r) => ({ isin: r.isin, name: r.name })),
     sme: nseRows.filter((r) => r.board === 'SME').map((r) => ({ isin: r.isin, name: r.name })),
@@ -223,10 +230,13 @@ async function main() {
   }
   console.log(`NSE masters: ${nse.mainboard.length} mainboard, ${nse.sme.length} SME`);
 
-  // BSE's active-scrip list has NO fetcher in this repo yet (slice 2-S3b3). Passing an
-  // empty list is honest, not a stub: the oracle then reports `no-source` for a
-  // BSE-only company instead of guessing, and those rows stay REPORTED and untouched.
-  const bse: [] = [];
+  // BSE's active-scrip list, with each scrip's GROUP (slice 2-S3b3). Like the NSE half
+  // above, a fetch failure is fatal: `fetchBseScripMaster` throws rather than returning
+  // an empty master, because an empty master resolves every BSE company to `no-source`,
+  // which is indistinguishable from an honest run in which nothing was sourceable.
+  const bseMaster = await fetchBseScripMaster();
+  const bse = toOracleScrips(bseMaster);
+  console.log(`BSE scrip master: ${bse.length} active equity scrips`);
 
   const decisions: Array<{
     row: (typeof candidates)[number];

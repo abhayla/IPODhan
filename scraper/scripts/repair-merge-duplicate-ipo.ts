@@ -42,8 +42,17 @@
  */
 import { db, getRedisClient, IPORepository, type MergeDuplicateResult } from '@ipodhan/shared';
 import { DatabaseError, ProdWriteRefusedError } from '@ipodhan/shared/errors/repository-errors';
-import { verifyMergeReadback, type MergeReadbackCheck } from '@ipodhan/shared/utils/duplicate-ipo-merge';
+import {
+  buildCarryFieldInputs,
+  buildProvenanceMap,
+  planCarryFields,
+  verifyMergeReadback,
+  type CarryFieldPatch,
+  type MergeReadbackCheck,
+  type ProvenanceRow,
+} from '@ipodhan/shared/utils/duplicate-ipo-merge';
 import { sql } from 'drizzle-orm';
+import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
 import { openRepairDb, writeLedgerFile } from './lib/repair-tool.js';
@@ -60,6 +69,181 @@ const KEEP = arg('--keep');
 const DROP = arg('--drop');
 const SET_ISSUE_SIZE = arg('--set-issue-size');
 const ISSUE_SIZE_NOTE = arg('--issue-size-note');
+const REVERIFY_LEDGER = arg('--reverify');
+const REVERIFY_BACKUP = arg('--reverify-from-backup');
+
+/**
+ * Re-runs `verifyMergeReadback` against a FRESH read of the database, from a
+ * ledger file the tool already wrote on a previous `--apply` run
+ * (`scripts/state/merge-applied-*.json`). Writes nothing. Used to re-check a
+ * merge whose apply-time VERIFY reported a FALSE FAIL (DEFECT 1: the
+ * read-back used to compare the wrong key casing) — the 10 staging ledgers
+ * from the 2026-09-16 run are exactly this case.
+ */
+export async function reverify(ledgerPath: string): Promise<number> {
+  let ledgerRaw: string;
+  try {
+    ledgerRaw = fs.readFileSync(ledgerPath, 'utf8');
+  } catch (err) {
+    console.error(`refused: could not read ledger file "${ledgerPath}": ${err instanceof Error ? err.message : err}`);
+    return 1;
+  }
+  let ledger: {
+    keepId?: unknown;
+    dropId?: unknown;
+    keepSlug?: unknown;
+    droppedSlug?: unknown;
+    patch?: unknown;
+  };
+  try {
+    ledger = JSON.parse(ledgerRaw);
+  } catch (err) {
+    console.error(`refused: ledger file "${ledgerPath}" is not valid JSON: ${err instanceof Error ? err.message : err}`);
+    return 1;
+  }
+
+  if (typeof ledger.keepId !== 'string' || typeof ledger.dropId !== 'string' || typeof ledger.droppedSlug !== 'string') {
+    console.error(`refused: ledger file "${ledgerPath}" is missing keepId/dropId/droppedSlug`);
+    return 1;
+  }
+  if (!Array.isArray(ledger.patch)) {
+    console.error(
+      `refused: ledger file "${ledgerPath}" has no "patch" array — it was written before the patch field was ` +
+        `added to the ledger (2026-09-16), so there is nothing to re-verify a carried-field readback against. ` +
+        `Re-run the original --apply is not an option (it already committed); this ledger cannot be re-verified.`
+    );
+    return 1;
+  }
+
+  const keepId = ledger.keepId as string;
+  const dropId = ledger.dropId as string;
+  const droppedSlug = ledger.droppedSlug as string;
+  const patch = ledger.patch as MergeDuplicateResult['patch'];
+
+  const readback = await readbackFromDb({ keepId, dropId, droppedSlug, patch });
+  readback.forEach((c) => console.log(`VERIFY: ${c.pass ? 'PASS' : 'FAIL'} — ${c.name}: ${c.detail}`));
+  return readback.every((c) => c.pass) ? 0 : 2;
+}
+
+/**
+ * Re-derives the merge patch from a `scripts/state/merge-backup-*.json` file
+ * (written BEFORE every apply — the pre-write snapshot, not the post-apply
+ * ledger `--reverify` reads) and re-runs the read-back against a FRESH read
+ * of the database. Writes nothing. Exists because the 10 staging
+ * `merge-applied-*.json` ledgers from the 2026-09-16 run were lost
+ * (untracked file in a worktree that was removed) — the backups are all that
+ * survives, and a backup carries the full `keep`/`drop` rows plus the
+ * dropped row's `field_sources` snapshot, so the SAME patch the apply path
+ * would have computed can be rebuilt from it via `buildCarryFieldInputs` /
+ * `planCarryFields` — the identical functions the apply path itself calls
+ * (`IPORepository.mergeDuplicateInto`), not a re-implementation.
+ */
+export async function reverifyFromBackup(backupPath: string): Promise<number> {
+  let backupRaw: string;
+  try {
+    backupRaw = fs.readFileSync(backupPath, 'utf8');
+  } catch (err) {
+    console.error(`refused: could not read backup file "${backupPath}": ${err instanceof Error ? err.message : err}`);
+    return 1;
+  }
+  let backup: {
+    keep?: unknown;
+    drop?: unknown;
+    children?: unknown;
+  };
+  try {
+    backup = JSON.parse(backupRaw);
+  } catch (err) {
+    console.error(`refused: backup file "${backupPath}" is not valid JSON: ${err instanceof Error ? err.message : err}`);
+    return 1;
+  }
+
+  if (backup.keep == null || typeof backup.keep !== 'object') {
+    console.error(`refused: backup file "${backupPath}" is missing "keep"`);
+    return 1;
+  }
+  if (backup.drop == null || typeof backup.drop !== 'object') {
+    console.error(`refused: backup file "${backupPath}" is missing "drop"`);
+    return 1;
+  }
+
+  const keep = backup.keep as Record<string, unknown>;
+  const drop = backup.drop as Record<string, unknown>;
+  const keepId = keep.id;
+  const dropId = drop.id;
+  const droppedSlug = drop.slug;
+  if (typeof keepId !== 'string' || typeof dropId !== 'string' || typeof droppedSlug !== 'string') {
+    console.error(`refused: backup file "${backupPath}" is missing keep.id / drop.id / drop.slug`);
+    return 1;
+  }
+
+  // `children.field_sources` rows were captured via `db.execute(sql...)` and so carry RAW
+  // (snake_case) column names — ipo_id, field_name, previous_source — never the camelCase
+  // drizzle field names `buildProvenanceMap` expects. Normalize before handing them in, exactly
+  // as the live `.select({ ipoId: fieldSources.ipoId, ... })` query on the apply path would shape
+  // them for the SAME dropped-row id.
+  const childFieldSources = Array.isArray((backup.children as Record<string, unknown> | undefined)?.field_sources)
+    ? ((backup.children as Record<string, unknown>).field_sources as Record<string, unknown>[])
+    : [];
+  const dropProvRows: (ProvenanceRow & { ipoId: string })[] = childFieldSources
+    .filter((r) => r.table_name === 'ipos')
+    .map((r) => ({
+      ipoId: String(r.ipo_id),
+      fieldName: String(r.field_name),
+      source: String(r.source),
+      confidence: Number(r.confidence),
+    }));
+  const dropProv = buildProvenanceMap(dropProvRows, dropId);
+
+  const patch: CarryFieldPatch[] = planCarryFields(buildCarryFieldInputs(keep, drop, dropProv), dropId);
+
+  const readback = await readbackFromDb({ keepId, dropId, droppedSlug, patch });
+  readback.forEach((c) => console.log(`VERIFY: ${c.pass ? 'PASS' : 'FAIL'} — ${c.name}: ${c.detail}`));
+  return readback.every((c) => c.pass) ? 0 : 2;
+}
+
+/**
+ * Re-query after commit — the predecessor script did this (git show
+ * 9709f987:scripts/merge-duplicate-ipo.mjs ~L319) and this CLI had silently dropped it: an
+ * "APPLIED." report with nothing that actually re-checked the write. Shared by the apply path
+ * (immediately after commit) and `--reverify` (from a ledger, any time later) — one place that
+ * builds the readback inputs from the database, so the two paths cannot drift.
+ */
+export async function readbackFromDb(input: {
+  keepId: string;
+  dropId: string;
+  droppedSlug: string;
+  patch: MergeDuplicateResult['patch'];
+}): Promise<MergeReadbackCheck[]> {
+  const dropCountResult = await db.execute(sql`select count(*)::int as n from ipos where id = ${input.dropId}`);
+  const dropRowCount = Number((dropCountResult as unknown as { rows: { n: number }[] }).rows?.[0]?.n ?? -1);
+
+  const survivorResult = await db.execute(sql`select * from ipos where id = ${input.keepId}`);
+  const survivor = (survivorResult as unknown as { rows: Record<string, unknown>[] }).rows?.[0];
+
+  const redirectResult = await db.execute(
+    sql`select 1 from ipo_slug_redirects where old_slug = ${input.droppedSlug} and ipo_id = ${input.keepId} limit 1`
+  );
+  const redirectExists = ((redirectResult as unknown as { rows: unknown[] }).rows?.length ?? 0) > 0;
+
+  const sameDayResult = survivor
+    ? await db.execute(
+        sql`select slug from ipos where open_date = ${survivor.open_date} and id <> ${input.keepId}`
+      )
+    : { rows: [] };
+  const sameDaySiblingSlugs = ((sameDayResult as unknown as { rows: { slug: string }[] }).rows ?? []).map(
+    (r) => r.slug
+  );
+
+  return verifyMergeReadback({
+    dropRowCount,
+    survivor,
+    patch: input.patch,
+    redirectExists,
+    sameDaySiblingSlugs,
+    keepId: input.keepId,
+  });
+}
 
 function printPlan(result: MergeDuplicateResult) {
   console.log(`\nKEEP   ${result.keep.slug}`);
@@ -84,8 +268,18 @@ function printPlan(result: MergeDuplicateResult) {
 }
 
 async function main(): Promise<number> {
+  if (REVERIFY_LEDGER) {
+    return reverify(REVERIFY_LEDGER);
+  }
+  if (REVERIFY_BACKUP) {
+    return reverifyFromBackup(REVERIFY_BACKUP);
+  }
   if (!KEEP || !DROP) {
-    console.error('usage: --keep <uuid> --drop <uuid> [--apply --allow-prod] [--set-issue-size <rupees>]');
+    console.error(
+      'usage: --keep <uuid> --drop <uuid> [--apply --allow-prod] [--set-issue-size <rupees>]\n' +
+        '   or: --reverify <scripts/state/merge-applied-*.json>          (re-checks an already-applied merge from its ledger, writes nothing)\n' +
+        '   or: --reverify-from-backup <scripts/state/merge-backup-*.json>  (re-derives the patch from the pre-write backup, writes nothing)'
+    );
     return 1;
   }
   if (KEEP === DROP) {
@@ -171,36 +365,11 @@ async function main(): Promise<number> {
   }
 
   // --- post-apply readback (MAJOR-2, PR #433 review) ------------------------------------------
-  // Re-query after commit — the predecessor script did this (git show
-  // 9709f987:scripts/merge-duplicate-ipo.mjs ~L319) and this CLI had silently dropped it: an
-  // "APPLIED." report with nothing that actually re-checked the write.
-  const dropCountResult = await db.execute(sql`select count(*)::int as n from ipos where id = ${DROP}`);
-  const dropRowCount = Number(
-    (dropCountResult as unknown as { rows: { n: number }[] }).rows?.[0]?.n ?? -1
-  );
-
-  const survivorResult = await db.execute(sql`select * from ipos where id = ${KEEP}`);
-  const survivor = (survivorResult as unknown as { rows: Record<string, unknown>[] }).rows?.[0];
-
-  const redirectResult = await db.execute(
-    sql`select 1 from ipo_slug_redirects where old_slug = ${plan.drop.slug} and ipo_id = ${KEEP} limit 1`
-  );
-  const redirectExists = ((redirectResult as unknown as { rows: unknown[] }).rows?.length ?? 0) > 0;
-
-  const sameDayResult = await db.execute(
-    sql`select slug from ipos where open_date = ${plan.keep.openDate} and id <> ${KEEP}`
-  );
-  const sameDaySiblingSlugs = (
-    (sameDayResult as unknown as { rows: { slug: string }[] }).rows ?? []
-  ).map((r) => r.slug);
-
-  const readback: MergeReadbackCheck[] = verifyMergeReadback({
-    dropRowCount,
-    survivor,
-    patch: applied.patch,
-    redirectExists,
-    sameDaySiblingSlugs,
+  const readback: MergeReadbackCheck[] = await readbackFromDb({
     keepId: KEEP,
+    dropId: DROP,
+    droppedSlug: plan.drop.slug,
+    patch: applied.patch,
   });
   readback.forEach((c) => console.log(`VERIFY: ${c.pass ? 'PASS' : 'FAIL'} — ${c.name}: ${c.detail}`));
   const readbackOk = readback.every((c) => c.pass);
@@ -211,6 +380,7 @@ async function main(): Promise<number> {
     dropId: DROP,
     keepSlug: applied.keepSlug,
     droppedSlug: applied.droppedSlug,
+    patch: applied.patch,
     provenanceWritten: applied.provenanceWritten,
     readback,
   });
