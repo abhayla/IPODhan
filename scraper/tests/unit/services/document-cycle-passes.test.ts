@@ -1099,6 +1099,26 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
 
   // Review Low (#693): the try/catch's per-IPO isolation looked right but
   // was never asserted -- inferred is not asserted.
+  // The reconciled-not-regenerated proof reads TWO consecutive wakes: rows
+  // inserted on the first, zero on the second with the table unchanged. That
+  // second wake is only evidence if the pass SAYS it ran -- a summary gated on
+  // `rowsInserted > 0` logs nothing on exactly the cycle the proof depends on,
+  // making "generated nothing because everything was already planned"
+  // indistinguishable from "PASS 2.5 never ran at all".
+  it('a cycle that inserts ZERO rows still logs its summary — silence must not be ambiguous', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    upsertGeneratedRowsMock.mockResolvedValue({ inserted: 0 });
+    const infoSpy = vi.spyOn(logger, 'info');
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(upsertGeneratedRowsMock).toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ rowsInserted: 0, failed: 0 }),
+      expect.stringContaining('PASS 2.5 field-plan generation summary')
+    );
+  });
+
   it('one IPO throwing during upsertGeneratedRows does not stop a sibling IPO from getting its rows', async () => {
     FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
     upsertGeneratedRowsMock.mockImplementationOnce(() => {

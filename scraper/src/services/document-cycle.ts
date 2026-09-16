@@ -1604,9 +1604,12 @@ export async function runDocumentCycle(
             );
           }
         }
-        if (fieldPlanTotals.rowsInserted > 0 || fieldPlanTotals.failed > 0) {
-          logger.info(fieldPlanTotals, 'PASS 2.5 field-plan generation summary for this cycle (item 5 slice s4)');
-        }
+        // UNCONDITIONAL on purpose. A summary gated on `rowsInserted > 0`
+        // goes silent on exactly the cycle the reconciled-not-regenerated
+        // proof reads -- the second wake, where zero new rows IS the expected
+        // result -- making "everything was already planned" look identical to
+        // "PASS 2.5 never ran". A pass that ran always says so.
+        logger.info(fieldPlanTotals, 'PASS 2.5 field-plan generation summary for this cycle (item 5 slice s4)');
       }
     }
     // PASS 3 — the field-plan walk (item 6). Runs AFTER extraction for the
