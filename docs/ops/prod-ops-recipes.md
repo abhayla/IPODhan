@@ -712,3 +712,26 @@ run tests against a mismatched count.
 integration tests. `localhost:15432` against `ipodhan_test` under `ipodhan_app` is the only
 sanctioned path. If this recipe is missing or wrong when you read it, say so and stop — do not
 invent a local Postgres to route around it.
+
+### Read the test COUNT, never the exit status (verified 2026-09-16)
+
+With `DATABASE_URL` unset, the suite does not fail — it **skips and exits 0**:
+
+```
+Tests  no tests
+exit 0
+```
+
+So a run that executed **nothing** is indistinguishable, to anything checking the exit status, from
+a run where every test passed. Chained into `&&`, or read by a script that gates on `$?`, it goes
+green on zero coverage.
+
+**`Tests  no tests` is a skipped suite, not a passing one.** Always read the count. Two more ways to
+get a misleading result from a correct-looking command:
+
+- **`REDIS_URL` is required even for suites that never touch Redis** — omit it and the suite skips
+  the same silent way.
+- **Files sharing a table must run one at a time.** `ipo_field_plan` is shared, and
+  `FOR UPDATE SKIP LOCKED` is *designed* to return nothing under contention — so a parallel run
+  produces a failure that looks like a real defect and is not. Serialise the files; never weaken the
+  claim SQL to make a parallel run pass.
