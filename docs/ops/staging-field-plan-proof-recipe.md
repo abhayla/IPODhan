@@ -34,6 +34,22 @@ wake 2 of the reconciled-not-regenerated proof, where zero rows is the CORRECT
 result, still announces that the pass ran. Read the line first, the count second,
 and name the cycle each came from.
 
+## Two clocks, and the cycle that is not a wake
+
+**The host reports IST; the scraper logs are UTC.** `stat` on the env file said
+`07:54:37 +0530`; the cycle line said `02:22:43Z`. Those are 2 minutes apart, not
+5.5 hours. Comparing them raw makes a flag look written before a cycle it was
+actually written after -- the same class as the journal-vs-runner-log trap.
+Convert before concluding anything about ordering.
+
+**A deploy runs its own cycle that is NOT a cron wake.** The 7e24f7ce deploy
+completed at 02:17Z and a full cycle ran at 02:22:43Z -- neither :15 nor :45.
+`deploy-linux.sh` starts the scraper after the atomic flip. That cycle runs the
+NEW CODE but whatever env existed at that moment, so a flag added afterwards is
+absent from it. Its silence on the PASS 2.5 line is correct and proves nothing.
+Read the flag file's mtime against the cycle's timestamp (both in the same zone)
+before treating any cycle as the first flagged one.
+
 ## Does a deploy undo this?
 
 No. `scripts/deploy-linux.sh` only READS `$SCRAPER_ENV_FILE` (required-keys
