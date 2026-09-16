@@ -496,7 +496,7 @@ describe('MarketHolidayRepository', () => {
   });
 
   describe('"today" is the IST calendar day, not UTC (#687 slice 3)', () => {
-    function flattenSql(node: any, out: { params: unknown[] } = { params: [] }) {
+    function flattenSql(node: unknown, out: { params: unknown[] } = { params: [] }) {
       if (node == null) return out;
       if (Array.isArray(node)) {
         for (const n of node) flattenSql(n, out);
