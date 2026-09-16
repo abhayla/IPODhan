@@ -54,18 +54,19 @@ import { walkFieldPlanForIPO, type FieldFetcher } from '../../src/services/field
  *
  * SKIPS CLEANLY when no database is configured.
  *
- * HOW TO RUN THIS (there is NO scraper/.env.test -- the guard reads the
- * environment, and the credentials live in GLOBAL.env, above every repo):
+ * HOW TO RUN THIS. The literal recipe -- the exact exports, where the
+ * credentials come from, and the tunnel -- lives in ONE place:
  *
- *   cd <worktree>/scraper
- *   PW=$(grep '^IPODHAN_APP_DB_PASSWORD=' /d/Abhay/GLOBAL.env | cut -d= -f2-)
- *   export DATABASE_URL=<the sanctioned ipodhan_test URL from the recipe -- not repeated
- *     here: a literal connection string in an integration file is refused by
- *     tests-connection-source.test.ts, which cannot vet a target it did not build>
- *   export REDIS_URL="redis://localhost:6379/15"
- *   npx vitest run -c vitest.integration.config.ts <this file>
+ *     docs/ops/prod-ops-recipes.md, section 12
  *
- * THREE THINGS THAT EACH LOOK LIKE A BROKEN SUITE AND ARE NOT:
+ * It is not repeated here on purpose. A test file must not carry a host, a
+ * connection string, or a pointer to the credential store: this file is read
+ * by more people than the recipe is, and every copy is a place the real
+ * target can drift out of sync or leak. There is no scraper/.env.test -- the
+ * guard reads the process environment, which is why an unprepared run fails
+ * with "could not determine the target database host".
+ *
+ * FOUR THINGS THAT EACH LOOK LIKE A BROKEN SUITE AND ARE NOT:
  *   1. localhost:15432 is the SSH TUNNEL to the Windows DB host, and it is the
  *      ONLY accepted route. Pointing DATABASE_URL straight at the prod DB host (named in the recipe)
  *      is refused by a non-overridable denylist in tests/helpers/
@@ -74,8 +75,15 @@ import { walkFieldPlanForIPO, type FieldFetcher } from '../../src/services/field
  *   2. REDIS_URL must be set even for suites that never touch Redis; the
  *      global guard refuses to run without a confirmed non-production target.
  *   3. With DATABASE_URL unset the suite SKIPS rather than fails
- *      (describe.skipIf), so a silent pass is not a green run.
- 
+ *      (describe.skipIf), so a silent pass is not a green run -- check the
+ *      test COUNT and the (live) vs SKIPPED label in the describe name.
+ *   4. Run the two ipo_field_plan files ONE AT A TIME. They share that table,
+ *      vitest runs integration files in parallel, and claimNextDueField's
+ *      FOR UPDATE SKIP LOCKED is DESIGNED to find nothing when a row it would
+ *      take is locked by another transaction. A concurrent run can therefore
+ *      fail a claim assertion that is perfectly correct. Seen once between
+ *      these two suites; both pass in isolation. The fix is to serialise the
+ *      files, never to weaken the claim SQL.
  *
  * To run:
  *   npx vitest run -c vitest.integration.config.ts \

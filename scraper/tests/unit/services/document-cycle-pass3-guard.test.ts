@@ -71,6 +71,25 @@ vi.mock('@ipodhan/shared/repositories', () => ({
   })),
 }));
 
+/**
+ * The logger is mocked so the SUMMARY PAYLOAD can be inspected directly.
+ * That payload is the layer that matters: it is where a counter becomes
+ * something a reader can act on. Asserting the walk's return object instead
+ * -- one layer below -- is what let the counter-with-no-consumer defect be
+ * "fixed" with a proof that could not have failed for the claim.
+ */
+const loggerInfoMock = vi.fn();
+const loggerWarnMock = vi.fn();
+vi.mock('../../../src/utils/logger.js', () => {
+  const fake = {
+    info: (...args: unknown[]) => loggerInfoMock(...args),
+    warn: (...args: unknown[]) => loggerWarnMock(...args),
+    error: vi.fn(),
+    debug: vi.fn(),
+  };
+  return { default: fake, logger: fake };
+});
+
 vi.mock('../../../src/services/data-persister.js', () => ({
   recordBseDiscoveryMetadata: vi.fn().mockResolvedValue(undefined),
   recordDocumentSourceHints: vi.fn().mockResolvedValue(undefined),
@@ -236,6 +255,90 @@ describe('PASS 3 refuses to run on an empty fetcher registry', () => {
     FEATURE_FLAGS.ENABLE_FIELD_PLAN_WALK = true;
     await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
     expect(claimNextDueFieldMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PASS 3 summary log carries EVERY counter (signal-ownership R1/R3)', () => {
+  /**
+   * WHY THIS TEST IS AT THIS LAYER, and the pattern it exists to stop.
+   *
+   * Three consecutive review rounds on this PR produced a fix carrying the
+   * defect's own weakness:
+   *   round 1 -- a guard described in a COMMENT, with no test;
+   *   round 2 -- a counter wired into the result, with no CONSUMER;
+   *   round 3 -- a consumer wired into walkTotals, with no TEST.
+   * Each fix was correct code and each proof could not have failed for the
+   * claim it was making. The round-2 tests asserted hasOwnProperty on the
+   * WALK'S RETURN OBJECT; the defect lived in document-cycle's walkTotals and
+   * its summary log line, one layer up. Deleting fieldsCheckFailed from both
+   * the initializer and the accumulation left 71 of 71 tests green.
+   *
+   * So this asserts the SUMMARY LOG PAYLOAD -- the place a number becomes
+   * something a reader can act on. If a counter is dropped anywhere between
+   * the walk's return and that payload, this goes red.
+   */
+  const EVERY_COUNTER = [
+    'iposWalked',
+    'fieldsAttempted',
+    'fieldsSupplied',
+    'fieldsExhausted',
+    'fieldsCheckFailed',
+    'fieldsNotAvailableYet',
+    'fieldsProvisional',
+    'fieldsWriteSkipped',
+    'fieldsSkippedProtected',
+    'outcomesRefused',
+    'outcomesFailed',
+  ];
+
+  function summaryPayload(): Record<string, unknown> | undefined {
+    const call = loggerInfoMock.mock.calls.find(
+      (c: unknown[]) => typeof c[1] === 'string' && (c[1] as string).includes('PASS 3 field-plan walk summary')
+    );
+    return call?.[0] as Record<string, unknown> | undefined;
+  }
+
+  it('logs the summary with all eleven counters present', async () => {
+    hasFetchers = true;
+
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+
+    const payload = summaryPayload();
+    expect(payload).toBeDefined();
+    for (const counter of EVERY_COUNTER) {
+      // A counter missing HERE never reaches a reader, whatever the walk
+      // returned. That is the whole defect class.
+      expect(Object.prototype.hasOwnProperty.call(payload, counter)).toBe(true);
+      expect(typeof payload![counter]).toBe('number');
+    }
+  });
+
+  it('names fieldsCheckFailed and outcomesFailed specifically — the two that say the pass went badly', async () => {
+    hasFetchers = true;
+
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+
+    const payload = summaryPayload();
+    // fieldsCheckFailed distinguishes "healthy" from "every field failing
+    // transiently and re-asked forever on a doubling backoff". outcomesFailed
+    // is the DB-unreachable signal. Neither has any other line that reports
+    // it, so they are asserted by name rather than only as part of the set.
+    expect(payload).toHaveProperty('fieldsCheckFailed');
+    expect(payload).toHaveProperty('outcomesFailed');
+  });
+
+  it('logs the summary even when the walk did nothing — a silent pass is still a reading', async () => {
+    hasFetchers = true;
+    claimNextDueFieldMock.mockResolvedValue(null);
+
+    await runDocumentCycle({ wakeBudgetMs: 30 * 60 * 1000 });
+
+    // An all-zero summary is evidence the walk ran and found nothing due,
+    // which is a different fact from the walk never running. Dropping the log
+    // on a quiet cycle would make those two indistinguishable.
+    const payload = summaryPayload();
+    expect(payload).toBeDefined();
+    expect(payload!.fieldsAttempted).toBe(0);
   });
 });
 

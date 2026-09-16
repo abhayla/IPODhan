@@ -716,6 +716,26 @@ function unwind(result: FieldPlanWalkResult, params: Record<string, unknown>): v
     result.fieldsCheckFailed = Math.max(0, result.fieldsCheckFailed - 1);
   else if (params.state === 'NOT_AVAILABLE_YET')
     result.fieldsNotAvailableYet = Math.max(0, result.fieldsNotAvailableYet - 1);
+
+  // `fieldsProvisional` is DELIBERATELY NOT unwound, and this is the one
+  // counter here that is not a plan-row state.
+  //
+  // Every other counter above describes something the PLAN row was going to
+  // say; when the record is refused or throws, the plan says nothing, so the
+  // count was fiction and is removed. A provisional value is different: it was
+  // written to the DATA table by item 1's writer before the plan row was ever
+  // touched, and that write is still there. Decrementing would under-report a
+  // write that really happened, which is the opposite of the false-clean-state
+  // problem this walk exists to avoid.
+  //
+  // THE READING TRAP, named because the number invites it: after a refusal
+  // `fieldsProvisional` can exceed `fieldsNotAvailableYet`, which looks
+  // impossible if you read one as the parent of the other. They are NOT parent
+  // and child. `fieldsNotAvailableYet` counts plan rows SETTLED in that state;
+  // `fieldsProvisional` counts DATA WRITES that landed. A refused settle
+  // removes the first and leaves the second, so provisional > notAvailableYet
+  // means exactly "a provisional value was written and its plan row was then
+  // taken over by another walker" -- unusual, worth noticing, not corrupt.
 }
 
 /**
