@@ -5,6 +5,8 @@ import {
   detailUrlFromCompanyAnchor,
   plainCompanyName,
   resolveIssuePrice,
+  parseStrictIssuePrice,
+  decideExpectDbRefusal,
   collectReport82Candidates,
   applyRowRepair,
   type Report82Candidate,
@@ -60,6 +62,29 @@ describe('detailUrlFromCompanyAnchor / plainCompanyName', () => {
   });
 });
 
+describe('parseStrictIssuePrice — the whole cell must be numeric, not a prefix', () => {
+  it('accepts a plain positive number, with commas stripped', () => {
+    expect(parseStrictIssuePrice('30.00')).toBe(30);
+    expect(parseStrictIssuePrice('1,234.50')).toBe(1234.5);
+  });
+
+  it('refuses a range cell like "30 to 32" (parseFloat would silently accept 30)', () => {
+    expect(parseStrictIssuePrice('30 to 32')).toBeNull();
+  });
+
+  it('refuses a footnoted cell like "30*" (parseFloat would silently accept 30)', () => {
+    expect(parseStrictIssuePrice('30*')).toBeNull();
+  });
+
+  it('refuses null/undefined/empty/zero/negative', () => {
+    expect(parseStrictIssuePrice(null)).toBeNull();
+    expect(parseStrictIssuePrice(undefined)).toBeNull();
+    expect(parseStrictIssuePrice('')).toBeNull();
+    expect(parseStrictIssuePrice('0')).toBeNull();
+    expect(parseStrictIssuePrice('-5')).toBeNull();
+  });
+});
+
 describe('resolveIssuePrice', () => {
   const candidate = (overrides: Partial<Report82Candidate>): Report82Candidate => ({
     companyName: 'Stanbik Agro Ltd.',
@@ -91,6 +116,16 @@ describe('resolveIssuePrice', () => {
 
   it('refuses on zero or negative Issue Price', () => {
     const outcome = resolveIssuePrice('STANBIK AGRO LIMITED', [candidate({ issuePriceRaw: '0' })], fold);
+    expect(outcome.status).toBe('no-source');
+  });
+
+  it('refuses a range Issue Price like "30 to 32" rather than resolving to 30', () => {
+    const outcome = resolveIssuePrice('STANBIK AGRO LIMITED', [candidate({ issuePriceRaw: '30 to 32' })], fold);
+    expect(outcome.status).toBe('no-source');
+  });
+
+  it('refuses an empty (post-fold) stored company name before matching anything', () => {
+    const outcome = resolveIssuePrice('', [candidate({ companyName: '' })], fold);
     expect(outcome.status).toBe('no-source');
   });
 
@@ -236,5 +271,64 @@ describe('applyRowRepair — the write body', () => {
     });
     expect(result.fieldsWritten).toEqual(['priceRangeMin', 'priceRangeMax']);
     expect(upsertSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('writes a faceValue provenance row (source CHITTORGARH) when face_value changed', async () => {
+    const { executors } = makeFakeExecutors();
+    const upsertSpy = vi.fn(async (_tx: unknown, params: Record<string, unknown>) => ({ previousSource: null, params }));
+    await applyRowRepair(executors as any, {
+      row,
+      issuePrice: 30,
+      resolvedFaceValue: 10,
+      reportUrlNote: 'note',
+      stamp: '2026-09-16T00:00:00.000Z',
+      writeBackup,
+      writeLedger,
+      upsert: upsertSpy as any,
+    });
+    const faceValueCalls = upsertSpy.mock.calls.filter(([, params]) => (params as Record<string, unknown>).fieldName === 'faceValue');
+    expect(faceValueCalls).toHaveLength(1);
+    expect((faceValueCalls[0][1] as Record<string, unknown>).source).toBe('CHITTORGARH');
+  });
+
+  it('writes NO faceValue provenance row when only the band changed (resolvedFaceValue null)', async () => {
+    const { executors } = makeFakeExecutors();
+    const upsertSpy = vi.fn(async (_tx: unknown, params: Record<string, unknown>) => ({ previousSource: null, params }));
+    await applyRowRepair(executors as any, {
+      row,
+      issuePrice: 30,
+      resolvedFaceValue: null,
+      reportUrlNote: 'note',
+      stamp: '2026-09-16T00:00:00.000Z',
+      writeBackup,
+      writeLedger,
+      upsert: upsertSpy as any,
+    });
+    const faceValueCalls = upsertSpy.mock.calls.filter(([, params]) => (params as Record<string, unknown>).fieldName === 'faceValue');
+    expect(faceValueCalls).toHaveLength(0);
+  });
+});
+
+describe('decideExpectDbRefusal', () => {
+  it('a dry run never refuses regardless of --expect-db', () => {
+    expect(decideExpectDbRefusal({ apply: false, expectDb: undefined, dbName: 'ipodhan' }).refuse).toBe(false);
+    expect(decideExpectDbRefusal({ apply: false, expectDb: 'wrong', dbName: 'ipodhan' }).refuse).toBe(false);
+  });
+
+  it('--apply with no --expect-db is refused', () => {
+    const d = decideExpectDbRefusal({ apply: true, expectDb: undefined, dbName: 'ipodhan_staging' });
+    expect(d.refuse).toBe(true);
+    expect(d.reason).toMatch(/requires --expect-db/);
+  });
+
+  it('--apply with a mismatched --expect-db is refused, naming both', () => {
+    const d = decideExpectDbRefusal({ apply: true, expectDb: 'ipodhan', dbName: 'ipodhan_staging' });
+    expect(d.refuse).toBe(true);
+    expect(d.reason).toMatch(/"ipodhan"/);
+    expect(d.reason).toMatch(/"ipodhan_staging"/);
+  });
+
+  it('--apply with a matching --expect-db (case-insensitive) is allowed', () => {
+    expect(decideExpectDbRefusal({ apply: true, expectDb: 'IPODHAN_STAGING', dbName: 'ipodhan_staging' }).refuse).toBe(false);
   });
 });

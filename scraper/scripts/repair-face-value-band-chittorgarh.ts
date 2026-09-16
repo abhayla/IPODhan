@@ -157,11 +157,34 @@ export type ResolveOutcome =
   | { status: 'no-source' };
 
 /**
+ * Strictly parse an `Issue Price (Rs.)` cell as a positive number, or null.
+ *
+ * `parseFloat` alone accepts a PREFIX match — `parseFloat("30 to 32")` is
+ * `30`, `parseFloat("30*")` is `30` — so a range or a footnoted cell (real
+ * shapes Chittorgarh renders for some rows) would silently resolve to its
+ * leading digits instead of being refused as unparseable (Tier A review on
+ * #692, MAJOR). The WHOLE trimmed string (commas stripped) must match
+ * `^\d+(\.\d+)?$` before it is accepted as a number at all.
+ */
+const STRICT_NUMERIC_PATTERN = /^\d+(\.\d+)?$/;
+export function parseStrictIssuePrice(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const trimmed = String(raw).trim().replace(/,/g, '');
+  if (!STRICT_NUMERIC_PATTERN.test(trimmed)) return null;
+  const value = parseFloat(trimmed);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
  * Resolve one row's issue price from the collected report-82 candidates
  * (across all fiscal years and both categories, already fetched by the
  * caller). A candidate is eligible only if its normalized name matches AND
- * its `Issue Price (Rs.)` parses as a positive number. 2+ eligible
- * candidates is refused as ambiguous (both/all named); 0 is 'no-source'.
+ * its `Issue Price (Rs.)` STRICTLY parses as a positive number (the whole
+ * cell, not a prefix — see `parseStrictIssuePrice`). 2+ eligible candidates
+ * is refused as ambiguous (both/all named); 0 is 'no-source'. An EMPTY
+ * (post-fold) stored company name is refused before any matching — an
+ * empty fold would otherwise match any candidate whose name also folds to
+ * empty, which is never a real identity match (Tier A review on #692, MINOR).
  */
 export function resolveIssuePrice(
   companyName: string,
@@ -169,15 +192,12 @@ export function resolveIssuePrice(
   normalize: (name: string) => string
 ): ResolveOutcome {
   const target = normalize(companyName);
-  const eligible = candidates.filter((c) => {
-    if (normalize(c.companyName) !== target) return false;
-    const price = c.issuePriceRaw != null ? parseFloat(String(c.issuePriceRaw).replace(/,/g, '')) : NaN;
-    return Number.isFinite(price) && price > 0;
-  });
+  if (!target) return { status: 'no-source' };
+  const eligible = candidates.filter((c) => normalize(c.companyName) === target && parseStrictIssuePrice(c.issuePriceRaw) !== null);
   if (eligible.length === 0) return { status: 'no-source' };
   if (eligible.length > 1) return { status: 'ambiguous', candidates: eligible };
   const winner = eligible[0];
-  const issuePrice = parseFloat(String(winner.issuePriceRaw).replace(/,/g, ''));
+  const issuePrice = parseStrictIssuePrice(winner.issuePriceRaw) as number;
   return { status: 'resolved', issuePrice, detailUrl: winner.detailUrl, source: winner };
 }
 
@@ -328,6 +348,32 @@ export async function applyRowRepair(
   return { wrote: true, fieldsWritten: fieldsToWrite.map((f) => f.field), backupPath, ledgerPath };
 }
 
+/**
+ * Pure refusal decision for `--apply` without a matching `--expect-db`
+ * (Tier A review on #692, MINOR: this guard was inline in `main()` and
+ * untested). No `--expect-db` at all on an `--apply` run is refused; a
+ * given `--expect-db` that does not case-insensitively match the pool's
+ * OWN `current_database()` is refused, naming both. A dry run never
+ * refuses regardless of `--expect-db`.
+ */
+export function decideExpectDbRefusal(input: {
+  apply: boolean;
+  expectDb: string | undefined;
+  dbName: string;
+}): { refuse: boolean; reason?: string } {
+  if (!input.apply) return { refuse: false };
+  if (!input.expectDb) {
+    return { refuse: true, reason: `${TOOL_NAME}: --apply requires --expect-db <name>.` };
+  }
+  if (input.expectDb.toLowerCase() !== input.dbName.toLowerCase()) {
+    return {
+      refuse: true,
+      reason: `${TOOL_NAME}: --expect-db "${input.expectDb}" does not match current_database() "${input.dbName}" — refusing to apply.`,
+    };
+  }
+  return { refuse: false };
+}
+
 function readFlag(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
   return idx >= 0 ? process.argv[idx + 1] : undefined;
@@ -364,19 +410,11 @@ async function main() {
 
   const { dbName } = await openRepairDb(db, { apply: APPLY, allowProd: ALLOW_PROD, toolName: TOOL_NAME });
 
-  if (APPLY) {
-    if (!expectDb) {
-      console.error(`${TOOL_NAME}: --apply requires --expect-db <name>.`);
-      process.exit(1);
-      return;
-    }
-    if (expectDb.toLowerCase() !== dbName.toLowerCase()) {
-      console.error(
-        `${TOOL_NAME}: --expect-db "${expectDb}" does not match current_database() "${dbName}" — refusing to apply.`
-      );
-      process.exit(1);
-      return;
-    }
+  const expectDbDecision = decideExpectDbRefusal({ apply: APPLY, expectDb, dbName });
+  if (expectDbDecision.refuse) {
+    console.error(expectDbDecision.reason);
+    process.exit(1);
+    return;
   }
 
   const rows = (await db
