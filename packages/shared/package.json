@@ -17,6 +17,7 @@
     "./types": "./src/types/index.ts",
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
     "./utils/slug": "./src/utils/slug.ts",
+    "./utils/ist-day": "./src/utils/ist-day.ts",
     "./utils/registrar-display": "./src/utils/registrar-display.ts",
     "./utils/company-name-normalizer": "./src/utils/company-name-normalizer.ts",
     "./utils/risk-factor-heading-key": "./src/utils/risk-factor-heading-key.ts",

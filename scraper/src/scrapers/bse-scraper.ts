@@ -29,6 +29,7 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { parseDdMmmYyyy } from '../utils/date-string-parsing.js';
+import { istDateIso } from '../scheduler/due-step-cycle.js';
 import { scrapeBSEIPODetails, type BSEDetailPageData } from './bse-detail-scraper.js';
 import {
   enrichRightsIssuesFromChittorgarh,
@@ -105,10 +106,10 @@ function parseBSEDate(dateStr: string): string {
 
     // If all parsing fails, return current date
     logger.warn({ dateStr }, 'Failed to parse BSE date, using current date');
-    return new Date().toISOString().split('T')[0];
+    return istDateIso(new Date());
   } catch (error) {
     logger.error({ dateStr, error }, 'Error parsing BSE date');
-    return new Date().toISOString().split('T')[0];
+    return istDateIso(new Date());
   }
 }
 

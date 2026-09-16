@@ -113,6 +113,24 @@ jobs:
             scripts/tests/degenerate-band-check.test.mjs \
             scripts/tests/issue-size-floor-message.test.mjs \
             scripts/tests/audit-substance-plausibility.test.mjs
+      - name: "IST-day guard + helper self-tests (lane B, #687 slice 4)"
+        # The #687 family (a day derived from the UTC clock reads as
+        # "yesterday" for the first 5h30m of every IST day) was fixed in four
+        # slices, but NEITHER of its two tests was ever named in this
+        # workflow, so the fence had never actually run in CI.
+        # no-utc-day-in-run-labels: walks scripts/, scraper/src, web/lib and
+        #   web/app and fails on any `new Date().toISOString()` day slice, so
+        #   a twelfth file cannot regrow the class unnoticed. Carries a
+        #   positive control, so a broken walker fails instead of passing
+        #   vacuously.
+        # ist-day: pins scripts/lib/ist-day.mjs (the one deliberate duplicate
+        #   of packages/shared/src/utils/ist-day.ts, because plain Node cannot
+        #   import TypeScript) to the day-boundary instants.
+        # Node builtins only - no deps, no database.
+        run: |
+          node --test scripts/tests/no-utc-day-in-run-labels.test.mjs
+          node --test scripts/tests/ist-day.test.mjs
+
       - name: Detection-floor checks self-test (T-335)
         # Mutation-proof: scripts/tests/audit-detection-floor.test.mjs imports
         # the actual predicates from scripts/lib/detection-floor-checks.mjs

@@ -1,11 +1,17 @@
 /**
- * IST calendar-day helper for packages/shared.
+ * THE IST calendar-day helper for the whole monorepo (#687 slice 4).
  *
- * packages/shared cannot import from web or scraper (separate workspace
- * packages), so this mirrors web/lib/utils/ist-date.ts istDateIso() /
- * scraper/src/scheduler/due-step-cycle.ts istDateIso() exactly: an
- * offset-shifted instant read with UTC getters, never `.toISOString()` on a
- * local-midnight parse.
+ * Every TypeScript caller derives the IST day from this one function:
+ * web imports it through the package exports map as
+ * `@ipodhan/shared/utils/ist-day` (re-exported under its historical name by
+ * web/lib/utils/ist-date.ts), and scraper's
+ * scheduler/due-step-cycle.ts istDateIso() is a thin wrapper over it.
+ * scripts/lib/ist-day.mjs is the one deliberate duplicate — plain Node
+ * cannot import TypeScript — and scripts/tests/ist-day.test.mjs pins it to
+ * the same outputs.
+ *
+ * An offset-shifted instant read with UTC getters, never `.toISOString()` on
+ * a local-midnight parse (which would be the UTC day, the #687 bug class).
  *
  * #687 slice 3: MarketHolidayRepository derived "today" from the UTC
  * calendar day (`new Date().toISOString().split('T')[0]`). Between 00:00 and
