@@ -838,6 +838,24 @@ jobs:
       - name: Run staging-cadence gate test suite
         run: bash scripts/tests/deploy-linux-schedule-gate.test.sh
 
+      # Item 7 slice 1: scripts/scraper-wake.sh replaced pm2's --cron-restart,
+      # which was the only thing bounding a hung scraper on prod. Both of the
+      # wrapper's guards fail SILENTLY - a lock-skip that stops printing its
+      # reason line looks exactly like a wake that never fired, and a ceiling
+      # that stops firing looks exactly like a job still working. Neither
+      # announces itself, so every branch is pinned and this job is where they
+      # run. ubuntu-latest is also the only place the suite's real `timeout`
+      # and `dash` assertions are meaningful (the deploy host runs the wrapper
+      # under /bin/sh, not bash).
+      #
+      # Mutation-proof (2026-09-16): seven mutations - the lock check, the
+      # ceiling value, the skip-exit path, the external timeout supervisor, and
+      # the deploy script's --cron-restart / --no-autorestart / wrapper-vs-tsx
+      # pm2 flags - were each applied with the needle asserted to match exactly
+      # once, and all seven turned this suite red.
+      - name: Run scraper wake-wrapper test suite (lock-skip + 2h ceiling)
+        run: bash scripts/tests/scraper-wake.test.sh
+
   # Recurrence loop, part 1 (2026-09-06): the "share count stored as issue
   # size" class was fixed on one write path in August and recurred on
   # another write path in September with no check to catch it. This job

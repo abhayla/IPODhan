@@ -1,0 +1,7 @@
+{
+  "sourceUrl": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_LUMINO.zip",
+  "capturedAt": "2026-09-16",
+  "ipoId": "lumino-industries-ltd",
+  "company": "Lumino Industries Limited",
+  "note": "Public NSE archive zip holding 'Anchor Investor Allocation - Lumino Industries.pdf' (the 1-row case of #437); a pure image scan (pdfplumber native words = 0 on every page). This file is the real output of ocr_pages.ocr_pdf_page_boxes(pdf, dpi=300) with scores dropped; nothing else edited. The PDF and zip are not committed (size; NSE's to publish). Captured for #437: the anchor extractor read 0 investor rows from this letter on staging and production."
+}

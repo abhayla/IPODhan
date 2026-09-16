@@ -133,6 +133,7 @@ nothing", fails the gate.
 | id | The comment, or the fork | Status / recommendation | Why it is still his |
 |---|---|---|---|
 | O-7 | *"Language model, only for the last stretch, and under strict conditions."* | STANDING CONSTRAINT | Recorded as a constraint in §5.6. Nothing in the phase-1 build uses a language model, so there is nothing to approve yet. |
+| O-16 | Should a source that LOOKED for a field and found it genuinely absent be able to say so, or is silence the only way to record that? Today the two are indistinguishable: `data-persister.ts:1408` wrote a provenance row for an explicit `null`, which read as "Chittorgarh supplied this symbol" while `ipos.symbol` was null — 61 such rows on staging, 8 of them live. | RECOMMENDATION: delete the false rows and keep silence as the only record for now (a row asserting a value that never existed is a false claim, and a false claim is worse than no claim). The alternative — a "checked, absent" marker with its own confidence — is genuinely more useful ("the NSE has no symbol for this SME issue" is real information a later pass should not re-derive) but needs a new column and a rule for how consolidation treats it, so it is a schema change, not a filter fix. | Two valid builds with no best-practice winner, and the second changes the provenance schema every audit and every proof reads. The filter fix lands either way, so this **blocks nothing**; it decides only whether a confirmed absence becomes recordable afterwards. |
 
 ### 0.0.3 The standard of proof this document is held to (OD-25)
 
