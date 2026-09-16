@@ -72,7 +72,7 @@ pm2-scheduled-one-shot-scraper.md). It does not do that here.
     # proof claims to measure, and one that skips whatever the cron wake sets up.
     # pm2's cron restart re-reads the env when it fires, so the flag is picked
     # up by the NEXT natural wake at :15 or :45. Wait for it.
-    ssh -o BatchMode=yes rfp-vps "pm2 describe ipodhan-scraper-staging --no-color       | grep -iE 'cron restart|script path'"   # confirm the release sha in the path
+    ssh -o BatchMode=yes rfp-vps "pm2 describe ipodhan-scraper-staging --no-color | grep -iE 'cron restart|script path'"
 
     # 3. wake 1 — read the LINE, then the count
     pm2 logs ipodhan-scraper-staging --nostream --lines 400 \
