@@ -53,11 +53,14 @@ pm2-scheduled-one-shot-scraper.md). It does not do that here.
     # 1. add the flag (staging slot only)
     # host alias per prod-ops-recipes.md; the VPS is production, read paths only
     # except this one sanctioned staging write.
-    # PATH VERIFIED ON THE BOX 2026-09-16. Do NOT derive it from deploy-linux.sh's
-    # $ROOT/shared/env/$SLOT: that resolves to /var/www/ipodhan/shared/env-staging
-    # (hyphen, not a slot subdirectory), and my first draft of this recipe guessed
-    # /root/ipodhan/shared/env/staging/ -- wrong in both halves. A flag written to a
-    # non-existent path creates the file, exits 0, and changes nothing.
+    # PATH VERIFIED ON THE BOX 2026-09-16, including a correction to my own
+    # correction. The root is /var/www/ipodhan, NOT /root/ipodhan -- that half my
+    # first draft got wrong, and a flag appended to a non-existent path creates the
+    # file, exits 0, and changes nothing. But env-staging and env/staging are the
+    # SAME FILE: shared/env-staging is a symlink to shared/env/staging (same inode
+    # 4456820), so both spellings work and deploy-linux.sh's $ROOT/shared/env/$SLOT
+    # was right about the shape. The running release symlinks scraper/.env to the
+    # env/staging spelling; the flag is visible through it either way.
     F=/var/www/ipodhan/shared/env-staging/scraper.env
     ssh -o BatchMode=yes rfp-vps "test -f $F && echo PATH_OK"   # refuse to proceed without this
     cp "$F" "$F.bak-$(date +%Y%m%d-%H%M)"      # restore path, never git checkout
