@@ -1112,4 +1112,54 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
     // not break the loop before ipo-2's turn.
     expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(2);
   });
+
+  // Coordinator review: the pre-loop test above only kills the
+  // `fieldPlanBudgetMs <= 0` guard -- it proves the pass skips when there
+  // was NO budget to begin with, not that a pass which RUNS TOO LONG stops
+  // mid-loop. This test targets the BETWEEN-IPO check itself
+  // (`now() - fieldPlanStartedAt >= fieldPlanBudgetMs`), the one that
+  // actually protects a candidate set that grows or a DB latency spike.
+  // Same fake-clock pattern as the W-136 LISTED-reservation-deadline test
+  // above: a mutable `clock`, `now = () => clock`, advanced by the mock the
+  // loop calls each iteration -- not a fixed now() call-count sequence,
+  // which would be brittle to any unrelated now() call added elsewhere in
+  // the cycle.
+  it('a clock that advances past the budget PARTWAY THROUGH stops the loop -- later candidates are not offered and the reason is logged', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1'), candidateRow('ipo-2'), candidateRow('ipo-3')],
+    });
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    let clock = 0;
+    const now = () => clock;
+    upsertGeneratedRowsMock.mockImplementation(() => {
+      clock += 100; // each upsert call "takes" 100ms
+      return Promise.resolve({ inserted: 1 });
+    });
+
+    // fieldPlanBudgetMs: 150 -- fits candidate 1 (0ms elapsed at its check),
+    // does NOT fit candidate 2 or 3 (100ms already elapsed exceeds nothing
+    // yet, but by candidate 2's check the loop has already spent 100ms and
+    // the NEXT iteration's check trips at 100 < 150 -- so give it one more
+    // margin: use budget 50 so candidate 1's post-call 100ms already trips
+    // candidate 2's pre-iteration check).
+    await runDocumentCycle({
+      budgetMs: 999_999,
+      extractionBudgetMs: 999_999,
+      fieldPlanBudgetMs: 50,
+      now,
+    });
+
+    // Only ipo-1 was offered -- the loop BROKE before ipo-2/ipo-3's turn,
+    // it did not skip one and continue to the next.
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(1);
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ ipoId: 'ipo-1' })])
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ fieldPlanBudgetMs: 50, processed: 1, remaining: 2 }),
+      expect.stringContaining('Field-plan generation budget exhausted')
+    );
+  });
 });
