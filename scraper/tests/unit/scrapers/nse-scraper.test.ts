@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { scrapeNSEIPOs, parseNSEBrowserPriceRange } from '../../../src/scrapers/nse-scraper.js';
+import { scrapeNSEIPOs, parseNSEBrowserPriceRange, istDateIsoBrowser } from '../../../src/scrapers/nse-scraper.js';
+import { istDateIso } from '../../../src/scheduler/due-step-cycle.js';
 import * as nseApiClient from '../../../src/scrapers/nse-api-client.js';
 
 /**
@@ -263,5 +264,17 @@ describe('NSE Scraper', () => {
         subscriptions: expect.any(Array)
       });
     });
+  });
+});
+
+describe('nse-scraper browser-path today derivation uses the IST day (#687 slice 2)', () => {
+  it('istDateIsoBrowser matches istDateIso at 02:00 IST (still yesterday in UTC)', () => {
+    // 2026-09-15T20:30:00Z = 2026-09-16T02:00:00+05:30 (02:00 IST, 16-Sep).
+    // A naive `new Date().toISOString().split('T')[0]` reads UTC day
+    // 2026-09-15 — one day BEHIND the real IST calendar day — which is what
+    // the browser-context page.evaluate() closure used before this fix.
+    const instant = new Date('2026-09-15T20:30:00Z');
+    expect(istDateIsoBrowser(instant)).toBe('2026-09-16');
+    expect(istDateIsoBrowser(instant)).toBe(istDateIso(instant));
   });
 });

@@ -18,15 +18,24 @@ const GUARDED_FILES = [
   'scripts/audit-prod.mjs',
   'scripts/ops/floor-delta.mjs',
   'scraper/src/services/cross-source-disagreement-monitor.ts',
+  // #687 slice 2: the exchange scrapers + description backfill's `today`.
+  'scraper/src/scrapers/bse-api-scraper.ts',
+  'scraper/src/scrapers/nse-api-client.ts',
+  'scraper/src/scrapers/nse-scraper.ts',
+  'scraper/src/services/description-backfill.ts',
 ];
 
-// Matches `<expr>.toISOString().slice(0, 10)` and
-// `<expr>.toISOString().split('T')[0]` for any expression immediately before
-// .toISOString() (a bare `new Date()`, or a `now`/`date` variable holding
-// one) — both are the UTC calendar day, the class this guard exists to stop
-// regrowing (see scripts/lib/ist-day.mjs for the IST-day replacement).
+// Matches `new Date().toISOString().slice(0, 10)` and
+// `new Date().toISOString().split('T')[0]` — a FRESH clock read, which is
+// the UTC calendar day (the class this guard exists to stop regrowing; see
+// scripts/lib/ist-day.mjs / scraper's istDateIso for the IST-day
+// replacement). Deliberately narrower than "any expr before .toISOString()"
+// (#687 slice 2): several guarded files also call `.toISOString()` on an
+// already-PARSED date variable (e.g. `date.toISOString().split('T')[0]`
+// inside a date-string parser) — a different class (F-104, formatting a
+// known date, not deriving "today") that this guard must NOT flag.
 const UTC_DAY_PATTERN =
-  /\.toISOString\(\)\.(slice\(0,\s*10\)|split\(['"]T['"]\)\[0\])/;
+  /new Date\(\)\.toISOString\(\)\.(slice\(0,\s*10\)|split\(['"]T['"]\)\[0\])/;
 
 for (const relPath of GUARDED_FILES) {
   test(`no UTC-day derivation in ${relPath}`, () => {

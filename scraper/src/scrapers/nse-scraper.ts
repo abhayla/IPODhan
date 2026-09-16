@@ -54,6 +54,28 @@ export function parseNSEBrowserPriceRange(
 }
 
 /**
+ * Module-level mirror of the `istDateIsoBrowser` closure inside
+ * `scrapeNSEWithBrowser`'s `page.evaluate()` callback below (#687 slice 2).
+ *
+ * DUPLICATED ON PURPOSE (same reason as `parseNSEBrowserPriceRange` above):
+ * `page.evaluate()` serializes the callback into the browser's own JS
+ * context, which cannot import `istDateIso` from
+ * `../scheduler/due-step-cycle.js`. This reimplements the exact same pure
+ * arithmetic (UTC-getter reads on an IST-shifted epoch instant, never
+ * `.toISOString()` on it) so both copies produce the same IST calendar day.
+ * If you change one, change the other.
+ */
+export function istDateIsoBrowser(now: Date): string {
+  const IST_OFFSET_MINUTES = 5 * 60 + 30;
+  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
+  const ist = new Date(istMs);
+  const year = ist.getUTCFullYear();
+  const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(ist.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Scrape IPO data from NSE using browser automation (fallback method)
  * This is used when the API approach fails
  * @returns Promise<NSEScrapeResult> - Scraped IPO and subscription data
@@ -161,6 +183,21 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
             jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
           };
+          // #687 slice 2: inline mirror of `istDateIsoBrowser` above — this
+          // runs inside page.evaluate() (browser context) and cannot import
+          // it. The old "new Date + toISOString + split on T" pattern read the UTC day,
+          // which is a day BEHIND the real IST calendar day for roughly half
+          // of every 24h (00:00-05:29 IST). Keep this in sync with
+          // `istDateIsoBrowser` and `istDateIso` (due-step-cycle.ts).
+          const istDateIsoInline = (d: Date): string => {
+            const IST_OFFSET_MINUTES = 5 * 60 + 30;
+            const istMs = d.getTime() + IST_OFFSET_MINUTES * 60_000;
+            const ist = new Date(istMs);
+            const y = ist.getUTCFullYear();
+            const mo = String(ist.getUTCMonth() + 1).padStart(2, '0');
+            const da = String(ist.getUTCDate()).padStart(2, '0');
+            return `${y}-${mo}-${da}`;
+          };
           const parseNSEDate = (dateStr: string): string => {
             try {
               const cleaned = dateStr.trim();
@@ -189,9 +226,9 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
               }
 
               // Default to current date if parsing fails
-              return new Date().toISOString().split('T')[0];
+              return istDateIsoInline(new Date());
             } catch (error) {
-              return new Date().toISOString().split('T')[0];
+              return istDateIsoInline(new Date());
             }
           };
 
@@ -254,7 +291,7 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             }
           } else {
             // Fallback: determine from dates
-            const today = new Date().toISOString().split('T')[0];
+            const today = istDateIsoInline(new Date());
             if (listingDate && today >= listingDate) {
               status = 'LISTED';
             } else if (today >= openDate && today <= closeDate) {

@@ -4,8 +4,9 @@
  * preserves the existing status (a description backfill must not change status),
  * and refuses to write a blank/short description.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildDescriptionScrapedIPO, type DescBackfillIpo } from '../../../src/services/description-backfill.js';
+import { istDateIso } from '../../../src/scheduler/due-step-cycle.js';
 
 function ipo(p: Partial<DescBackfillIpo>): DescBackfillIpo {
   return {
@@ -44,5 +45,24 @@ describe('buildDescriptionScrapedIPO (#69)', () => {
 
   it('handles null issueSize as 0 (sentinel, low-priority consolidated)', () => {
     expect(buildDescriptionScrapedIPO(ipo({ issueSize: null }), DESC).issueSize).toBe(0);
+  });
+});
+
+describe('buildDescriptionScrapedIPO today fallback uses the IST day (#687 slice 2)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('falls back to the IST today, not the UTC today, when openDate/closeDate are null', () => {
+    // 2026-09-15T20:30:00Z = 02:00 IST on 2026-09-16 — a naive
+    // `new Date().toISOString().split('T')[0]` reads UTC day 2026-09-15,
+    // one day BEHIND the real IST calendar day.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+    expect(istDateIso(new Date())).toBe('2026-09-16');
+
+    const p = buildDescriptionScrapedIPO(ipo({ openDate: null, closeDate: null }), DESC);
+    expect(p.openDate).toBe('2026-09-16');
+    expect(p.closeDate).toBe('2026-09-16');
   });
 });
