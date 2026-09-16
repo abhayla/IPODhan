@@ -1,6 +1,6 @@
 # Lane C progress log (contract §0.3)
 
-**Last refreshed: 2026-09-16 06:16 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
+**Last refreshed: 2026-09-16 06:47 IST** — this line is the file's FRESHNESS CONTRACT and is what a tick reads. It MUST be rewritten in the same command as every section appended below; a current file with a stale marker reports a working lane as quiet, which is how it read stale for 41 minutes across five commits on 2026-09-11. Written in the SAME turn as the board, the state file and the ledger commit. All four or none. THIS FILE IS TRACKED AND PUSHED,
 despite `.gitignore:317` ignoring `docs/contracts/.run/*` - it was force-added, and gitignore
 only governs UNTRACKED files, so it is durable on `ops/impl-loop-c-ledger` and a resume should
 read it from origin. (The old header said "Local only", which was true before the force-add and
@@ -3138,3 +3138,17 @@ HELD: violation count stayed 0 across 2 distinct scraper cycle(s).
 The face-value-band repair tool is on main after two adversarial rounds (no path can pick another company's price; a band-shaped cell like "30 to 32" is now refused instead of parsed as 30). On staging STANBIK reads band ₹30/30 and face value 10 with a source recorded per field, and the repair held across a deploy restart and a scheduled wake. The production apply is one command and waits for the owner's word (morning brief, appended after the highest number). The build worktree is removed; only the coordination tree remains.
 
 **Where lane C ends the night:** item 12 proven on staging; item 2 merged and proven on staging for every sourceable row; item 14 blocked on decision 4. Nine PRs merged, eight issues filed, no production data written. Nothing further is unblocked without the owner or the release cut.
+
+
+
+### 2026-09-16 06:47 IST — the STANBIK repair is HELD on two scheduled wakes; the 06:16 line counted a restart and is superseded
+
+| marker (IST) | trigger | count |
+|---|---|---|
+| 06:05:56 | deploy restart (#680) — not counted | 0 |
+| **06:14:09** | **scheduled :15 wake** | 0 |
+| 06:23:19 | deploy restart (2d77e0cd) — not counted | 0 |
+| 06:37:10 | deploy restart (6ab8a5ed) — not counted | 0 |
+| **06:45:11** | **scheduled :45 wake** | 0 |
+
+Two scheduled wakes at zero: **HELD**. The tool itself counts restarts as cycles and printed HELD on two of them, which is #698. The production apply for STANBIK is now a recommendation (brief decision 11). Lane C's night is closed: nine PRs merged, nine issues filed, no production data written, nothing further unblocked without the owner or the release cut.
