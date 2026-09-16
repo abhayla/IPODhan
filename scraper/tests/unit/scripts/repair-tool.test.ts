@@ -176,6 +176,25 @@ describe('assertNoSchemaDrift — composed preflight (mirrors openRepairDb shape
     expect(r.refused).toBe(false);
     expect(onRefuse).not.toHaveBeenCalled();
   });
+
+  it('fails closed (refuses) with the #713 message PLUS the underlying error text when the probe itself throws (signal-ownership R6) — never a bare stack', async () => {
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const execute = vi.fn().mockRejectedValue(new Error('connection terminated unexpectedly'));
+    const r = await assertNoSchemaDrift({ execute }, { apply: true, toolName: 'tool-x', log: vi.fn(), error, onRefuse });
+    expect(r.refused).toBe(true);
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('#713'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('connection terminated unexpectedly'));
+  });
+
+  it('a throwing probe never refuses a dry run — a dry run never writes, so a probe failure has nothing to protect', async () => {
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockRejectedValue(new Error('connection terminated unexpectedly'));
+    const r = await assertNoSchemaDrift({ execute }, { apply: false, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(r.refused).toBe(false);
+    expect(onRefuse).not.toHaveBeenCalled();
+  });
 });
 
 describe('MUTATION 2 — the previous_source carry (the audit trail)', () => {

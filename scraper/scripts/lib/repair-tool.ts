@@ -316,7 +316,33 @@ export async function assertNoSchemaDrift(
 ): Promise<{ refused: boolean }> {
   const log = options.log ?? ((l: string) => console.log(l));
   const err = options.error ?? ((l: string) => console.error(l));
-  const hasRowKeyColumn = await probeFieldSourcesRowKeyColumn(dbLike);
+
+  let hasRowKeyColumn: boolean;
+  try {
+    hasRowKeyColumn = await probeFieldSourcesRowKeyColumn(dbLike);
+  } catch (probeError) {
+    // The probe itself failing (connection drop, permission error, etc.) is
+    // indistinguishable from "the column is missing" if swallowed — and
+    // indistinguishable from "the column is present" if ignored. A dry run
+    // never writes, so a probe failure has nothing to protect and is
+    // reported but not refused (signal-ownership R6: the failure carries its
+    // cause). An --apply run fails CLOSED: refuse, and print the #713
+    // message PLUS the underlying error text, never a bare stack.
+    const causeText = probeError instanceof Error ? probeError.message : String(probeError);
+    log(`schema-drift preflight: probe FAILED (${causeText}) — treating as unknown, not as "column present"`);
+    if (!options.apply) {
+      return { refused: false };
+    }
+    const prefix = options.toolName ? `${options.toolName}: ` : '';
+    const reason =
+      `${prefix}refusing to APPLY writes — the schema-drift preflight probe for ` +
+      '"field_sources.row_key" (issue #713) failed and could not confirm the column exists: ' +
+      `${causeText}`;
+    err(reason);
+    (options.onRefuse ?? ((): void => process.exit(1)))(reason);
+    return { refused: true };
+  }
+
   log(`schema-drift preflight: field_sources.row_key present = ${hasRowKeyColumn}`);
   const decision = decideSchemaDriftRefusal({
     apply: options.apply,

@@ -179,9 +179,19 @@ describe('decideBlankUnsourced — ruling 32', () => {
     expect(d.action).toBe('blank');
   });
 
-  it('blanks a report-unprovenanced-ipo row with NO oracle resolution at all (the map-only path)', () => {
+  it('REFUSES a row with NO oracle resolution at all — undefined resolution is unresolved, not unsourceable', () => {
     const d = decideBlankUnsourced(noSourceDecision, undefined);
-    expect(d.action).toBe('blank');
+    expect(d.action).toBe('refuse-unresolved');
+    expect(d.reason).toContain('unresolved');
+  });
+
+  it('REFUSES an ambiguous-name row — the name is held by more than one listed company, a refusal to pick, not an unsourceable row (#713/#714)', () => {
+    const d = decideBlankUnsourced(
+      noSourceDecision,
+      resolution({ outcome: 'ambiguous-name', reason: 'name matches more than one listed company' })
+    );
+    expect(d.action).toBe('refuse-ambiguous-name');
+    expect(d.reason).toContain('more than one');
   });
 
   it('REFUSES a row whose oracle outcome is unresolved-group — group X/TS meaning is unresolved, not unsourceable (SURYO/NET PIX)', () => {

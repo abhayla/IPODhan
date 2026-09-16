@@ -178,7 +178,12 @@ export function decideSegmentProvenance(row: SegmentProvenanceRow): SegmentRepai
   };
 }
 
-export type BlankUnsourcedAction = 'blank' | 'refuse-unresolved-group' | 'skip';
+export type BlankUnsourcedAction =
+  | 'blank'
+  | 'refuse-unresolved-group'
+  | 'refuse-ambiguous-name'
+  | 'refuse-unresolved'
+  | 'skip';
 
 export interface BlankUnsourcedDecision {
   action: BlankUnsourcedAction;
@@ -191,6 +196,18 @@ export interface BlankUnsourcedDecision {
  * `report-unprovenanced-ipo` are candidates at all; everything else (already
  * NULL, already provenanced, non-IPO, sourced) is `skip` here because the
  * default decision already handled it correctly.
+ *
+ * `blank` is a positive allowlist, not a default: only an oracle outcome the
+ * caller has explicitly confirmed means "not sourceable" reaches it. Every
+ * other outcome — including no resolution at all — REFUSES rather than
+ * falling through to blank (T-714 / PR #714 review): an `ambiguous-name`
+ * resolution (the company's name is held by more than one listed company)
+ * is a refusal to pick between candidates, not evidence the row can never be
+ * sourced, exactly like `unresolved-group`'s refusal to pick a board for an
+ * unmapped BSE group. A `resolution === undefined` row never ran the oracle
+ * at all (the map-only path) and refusing it, rather than blanking it, means
+ * a future wiring bug that stops calling the oracle fails closed (nothing
+ * gets blanked) instead of silently blanking every unprovenanced IPO row.
  */
 export function decideBlankUnsourced(
   decision: SegmentRepairDecision,
@@ -199,12 +216,34 @@ export function decideBlankUnsourced(
   if (decision.action !== 'report-unprovenanced-ipo') {
     return { action: 'skip', reason: 'not an unprovenanced IPO row — default mode already decided this one' };
   }
-  if (resolution && resolution.outcome === 'unresolved-group') {
+  if (!resolution) {
+    return {
+      action: 'refuse-unresolved',
+      reason:
+        'no oracle resolution was recorded for this row (unresolved, not unsourceable) — refusing to blank it ' +
+        'without positive evidence the company cannot be sourced',
+    };
+  }
+  if (resolution.outcome === 'unresolved-group') {
     return {
       action: 'refuse-unresolved-group',
       reason:
         `BSE group is not in the evidenced MAINBOARD/SME mapping (${resolution.reason}) — this is unresolved ` +
         'MEANING, not an unsourceable company; refusing to blank it',
+    };
+  }
+  if (resolution.outcome === 'ambiguous-name') {
+    return {
+      action: 'refuse-ambiguous-name',
+      reason:
+        `name held by more than one listed company (${resolution.reason}) — this is a refusal to pick, not an ` +
+        'unsourceable row; refusing to blank it',
+    };
+  }
+  if (resolution.outcome !== 'no-source') {
+    return {
+      action: 'refuse-unresolved',
+      reason: `oracle outcome '${resolution.outcome}' is not the evidenced no-source case — refusing to blank it`,
     };
   }
   return {
