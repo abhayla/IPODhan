@@ -570,38 +570,486 @@ def page_needs_ocr(rows, words=None):
 
 
 def ocr_full_page_rows(ocr_lines):
-    """Rebuild a page's ENTIRE row geometry from OCR word boxes (W-170).
+    """Rebuild a page's ENTIRE row geometry from OCR word boxes (W-170, #437).
 
     `apply_ocr_names` repairs only the name column, because it needs the text
-    layer's row centres/name-band geometry to place OCR words. A page with a
-    genuinely empty text layer (Qualiance: 0 pdfplumber chars, one full-page
-    image per page) has no such geometry to reuse - there is no "row 4" to
-    attach an OCR name to until the table itself is rebuilt.
+    layer's row centres and name-band geometry to place OCR words. A page with
+    a genuinely empty text layer (Qualiance, LCC, JSIPL, LUMINO, HEROMOTORS:
+    0 pdfplumber words, one full-page image per page) has no such geometry to
+    reuse - there is no "row 4" to attach an OCR name to until the table itself
+    is rebuilt.
 
-    So: treat each OCR word's box exactly like a pdfplumber word (same
-    `text`/`top`/`x0` shape `column_bands`/`page_rows` already consume) and run
-    the identical per-column banding/row-splitting pipeline on them. Column
-    geometry is computed from THIS PAGE ALONE (unlike the multi-page text-layer
-    pass) since a scanned page's OCR boxes are not comparable in x/y terms to
-    another page's pdfplumber words.
+    W-170 rebuilt it by feeding the OCR boxes back through `column_bands` /
+    `page_rows`, the pdfplumber text-layer pipeline. #437 measured that on five
+    real NSE letters and found it wrong in both directions - None on the real
+    table page, invented rows on the cover page - so the rebuild is now the
+    header-anchored `ocr_table_page_rows` below. This name is kept as the
+    module's entry point for "rebuild a page with no text layer"; only the
+    implementation behind it changed.
     """
-    words = [
-        {"text": w["text"], "top": w["box"][1], "x0": w["box"][0], "x1": w["box"][2]}
-        for line in ocr_lines
-        for w in line.get("words", [])
-    ]
-    if not words:
+    return ocr_table_page_rows(ocr_lines)
+
+
+# --------------------------------------------------------------------------- #
+# #437 - the image-scan table rebuild
+#
+# `ocr_full_page_rows` above (W-170) reused `column_bands`/`page_rows`, which
+# were written for a pdfplumber TEXT layer. On a pure image scan that reuse
+# fails in both directions, measured on five real NSE letters:
+#
+#   * On the real TABLE page it returns None (LCC page 2, HEROMOTORS pages
+#     2-4): OCR emits one box per printed CELL, not per word, so a numeric
+#     column is a handful of wide boxes whose x0 values never cluster into
+#     >=3 bands each carrying >=5 numeric rows.
+#   * On the COVER page it hallucinates rows (LCC 20, JSIPL 14, LUMINO 34):
+#     the letterhead phone numbers, PIN codes and dates are digits at many x
+#     positions, which DO band, so prose fragments came out as investor names
+#     and the TS parser then refused the whole letter at zero investor rows.
+#
+# The rebuild below is geometric and HEADER-ANCHORED instead. A page yields
+# rows only when its OCR lines carry the printed table header vocabulary, and
+# the columns are the header own cells - never a clustering of whatever digits
+# happen to sit on the page. That makes a cover page structurally incapable of
+# producing a row, which is the half of the bug that mattered most, and it
+# reads the table page the old code could not see at all.
+# --------------------------------------------------------------------------- #
+
+# Header cell vocabulary, as (role, patterns). A header block is recognised
+# when at least MIN_HEADER_ROLES distinct roles match AND the shares role is
+# among them. Patterns match the OCR text with ALL whitespace removed, because
+# the OCR splits printed words at random (S ha res / Total anmount / No of Equ
+# ity / % ofAnchor) - space-insensitive matching is the only rule that survived
+# that damage on all five letters.
+HEADER_ROLES = (
+    ("serial", (r"^s\.?no\.?$", r"^sr\.?$", r"^sr\.?no\.?$", r"^s\.?$", r"^no\.?$")),
+    ("name", (r"nameofthe?anchorinvestors?", r"nameofanchorinvestors?",
+              r"nameofthe", r"nameofanchor")),
+    ("shares", (r"no\.?ofequityshares?", r"equitysharesallocated",
+                r"no\.?ofequity", r"sharesallocated", r"equityshares",
+                r"^shares$", r"^sharesallocated$")),
+    ("percent", (r"%ofanchor", r"asa%of", r"allocatedasa", r"anchorinvestorportion",
+                 r"%oftheanchor", r"^%of$")),
+    ("price", (r"bidprice", r"allocationprice", r"anchorinvestorallocation",
+               r"perequityshare", r"rs?\.?perequity", r"^bid$")),
+    ("amount", (r"totala[nm]{1,2}ount", r"amountallocated", r"^totalamount$",
+                r"allocatedin")),
+)
+MIN_HEADER_ROLES = 3
+# How far below the topmost header line the header block can still run. These
+# printed headers wrap into 3-6 OCR lines, and the first data row follows
+# within a line or two of the last of them.
+HEADER_BLOCK_PT = 72.0
+# Largest y gap between two consecutive header-label lines that still keeps
+# them in one header block. LCC's header prints "Total Amount" 22.8pt above
+# "S. No." while its first investor row is 46pt below the last label line, so
+# the threshold sits between the two.
+HEADER_GAP_PT = 30.0
+# A data cell centre must land within this of a column anchor to be assigned
+# to it. Deliberately wider than a printed half-column: the OCR box for a
+# 12-character amount is drawn wider than the header cell above it.
+COLUMN_ATTACH_PT = 46.0
+# Lines closer than this in y belong to the same table row band.
+OCR_ROW_GAP_PT = 9.0
+# Widest an OCR line may be and still be a header CELL. A header block window
+# can overlap the preamble sentence above the table ("...have finalized
+# allocation of 40,28,400, to Anchor Investors at..."), which is 400+ points
+# wide; its centre invented a phantom column that swallowed the name column
+# (JSIPL, where every share count and name came out blank).
+MAX_HEADER_CELL_PT = 130.0
+# Widest a DATA line may be and still be a table cell. Below the table every
+# letter prints full-width closing prose, and those lines were voting for the
+# name column - which on JSIPL moved `name_idx` onto the share column.
+MAX_DATA_CELL_PT = 210.0
+# Fewest long-integer cells a column must carry to be taken for the share
+# column. Two is the real floor: LCC's Life Insurance sub-table prints ONE
+# investor row, and a letter with a single anchor investor is a real case
+# (#437's "only 1 investor rows" class), so the spine must form at 1 - but a
+# stray pair of digits in a footer must not. The table-header gate above
+# already guarantees this is a real table, so 1 is safe here.
+MIN_SPINE_CELLS = 1
+# A percent cell the scan printed without its "%". The OCR scatters spaces
+# THROUGH the digits of these letters ("1 3 .35" for 13.35, "2 6.69" for
+# 26.69), so the test is applied to the cell with its spaces removed: at most
+# two integer digits, one decimal separator, at most two decimals, and no
+# thousands grouping. Kept tight on purpose - a share count or an amount must
+# never be re-labelled as a percentage.
+_PLAIN_PERCENT_RE = re.compile(r"^[0-9]{1,3}[.,][0-9]{1,2}$|^[0-9]{1,2}$")
+
+
+def _looks_like_bare_percent(text):
+    compact = re.sub(r"\s+", "", text or "")
+    if not _PLAIN_PERCENT_RE.match(compact):
+        return False
+    try:
+        value = float(compact.replace(",", "."))
+    except ValueError:
+        return False
+    return 0.0 < value <= 100.0
+
+TOTAL_RE = re.compile(r"^(grand\s*)?tota[lI1]?s?\.?$", re.IGNORECASE)
+_NUMERIC_CELL_RE = re.compile(r"^[\d\s.,%()/R-]+$", re.IGNORECASE)
+_PREAMBLE_TOTAL_RE = re.compile(
+    r"allocation\s+of\s+([0-9][0-9,\s.]{4,}?)\s*,?\s*(?:Equity\s+Shares|to\s+Anchor)",
+    re.IGNORECASE)
+
+
+def _squash(text):
+    return re.sub(r"\s+", "", (text or "")).lower()
+
+
+def _line_geometry(line):
+    """(x0, top, x1, bottom) of an OCR line box (a 4-point polygon)."""
+    xs = [p[0] for p in line["box"]]
+    ys = [p[1] for p in line["box"]]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _header_block(lines):
+    """The lines forming the printed table header, plus its top y - or None.
+
+    The header is a BLOCK, so roles are collected over a y window rather than
+    demanded of a single line: "No. of Equity" and "S ha res" are two OCR
+    lines of one printed cell.
+    """
+    def roles_of(line):
+        squashed = _squash(line["text"])
+        return set(role for role, patterns in HEADER_ROLES
+                   if any(re.search(p, squashed) for p in patterns))
+
+    # Every line that reads as part of a column label, in page order. A printed
+    # header cell wraps into several such lines ("No. of Equity" / "S ha res"),
+    # and different cells of one header sit at the SAME y, so the header is
+    # found as the longest run of these lines with no long unlabelled gap -
+    # never as a fixed y window, which on a tight table swallowed the first
+    # four investor rows.
+    # Only SHORT lines can be column labels. Full-width prose above the table
+    # ("Re: Initial public offering of equity shares...", "...at the Anchor
+    # Investor Allocation Price of 146/- per Equity Share") matches the same
+    # vocabulary and would otherwise join the header run and drag its top
+    # 120pt up into the letter body.
+    labelled = [(ln, _line_geometry(ln)[1], roles_of(ln)) for ln in lines
+                if _line_geometry(ln)[2] - _line_geometry(ln)[0] <= MAX_HEADER_CELL_PT]
+    labelled = [item for item in labelled if item[2]]
+    if not labelled:
         return None
-    bands = column_bands([words])
-    rows = page_rows(words, bands)
-    if rows is None:
+    labelled.sort(key=lambda item: item[1])
+
+    best = None
+    run = []
+    for item in labelled + [(None, float("inf"), set())]:
+        if run and item[1] - run[-1][1] > HEADER_GAP_PT:
+            top = run[0][1]
+            roles = set().union(*[r for _ln, _t, r in run])
+            # The shares role is the spine of every one of these tables; a run
+            # without it is prose that happened to hold "Bid Price".
+            if "shares" in roles and len(roles) >= MIN_HEADER_ROLES:
+                block = [ln for ln, _t, _r in run]
+                # Bring in the unlabelled cells sitting inside the run's own
+                # y span - "Portion", "(Rs.)", "Allocated" are header cells
+                # whose text carries no role word of its own.
+                lo = run[0][1] - 1.0
+                hi = run[-1][1] + 1.0
+                ids = set(id(ln) for ln in block)
+                block += [ln for ln in lines
+                          if id(ln) not in ids and lo <= _line_geometry(ln)[1] <= hi]
+                score = (len(roles), -top)
+                if best is None or score > best[0]:
+                    best = (score, block, top)
+            run = []
+        if item[0] is not None:
+            run.append(item)
+    return (best[1], best[2]) if best else None
+
+
+def _column_anchors(header_block):
+    """x centre of each header cell, left to right, merged where they overlap.
+
+    The header own cells are the columns. A cover page has no header, so it
+    never reaches here - the structural fix for the hallucinated rows.
+    """
+    # Header cells only: short AND non-numeric. The header window is generous
+    # (these printed headers wrap 3-6 OCR lines deep and the first data row can
+    # follow immediately), so it can reach over the first investor rows; their
+    # numeric cells must not be mistaken for column labels.
+    cells = [ln for ln in header_block
+             if _line_geometry(ln)[2] - _line_geometry(ln)[0] <= MAX_HEADER_CELL_PT
+             and not _is_numeric_cell((ln["text"] or "").strip())]
+    centres = sorted(0.5 * (_line_geometry(ln)[0] + _line_geometry(ln)[2])
+                     for ln in cells)
+    merged = []
+    for c in centres:
+        if merged and c - merged[-1][-1] <= COLUMN_ATTACH_PT:
+            merged[-1].append(c)
+        else:
+            merged.append([c])
+    return [sum(g) / len(g) for g in merged]
+
+
+def _preamble_total(lines, header_top):
+    """The letter own printed total-shares figure, from its preamble.
+
+    The TS parser reconciles the summed investor rows against this, so a page
+    printing it must pass it through or the reconciliation has no input.
+    """
+    for ln in lines:
+        if _line_geometry(ln)[1] >= header_top:
+            continue
+        m = _PREAMBLE_TOTAL_RE.search(ln["text"])
+        if m:
+            return re.sub(r"\s+", "", m.group(1)).strip(".,")
+    return None
+
+
+def _row_bands(data_lines):
+    """Cluster data lines into row bands by y centre."""
+    entries = []
+    for ln in data_lines:
+        x0, top, x1, bottom = _line_geometry(ln)
+        entries.append({"text": (ln["text"] or "").strip(), "x0": x0, "x1": x1,
+                        "centre": 0.5 * (top + bottom)})
+    entries.sort(key=lambda e: e["centre"])
+    bands = []
+    for e in entries:
+        if bands and e["centre"] - bands[-1][-1]["centre"] <= OCR_ROW_GAP_PT:
+            bands[-1].append(e)
+        else:
+            bands.append([e])
+    return bands
+
+
+def _assign_column(entry, anchors):
+    centre = 0.5 * (entry["x0"] + entry["x1"])
+    idx = min(range(len(anchors)), key=lambda i: abs(anchors[i] - centre))
+    return idx if abs(anchors[idx] - centre) <= COLUMN_ATTACH_PT else None
+
+
+def _is_numeric_cell(text):
+    return bool(text) and bool(_NUMERIC_CELL_RE.match(text)) and any(
+        c.isdigit() for c in text)
+
+
+# A row is anchored on its SHARES cell, never on a y band of everything.
+#
+# Measured on all five letters: the numeric cells of one investor sit on (or
+# within a point or two of) the printed row's first baseline, while the NAME
+# wraps two or three lines further down, well past any y-gap threshold. Banding
+# by y alone therefore either splits one investor across two rows (JSIPL, where
+# two investors' numerics landed in one band) or attaches a wrapped name to the
+# row below it (LCC). So: find the share-column cells first - they are the
+# spine, one per investor - and assign every other cell, numeric or name, to
+# the spine row whose own y span it falls in. That is how the printed table
+# reads, and it is stable against both the skew and the OCR line splitting.
+#
+# A cell belongs to the spine row it is NEAREST to, except that it may never be
+# pulled UP past the midpoint between two spine cells - a wrapped name always
+# belongs to the row it sits below, never to the one below it.
+
+
+def _column_cells(bands, anchors, idx):
+    out = []
+    for band in bands:
+        for e in band:
+            if _assign_column(e, anchors) == idx:
+                out.append(e)
+    return sorted(out, key=lambda e: e["centre"])
+
+
+def _share_column(bands, anchors, name_idx):
+    """The column index whose cells are share counts (the row spine).
+
+    In the printed order of every one of these letters the share count is the
+    FIRST long-integer column right of the name: name | shares | % | price |
+    amount. The amount column also carries long integers - and more of them,
+    since a share cell is more often broken by the OCR - so picking "the most
+    long-integer cells" chose the AMOUNT column on LCC and merged pairs of
+    investors into one row. Leftmost-that-qualifies is the rule the printed
+    layout actually guarantees, and it holds on GLOTTIS too, which prints no
+    price column at all.
+    """
+    for idx in range(len(anchors)):
+        if idx <= name_idx:
+            continue
+        score = 0
+        for e in _column_cells(bands, anchors, idx):
+            digits = re.sub(r"[^0-9]", "", e["text"])
+            if _is_numeric_cell(e["text"]) and len(digits) >= 4 and "%" not in e["text"]:
+                score += 1
+        if score >= MIN_SPINE_CELLS:
+            return idx
+    return None
+
+
+def ocr_table_page_rows(ocr_lines):
+    """Rebuild one scanned page table from its OCR line boxes (#437).
+
+    Returns the shape `page_rows` returns, so `render_rows` and the TypeScript
+    parser downstream are unchanged - or None when the page carries no printed
+    table header (a cover letter, a signature page, an annexure of prose).
+    """
+    lines = [ln for ln in ocr_lines if (ln.get("text") or "").strip()]
+    if not lines:
         return None
-    rows = dict(rows)
-    # OCR letter-shrapnel repair, same treatment `apply_ocr_names` gives a
-    # supplemented name column - these words come from the same OCR pass and
-    # carry the same damage shape ("F U N D" for "FUND").
-    rows["names"] = [join_letter_runs(n) for n in rows["names"]]
-    return rows
+    found = _header_block(lines)
+    if not found:
+        return None
+    header, header_top = found
+    anchors = _column_anchors(header)
+    if len(anchors) < 3:
+        return None
+    # The header ENDS at its last non-numeric cell line. Anything numeric
+    # inside the window is already an investor row (a five-line header and a
+    # first row 15pt below it both fit in HEADER_BLOCK_PT), and treating it as
+    # header dropped the first four rows of a five-row table.
+    header_cells = [ln for ln in header
+                    if not _is_numeric_cell((ln["text"] or "").strip())]
+    header_bottom = max(_line_geometry(ln)[3] for ln in header_cells)
+
+    header_ids = set(id(ln) for ln in header_cells)
+    data = [ln for ln in lines
+            if _line_geometry(ln)[1] > header_bottom - OCR_ROW_GAP_PT
+            and id(ln) not in header_ids
+            and _line_geometry(ln)[2] - _line_geometry(ln)[0] <= MAX_DATA_CELL_PT]
+    bands = _row_bands(data)
+
+    # Where the table ENDS: its own Total line. Everything below that is the
+    # letter's closing prose; it is excluded from every measurement that
+    # follows, because on LCC's Life Insurance sub-table that prose out-voted
+    # the real name column and the whole page then rebuilt to nothing.
+    table_end = None
+    for band in bands:
+        if any(TOTAL_RE.match(e["text"]) for e in band):
+            table_end = min(e["centre"] for e in band)
+            break
+    if table_end is not None:
+        bands = [b for b in bands if min(e["centre"] for e in b) < table_end + 1.0]
+
+    # Which anchor is the NAME column: the one alphabetic cells actually land
+    # on. Found by measurement rather than by position, because SME letters
+    # sometimes omit the serial column and shift every index left.
+    alpha_hits = {}
+    for band in bands:
+        for e in band:
+            if _is_numeric_cell(e["text"]) or TOTAL_RE.match(e["text"]):
+                continue
+            idx = _assign_column(e, anchors)
+            if idx is not None:
+                alpha_hits[idx] = alpha_hits.get(idx, 0) + 1
+    if not alpha_hits:
+        return None
+    name_idx = max(alpha_hits, key=lambda k: alpha_hits[k])
+
+    share_idx = _share_column(bands, anchors, name_idx)
+    if share_idx is None:
+        return None
+    serial_idx = name_idx - 1 if name_idx > 0 else None
+    # The PERCENT column: the printed table always places it immediately right
+    # of the share count, and the TS parser finds a row by locating its percent
+    # cell (`readRow`). On these scans the printed "%" sits in the HEADER only
+    # -- the data cells read as bare "18.10" / "2.41" -- so without marking the
+    # column here `parsePercent` returns null for every cell and the parser
+    # reads zero rows out of a table it was handed correctly. Confirmed on all
+    # five letters: LCC, JSIPL, LUMINO, HEROMOTORS and GLOTTIS all print the
+    # percent glyph once, in the column label.
+    percent_idx = share_idx + 1 if share_idx + 1 < len(anchors) else None
+
+    # The spine: one entry per printed investor row, in page order. The table
+    # ends at its own Total line - everything below that is the letter's
+    # closing prose and must never become an investor row.
+    #
+    # Seeded from the share column AND the printed serial column, merged by y.
+    # Neither alone is complete on a real scan: the OCR drops or mangles the
+    # occasional share cell (LCC, where 3 of 11 share cells came back as one
+    # run-together box and three investors merged into one row), and plenty of
+    # letters print no serial at all (LUMINO's continuation pages, GLOTTIS's
+    # first rows). Taking the union recovers a row whenever EITHER anchor of
+    # it survived the scan, which is what "fix the class" means here.
+    spine = []
+    seeds = list(_column_cells(bands, anchors, share_idx))
+    if serial_idx is not None:
+        seeds += [e for e in _column_cells(bands, anchors, serial_idx)
+                  if SERIAL_RE.match(e["text"].strip())]
+    for e in sorted(seeds, key=lambda e: e["centre"]):
+        digits = re.sub(r"[^0-9]", "", e["text"])
+        is_share = (_is_numeric_cell(e["text"]) and len(digits) >= 4
+                    and "%" not in e["text"])
+        is_serial = bool(SERIAL_RE.match(e["text"].strip()))
+        if not (is_share or is_serial):
+            continue
+        # One printed row yields at most one spine entry: its serial and its
+        # share count sit on the same baseline, so the second is a duplicate.
+        if spine and e["centre"] - spine[-1]["centre"] <= OCR_ROW_GAP_PT:
+            continue
+        spine.append(e)
+    if table_end is not None:
+        spine = [e for e in spine if e["centre"] < table_end - 1.0]
+    if not spine:
+        return None
+
+    def nearest_row(entry):
+        """Index of the spine row this cell belongs to (nearest spine centre).
+
+        Nearest, not last-above: a numeric cell of one investor is printed on
+        the same baseline as its share count but the OCR may place it a point
+        or two either side (JSIPL lost every share count to the row above when
+        this was last-above), while a wrapped name line sits well below its own
+        share cell and still nearer to it than to the next row.
+        """
+        # Never above the first spine cell: everything printed there is the
+        # header's own wrapped text ("Price R per Equity Sh a re", "Portion"),
+        # which nearest-centre would otherwise hand to investor row 1.
+        if entry["centre"] < spine[0]["centre"] - ROW_ATTACH_PT:
+            return None
+        return min(range(len(spine)),
+                   key=lambda i: abs(spine[i]["centre"] - entry["centre"]))
+
+    rows = [{"serial": [], "name_parts": [], "cells": {}, "centre": s["centre"]}
+            for s in spine]
+    for band in bands:
+        if table_end is not None and min(e["centre"] for e in band) >= table_end - 1.0:
+            continue
+        for e in band:
+            idx = _assign_column(e, anchors)
+            if idx is None:
+                continue
+            i = nearest_row(e)
+            if i is None:
+                continue
+            if idx == name_idx:
+                if not _is_numeric_cell(e["text"]):
+                    rows[i]["name_parts"].append((e["centre"], e["x0"], e["text"]))
+                continue
+            if serial_idx is not None and idx <= serial_idx:
+                rows[i]["serial"].append(e["text"])
+                continue
+            rows[i]["cells"].setdefault(idx, []).append((e["centre"], e["x0"], e["text"]))
+
+    value_cols = sorted(set(idx for r in rows for idx in r["cells"]))
+    total = _preamble_total(lines, header_top)
+    preamble = ("Out of the total allocation of %s Equity Shares to the Anchor Investors"
+                % total) if total else ""
+
+    def joined(parts):
+        return " ".join(t for _c, _x, t in sorted(parts, key=lambda p: (p[0], p[1])))
+
+    def column_text(row, idx):
+        text = joined(row["cells"].get(idx, []))
+        # Restore the percent glyph the scan printed only in the header, so
+        # the cell reads as a percentage downstream. Never invented: the
+        # column is the one the printed layout puts right of the share count,
+        # and a cell that is not a plain number is left exactly as read.
+        if idx == percent_idx and _looks_like_bare_percent(text):
+            return re.sub(r"\s+", "", text) + "%"
+        return text
+
+    return {
+        "preamble": preamble,
+        "centres": [r["centre"] for r in rows],
+        "serials": [re.sub(r"[^0-9]", "", " ".join(r["serial"]))[:2] for r in rows],
+        "names": [join_letter_runs(joined(r["name_parts"])) for r in rows],
+        "name_groups": [[] for _ in rows],
+        "columns": [[column_text(r, idx) for r in rows] for idx in value_cols],
+        "name_band": (0.0, 0.0),
+    }
 
 
 def extract(path, ocr=True):
@@ -628,9 +1076,13 @@ def extract(path, ocr=True):
                 if pages[idx] is not None:
                     pages[idx] = apply_ocr_names(pages[idx], page["lines"])
                 else:
-                    # W-170: no text layer at all - rebuild the row geometry
-                    # from the OCR boxes themselves rather than supplementing
-                    # a name column that has no row geometry to attach to.
+                    # W-170 / #437: no text layer at all - rebuild the row
+                    # geometry from the OCR boxes themselves rather than
+                    # supplementing a name column with no row geometry to
+                    # attach to. `ocr_full_page_rows` is header-anchored since
+                    # #437, so a cover page returns None here (and falls
+                    # through to plain OCR text) instead of inventing rows out
+                    # of the letterhead's phone numbers.
                     pages[idx] = ocr_full_page_rows(page["lines"])
 
     return [
