@@ -25,7 +25,10 @@ import {
   decideRequeue,
   formatDecision,
   parseArgs,
+  decideFalseSupplied,
+  formatFalseSuppliedDecision,
   type ExhaustedPlanRow,
+  type SuppliedPlanRow,
 } from '../../../scripts/requeue-exhausted-plan-rows';
 
 function row(over: Partial<ExhaustedPlanRow> = {}): ExhaustedPlanRow {
@@ -125,5 +128,79 @@ describe('parseArgs', () => {
     const cli = parseArgs([]);
     expect(cli.expectDb).toBeNull();
     expect(cli.apply).toBe(false);
+  });
+
+  it('reads --false-supplied', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_staging', '--false-supplied']);
+    expect(cli.falseSupplied).toBe(true);
+  });
+
+  it('defaults --false-supplied to false', () => {
+    const cli = parseArgs(['--expect-db', 'ipodhan_staging']);
+    expect(cli.falseSupplied).toBe(false);
+  });
+});
+
+/**
+ * Review round 5, item B: the walk's PRE-item-A bug recorded SUPPLIED
+ * whenever `consolidatedUpsertIPO` returned `skipped: false`, even when the
+ * matrix kept a DIFFERENT source's value (e.g. CHITTORGARH outranking BSE
+ * for issue_size, T-453). 7 rows on staging carry a `chosen_source` that
+ * disagrees with the `field_sources` provenance row the consolidator
+ * actually wrote. This repair mode resets exactly those.
+ *
+ * DOC<->DRHP is NOT a mismatch: every filing document type writes
+ * `field_sources.source` as 'DRHP' (filing-persister.ts's SOURCE ENUM
+ * NOTE), while the plan's `chosen_source` stores the manifest word 'DOC' —
+ * the SAME mapping `field-plan-walk.ts`'s `mapManifestSourceToScraperSource`
+ * uses for the walk's own agreement check (review round 5, item A) is
+ * reused here, never a second, possibly-drifting copy of the mapping.
+ */
+function suppliedRow(over: Partial<SuppliedPlanRow> = {}): SuppliedPlanRow {
+  return {
+    id: 'plan-1',
+    ipoId: 'ipo-1',
+    ipoSlug: 'hero-motors-ltd',
+    ipoName: 'Hero Motors Limited',
+    tableName: 'ipos',
+    rowKey: '',
+    fieldName: 'issue_size',
+    chosenSource: 'BSE',
+    provenanceSource: 'CHITTORGARH',
+    ...over,
+  };
+}
+
+describe('decideFalseSupplied — chosen_source vs field_sources.source, DOC<->DRHP excepted', () => {
+  it('flags a real mismatch: chosen_source BSE, provenance CHITTORGARH (the exact staging class)', () => {
+    const d = decideFalseSupplied(suppliedRow());
+    expect(d.requeue).toBe(true);
+  });
+
+  it('does NOT flag chosen_source DOC with provenance DRHP -- that IS agreement, not a mismatch', () => {
+    const d = decideFalseSupplied(suppliedRow({ chosenSource: 'DOC', provenanceSource: 'DRHP' }));
+    expect(d.requeue).toBe(false);
+    expect(d.reason).toMatch(/agrees/);
+  });
+
+  it('does NOT flag a row whose chosen_source matches its provenance exactly', () => {
+    const d = decideFalseSupplied(suppliedRow({ chosenSource: 'CHITTORGARH', provenanceSource: 'CHITTORGARH' }));
+    expect(d.requeue).toBe(false);
+  });
+
+  it('does NOT flag a row with no provenance row at all -- nothing to compare against, never guessed as a mismatch', () => {
+    const d = decideFalseSupplied(suppliedRow({ provenanceSource: null }));
+    expect(d.requeue).toBe(false);
+    expect(d.reason).toMatch(/no provenance row/);
+  });
+});
+
+describe('formatFalseSuppliedDecision — identities, never a bare count', () => {
+  it('prints the IPO slug, table.field, chosen vs provenance source', () => {
+    const line = formatFalseSuppliedDecision(decideFalseSupplied(suppliedRow()));
+    expect(line).toContain('hero-motors-ltd');
+    expect(line).toContain('ipos.issue_size');
+    expect(line).toContain('BSE');
+    expect(line).toContain('CHITTORGARH');
   });
 });

@@ -25,6 +25,17 @@
 
 set -uo pipefail
 
+# Review round 5, item D: the wrapper now REFUSES to run when DEPLOY_SLOT is
+# unset AND its own path matches neither */current nor */current-staging
+# (this repo checkout, or any CI/dev sandbox, matches neither). Every
+# PRE-EXISTING case in this suite is testing something else entirely (lock
+# handling, the ceiling, venv resolution) and is not about slot resolution,
+# so DEPLOY_SLOT is set once here -- exactly what every case already
+# implicitly assumed before this feature existed (the wrapper used to default
+# silently to "prod"). Case 18 (below) is the ONLY case that unsets/varies it
+# on purpose, to test slot resolution itself.
+export DEPLOY_SLOT=prod
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WAKE="$SCRIPT_DIR/../scraper-wake.sh"
 DEPLOY_SCRIPT="$SCRIPT_DIR/../deploy-linux.sh"
@@ -989,6 +1000,65 @@ if [ -f "$DEPLOY_SCRIPT" ]; then
       fail "case 17: resume_scraper() has NO preflight, but SCRAPER_RESUME_TARGET is set to new at the flip - an abort between the flip and restart_pm2 would resume an unchecked release"
     fi
   fi
+fi
+
+# --- Case 18: DEPLOY_SLOT resolution from REPO_ROOT (review round 5, item D) ---
+# #660: cron-launched staging wakes had NO DEPLOY_SLOT env var at all (only
+# pm2 passes it), so every slotAwareFlagDefault flag in feature-flags.ts
+# silently defaulted OFF on staging. The wrapper must derive the slot from
+# its OWN location when the env var is absent, so a cron-launched wake
+# resolves the SAME slot a pm2-launched one would have been told.
+SLOTDIR="$(mktemp -d)"
+trap 'rm -rf "$FIXDIR" "$SLOTDIR"' EXIT
+mkdir -p "$SLOTDIR/current-staging/scripts" "$SLOTDIR/current/scripts" "$SLOTDIR/current-mystery/scripts"
+cp "$WAKE" "$SLOTDIR/current-staging/scripts/scraper-wake.sh"
+cp "$WAKE" "$SLOTDIR/current/scripts/scraper-wake.sh"
+cp "$WAKE" "$SLOTDIR/current-mystery/scripts/scraper-wake.sh"
+chmod +x "$SLOTDIR"/current*/scripts/scraper-wake.sh
+
+OUT18A="$(env -u DEPLOY_SLOT \
+    SCRAPER_WAKE_FAKE_LOCK_TTL=free \
+    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+    sh "$SLOTDIR/current-staging/scripts/scraper-wake.sh" data 2>&1)"
+if printf '%s' "$OUT18A" | grep -qF 'DEPLOY_SLOT resolved: staging'; then
+  pass "case 18a: a cron-launched wake from a current-staging path resolves DEPLOY_SLOT=staging with no env var set"
+else
+  fail "case 18a: no 'DEPLOY_SLOT resolved: staging' line from a current-staging path"
+  printf '%s\n' "$OUT18A"
+fi
+
+OUT18B="$(env -u DEPLOY_SLOT \
+    SCRAPER_WAKE_FAKE_LOCK_TTL=free \
+    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+    sh "$SLOTDIR/current/scripts/scraper-wake.sh" data 2>&1)"
+if printf '%s' "$OUT18B" | grep -qF 'DEPLOY_SLOT resolved: prod'; then
+  pass "case 18b: a cron-launched wake from a plain current path resolves DEPLOY_SLOT=prod with no env var set"
+else
+  fail "case 18b: no 'DEPLOY_SLOT resolved: prod' line from a plain current path"
+  printf '%s\n' "$OUT18B"
+fi
+
+OUT18C="$(env DEPLOY_SLOT=staging \
+    SCRAPER_WAKE_FAKE_LOCK_TTL=free \
+    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+    sh "$SLOTDIR/current/scripts/scraper-wake.sh" data 2>&1)"
+if printf '%s' "$OUT18C" | grep -qF 'DEPLOY_SLOT resolved: staging (from the DEPLOY_SLOT env var'; then
+  pass "case 18c: an explicit DEPLOY_SLOT env var (pm2) always wins over the path guess"
+else
+  fail "case 18c: an explicit DEPLOY_SLOT env var was not honoured over the path"
+  printf '%s\n' "$OUT18C"
+fi
+
+ST18D=0
+OUT18D="$(env -u DEPLOY_SLOT \
+    SCRAPER_WAKE_FAKE_LOCK_TTL=free \
+    SCRAPER_WAKE_CMD="$FIXDIR/job-ok.sh" \
+    sh "$SLOTDIR/current-mystery/scripts/scraper-wake.sh" data 2>&1)" || ST18D=$?
+if [ "$ST18D" -ne 0 ] && printf '%s' "$OUT18D" | grep -qF 'REFUSING'; then
+  pass "case 18d: a path matching neither current nor current-staging refuses rather than guessing a slot"
+else
+  fail "case 18d: expected a non-zero exit + REFUSING line for an unrecognised deploy path, got exit=$ST18D"
+  printf '%s\n' "$OUT18D"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

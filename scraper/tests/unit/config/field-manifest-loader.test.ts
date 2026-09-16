@@ -42,7 +42,12 @@ describe('loadFieldManifest', () => {
   it('loads the real scraper/config/field-manifest.json and returns the typed object', () => {
     const manifest = loadFieldManifest(REAL_MANIFEST_PATH);
     expect(manifest.version).toBe(1);
-    expect(manifest.fields['ipos.issue_size'].rank.MAINBOARD).toEqual(['DOC', 'BSE', 'CHITTORGARH']);
+    // Review round 5, item C: BSE removed from ipos.issue_size's rank
+    // (capability.BSE.capable flipped to false) -- measured live 2026-09-16,
+    // BSE-derived issue_size was 41-76% below the printed total on 6/6 live
+    // mainboard IPOs; computeBSEIssueSize never implemented the anchor
+    // add-back the earlier 2026-09-09 note proposed.
+    expect(manifest.fields['ipos.issue_size'].rank.MAINBOARD).toEqual(['DOC', 'CHITTORGARH']);
     expect(manifest.fields['ipo_details.fresh_issue'].unit).toBe('crore');
     expect(manifest.fields['financial_statements.revenue'].rank.MAINBOARD).toEqual([
       'DOC',

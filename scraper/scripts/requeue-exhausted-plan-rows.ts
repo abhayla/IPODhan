@@ -46,7 +46,7 @@
 import '../../scripts/lib/alias-preflight-auto.mjs';
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -55,6 +55,8 @@ import {
   writeLedgerFile,
   type ExecuteLike,
 } from './lib/repair-tool';
+import { mapManifestSourceToScraperSource } from '../src/services/field-plan-walk.js';
+import { columnToCamelCase } from '@ipodhan/shared/utils/duplicate-ipo-merge';
 
 /** The state a row retired by the RCA2 absence bug sits in, and the one it is reset to. */
 export const RETIRED_STATE = 'EXHAUSTED';
@@ -114,10 +116,70 @@ export function formatDecision(d: RequeueDecision): string {
   return `${mark} ${who} :: ${row.tableName}.${row.fieldName}${row.rowKey ? `[${row.rowKey}]` : ''} (attempts=${row.attempts}) — ${d.reason}`;
 }
 
+/**
+ * Review round 5, item B: SUPPLIED rows whose plan `chosen_source` disagrees
+ * with the `field_sources` provenance row the consolidator actually wrote —
+ * the class review round 5's item A fix (field-plan-walk.ts's
+ * `checkConsolidatorAgreed`) now prevents going forward, but does not
+ * retroactively fix rows the PRE-fix walk already recorded SUPPLIED.
+ */
+export interface SuppliedPlanRow {
+  id: string;
+  ipoId: string;
+  ipoSlug: string | null;
+  ipoName: string | null;
+  tableName: string;
+  rowKey: string;
+  fieldName: string;
+  /** The manifest word the plan row recorded ('DOC' | 'BSE' | 'CHITTORGARH' | ...). */
+  chosenSource: string;
+  /** `field_sources.source` for this exact (ipoId, tableName, rowKey, fieldName) — the enum value, or null if no provenance row exists at all. */
+  provenanceSource: string | null;
+}
+
+export interface FalseSuppliedDecision {
+  row: SuppliedPlanRow;
+  requeue: boolean;
+  reason: string;
+}
+
+/**
+ * Pure predicate (defect-fix-contract.md item 3). Uses the SAME
+ * manifest<->enum mapping the walk's own agreement check uses
+ * (`mapManifestSourceToScraperSource` from field-plan-walk.ts) — DOC<->DRHP
+ * is agreement, never flagged as a mismatch.
+ */
+export function decideFalseSupplied(row: SuppliedPlanRow): FalseSuppliedDecision {
+  if (row.provenanceSource === null) {
+    // Nothing to compare against — a missing provenance row is a SEPARATE
+    // class (review round 2, RCA2's extractor-gap fix), never guessed at
+    // here as a mismatch.
+    return { row, requeue: false, reason: 'no provenance row found for this field — cannot compare, not flagged' };
+  }
+  const wantedSource = mapManifestSourceToScraperSource(row.chosenSource);
+  if (wantedSource !== row.provenanceSource) {
+    return {
+      row,
+      requeue: true,
+      reason: `chosen_source ${row.chosenSource} (${wantedSource}) disagrees with field_sources.source ${row.provenanceSource}`,
+    };
+  }
+  return { row, requeue: false, reason: `chosen_source ${row.chosenSource} agrees with field_sources.source ${row.provenanceSource}` };
+}
+
+/** One printable identity line per row — never a bare count (signal-ownership R1). */
+export function formatFalseSuppliedDecision(d: FalseSuppliedDecision): string {
+  const row = d.row;
+  const who = row.ipoSlug ?? row.ipoName ?? row.ipoId;
+  const mark = d.requeue ? 'REQUEUE' : 'HOLD   ';
+  return `${mark} ${who} :: ${row.tableName}.${row.fieldName}${row.rowKey ? `[${row.rowKey}]` : ''} (chosen=${row.chosenSource}, provenance=${row.provenanceSource ?? 'none'}) — ${d.reason}`;
+}
+
 interface Cli {
   apply: boolean;
   allowProd: boolean;
   expectDb: string | null;
+  falseSupplied: boolean;
 }
 
 export function parseArgs(argv: readonly string[]): Cli {
@@ -126,6 +188,7 @@ export function parseArgs(argv: readonly string[]): Cli {
     apply: argv.includes('--apply'),
     allowProd: argv.includes('--allow-prod'),
     expectDb: at >= 0 && argv[at + 1] && !argv[at + 1].startsWith('--') ? argv[at + 1] : null,
+    falseSupplied: argv.includes('--false-supplied'),
   };
 }
 
@@ -135,6 +198,120 @@ const TOOL = 'requeue-exhausted-plan-rows';
  *  of whether this tool is invoked with cwd=repo-root or cwd=scraper/ (both
  *  are valid per the anchor tool's own header convention). */
 const SCRAPER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * Review round 5, item B: `--false-supplied` mode. Reads every SUPPLIED plan
+ * row alongside its `field_sources` provenance row (LEFT JOIN — a missing
+ * provenance row is its own "cannot compare" answer, never guessed at) and
+ * flags exactly the class review round 5's item A fix now prevents going
+ * forward: `chosen_source` disagreeing with what the consolidator actually
+ * wrote provenance for.
+ */
+async function runFalseSupplied(cli: Cli, actual: string): Promise<void> {
+  // Two-step, never a single SQL join on field_name: `ipo_field_plan.field_name`
+  // is the manifest's raw SNAKE_CASE key (`issue_size`); `field_sources.field_name`
+  // is CAMELCASE (`issueSize`) — the SAME mismatch documented across this repo's
+  // walk code (columnToCamelCase's own doc comment). A JOIN on the raw columns
+  // silently matches ZERO rows (found while building this tool: the first run
+  // showed `provenance=none` for every row, including known BSE-vs-CHITTORGARH
+  // cases) rather than erroring, so it is caught here in code, not left to a
+  // reviewer to notice a suspiciously-empty result.
+  const planRows = await (db as any)
+    .select({
+      id: schema.ipoFieldPlan.id,
+      ipoId: schema.ipoFieldPlan.ipoId,
+      ipoSlug: schema.ipos.slug,
+      ipoName: schema.ipos.companyName,
+      tableName: schema.ipoFieldPlan.tableName,
+      rowKey: schema.ipoFieldPlan.rowKey,
+      fieldName: schema.ipoFieldPlan.fieldName,
+      chosenSource: schema.ipoFieldPlan.chosenSource,
+    })
+    .from(schema.ipoFieldPlan)
+    .leftJoin(schema.ipos, eq(schema.ipos.id, schema.ipoFieldPlan.ipoId))
+    .where(eq(schema.ipoFieldPlan.state, 'SUPPLIED' as any));
+
+  const rows: SuppliedPlanRow[] = [];
+  for (const p of planRows) {
+    const camelFieldName = columnToCamelCase(p.fieldName);
+    const [provenance] = await (db as any)
+      .select({ source: schema.fieldSources.source })
+      .from(schema.fieldSources)
+      .where(
+        and(
+          eq(schema.fieldSources.ipoId, p.ipoId),
+          eq(schema.fieldSources.tableName, p.tableName),
+          eq(schema.fieldSources.rowKey, p.rowKey),
+          eq(schema.fieldSources.fieldName, camelFieldName)
+        )
+      );
+    rows.push({ ...p, provenanceSource: provenance?.source ?? null });
+  }
+
+  const decisions = rows.map(decideFalseSupplied);
+  for (const d of decisions) console.log(formatFalseSuppliedDecision(d));
+
+  const requeue = decisions.filter((d) => d.requeue);
+  const held = decisions.filter((d) => !d.requeue);
+  console.log(
+    `\n${TOOL} --false-supplied: ${requeue.length} to re-queue, ${held.length} held, of ${decisions.length} SUPPLIED plan rows in "${actual}".`
+  );
+
+  const ledger = {
+    tool: `${TOOL}--false-supplied`,
+    database: actual,
+    apply: cli.apply,
+    at: new Date().toISOString(),
+    requeued: requeue.map((d) => ({
+      planRowId: d.row.id,
+      ipoId: d.row.ipoId,
+      ipoSlug: d.row.ipoSlug,
+      ipoName: d.row.ipoName,
+      tableName: d.row.tableName,
+      rowKey: d.row.rowKey,
+      fieldName: d.row.fieldName,
+      chosenSource: d.row.chosenSource,
+      provenanceSource: d.row.provenanceSource,
+      matchedClass: d.reason,
+    })),
+    held: held.map((d) => ({
+      planRowId: d.row.id,
+      ipoSlug: d.row.ipoSlug,
+      tableName: d.row.tableName,
+      fieldName: d.row.fieldName,
+      reason: d.reason,
+    })),
+  };
+  const ledgerPath = writeLedgerFile(
+    path.join(SCRAPER_ROOT, 'evidence', `${TOOL}-false-supplied-${cli.apply ? 'applied' : 'dryrun'}-${Date.now()}.json`),
+    ledger
+  );
+  console.log(`${TOOL} --false-supplied: ledger written to ${ledgerPath}`);
+
+  if (!cli.apply) {
+    console.log(`${TOOL} --false-supplied: DRY RUN — nothing was written. Re-run with --apply to reset the ${requeue.length} listed above.`);
+    return;
+  }
+  if (requeue.length === 0) {
+    console.log(`${TOOL} --false-supplied: nothing to re-queue.`);
+    return;
+  }
+
+  // next_due_at -> now(); state -> PENDING. attempts, chosen_source and every
+  // other chosen_* column are DELIBERATELY left as-is here: they are the
+  // audit trail of what the walk wrongly recorded, and the row is about to
+  // be re-walked, which will overwrite chosen_source on its own next SUPPLIED
+  // (or leave it stale-but-harmless if the next attempt lands CHECK_FAILED).
+  await (db as any)
+    .update(schema.ipoFieldPlan)
+    .set({ state: REQUEUED_STATE, nextDueAt: sql`now()`, updatedAt: sql`now()` })
+    .where(inArray(schema.ipoFieldPlan.id, requeue.map((d) => d.row.id)));
+
+  console.log(`${TOOL} --false-supplied: reset ${requeue.length} plan rows to ${REQUEUED_STATE}:`);
+  for (const d of requeue) {
+    console.log(`  ${d.row.ipoSlug ?? d.row.ipoId} :: ${d.row.tableName}.${d.row.fieldName}`);
+  }
+}
 
 async function main(): Promise<void> {
   const cli = parseArgs(process.argv.slice(2));
@@ -159,6 +336,11 @@ async function main(): Promise<void> {
       allowProd: cli.allowProd,
       toolName: TOOL,
     });
+
+    if (cli.falseSupplied) {
+      await runFalseSupplied(cli, actual);
+      return;
+    }
 
     const rows = await (db as any)
       .select({

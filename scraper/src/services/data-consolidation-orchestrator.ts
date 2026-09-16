@@ -31,7 +31,7 @@ import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFp
 import { isAuthoritativeForHardDatesOnCreate } from '../utils/hard-date-source-trust.js';
 import type { ScraperSource } from '../config/field-priority-matrix';
 import { DataConsolidationService } from './data-consolidation-service.js';
-import type { ConsolidationResult } from './data-consolidation-service.js';
+import type { ConsolidationResult, FieldConsolidationResult } from './data-consolidation-service.js';
 import {
   DistributedLock,
   LOCK_DEFAULTS,
@@ -104,6 +104,16 @@ export interface ChildRowConsolidationResult {
   existingRowId?: string;
   /** Resolved values, field by field. Empty when the row was skipped. */
   consolidatedData: Record<string, any>;
+  /**
+   * Review round 5, item A: per-field attribution (`chosenSource`,
+   * `finalValue`) — `consolidateIPOData` already computes this (the SAME
+   * call the singleton path uses for `ConsolidatedUpsertResult.consolidation`);
+   * this per-row result used to discard it, keeping only the merged
+   * `consolidatedData`, which has no way to tell "my value won" from "a
+   * higher-priority source's value is what's actually stored here" — the
+   * field-plan walk needs the FIRST fact, not the second, to decide SUPPLIED.
+   */
+  fieldResults?: FieldConsolidationResult[];
   fieldsProcessed: number;
   fieldsUpdated: number;
   conflictsDetected: number;
@@ -799,6 +809,7 @@ export class DataConsolidationOrchestrator {
         rowKey,
         existingRowId: row.existingRowId,
         consolidatedData: consolidation.consolidatedData ?? {},
+        fieldResults: consolidation.fieldResults,
         fieldsProcessed: consolidation.fieldsProcessed,
         fieldsUpdated: consolidation.fieldsUpdated,
         conflictsDetected: consolidation.conflictsDetected,

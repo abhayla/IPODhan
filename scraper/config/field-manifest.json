@@ -9,17 +9,14 @@
       "rank": {
         "MAINBOARD": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_BSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ],
         "SME_NSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ]
       },
@@ -29,8 +26,8 @@
           "reason": "the PBA prints the total offer size at the cap (fresh + OFS)"
         },
         "BSE": {
-          "capable": true,
-          "reason": "BSE detail payload carries a share-count-derived total"
+          "capable": false,
+          "reason": "review round 5, item C: BSE measured live 2026-09-16 on all 6 live mainboard IPOs, 41-76% BELOW the printed total offer on 6/6 (Hero Motors 7,000,000,084 vs 10,000,000,000; SS Retail 3,543,935,252 vs 5,007,500,000; NSE 150,692,948,700 vs 265,796,400,000; Jindal Supreme 827,164,800 vs 1,248,800,000; Manika Plastech 855,476,760 vs 1,255,000,000; Sonaselection 940,940,000 vs 1,415,700,000). computeBSEIssueSize (bse-api-scraper.ts) never implemented the anchor-portion add-back the 2026-09-09 ARCIL note proposed. UNVERIFIED HYPOTHESIS: BSE's Issue_Size_No_of_shares may be the public portion excluding anchors/reservations -- not yet confirmed. See docs/design/field-source-resolution.spec.mjs's ipos.issue_size note for the full history."
         },
         "CHITTORGARH": {
           "capable": true,

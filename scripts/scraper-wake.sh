@@ -68,8 +68,36 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SCRAPER_DIR="${SCRAPER_DIR:-$REPO_ROOT/scraper}"
-# pm2 passes DEPLOY_SLOT; cron does not. Only used to guess a venv path.
-DEPLOY_SLOT_NAME="${DEPLOY_SLOT:-prod}"
+# Review round 5, item D: pm2 passes DEPLOY_SLOT; cron does not (#660 --
+# cron-launched staging wakes had NO DEPLOY_SLOT at all, which
+# feature-flags.ts's slotAwareFlagDefault() reads to pick a flag's per-slot
+# default -- with it unset, every slotAwareFlagDefault flag
+# (ENABLE_CHILD_TABLE_CONSOLIDATION among them) silently defaulted OFF on
+# staging, which is why ipo_details writes came back
+# CHILD_TABLE_CONSOLIDATION_DISABLED that night). Deriving it from
+# REPO_ROOT's own basename -- `current-staging` -> staging, `current` -> prod
+# -- means a cron-launched wake resolves the SAME slot a pm2-launched one
+# would have been told, without cron ever needing to know about the env var.
+# A path matching NEITHER shape is refused rather than guessed: this used to
+# be "only used to guess a venv path" (line ~236 below), a low-stakes default
+# any wrong value was survivable for; it is now ALSO the source of truth for
+# every slot-aware feature flag, where a wrong guess is silent data loss.
+case "$REPO_ROOT" in
+  */current-staging) DEPLOY_SLOT_RESOLVED=staging ;;
+  */current) DEPLOY_SLOT_RESOLVED=prod ;;
+  *) DEPLOY_SLOT_RESOLVED='' ;;
+esac
+if [ -n "${DEPLOY_SLOT:-}" ]; then
+  DEPLOY_SLOT_NAME="$DEPLOY_SLOT"
+  log "DEPLOY_SLOT resolved: $DEPLOY_SLOT_NAME (from the DEPLOY_SLOT env var, e.g. pm2)"
+elif [ -n "$DEPLOY_SLOT_RESOLVED" ]; then
+  DEPLOY_SLOT_NAME="$DEPLOY_SLOT_RESOLVED"
+  export DEPLOY_SLOT="$DEPLOY_SLOT_NAME"
+  log "DEPLOY_SLOT resolved: $DEPLOY_SLOT_NAME (derived from REPO_ROOT path $REPO_ROOT -- likely a cron-launched wake with no DEPLOY_SLOT env var)"
+else
+  log "REFUSING: DEPLOY_SLOT is unset and REPO_ROOT ($REPO_ROOT) matches neither */current nor */current-staging -- cannot safely default a slot-aware flag set. Set DEPLOY_SLOT explicitly."
+  exit 1
+fi
 
 # --- The 2-hour hung-process ceiling (OD-55) -------------------------------
 # 7200 seconds. Overridable ONLY for the test harness; production never sets
