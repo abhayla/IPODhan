@@ -34,6 +34,20 @@ wake 2 of the reconciled-not-regenerated proof, where zero rows is the CORRECT
 result, still announces that the pass ran. Read the line first, the count second,
 and name the cycle each came from.
 
+## Does a deploy undo this?
+
+No. `scripts/deploy-linux.sh` only READS `$SCRAPER_ENV_FILE` (required-keys
+assert at :485, runtime preflight at :528, REDIS_URL read at :626) and
+SYMLINKS it into the release at :975 (`ln -sfn "$SCRAPER_ENV_FILE"
+"$RELEASE_DIR/scraper/.env"`). It never writes or regenerates it. A flag added
+here survives every subsequent deploy until someone removes the line.
+
+Checked 2026-09-16 because "the next deploy silently reverted my flag" is the
+first thing that would make this proof unreproducible, and the deploy script
+DOES regenerate other config (the retired Windows path rewrote
+ecosystem.config.js on every deploy — see .claude/rules/
+pm2-scheduled-one-shot-scraper.md). It does not do that here.
+
 ## Steps
 
     # 1. add the flag (staging slot only)
