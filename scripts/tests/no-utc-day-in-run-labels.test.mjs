@@ -23,6 +23,9 @@ const GUARDED_FILES = [
   'scraper/src/scrapers/nse-api-client.ts',
   'scraper/src/scrapers/nse-scraper.ts',
   'scraper/src/services/description-backfill.ts',
+  // #687 slice 3: the market-holiday repositories' "today".
+  'packages/shared/src/repositories/market-holiday-repository.ts',
+  'web/lib/repositories/market-holiday-repository.ts',
 ];
 
 // Matches `new Date().toISOString().slice(0, 10)` and

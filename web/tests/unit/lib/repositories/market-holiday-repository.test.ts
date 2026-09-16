@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MarketHolidayRepository } from '@/lib/repositories/market-holiday-repository';
 import type Redis from 'ioredis';
 
@@ -492,6 +492,80 @@ describe('MarketHolidayRepository', () => {
       const setexCall = mockSetex.mock.calls[0];
       // 2592000 seconds = 30 days
       expect(setexCall[1]).toBe(2592000);
+    });
+  });
+
+  describe('"today" is the IST calendar day, not UTC (#687 slice 3)', () => {
+    function flattenSql(node: any, out: { params: unknown[] } = { params: [] }) {
+      if (node == null) return out;
+      if (Array.isArray(node)) {
+        for (const n of node) flattenSql(n, out);
+        return out;
+      }
+      if (Array.isArray(node.queryChunks)) {
+        for (const chunk of node.queryChunks) flattenSql(chunk, out);
+        return out;
+      }
+      if (Array.isArray(node.value)) {
+        return out;
+      }
+      if ('value' in node && typeof node.value !== 'object') {
+        out.params.push(node.value);
+        return out;
+      }
+      return out;
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('findAll({ upcoming: true }): the date bound uses the IST day at 02:00 IST (still "yesterday" in UTC)', async () => {
+      // 2026-09-15T20:30:00Z is 02:00 IST 16-Sep. The UTC calendar day
+      // (`new Date().toISOString().split('T')[0]`) reads 2026-09-15 here —
+      // one day behind — so a holiday row dated 2026-09-16 would be wrongly
+      // excluded as "in the past" by the old code.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const whereSpy = vi.fn().mockReturnThis();
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: whereSpy,
+        orderBy: vi.fn().mockResolvedValue([]),
+      };
+      mockDb.select = vi.fn().mockReturnValue(mockSelect);
+
+      await repository.findAll({ upcoming: true });
+
+      const where = flattenSql(whereSpy.mock.calls[0][0]);
+      expect(where.params).toContain('2026-09-16');
+      expect(where.params).not.toContain('2026-09-15');
+    });
+
+    it('findUpcoming(): positive control — a holiday dated one IST day later is not excluded as "today"', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const whereSpy = vi.fn().mockReturnThis();
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: whereSpy,
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      mockDb.select = vi.fn().mockReturnValue(mockSelect);
+
+      await repository.findUpcoming(5);
+
+      const where = flattenSql(whereSpy.mock.calls[0][0]);
+      expect(where.params).toContain('2026-09-16');
     });
   });
 });
