@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 #
-# Regression guard for the scheduled-staging cadence gate in
-# .github/workflows/deploy-linux.yml (slice s17, 2026-09-10).
+# Regression guard for the window-vs-manual cadence gate in
+# .github/workflows/deploy-linux.yml (2026-09-16, owner standing rule
+# "staging deploys in windows, not per merge").
 #
-# The gate replaced the workflow's `push` trigger. It is the only thing
-# standing between "staging deploys once per 15 minutes when main actually
-# moved" and either (a) staging never deploying again, silently, or (b)
-# staging deploying on every tick. Neither failure announces itself, so the
-# gate's branches are pinned here.
+# HISTORY: this gate used to key on `github.event_name` (`push` vs
+# `schedule` vs `workflow_dispatch`) - slice s17 replaced the `push`
+# trigger with a 15-minute `schedule` poll, then s20 restored `push`
+# because `schedule` never actually fired (measured: 29 push events, 1
+# dispatch, ZERO schedule runs). 2026-09-16 removes BOTH `push` and
+# `schedule` outright: there is no automatic trigger left, only
+# `workflow_dispatch`, and the reliable timer moved to the VPS's own root
+# crontab (scripts/ops/staging-window-deploy.sh), which dispatches with
+# `-f mode=window`. The gate that used to ask "is this a scheduled poll?"
+# now asks "is this a window dispatch?" via the `mode` input, and a
+# separate step refuses a window dispatch against slot=prod outright (a
+# window must only ever touch staging).
 #
-# The test does NOT re-implement the gate: it extracts the `run:` body of the
-# `gate` step straight out of the workflow YAML and executes it, so an edit to
-# the workflow is what this test sees. `curl` is stubbed (the real
+# The test does NOT re-implement the gate: it extracts the `run:` body of
+# the `gate` step straight out of the workflow YAML and executes it, so an
+# edit to the workflow is what this test sees. `curl` is stubbed (the real
 # /api/version lives on the production box and is never contacted from a
 # test); git history is a throwaway repo under mktemp.
 #
@@ -65,7 +73,7 @@ node -e '
 ' "$WF" "$TMP/gate.sh" || { echo "FAIL: could not extract the gate step from $WF" >&2; exit 1; }
 
 # Sanity: the extraction must have picked up the whole gate, not a fragment.
-for marker in 'proceed=true' 'proceed=false' 'EVENT_NAME' 'api/version'; do
+for marker in 'proceed=true' 'proceed=false' 'MODE' 'api/version'; do
   if ! grep -qF "$marker" "$TMP/gate.sh"; then
     echo "FAIL: extracted gate body is missing '$marker' - the extraction is wrong, not the gate" >&2
     exit 1
@@ -124,7 +132,9 @@ FAILED=0
 # the -z "$DEPLOYABLE" skip check ever runs - a silent exit 1, zero note()
 # output. Every case below this point in the file (via run_case, which
 # uses plain `bash`, no -e) could NOT have caught this - only running the
-# extracted body under the real GHA invocation does.
+# extracted body under the real GHA invocation does. Still applies verbatim
+# under the mode-keyed gate: the failure lives in the DEPLOYABLE line, not
+# in what selects the window branch.
 if grep -qE "^\s+shell:\s+bash --noprofile --norc -o pipefail \{0\}\s*\$" "$WF"; then
   echo "PASS: the gate step's shell is explicit and does not carry -e"
 else
@@ -157,11 +167,11 @@ run_case_under_dash_e() {
 # grep -vE '(\.md$|^docs/)', so grep -v exits 1. This is the exact shape
 # of the incident (all changed files docs-only) and must deploy=false
 # LOUDLY, not crash silently.
-run_case_under_dash_e "schedule under bash -e -o pipefail (real GHA shell): ALL changed files are docs-only -> skip loudly, never a silent crash (the actual 2026-09-14 regression)" false   env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
+run_case_under_dash_e "window under bash -e -o pipefail (real GHA shell): ALL changed files are docs-only -> skip loudly, never a silent crash (the actual 2026-09-14 regression)" false   env MODE=window SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
 # Defense-in-depth coverage kept alongside the real regression above: a
 # genuinely missing/unreadable PORT_FILE has the identical `set -e` hazard
 # even though it was NOT what actually failed on the runner this time.
-run_case_under_dash_e "schedule under bash -e -o pipefail (real GHA shell): PORT_FILE missing -> warn + deploy, never a silent crash (defense in depth, not this incident)" true   env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
+run_case_under_dash_e "window under bash -e -o pipefail (real GHA shell): PORT_FILE missing -> warn + deploy, never a silent crash (defense in depth, not this incident)" true   env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
 
 run_case() {
   local name="$1" want="$2"
@@ -197,83 +207,106 @@ assert_summary_mentions() {
   fi
 }
 
-# --- workflow_dispatch is untouched: it is the ONLY route to prod, and the ---
-# --- gate must never turn a human's deploy into a no-op.                  ---
-run_case "workflow_dispatch slot=prod always proceeds" true \
-  env EVENT_NAME=workflow_dispatch SLOT=prod HEAD_SHA="$CODE"
-run_case "workflow_dispatch slot=staging always proceeds" true \
-  env EVENT_NAME=workflow_dispatch SLOT=staging HEAD_SHA="$CODE"
-run_case "workflow_dispatch proceeds even with staging unreachable" true \
-  env EVENT_NAME=workflow_dispatch SLOT=prod HEAD_SHA="$CODE" STUB_CURL_FAIL=1
-# The case that catches a dispatch accidentally falling through into the poll:
-# here the poll's own answer would be "skip" (served == head), so anything but
-# proceed=true means a human's deploy - the ONLY route to prod - became a
-# silent no-op.
-run_case "workflow_dispatch proceeds even when the poll would say skip" true \
-  env EVENT_NAME=workflow_dispatch SLOT=prod HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$CODE")"
+# --- mode=manual is untouched: it is the ONLY route to prod, and the gate ---
+# --- must never turn a human's (or the capped button's) deploy into a no-op.
+run_case "mode=manual slot=prod always proceeds" true \
+  env MODE=manual SLOT=prod HEAD_SHA="$CODE"
+run_case "mode=manual slot=staging always proceeds" true \
+  env MODE=manual SLOT=staging HEAD_SHA="$CODE"
+run_case "mode=manual proceeds even with staging unreachable" true \
+  env MODE=manual SLOT=prod HEAD_SHA="$CODE" STUB_CURL_FAIL=1
+# The case that catches a manual dispatch accidentally falling through into
+# the window logic: here the window's own answer would be "skip" (served ==
+# head), so anything but proceed=true means a human's deploy - the ONLY
+# route to prod - became a silent no-op.
+run_case "mode=manual proceeds even when the window would say skip" true \
+  env MODE=manual SLOT=prod HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$CODE")"
 
-# --- the poll ---
-run_case "schedule: staging already serves main's head -> no deploy" false \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$CODE")"
-run_case "schedule: only docs/** and *.md changed -> no deploy (old paths-ignore)" false \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
-run_case "schedule: code changed -> deploy" true \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$BASE")"
-# The comparison is against what is SERVED, never against the previous tick,
-# so a docs-only skip cannot swallow the code merge that follows it.
-run_case "schedule: a docs-only skip does not lose the later code merge" true \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$DOCS")"
-# Burst collapse: two merges (docs then code) with one tick between them and
-# staging still on BASE produce ONE deploy carrying both.
-run_case "schedule: two merges in one window collapse into one deploy" true \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$BASE")"
+# --- the window ---
+run_case "window: staging already serves main's head -> no deploy" false \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$CODE")"
+run_case "window: only docs/** and *.md changed -> no deploy (old paths-ignore)" false \
+  env MODE=window SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
+run_case "window: code changed -> deploy" true \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$BASE")"
+# The comparison is against what is SERVED, never against the previous
+# tick, so a docs-only skip cannot swallow the code merge that follows it.
+run_case "window: a docs-only skip does not lose the later code merge" true \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$DOCS")"
+# Burst collapse: any number of merges between two windows still collapse
+# into one deploy carrying all of them.
+run_case "window: several merges between two windows collapse into one deploy" true \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$BASE")"
 
 # --- unreachable staging deploys, loudly. Never silently does nothing. ---
-run_case "schedule: /api/version unreachable -> deploy" true \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
-run_case "schedule: /api/version returns non-JSON -> deploy" true \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="<html>502 Bad Gateway</html>"
-run_case "schedule: sha is the 'unknown' placeholder -> deploy" true \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json unknown)"
-run_case "schedule: served sha is not a commit in this clone -> deploy" true \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" \
+run_case "window: /api/version unreachable -> deploy" true \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
+run_case "window: /api/version returns non-JSON -> deploy" true \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="<html>502 Bad Gateway</html>"
+run_case "window: sha is the 'unknown' placeholder -> deploy" true \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json unknown)"
+run_case "window: served sha is not a commit in this clone -> deploy" true \
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" \
   STUB_CURL_BODY="$(json 0123456789012345678901234567890123456789)"
 
 assert_summary_mentions "unreachable staging warns in the job summary" "WARNING" \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_FAIL=1
 assert_summary_mentions "an up-to-date skip explains itself" "no deploy this tick" \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$CODE")"
+  env MODE=window SLOT=staging HEAD_SHA="$CODE" STUB_CURL_BODY="$(json "$CODE")"
 assert_summary_mentions "a docs-only skip explains itself" "Only documentation changed" \
-  env EVENT_NAME=schedule SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
+  env MODE=window SLOT=staging HEAD_SHA="$DOCS" STUB_CURL_BODY="$(json "$BASE")"
 
-# --- the concurrency group (s20: push restored alongside schedule, since
-# --- the schedule trigger never fired). Both push and schedule must map to
-# --- the staging group, or a push deploy would not serialise against a
-# --- manual slot=staging dispatch on the same box.
-if grep -qF "group: deploy-linux-\${{ (github.event_name == 'push' || github.event_name == 'schedule') && 'staging' || inputs.slot }}" "$WF"; then
-  echo "PASS: concurrency group keys on both push and schedule events"
+# --- concurrency group: no automatic trigger remains, so the group keys ---
+# --- purely on inputs.slot (every event reaching this workflow is a       ---
+# --- workflow_dispatch).
+if grep -qF "group: deploy-linux-\${{ inputs.slot }}" "$WF"; then
+  echo "PASS: concurrency group keys on inputs.slot only (no automatic trigger remains)"
 else
-  echo "FAIL: concurrency group expression is not the expected push+schedule-keyed form:"
+  echo "FAIL: concurrency group expression is not the expected inputs.slot-only form:"
   grep -n 'group: deploy-linux-' "$WF" | sed 's/^/    /'
   FAILED=1
 fi
 
-if grep -qE "^\s+-\s+cron:\s+'\*/15 \* \* \* \*'" "$WF"; then
-  echo "PASS: schedule is every 15 minutes"
+# --- no automatic trigger: push and schedule are both gone. ---
+if grep -qE '^\s*push:' "$WF"; then
+  echo "FAIL: an 'on.push' trigger is still present in $WF - staging must not auto-deploy on push (owner rule 2026-09-16)" >&2
+  FAILED=1
 else
-  echo "FAIL: expected a */15 cron in $WF"
+  echo "PASS: no 'on.push' trigger (staging deploys in windows, not per merge)"
+fi
+if grep -qE '^\s*schedule:' "$WF"; then
+  echo "FAIL: an 'on.schedule' trigger is still present in $WF - GitHub's schedule trigger was measured unreliable here and must not be relied on" >&2
+  FAILED=1
+else
+  echo "PASS: no 'on.schedule' trigger (the reliable timer is the VPS crontab, not GitHub schedule)"
+fi
+
+# --- the mode input exists with exactly the two expected choices, default manual. ---
+if grep -qE "^\s+mode:\s*$" "$WF"; then
+  echo "PASS: workflow_dispatch declares a 'mode' input"
+else
+  echo "FAIL: workflow_dispatch is missing a 'mode' input" >&2
+  FAILED=1
+fi
+if grep -qE "options: \[manual, window\]" "$WF"; then
+  echo "PASS: 'mode' input has exactly the [manual, window] choices"
+else
+  echo "FAIL: 'mode' input does not declare exactly [manual, window]" >&2
+  FAILED=1
+fi
+if grep -A4 -E "^\s+mode:\s*$" "$WF" | grep -qE "default: manual"; then
+  echo "PASS: 'mode' defaults to manual"
+else
+  echo "FAIL: 'mode' input does not default to manual" >&2
   FAILED=1
 fi
 
-# --- s20: the schedule trigger from #549 never fired (measured twice, an
-# --- hour apart: 0 scheduled runs). push is restored as the primary
-# --- trigger; schedule is kept as a harmless backstop (the decide job's
-# --- served==head check no-ops a late scheduled tick after a push already
-# --- deployed).
-if grep -qE '^\s+push:' "$WF"; then
-  echo "PASS: push trigger restored (schedule never fired - see s20)"
+# --- a window dispatch against prod must be refused, in its own step, ---
+# --- separately from the served-vs-head gate above (defense in depth). ---
+if grep -qE "if: inputs\.mode == 'window' && inputs\.slot == 'prod'" "$WF"; then
+  echo "PASS: a dedicated step refuses mode=window against slot=prod"
 else
-  echo "FAIL: expected the push trigger to be present in $WF"
+  echo "FAIL: no step guards against a mode=window dispatch targeting slot=prod" >&2
   FAILED=1
 fi
 

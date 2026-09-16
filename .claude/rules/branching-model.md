@@ -17,8 +17,10 @@ version: "1.0.0" (owner decision 2026-09-05; SSOT of the model = `docs/ops/branc
 - MUST cut `release/prod-<date>` from `main` only at a sha that has soaked on staging and passed a full
   local pass plus one hosted gate run; MUST tag `prod-<date>` after the served sha is verified.
 - MUST keep `main` open: work branches (`fix/*`, `chore/*`, `feat/*`, worktrees via `wt-new.ps1`) PR into
-  `main`; every push to `main` deploys staging, which soaks the NEXT release. Merge to `main` only after the
-  last staging read a pending brief depends on.
+  `main`; staging deploys in two daily windows (13:30 and 21:30 IST, from the VPS's own crontab), plus a
+  manual button capped at 2/day — never automatically on push (owner rule 2026-09-16, see
+  `staging-deploy-cadence.md`) — so staging soaks main's head each window before the NEXT release is cut.
+  Merge to `main` only after the last staging read a pending brief depends on.
 - MUST route an outage-class fix for the current production line as `hotfix/*` from the release branch,
   PR into that release branch, deploy from it, then cherry-pick to `main` (never merge main into a release).
 - MUST NOT ask the owner which branch to use; the table in `docs/ops/branching-model.md` decides.
