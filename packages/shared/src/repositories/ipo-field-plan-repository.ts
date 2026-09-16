@@ -38,6 +38,20 @@
  *
  * SCOPE: the repository only. The walk that calls it is item 6; plan-row
  * generation and manifest reconciliation are slices 1/2 and a later slice.
+ *
+ * Item 5 slice s4 adds `upsertGeneratedRows` — the write path that lets the
+ * generator's pure output (`generateFieldPlan`, field-plan-generator.ts)
+ * actually reach the table. Design §2.3: "the plan is reconciled when the
+ * manifest changes, never regenerated per cycle." `INSERT ... ON CONFLICT
+ * (ipo_id, table_name, row_key, field_name) DO NOTHING` is what makes that
+ * true structurally rather than by caller discipline — a second pass over
+ * an IPO whose rows already exist inserts zero rows and updates NOTHING,
+ * because `DO NOTHING` never touches the conflicting row at all (not even
+ * `updated_at`). A row appears only for a (ipo, table, row_key, field)
+ * combination that is not already in the table — which is exactly what
+ * happens on its own when `manifest_version` changes and the generator
+ * plans a field under a NEW key it did not plan before, and is exactly
+ * what must NOT happen for a key it already planned.
  */
 
 import { sql } from 'drizzle-orm';
@@ -155,9 +169,85 @@ export function fieldPlanBackoffMinutes(attemptsAfterThisOne: number): number {
   return Math.min(minutes, FIELD_PLAN_BACKOFF_MAX_MINUTES);
 }
 
+/**
+ * One row the generator wants inserted, shaped independently of
+ * `field-plan-generator.ts`'s `PlannedFieldRow` (that module lives in
+ * `scraper/`, which `packages/shared` cannot import — the caller maps its
+ * own `PlannedFieldRow[]` onto this shape). All state is the generator's
+ * fresh-row defaults (`PENDING`, zero attempts, nothing chosen) because a
+ * row this call inserts is by definition one that did not exist before —
+ * `upsertGeneratedRows` never carries an existing row's live state back in.
+ */
+export interface GeneratedFieldPlanRow {
+  ipoId: string;
+  tableName: string;
+  rowKey: string;
+  fieldName: string;
+  rank1Source: string | null;
+  rank2Source: string | null;
+  rank3Source: string | null;
+  manifestVersion: number;
+}
+
+export interface UpsertGeneratedRowsResult {
+  /** How many NEW rows this call actually inserted (never counts a conflict). */
+  inserted: number;
+}
+
 export class IpoFieldPlanRepository extends BaseRepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
     super(db, redis);
+  }
+
+  /**
+   * Insert the generator's rows for one IPO, RECONCILED never REGENERATED.
+   *
+   * `ON CONFLICT (ipo_id, table_name, row_key, field_name) DO NOTHING` is the
+   * whole mechanism: a row already at that key is left completely alone —
+   * `state`, `attempts`, `next_due_at`, `claimed_at`, every chosen_* column,
+   * and `updated_at` all keep their live values, because `DO NOTHING` means
+   * Postgres never executes an UPDATE against the conflicting row. A second
+   * pass over the same IPO with an unchanged manifest therefore inserts
+   * nothing new (every key already exists) and mutates nothing old. A
+   * `manifest_version` bump that adds a field under a key not previously
+   * planned inserts exactly that new row — reconciliation, not regeneration,
+   * falls out of the conflict target rather than being decided by the
+   * caller.
+   *
+   * Empty input is a no-op (an IPO's type key produced zero rows, or the
+   * caller was already given an empty array) — never a wasted round trip.
+   */
+  async upsertGeneratedRows(rows: GeneratedFieldPlanRow[]): Promise<UpsertGeneratedRowsResult> {
+    if (rows.length === 0) return { inserted: 0 };
+
+    try {
+      const values = sql.join(
+        rows.map(
+          (r) =>
+            sql`(${r.ipoId}::uuid, ${r.tableName}, ${r.rowKey}, ${r.fieldName}, ${r.rank1Source}, ${r.rank2Source}, ${r.rank3Source}, ${r.manifestVersion})`
+        ),
+        sql`, `
+      );
+
+      const result = await this.db.execute(sql`
+        INSERT INTO ipo_field_plan (
+          ipo_id, table_name, row_key, field_name,
+          rank1_source, rank2_source, rank3_source, manifest_version
+        )
+        VALUES ${values}
+        ON CONFLICT (ipo_id, table_name, row_key, field_name) DO NOTHING
+        RETURNING id
+      `);
+
+      const inserted = ((result as unknown as { rows: unknown[] }).rows ?? []).length;
+      return { inserted };
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to upsert generated field plan rows${rows[0] ? ` for IPO ${rows[0].ipoId}` : ''}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
   }
 
   /**
@@ -206,6 +296,48 @@ export class IpoFieldPlanRepository extends BaseRepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to claim next due field plan row${params.ipoId ? ` for IPO ${params.ipoId}` : ''}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
+   * Release a claim WITHOUT recording an attempt (item 6, design §2.7).
+   *
+   * The admin-protection skip is explicit that the walk must "skip; do not
+   * store a state" — the field was never asked, so charging an `attempts`
+   * increment would burn its backoff budget, and writing any state would put
+   * a claim the walk deliberately declined into the plan as if it had been
+   * tried. `recordOutcome` cannot express that: every one of its paths writes
+   * a state, and the skipped branch additionally forces `PENDING`, which for
+   * a row that was already, say, NOT_AVAILABLE_YET would silently rewrite it.
+   *
+   * So this clears `claimed_at`/`claim_token` and touches nothing else.
+   * Conditional on the token, for the same reason `recordOutcome` is: a
+   * superseded walker must not release a live claim belonging to the walker
+   * that reclaimed the row.
+   */
+  async releaseClaimUnrecorded(params: {
+    planRowId: string;
+    claimToken: string;
+    now?: Date;
+  }): Promise<{ released: boolean; reason?: 'CLAIM_SUPERSEDED' }> {
+    const now = params.now ?? new Date();
+    try {
+      const result = await this.db.execute(sql`
+        UPDATE ipo_field_plan
+        SET claimed_at = NULL, claim_token = NULL, updated_at = ${now}::timestamptz
+        WHERE id = ${params.planRowId}::uuid
+          AND claim_token = ${params.claimToken}
+        RETURNING id
+      `);
+      const rows = (result as unknown as { rows: Record<string, unknown>[] }).rows ?? [];
+      if (rows.length === 0) return { released: false, reason: 'CLAIM_SUPERSEDED' };
+      return { released: true };
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to release field plan claim for row ${params.planRowId}`,
         undefined,
         error instanceof Error ? error : undefined
       );

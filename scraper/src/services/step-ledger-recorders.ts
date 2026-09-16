@@ -483,6 +483,28 @@ export function planExtractionSteps(
   };
   const fields = extraction.fields ?? {};
 
+  /**
+   * Item 8 slice 3a. A zero peer count must NAME its cause.
+   *
+   * The peer reader already classifies every miss (absent / lookalike-only /
+   * section-found-but-unreadable / extraction-failed-with-cause) and the
+   * extractor puts that string in the field's `check.detail`. It reached the
+   * step evidence only inside a generic `reasons` array shared with whatever
+   * else the step holds - and not at all when the reader never ran, because
+   * `tables_for_page` was absent so no `peer_companies` field was emitted and
+   * E6 fell to the does-not-carry branch. Six staging RHPs landed exactly
+   * there: zero peers, no recorded cause (`signal-ownership.md` R1 - a number
+   * is not a reading).
+   *
+   * So E6 carries an explicit `peerReason` in BOTH null branches, and none at
+   * all when peers were actually read (nothing to explain away).
+   */
+  const peerReasonFor = (stepId: string, names: string[]): Record<string, string> => {
+    if (stepId !== 'E6') return {};
+    if (names.length === 0) return { peerReason: 'peer_reader_did_not_run' };
+    return { peerReason: fields.peer_companies?.check?.detail ?? 'peer_companies_null_without_reason' };
+  };
+
   for (const stepId of ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8']) {
     const names = fieldsForEStep(stepId, extraction);
     if (names.length === 0) {
@@ -490,7 +512,10 @@ export function planExtractionSteps(
         ...common,
         stepId,
         status: 'NOT_AVAILABLE_YET',
-        evidence: { reason: `${options.docType}_does_not_carry_this_section` },
+        evidence: {
+          reason: `${options.docType}_does_not_carry_this_section`,
+          ...peerReasonFor(stepId, names),
+        },
       });
       continue;
     }
@@ -504,6 +529,7 @@ export function planExtractionSteps(
           fieldsPresent: names.length,
           fieldsWithValue: 0,
           reasons: [...new Set(names.map((n) => fields[n]?.check?.detail ?? 'null'))].slice(0, 8),
+          ...peerReasonFor(stepId, names),
         },
       });
       continue;

@@ -2603,6 +2603,36 @@ export async function persistFilingExtraction(
       fdFields += 1;
     }
   }
+  // Item 8 slice 3a. The three issuer ratios: two READ from the issuer's own
+  // Schedule III note, one DERIVED (quick ratio - nobody prints it). They are
+  // plain unitless ratios, so unlike netWorth/marketCap they need no
+  // `withUnit`/`toCrore` scaling; they take the same round2().toString() shape
+  // as ronw and peRatio so the numeric(5,2) columns receive what they expect.
+  for (const [field, column] of [
+    ['current_ratio', 'currentRatio'],
+    ['quick_ratio', 'quickRatio'],
+    ['inventory_turnover', 'inventoryTurnover'],
+  ] as const) {
+    const value = num(extraction, field);
+    if (value !== null) {
+      const rounded = round2(value);
+      // financial_data.currentRatio/quickRatio/inventoryTurnover are
+      // numeric(5,2) (schema.ts:567-569) - max magnitude 999.99. A printed
+      // ratio at/above 1000 (or a mis-read digit) throws a Postgres numeric
+      // overflow at insert and aborts the whole financial_data write for
+      // this document, taking the other two ratios and every other
+      // financial_data field down with it. Skip only the offending field.
+      if (!Number.isFinite(rounded) || Math.abs(rounded) > 999.99) {
+        skippedNoColumn.push(
+          `${field} (ratio_out_of_numeric_range:${column}=${rounded})`
+        );
+      } else {
+        (fd as Record<string, unknown>)[column] = rounded.toString();
+        fdFields += 1;
+      }
+    }
+  }
+
   const peCap = num(extraction, 'pe_at_cap');
   if (peCap !== null) {
     fd.peRatio = peCap.toString();

@@ -15,6 +15,7 @@ import logger from '../utils/logger.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { parseBseParties } from '../services/bse-party-parser.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
+import { istDateIso } from '../scheduler/due-step-cycle.js';
 
 const BSE_API_BASE = 'https://api.bseindia.com/BseIndiaAPI/api/';
 const BSE_HEADERS = {
@@ -270,7 +271,7 @@ function buildScrapedIPO(
   const face = Math.round(parseFloat(String(detail.Face_Value || '0')));
   const registrar = parseBSERegistrar(detail.Registrar);
   const leads = parseLeadManagers(detail.Book_Running_Lead_Manager, detail.Co_Book_Running_Lead_Manager);
-  const today = new Date().toISOString().split('T')[0];
+  const today = istDateIso(new Date());
 
   return {
     companyName,

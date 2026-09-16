@@ -45,6 +45,23 @@ function readJsonFiles(dir) {
     .map((f) => ({ file: f, data: JSON.parse(readFileSync(join(dir, f), 'utf8')) }));
 }
 
+// A notCoveredByThisManifest entry historically carried a hand-written
+// `note` string. Retired entries (retiredBy/retiredReason) and four
+// pre-existing entries never had one, which silently serialized as `null`
+// in the generated aggregate (nothing asserted non-null, so --check and the
+// floor test both passed with nulls in the array). Derive a real string
+// instead of ever writing null.
+function deriveNcNote(data) {
+  if (typeof data.note === 'string' && data.note.trim() !== '') return data.note;
+  if (data.retiredBy || data.retiredReason) {
+    return `Retired: ${data.retiredReason || 'no reason recorded'} (replaced by ${data.retiredBy || 'unknown'})`;
+  }
+  if (typeof data.why === 'string' && data.why.trim() !== '') return data.why;
+  if (typeof data.notCoveredReason === 'string' && data.notCoveredReason.trim() !== '') return data.notCoveredReason;
+  if (typeof data.findingClass === 'string' && data.findingClass.trim() !== '') return data.findingClass;
+  return '';
+}
+
 function buildChecksJson() {
   const meta = JSON.parse(readFileSync(join(CHECKS_DIR, '_meta.json'), 'utf8'));
   const entries = readJsonFiles(CHECKS_DIR);
@@ -82,7 +99,15 @@ function buildChecksJson() {
     const { section, ...rest } = e.data;
     return rest;
   });
-  const notCoveredByThisManifest = ncEntries.map((e) => e.data.note);
+  const notCoveredByThisManifest = ncEntries.map((e) => {
+    const note = deriveNcNote(e.data);
+    if (typeof note !== 'string' || note.trim() === '') {
+      throw new Error(
+        `detection-checks/${e.file}: notCoveredByThisManifest entry "${e.data.id}" has no usable note (no note, retiredBy/retiredReason, why, notCoveredReason, findingClass or id to derive one from)`
+      );
+    }
+    return note;
+  });
 
   // Stable key order: manifest metadata, then checks/notCoveredByThisManifest
   // in the position the hand-authored file historically used, then any

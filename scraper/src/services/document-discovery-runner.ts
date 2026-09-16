@@ -502,6 +502,13 @@ export interface DiscoveryIpo {
   stage: LifecycleStage;
   issue?: IssueShape;
   /**
+   * Item 5 slice s4: `ipos.listing_exchanges`, carried ONLY so the field-plan
+   * generator can resolve this IPO's OWN type key (`resolveIpoTypeKey` —
+   * SME_BSE vs SME_NSE is decided by listing exchange, never by segment
+   * alone). The runner itself never reads this field.
+   */
+  listingExchanges?: ('NSE' | 'BSE')[] | null;
+  /**
    * BSE's IPO_NO, when we already know it (`ipos.bse_ipo_no`).
    *
    * Load-bearing. `IPO_HomePageDetail` lists ONLY live and forthcoming issues —

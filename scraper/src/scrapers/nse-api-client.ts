@@ -27,6 +27,7 @@ import {
 } from './nse-subscription-parser.js';
 import { notifyOwner } from '../services/owner-notify.js';
 import { parseDdMmmYyyy, MONTH_ABBR_TO_NUM } from '../utils/date-string-parsing.js';
+import { istDateIso } from '../scheduler/due-step-cycle.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -331,7 +332,7 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
  */
 export function parseNSEDate(dateStr: string | null | undefined): string {
   if (!dateStr) {
-    return new Date().toISOString().split('T')[0];
+    return istDateIso(new Date());
   }
 
   try {
@@ -356,9 +357,9 @@ export function parseNSEDate(dateStr: string | null | undefined): string {
       return date.toISOString().split('T')[0];
     }
 
-    return new Date().toISOString().split('T')[0];
+    return istDateIso(new Date());
   } catch {
-    return new Date().toISOString().split('T')[0];
+    return istDateIso(new Date());
   }
 }
 
@@ -434,7 +435,7 @@ export function determineStatus(statusStr: string | null | undefined, startDate:
   }
 
   // Determine from dates
-  const today = new Date().toISOString().split('T')[0];
+  const today = istDateIso(new Date());
   if (today < startDate) {
     return 'UPCOMING';
   } else if (today >= startDate && today <= endDate) {

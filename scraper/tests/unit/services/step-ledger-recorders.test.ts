@@ -255,6 +255,32 @@ describe('planExtractionSteps — E1..E10 and D6', () => {
     expect(w.get('E6').evidence).toMatchObject({ fieldsWithValue: 0 });
   });
 
+  // ---------------------------------------------------------------- item 8 s3a
+  it('E6: a zero peer count carries the peer reader own reason, never a bare zero', () => {
+    const w = byId(planExtractionSteps(extraction({
+      peer_companies: nulled('peer_section_found_but_unreadable'),
+    }), opts));
+    expect(w.get('E6').evidence).toMatchObject({
+      fieldsWithValue: 0,
+      peerReason: 'peer_section_found_but_unreadable',
+    });
+  });
+
+  it('E6: the peer reader never running at all is said in the same key', () => {
+    // `tables_for_page` absent -> the extractor emits NO peer_companies field,
+    // so the step falls to the does-not-carry branch. Six staging RHPs landed
+    // here with zero peers and no recorded cause.
+    const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }), opts));
+    expect(w.get('E6').status).toBe('NOT_AVAILABLE_YET');
+    expect(w.get('E6').evidence).toMatchObject({ peerReason: 'peer_reader_did_not_run' });
+  });
+
+  it('E6: a peer list that WAS read records no reason to explain away', () => {
+    const w = byId(planExtractionSteps(extraction({ peer_companies: ok([{ name: 'X' }]) }), opts));
+    expect(w.get('E6').status).toBe('DONE');
+    expect('peerReason' in (w.get('E6').evidence as Record<string, unknown>)).toBe(false);
+  });
+
   it('a section this doc type does not carry at all is NOT_AVAILABLE_YET, never FAILED', () => {
     const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }), opts));
     expect(w.get('E8').status).toBe('NOT_AVAILABLE_YET');

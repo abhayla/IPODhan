@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { istDateIso } from '@/lib/utils/ist-date';
 import { useAdminAuth } from '@/lib/context/AdminAuthContext';
 import { adminGet, adminPost, adminDelete } from '@/lib/admin/admin-api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,7 +61,7 @@ export default function AnchorInvestorsAdminPage() {
   // Form State
   const [formData, setFormData] = useState<AnchorFormData>({
     ipoId: '',
-    bidDate: new Date().toISOString().split('T')[0],
+    bidDate: istDateIso(new Date()),
     totalSharesOffered: 0,
     totalAmountRaised: '',
     anchorInvestorsCount: 0,
@@ -122,7 +123,7 @@ export default function AnchorInvestorsAdminPage() {
         // No existing data - reset to defaults
         setFormData({
           ipoId: ipoId,
-          bidDate: new Date().toISOString().split('T')[0],
+          bidDate: istDateIso(new Date()),
           totalSharesOffered: 0,
           totalAmountRaised: '',
           anchorInvestorsCount: 0,
@@ -134,7 +135,7 @@ export default function AnchorInvestorsAdminPage() {
       // Not an error - might be new entry
       setFormData({
         ipoId: ipoId,
-        bidDate: new Date().toISOString().split('T')[0],
+        bidDate: istDateIso(new Date()),
         totalSharesOffered: 0,
         totalAmountRaised: '',
         anchorInvestorsCount: 0,
@@ -197,7 +198,7 @@ export default function AnchorInvestorsAdminPage() {
   const handleClearForm = () => {
     setFormData({
       ipoId: selectedIPO?.id || '',
-      bidDate: new Date().toISOString().split('T')[0],
+      bidDate: istDateIso(new Date()),
       totalSharesOffered: 0,
       totalAmountRaised: '',
       anchorInvestorsCount: 0,

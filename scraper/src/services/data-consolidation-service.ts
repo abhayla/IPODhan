@@ -1295,6 +1295,44 @@ export class DataConsolidationService {
     // (genuine two-value-disagreement) class. Symmetric with Case 1 below
     // (missing EXISTING accepts incoming) — this is missing INCOMING keeps
     // existing, no conflict logged.
+    // #654: NEITHER side has a value, so there is nothing to record. Without
+    // this the field falls through to the `trackFieldSource` call below and
+    // gets a provenance row asserting a value that has never existed — a
+    // false claim that reads as sourced-and-healthy to every audit.
+    //
+    // Measured on staging: 61 IPOs carried such a row, 8 of them live. Two
+    // (Quanto Agroworld OPEN, Axiom Gas UPCOMING) fail NSE document discovery
+    // with `no_symbol` while the ledger says CHITTORGARH supplied the symbol.
+    //
+    // This is deliberately its OWN early return rather than a widening of the
+    // guard below. That one means "missing incoming keeps existing" and its
+    // `NO_INCOMING_VALUE` rejection describes a real stored value being
+    // preserved. Here there is no stored value to preserve and nothing was
+    // rejected, so `NOTHING_TO_RECORD` says what happened instead of borrowing
+    // a reason that would be untrue.
+    //
+    // The emptiness test is `=== null || === undefined`, never falsiness: 0,
+    // false and '' are values a source genuinely supplied, and an `if (!value)`
+    // guard here would silently stop recording every one of them.
+    if (
+      (normalizedIncoming === null || normalizedIncoming === undefined) &&
+      (normalizedStored === null || normalizedStored === undefined)
+    ) {
+      return {
+        fieldName,
+        finalValue: storedValue,
+        chosenSource: existingSource || incomingSource,
+        hadConflict: false,
+        rejectedSources: [
+          {
+            source: incomingSource,
+            value: incomingValue,
+            reason: 'NOTHING_TO_RECORD',
+          },
+        ],
+      };
+    }
+
     if (
       (normalizedIncoming === null || normalizedIncoming === undefined) &&
       normalizedStored !== null &&
