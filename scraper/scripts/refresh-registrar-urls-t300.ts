@@ -1,3 +1,8 @@
+// repair-tool-exempt: 2026-09-16 pre-existing T-300 tool, surfaced by widening
+// TOOL_FILENAME_PATTERN to include refresh-*.ts (lane C item 14 slice 6); it
+// predates scripts/lib/repair-tool.ts and has no prod-write guard at all today
+// (no openRepairDb call) — migrating it is a separate class from this slice's
+// scope; tracked as its own follow-up rather than silently widened around.
 /**
  * P1-2 DATA repair (round-5 review, T-300): refresh the 15-row `registrars`
  * table with LIVE-VERIFIED allotment-check URLs.

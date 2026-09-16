@@ -33,12 +33,52 @@ export function parseNseListingDate(v: string): string {
   return mo ? `${yr}-${mo}-${m[1].padStart(2, '0')}` : '';
 }
 
-export async function fetchNseEquityMasters(): Promise<{
+export interface NseMasterIndex {
+  /** Every parsed row from BOTH files, in file order. */
+  rows: NseMasterRow[];
   bySymbol: Map<string, NseMasterRow>;
+  /** Name keys held by EXACTLY ONE row. A duplicated key is absent here, by design. */
   byName: Map<string, NseMasterRow>;
-}> {
+  /** The keys excluded from `byName`, with every row that claimed them. */
+  ambiguousNames: Map<string, NseMasterRow[]>;
+}
+
+/**
+ * Index the parsed rows.
+ *
+ * A NAME KEY HELD BY MORE THAN ONE ROW IS EXCLUDED, not resolved first-wins (review
+ * finding on #655). The concrete harm: a company name present in BOTH files - a
+ * mainboard row and an SME row - was collapsed to whichever file was read first (MAIN),
+ * so `repair-segment-provenance.ts`, which built its two board lists from
+ * `byName.values()`, never saw the SME twin at all and the oracle was handed a board
+ * decided by file order. `rows` is returned alongside precisely so a caller that needs
+ * the full population takes it from there and not from an identity index.
+ *
+ * `bySymbol` is unchanged: a symbol IS unique within NSE, so first-wins there is not a
+ * tie-break, it is a no-op.
+ */
+export function indexNseMasterRows(rows: NseMasterRow[]): NseMasterIndex {
   const bySymbol = new Map<string, NseMasterRow>();
+  const byNameAll = new Map<string, NseMasterRow[]>();
+  for (const rec of rows) {
+    if (!bySymbol.has(rec.symbol)) bySymbol.set(rec.symbol, rec);
+    const key = normalizeCompanyNameForMatching(rec.name);
+    if (!key) continue;
+    const bucket = byNameAll.get(key);
+    if (bucket) bucket.push(rec);
+    else byNameAll.set(key, [rec]);
+  }
   const byName = new Map<string, NseMasterRow>();
+  const ambiguousNames = new Map<string, NseMasterRow[]>();
+  for (const [key, bucket] of byNameAll) {
+    if (bucket.length === 1) byName.set(key, bucket[0]);
+    else ambiguousNames.set(key, bucket);
+  }
+  return { rows, bySymbol, byName, ambiguousNames };
+}
+
+export async function fetchNseEquityMasters(): Promise<NseMasterIndex> {
+  const parsed: NseMasterRow[] = [];
   const sources: Array<{ url: string; board: 'MAIN' | 'SME' }> = [
     { url: 'https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv', board: 'MAIN' },
     { url: 'https://nsearchives.nseindia.com/emerge/corporates/content/SME_EQUITY_L.csv', board: 'SME' },
@@ -60,13 +100,11 @@ export async function fetchNseEquityMasters(): Promise<{
           board: s.board,
         };
         if (!rec.symbol) continue;
-        if (!bySymbol.has(rec.symbol)) bySymbol.set(rec.symbol, rec);
-        const key = normalizeCompanyNameForMatching(rec.name);
-        if (key && !byName.has(key)) byName.set(key, rec);
+        parsed.push(rec);
       }
     } catch (e) {
       console.log(`NSE master ${s.board} fetch failed: ${(e as Error).message}`);
     }
   }
-  return { bySymbol, byName };
+  return indexNseMasterRows(parsed);
 }

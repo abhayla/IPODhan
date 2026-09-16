@@ -123,3 +123,30 @@ describe('decideSegmentProvenance — oracle-sourced values (slice 3b2)', () => 
     expect(d.touch).toBe(false);
   });
 });
+
+/**
+ * Ambiguous names (review finding on PR #655). An `ambiguous-name` resolution carries
+ * `segment: null`, so it reaches the decision function with no `sourcedSegment` and MUST
+ * land on `report-unprovenanced-ipo` — reported with its reason, never written, never
+ * given a field_sources row. This is the same treatment `unresolved-group` gets, and it
+ * is asserted rather than assumed because the two outcomes arrive by different paths.
+ */
+describe('an oracle refusal is REPORTED, never written', () => {
+  it('routes a segment-less oracle outcome to report-unprovenanced-ipo', () => {
+    for (const refusal of [undefined]) {
+      const d = decideSegmentProvenance(row({ offeringType: 'IPO', sourcedSegment: refusal }));
+      expect(d.action).toBe('report-unprovenanced-ipo');
+      expect(d.touch).toBe(false);
+      expect(d.newSegment).toBe('MAINBOARD');
+    }
+  });
+
+  it('positive control: a resolved oracle outcome DOES write', () => {
+    const d = decideSegmentProvenance(
+      row({ offeringType: 'IPO', sourcedSegment: 'SME', sourcedVia: 'BSE/name/group=M' }),
+    );
+    expect(d.action).toBe('apply-sourced');
+    expect(d.touch).toBe(true);
+    expect(d.newSegment).toBe('SME');
+  });
+});

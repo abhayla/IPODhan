@@ -15,6 +15,12 @@
  * config at a separate `.env.test` file -- see vitest.integration.config.ts)
  * means every integration test file is covered automatically, with no
  * per-file opt-in required.
+ *
+ * If this guard just refused you: `.env.test` is gitignored, so every fresh
+ * worktree lacks it. Do not point it at a throwaway/local Postgres -- the
+ * only sanctioned target (and the .env.test template) is documented in
+ * docs/ops/prod-ops-recipes.md, section 12 "Integration tests: the only
+ * sanctioned target" (issue #690).
  */
 import { assertSafeIntegrationTargets } from './tests/helpers/db-safety-guard';
 

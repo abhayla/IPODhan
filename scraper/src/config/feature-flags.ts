@@ -249,6 +249,23 @@ export const FEATURE_FLAGS = {
   ENABLE_DOCUMENT_STATE_MACHINE: process.env.ENABLE_DOCUMENT_STATE_MACHINE === 'true',
 
   /**
+   * Item 5 slice s4: generate `ipo_field_plan` rows for each candidate IPO
+   * the document cycle already selects, via `generateFieldPlan` +
+   * `IpoFieldPlanRepository.upsertGeneratedRows`.
+   *
+   * Distinct from a future `ENABLE_FIELD_PLAN_WALK` (item 6, not yet wired)
+   * — this flag gates ROW GENERATION only. A plan table nothing reads is
+   * inert but still real writes on every cycle, so generation is gated
+   * separately from consumption: turning this on populates
+   * `ipo_field_plan` without any walk existing yet to claim/drain it.
+   *
+   * Default false in every slot (item 5's card, "Feature flag" section) —
+   * item 6 is what makes rows useful; until it exists the safe default is
+   * off everywhere, including staging.
+   */
+  ENABLE_FIELD_PLAN: process.env.ENABLE_FIELD_PLAN === 'true',
+
+  /**
    * Enable the periodic duplicate-IPO sweep job (P2-2b, round-4 review, T-293):
    * re-runs `merge-duplicate-ipos.ts`'s two-tier clustering (exact-normalized-
    * name UNION Levenshtein-typo) every cycle so a duplicate pair that slips
@@ -317,6 +334,26 @@ export const FEATURE_FLAGS = {
    * Default: false
    */
   ENABLE_FILING_AUTO_PERSIST: process.env.ENABLE_FILING_AUTO_PERSIST === 'true',
+
+  /**
+   * Item 6 -- PASS 3, the pull walk over `ipo_field_plan`
+   * (`field-plan-walk.ts`, wired into `document-cycle.ts`).
+   *
+   * DELIBERATELY DISTINCT from item 5's plan-row generation. The plan table
+   * can exist and be populated by items 2/3's generator long before anything
+   * is trusted to WALK it: generating a row is a statement of what should be
+   * asked; walking it is a live write path that re-sources published fields
+   * three times a day with no human in the loop. Collapsing the two into one
+   * flag would mean the only way to populate the plan is to also start
+   * writing from it, which removes the observation window the rollout needs.
+   *
+   * Rollout: staging first, for at least one full data-job cycle over a
+   * representative IPO set (MAINBOARD + SME, OPEN + UPCOMING, and at least
+   * one IPO with a multi-year `financial_statements` plan row so the keyed
+   * row-key path is exercised); prod is a separate owner decision (GATE).
+   * Default: false
+   */
+  ENABLE_FIELD_PLAN_WALK: process.env.ENABLE_FIELD_PLAN_WALK === 'true',
 
   /**
    * D-15 lift: let SME candidates through the SAME auto-persist door as

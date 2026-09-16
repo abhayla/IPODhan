@@ -18,6 +18,7 @@
  */
 
 import { db } from '../lib/db/index.js';
+import { istDateIso } from '@/lib/utils/ist-date';
 import { ipos, fieldSources } from '@ipodhan/shared/db/schema';
 import { eq, and, or, sql, gte, lte } from 'drizzle-orm';
 import { writeFileSync, mkdirSync } from 'fs';
@@ -35,7 +36,7 @@ interface DataQualityIssue {
 async function generateDataQualityReport() {
   console.log('\n📊 Generating Weekly Data Quality Report...\n');
 
-  const reportDate = new Date().toISOString().split('T')[0];
+  const reportDate = istDateIso(new Date());
   const issues: DataQualityIssue[] = [];
 
   // Issue 1: Lot Size = 1 (CRITICAL)

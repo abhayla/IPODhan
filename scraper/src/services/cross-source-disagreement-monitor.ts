@@ -33,6 +33,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { dataConflicts, ipos } from '@ipodhan/shared/db/schema';
 import { notifyOwner } from './owner-notify.js';
 import logger from '../utils/logger.js';
+import { istDateIso } from '../scheduler/due-step-cycle.js';
 
 /** Fields compared for OPEN IPOs, per DoD: price band, open/close dates, and GMP. */
 export const COMPARED_FIELDS = [
@@ -171,7 +172,7 @@ export async function checkCrossSourceDisagreements(
     notifyOwner('P1', `Cross-source disagreement: ${d.companyName} — ${d.fieldName}`, {
       body: buildDisagreementActionBody(d),
       type: 'cross-source-disagreement',
-      dedupeKey: `disagreement:${d.ipoId}:${d.fieldName}:${now.toISOString().slice(0, 10)}`,
+      dedupeKey: `disagreement:${d.ipoId}:${d.fieldName}:${istDateIso(now)}`,
     });
   }
 
@@ -181,7 +182,7 @@ export async function checkCrossSourceDisagreements(
         .map((d) => `${d.companyName} (${d.fieldName}): ${d.source1}="${d.value1}" vs ${d.source2}="${d.value2}"`)
         .join('; '),
       type: 'cross-source-disagreement-summary',
-      dedupeKey: `disagreement-summary:${now.toISOString().slice(0, 10)}`,
+      dedupeKey: `disagreement-summary:${istDateIso(now)}`,
     });
   }
 

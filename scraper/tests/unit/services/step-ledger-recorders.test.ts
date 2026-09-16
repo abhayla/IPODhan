@@ -255,6 +255,32 @@ describe('planExtractionSteps — E1..E10 and D6', () => {
     expect(w.get('E6').evidence).toMatchObject({ fieldsWithValue: 0 });
   });
 
+  // ---------------------------------------------------------------- item 8 s3a
+  it('E6: a zero peer count carries the peer reader own reason, never a bare zero', () => {
+    const w = byId(planExtractionSteps(extraction({
+      peer_companies: nulled('peer_section_found_but_unreadable'),
+    }), opts));
+    expect(w.get('E6').evidence).toMatchObject({
+      fieldsWithValue: 0,
+      peerReason: 'peer_section_found_but_unreadable',
+    });
+  });
+
+  it('E6: the peer reader never running at all is said in the same key', () => {
+    // `tables_for_page` absent -> the extractor emits NO peer_companies field,
+    // so the step falls to the does-not-carry branch. Six staging RHPs landed
+    // here with zero peers and no recorded cause.
+    const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }), opts));
+    expect(w.get('E6').status).toBe('NOT_AVAILABLE_YET');
+    expect(w.get('E6').evidence).toMatchObject({ peerReason: 'peer_reader_did_not_run' });
+  });
+
+  it('E6: a peer list that WAS read records no reason to explain away', () => {
+    const w = byId(planExtractionSteps(extraction({ peer_companies: ok([{ name: 'X' }]) }), opts));
+    expect(w.get('E6').status).toBe('DONE');
+    expect('peerReason' in (w.get('E6').evidence as Record<string, unknown>)).toBe(false);
+  });
+
   it('a section this doc type does not carry at all is NOT_AVAILABLE_YET, never FAILED', () => {
     const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }), opts));
     expect(w.get('E8').status).toBe('NOT_AVAILABLE_YET');
@@ -292,6 +318,54 @@ describe('planExtractionSteps — E1..E10 and D6', () => {
     expect(byId(planExtractionSteps(extraction({}, 'OK_OCR'), opts)).get('D6').status).toBe('DONE');
     expect(byId(planExtractionSteps(extraction({}, 'NEEDS_OCR'), opts)).get('D6').status).toBe('FAILED');
     expect(byId(planExtractionSteps(extraction({}, 'OK'), opts)).has('D6')).toBe(false);
+  });
+
+  // OD-55: an INCOMPLETE_PAGES document DID run the OCR route and was stopped
+  // part-way. Before this, it matched neither branch above and wrote NO D6 row
+  // at all — the ledger would have been silent about a document that is
+  // missing pages, which is the exact failure mode this file's own header says
+  // the ledger exists to remove. It is NOT DONE (the read is incomplete) and
+  // NOT the NEEDS_OCR failure (OCR ran and recovered real pages): it is its
+  // own outcome, and it carries the unread page numbers so the row says WHICH
+  // pages are missing rather than that some are.
+  //
+  // NOT_AVAILABLE_YET, not a new 'PARTIAL': `ipo_step_status` (schema.ts) has
+  // no PARTIAL member, so a PARTIAL row could not be stored at all — it would
+  // pass a unit test and fail on insert in production. NOT_AVAILABLE_YET is
+  // also the semantically right one: the pages are not available YET, they are
+  // re-readable from the retained PDF (OD-32), and the repository's
+  // `resolveAttemptsRule` deliberately leaves the attempt count alone for it,
+  // so a ceiling trip does not burn the document's retry budget.
+  it('D6 is NOT_AVAILABLE_YET with the unread page numbers when the ceiling stopped the OCR pass', () => {
+    const ex = extraction({}, 'INCOMPLETE_PAGES') as FilingExtraction & {
+      unread_pages?: Array<{ page: number; reason: string }>;
+    };
+    ex.unread_pages = [
+      { page: 412, reason: 'ceiling_reached' },
+      { page: 413, reason: 'ceiling_reached' },
+    ];
+    const row = byId(planExtractionSteps(ex, opts)).get('D6');
+    expect(row.status).toBe('NOT_AVAILABLE_YET');
+    expect(row.evidence).toMatchObject({
+      extractionStatus: 'INCOMPLETE_PAGES',
+      unreadPages: [412, 413],
+    });
+    // The reason travels with the row: a ceiling trip is worth re-reading from
+    // the retained PDF, a malformed page is not, and the row is where a later
+    // pass decides which it is looking at.
+    expect(row.evidence.unreadReasons).toEqual(['ceiling_reached']);
+  });
+
+  it('the D6 unread row never reports a bare count instead of the page numbers', () => {
+    const ex = extraction({}, 'INCOMPLETE_PAGES') as FilingExtraction & {
+      unread_pages?: Array<{ page: number; reason: string }>;
+    };
+    ex.unread_pages = [{ page: 7, reason: 'malformed_page' }];
+    const evidence = byId(planExtractionSteps(ex, opts)).get('D6').evidence;
+    expect(evidence.unreadPages).toEqual([7]);
+    // signal-ownership.md R1: identities, not a count. A row carrying only
+    // `unreadPageCount` would be unactionable — nobody could re-read page 7.
+    expect(evidence).not.toHaveProperty('unreadPageCount');
   });
 
   it('stamps every E row with the extractor version and the document sha', () => {

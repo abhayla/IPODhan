@@ -21,6 +21,9 @@ export * from './repositories/promoters-repository';
 export * from './repositories/ipo-intermediaries-repository';
 export * from './repositories/brlm-track-record-repository';
 export * from './repositories/ipo-risk-factors-repository';
+// Item 5 slice s4: the pull model's field plan repository, so the document
+// cycle can construct it from the package root like every other repository.
+export * from './repositories/ipo-field-plan-repository';
 // Export utility functions
 export * from './utils/slug';
 export * from './utils/offering-type';

@@ -44,6 +44,7 @@ import {
 import { findMostSimilarName } from '../utils/company-name-similarity';
 import {
   checkMergeEligibility,
+  buildCarryFieldInputs,
   columnToCamelCase,
   planCarryFields,
   planDescendantTables,
@@ -960,6 +961,22 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Repair-tool entry point (lane C item 2 slice 6 — face-value-as-band
+   * class): write ONLY `faceValue`. A sibling of `applyOfferTerms` rather
+   * than folding `faceValue` into it, because the two are sourced from
+   * DIFFERENT signals in the repair tool that calls them (the offer terms
+   * from report 82's Issue Price; the face value from the detail page) and
+   * a caller correcting one must never be tempted to pass a stale/undefined
+   * value for the other through a shared, wider parameter shape. Same
+   * write-ratchet rationale as `applyOfferTerms`: this method is the
+   * already-baselined write path a new repair script routes through,
+   * instead of a direct `db.update(ipos)`.
+   */
+  async applyFaceValue(id: string, faceValue: number): Promise<IPO> {
+    return this.update(id, { faceValue });
+  }
+
+  /**
    * Delete IPO by ID
    */
   async delete(id: string): Promise<void> {
@@ -1069,6 +1086,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         const jsKey = columnToCamelCase(col) as keyof typeof keep;
         return { column: col, keepValue: keep[jsKey], dropValue: drop[jsKey] };
       }),
+      keepIssueSize: keep.issueSize,
+      dropIssueSize: drop.issueSize,
+      // Acknowledged ONLY when the operator passed BOTH flags — a bare --set-issue-size with no
+      // --issue-size-note is not source-backed and must not silently bypass the disagreement check.
+      issueSizeCorrectionAcknowledged: Boolean(opts.setIssueSize) && Boolean(opts.issueSizeNote),
     });
     if (eligibility.eligible === false) {
       throw new DatabaseError(`mergeDuplicateInto: refused — ${eligibility.reason}`, undefined);
@@ -1115,18 +1137,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       .where(and(eq(fieldSources.ipoId, dropId), eq(fieldSources.tableName, 'ipos')));
     const dropProv = buildProvenanceMap(provRows, dropId);
 
-    const patch = planCarryFields(
-      CARRY_IF_ABSENT_COLUMNS.map((column) => {
-        const jsKey = columnToCamelCase(column) as keyof typeof keep;
-        return {
-          column,
-          keepValue: keep[jsKey],
-          dropValue: drop[jsKey],
-          dropProvenance: dropProv.get(columnToCamelCase(column)),
-        };
-      }),
-      dropId
-    );
+    const patch = planCarryFields(buildCarryFieldInputs(keep, drop, dropProv), dropId);
     if (opts.setIssueSize) {
       patch.push({
         column: 'issue_size',
@@ -1169,6 +1180,46 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     const provenanceWritten: { fieldName: string; source: string; previousSource: string | null }[] = [];
 
     await this.db.transaction(async (tx) => {
+      // --- child tables FIRST: repoint person-created data, delete scraper-derived data --------
+      // Must run before the `ipos` row for dropId is deleted below: most FKs into `ipos` are
+      // ON DELETE CASCADE (schema.ts), so deleting the dropped `ipos` row before this loop would
+      // let Postgres cascade-delete REPOINT_TABLES rows too (user_watchlist, ipo_reviews, ...) —
+      // exactly the person-created data this loop exists to save by repointing, not deleting.
+      for (const table of direct) {
+        const { col } = reach.get(table)!;
+        if (REPOINT_TABLES.has(table)) {
+          // A unique violation means the survivor already holds the equivalent row, so the
+          // dropped row's copy is redundant rather than lost.
+          await tx.execute(sql`savepoint repoint`);
+          try {
+            await tx.execute(sql`
+              update ${sql.identifier(table)} set ${sql.identifier(col)} = ${keepId}
+              where ${sql.identifier(col)} = ${dropId}
+            `);
+            await tx.execute(sql`release savepoint repoint`);
+          } catch (e) {
+            const pgError = e as { code?: string };
+            if (pgError.code !== '23505') throw e;
+            await tx.execute(sql`rollback to savepoint repoint`);
+            await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+          }
+        } else {
+          await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
+        }
+      }
+
+      // DEFECT 2 (2026-09-16 staging dedupe): the dropped `ipos` row is deleted here — after
+      // child-table repoint/delete above, but BEFORE any carried-column UPDATE on the survivor
+      // below. A carried value (e.g. symbol) can be identical to a value the dropped row still
+      // holds; writing the survivor's UPDATE first, while the dropped row still exists, makes
+      // both rows hold that value at once — which any unique-constrained column the dropped row
+      // still carries (checked against schema.ts: currently only `slug`, which is never a
+      // carried column; any future addition to CARRY_IF_ABSENT_COLUMNS that is also
+      // unique-constrained would hit this) cannot survive, crashing the whole transaction
+      // (icelectricals, 2026-09-16: symbol='ICELCO' observed on both rows mid-transaction).
+      // Deleting the dropped row first means the carried value only ever exists on the survivor.
+      await tx.delete(ipos).where(eq(ipos.id, dropId));
+
       for (const p of patch) {
         const jsKey = columnToCamelCase(p.column);
         await tx
@@ -1218,31 +1269,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         .insert(ipoSlugRedirects)
         .values({ oldSlug: drop.slug, ipoId: keepId, reason: 'DUPLICATE_MERGE' })
         .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
-
-      for (const table of direct) {
-        const { col } = reach.get(table)!;
-        if (REPOINT_TABLES.has(table)) {
-          // A unique violation means the survivor already holds the equivalent row, so the
-          // dropped row's copy is redundant rather than lost.
-          await tx.execute(sql`savepoint repoint`);
-          try {
-            await tx.execute(sql`
-              update ${sql.identifier(table)} set ${sql.identifier(col)} = ${keepId}
-              where ${sql.identifier(col)} = ${dropId}
-            `);
-            await tx.execute(sql`release savepoint repoint`);
-          } catch (e) {
-            const pgError = e as { code?: string };
-            if (pgError.code !== '23505') throw e;
-            await tx.execute(sql`rollback to savepoint repoint`);
-            await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
-          }
-        } else {
-          await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(col)} = ${dropId}`);
-        }
-      }
-
-      await tx.delete(ipos).where(eq(ipos.id, dropId));
+      // Child-table repoint/delete and the dropped `ipos` row delete both already ran above
+      // (DEFECT 2 fix) — before this patch loop, so a unique-constrained carried value never has
+      // to coexist on both rows.
     });
 
     await this.invalidateCache(
