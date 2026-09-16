@@ -40,6 +40,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { istDayIso } from './lib/ist-day.mjs';
 import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
@@ -710,7 +711,7 @@ async function main() {
     // before it could rewrite the file) must never be synced as if it were
     // tonight's result — that can close an issue on a stale PASS that no
     // longer holds.
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istDayIso();
     if (loaded.runDate !== today) {
       console.log(`ISSUES-SKIP: findings runDate ${loaded.runDate} is not today (${today})`);
       return;
