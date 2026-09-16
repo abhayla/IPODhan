@@ -67,7 +67,7 @@ Rollback = the same command with `-f ref=<previous sha>` (must be an ancestor on
 or `scripts/ops/deploy-and-watch.sh <date> <sha> --rollback-to <prev-sha>` to control which sha the
 printed rollback command names.
 The deploy log IS the Actions run log (`scripts/deploy-linux.sh` prints `==> ...` lines); nothing is written on the box.
-NEVER push a non-md file straight to `main`: the write-ratchet (`scripts/check-write-ratchet.mjs`) scans the whole tree incl. docs/, and a raw-SQL template pushed to main on 2026-09-06 turned every open PR gate red. Code-like files go through a PR. Every push to `main` auto-deploys staging EXCEPT markdown-only pushes (`paths-ignore: '**/*.md'`), so ledger/docs pushes are free; batch code pushes.
+NEVER push a non-md file straight to `main`: the write-ratchet (`scripts/check-write-ratchet.mjs`) scans the whole tree incl. docs/, and a raw-SQL template pushed to main on 2026-09-06 turned every open PR gate red. Code-like files go through a PR. Staging no longer auto-deploys on push at all — see §14 for the current cadence (windows at 13:30/21:30 IST, plus a manual button capped 2/day).
 Tag after verification: `git tag -a prod-<date> <sha> -m "..." && git push origin prod-<date>` (a tag push does not deploy).
 
 ## 4. Post-deploy verification

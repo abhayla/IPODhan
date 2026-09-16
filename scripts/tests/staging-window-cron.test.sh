@@ -119,8 +119,18 @@ else
 fi
 
 # --- staging slot, first install: exactly one marked line appears ---
+# The seeded "unrelated" line is deliberately a REAL crontab entry this repo
+# installs on the box - the scraper-wake line, byte-for-byte - not a generic
+# "/some/other/job.sh" placeholder. A placeholder line with no "ipodhan" in
+# it cannot catch a marker that has been accidentally widened (e.g.
+# STAGING_WINDOW_CRON_MARKER="# ipodhan" instead of "# ipodhan-staging-window"):
+# grep -vF "# ipodhan" would ALSO strip "# ipodhan-scraper-wake:staging" out
+# of the kept set, and a placeholder line with no "ipodhan" substring would
+# still "survive" and pass. The real wake line is the one thing that must
+# never be touched by this install, so it is the one the test pins.
+WAKE_LINE='15,45 * * * * /var/www/ipodhan/current-staging/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-staging.log 2>&1 # ipodhan-scraper-wake:staging'
 CRON1="$TMP/crontab1"
-printf '%s\n' '0 3 * * * /some/other/job.sh # unrelated' > "$CRON1"
+printf '%s\n' "$WAKE_LINE" > "$CRON1"
 run_install staging 0 "$CRON1" > "$TMP/install1.log" 2>&1
 COUNT1="$(grep -c 'ipodhan-staging-window' "$CRON1" || true)"
 if [ "$COUNT1" -eq 1 ]; then
@@ -130,10 +140,11 @@ else
   cat "$CRON1" >&2
   FAILED=1
 fi
-if grep -qF '/some/other/job.sh' "$CRON1"; then
-  echo "PASS: unrelated existing crontab entries survive the install"
+if grep -qxF "$WAKE_LINE" "$CRON1"; then
+  echo "PASS: the real scraper-wake crontab entry survives the install byte-for-byte"
 else
-  echo "FAIL: install clobbered an unrelated crontab entry" >&2
+  echo "FAIL: install clobbered or altered the scraper-wake crontab entry - this is the exact class a widened STAGING_WINDOW_CRON_MARKER would cause" >&2
+  cat "$CRON1" >&2
   FAILED=1
 fi
 if grep -q '^30 13,21 \* \* \*.*ipodhan-staging-window' "$CRON1"; then
@@ -154,10 +165,11 @@ else
   cat "$CRON1" >&2
   FAILED=1
 fi
-if grep -qF '/some/other/job.sh' "$CRON1"; then
-  echo "PASS: unrelated entry still survives after the second install"
+if grep -qxF "$WAKE_LINE" "$CRON1"; then
+  echo "PASS: the real scraper-wake crontab entry still survives byte-for-byte after the second install"
 else
-  echo "FAIL: second install clobbered an unrelated crontab entry" >&2
+  echo "FAIL: second install clobbered or altered the scraper-wake crontab entry" >&2
+  cat "$CRON1" >&2
   FAILED=1
 fi
 
