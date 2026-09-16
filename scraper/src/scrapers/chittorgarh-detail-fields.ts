@@ -652,3 +652,29 @@ export function extractIssueSizeFromDetailHtml(
 
   return Math.round(rupees);
 }
+
+/** Plausible face-value bounds for an Indian equity share (₹1 .. ₹1,000 per share). */
+const MIN_FACE_VALUE = 1;
+const MAX_FACE_VALUE = 1000;
+
+/**
+ * Extract the per-share face value from a Chittorgarh detail page (lane C
+ * item 2 slice 6 — the face-value-as-price-band repair). Rendered as:
+ *   <a title="Face Value" href="/keyword/face-value/279/">Face Value</a>
+ *   </span></td><td class="text-end"><span class="text-end">₹<!-- -->10
+ *   <!-- --> per share</span></td>
+ * (measured live: stanbik-agro-ipo/2602, 2026-09-16). HTML comments
+ * (`<!-- -->`) sit between the rupee sign and the digits and between the
+ * digits and " per share" — the pattern tolerates arbitrary markup there
+ * rather than assuming plain text. Returns null when absent or outside the
+ * plausible range, mirroring every other extractor in this file.
+ */
+export function extractFaceValueFromDetailHtml(html: string): number | null {
+  if (!html) return null;
+  const m = html.match(/Face\s*Value\s*<\/a>[\s\S]{0,200}?₹[\s\S]{0,40}?([\d,]+(?:\.\d+)?)[\s\S]{0,40}?per\s*share/i);
+  if (!m) return null;
+  const value = parseFloat(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(value)) return null;
+  if (value < MIN_FACE_VALUE || value > MAX_FACE_VALUE) return null;
+  return Math.round(value);
+}
