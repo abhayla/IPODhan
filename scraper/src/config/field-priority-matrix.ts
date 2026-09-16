@@ -613,6 +613,17 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // ==================== LOT SIZE (BSE is more accurate) ====================
 
+  // Stage 1 round 3: `min: 10` here was a SECOND, silently-enforced copy of the
+  // "legal minimum lot" rule (SEBI sets no universal floor — a high-priced
+  // issue can legally have a lot under 10 shares, e.g. lot=8 at a band of
+  // ~1700-1785). `validateValue` (normalization-engine.ts) only ever sees the
+  // bare number, never the price band, so it cannot tell a legitimate
+  // high-price lot from garbage — it can only catch an ABSURD value (0,
+  // negative, a lot in the hundreds of thousands). The real legal-lot check —
+  // lot x cap price within the SEBI retail window — is `validateIPOData`
+  // (data-validation.ts, SEBI_RETAIL_WINDOW) at write time and the nightly
+  // `d_lot_band_window` audit on stored rows. Keep this matrix entry as the
+  // plausibility floor ONLY.
   lot_size: {
     sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
     normalization: 'number',
@@ -620,7 +631,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sameSourceRefresh: true,
     sameSourceRefreshSources: ['DRHP'],
     description: 'Lot size - BSE data is more accurate historically',
-    validation: { min: 10, max: 100000 },
+    validation: { min: 1, max: 100000 },
   },
 
   // CamelCase (TypeScript field name) - consolidation service uses this
@@ -631,7 +642,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sameSourceRefresh: true,
     sameSourceRefreshSources: ['DRHP'],
     description: 'Lot size (camelCase) - BSE data is more accurate historically',
-    validation: { min: 10, max: 100000 },
+    validation: { min: 1, max: 100000 },
   },
 
   min_investment: {
