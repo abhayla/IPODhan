@@ -41,6 +41,25 @@ export interface AnchorReportRow {
   derivedFromTotal?: boolean;
 }
 
+/**
+ * #437 slice 5a (ruling 35) — why a row could not be published. A closed set
+ * so `documents.extraction_error`'s per-row reason list stays machine-
+ * classifiable rather than free prose.
+ */
+export type UnreadableRowReason =
+  | 'no_percent_cell'
+  | 'no_share_cell'
+  | 'amount_disagrees_with_price'
+  | 'blank_name'
+  | 'unparseable_row';
+
+/** One row the letter carries that could not be published, and why. */
+export interface UnreadableRow {
+  /** The row's serial/name text as printed, or `row <index>` when neither survived. */
+  ref: string;
+  reason: UnreadableRowReason;
+}
+
 export interface AnchorReportParse {
   rows: AnchorReportRow[];
   /** Bid price per equity share, derived from the rows (never the printed one). */
@@ -85,6 +104,27 @@ export interface AnchorReportParse {
   rowErrors: number;
   /** Investor rows actually read into `rows` (== rows.length; carried explicitly so a caller need not recompute it). */
   rowsRead: number;
+
+  // ---------------------------------------------------- #437 slice 5a (ruling 35)
+  /**
+   * Every row the letter is known to carry that could not be published,
+   * whichever stage rejected it — a candidate `readRow` could not parse at
+   * all (`no_percent_cell`/`no_share_cell`/`unparseable_row`), or a candidate
+   * that WAS read but was then skipped in reconciliation
+   * (`amount_disagrees_with_price`). Blank-name rows are attributed by the
+   * persister (the parser does not read names as blank/non-blank), so this
+   * array is populated by the parser for the parse-stage reasons only.
+   */
+  unreadableRows: UnreadableRow[];
+  /**
+   * True only when this letter has at least one unreadable row AND ruling
+   * 35's conditions 1-3 all hold (denominators readable, published rows
+   * individually reconcile, consistency against the printed totals). A
+   * letter that reconciles completely is never partial — `partial` stays
+   * false and every row is in `rows`. When conditions 1-2 fail (no readable
+   * denominator), the whole parse still returns `ok:false` exactly as today.
+   */
+  partial: boolean;
 }
 
 export type AnchorReportResult =
@@ -792,12 +832,20 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   // see a portion "missing" its skipped members and fail for a reason that
   // has nothing to do with a real percentage mismatch.
   let skippedPercentSum = 0;
+  // #437 slice 5a (ruling 35): every row skipped here is attributable and
+  // becomes a candidate for partial publish once the letter's own
+  // denominators are readable (checked below).
+  const unreadableRows: UnreadableRow[] = [];
   for (const c of candidates) {
     const amount = amountMatchesPrice(c.rawTail, c.shares, price);
     if (amount === null) {
       rowErrors++;
       skippedPercentSum += c.percent;
       rowErrorReason ??= `row "${c.name || c.shares}" has no amount consistent with the derived bid price ${price}`;
+      unreadableRows.push({
+        ref: c.name || `row ${c.shares}`,
+        reason: 'amount_disagrees_with_price',
+      });
       continue;
     }
     rows.push({
@@ -808,8 +856,9 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       ...(c.derivedFromTotal ? { derivedFromTotal: true } : {}),
     });
   }
-  // Round 2 (Hole 1): `>=` - exactly the floor's own share of bad rows also
-  // refuses (a 30%-bad letter is not "under" a 30% floor).
+  // Round 2 (Hole 1) / ruling 35: at-or-over the floor still refuses
+  // outright - partial publish is for a letter within tolerance whose
+  // OWN totals cover the gap, never a licence to raise the floor.
   if (rowErrors / candidates.length >= ROW_ERROR_FLOOR) {
     return {
       ok: false,

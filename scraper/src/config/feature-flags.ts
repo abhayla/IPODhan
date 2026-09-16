@@ -106,6 +106,14 @@ export const FEATURE_FLAGS = {
   ENABLE_SOURCE_TRACKING: process.env.ENABLE_SOURCE_TRACKING === 'true',
 
   /**
+   * #437 slice 5a, ruling 35 — partial publish for an anchor allocation
+   * letter whose rows do not ALL reconcile. The ruling IS the policy
+   * (default true); this flag exists only as a kill switch. An explicit
+   * `false` restores today's all-or-nothing behaviour byte-for-byte.
+   */
+  ENABLE_ANCHOR_PARTIAL_PUBLISH: process.env.ENABLE_ANCHOR_PARTIAL_PUBLISH !== 'false',
+
+  /**
    * Enable conflict detection and logging
    * When enabled, logs conflicts between scrapers to database
    * Default: false (Phase 0 foundation)
