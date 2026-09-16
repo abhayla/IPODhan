@@ -55,6 +55,24 @@
 28. **VPS disk hygiene**: when `/` is above 80% used and no deploy is in flight, the supervisor runs `vps-disk-hygiene.sh --dry-run` then the real run via a worker with output captured, and reports `df` and release counts before and after; no owner word needed. Asking cost a six-hour freeze on 2026-09-10.
 29. **Slug index** `idx_ipos_slug` applied on `ipodhan_staging` at 19:41 IST; staging deploys green from 19:42 after 12 failures.
 
+## §7 Supervisor rulings recorded 2026-09-16
+
+30. **O-16** (open fork 0.0.2 / #658): a source does NOT get a "looked and found absent" marker; deleting the false provenance row is the only record ("delete-only"); no schema change. Affects item 1's writer and the #661 provenance repair.
+
+    *2026-09-16, Owner decision (delegated to the supervisor, 11:4x IST).*
+
+31. **Never-listed IPOs whose board label (segment) and price band cannot be sourced from any register** (NIRBHAY COLOURS, PIYUSH, BANGANGA PAPER, MARUTI INTERIOR, MUTHOOT FINCORP as of today): those fields are set to unknown (NULL, with no provenance row) by the reviewed repair tools, never left as guessed values; a later sourced value may fill them. Unblocks items 14 and 2 (lane C).
+
+    *2026-09-16, Owner decision (delegated to the supervisor, 11:4x IST).*
+
+32. **Item 6 source adapters** (#705): before building per-source one-field adapters, one spike calls the existing whole-IPO orchestrator for ONE source (Chittorgarh first, widest field coverage) and takes the single needed field from its result, measured on a real IPO on staging; per-field adapters are built only if the spike shows the whole-IPO call cannot serve the walk. Card 6 line 26 and "items 2/3's generator" are superseded by ruling 30 already.
+
+    *2026-09-16, Owner decision (delegated to the supervisor, 11:4x IST).*
+
+33. **Design section 2.1**: the 2-hour document-job ceiling is an EXTERNAL supervisor (the wake wrapper's timeout + setsid, item 7 slice 1, #660, ops recipes section 13), not the extractor spawn timeout (OD-19); the in-process spawn timeout stays what it is. Supersedes the text of section 2.1 until the design doc is regenerated.
+
+    *2026-09-16, Owner decision (delegated to the supervisor, 11:4x IST).*
+
 ## Adoption
 
 Each lane: read at its next Stage 1a; append `[lane X] delta-2 adopted at item NN`; re-cut pending Tier B slices into batches per §1.1; add §2's lines to brief templates; probe every existing worktree per §2.8 and record the verdict per tree before the next local proof is cited.
