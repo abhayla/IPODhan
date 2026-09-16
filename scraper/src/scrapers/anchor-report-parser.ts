@@ -28,6 +28,17 @@ export interface AnchorReportRow {
   amountRupees: number;
   /** Percentage of the anchor portion, as printed. */
   percentOfAnchorPortion: number;
+  /**
+   * #437 slice 4: true when `shares` was not printed on this row's own cell
+   * at all - the letter's scan left it empty - and was instead DERIVED as
+   * the preamble total minus every other row's printed share count. Absent
+   * (undefined) for every row whose share count was actually read off the
+   * page, which is every row today and the overwhelming majority always.
+   * There is no dedicated persisted-row provenance column for this yet
+   * (2026-09-16) - the caller (`anchor-investors-scraper.ts`) logs it on the
+   * extraction log line instead of silently dropping it.
+   */
+  derivedFromTotal?: boolean;
 }
 
 export interface AnchorReportParse {
@@ -319,6 +330,30 @@ interface Candidate {
   splits: Array<{ price: number; amount: number }>;
   /** The unsplit trailing cell(s), for `amountMatchesPrice` (the prose-price fallback). */
   rawTail: string;
+  /**
+   * #437 slice 4: this row's share count was not printed at all - the OCR
+   * left the cell empty - and was instead DERIVED as the letter's own
+   * preamble total minus every other row's printed share count. Carried
+   * through to the persisted row's provenance note by the caller (never
+   * silently indistinguishable from a printed figure).
+   */
+  derivedFromTotal?: boolean;
+}
+
+/**
+ * The letter's own preamble sentence ("Out of the total allocation of
+ * 87,76,869 Equity Shares to the Anchor Investors...") - an INDEPENDENT
+ * statement of the whole portion, read once per document and used only to
+ * derive a single missing row's share count (never to corroborate anything
+ * else, and never guessed at when the sentence itself did not print).
+ */
+export function parsePreambleTotalShares(text: string): number | null {
+  const m = text.match(/allocation\s+of\s+([0-9][0-9,\s.]{4,}?)\s*,?\s*(?:equity\s+shares|to\s+anchor)/i);
+  if (!m) return null;
+  const digits = m[1].replace(/[^0-9]/g, '');
+  if (digits.length < 5) return null;
+  const value = Number(digits);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function readRow(rec: RawRecord): Candidate | null {
@@ -616,9 +651,95 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   );
   const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
 
-  const candidates = main
-    .map(readRow)
-    .filter((c): c is Candidate => c !== null);
+  // #437 slice 4: a row whose share cell the OCR left EMPTY (never a garbled
+  // digit run - that is slice 2/3's territory) is invisible to `readRow`
+  // (it needs a >=3-digit numeric cell before the percent cell) and so never
+  // becomes a candidate at all - unlike a row whose AMOUNT cell fails later,
+  // it never even reaches the row-error accounting. Derive it here, once,
+  // from the letter's OWN preamble total minus every other row's printed
+  // share count - never from that row's own amount cell, which the letter's
+  // scan can equally have damaged (LCC row 7's amount cell reads
+  // "1,99,99,736.00" but divides unevenly by the derived price, so it is not
+  // a safe source either).
+  const readCandidates = main.map(readRow);
+  // A row missing its PERCENT cell (a different, undocumented residual seen
+  // on LCC - EDELWEISS and one NECTA BLOOM row) also fails `readRow` (which
+  // needs a percent cell to anchor its backward scan), so it is invisible
+  // to a plain `main.map(readRow)` the same way a missing-SHARE row is.
+  // That row's shares are still printed and readable, though - `readRow`
+  // just has no percent anchor - so the "sum of every OTHER row's shares"
+  // below must include it too, via the same backward-scan rule anchored at
+  // the row's last cell instead of a percent cell. Fixing the percent-
+  // missing refusal itself is a SEPARATE defect, out of this slice's Class
+  // (a MISSING SHARE cell) - this only stops that separate defect from
+  // silently corrupting THIS slice's derived total.
+  const sharesOnly = (rec: RawRecord): number | null => {
+    // Shares is always the FIRST value cell in the printed layout (name |
+    // shares | % | price | amount) - forward, not backward, unlike
+    // `readRow`'s percent-anchored backward scan. A backward scan from the
+    // row's last cell would land on the AMOUNT cell instead (also a large
+    // integer, and further from the name than shares is).
+    for (let i = 0; i < rec.cells.length; i++) {
+      if (rec.cells[i].includes('%')) continue; // never a percent cell
+      const printedDigits = (rec.cells[i].match(/\d/g) || []).length;
+      if (printedDigits < 3) continue;
+      const v = parseAmount(rec.cells[i]);
+      if (v !== null && Number.isInteger(v) && v >= 1000) return v;
+    }
+    return null;
+  };
+  // A blank-named line with no percent cell and no readable row (the OCR's
+  // own stray artifact - e.g. a duplicated fragment of another row's amount
+  // cell rendered as its own line) is not an investor row at all and must
+  // never be summed into "every other row's shares" - `looksInvestorShaped`
+  // is the same test the rest of this function already uses to draw that
+  // line (name present, OR `readRow` finds a real percent-anchored row).
+  const investorShapedMain = main.filter(looksInvestorShaped);
+  const emptyShareRows = investorShapedMain.filter((rec) => {
+    if (readRow(rec) !== null) return false; // has a shares cell (readRow found one)
+    const pctAt = rec.cells.findIndex((c) => parsePercent(c) !== null);
+    if (pctAt <= 0) return false; // no percent cell either - the OTHER residual, not this slice's
+    // Confirm the row is missing a shares cell specifically (blank/whitespace
+    // before the percent), not merely a row `readRow` rejected for some other
+    // reason - a garbled-but-present digit run is slice 2/3's concern, not
+    // this one.
+    for (let i2 = pctAt - 1; i2 >= 0; i2--) {
+      if (rec.cells[i2].trim() !== '') return false;
+    }
+    return true;
+  });
+  const otherShareTotals = investorShapedMain
+    .filter((rec) => !emptyShareRows.includes(rec))
+    .map(sharesOnly)
+    .filter((v): v is number => v !== null);
+  const preambleTotal = parsePreambleTotalShares(fullText);
+  if (emptyShareRows.length === 1 && preambleTotal !== null) {
+    const otherShares = otherShareTotals.reduce((s, v) => s + v, 0);
+    const derivedShares = preambleTotal - otherShares;
+    const rec = emptyShareRows[0];
+    const pctAt = rec.cells.findIndex((c) => parsePercent(c) !== null);
+    const percent = parsePercent(rec.cells[pctAt]) as number;
+    const tail = rec.cells.slice(pctAt + 1).join(' ');
+    // Never derive a non-positive share count, and never derive one whose
+    // own amount cell (when readable) disagrees with shares x price by more
+    // than a rupee - the derivation is a last resort, not a licence to
+    // overrule a cell that DOES read.
+    if (derivedShares > 0) {
+      const idx = main.indexOf(rec);
+      if (idx !== -1) {
+        readCandidates[idx] = {
+          name: rec.name,
+          shares: derivedShares,
+          percent,
+          splits: splitPriceAndAmount(tail, derivedShares),
+          rawTail: tail,
+          derivedFromTotal: true,
+        };
+      }
+    }
+  }
+
+  const candidates = readCandidates.filter((c): c is Candidate => c !== null);
   if (candidates.length < MIN_ROWS) {
     return {
       ok: false,
@@ -684,6 +805,7 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       shares: c.shares,
       amountRupees: amount,
       percentOfAnchorPortion: c.percent,
+      ...(c.derivedFromTotal ? { derivedFromTotal: true } : {}),
     });
   }
   // Round 2 (Hole 1): `>=` - exactly the floor's own share of bad rows also
