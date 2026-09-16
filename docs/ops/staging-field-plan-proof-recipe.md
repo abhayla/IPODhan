@@ -58,7 +58,7 @@ and name the cycle each came from.
     #    A missing summary line is NOT a pass; it means the pass did not run.
 
     # 5. only then: ENABLE_FIELD_PLAN_WALK=true, same add + restart, and read
-    #      pm2 logs ipodhan-scraper-staging --nostream --lines 400     #        | grep -E 'PASS 3 field-plan walk summary|PASS 3 \(field-plan walk\)'
+    #      pm2 logs ipodhan-scraper-staging --nostream --lines 400 | grep -E 'PASS 3 field-plan walk summary'
     #    Verified 2026-09-16 that all four patterns in this file match the
     #    strings document-cycle.ts actually emits (each pattern stops before
     #    the em dash, so a C locale over SSH does not silently return zero).
