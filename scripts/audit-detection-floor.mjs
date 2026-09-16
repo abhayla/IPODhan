@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
+import { istDayIso } from './lib/ist-day.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -72,7 +73,16 @@ import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-serve
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 import { checkPriceBand } from './lib/substance-checks.mjs';
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
-import { collectRatiosYield, RATIOS_YIELD_NAME } from './lib/ratios-extraction-yield.mjs';
+import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
+
+// The three filing-extractor types this specific stuck-detection query cares about
+// (never the anchor report or PRICE_BAND_AD — this check is about `scripts/extract_filing.py`
+// candidates going stuck, not every AUTO_PERSIST candidate). Derived from the same
+// mirror `not-applicable-documents.mjs` keeps, so there is one list in the audit for
+// "what does the filing extractor handle" instead of a second hand-copied literal.
+const FILING_EXTRACTOR_STUCK_TYPES = EXTRACTABLE_DOC_TYPES_MIRROR.filter(
+  (t) => t !== 'ANCHOR_ALLOCATION_REPORT' && t !== 'PRICE_BAND_AD'
+);
 import {
   classifyRepeatedMessages, classifyConflictBacklogRatchet, nextRatchetBaseline, classifyInertDetector,
   REPEATED_MESSAGE_MAX_OCCURRENCES_24H,
@@ -107,6 +117,11 @@ function writeConflictBaseline(data) {
 }
 const BASE_URL = (process.env.BASE_URL || 'https://ipodhan.com').replace(/\/$/, '');
 const MAX_OFFENDERS = 8;
+// Item 8 slice 3a: the day the ratio reader was actually wired into the
+// extractor. Documents extracted before it could not carry a ratio however
+// healthy the pipeline was, so they are outside this check's population
+// (their backfill is slice 3b).
+const RATIO_WIRING_MERGED_AT = process.env.RATIO_WIRING_MERGED_AT || '2026-09-16';
 
 // installUtcTimestampParsing() MUST run before the pool is created / any
 // query runs — it registers the process-wide OID-1114 parser (see pg-utc.mjs
@@ -164,7 +179,7 @@ const STATE_DIR = process.env.DETECTION_FLOOR_STATE_DIR
   || (existsSync('/root/data-audit-ipodhan/state') ? '/root/data-audit-ipodhan/state' : tmpdir());
 const STATE_FILE = join(STATE_DIR, 'detection-floor-last-run.json');
 const FINDINGS_FILE = join(STATE_DIR, 'findings-latest.json');
-const RUN_DATE = new Date().toISOString().slice(0, 10);
+const RUN_DATE = istDayIso();
 const REPORT_PATH = join(STATE_DIR, `run-${RUN_DATE}.log`);
 
 // Cap per check so one runaway check (e.g. a full-table sweep with thousands
@@ -792,8 +807,8 @@ async function checkM() {
       LEFT JOIN document_fetch_state fs ON fs.ipo_id = d.ipo_id AND fs.doc_type = d.type
      WHERE i.${REAL_IPO}
        AND i.status IN ('UPCOMING','OPEN','CLOSED','LISTED')
-       AND d.type IN ('DRHP','RHP','PROSPECTUS')
-  `);
+       AND d.type = ANY($1)
+  `, [FILING_EXTRACTOR_STUCK_TYPES]);
   const nowMs = Date.now();
   const extractionStuck = extractionStuckRows
     .map((r) => ({
@@ -869,6 +884,51 @@ async function checkM() {
   record('listed_rotation_stall',
     `no LISTED IPO inside the ${LISTED_ROTATION_WINDOW_DAYS}-day live window is stuck at the front of the rotation: documents on file with 0 fetch-state rows, or due rows with MAX(last_attempt_at) older than ${STALE_ROTATION_HOURS}h`,
     rotationStalled.length === 0 ? 'PASS' : 'FAIL', rotationStalled.slice(0, MAX_OFFENDERS).join('; '));
+
+  // Item 8 slice 3a (#610): does a completed prospectus-family extraction
+  // actually YIELD the issuer's ratios, or does it come back empty in silence?
+  //
+  // `financial_ratios.py` shipped in #638 with zero importers - correct,
+  // tested, and never called - so every extraction produced null ratios and
+  // nothing anywhere said so. That is the class this check watches: not "the
+  // ratio is wrong" but "the reader stopped running and no one noticed".
+  //
+  // PASS needs one of two things per document, never a bare count: a
+  // current_ratio on the row, or a recorded reason for its absence in the E9
+  // evidence (the extractor emits `ratio_note_not_in_document` /
+  // `ratio_row_not_in_note` / `balance_sheet_inputs_absent:...`). An absence
+  // with neither is the failure.
+  //
+  // Scoped to documents extracted AFTER the fix, because the backfill of
+  // already-completed documents is slice 3b: judging pre-fix rows against a
+  // post-fix behaviour would report a permanent FAIL that no night can clear.
+  const ratioRows = await q(`
+    SELECT i.company_name, d.id::text AS document_id, d.type::text AS doc_type,
+           fd.current_ratio IS NOT NULL AS has_ratio,
+           coalesce(s.evidence::text, '') AS step_evidence
+      FROM documents d
+      JOIN ipos i ON i.id = d.ipo_id
+      LEFT JOIN financial_data fd ON fd.ipo_id = d.ipo_id
+      LEFT JOIN ipo_pipeline_steps s ON s.ipo_id = d.ipo_id AND s.step_id = 'E9'
+     WHERE i.${REAL_IPO}
+       AND d.type::text IN ('RHP', 'DRHP', 'PROSPECTUS')
+       AND d.extraction_status = 'COMPLETED'
+       AND d.extracted_at IS NOT NULL
+       AND d.extracted_at >= timestamp '${RATIO_WIRING_MERGED_AT}'
+  `);
+  const ratioSilent = ratioRows
+    .filter((r) => !r.has_ratio && !/ratio_note_not_in_document|ratio_row_not_in_note|balance_sheet_inputs_absent/.test(r.step_evidence))
+    .map((r) => `${r.company_name} (${r.doc_type} ${r.document_id.slice(0, 8)}): no current_ratio and no recorded reason`);
+  for (const v of ratioSilent)
+    notify('issuer_ratio_yield', 'P2', v, 'A completed filing extraction yielded no issuer ratio and named no cause', v);
+  record('issuer_ratio_yield',
+    `every COMPLETED RHP/DRHP/PROSPECTUS extracted since ${RATIO_WIRING_MERGED_AT} carries a current_ratio or a recorded reason for its absence (${ratioRows.length} document(s) in the population)`,
+    ratioRows.length === 0
+      ? 'UNVERIFIABLE'
+      : (ratioSilent.length === 0 ? 'PASS' : 'FAIL'),
+    ratioRows.length === 0
+      ? `no prospectus-family document has completed extraction since ${RATIO_WIRING_MERGED_AT}`
+      : ratioSilent.slice(0, MAX_OFFENDERS).join('; '));
 
   // BRLM count vs the BSE payload (F17). We cannot re-fetch BSE from the audit
   // (read-only, and it would double the traffic), so the comparison is against
@@ -1496,21 +1556,57 @@ async function checkQ_rowKeyCoverage() {
     result.detail + (result.offenders.length ? `: ${result.offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
-async function checkRatiosExtractionYield() {
+// #654 — a provenance row that names a field whose parent value is NULL is a
+// FALSE CLAIM: it says a source supplied a value that does not exist, and an
+// audit reading field_sources reports the field as sourced and healthy. Two
+// IPOs OPEN/UPCOMING on 2026-09-15 got no NSE documents because their symbol
+// was missing while the ledger said CHITTORGARH supplied it.
+//
+// The query is GENERIC OVER COLUMNS on purpose: the first measurement of this
+// class counted `symbol` alone and reported 61 rows against a real 650. It
+// reads the column list from information_schema and checks every field_name
+// present in field_sources, so a field a future scraper starts writing is
+// covered without anyone remembering to add it here.
+//
+// NULL only, never falsiness: 0, false and '' are values a source genuinely
+// supplied, and a row naming one of them is TRUE.
+const PROVENANCE_PARENT_NAME =
+  'no field_sources row names a field whose value on the parent row is NULL (a source cannot have supplied a value that does not exist)';
+
+async function checkR_provenanceParentNotNull() {
   let result;
   try {
-    result = await collectRatiosYield(q);
+    const mod = await import('./lib/repair-invariants/provenance-parent-not-null.mjs');
+    result = await mod.default(pool);
   } catch (e) {
-    record('ratios_extraction_yield', RATIOS_YIELD_NAME, 'UNVERIFIABLE',
-      `documents/financial_data not readable: ${e.message}`);
+    record('r_provenance_parent_not_null', PROVENANCE_PARENT_NAME, 'UNVERIFIABLE',
+      `field_sources or its parent tables not readable: ${e.message}`);
     return;
   }
-  for (const offender of result.offenders) {
-    notify('ratios_extraction_yield', 'P1', offender.slice(0, 120),
-      'a Ratios document extracted but produced no current_ratio', offender);
+  const offenders = result.details
+    .filter((d) => !d.unmapped && d.rows > 0)
+    .map((d) => `${d.table}.${d.column}=${d.rows}`);
+  for (const offender of offenders) {
+    notify('r_provenance_parent_not_null', 'P1', offender.slice(0, 120),
+      'provenance claims a value the parent row does not have', offender);
   }
-  record('ratios_extraction_yield', RATIOS_YIELD_NAME, result.status,
-    result.detail + (result.offenders.length ? `: ${result.offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+  record('r_provenance_parent_not_null', PROVENANCE_PARENT_NAME,
+    result.count === 0 ? 'PASS' : 'FAIL',
+    result.count === 0
+      ? 'no provenance row names a null parent field'
+      : `${result.count} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
+}
+
+async function checkNotApplicableDocuments() {
+  let result;
+  try {
+    result = await collectNotApplicableDocuments(q);
+  } catch (e) {
+    record('not_applicable_documents_named', NOT_APPLICABLE_CHECK_NAME, 'UNVERIFIABLE',
+      `documents not readable: ${e.message}`);
+    return;
+  }
+  record('not_applicable_documents_named', NOT_APPLICABLE_CHECK_NAME, result.status, result.detail);
 }
 
 async function main() {
@@ -1538,7 +1634,8 @@ async function main() {
   checkO();
   await checkP();
   await checkQ_rowKeyCoverage();
-  await checkRatiosExtractionYield();
+  await checkR_provenanceParentNotNull();
+  await checkNotApplicableDocuments();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');

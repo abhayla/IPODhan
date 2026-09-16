@@ -9,6 +9,8 @@
  * rather than depending on the process's local timezone.
  */
 
+import { istDayIso } from '@ipodhan/shared/utils/ist-day';
+
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 
 /** Minutes-since-midnight-IST for each daily discovery slot: 08:30, 11:00, 14:00, 17:30. */
@@ -96,17 +98,13 @@ export function istWeekday(now: Date): number {
 
 /**
  * "YYYY-MM-DD" for `now` in IST — matches the `market_holidays.date` column
- * format. Built from UTC getters on an already-IST-shifted epoch instant
- * (never `.toISOString()` on it) so this never trips the T-327 naive-parse
- * ratchet (`date-tz-parse-ratchet.test.ts`) — `getUTCFullYear`/`getUTCMonth`/
- * `getUTCDate` are TZ-agnostic reads of the shifted instant, not a
- * local-midnight parse of a raw string.
+ * format. #687 slice 4: the arithmetic now lives ONCE, in
+ * packages/shared/src/utils/ist-day.ts; this wrapper keeps the `istDateIso`
+ * name its 20+ scraper callers already import. The shared helper is built
+ * from UTC getters on an already-IST-shifted epoch instant (never
+ * `.toISOString()` on it), so this still never trips the T-327 naive-parse
+ * ratchet (`date-tz-parse-ratchet.test.ts`).
  */
 export function istDateIso(now: Date): string {
-  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
-  const ist = new Date(istMs);
-  const year = ist.getUTCFullYear();
-  const month = String(ist.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(ist.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return istDayIso(now);
 }

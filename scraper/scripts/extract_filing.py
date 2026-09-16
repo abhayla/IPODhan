@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memory_guard  # noqa: E402 — light (no heavy deps), safe to import first
 import box_lock  # noqa: E402 — light, safe to import first (W-178c round 2)
 import peer_companies  # noqa: E402 — pure-python, no heavy deps (item 8a)
+import financial_ratios  # noqa: E402 — pure-python, no heavy deps (item 8b)
 
 # W-178c round 2: how long this process waits to acquire the box lock before
 # giving up as "busy" this cycle — kept independent of ANCHOR_LOCK_WAIT_S
@@ -92,6 +93,20 @@ STATUS_NEEDS_OCR = "NEEDS_OCR"
 # D6/W-57: a run whose text came (wholly or partly) from the OCR route.
 STATUS_OK_OCR = "OK_OCR"
 STATUS_PARTIAL_OCR = "PARTIAL_OCR"
+# OD-55 (owner, 2026-09-11): the read was STOPPED before every page was read —
+# the hung-process ceiling tripped, or a page could not be read at all.
+#
+# Deliberately NOT folded into STATUS_PARTIAL_OCR, whose meaning stays "a field
+# check failed and the text came from OCR". That is a statement about
+# CONFIDENCE in pages that were read; this one is about COVERAGE. They call for
+# opposite responses: low confidence needs a human to check a number (re-reading
+# the same page cannot improve it), while missing pages can simply be re-read
+# from the retained PDF (OD-32's seven-day retention exists for that). One
+# string for both would make the envelope unreadable.
+#
+# Coverage outranks confidence when both apply: the missing pages are the
+# actionable half, so they must not be hidden behind a confidence caveat.
+STATUS_INCOMPLETE_PAGES = "INCOMPLETE_PAGES"
 
 # `[●]` (and the `[•]`/`[.]` variants pdfplumber emits) marks a cell that cannot be
 # filled until the issue is priced — E3: null with reason, never a guess.
@@ -2609,17 +2624,140 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD",
                 peer_companies.check_against_printed_summary(found["peers"], page_texts),
             )
 
+    # Item 8b slice 3a. The issuer's OWN ratio note (Companies Act Schedule III),
+    # READ rather than recomputed - see financial_ratios.py's docstring for the
+    # measurement that ruled recomputation out. `read_printed_ratios` returns the
+    # printed values newest period first; the newest is the one the persister
+    # writes, exactly as the by-fy series do.
+    #
+    # Unlike the peer block above this needs no `tables_for_page`: the note is
+    # line-oriented text, so it runs on every prospectus-family document.
+    ratio_pages = financial_ratios.find_ratio_note_pages(page_texts)
+    printed = financial_ratios.read_printed_ratios(page_texts) if ratio_pages else {}
+    ratio_page = ratio_pages[0] if ratio_pages else None
+    for name in ("current_ratio", "inventory_turnover"):
+        values = printed.get(name) or []
+        if not values:
+            # Named causes, not a bare absence: the note may be missing entirely
+            # or present with only the other ratio in it.
+            emit.null(name, "ratio_note_not_in_document" if not ratio_pages
+                      else "ratio_row_not_in_note")
+        else:
+            emit.put(name, values[0], ratio_page, "ratio_read_as_printed",
+                     (True, "as printed: %s" % values[0]))
+
+    # QUICK RATIO is the one derived ratio (no issuer prints it - not a Schedule
+    # III ratio). Its three balance-sheet inputs are not among the fields this
+    # extractor reads: the shared P&L core carries revenue / PAT / EBITDA /
+    # net worth, and no current-assets, inventories or current-liabilities line.
+    # So the derivation is NAMED as unavailable rather than fed guesses - a
+    # quick ratio computed from an invented input looks exactly like a read one.
+    emit.null("quick_ratio", "balance_sheet_inputs_absent:"
+              "current_assets,inventories,current_liabilities")
+
     return {"unit": unit, "fiscal_years": fiscal_years,
             "financial_status": pnl.get("status")}
 
 
 # --------------------------------------------------------------------------- #
+# OD-55: the interrupts that mean "this read was STOPPED", as opposed to
+# "this read went wrong". Only these are swallowed so the partial envelope
+# survives; everything else (MemoryError above all) keeps reaching main()'s
+# handler, whose JSON + exit-75 contract the node caller reads to tell a
+# memory kill apart from a slow document.
+#
+# `KeyboardInterrupt` is here because the child half of the ceiling is
+# `spawnSync`'s `timeout`, which sends SIGTERM — and a SIGTERM handler that
+# raises is the only way a blocking OCR call can be unwound at all.
+
+
+class CeilingReached(Exception):
+    """Raised by the SIGTERM handler the document job installs, so a blocking
+    OCR pass can unwind and still emit its envelope."""
+
+
+_CEILING_INTERRUPTS = (CeilingReached, TimeoutError, KeyboardInterrupt)
+
+
+def _stop_reason_for(exc):
+    """The cause, not just the fact — it decides what a later pass does.
+
+    A ceiling trip is worth retrying from the retained PDF (OD-32's seven-day
+    retention exists for that); a malformed page is not, and re-queuing it
+    would burn the same minutes every night forever.
+    """
+    if isinstance(exc, CeilingReached):
+        return "ceiling_reached"
+    if isinstance(exc, TimeoutError):
+        return "ceiling_reached"
+    if isinstance(exc, KeyboardInterrupt):
+        return "process_terminated"
+    return "stopped:%s" % type(exc).__name__
+
+
+def _normalise_unread_pages(unread_pages):
+    """`[(page, reason), ...]` -> `[{"page": int, "reason": str}, ...]`.
+
+    OD-55 / signal-ownership.md R1. Refuses a bare count with a TypeError
+    instead of coercing it: an `int` here is the caller having thrown the page
+    identities away, and silently accepting it would put the forbidden
+    "N pages unread" shape back into the envelope under a compliant-looking
+    field name — a defect that reads as a fix. `bool` is rejected too, because
+    `isinstance(True, int)` is True in Python and `unread_pages=True` is the
+    same lost-identity mistake wearing a different type.
+
+    A reason is required per page for the same reason the page number is: the
+    cause decides what a later pass does (a ceiling trip is worth retrying
+    from the stored PDF; a malformed page is not).
+    """
+    if unread_pages is None:
+        return []
+    if isinstance(unread_pages, (int, float, bool)):
+        raise TypeError(
+            "unread_pages must be [(page, reason), ...], not a count (%r) — "
+            "a bare count cannot tell a later pass which pages to re-read "
+            "(OD-55, signal-ownership.md R1)" % (unread_pages,)
+        )
+    if isinstance(unread_pages, (str, bytes)):
+        raise TypeError(
+            "unread_pages must be [(page, reason), ...], not a string (%r)"
+            % (unread_pages,)
+        )
+
+    out = []
+    for entry in unread_pages:
+        if isinstance(entry, dict):
+            page, reason = entry.get("page"), entry.get("reason")
+        else:
+            try:
+                page, reason = entry
+            except (TypeError, ValueError):
+                raise TypeError(
+                    "each unread page must be (page, reason), got %r" % (entry,)
+                )
+        if page is None or isinstance(page, bool) or not isinstance(page, int):
+            raise TypeError("unread page number must be an int, got %r" % (page,))
+        if not reason or not isinstance(reason, str):
+            raise ValueError(
+                "unread page %r needs a non-empty reason — an unexplained "
+                "skip cannot be triaged (OD-55)" % (page,)
+            )
+        out.append({"page": page, "reason": reason})
+    return out
+
+
 def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
-        issue_size_rupees=None, tables_for_page=None):
+        issue_size_rupees=None, tables_for_page=None, unread_pages=None):
     """`ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
     came from OCR rather than from the PDF's own text layer. `issue_size_rupees`
     (W-129) backs the net_worth_vs_issue_size / unit_matches_magnitude checks —
-    None when the caller has no issue size to pass."""
+    None when the caller has no issue size to pass.
+
+    `unread_pages` (OD-55): pages this run was STOPPED before reading, as
+    `[(page_index, reason), ...]`. A bare count is REFUSED (TypeError) rather
+    than accepted, because "N pages unread" is exactly the unactionable shape
+    signal-ownership.md R1 forbids — a count cannot tell a later pass which
+    pages to re-read."""
     emit = Emitter(source_doc)
     # E4/E5: a document with no text layer is classified, never guessed at.
     if not any((t or "").strip() for _i, t in page_texts):
@@ -2645,6 +2783,14 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         fields = annotate_fields(fields, ocr_confidence, CONFIDENCE_FLOOR)
         status = STATUS_OK_OCR if status == STATUS_OK else STATUS_PARTIAL_OCR
 
+    # OD-55. Normalised LAST, so coverage outranks confidence: a document that
+    # was both OCR'd and cut short reports the missing pages, not the OCR
+    # caveat. An empty list means "nothing was skipped" and must NOT set the
+    # status — a signal that fires on every healthy document is worthless.
+    unread = _normalise_unread_pages(unread_pages)
+    if unread:
+        status = STATUS_INCOMPLETE_PAGES
+
     return {
         "doc_type": doc_type,
         "source_doc": source_doc,
@@ -2667,6 +2813,11 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
         # (filing-auto-persist.ts), so it fits with a wide margin.
         "page_texts": [[i, t] for i, t in page_texts if (t or "").strip()],
         "extraction_status": status,
+        # OD-55: the identities, never a count. Omitted entirely (rather than
+        # emitted as an empty list) on a complete read, so a consumer testing
+        # `if envelope.get("unread_pages")` cannot be misled by a falsy-but-
+        # present key, and the common case does not carry a dead field.
+        **({"unread_pages": unread} if unread else {}),
         "unit": meta.get("unit"),
         "fiscal_years": meta.get("fiscal_years") or [],
         "fields": fields,
@@ -2689,6 +2840,7 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
             p.close()
 
     ocr_confidence = {}
+    unread_pages = []
     if ocr:
         import ocr_pages
         scanned = [i for i, t in page_texts if ocr_pages.needs_ocr(t)]
@@ -2697,14 +2849,62 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
             if not ocr_pages.backend_available(backend):
                 sys.stderr.write("ocr backend %s unavailable; pages %s left as-is\n"
                                  % (backend, scanned))
+                # OD-55: an unavailable backend is not a silent no-op. These
+                # pages needed OCR, did not get it, and the document is
+                # therefore NOT fully read — say so by page number, with the
+                # cause, instead of returning a status that claims a clean read.
+                unread_pages = [(i, "ocr_backend_unavailable:%s" % backend) for i in scanned]
             else:
-                recovered = ocr_pages.ocr_pdf_pages(
-                    pdf_path, scanned, ocr_dpi or ocr_pages.DEFAULT_DPI, backend)
+                # OD-55: OCR one page at a time and keep the recovered text as
+                # we go, so that a ceiling kill (SIGTERM from the external
+                # supervisor, or the spawn timeout) loses only the page in
+                # flight — and so the pages never reached are NAMED.
+                #
+                # `ocr_pdf_pages` returns only after the whole list is done, so
+                # an interrupted run through it yielded nothing at all and
+                # could not say what it had missed. Consuming the generator
+                # directly is what makes partial progress reportable.
                 by_page = dict(page_texts)
-                for idx, text, conf in recovered:
-                    by_page[idx] = text
-                    ocr_confidence[idx] = conf
-                page_texts = sorted(by_page.items())
+                done = set()
+                stop_reason = "ceiling_reached"
+                try:
+                    for idx, image, _scale in ocr_pages.render_pages_scaled(
+                        pdf_path, scanned, ocr_dpi or ocr_pages.DEFAULT_DPI,
+                        ocr_pages.MAX_EDGE_PX
+                    ):
+                        text, conf = ocr_pages.ocr_image(image, backend)
+                        by_page[idx] = text
+                        ocr_confidence[idx] = conf
+                        done.add(idx)
+                except _CEILING_INTERRUPTS as exc:
+                    # OD-55: the interrupt is SWALLOWED, not propagated, and
+                    # this is the heart of the slice. A 555-page RHP whose OCR
+                    # pass is stopped on its 58th page has already spent ~45
+                    # minutes recovering 57 pages of real content; re-raising
+                    # would throw all of it away and report a failed document,
+                    # which is precisely the "partial read discarded" outcome
+                    # the owner's decision forbids. So the pages that finished
+                    # are kept, the pages that did not are NAMED below, and the
+                    # caller gets a readable envelope instead of a traceback.
+                    #
+                    # Narrow on purpose (`_CEILING_INTERRUPTS`): a MemoryError
+                    # must still reach main()'s handler, which has its own
+                    # contract (JSON + exit 75) that the node caller reads to
+                    # distinguish a memory kill from a slow document.
+                    stop_reason = _stop_reason_for(exc)
+                    sys.stderr.write(
+                        "ocr pass stopped after %d of %d pages (%s); unread pages "
+                        "are named in the envelope\n"
+                        % (len(done), len(scanned), stop_reason)
+                    )
+                finally:
+                    # Runs on the normal path AND on an interrupt, so the
+                    # envelope is shaped from what actually finished rather
+                    # than from what was planned.
+                    unread_pages = [
+                        (i, stop_reason) for i in scanned if i not in done
+                    ]
+                    page_texts = sorted(by_page.items())
 
     def tables_for_page(index):
         """Tables from ONE page, opened and closed for that page alone.
@@ -2730,7 +2930,8 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
 
     return run(page_texts, doc_type, os.path.basename(pdf_path), segment,
                ocr_confidence or None, issue_size_rupees=issue_size_rupees,
-               tables_for_page=tables_for_page)
+               tables_for_page=tables_for_page,
+               unread_pages=unread_pages or None)
 
 
 def main():

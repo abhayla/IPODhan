@@ -1,0 +1,11 @@
+{
+  "id": "r_provenance_parent_not_null",
+  "findingClass": "a field_sources row names a field whose value on the parent row is NULL — a false claim that a source supplied a value which does not exist, so every audit reading field_sources reports the field as sourced and healthy while the page shows nothing",
+  "round7Findings": [],
+  "sourceTask": "#654 (2026-09-16): two IPOs that were OPEN and UPCOMING got no NSE documents because their NSE symbol was missing, while field_sources said CHITTORGARH had supplied it; 650 rows across 14 fields on staging, 453 across 13 on prod",
+  "registryClass": "absence-that-looks-like-a-value",
+  "failThreshold": "any field_sources row whose named field resolves to a column on its parent table (ipos / ipo_details) and whose value in that column IS NULL; generic over columns (read from information_schema) so a field a future scraper starts writing is covered without being added here; NULL only, never falsiness, because 0/false/'' are values a source genuinely supplied",
+  "severity": "P1",
+  "unverifiableWhen": "field_sources or a parent table is not readable — reported as UNVERIFIABLE with the error, never as a PASS. A field_name that matches no column on the parent table is reported as a NOTE rather than counted: that is a different defect (provenance for a field the table does not have, e.g. ipos.listingExchange) and folding it in would hide it inside this check's zero.",
+  "section": "checks"
+}

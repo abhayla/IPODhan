@@ -175,10 +175,27 @@ describe('checkMergeEligibility', () => {
     expect(checkMergeEligibility(base)).toEqual({ eligible: true });
   });
 
-  it('refuses when open dates differ (two different offers)', () => {
-    const result = checkMergeEligibility({ ...base, dropOpenDate: '2026-09-10' });
+  it('is eligible when open dates are exactly 3 days apart (the invariant tolerance)', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-07-26', dropOpenDate: '2026-07-29' });
+    expect(result).toEqual({ eligible: true });
+  });
+
+  it('refuses when open dates are 4 days apart, naming the spread and the tolerance', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: '2026-07-26', dropOpenDate: '2026-07-30' });
     expect(result.eligible).toBe(false);
-    expect((result as { reason: string }).reason).toMatch(/open on different dates/);
+    expect((result as { reason: string }).reason).toMatch(/4 day\(s\) apart/);
+    expect((result as { reason: string }).reason).toMatch(/3-day tolerance/);
+  });
+
+  it('refuses when only one side has a readable open_date', () => {
+    const result = checkMergeEligibility({ ...base, dropOpenDate: null });
+    expect(result.eligible).toBe(false);
+    expect((result as { reason: string }).reason).toMatch(/cannot compare open dates/);
+  });
+
+  it('is eligible (falls through to other checks) when NEITHER side has an open_date', () => {
+    const result = checkMergeEligibility({ ...base, keepOpenDate: null, dropOpenDate: null });
+    expect(result).toEqual({ eligible: true });
   });
 
   it('refuses when names do not fold to the same string, unless forced', () => {
@@ -213,6 +230,77 @@ describe('checkMergeEligibility', () => {
       identifiers: [{ column: 'cin', keepValue: 'U11111', dropValue: 'U11111' }],
     });
     expect(result.eligible).toBe(true);
+  });
+
+  // Tier A finding on #672: cube-highways-trust (issue_size 0, symbol NULL) vs
+  // cube-highways-trust-cube-highways-trust-invit (issue_size Rs 5,000cr) had nothing to refuse
+  // it under the 3-day date tolerance — neither the date check, the name fold, nor the identifier
+  // loop (which only fires when BOTH sides carry a value) catches a one-sided-absent identifier.
+  describe('issue_size agreement (Tier A finding on #672)', () => {
+    it('refuses when both sides carry a non-zero issue_size that differs by more than 1%, naming both values', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '0',
+        dropIssueSize: '50000000000',
+      });
+      // 0 reads as ABSENT, so this pair alone must NOT refuse — the real two-sided-disagreement
+      // case is the next assertion.
+      expect(result.eligible).toBe(true);
+
+      const disagreeing = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '2000000000',
+      });
+      expect(disagreeing.eligible).toBe(false);
+      expect((disagreeing as { reason: string }).reason).toMatch(/issue_size disagrees/);
+      expect((disagreeing as { reason: string }).reason).toMatch(/1000000000/);
+      expect((disagreeing as { reason: string }).reason).toMatch(/2000000000/);
+    });
+
+    it('is eligible when one side is 0 (0 reads as ABSENT, nothing to disagree about)', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '0',
+        dropIssueSize: '50000000000',
+      });
+      expect(result).toEqual({ eligible: true });
+    });
+
+    it('is eligible when one side is NULL (absent)', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: null,
+        dropIssueSize: '50000000000',
+      });
+      expect(result).toEqual({ eligible: true });
+    });
+
+    it('is eligible when both sides carry the same (or near-identical, within 1%) issue_size', () => {
+      const exact = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '1000000000',
+      });
+      expect(exact).toEqual({ eligible: true });
+
+      const withinTolerance = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '1005000000', // 0.5% apart
+      });
+      expect(withinTolerance).toEqual({ eligible: true });
+    });
+
+    it('is eligible when issue_size differs but --set-issue-size + --issue-size-note were given (acknowledged correction)', () => {
+      const result = checkMergeEligibility({
+        ...base,
+        keepIssueSize: '1000000000',
+        dropIssueSize: '2000000000',
+        issueSizeCorrectionAcknowledged: true,
+      });
+      expect(result).toEqual({ eligible: true });
+    });
   });
 });
 
@@ -255,10 +343,10 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
     { column: 'cin', value: 'U11111MH2020PLC123456', source: 'ADMIN', confidence: 100, note: 'carried' },
   ];
 
-  it('passes every check on a clean post-apply state', () => {
+  it('passes every check on a clean post-apply state (real row shape: snake_case keys)', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: '2026-09-20', cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: true,
       sameDaySiblingSlugs: [],
@@ -297,7 +385,7 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
   it('fails a carried-field check when the survivor does not actually carry the patched value', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: null, cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: null, cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: true,
       sameDaySiblingSlugs: [],
@@ -310,7 +398,7 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
   it('fails "slug redirect present" when the redirect row is missing', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: '2026-09-20', cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: false,
       sameDaySiblingSlugs: [],
@@ -322,7 +410,7 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
   it('same-day siblings is informational only — never fails the readback', () => {
     const checks = verifyMergeReadback({
       dropRowCount: 0,
-      survivor: { listingDate: '2026-09-20', cin: 'U11111MH2020PLC123456' },
+      survivor: { listing_date: '2026-09-20', cin: 'U11111MH2020PLC123456' },
       patch,
       redirectExists: true,
       sameDaySiblingSlugs: ['some-other-ipo-slug'],
@@ -331,5 +419,42 @@ describe('verifyMergeReadback (MAJOR-2, PR #433 review)', () => {
     const check = checks.find((c) => c.name === 'same-day siblings (informational)');
     expect(check?.pass).toBe(true);
     expect(check?.detail).toMatch(/some-other-ipo-slug/);
+  });
+
+  // DEFECT 1 (2026-09-16 staging dedupe repair): survivor rows come from
+  // `db.execute(sql\`select * from ipos ...\`)` in repair-merge-duplicate-ipo.ts,
+  // whose row keys are the RAW SNAKE_CASE column names Postgres returns — never
+  // camelCase. A survivor object built with camelCase keys (as every other test
+  // in this file used) hides the bug; this test uses the real shape.
+  it('reads a snake_case survivor row correctly for a multi-word carried column (real row shape)', () => {
+    const snakeCasePatch: CarryFieldPatch[] = [
+      { column: 'allotment_date', value: '2026-09-20', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { allotment_date: '2026-09-20' },
+      patch: snakeCasePatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field allotment_date');
+    expect(check?.pass).toBe(true);
+  });
+
+  it('still fails a snake_case survivor when the carried value is genuinely missing (positive control)', () => {
+    const snakeCasePatch: CarryFieldPatch[] = [
+      { column: 'allotment_date', value: '2026-09-20', source: 'CHITTORGARH', confidence: 70, note: 'carried' },
+    ];
+    const checks = verifyMergeReadback({
+      dropRowCount: 0,
+      survivor: { allotment_date: null },
+      patch: snakeCasePatch,
+      redirectExists: true,
+      sameDaySiblingSlugs: [],
+      keepId,
+    });
+    const check = checks.find((c) => c.name === 'carried field allotment_date');
+    expect(check?.pass).toBe(false);
   });
 });

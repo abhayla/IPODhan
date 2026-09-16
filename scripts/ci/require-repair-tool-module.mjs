@@ -22,7 +22,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /** Files that must import the module (basename match), relative to SCRIPTS_DIR. */
-export const TOOL_FILENAME_PATTERN = /^(repair|backfill)-.*\.ts$/;
+export const TOOL_FILENAME_PATTERN = /^(repair|backfill|refresh)-.*\.ts$/;
 
 /** Any import specifier that resolves to the shared module. */
 export const MODULE_IMPORT_PATTERN = /^[ 	]*import\s[\s\S]{0,400}?from\s+['"][^'"]*lib\/repair-tool(\.js)?['"]/m;

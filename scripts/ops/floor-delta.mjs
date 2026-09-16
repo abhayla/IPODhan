@@ -31,6 +31,7 @@
 // delta run into a crashed one.
 
 import { readFileSync } from 'node:fs';
+import { istDayIso } from '../lib/ist-day.mjs';
 
 const FAIL_LINE = /^\[FAIL\]\s+(\S+)\s+(.*)$/;
 const PASS_LINE = /^\[PASS\]\s+(\S+)\s+(.*)$/;
@@ -118,7 +119,7 @@ export function buildNotifyPayload(summary, { newIds, newEntitiesByCheck }) {
     title: hasNew ? 'nightly floor: NEW finding(s)' : 'nightly floor: no new findings',
     body: summary.slice(0, 3500),
     type: 'floor-delta',
-    dedupeKey: `floor-delta-${new Date().toISOString().slice(0, 10)}`,
+    dedupeKey: `floor-delta-${istDayIso()}`,
   };
 }
 

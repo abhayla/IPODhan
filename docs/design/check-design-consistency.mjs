@@ -13,10 +13,15 @@
 // `file:line` citation still points at a line that exists: a citation nobody can follow is how
 // seven false claims about our own code survived the first draft.
 //
-//   node docs/design/check-design-consistency.mjs           report, exit 0
-//   node docs/design/check-design-consistency.mjs --gate     report + exit 1 on any FAIL
+//   node docs/design/check-design-consistency.mjs                report + exit 1 on any FAIL (default: gate)
+//   node docs/design/check-design-consistency.mjs --gate          same as the default; kept as an explicit no-op alias
+//   node docs/design/check-design-consistency.mjs --report-only   report only, exit 0 even on FAIL (advisory runs, never CI)
 //
-// EXIT CODES: 0 all consistent · 1 at least one inconsistency · 2 the check itself broke.
+// EXIT CODES: 0 all consistent (or --report-only) · 1 at least one inconsistency (default/--gate) · 2 the check itself broke.
+//
+// #659 RCA: this script used to exit 0 on FAIL unless called with --gate. docs-gate.yml called it with
+// no flag, so a design FAIL printed [FAIL] but the workflow step reported SUCCESS. The default is now
+// fail-closed (gate behaviour); --report-only is the explicit opt-out for a non-blocking read.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,7 +34,9 @@ const DESIGN = path.join(HERE, 'data-sourcing-pull-model.md');
 const FINDINGS = path.join(HERE, 'findings.json');
 const SPEC = path.join(HERE, 'field-source-resolution.spec.mjs');
 
-const gate = process.argv.includes('--gate');
+const reportOnly = process.argv.includes('--report-only');
+const gate = process.argv.includes('--gate'); // accepted as a no-op alias for the fail-closed default
+console.log(`mode: ${reportOnly ? 'report-only' : 'gate (default)'}`);
 const results = [];
 const ok = (id, msg) => results.push({ id, pass: true, msg });
 const fail = (id, msg) => results.push({ id, pass: false, msg });
@@ -718,4 +725,4 @@ try {
 const failed = results.filter((r) => !r.pass);
 for (const r of results) console.log(`${r.pass ? '[PASS]' : '[FAIL]'} ${r.id}  ${r.msg}`);
 console.log(`\n${results.length - failed.length}/${results.length} consistent.`);
-if (failed.length && gate) process.exit(1);
+if (failed.length && !reportOnly) process.exit(1);
