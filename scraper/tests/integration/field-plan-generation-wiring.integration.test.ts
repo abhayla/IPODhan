@@ -44,7 +44,9 @@ import { loadFieldManifest } from '../../src/config/field-manifest-loader';
  * ipo_field_plan integration file at a time, never in parallel):
  *   cd scraper
  *   PW=$(grep '^IPODHAN_APP_DB_PASSWORD=' /d/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
- *   DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" \
+ *   DATABASE_URL=<the sanctioned ipodhan_test URL -- see the recipe; NOT repeated
+ *     here, because a literal connection string in a test file is refused by the
+ *     scraper-integration-target guard, which cannot vet a string it did not build>
  *   REDIS_URL="redis://localhost:6379/15" \
  *   npx vitest run -c vitest.integration.config.ts \
  *     tests/integration/field-plan-generation-wiring.integration.test.ts
