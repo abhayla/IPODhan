@@ -11,9 +11,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   alreadyRepairedKey,
+  assertNoSchemaDrift,
   buildAlreadyRepairedSet,
   decideProdWriteRefusal,
+  decideSchemaDriftRefusal,
   openRepairDb,
+  probeFieldSourcesRowKeyColumn,
   PRODUCTION_DATABASE_NAME,
   queryCurrentDatabase,
   readFieldSource,
@@ -109,6 +112,88 @@ describe('openRepairDb — prints the real database name and gates the write', (
     expect(onRefuse).not.toHaveBeenCalled();
     expect(r.isProd).toBe(true);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('ALLOW-PROD'));
+  });
+});
+
+describe('decideSchemaDriftRefusal — the #713 prod schema-drift preflight (decision 4)', () => {
+  it('MUTATION: deleting this refusal turns it red — --apply is refused when field_sources.row_key is absent', () => {
+    const d = decideSchemaDriftRefusal({ apply: true, hasRowKeyColumn: false, toolName: 'tool-x' });
+    expect(d.refuse).toBe(true);
+    expect(d.reason).toMatch(/field_sources\.row_key/);
+    expect(d.reason).toMatch(/#713/);
+    expect(d.reason).toMatch(/tool-x/);
+  });
+
+  it('allows --apply when the column is present', () => {
+    expect(decideSchemaDriftRefusal({ apply: true, hasRowKeyColumn: true }).refuse).toBe(false);
+  });
+
+  it('never refuses a dry run, even when the column is absent', () => {
+    expect(decideSchemaDriftRefusal({ apply: false, hasRowKeyColumn: false }).refuse).toBe(false);
+  });
+});
+
+describe('probeFieldSourcesRowKeyColumn — mocked information_schema.columns probe', () => {
+  it('returns true when the probe query returns a row', async () => {
+    const execute = vi.fn().mockResolvedValue([{ '?column?': 1 }]);
+    expect(await probeFieldSourcesRowKeyColumn({ execute })).toBe(true);
+  });
+
+  it('returns false when the probe query returns no rows (the #713 class)', async () => {
+    const execute = vi.fn().mockResolvedValue([]);
+    expect(await probeFieldSourcesRowKeyColumn({ execute })).toBe(false);
+  });
+
+  it('handles a node-postgres-shaped {rows: [...]} result', async () => {
+    const execute = vi.fn().mockResolvedValue({ rows: [] });
+    expect(await probeFieldSourcesRowKeyColumn({ execute })).toBe(false);
+  });
+});
+
+describe('assertNoSchemaDrift — composed preflight (mirrors openRepairDb shape)', () => {
+  it('MUTATION: refuses and calls onRefuse when --apply is given and the column probe comes back empty (the prod-on-old-schema class from #713)', async () => {
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const execute = vi.fn().mockResolvedValue([]); // column probe: absent
+    const r = await assertNoSchemaDrift({ execute }, { apply: true, toolName: 'tool-x', log: vi.fn(), error, onRefuse });
+    expect(r.refused).toBe(true);
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('#713'));
+  });
+
+  it('does not refuse when the column probe comes back present', async () => {
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([{ x: 1 }]);
+    const r = await assertNoSchemaDrift({ execute }, { apply: true, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(r.refused).toBe(false);
+    expect(onRefuse).not.toHaveBeenCalled();
+  });
+
+  it('never refuses a dry run regardless of the probe result', async () => {
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockResolvedValue([]);
+    const r = await assertNoSchemaDrift({ execute }, { apply: false, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(r.refused).toBe(false);
+    expect(onRefuse).not.toHaveBeenCalled();
+  });
+
+  it('fails closed (refuses) with the #713 message PLUS the underlying error text when the probe itself throws (signal-ownership R6) — never a bare stack', async () => {
+    const onRefuse = vi.fn();
+    const error = vi.fn();
+    const execute = vi.fn().mockRejectedValue(new Error('connection terminated unexpectedly'));
+    const r = await assertNoSchemaDrift({ execute }, { apply: true, toolName: 'tool-x', log: vi.fn(), error, onRefuse });
+    expect(r.refused).toBe(true);
+    expect(onRefuse).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('#713'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('connection terminated unexpectedly'));
+  });
+
+  it('a throwing probe never refuses a dry run — a dry run never writes, so a probe failure has nothing to protect', async () => {
+    const onRefuse = vi.fn();
+    const execute = vi.fn().mockRejectedValue(new Error('connection terminated unexpectedly'));
+    const r = await assertNoSchemaDrift({ execute }, { apply: false, toolName: 'tool-x', log: vi.fn(), error: vi.fn(), onRefuse });
+    expect(r.refused).toBe(false);
+    expect(onRefuse).not.toHaveBeenCalled();
   });
 });
 

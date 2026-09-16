@@ -52,20 +52,38 @@
  * DATABASE_NAME=ipodhan_staging):
  *   npx tsx scripts/repair-segment-provenance.ts          # dry-run
  *   npx tsx scripts/repair-segment-provenance.ts --apply --allow-prod
+ *
+ * `--blank-unsourced` (decision 4 / delta-2 ruling 32, 2026-09-16): for a
+ * row this tool already classifies `report-unprovenanced-ipo` — an IPO row
+ * with NO field_sources provenance AND no source in either exchange master —
+ * set `segment` to NULL instead of leaving the guessed value in place. This
+ * is a DIFFERENT population than slice 3b's default mode: default mode
+ * treats "sourced vs not" as already expressed by the missing provenance row
+ * and leaves the label untouched; `--blank-unsourced` is for the subset of
+ * those rows the owner has separately confirmed can NEVER be sourced (never
+ * listed, so absent from both exchange masters permanently) — see ruling 32.
+ * Writes NO field_sources row for the blanked field: the ABSENCE is what
+ * `d_segment_provenance` detects, and a reason row would defeat that (lane
+ * C's board ruling, O-16 / #658: "delete-only", never a placeholder marker).
+ * A row whose oracle outcome is `unresolved-group` (BSE group X/TS) is
+ * REFUSED, not blanked — the group's meaning is unresolved, not the
+ * company's sourceability; printed separately from the blanked set.
  */
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import logger from '../src/utils/logger.js';
-import { openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
+import { assertNoSchemaDrift, openRepairDb, upsertFieldSource, writeLedgerFile } from './lib/repair-tool.js';
 import { fetchNseEquityMasters } from '../src/scrapers/nse-equity-master.js';
 import { resolveSegmentFromMasters, type SegmentResolution } from '../src/scrapers/exchange-segment-oracle.js';
 import { fetchBseScripMaster, toOracleScrips } from '../src/scrapers/bse-scrip-master.js';
 
 const APPLY = process.argv.includes('--apply');
 const ALLOW_PROD = process.argv.includes('--allow-prod');
+const BLANK_UNSOURCED = process.argv.includes('--blank-unsourced');
 const UPDATED_BY = 'SYSTEM_LANEC_ITEM02_S3B_REPAIR';
+const BLANK_UPDATED_BY = 'SYSTEM_DECISION4_BLANK_UNSOURCED';
 
 export type SegmentValue = 'MAINBOARD' | 'SME' | null;
 
@@ -160,9 +178,83 @@ export function decideSegmentProvenance(row: SegmentProvenanceRow): SegmentRepai
   };
 }
 
+export type BlankUnsourcedAction =
+  | 'blank'
+  | 'refuse-unresolved-group'
+  | 'refuse-ambiguous-name'
+  | 'refuse-unresolved'
+  | 'skip';
+
+export interface BlankUnsourcedDecision {
+  action: BlankUnsourcedAction;
+  reason: string;
+}
+
+/**
+ * Pure per-row decision for `--blank-unsourced` (ruling 32) — no DB,
+ * unit-testable in isolation. Only rows the DEFAULT mode already classified
+ * `report-unprovenanced-ipo` are candidates at all; everything else (already
+ * NULL, already provenanced, non-IPO, sourced) is `skip` here because the
+ * default decision already handled it correctly.
+ *
+ * `blank` is a positive allowlist, not a default: only an oracle outcome the
+ * caller has explicitly confirmed means "not sourceable" reaches it. Every
+ * other outcome — including no resolution at all — REFUSES rather than
+ * falling through to blank (T-714 / PR #714 review): an `ambiguous-name`
+ * resolution (the company's name is held by more than one listed company)
+ * is a refusal to pick between candidates, not evidence the row can never be
+ * sourced, exactly like `unresolved-group`'s refusal to pick a board for an
+ * unmapped BSE group. A `resolution === undefined` row never ran the oracle
+ * at all (the map-only path) and refusing it, rather than blanking it, means
+ * a future wiring bug that stops calling the oracle fails closed (nothing
+ * gets blanked) instead of silently blanking every unprovenanced IPO row.
+ */
+export function decideBlankUnsourced(
+  decision: SegmentRepairDecision,
+  resolution: SegmentResolution | undefined
+): BlankUnsourcedDecision {
+  if (decision.action !== 'report-unprovenanced-ipo') {
+    return { action: 'skip', reason: 'not an unprovenanced IPO row — default mode already decided this one' };
+  }
+  if (!resolution) {
+    return {
+      action: 'refuse-unresolved',
+      reason:
+        'no oracle resolution was recorded for this row (unresolved, not unsourceable) — refusing to blank it ' +
+        'without positive evidence the company cannot be sourced',
+    };
+  }
+  if (resolution.outcome === 'unresolved-group') {
+    return {
+      action: 'refuse-unresolved-group',
+      reason:
+        `BSE group is not in the evidenced MAINBOARD/SME mapping (${resolution.reason}) — this is unresolved ` +
+        'MEANING, not an unsourceable company; refusing to blank it',
+    };
+  }
+  if (resolution.outcome === 'ambiguous-name') {
+    return {
+      action: 'refuse-ambiguous-name',
+      reason:
+        `name held by more than one listed company (${resolution.reason}) — this is a refusal to pick, not an ` +
+        'unsourceable row; refusing to blank it',
+    };
+  }
+  if (resolution.outcome !== 'no-source') {
+    return {
+      action: 'refuse-unresolved',
+      reason: `oracle outcome '${resolution.outcome}' is not the evidenced no-source case — refusing to blank it`,
+    };
+  }
+  return {
+    action: 'blank',
+    reason: 'no source in any register (neither exchange master, no verified override) — blanking to NULL, no provenance row written',
+  };
+}
+
 async function main() {
   console.log('='.repeat(80));
-  console.log(`SEGMENT PROVENANCE REPAIR (lane C item 2 slice 3b) — ${APPLY ? 'APPLY' : 'DRY-RUN'}`);
+  console.log(`SEGMENT PROVENANCE REPAIR (lane C item 2 slice 3b) — ${APPLY ? 'APPLY' : 'DRY-RUN'}${BLANK_UNSOURCED ? ' [--blank-unsourced]' : ''}`);
   console.log('='.repeat(80));
 
   await openRepairDb(db, {
@@ -170,6 +262,7 @@ async function main() {
     allowProd: ALLOW_PROD,
     toolName: 'repair-segment-provenance',
   });
+  await assertNoSchemaDrift(db, { apply: APPLY, toolName: 'repair-segment-provenance' });
 
   const candidates = await db
     .select({
@@ -296,6 +389,73 @@ async function main() {
   console.log(
     `rows REPORTED ONLY, never written (report-unprovenanced-ipo — unsourced IPO labels left as-is): ${toReport.length}`
   );
+
+  if (BLANK_UNSOURCED) {
+    const blankDecisions = toReport.map((d) => ({ ...d, blank: decideBlankUnsourced(d.decision, d.resolution) }));
+    const toBlank = blankDecisions.filter((d) => d.blank.action === 'blank');
+    const refusedGroup = blankDecisions.filter((d) => d.blank.action === 'refuse-unresolved-group');
+
+    console.log(`\n--blank-unsourced: ${toReport.length} unprovenanced IPO rows considered`);
+    for (const d of blankDecisions) {
+      if (d.blank.action === 'skip') continue;
+      console.log(`  - ${d.row.companyName} [${d.blank.action}]: ${d.blank.reason}`);
+    }
+    console.log(`rows that WOULD be blanked to NULL (no provenance row): ${toBlank.length}`);
+    console.log(`rows REFUSED (unresolved BSE group, not unsourceable): ${refusedGroup.length}`);
+
+    if (!APPLY) {
+      console.log(`\nDRY-RUN: ${toBlank.length} rows WOULD be blanked. Re-run with --apply --blank-unsourced (and --allow-prod against production).`);
+      console.log('='.repeat(80));
+      process.exit(0);
+    }
+
+    if (toBlank.length === 0) {
+      console.log('\nNothing to blank.');
+      console.log('='.repeat(80));
+      process.exit(0);
+    }
+
+    const blankBackupPath = `evidence/${new Date().toISOString().slice(0, 10)}-decision4-blank-unsourced/before.json`;
+    writeLedgerFile(blankBackupPath, { capturedAt: new Date().toISOString(), rows: toBlank.map((d) => d.row) });
+    console.log(`backup written: ${blankBackupPath}`);
+
+    await db.transaction(async (tx) => {
+      for (const { row } of toBlank) {
+        // No provenance row: the ABSENCE of a field_sources row for this field is
+        // exactly what d_segment_provenance detects, and lane C's board ruling
+        // (O-16 / #658) is "delete-only" — never write a reason/placeholder row.
+        await tx
+          .update(schema.ipos)
+          .set({ segment: null })
+          .where(eq(schema.ipos.id, row.id));
+      }
+    });
+
+    const blankReadBack = [];
+    for (const { row } of toBlank) {
+      const [r] = await db
+        .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, segment: schema.ipos.segment })
+        .from(schema.ipos)
+        .where(eq(schema.ipos.id, row.id))
+        .limit(1);
+      blankReadBack.push(r);
+    }
+    console.log('\nread-back after blank:');
+    console.log(JSON.stringify(blankReadBack, null, 1));
+
+    const blankLedgerPath = `evidence/${new Date().toISOString().slice(0, 10)}-decision4-blank-unsourced/applied.json`;
+    writeLedgerFile(blankLedgerPath, {
+      appliedAt: new Date().toISOString(),
+      updatedBy: BLANK_UPDATED_BY,
+      written: toBlank.length,
+      decisions: toBlank.map((d) => ({ id: d.row.id, companyName: d.row.companyName })),
+    });
+    console.log(`ledger written: ${blankLedgerPath}`);
+
+    console.log('\nAPPLY complete.');
+    console.log('='.repeat(80));
+    process.exit(0);
+  }
 
   if (!APPLY) {
     console.log(`\nDRY-RUN: ${toTouch.length} rows WOULD be written. Re-run with --apply (and --allow-prod against production).`);

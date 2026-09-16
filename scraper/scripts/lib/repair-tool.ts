@@ -250,6 +250,113 @@ export async function upsertFieldSource(
   return { previousSource };
 }
 
+/**
+ * Pure refusal decision for the prod-schema-drift preflight (#713): a repair
+ * tool must refuse its first WRITE, before opening a transaction, when the
+ * connected database is missing a column the tool's own writes depend on
+ * (`field_sources.row_key` for every tool that goes through
+ * `upsertFieldSource`). #713 measured this live 2026-09-16: three repair
+ * tools ran up to 12 of 13 planned writes on production before the 13th
+ * crashed on a missing column mid-transaction — stopped safely (0 rows
+ * changed, confirmed by read-back) but only by luck of transaction ordering,
+ * not by a check. `probeColumn` is injected so this is unit-testable without
+ * a live database (a mocked column probe) and mirrors
+ * `assert-schema-drift.ts`'s own `information_schema.columns` query shape,
+ * never a second implementation of that lookup.
+ */
+export function decideSchemaDriftRefusal(input: {
+  apply: boolean;
+  hasRowKeyColumn: boolean;
+  toolName?: string;
+}): { refuse: boolean; reason?: string } {
+  if (!input.apply) return { refuse: false }; // a dry run never writes — nothing to refuse
+  if (input.hasRowKeyColumn) return { refuse: false };
+  const prefix = input.toolName ? `${input.toolName}: ` : '';
+  return {
+    refuse: true,
+    reason:
+      `${prefix}refusing to APPLY writes — the connected database is missing ` +
+      `"field_sources.row_key", which every write through upsertFieldSource() depends on. ` +
+      'This is the production schema-drift class tracked in issue #713 (migration ' +
+      '20260910043758_salty_shen.sql has not run against this database); run db:migrate ' +
+      'first, or point this tool at a database that already has it.',
+  };
+}
+
+/**
+ * Ask the SAME pool that will do the writing whether `field_sources.row_key`
+ * exists live, via `information_schema.columns` — the identical lookup shape
+ * `assert-schema-drift.ts` uses, never a second implementation of that query.
+ */
+export async function probeFieldSourcesRowKeyColumn(dbLike: ExecuteLike): Promise<boolean> {
+  const result = await dbLike.execute(sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'field_sources' AND column_name = 'row_key'
+    LIMIT 1
+  `);
+  const rows = Array.isArray(result) ? result : (result as { rows?: unknown[] })?.rows;
+  return Boolean(rows && rows.length > 0);
+}
+
+/**
+ * Composed preflight: probe the live column, decide, and (by default) print
+ * + exit on refusal — mirroring `openRepairDb`'s shape so every repair tool
+ * calls one more line, not a hand-rolled probe. `onRefuse` is injectable for
+ * tests, same pattern as `openRepairDb`.
+ */
+export async function assertNoSchemaDrift(
+  dbLike: ExecuteLike,
+  options: {
+    apply: boolean;
+    toolName: string;
+    log?: (line: string) => void;
+    error?: (line: string) => void;
+    onRefuse?: (reason: string) => void;
+  }
+): Promise<{ refused: boolean }> {
+  const log = options.log ?? ((l: string) => console.log(l));
+  const err = options.error ?? ((l: string) => console.error(l));
+
+  let hasRowKeyColumn: boolean;
+  try {
+    hasRowKeyColumn = await probeFieldSourcesRowKeyColumn(dbLike);
+  } catch (probeError) {
+    // The probe itself failing (connection drop, permission error, etc.) is
+    // indistinguishable from "the column is missing" if swallowed — and
+    // indistinguishable from "the column is present" if ignored. A dry run
+    // never writes, so a probe failure has nothing to protect and is
+    // reported but not refused (signal-ownership R6: the failure carries its
+    // cause). An --apply run fails CLOSED: refuse, and print the #713
+    // message PLUS the underlying error text, never a bare stack.
+    const causeText = probeError instanceof Error ? probeError.message : String(probeError);
+    log(`schema-drift preflight: probe FAILED (${causeText}) — treating as unknown, not as "column present"`);
+    if (!options.apply) {
+      return { refused: false };
+    }
+    const prefix = options.toolName ? `${options.toolName}: ` : '';
+    const reason =
+      `${prefix}refusing to APPLY writes — the schema-drift preflight probe for ` +
+      '"field_sources.row_key" (issue #713) failed and could not confirm the column exists: ' +
+      `${causeText}`;
+    err(reason);
+    (options.onRefuse ?? ((): void => process.exit(1)))(reason);
+    return { refused: true };
+  }
+
+  log(`schema-drift preflight: field_sources.row_key present = ${hasRowKeyColumn}`);
+  const decision = decideSchemaDriftRefusal({
+    apply: options.apply,
+    hasRowKeyColumn,
+    toolName: options.toolName,
+  });
+  if (decision.refuse) {
+    err(decision.reason!);
+    (options.onRefuse ?? ((): void => process.exit(1)))(decision.reason!);
+    return { refused: true };
+  }
+  return { refused: false };
+}
+
 /** Stable key for the per-field idempotency set. */
 export function alreadyRepairedKey(ipoId: string, fieldName: string): string {
   return `${ipoId}::${fieldName}`;

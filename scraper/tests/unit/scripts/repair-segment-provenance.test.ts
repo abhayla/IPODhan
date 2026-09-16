@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { decideSegmentProvenance, type SegmentProvenanceRow } from '../../../scripts/repair-segment-provenance.js';
+import {
+  decideBlankUnsourced,
+  decideSegmentProvenance,
+  type SegmentProvenanceRow,
+} from '../../../scripts/repair-segment-provenance.js';
+import type { SegmentResolution } from '../../../src/scrapers/exchange-segment-oracle.js';
 
 /**
  * Slice 3b (#lane-C-item-2): `ipos.segment` was written by a binary test
@@ -148,5 +153,88 @@ describe('an oracle refusal is REPORTED, never written', () => {
     expect(d.action).toBe('apply-sourced');
     expect(d.touch).toBe(true);
     expect(d.newSegment).toBe('SME');
+  });
+});
+
+/**
+ * `--blank-unsourced` (decision 4 / delta-2 ruling 32): the 17-vs-2 split
+ * measured on staging — 17 no-source rows blanked, SURYO FOODS (group X) and
+ * NET PIX (group TS) refused because their BSE group's meaning is
+ * unresolved, not because the company is unsourceable. `decideBlankUnsourced`
+ * is a second pass over the SAME per-row `SegmentRepairDecision` the default
+ * mode already computed — only a `report-unprovenanced-ipo` row is even a
+ * candidate.
+ */
+describe('decideBlankUnsourced — ruling 32', () => {
+  const noSourceDecision = decideSegmentProvenance(
+    row({ offeringType: 'IPO', segment: 'MAINBOARD' })
+  );
+
+  function resolution(overrides: Partial<SegmentResolution>): SegmentResolution {
+    return { segment: null, outcome: 'no-source', via: null, reason: 'not found in either master', ...overrides };
+  }
+
+  it('blanks a report-unprovenanced-ipo row with a no-source oracle outcome', () => {
+    const d = decideBlankUnsourced(noSourceDecision, resolution({ outcome: 'no-source' }));
+    expect(d.action).toBe('blank');
+  });
+
+  it('REFUSES a row with NO oracle resolution at all — undefined resolution is unresolved, not unsourceable', () => {
+    const d = decideBlankUnsourced(noSourceDecision, undefined);
+    expect(d.action).toBe('refuse-unresolved');
+    expect(d.reason).toContain('unresolved');
+  });
+
+  it('REFUSES an ambiguous-name row — the name is held by more than one listed company, a refusal to pick, not an unsourceable row (#713/#714)', () => {
+    const d = decideBlankUnsourced(
+      noSourceDecision,
+      resolution({ outcome: 'ambiguous-name', reason: 'name matches more than one listed company' })
+    );
+    expect(d.action).toBe('refuse-ambiguous-name');
+    expect(d.reason).toContain('more than one');
+  });
+
+  it('REFUSES a row whose oracle outcome is unresolved-group — group X/TS meaning is unresolved, not unsourceable (SURYO/NET PIX)', () => {
+    const d = decideBlankUnsourced(
+      noSourceDecision,
+      resolution({ outcome: 'unresolved-group', reason: "BSE group 'X' has no evidenced MAINBOARD/SME mapping" })
+    );
+    expect(d.action).toBe('refuse-unresolved-group');
+    expect(d.reason).toContain('unresolved');
+  });
+
+  it('skips a row the default mode already CLEARED (non-IPO) — not a --blank-unsourced candidate', () => {
+    const cleared = decideSegmentProvenance(row({ offeringType: 'OFS' }));
+    const d = decideBlankUnsourced(cleared, undefined);
+    expect(d.action).toBe('skip');
+  });
+
+  it('skips a row the default mode already SOURCED — not a --blank-unsourced candidate', () => {
+    const sourced = decideSegmentProvenance(row({ offeringType: 'IPO', sourcedSegment: 'SME' }));
+    const d = decideBlankUnsourced(sourced, resolution({ outcome: 'resolved', segment: 'SME' }));
+    expect(d.action).toBe('skip');
+  });
+
+  it('skips a row that already had provenance — not a --blank-unsourced candidate', () => {
+    const provenanced = decideSegmentProvenance(row({ offeringType: 'OFS', hasSegmentProvenance: true }));
+    const d = decideBlankUnsourced(provenanced, undefined);
+    expect(d.action).toBe('skip');
+  });
+
+  it('skips a row already NULL — not a --blank-unsourced candidate', () => {
+    const alreadyNull = decideSegmentProvenance(row({ segment: null }));
+    const d = decideBlankUnsourced(alreadyNull, undefined);
+    expect(d.action).toBe('skip');
+  });
+
+  it('the 17-vs-2 split: 17 no-source rows blank, 2 unresolved-group rows refuse, out of 19 report-only candidates', () => {
+    const rows: Array<{ outcome: SegmentResolution['outcome'] }> = [
+      ...Array(17).fill({ outcome: 'no-source' as const }),
+      { outcome: 'unresolved-group' as const }, // SURYO FOODS, group X
+      { outcome: 'unresolved-group' as const }, // NET PIX, group TS
+    ];
+    const decisions = rows.map((r) => decideBlankUnsourced(noSourceDecision, resolution({ outcome: r.outcome })));
+    expect(decisions.filter((d) => d.action === 'blank')).toHaveLength(17);
+    expect(decisions.filter((d) => d.action === 'refuse-unresolved-group')).toHaveLength(2);
   });
 });
