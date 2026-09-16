@@ -8,7 +8,7 @@
  * The db is a hand-rolled chainable mock (the drizzle query builder shape),
  * so this stays a unit test — no Postgres, no Redis.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MarketHolidayRepository } from './market-holiday-repository';
 
 function makeDb(selectResult: any[] = []) {
@@ -63,6 +63,57 @@ function flattenSql(node: any, out: { text: string[]; params: unknown[] } = { te
   }
   return out;
 }
+
+describe('MarketHolidayRepository — "today" is the IST calendar day, not UTC (#687 slice 3)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('findAll({ upcoming: true }): the date bound uses the IST day at 02:00 IST (still "yesterday" in UTC)', async () => {
+    // 2026-09-15T20:30:00Z is 02:00 IST 16-Sep. The UTC calendar day
+    // (`new Date().toISOString().split('T')[0]`) reads 2026-09-15 here —
+    // one day behind — so a holiday row dated 2026-09-16 would be wrongly
+    // excluded as "in the past" by the old code.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+
+    const { db, whereArgs } = makeDb([]);
+    const redis = makeRedis();
+    const repo = new MarketHolidayRepository(db, redis);
+
+    await repo.findAll({ upcoming: true });
+
+    const where = flattenSql(whereArgs[0]);
+    expect(where.params).toContain('2026-09-16');
+    expect(where.params).not.toContain('2026-09-15');
+  });
+
+  it('findUpcoming(): positive control — a holiday dated one IST day later is not excluded as "today"', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+
+    const { db, whereArgs } = makeDb([]);
+    db.select.mockImplementationOnce(() => {
+      const chain: any = {
+        from: () => chain,
+        where: (w: any) => {
+          whereArgs.push(w);
+          return chain;
+        },
+        orderBy: () => chain,
+        limit: () => Promise.resolve([]),
+      };
+      return chain;
+    });
+    const redis = makeRedis();
+    const repo = new MarketHolidayRepository(db, redis);
+
+    await repo.findUpcoming(5);
+
+    const where = flattenSql(whereArgs[0]);
+    expect(where.params).toContain('2026-09-16');
+  });
+});
 
 describe('MarketHolidayRepository.findAll — year + exchange filters must combine', () => {
   it('year AND exchange together: the generated where() carries BOTH predicates', async () => {
