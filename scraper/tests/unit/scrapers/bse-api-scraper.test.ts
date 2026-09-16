@@ -19,6 +19,7 @@ import {
   type BSESubscriptionRow,
 } from '../../../src/scrapers/bse-api-scraper.js';
 import { validateIPOData, validateSubscriptionData } from '../../../src/utils/validators.js';
+import { istDateIso } from '../../../src/scheduler/due-step-cycle.js';
 import { checkIssueSizeSegmentFloor, ISSUE_SIZE_FLOOR_RUPEES } from '../../../../scripts/lib/detection-floor-checks.mjs';
 
 /** Real-shaped fixtures from the live BSE JSON API (Susan Electricals, IPO_NO 7770). */
@@ -431,5 +432,55 @@ describe('item 14 slice 1 — BSE issue_size vs the independent floor check (rec
 
     expect(proseMainboard).toBe(ISSUE_SIZE_FLOOR_RUPEES.MAINBOARD);
     expect(proseSme).toBe(ISSUE_SIZE_FLOOR_RUPEES.SME);
+  });
+});
+
+describe('bse-api-scraper today derivation uses the IST day (#687 slice 2)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('classifies a row opening today-in-IST as OPEN, not UPCOMING, at 02:00 IST (still yesterday in UTC)', () => {
+    // Mocked instant 2026-09-15T20:30:00Z = 2026-09-16T02:00:00+05:30 (02:00 IST, 16-Sep).
+    // A naive `new Date().toISOString().split('T')[0]` reads this instant as
+    // UTC day 2026-09-15 — one day BEHIND the real IST calendar day — so an
+    // IPO opening 2026-09-16 wrongly classifies as UPCOMING instead of OPEN.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+
+    expect(istDateIso(new Date())).toBe('2026-09-16');
+
+    const listRow: BSEListRow = {
+      ...LIST_ROW,
+      Start_Dt: '2026-09-16T00:00:00',
+      End_Dt: '2026-09-18T00:00:00',
+      Status: 'A',
+    };
+    const detailRow: BSEDetailRow = {
+      ...DETAIL_ROW,
+      Issue_Period: '16 Sep 2026 to 18 Sep 2026',
+    };
+
+    const ipo = mapBSEToScrapedIPO(listRow, detailRow);
+    expect(ipo.status).toBe('OPEN');
+    expect(ipo.openDate).toBe('2026-09-16');
+  });
+
+  it('falls back to the IST today, not the UTC today, when no open date can be parsed', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-15T20:30:00Z'));
+
+    const detailRow: BSEDetailRow = {
+      ...DETAIL_ROW,
+      Issue_Period: 'garbage unparseable period',
+    };
+    const listRow: BSEListRow = {
+      ...LIST_ROW,
+      Start_Dt: 'not-a-date',
+      End_Dt: 'not-a-date',
+    };
+    const ipo = mapBSEToScrapedIPO(listRow, detailRow);
+    expect(ipo.openDate).toBe('2026-09-16');
+    expect(ipo.closeDate).toBe('2026-09-16');
   });
 });
