@@ -70,7 +70,7 @@ jobs:
         # stop catching that pattern class. No deps needed (Node builtins only).
         run: node --test scripts/tests/check-write-ratchet.test.mjs
 
-      - name: Web integration baseline gate self-test (item 1 slice s3d, issue #461)
+      - name: "Web integration baseline gate self-test (item 1 slice s3d, issue #461)"
         # Mutation-proof: scripts/tests/check-web-integration-baseline.test.mjs
         # imports the actual exported functions (extractFailingFiles,
         # normalizeFileName, diffAgainstBaseline) from the checker script, so a
@@ -81,14 +81,14 @@ jobs:
         # (issue #461). No deps needed (Node builtins only).
         run: node --test scripts/tests/check-web-integration-baseline.test.mjs
 
-      - name: Scripts type-check exclude shrink-only guard (issue #434)
+      - name: "Scripts type-check exclude shrink-only guard (issue #434)"
         # config/scripts-typecheck-exclude-baseline.json is the only
         # legitimate source of scraper/tsconfig.scripts.json exclusions; a
         # hand-added exclusion or a grown exclude count turns this red. No
         # deps needed (Node builtins only).
         run: node --test scripts/tests/scripts-typecheck-exclude-shrink.test.mjs
 
-      - name: Substance-check self-tests (#597, #601, #608)
+      - name: "Substance-check self-tests (#597, #601, #608)"
         # These three were UNWIRED and therefore never ran in CI - they passed
         # by not being in the pipeline, which is the wire-or-retire shape this
         # repo already has a failure class for. Found 2026-09-11 while checking
@@ -123,15 +123,13 @@ jobs:
         run: |
           node --test scripts/tests/audit-detection-floor.test.mjs
           node --test scripts/tests/detection-floor-issue-size-select.test.mjs
+          node --test scripts/tests/check-design-consistency-exit.test.mjs
 
-      - name: Ratios extraction-yield check self-test (lane B item 8)
-        # The check this guards was specified as "current_ratio non-null for
-        # every COMPLETED Ratios document". Measured on staging 2026-09-11: 34
-        # such documents exist and every one is PENDING, so the literal reading
-        # is true of the EMPTY SET and would page green forever while the
-        # feature had never run. These tests pin the empty population to
-        # UNVERIFIABLE rather than PASS; flipping it back kills three of them.
-        run: node --test scripts/tests/ratios-extraction-yield.test.mjs
+      - name: "NOT_APPLICABLE documents check self-test (lane B, #677)"
+        # ratios_extraction_yield was retired on 2026-09-16 (#677): its population,
+        # RATIOS_BASIS_ISSUE_PRICE, has no extractor by design, so the check could never
+        # move. The module now NAMES never-extractable PENDING documents by type.
+        run: node --test scripts/tests/not-applicable-documents.test.mjs
 
       - name: Row-key coverage classifier self-test (F-101)
         # The pure classifier's unit proofs ran NOWHERE in CI: a check that
@@ -537,7 +535,7 @@ jobs:
         run: npx vitest run
         working-directory: ./packages/shared
 
-      - name: Run TZ-explicit case driver (issue #478)
+      - name: "Run TZ-explicit case driver (issue #478)"
         # The TZ-explicit case file (tests/tz-cases/*.tzcase.test.ts) is
         # deliberately excluded from vitest.config.ts's own include glob
         # (vitest.tzcase.config.ts) and only ever meaningful when spawned by
@@ -579,7 +577,7 @@ jobs:
         run: npx vitest run --config vitest.config.ts
         working-directory: ./scraper
 
-      - name: Run pipeline stage harness (test ladder, issue #258)
+      - name: "Run pipeline stage harness (test ladder, issue #258)"
         # T-481: the stage-isolated harness implementing
         # docs/reviews/ipo-pipeline-stage-gap-analysis.md section 6 - one
         # fixture-in/expected-output-file-out test per pipeline stage. These
