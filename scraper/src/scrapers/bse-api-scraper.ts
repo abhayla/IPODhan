@@ -404,13 +404,47 @@ async function fetchBSEJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-function asArray<T>(j: unknown): T[] {
+export function asArray<T>(j: unknown): T[] {
   if (Array.isArray(j)) return j as T[];
   if (j && typeof j === 'object') {
     const arr = Object.values(j as Record<string, unknown>).find((v) => Array.isArray(v));
     if (arr) return arr as T[];
   }
   return [];
+}
+
+/**
+ * The current BSE IPO board (`IPO_HomePageDetail/w`), filtered to genuine
+ * IPO rows and retried like every other BSE call. Exported for the
+ * field-plan walk's BSE fetcher (item 6, rank 2) — the SAME headers/backoff
+ * as `scrapeBSEViaAPI`, so the walk is never a second, divergent HTTP client
+ * against BSE (ruling 33: a whole-source fetch, at most once per cycle,
+ * memoised by the caller — this function itself is stateless and safe to
+ * call more than once, the caller's memo is what enforces "once per cycle").
+ */
+export async function fetchBSEBoard(): Promise<BSEListRow[]> {
+  const listJson = await retryWithExponentialBackoff(
+    () => fetchBSEJson<unknown>('IPO_HomePageDetail/w'),
+    3,
+    1000
+  );
+  return asArray<BSEListRow>(listJson).filter((r) => (r.IR_flag || '').toUpperCase() === 'IPO');
+}
+
+/**
+ * One IPO's BSE detail row (`GetMkt_ISSUE_BBS_IPO/w?IPO_NO=`), or `null` when
+ * BSE has nothing for that IPO number. Exported for the same reason as
+ * `fetchBSEBoard` — the field-plan walk's per-IPO detail fetch, memoised by
+ * IPO number by the caller so a re-ask within the same cycle for a second
+ * field of the same IPO does not refetch.
+ */
+export async function fetchBSEDetail(ipoNo: number): Promise<BSEDetailRow | null> {
+  const detailJson = await retryWithExponentialBackoff(
+    () => fetchBSEJson<unknown>(`GetMkt_ISSUE_BBS_IPO/w?IPO_NO=${ipoNo}`),
+    3,
+    1000
+  );
+  return asArray<BSEDetailRow>(detailJson)[0] ?? null;
 }
 
 /** Fetch + map the bid-demand subscription for one IPO; null if unavailable. */
