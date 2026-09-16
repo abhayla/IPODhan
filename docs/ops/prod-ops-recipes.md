@@ -128,6 +128,30 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 - The `postgres` superuser is localhost-only on the DB host; through the tunnel it still works, but use
   `ipodhan_app` for app tables anyway.
 
+### Running a scraper integration test against `ipodhan_test` (item 5 slice s4, 2026-09-16)
+There is **no `scraper/.env.test` file, and there never was one to find** — `vitest.integration.config.ts`
+does load `.env.test`, but the credentials for this laptop live in `GLOBAL.env` above every repo, not in a
+repo-local dotenv. Looking for the file is a reasonable instinct that wastes time here.
+
+```bash
+cd scraper
+PW=$(grep '^IPODHAN_APP_DB_PASSWORD=' /d/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" \
+REDIS_URL="redis://localhost:6379/15" \
+npx vitest run -c vitest.integration.config.ts tests/integration/<file>.integration.test.ts
+```
+
+Four traps, each of which looks like a broken suite rather than a mistake:
+1. Use `localhost:15432` — the sanctioned tunnel. Pointing at the DB host directly is refused by a
+   non-overridable denylist; a second tunnel on 5432 is undocumented — do not use it.
+2. `REDIS_URL` is required **even for suites that never touch Redis**.
+3. **The one that matters most:** with `DATABASE_URL` unset the suite prints "Tests  no tests" and
+   **exits 0**. A run that executed nothing looks like a pass to anything checking only the exit code —
+   always read the test COUNT, never just the exit status; "no tests" is a skipped suite, not a green one.
+4. Files sharing a table must run ONE AT A TIME — `ipo_field_plan`'s `FOR UPDATE SKIP LOCKED` claim is
+   designed to return nothing under contention, so a parallel run of two suites hitting the same table
+   produces a fake failure.
+
 ## 8. Data repair tools (productized; never hand SQL)
 
 ### 8a. Migration journal date repair (GitHub #442) — supersedes the T-403 round-3 exemption
@@ -735,3 +759,104 @@ get a misleading result from a correct-looking command:
   `FOR UPDATE SKIP LOCKED` is *designed* to return nothing under contention — so a parallel run
   produces a failure that looks like a real defect and is not. Serialise the files; never weaken the
   claim SQL to make a parallel run pass.
+## 13. The scraper's wake schedule — it is OS cron now, not pm2 (item 7 slice 1, 2026-09-16)
+
+**What changed.** pm2's `--cron-restart="*/30 * * * *"` used to do two jobs at once: it was the
+only bound on a hung scraper AND the only thing that woke it. It bounded the scraper by *killing*
+it mid-cycle every 30 minutes, which is what OD-55 forbids ("let the scraper take whatever time it
+needs"). Both jobs are now separate and explicit:
+
+| Job | Before | After |
+|---|---|---|
+| Wake the scraper | pm2 `--cron-restart` | OS crontab line, installed by `deploy-linux.sh` |
+| Bound a hung run | pm2 kill at 30 min | `timeout` 2 h inside `scripts/scraper-wake.sh` (OD-55) |
+| Skip an overlapping wake | nothing — it killed and restarted | the wrapper's Redis lock read, which logs why it skipped |
+
+**The line the deploy installs** (rewritten on every deploy, idempotent, scoped to its own slot by
+the trailing marker — a prod deploy never touches staging's line):
+
+```
+*/30 * * * * /var/www/ipodhan/current/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-prod.log 2>&1 # ipodhan-scraper-wake:prod
+15,45 * * * * .../current-staging/scripts/scraper-wake.sh data >> /var/log/ipodhan-scraper-wake-staging.log 2>&1 # ipodhan-scraper-wake:staging
+```
+
+The path is the `current` symlink, never a release directory: retention pruning deletes old
+releases, so a schedule pinned to one would start failing silently after a rollback plus a few
+deploys.
+
+**Cron's environment is not pm2's**, and the wrapper compensates for that itself. cron gives
+`PATH=/usr/bin:/bin`, no login shell, no nvm, no cwd — so `npx` typically resolves to nothing. The
+wrapper therefore resolves an absolute `node` and the workspace's own `tsx/dist/cli.mjs`, exports
+`TZ=UTC` (T-327 P2-7) and `PYTHON_BIN` (W-111/W-112), and **refuses with exit 78** rather than
+running without them. Overrides, if the box needs them, go in the cron line:
+`SCRAPER_NODE_BIN=/usr/bin/node SCRAPER_TSX_BIN=/path/to/tsx/dist/cli.mjs PYTHON_BIN=/path/to/venv/bin/python`.
+
+**Exit codes are three distinct readings:** `0` clean finish or a deliberate lock-skip, `124` the
+2-hour ceiling fired, `78` a refusal to start (no `timeout`, no node, no tsx — nothing ran), and
+anything else is the cycle's own crash status.
+
+Staging keeps the `:15/:45` offset so two slots' extractors never land in the same minute on the
+2-vCPU box (W-178).
+
+**Reading it on the box** (read-only; the VPS is production — no ad-hoc runs):
+
+```bash
+crontab -l | grep ipodhan-scraper-wake          # is the wake scheduled at all?
+tail -50 /var/log/ipodhan-scraper-wake-prod.log # what did the last wakes do?
+grep -c wake-skipped  /var/log/ipodhan-scraper-wake-prod.log   # skipped on a held lock
+grep    ceiling-tripped /var/log/ipodhan-scraper-wake-prod.log # hit the 2-hour ceiling
+```
+
+**The failure mode to watch for.** With `--no-autorestart` and no cron line, pm2 shows the scraper
+app as *exited* — which is exactly what a healthy one-shot looks like — while nothing is scraping.
+So `pm2 status` alone can NEVER tell you the wake is alive. **`crontab -l | grep
+ipodhan-scraper-wake` is the check**; if it returns nothing, the scraper is not running at all and
+the deploy's `install_scraper_cron` warn line will say so in the deploy log.
+
+### 12a. The cost of OD-55: a crashed cycle now blocks the next wake for 2h05m
+
+**Read this before clearing anything.** Raising the ceiling changed a real operational number, and
+it is a cost, not a free win:
+
+| | Before | After |
+|---|---|---|
+| A cycle that crashes without releasing its lock blocks the next wake for | **25 minutes** | **2 h 05 m** |
+
+Why: the `scraper:cycle` lock TTL used to be sized deliberately *shorter* than pm2's 30-minute
+force-restart, so a killed cycle's lock was always gone before the next one. That restart is
+exactly what this slice removes (OD-55 — a document read is not on a clock), so the TTL now sits
+above the 2-hour ceiling instead: the **ceiling** ends a hung cycle, never a lock expiry.
+
+A *healthy* long cycle is unaffected — it extends its lock every 5 minutes. The 2 h 05 m only
+applies when the extender stops, i.e. the process died without its signal handler running (SIGKILL,
+OOM kill, a hard box reboot). A normal crash or a `pm2 stop` releases the lock on the way out.
+
+**Symptom:** every wake logs `wake-skipped` with a large `lock_ttl`, and no cycle runs.
+
+```bash
+tail -20 /var/log/ipodhan-scraper-wake-prod.log | grep wake-skipped   # is it skipping every time?
+redis-cli -u "$REDIS_URL" TTL lock:resource:scraper:cycle             # seconds left (-2 = free)
+pm2 status ipodhan-scraper                                            # is a cycle genuinely running?
+```
+
+**Clearing it — only when no cycle is actually running.** The lock is doing its job if one is; check
+`pm2 status` and the box's node processes first. A wrongly-cleared lock lets two cycles write
+concurrently, which is the thing the lock exists to prevent.
+
+```bash
+# 1. PROVE nothing is running before deleting anything.
+pm2 status ipodhan-scraper                 # expect 'stopped'/'errored', not 'online'
+pgrep -af 'tsx .*src/index.ts' || echo "no cycle process — safe to clear"
+
+# 2. Then, and only then:
+redis-cli -u "$REDIS_URL" DEL lock:resource:scraper:cycle
+redis-cli -u "$REDIS_URL" DEL lock:resource:filing-auto-persist:cycle   # the inner one, same rule
+
+# 3. The next cron wake picks it up. Do NOT hand-start a cycle to "catch up" —
+#    a wake is due within 30 minutes and a manual run competes with it.
+tail -f /var/log/ipodhan-scraper-wake-prod.log
+```
+
+The deploy already clears both keys on every deploy (`release_scraper_cycle_locks()` in
+`deploy-linux.sh`, atomically and only if the token still matches), so a deploy is the safe way to
+clear a stale lock when one is due anyway.

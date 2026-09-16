@@ -686,6 +686,21 @@ resume_scraper() {
   if [ ! -x "$PYTHON_BIN_PATH" ]; then
     warn "resume_scraper: PYTHON_BIN=$PYTHON_BIN_PATH — venv missing or not executable; starting the scraper anyway with PYTHON_BIN set to this nonexistent path (an ENOENT spawn is the visible signal — never silently falling back to system python)."
   fi
+  # Preflight here too. I previously argued this path was exempt because it
+  # resumes a PREVIOUSLY-BUILT release - but SCRAPER_RESUME_TARGET is set to
+  # "new" at the atomic flip (line ~1724), BEFORE restart_pm2 runs, so a deploy
+  # that aborts between the flip and the restart resumes against $RELEASE_DIR
+  # with nothing having checked it. That is the green-deploy-dead-scraper case
+  # by another route, and the exemption argument was simply too broad.
+  #
+  # It does NOT fatal() here: this runs from the EXIT trap, where the deploy is
+  # already failing or finishing, and calling fatal() would replace the real
+  # exit code with this one and mask why the deploy failed. A loud warn is the
+  # right level - the deploy's own outcome is already non-zero on that path,
+  # and restart_pm2's preflight is what gates the SUCCESS path.
+  if ! preflight_scraper_wake "$target_dir/scripts/scraper-wake.sh" 2>&1; then
+    warn "resume_scraper: the wake wrapper cannot run from $target_dir — the scraper will NOT wake. See the FATAL line above; fix the box before relying on this release."
+  fi
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   # T-327 P2-7: TZ=UTC is explicit at every pm2 start — pm2 captures the
   # invoking shell's env at start time and pins it for restarts/reload, so
@@ -703,9 +718,16 @@ resume_scraper() {
   # runs — the TZ=UTC prefix was never the problem; the line never executed.
   # In production SCRAPER_CRON is always set well before this function is
   # ever called, so the fallback here is dead weight on the real deploy path.
-  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all ) \
+  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$target_dir/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
+      --no-autorestart ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
+  # CRITICAL (Tier A review): this path had NO cron install. resume_scraper
+  # runs from the EXIT trap on every FAILED deploy and every rollback, so the
+  # failure path - the one that matters most - started the wrapper once with
+  # --no-autorestart and scheduled nothing: the same total outage as the
+  # original defect, reached by a different route. The schedule is re-asserted
+  # here against whichever release we actually resumed.
+  install_scraper_cron
 }
 # Item 01: the EXIT trap now also removes the release directory this
 # invocation created when the deploy failed (cleanup_failed_release_dir,
@@ -1734,7 +1756,12 @@ restart_pm2() {
     log "[dry-run] pm2 delete $PM2_WEB_APP"
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=${SCRAPER_CRON:-*/30 * * * *} -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start scripts/scraper-wake.sh --name $PM2_SCRAPER_APP --no-autorestart (cwd=$release_realpath/scraper, release=$release_realpath)"
+    # The scheduled invoker is emitted on the dry-run path too. Without this
+    # line a dry-run test can prove the pm2 start's shape but says NOTHING
+    # about whether anything ever wakes the wrapper - which is exactly the
+    # hole that let the scheduler go missing in the first place.
+    install_scraper_cron
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -1760,13 +1787,131 @@ restart_pm2() {
   # W-111/W-112: PYTHON_BIN pins the auto-persist PDF/OCR extractor to the
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
+  preflight_scraper_wake "$RELEASE_DIR/scripts/scraper-wake.sh"
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   # W-178 round 2: see resume_scraper()'s comment above — default-expand
   # SCRAPER_CRON so this function's own test isolation (case 9b) doesn't
   # abort on an unbound variable under `set -u` before pm2 ever runs.
-  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
-      --no-autorestart --cron-restart="${SCRAPER_CRON:-*/30 * * * *}" -- src/index.ts --source=all )
+  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" pm2 start "$RELEASE_DIR/scripts/scraper-wake.sh" --name "$PM2_SCRAPER_APP" \
+      --no-autorestart )
+  # The alarm clock. Without this the wrapper above runs once and never again.
+  install_scraper_cron
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
+}
+
+# --- Wake preflight: a refusal at RUN time must not ship as a GREEN deploy ---
+# Every scraper start site is `pm2 start --no-autorestart`, and pm2 returns 0 as
+# soon as it has forked. So by the time the wrapper discovers it cannot resolve
+# node, tsx or coreutils `timeout` and refuses with exit 78, the deploy step has
+# ALREADY succeeded. Without this preflight the worst outcome this slice can
+# produce is a GREEN DEPLOY WITH A SCRAPER THAT NEVER RUNS - worse than the
+# defect it replaces, because the new machinery claims to work. signal-
+# ownership.md R6: a gate prints its reason before a non-zero exit.
+#
+# Two different moments, two different mechanisms, deliberately: the wrapper
+# refusing at RUN time is correct (better than running unbounded), and this
+# refuses at DEPLOY time so the failure is visible while someone is watching.
+# It calls the wrapper's OWN `--check`, so the two verdicts come from the same
+# code and cannot drift apart.
+#
+# WHAT IT CATCHES: an unresolvable node, an unresolvable workspace tsx, and a
+# missing `timeout` - i.e. every condition that makes the wrapper exit 78 today.
+# WHAT IT CANNOT CATCH: anything that changes between this check and a wake two
+# hours later (a PATH edit, an uninstalled coreutils, a pruned release dir), and
+# any failure INSIDE the cycle once it starts - this proves the wrapper can
+# start, never that a cycle will succeed.
+preflight_scraper_wake() {
+  local wake_script="$1"
+
+  if (( DRY_RUN )); then
+    log "[dry-run] would run wake preflight: $wake_script --check"
+    return 0
+  fi
+
+  if [ ! -x "$wake_script" ]; then
+    fatal "wake preflight: $wake_script is missing or not executable — the scheduled wake could never run. Nothing was started."
+  fi
+
+  local check_out
+  if check_out="$( cd "$(dirname "$wake_script")/.." && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" DEPLOY_SLOT="$SLOT" "$wake_script" --check data 2>&1 )"; then
+    log "wake preflight OK: $(printf '%s' "$check_out" | tail -n1)"
+    return 0
+  fi
+
+  # Print the wrapper's OWN reason before failing - never a bare "preflight
+  # failed", which would send the operator to read a log that says why on a box
+  # they may not have open.
+  printf '%s
+' "$check_out" >&2
+  fatal "wake preflight FAILED: the wake wrapper cannot run on this box (see its FATAL line above). pm2 would report success and the scraper would never wake. Refusing to finish the deploy."
+}
+
+# --- The scheduled invoker (item 7 slice 1) ---------------------------------
+# WHY THIS EXISTS: pm2's --cron-restart was not only the kill switch, it was
+# also the ALARM CLOCK. It is what woke the scraper every 30 minutes. Removing
+# it (so a document read is no longer force-killed mid-flight, OD-55) takes the
+# scheduler away with it: `pm2 start ... --no-autorestart` runs the wrapper
+# ONCE at deploy and then the app sits exited. Worse, that state looks healthy
+# - an exited app is exactly what pm2 is supposed to show for --no-autorestart
+# - so a scraper that had silently stopped running would raise no alarm at all.
+# The removal and its replacement therefore land together, never apart.
+#
+# OS-level cron, not a systemd timer: the design card deliberately does not
+# choose between them, and this repo already schedules its VPS work through the
+# deploying user's crontab (scripts/vps-prod-verify-cron.sh, vps-data-audit-
+# cron.sh, vps-disk-hygiene.sh). Following the convention that is already on
+# the box beats introducing a second scheduling mechanism for one job.
+#
+# CADENCE IS PRESERVED, NOT CHANGED: the line carries $SCRAPER_CRON, the same
+# per-slot value that fed --cron-restart (*/30 for prod, 15,45 for staging so
+# the two slots' extractors never land in the same minute on a 2-vCPU box -
+# W-178). What changes is the MEANING of the wake: cron now STARTS a cycle and
+# the wrapper skips if one is still running, where before pm2 KILLED whatever
+# was running and started another.
+#
+# IDEMPOTENT AND SLOT-SCOPED: each line carries a unique marker comment
+# (# ipodhan-scraper-wake:<SLOT>), and installing rewrites only lines bearing
+# THIS slot's marker. A prod deploy never disturbs staging's line, and two
+# deploys in a row leave exactly one line, not two.
+SCRAPER_CRON_MARKER="# ipodhan-scraper-wake:$SLOT"
+SCRAPER_WAKE_LOG="${DEPLOY_SCRAPER_WAKE_LOG:-/var/log/ipodhan-scraper-wake-$SLOT.log}"
+install_scraper_cron() {
+  # MAJOR (Tier A review): the scheduled line pins $CURRENT_LINK, never a
+  # release directory. A release dir is deleted by retention pruning after a
+  # rollback or a few deploys, which would leave cron invoking a path that no
+  # longer exists - failing every 30 minutes into a log nobody reads. `current`
+  # is the pointer the deploy flips atomically and never prunes, so the
+  # schedule survives rollbacks and pruning alike. This also makes the code
+  # agree with docs/ops/prod-ops-recipes.md section 12, which already documents
+  # the `current/...` form.
+  local wake_script="${1:-$CURRENT_LINK/scripts/scraper-wake.sh}"
+  # The wrapper is cwd-independent by design, so cron needs no `cd`. Output is
+  # appended to a slot-scoped log because a cron job's stdout otherwise goes to
+  # local mail nobody reads - and the skip/ceiling lines ARE the proof artifact
+  # this slice exists to produce, so they must land somewhere greppable.
+  local cron_line="$SCRAPER_CRON $wake_script data >> $SCRAPER_WAKE_LOG 2>&1 $SCRAPER_CRON_MARKER"
+
+  if (( DRY_RUN )); then
+    log "[dry-run] would install crontab line: $cron_line"
+    return 0
+  fi
+
+  if ! command -v crontab >/dev/null 2>&1; then
+    warn "install_scraper_cron: crontab not found on PATH - THE SCRAPER WILL NOT BE WOKEN. pm2 no longer carries --cron-restart, so without this line nothing schedules a cycle. Install cron or add the line by hand: $cron_line"
+    return 0
+  fi
+
+  local existing
+  existing="$(crontab -l 2>/dev/null || true)"
+  # Drop only this slot's previous line, keep every other crontab entry.
+  local kept
+  kept="$(printf '%s\n' "$existing" | grep -vF "$SCRAPER_CRON_MARKER" || true)"
+
+  if printf '%s\n%s\n' "$kept" "$cron_line" | grep -v '^$' | crontab -; then
+    log "install_scraper_cron: scheduled the scraper wake for slot '$SLOT' at '$SCRAPER_CRON' -> $wake_script"
+  else
+    warn "install_scraper_cron: crontab write FAILED - THE SCRAPER WILL NOT BE WOKEN on this box. Add by hand: $cron_line"
+  fi
 }
 
 # T-327F: extracted out of the inline AUTO-ROLLBACK block below so

@@ -32,6 +32,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, extname } from 'node:path';
 import { extractHtmlCompanyName, companiesMatch } from './lib/fixture-provenance-checks.mjs';
 import { normalizeCompanyNameForMatching } from './lib/normalize-company-name.mjs';
+import { istDayIso } from './lib/ist-day.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -89,7 +90,7 @@ async function main() {
     resolvedSourceUrl = args.fromUrl;
   }
 
-  const capturedAt = args.capturedAt || new Date().toISOString().slice(0, 10);
+  const capturedAt = args.capturedAt || istDayIso();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(capturedAt)) {
     console.error(`--captured-at must be YYYY-MM-DD, got: ${capturedAt}`);
     process.exit(1);

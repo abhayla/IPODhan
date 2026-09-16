@@ -61,15 +61,17 @@ vi.mock('@ipodhan/shared', () => ({
   IpoPipelineStepsRepository: vi.fn().mockImplementation(() => ({
     findByIpo: vi.fn().mockResolvedValue([]),
   })),
-}));
-
-vi.mock('@ipodhan/shared/repositories', () => ({
   IpoFieldPlanRepository: vi.fn().mockImplementation(() => ({
     claimNextDueField: (...args: unknown[]) => claimNextDueFieldMock(...args),
     recordOutcome: (...args: unknown[]) => recordOutcomeMock(...args),
     releaseClaimUnrecorded: (...args: unknown[]) => releaseClaimUnrecordedMock(...args),
+    // Item 5 s4's PASS 2.5 constructs the SAME class from the SAME barrel,
+    // so the mock must answer for the generation path too or every test in
+    // this file dies at import time rather than on an assertion.
+    upsertGeneratedRows: vi.fn().mockResolvedValue({ inserted: 0 }),
   })),
 }));
+
 
 /**
  * The logger is mocked so the SUMMARY PAYLOAD can be inspected directly.

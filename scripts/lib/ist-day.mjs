@@ -7,10 +7,15 @@
 // way is off by one for the first 5h30m of the IST day (same family as
 // #682/#689, fixed there for the status updater and due-step-cycle).
 //
-// Mirrors scraper/src/scheduler/due-step-cycle.ts istDateIso() and
-// web/lib/utils/ist-date.ts exactly: a fixed +5:30 offset applied to the
-// epoch instant, read back with UTC getters — never setHours()/local time,
-// which would pick up the HOST's timezone instead of IST.
+// SOURCE OF TRUTH: packages/shared/src/utils/ist-day.ts (istDayIso). This
+// file is the one deliberate duplicate of it — plain-Node scripts/*.mjs
+// cannot import TypeScript — and scripts/tests/ist-day.test.mjs pins the two
+// to identical output at the day boundaries (#687 slice 4). Change the
+// shared TS file first, then mirror it here.
+//
+// A fixed +5:30 offset applied to the epoch instant, read back with UTC
+// getters — never setHours()/local time, which would pick up the HOST's
+// timezone instead of IST.
 
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 

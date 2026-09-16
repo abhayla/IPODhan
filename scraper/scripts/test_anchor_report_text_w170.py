@@ -142,9 +142,24 @@ def test_ocr_full_page_rows_rebuilds_a_table_from_ocr_boxes_alone():
     geometry, so `ocr_full_page_rows` must band and split them itself (the
     same pipeline `column_bands`/`page_rows` run on a real text layer).
     """
-    # column_bands needs >= MIN_NUMERIC_ROWS (5) rows in a band before it will
-    # treat it as a real table column rather than incidental prose digits -
-    # five synthetic rows clears that floor.
+    # #437: the rebuild is header-anchored and reads the LINE boxes, which is
+    # what a real scan gives it - one box per printed CELL, and a printed
+    # header above the first investor row. (Until #437 this fixture emitted one
+    # full-width box per ROW and no header at all, a shape the real rapidocr
+    # output never has; the implementation it was written against invented rows
+    # on every cover page and read none on a real table page.)
+    def _cell(text, x0, x1, top):
+        return {"text": text, "score": 0.95,
+                "box": [[x0, top], [x1, top], [x1, top + 9.0], [x0, top + 9.0]],
+                "words": [_ocr_word(text, x0, top)]}
+
+    lines = [
+        _cell("S. No.", 36.0, 56.0, 80.0),
+        _cell("Name of the Anchor Investor", 70.0, 190.0, 80.0),
+        _cell("No. of Equity Shares Allocated", 250.0, 310.0, 80.0),
+        _cell("% of Anchor Investor Portion", 330.0, 375.0, 80.0),
+        _cell("Total Amount Allocated", 395.0, 455.0, 80.0),
+    ]
     rows_data = [
         (1, "ALPHA FUND", "1,00,000", "50.00%", "1,00,00,000", 100.0),
         (2, "BETA FUND", "1,00,000", "50.00%", "1,00,00,000", 115.0),
@@ -152,16 +167,12 @@ def test_ocr_full_page_rows_rebuilds_a_table_from_ocr_boxes_alone():
         (4, "DELTA FUND", "1,00,000", "50.00%", "1,00,00,000", 145.0),
         (5, "EPSILON FUND", "1,00,000", "50.00%", "1,00,00,000", 160.0),
     ]
-    lines = []
     for serial, name, shares, pct, amount, top in rows_data:
-        words = [
-            _ocr_word(f"{serial}.", 40.0, top),
-            _ocr_word(name, 70.0, top),
-            _ocr_word(shares, 260.0, top),
-            _ocr_word(pct, 340.0, top),
-            _ocr_word(amount, 400.0, top),
-        ]
-        lines.append({"box": [[0, top], [1, top], [1, top], [0, top]], "text": " ".join(w["text"] for w in words), "score": 0.95, "words": words})
+        lines.append(_cell("%d." % serial, 36.0, 56.0, top))
+        lines.append(_cell(name, 70.0, 190.0, top))
+        lines.append(_cell(shares, 250.0, 310.0, top))
+        lines.append(_cell(pct, 330.0, 375.0, top))
+        lines.append(_cell(amount, 395.0, 455.0, top))
 
     rows = ocr_full_page_rows(lines)
     assert rows is not None

@@ -218,10 +218,19 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     });
 
     it('acquires the cycle lock and releases it on success', async () => {
-      const { main } = await import('../../src/index.js');
+      // The TTL is IMPORTED from its single definition, never re-typed here.
+      // That literal used to live in three files; two were updated when the TTL
+      // was raised to the 2-hour ceiling + slack and this one was missed, which
+      // turned CI red. Asserting the RELATIONSHIP means the next ceiling change
+      // cannot leave a stale copy behind.
+      const { main, CYCLE_LOCK_TTL_MS, CYCLE_LOCK_CEILING_MS } = await import('../../src/index.js');
       await main();
 
-      expect(lockAcquireMock).toHaveBeenCalledWith('scraper:cycle', { ttl: 25 * 60 * 1000 });
+      // The invariant, not just the number: the lock must outlive any run the
+      // ceiling permits, so the CEILING ends a hung cycle, never a lock expiry.
+      expect(CYCLE_LOCK_TTL_MS).toBeGreaterThan(CYCLE_LOCK_CEILING_MS);
+
+      expect(lockAcquireMock).toHaveBeenCalledWith('scraper:cycle', { ttl: CYCLE_LOCK_TTL_MS });
       expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'tok-1');
       expect(exitSpy).toHaveBeenCalledWith(0);
     });
@@ -422,7 +431,8 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       // Fire the interval callback once — it must extend THIS cycle's lock.
       (keepAlive![0] as () => void)();
       await Promise.resolve();
-      expect(lockExtendMock).toHaveBeenCalledWith('scraper:cycle', 'tok-1', 25 * 60 * 1000);
+      const { CYCLE_LOCK_TTL_MS: extendTtl } = await import('../../src/index.js');
+      expect(lockExtendMock).toHaveBeenCalledWith('scraper:cycle', 'tok-1', extendTtl);
       setIntervalSpy.mockRestore();
     });
 
