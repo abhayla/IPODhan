@@ -99,9 +99,24 @@ pm2-scheduled-one-shot-scraper.md). It does not do that here.
     # then, through the 15432 tunnel, against ipodhan_staging:
     #   select count(*) from ipo_field_plan;
 
-    # 4. wake 2 (next scheduled wake) — same two reads
-    #    PASS: summary present with rowsInserted=0, count unchanged from step 3.
-    #    A missing summary line is NOT a pass; it means the pass did not run.
+    # 4. wake 2 — DO NOT expect rowsInserted=0. That was my original test and it
+    #    is wrong on a live slot: staging keeps DISCOVERING IPOs, so later cycles
+    #    legitimately plan newly-found ones (measured: 298 rows/40 ipos at 02:41,
+    #    then 10 rows/1 new ipo at 02:48, then 14 rows/2 new ipos at 02:56).
+    #    A non-zero rowsInserted is not regeneration.
+    #
+    #    The property to test is PER-IPO, not per-cycle: no IPO may receive rows
+    #    from more than one cycle. Run against ipodhan_staging:
+    #
+    #      select ipo_id, count(distinct date_trunc('minute', created_at)) cycles
+    #      from ipo_field_plan group by ipo_id having count(distinct
+    #      date_trunc('minute', created_at)) > 1;
+    #
+    #    PASS = ZERO ROWS. That is strictly stronger than rowsInserted=0: a zero
+    #    insert count is ambiguous between "correctly skipped" and "never ran",
+    #    whereas zero multi-cycle IPOs while inserts CONTINUE can only mean the
+    #    ON CONFLICT DO NOTHING clause is doing its job.
+    #    A missing summary line is still NOT a pass; it means the pass did not run.
 
     # 5. only then: ENABLE_FIELD_PLAN_WALK=true, same add + restart, and read
     #      pm2 logs ipodhan-scraper-staging --nostream --lines 400 | grep -E 'PASS 3 field-plan walk summary'
