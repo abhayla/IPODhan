@@ -642,3 +642,73 @@ would actually be merged, re-run the gate.
 
 `--force --reason "<20+ chars>"` bypasses, prints every clause that fired, and
 echoes the reason so it lands in the record. Paste that output into the PR body.
+
+## 12. Integration tests: the only sanctioned target (issue #690)
+
+Owner decision 2026-08-28: "Don't create any new database." Every app database lives on the
+**one** Windows-VPS Postgres (`103.118.16.189`) — there is no throwaway/local Postgres for this
+project, and there never should be one. `scraper/.env.test.example` used to tell readers to
+"point it at a throwaway/local Postgres + Redis instance" — that instruction contradicts the
+owner's rule and is what sent agents improvising a local DB each time. This section is the
+correction; the example file now points here instead of re-describing the recipe.
+
+**Why the file keeps going missing.** `scraper/.env.test` is gitignored (see the repo root
+`.gitignore`), so **every fresh worktree lacks it** — there is nothing to inherit. An agent that
+needs an integration proof and finds no `.env.test` either reports the proof unverified or
+improvises a local database, which is how this was rediscovered on 2026-09-16 (issue #690). The
+fix is not to commit the file (it would need a real password) — it is to make the recipe
+findable so the agent copies it instead of inventing one.
+
+**The sanctioned target — nothing else may be used for scraper integration tests:**
+
+- Database: **`ipodhan_test`**, on the one Windows-VPS Postgres instance (`103.118.16.189`).
+- Reached through the tunnel on **`localhost:15432`** (§1 above) — this is the ONLY sanctioned
+  port for tests. A second, undocumented tunnel may exist on `5432` on this machine
+  (`-L 5432:127.0.0.1:5432` to the same host); **5432 must not be used for tests**. Do not
+  investigate or touch that process — it is out of scope for this recipe.
+- Role: **`ipodhan_app`**. Its schemas were moved to that role on 2026-09-09 specifically so
+  `ipodhan_test` can be dropped and rebuilt unattended by a non-superuser.
+
+**`.env.test` template** (copy to `scraper/.env.test`; read the password by NAME from
+`D:\Abhay\GLOBAL.env`, never paste the value into this file or any repo file):
+
+```bash
+# Read the password at use-time, do not hardcode it:
+#   PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+
+DATABASE_URL=postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test
+DATABASE_HOST=localhost
+DATABASE_PORT=15432
+DATABASE_NAME=ipodhan_test
+DATABASE_USER=ipodhan_app
+DATABASE_PASSWORD=${PW}
+
+# Redis: same posture as before this section — an unauthenticated local/CI Redis.
+# This project has no sanctioned shared test Redis; if a suite needs one, run it
+# locally (`redis-server` or a disposable container) — Redis is not the resource
+# under the "no new databases" rule, Postgres is.
+REDIS_URL=redis://localhost:6379
+REDIS_HOST=localhost
+REDIS_PASSWORD=
+```
+
+**Rebuild recipe** (run before use, and any time the schema looks stale — this is what makes an
+unattended rebuild safe on a non-superuser role):
+
+```bash
+PW=$(grep "^IPODHAN_APP_DB_PASSWORD=" D:/Abhay/GLOBAL.env | cut -d= -f2- | tr -d '"')
+DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" psql "$DATABASE_URL" -c "
+  DROP SCHEMA public CASCADE; CREATE SCHEMA public;
+  DROP SCHEMA IF EXISTS drizzle CASCADE;
+"
+cd web && DATABASE_URL="postgresql://ipodhan_app:${PW}@localhost:15432/ipodhan_test" npm run db:migrate
+```
+
+Check: the rebuild is correct when it leaves **35 tables** — the same table count as prod/staging.
+A mismatch means a migration is missing or the wrong database was targeted; do not proceed to
+run tests against a mismatched count.
+
+**The rule, stated plainly:** no other port, database, or tunnel may be used for scraper
+integration tests. `localhost:15432` against `ipodhan_test` under `ipodhan_app` is the only
+sanctioned path. If this recipe is missing or wrong when you read it, say so and stop — do not
+invent a local Postgres to route around it.
