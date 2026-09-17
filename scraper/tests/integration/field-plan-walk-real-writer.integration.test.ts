@@ -13,8 +13,22 @@ import { IpoFieldPlanRepository } from '../../../packages/shared/src/repositorie
 import { IPORepository } from '../../../packages/shared/src/repositories/ipo-repository';
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
-import { DataConsolidationOrchestrator } from '../../src/services/data-consolidation-orchestrator.js';
-import { walkFieldPlanForIPO, type FieldFetcher, type FieldPlanWalkOrchestrator } from '../../src/services/field-plan-walk.js';
+import type { FieldFetcher, FieldPlanWalkOrchestrator } from '../../src/services/field-plan-walk.js';
+// `feature-flags.ts`'s `export const FEATURE_FLAGS = {...}` bakes every flag
+// (e.g. `ENABLE_DATA_CONSOLIDATION: process.env.ENABLE_DATA_CONSOLIDATION
+// === 'true'`) ONCE at module-eval time. A plain top-level `import` is
+// hoisted and resolved before ANY of this file's own top-level statements
+// run (ES module semantics), and `field-plan-walk.js` statically imports
+// `data-consolidation-service.js`, which statically imports
+// `feature-flags.ts` -- so a static import of EITHER `field-plan-walk.js`
+// or `data-consolidation-orchestrator.js` here bakes FEATURE_FLAGS before
+// this file's own `process.env` lines run, no matter their textual order.
+// Measured directly: a static import of just the orchestrator still logged
+// skipReason 'CONSOLIDATION_DISABLED' on every write. Both are imported
+// dynamically in `beforeAll`, AFTER the env vars are set, so this file's
+// own env assignment is the FIRST thing to touch feature-flags.ts.
+type DataConsolidationOrchestratorCtor = typeof import('../../src/services/data-consolidation-orchestrator.js').DataConsolidationOrchestrator;
+type WalkFieldPlanForIPOFn = typeof import('../../src/services/field-plan-walk.js').walkFieldPlanForIPO;
 
 /**
  * Item 3 slice S3 -- unlike field-plan-walk-resume.integration.test.ts (real
@@ -63,6 +77,18 @@ import { walkFieldPlanForIPO, type FieldFetcher, type FieldPlanWalkOrchestrator 
 process.env.ENABLE_POLICY_WRITER = 'true';
 process.env.ENABLE_FIELD_PLAN = 'true';
 process.env.ENABLE_FIELD_PLAN_WALK = 'true';
+// This file is the first integration test to call through to the REAL
+// DataConsolidationOrchestrator.consolidatedUpsertIPO rather than a stub —
+// without these, ENABLE_DATA_CONSOLIDATION defaults false and every write
+// short-circuits with skipReason 'CONSOLIDATION_DISABLED' before the matrix
+// or field_sources are ever touched (data-consolidation-orchestrator.ts:201).
+// CONSOLIDATION_PERCENTAGE=0 is a separate, equally-fatal LIVE-GATE
+// (feature-flags.ts:544) that silently disables the whole pipeline even
+// with ENABLE_DATA_CONSOLIDATION=true — both must be set. Flags bake at
+// import (see the three above), so these run before any production import.
+process.env.ENABLE_DATA_CONSOLIDATION = 'true';
+process.env.CONSOLIDATION_PERCENTAGE = '100';
+process.env.ENABLE_SOURCE_TRACKING = 'true';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const REDIS_URL = process.env.REDIS_URL;
@@ -92,6 +118,7 @@ describe.skipIf(!DATABASE_URL)(`item 3 S3: field-plan walk, REAL DataConsolidati
   let db: ReturnType<typeof drizzle>;
   let planRepo: IpoFieldPlanRepository;
   let orchestrator: FieldPlanWalkOrchestrator;
+  let walkFieldPlanForIPO: WalkFieldPlanForIPOFn;
 
   beforeAll(async () => {
     if (!DATABASE_URL) return;
@@ -108,6 +135,12 @@ describe.skipIf(!DATABASE_URL)(`item 3 S3: field-plan walk, REAL DataConsolidati
 
     redis = new Redis(REDIS_URL || 'redis://localhost:6379/15', { lazyConnect: true });
     await redis.connect();
+
+    // Dynamic imports, AFTER the env vars above are set -- see the top-of-file
+    // comment on why a static import would freeze FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION=false.
+    const { DataConsolidationOrchestrator }: { DataConsolidationOrchestrator: DataConsolidationOrchestratorCtor } =
+      await import('../../src/services/data-consolidation-orchestrator.js');
+    ({ walkFieldPlanForIPO } = await import('../../src/services/field-plan-walk.js'));
 
     // The REAL production wiring's constructor call
     // (field-plan-walk-deps.ts's buildFieldPlanWalkOrchestrator), not a
@@ -155,7 +188,15 @@ describe.skipIf(!DATABASE_URL)(`item 3 S3: field-plan walk, REAL DataConsolidati
         ipoId: IPO_ID,
         tableName: 'ipos',
         rowKey: '',
-        fieldName: 'issueSize',
+        // ipo_field_plan.field_name is snake_case (unlike field_sources.field_name,
+        // which is camelCase -- lesson field-sources-field-name-is-camelCase,
+        // inverted here). The walk's own claimNextDueField selects on this
+        // exact stored value and does its OWN columnToCamelCase conversion
+        // internally (field-plan-walk.ts:987) -- confirmed by reading both
+        // the generator's write (field-plan-generator.ts) and the claim
+        // query (ipo-field-plan-repository.ts's claimNextDueField, which
+        // reads WHERE state = 'PENDING' with no field_name transform).
+        fieldName: 'issue_size',
         rank1Source: 'CHITTORGARH',
         state: 'PENDING',
         manifestVersion: 1,
