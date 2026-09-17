@@ -369,6 +369,46 @@ run_deploy() {
   fi
 }
 
+# ----------------------------------------------------------------- case 9
+# A symbolic --sha (e.g. origin/main, a branch name, HEAD) is resolved to
+# the 40-hex commit it names before it is written anywhere — CONFIG_SHA
+# and the log line must carry the resolved commit, never the symbolic
+# text itself.
+{
+  REPO="$(build_fixture_repo)"
+  ROOT="$(fresh_dir)"
+  RESOLVED_SHA="$(cd "$REPO" && git rev-parse origin/main)"
+
+  OUT="$(run_deploy "$REPO" "$ROOT" --slot staging --sha "origin/main" --reason "case9 symbolic sha" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case9: exit 0 on symbolic --sha origin/main"
+  else
+    fail "case9: expected exit 0, got $RC ($OUT)"
+  fi
+
+  if printf '%s' "$RESOLVED_SHA" | grep -qE '^[0-9a-f]{40}$'; then
+    pass "case9: fixture's origin/main resolves to a 40-hex commit"
+  else
+    fail "case9: fixture origin/main did not resolve to 40-hex ($RESOLVED_SHA)"
+  fi
+
+  CONFIG_SHA_FILE="$ROOT/shared/config/staging/CONFIG_SHA"
+  if [ -f "$CONFIG_SHA_FILE" ] && [ "$(cat "$CONFIG_SHA_FILE")" = "$RESOLVED_SHA" ]; then
+    pass "case9: CONFIG_SHA holds the resolved 40-hex commit, not 'origin/main'"
+  else
+    fail "case9: CONFIG_SHA wrong ($(cat "$CONFIG_SHA_FILE" 2>&1), want $RESOLVED_SHA)"
+  fi
+
+  LOG_FILE="$ROOT/shared/config/deploy-config.log"
+  if [ -f "$LOG_FILE" ] && grep -q "staging $RESOLVED_SHA" "$LOG_FILE" && ! grep -q "staging origin/main" "$LOG_FILE"; then
+    pass "case9: log line carries the resolved 40-hex sha, not the symbolic name"
+  else
+    fail "case9: log line missing/wrong ($(cat "$LOG_FILE" 2>&1))"
+  fi
+}
+
 echo "---"
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PASS"
