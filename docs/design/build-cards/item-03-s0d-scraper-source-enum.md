@@ -87,12 +87,13 @@ identity: the enum's value list, the migration tag in `drizzle.__drizzle_migrati
 | id | command | expect | env |
 |---|---|---|---|
 | S0d-1 | `cd scraper && npx vitest run tests/unit/config/field-source-codes.test.ts` | exit 0 | local |
-| S0d-2 | `git grep -c "'REG'" HEAD -- packages/shared/src/db/schema.ts packages/shared/src/repositories/field-extraction-failures-repository.ts web/lib/repositories/field-extraction-failures-repository.ts` | regex: `(?s)(.*:[1-9].*){3}` | local |
-| S0d-3 | `git grep -l "ADD VALUE IF NOT EXISTS 'REG'" HEAD -- web/drizzle/migrations` | regex: `\.sql$` | local |
+| S0d-2 | `grep -c "'REG'" packages/shared/src/db/schema.ts packages/shared/src/repositories/field-extraction-failures-repository.ts web/lib/repositories/field-extraction-failures-repository.ts` | regex: `(?s)(.*:[1-9].*){3}` | local |
+| S0d-3 | `grep -l "ADD VALUE IF NOT EXISTS 'REG'" web/drizzle/migrations/*.sql` | regex: `\.sql$` | local |
 | S0d-4 | `node scripts/tests/check-migration-journal.test.mjs` | exit 0 | local |
 | S0d-5 | `node scripts/tests/migration-name-collision.test.mjs` | exit 0 | local |
 | S0d-6 | `node scripts/check-stage3-dod.mjs --sql "select array_to_string(enum_range(null::scraper_source), ',')" --expect-db ipodhan_test` | regex: `INVESTORGAIN_GMP.*REG\|REG.*INVESTORGAIN_GMP` | test-db |
 | S0d-7 | `node scripts/check-stage3-dod.mjs --sql "select array_to_string(enum_range(null::scraper_source), ',')" --expect-db ipodhan_staging` | regex: `INVESTORGAIN_GMP.*REG\|REG.*INVESTORGAIN_GMP` | staging |
+| S0d-8 | `cd scraper && npx vitest run tests/unit/config/field-source-codes.test.ts -t "literal"` | exit 0 | local |
 
 ## Rollback
 

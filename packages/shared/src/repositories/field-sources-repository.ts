@@ -35,10 +35,10 @@ export interface TrackFieldUpdateInput {
    *  see schema.ts's field_sources.rowKey comment for the per-table convention. */
   rowKey?: string;
   fieldName: string;
-  source: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source: ScraperSource;
   confidence?: number;
   previousValue?: string | null;
-  previousSource?: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH' | null;
+  previousSource?: ScraperSource | null;
   dataLineage?: Record<string, unknown>;
   updatedBy?: string;
 }
@@ -240,7 +240,7 @@ export class FieldSourcesRepository extends BaseRepository {
     tableName: string,
     fields: Array<{
       fieldName: string;
-      source: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+      source: ScraperSource;
       confidence?: number;
       previousValue?: string | null;
     }>
@@ -273,7 +273,7 @@ export class FieldSourcesRepository extends BaseRepository {
    */
   async findBySource(
     ipoId: string,
-    source: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH'
+    source: ScraperSource
   ): Promise<FieldSourceRecord[]> {
     const cacheKey = `field-sources:source:${ipoId}:${source}`;
 

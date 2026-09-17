@@ -125,4 +125,21 @@ describe('field-source-codes', () => {
     const healthUnion = extractUnionMembers('packages/shared/src/types/types.ts', 'ScraperSource');
     expect(healthUnion.has('REG')).toBe(false);
   });
+
+  it('no literal source-vocabulary union remains in the four provenance repositories (S0d fix round 1, literal-union grep)', () => {
+    const files = [
+      'packages/shared/src/repositories/field-sources-repository.ts',
+      'packages/shared/src/repositories/data-conflicts-repository.ts',
+      'web/lib/repositories/field-sources-repository.ts',
+      'web/lib/repositories/data-conflicts-repository.ts',
+    ];
+    const literalUnionRe =
+      /'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'\s*\|\s*'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'/g;
+
+    for (const relPath of files) {
+      const content = fs.readFileSync(path.join(repoRoot, relPath), 'utf8');
+      const matches = content.match(literalUnionRe) ?? [];
+      expect(matches.length, `${relPath} still has a hand-typed literal union: ${matches.join(', ')}`).toBe(0);
+    }
+  });
 });

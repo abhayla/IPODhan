@@ -34,13 +34,14 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { ipos } from '@/lib/db';
 import { DataConflictsRepository, type DataConflictRecord, type ConflictStats } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
+import type { ScraperSource } from '@ipodhan/shared/db/types';
 
 /**
  * Conflict resolution options
  */
 export interface ResolveConflictOptions {
   /** Which source won (ADMIN, DRHP, NSE, BSE, etc.) */
-  resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  resolvedSource: ScraperSource;
 
   /** Reason for choosing this source */
   resolutionReason: string;

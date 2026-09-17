@@ -10,6 +10,7 @@ import type { Redis } from 'ioredis';
 import * as schema from '@ipodhan/shared/db/schema';
 import { dataConflicts } from '@ipodhan/shared/db/schema';
 import { BaseRepository } from './base-repository';
+import type { ScraperSource } from '@ipodhan/shared/db/types';
 
 export interface DataConflictRecord {
   id: string;
@@ -17,11 +18,11 @@ export interface DataConflictRecord {
   tableName: string;
   rowKey: string;
   fieldName: string;
-  source1: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source1: ScraperSource;
   value1: string | null;
-  source2: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source2: ScraperSource;
   value2: string | null;
-  resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH' | null;
+  resolvedSource: ScraperSource | null;
   resolutionReason: string | null;
   severity: 'INFO' | 'WARNING' | 'CRITICAL';
   adminNote: string | null;
@@ -38,17 +39,17 @@ export interface LogConflictInput {
    *  see schema.ts's data_conflicts.rowKey comment for the per-table convention. */
   rowKey?: string;
   fieldName: string;
-  source1: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source1: ScraperSource;
   value1: string | null;
-  source2: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source2: ScraperSource;
   value2: string | null;
-  resolvedSource?: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  resolvedSource?: ScraperSource;
   resolutionReason?: string;
   severity?: 'INFO' | 'WARNING' | 'CRITICAL';
 }
 
 export interface ResolveConflictInput {
-  resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  resolvedSource: ScraperSource;
   resolutionReason: string;
   resolvedBy: string;
   adminNote?: string;
@@ -444,7 +445,7 @@ export class DataConflictsRepository extends BaseRepository {
    */
   async bulkResolveForIPO(
     ipoId: string,
-    resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH',
+    resolvedSource: ScraperSource,
     resolvedBy: string,
     resolutionReason: string
   ): Promise<number> {
