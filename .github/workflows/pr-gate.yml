@@ -800,6 +800,7 @@ jobs:
           tests/integration/field-sources-row-key-unique.integration.test.ts
           tests/integration/ipo-field-plan-row-key-unique.integration.test.ts
           tests/integration/ipo-field-plan-repository.integration.test.ts
+          tests/integration/field-source-overrides-repository.integration.test.ts
           tests/integration/field-plan-walk-resume.integration.test.ts
           tests/integration/field-plan-generation-wiring.integration.test.ts
           tests/integration/field-plan-walk-real-writer.integration.test.ts

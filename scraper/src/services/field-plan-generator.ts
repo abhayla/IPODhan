@@ -153,6 +153,61 @@ export function generateFieldPlan(
 }
 
 /**
+ * CRITICAL-1 fix (S4 review round 2): the async, override-aware entry point for the PRODUCTION
+ * write path (`document-cycle.ts`). `generateFieldPlan` above stays pure and synchronous -- its
+ * own header says "no database access at all" and ~20 existing unit/integration tests call it with
+ * the old 2-arg signature, so it is never converted. This wrapper calls it unchanged, then --
+ * ONLY for rows where `deps.overrides` returns an active row -- overwrites `rank1Source` /
+ * `rank2Source` / `rank3Source` / `policyOrigin` with the override's ranks/origin, exactly mirroring
+ * what `resolveFieldSourcePolicyAsync` does inside the resolver for the walk's read path.
+ *
+ * Cost: ONE `overrides.resolve` call per (table, field) the pure generator already produced for
+ * this IPO -- not one query per field globally, and never repeated per cycle for IPOs with no
+ * candidate fields (rows.length === 0 short-circuits before this runs). This is the SAME
+ * per-generate-call granularity the card's cost note requires ("resolve once per walk run/per
+ * generate call, not a DB read per field") -- resolving is not memoized further because unlike the
+ * walk's per-field loop (which asks up to 3x per field across retries), generate runs once per IPO
+ * per cycle and the manifest field count here (a page's worth) is the loop already paid for.
+ */
+export async function generateFieldPlanAsync(
+  ipo: PlanIpo,
+  deps: { overrides?: { resolve(query: { table: string; column: string; ipoType: string; ipoId?: string }): Promise<{ id: string; ranks: string[]; expiresAt: string; ipoScoped: boolean }[]> } },
+  manifest: FieldManifest = loadFieldManifest()
+): Promise<PlannedFieldRow[]> {
+  const rows = generateFieldPlan(ipo, manifest);
+  if (rows.length === 0 || !deps.overrides) return rows;
+  const typeKey = resolveIpoTypeKey(ipo);
+
+  const resolved = await Promise.all(
+    rows.map(async (row) => {
+      const active = await deps.overrides!.resolve({
+        table: row.tableName,
+        column: row.fieldName,
+        ipoType: typeKey,
+        ipoId: ipo.id,
+      });
+      if (active.length === 0) return row;
+      const winner = active.find((r) => r.ipoScoped) ?? active[0];
+      const ranks = winner.ranks as PlannedFieldRow['rank1Source'][];
+      if (ranks.length > RANK_COLUMNS) {
+        throw new Error(
+          `generateFieldPlanAsync: override "${winner.id}" ranks ${ranks.length} sources for ` +
+            `${row.tableName}.${row.fieldName} but ipo_field_plan has only ${RANK_COLUMNS} rank columns.`
+        );
+      }
+      return {
+        ...row,
+        rank1Source: ranks[0] ?? null,
+        rank2Source: ranks[1] ?? null,
+        rank3Source: ranks[2] ?? null,
+        policyOrigin: `override:${winner.id}`,
+      };
+    })
+  );
+  return resolved;
+}
+
+/**
  * Apply the RESULT of a write to a plan row. Returns a new row; never mutates its argument.
  *
  * The sharp rule: `consolidatedUpsertIPO` returns `{ skipped: true, skipReason: 'LOCK_NOT_ACQUIRED' }`

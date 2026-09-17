@@ -56,8 +56,10 @@ import { mapManifestSourceToScraperSource } from '../config/field-source-codes.j
 import { columnToCamelCase } from '../config/field-name-case.js';
 import {
   resolveFieldSourcePolicy,
+  resolveFieldSourcePolicyAsync,
   policyOriginString,
   type FieldSourcePolicy,
+  type OverrideReader,
 } from '../config/field-source-policy.js';
 import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
 
@@ -267,12 +269,31 @@ export interface FieldPlanWalkDeps {
     table: string;
     column: string;
     ipoType: string;
+    ipoId?: string;
   }) => FieldSourcePolicy | Promise<FieldSourcePolicy>;
+  /**
+   * CRITICAL-1 fix (S4 review round 2): layer 2 (active `field_source_overrides` rows), consulted
+   * by `defaultResolvePolicy` via `resolveFieldSourcePolicyAsync`. Optional and defaulted to
+   * undefined in production callers that have not wired a repository yet — `resolveFieldSourcePolicyAsync`
+   * with no `overrides` behaves exactly like the sync registry-only resolver (safe when the table
+   * is absent, per the resolver's own contract). A caller that supplies an explicit `resolvePolicy`
+   * (as every existing test does) bypasses this entirely — this field only affects the DEFAULT path.
+   */
+  overrides?: OverrideReader;
 }
 
-/** Default `resolvePolicy` — the real resolver, called with the deps-less production signature. */
-function defaultResolvePolicy(query: { table: string; column: string; ipoType: string }): FieldSourcePolicy {
-  return resolveFieldSourcePolicy(query);
+/**
+ * Default `resolvePolicy` — CRITICAL-1 fix (S4 review round 2): now the override-aware async
+ * resolver, not the registry-only sync one. `overrides` is threaded from `FieldPlanWalkDeps` by
+ * `resolvePolicyForPlan` below; when it is undefined (no repository wired), this is byte-for-byte
+ * the old registry-only behaviour (`resolveFieldSourcePolicyAsync` with no `deps.overrides` falls
+ * straight through to `resolveFieldSourcePolicy`).
+ */
+function defaultResolvePolicy(
+  query: { table: string; column: string; ipoType: string; ipoId?: string },
+  overrides?: OverrideReader
+): Promise<FieldSourcePolicy> {
+  return resolveFieldSourcePolicyAsync(query, { overrides });
 }
 
 /**
@@ -327,12 +348,16 @@ async function resolvePolicyForPlan(
   // `{ x: true } | { x: false; ... }` union after an `if (r.x)` check — a
   // real compiler quirk reproduced standalone while fixing this finding —
   // but narrows correctly on a string-literal `outcome` tag either way.
-  const resolvePolicy = deps.resolvePolicy ?? defaultResolvePolicy;
+  // CRITICAL-1 fix (S4 review round 2): the default path closes over `deps.overrides` so the walk
+  // consults layer 2 without changing the `deps.resolvePolicy` override's 1-arg call signature —
+  // every existing test that stubs `resolvePolicy` is untouched; only the production default changes.
+  const resolvePolicy = deps.resolvePolicy ?? ((query: { table: string; column: string; ipoType: string; ipoId?: string }) =>
+    defaultResolvePolicy(query, deps.overrides));
   const ipoType = await resolveIpoType();
   if (ipoType === null) {
     return { outcome: 'IPO_ROW_NOT_FOUND' };
   }
-  const policy = await resolvePolicy({ table: plan.tableName, column: plan.fieldName, ipoType });
+  const policy = await resolvePolicy({ table: plan.tableName, column: plan.fieldName, ipoType, ipoId: plan.ipoId });
   return { outcome: 'RESOLVED', policy };
 }
 

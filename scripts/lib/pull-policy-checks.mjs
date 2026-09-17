@@ -95,3 +95,83 @@ export function ipoTypeKey(segment, listingExchanges) {
   if (segment !== 'SME') return 'MAINBOARD';
   return (listingExchanges ?? []).includes('NSE') ? 'SME_NSE' : 'SME_BSE';
 }
+
+/**
+ * PULL-OVERRIDES (item 3 slice S4): does every currently-active
+ * `field_source_overrides` row still hold? A row is a violation when either:
+ *   (a) it is past its `expires_at` but has no `expired_at` set (the CLI's
+ *       `expire` was never run — the resolver already ignores it, but an
+ *       unexpired-yet-stale row is a housekeeping signal: it should be
+ *       cleaned up before it confuses the next `list`), or
+ *   (b) it is still active (not expired either way) but is no longer VALID
+ *       against the CURRENT manifest — a manifest change (capability flipped
+ *       to false, or the field became class T) can invalidate a row that was
+ *       valid when it was set. `validateCandidate` is injected so the audit
+ *       script and this module's own test exercise the SAME logic as the
+ *       CLI's `validateOverrideCandidate` (never a re-implementation).
+ *
+ * `rows` -- every override row with `expired_at IS NULL` (both active and
+ * silently-stale candidates for (a); (b) only applies to rows that are
+ * ALSO still time-active, i.e. `expires_at > now`).
+ */
+export function checkOverrideRow(row, now, validateCandidate) {
+  const expiresAt = new Date(row.expiresAt);
+  const isPastExpiry = expiresAt.getTime() <= now.getTime();
+
+  if (isPastExpiry) {
+    return {
+      violation: `${row.id} (${row.tableName}.${row.fieldName}): expires_at ${row.expiresAt} is in the past but expired_at is not set — run \`expire ${row.id}\`.`,
+      stillTimeActive: false,
+    };
+  }
+
+  const failure = validateCandidate(
+    {
+      table: row.tableName,
+      column: row.fieldName,
+      ranks: [row.rank1Source, row.rank2Source, row.rank3Source].filter(Boolean),
+      reason: row.reason,
+    }
+  );
+  if (failure) {
+    return {
+      violation: `${row.id} (${row.tableName}.${row.fieldName}): no longer valid against the current manifest — ${failure.message}`,
+      stillTimeActive: true,
+    };
+  }
+  return { violation: null, stillTimeActive: true };
+}
+
+/**
+ * Plain-JS mirror of `scraper/src/config/field-source-override-validation.ts`'s
+ * `validateOverrideCandidate` (capable-source + S-05 rules only -- reason length and duplicate-
+ * rank checks are a CLI-input concern, not a re-validation-against-drift concern, so they are not
+ * repeated here). Reads the manifest JSON directly, same reason as `lookupManifestRanks` above (no
+ * TS import from a plain .mjs script) -- KNOWN DUPLICATION, same scoped risk. MAJOR-3 fix (S4
+ * review round 2): pinned against divergence by `scripts/tests/pull-policy-checks.test.mjs`'s
+ * "validateOverrideCandidate and validateOverrideRankSet agree" cases, which import the REAL TS
+ * validator directly (Node 22 native TS stripping) and compare its verdict to this mirror's on the
+ * same candidates -- a future rule added to one but not the other fails that test.
+ */
+const DOCUMENT_SOURCES = new Set(['DOC', 'DRHP', 'RHP', 'PROSPECTUS', 'CORRIGENDUM', 'PRICE_BAND_AD']);
+
+export function validateOverrideRankSet(manifest, table, column, ranks) {
+  const fieldKey = `${table}.${column}`;
+  const entry = manifest.fields?.[fieldKey];
+  if (!entry) {
+    return { message: `unknown field "${fieldKey}" -- no entry in the current field manifest.` };
+  }
+  if (entry.class === 'T') {
+    const docSource = ranks.find((s) => DOCUMENT_SOURCES.has(s));
+    if (docSource) {
+      return { message: `"${fieldKey}" is an E-1 timetable field (S-05) -- may not rank a document source ("${docSource}").` };
+    }
+  }
+  for (const source of ranks) {
+    const capability = entry.capability?.[source];
+    if (!capability || capability.capable === false) {
+      return { message: `"${source}" is not a capable source for "${fieldKey}" per the current manifest.` };
+    }
+  }
+  return null;
+}

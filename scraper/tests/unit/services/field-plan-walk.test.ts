@@ -1427,3 +1427,75 @@ describe('field-plan walk -- the resolver decides the ask order, not the plan ro
     expect(repo.recorded[0].policyOrigin).toBe('registry:2');
   });
 });
+
+describe('field-plan walk -- CRITICAL-1 fix (S4 review round 2): the DEFAULT resolver (no resolvePolicy override) is override-aware', () => {
+  it('with no resolvePolicy override, an active deps.overrides row changes the ask order the walk actually uses -- proves the walk is wired to layer 2, not just the registry', async () => {
+    // ipos.issue_size real MAINBOARD registry ranks are NSE-first (field-manifest.json).
+    // An active override for (ipos, issue_size) reranks to CHITTORGARH-first. If the walk
+    // is NOT wired to deps.overrides, this test asks NSE first and goes red on callOrder.
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'issue_size', rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
+    const callOrder: string[] = [];
+    const nse = vi.fn(async () => {
+      callOrder.push('NSE');
+      return { outcome: 'NOT_PRINTED' as const };
+    });
+    const chittorgarh = vi.fn(async () => {
+      callOrder.push('CHITTORGARH');
+      return { outcome: 'SUPPLIED' as const, value: 999 };
+    });
+    const overridesReader = {
+      resolve: vi.fn(async (q: { table: string; column: string }) => {
+        if (q.table === 'ipos' && q.column === 'issue_size') {
+          return [{ id: 'ov-test-1', ranks: ['CHITTORGARH'], expiresAt: '2099-01-01T00:00:00.000Z', ipoScoped: false }];
+        }
+        return [];
+      }),
+    };
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: nse, CHITTORGARH: chittorgarh } as any,
+      overrides: overridesReader,
+      resolvePolicy: undefined,
+    } as any);
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(overridesReader.resolve).toHaveBeenCalled();
+    expect(callOrder).toEqual(['CHITTORGARH']);
+    expect(nse).not.toHaveBeenCalled();
+    expect(result.fieldsSupplied).toBe(1);
+    expect(repo.recorded[0].chosen.source).toBe('CHITTORGARH');
+    expect(repo.recorded[0].policyOrigin).toBe('override:ov-test-1');
+  });
+
+  it('with no resolvePolicy override and NO active override row, the walk still resolves via the real registry (safe when the table is absent/empty -- unchanged prod behaviour)', async () => {
+    // Real manifest MAINBOARD ranks for ipos.issue_size are DOC, CHITTORGARH (field-manifest.json)
+    // -- DOC fails NOT_PRINTED here so the walk falls through to rank2 CHITTORGARH, proving the
+    // FULL registry rank order (not just rank1) still drives the walk with no override active.
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'issue_size', rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
+    const callOrder: string[] = [];
+    const doc = vi.fn(async () => {
+      callOrder.push('DOC');
+      return { outcome: 'NOT_PRINTED' as const };
+    });
+    const chittorgarh = vi.fn(async () => {
+      callOrder.push('CHITTORGARH');
+      return { outcome: 'SUPPLIED' as const, value: 111 };
+    });
+    const overridesReader = { resolve: vi.fn(async () => []) };
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chittorgarh } as any,
+      overrides: overridesReader,
+      resolvePolicy: undefined,
+    } as any);
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(overridesReader.resolve).toHaveBeenCalled();
+    expect(callOrder).toEqual(['DOC', 'CHITTORGARH']);
+    expect(result.fieldsSupplied).toBe(1);
+    expect(repo.recorded[0].chosen.source).toBe('CHITTORGARH');
+    expect(repo.recorded[0].policyOrigin).toMatch(/^registry:/);
+  });
+});

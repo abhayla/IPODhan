@@ -23,7 +23,7 @@
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository, IpoFieldPlanRepository } from '@ipodhan/shared';
-import { generateFieldPlan } from './field-plan-generator.js';
+import { generateFieldPlan, generateFieldPlanAsync } from './field-plan-generator.js';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints, recordDiscoveredLeadManagers } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
@@ -54,6 +54,8 @@ import {
 } from './document-store.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { walkFieldPlanForIPO } from './field-plan-walk.js';
+import { FieldSourceOverridesRepository } from '@ipodhan/shared/repositories/field-source-overrides-repository';
+import { createFieldSourceOverridesReader } from '../config/field-source-overrides-reader.js';
 import {
   buildFieldPlanWalkFetchers,
   buildFieldPlanWalkOrchestrator,
@@ -1161,6 +1163,12 @@ export async function runDocumentCycle(
   const ipoRepository = new IPORepository(db as never, redis as never);
   const stepsRepository = new IpoPipelineStepsRepository(db as never, redis as never);
   const fieldPlanRepository = new IpoFieldPlanRepository(db as never, redis as never);
+  // CRITICAL-1 fix (S4 review round 2): built once per cycle, same reason every other repository
+  // above is (ruling 33 / F-101) -- resolved ONCE per walk run inside the walk itself
+  // (`resolvePolicyForPlan`'s per-field call), never a DB read per field.
+  const fieldSourceOverridesReader = createFieldSourceOverridesReader(
+    new FieldSourceOverridesRepository({ db: db as never })
+  );
   const counter = new NetworkCounter();
 
   // Built lazily and reused across IPOs: the dependency set opens repositories
@@ -1685,11 +1693,17 @@ export async function runDocumentCycle(
             break;
           }
           try {
-            const rows = generateFieldPlan({
-              id: ipo.id,
-              segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
-              listingExchanges: ipo.listingExchanges ?? null,
-            });
+            // CRITICAL-1 fix (S4 review round 2): override-aware entry point -- an active
+            // field_source_overrides row now changes the ranks a NEWLY GENERATED plan row is
+            // planted with, not just what the walk asks at read time.
+            const rows = await generateFieldPlanAsync(
+              {
+                id: ipo.id,
+                segment: (ipo.segment as 'MAINBOARD' | 'SME' | null) ?? null,
+                listingExchanges: ipo.listingExchanges ?? null,
+              },
+              { overrides: fieldSourceOverridesReader }
+            );
             if (rows.length === 0) continue;
             const { inserted } = await fieldPlanRepository.upsertGeneratedRows(
               rows.map((r) => ({
@@ -1830,6 +1844,10 @@ export async function runDocumentCycle(
                 // path — reuse the SAME repository instance this function
                 // already opened (line ~1161), never a second one.
                 ipoRepository,
+                // CRITICAL-1 fix (S4 review round 2): wires layer 2 (field_source_overrides) into
+                // the real production walk -- the ONLY thing missing was this line; the walk's
+                // default resolver was already override-aware and safe when the table is absent.
+                overrides: fieldSourceOverridesReader,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );
