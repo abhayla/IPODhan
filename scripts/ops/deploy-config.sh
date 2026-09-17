@@ -71,6 +71,18 @@ if [ "$SLOT" = "prod" ] && [ "$OWNERS_WORD" -ne 1 ]; then
   fatal "prod-guard: --slot prod requires --i-have-the-owners-word — refusing without it (prod-guard)"
 fi
 
+# ------------------------------------------------------------------- repo-root
+# On a deployed release this script's own dir has no .git anywhere above it
+# (scripts/deploy-linux.sh step 4 ships releases as a 'git archive | tar -x'
+# export, #748) — the default REPO_ROOT computation ($SCRIPT_DIR/../..) then
+# points at a plain, git-free directory and every git call below would fail
+# with a raw, unhelpful git error. Fail fast here with a message that names
+# the fix: set DEPLOY_CONFIG_REPO to a real checkout (e.g. the on-box
+# /var/www/ipodhan/repo clone) that can reach origin/main.
+if ! (cd "$REPO_ROOT" && git rev-parse --is-inside-work-tree) >/dev/null 2>&1; then
+  fatal "repo-root: '$REPO_ROOT' is not a git working tree (this script has no .git above it — expected on a deployed release) — set DEPLOY_CONFIG_REPO to a checkout that can reach origin/main, e.g. DEPLOY_CONFIG_REPO=/var/www/ipodhan/repo (lineage)"
+fi
+
 # ------------------------------------------------------------------ lineage
 # Same lineage rule as deploy-linux.sh step 0.5: the sha must be reachable
 # from origin/main. DEPLOY_CONFIG_LINEAGE_SKIP_FETCH lets a test point this

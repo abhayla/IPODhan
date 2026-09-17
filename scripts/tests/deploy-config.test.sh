@@ -409,6 +409,107 @@ run_deploy() {
   fi
 }
 
+# ---------------------------------------------------------------- case 10
+# Deployed-shape run: the script must complete a real config-only deploy
+# when it lives inside a directory tree with NO .git anywhere up to the
+# filesystem root (the actual deployed shape — a release dir under
+# /var/www/ipodhan/current-staging/scripts/ops/, #748). DEPLOY_CONFIG_REPO
+# points the script's git operations at a fixture repo instead of the
+# no-git tree it is physically copied into.
+{
+  REPO="$(build_fixture_repo)"
+  ROOT="$(fresh_dir)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+
+  # A standalone, git-free copy of the script tree, several directories
+  # below a filesystem root that has no .git anywhere above it — this is
+  # what scripts/ops/deploy-config.sh's own default REPO_ROOT computation
+  # ($SCRIPT_DIR/../..) resolves to on a deployed release, and why it
+  # breaks: there is no .git up that chain at all.
+  NOGIT_ROOT="$(fresh_dir)"
+  NOGIT_SCRIPT_DIR="$NOGIT_ROOT/current-staging/scripts/ops"
+  mkdir -p "$NOGIT_SCRIPT_DIR"
+  cp "$DEPLOY_CONFIG" "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  chmod +x "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+
+  OUT="$(DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$NOGIT_SCRIPT_DIR/deploy-config.sh" --root "$ROOT" \
+    --slot staging --sha "$SHA_V2" --reason "case10 deployed shape" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case10: deploy-config.sh run from a no-.git tree (with DEPLOY_CONFIG_REPO set) exits 0"
+  else
+    fail "case10: expected exit 0 from a no-.git tree, got $RC ($OUT)"
+  fi
+
+  if [ -f "$ROOT/shared/config/staging/field-manifest.json" ] && grep -q '"version":2' "$ROOT/shared/config/staging/field-manifest.json"; then
+    pass "case10: manifest deployed correctly from the no-.git tree"
+  else
+    fail "case10: manifest not deployed from the no-.git tree"
+  fi
+}
+
+# ---------------------------------------------------------------- case 11
+# Same no-.git tree, but DEPLOY_CONFIG_REPO is left UNSET: the script's own
+# default REPO_ROOT ($SCRIPT_DIR/../..) is a directory with no .git in it
+# or above it, so every git call in the script fails. The failure MUST
+# name DEPLOY_CONFIG_REPO and tell the operator what to set — not just
+# surface a raw git error, which gives the operator nothing to act on.
+{
+  NOGIT_ROOT="$(fresh_dir)"
+  NOGIT_SCRIPT_DIR="$NOGIT_ROOT/current-staging/scripts/ops"
+  mkdir -p "$NOGIT_SCRIPT_DIR"
+  cp "$DEPLOY_CONFIG" "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  chmod +x "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  ROOT="$(fresh_dir)"
+
+  # Deliberately unset DEPLOY_CONFIG_REPO (env -u belt-and-braces in case a
+  # caller's shell exported it earlier in this suite).
+  OUT="$(env -u DEPLOY_CONFIG_REPO DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$NOGIT_SCRIPT_DIR/deploy-config.sh" --root "$ROOT" \
+    --slot staging --sha "deadbeef" --reason "case11 no repo override" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -ne 0 ]; then
+    pass "case11: no-.git tree with DEPLOY_CONFIG_REPO unset is refused, not silently mis-resolved"
+  else
+    fail "case11: expected non-zero exit with DEPLOY_CONFIG_REPO unset from a no-.git tree, got 0"
+  fi
+
+  if printf '%s' "$OUT" | grep -q "DEPLOY_CONFIG_REPO"; then
+    pass "case11: refusal names DEPLOY_CONFIG_REPO so the operator knows what to set"
+  else
+    fail "case11: refusal did not name DEPLOY_CONFIG_REPO ($OUT)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 12
+# The committed script must carry the executable bit in git itself — a
+# release is a 'git archive | tar -x' export (scripts/deploy-linux.sh
+# step 4) which faithfully reproduces the committed mode, so a 100644 blob
+# ships non-executable on every release regardless of any chmod done on
+# the source checkout (#748's second, unnamed defect).
+{
+  MODE="$(cd "$SCRIPT_DIR/.." && git ls-tree HEAD -- ops/deploy-config.sh 2>/dev/null | awk '{print $1}')"
+  if [ -z "$MODE" ]; then
+    # Not running inside a git checkout (e.g. a release dir) — fall back
+    # to a plain filesystem executable check, which is the property that
+    # actually matters at runtime.
+    if [ -x "$DEPLOY_CONFIG" ]; then
+      pass "case12: deploy-config.sh is executable on disk (no git tree to check the committed mode)"
+    else
+      fail "case12: deploy-config.sh is NOT executable on disk"
+    fi
+  elif [ "$MODE" = "100755" ]; then
+    pass "case12: deploy-config.sh is committed with mode 100755 (executable) in git"
+  else
+    fail "case12: deploy-config.sh is committed with mode $MODE, not 100755 — git archive will ship it non-executable on every release"
+  fi
+}
+
 echo "---"
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PASS"
