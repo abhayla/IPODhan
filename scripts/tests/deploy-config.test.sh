@@ -582,21 +582,113 @@ run_deploy() {
 # own 'dubious ownership' safe.directory refusal (exit 128) — the fatal
 # message must show git's actual words, not just the generic
 # DEPLOY_CONFIG_REPO advice the operator has already followed.
+#
+# round 2 asserted this with GIT_TEST_ASSUME_DIFFERENT_OWNER=1, which
+# fakes the refusal only on a SID-based ownership check (Windows git).
+# On the Linux CI runner (POSIX uid check, git 2.55.0) the fixture is
+# owned by the invoking uid, so the env var is simply inert: the script
+# runs past the repo-root guard and dies later at lineage, and the
+# asserted text never appears (CI: 'FAIL: case14 ... got rc=1 ...
+# FATAL: lineage: deadbeef is not an ancestor of origin/main'). That is a
+# vacuous assertion, not a broken guard — round 1 and round 2 both made
+# this mistake (case10's premise-assertion idiom exists for exactly this
+# reason and was not applied here).
+#
+# Fix: stand in for the real-world condition (a root-owned
+# /var/www/ipodhan/repo hit by a non-root invoker) with a stub 'git'
+# ahead of PATH on 'rev-parse --is-inside-work-tree' only, printing git's
+# own real refusal text and exiting 128 — deterministic on every
+# platform, git version and uid, because it does not depend on the OS's
+# ownership-check mechanism at all. Every other git subcommand passes
+# through to the real git so the rest of the script (log(), fatal(), the
+# parts that run BEFORE the probe) is unaffected.
 {
   REPO="$(build_fixture_repo)"
   ROOT="$(fresh_dir)"
 
-  OUT="$(DEPLOY_CONFIG_REPO="$REPO" GIT_TEST_ASSUME_DIFFERENT_OWNER=1 \
-    DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
-    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
-    bash "$DEPLOY_CONFIG" --root "$ROOT" \
-    --slot staging --sha "deadbeef" --reason "case14 dubious ownership" 2>&1)"
-  RC=$?
-  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qi "dubious ownership"; then
-    pass "case14: dubious-ownership refusal shows git's own cause, not only generic advice"
+  STUB_DIR="$(fresh_dir)"
+  REAL_GIT="$(command -v git)"
+  cat > "$STUB_DIR/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "rev-parse" ] && [ "\$2" = "--is-inside-work-tree" ]; then
+  echo "fatal: detected dubious ownership in repository at '\$PWD'" >&2
+  exit 128
+fi
+exec "$REAL_GIT" "\$@"
+STUBEOF
+  chmod +x "$STUB_DIR/git"
+
+  # Premise: the stub actually shadows the real git for this probe,
+  # case10-style — assert it before trusting the outcome, so an inert
+  # stub (wrong PATH order, non-executable, wrong git resolved) is loud
+  # as a SKIP instead of masquerading as a guard defect either way.
+  STUB_CHECK_OUT="$(PATH="$STUB_DIR:$PATH" git rev-parse --is-inside-work-tree 2>&1)"
+  STUB_CHECK_RC=$?
+  if [ "$STUB_CHECK_RC" -eq 128 ] && printf '%s' "$STUB_CHECK_OUT" | grep -qi "dubious ownership"; then
+    OUT="$(PATH="$STUB_DIR:$PATH" DEPLOY_CONFIG_REPO="$REPO" \
+      DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+      DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+      bash "$DEPLOY_CONFIG" --root "$ROOT" \
+      --slot staging --sha "deadbeef" --reason "case14 dubious ownership" 2>&1)"
+    RC=$?
+    if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qi "dubious ownership"; then
+      pass "case14: dubious-ownership refusal shows git's own cause, not only generic advice"
+    else
+      fail "case14: expected 'dubious ownership' in the refusal text, got rc=$RC ($OUT)"
+    fi
   else
-    fail "case14: expected 'dubious ownership' in the refusal text, got rc=$RC ($OUT)"
+    echo "SKIP: case14: premise violated — the stub git did not shadow the real git (rc=$STUB_CHECK_RC, out=$STUB_CHECK_OUT)"
   fi
+}
+
+# ---------------------------------------------------------------- case 14b
+# Generic form of case14's property: ANY probe result that is not exactly
+# "true" on stdout, together with non-empty stderr, must end up verbatim
+# inside the repo-root fatal — not just the one 'dubious ownership'
+# string. This is the case that would also have caught round 1's guard
+# (exit-code-only, ignored stderr entirely): it exercises several
+# different stub outcomes, not one hand-picked message.
+{
+  for VARIANT in \
+    "128:fatal: detected dubious ownership in repository at '/fixture'" \
+    "1:error: not a git repository (or any of the parent directories): .git" \
+    "128:fatal: unsafe repository ('/fixture' is owned by someone else)"
+  do
+    STUB_RC="${VARIANT%%:*}"
+    STUB_MSG="${VARIANT#*:}"
+
+    REPO="$(build_fixture_repo)"
+    ROOT="$(fresh_dir)"
+    STUB_DIR="$(fresh_dir)"
+    REAL_GIT="$(command -v git)"
+    cat > "$STUB_DIR/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "rev-parse" ] && [ "\$2" = "--is-inside-work-tree" ]; then
+  echo "$STUB_MSG" >&2
+  exit $STUB_RC
+fi
+exec "$REAL_GIT" "\$@"
+STUBEOF
+    chmod +x "$STUB_DIR/git"
+
+    STUB_CHECK_OUT="$(PATH="$STUB_DIR:$PATH" git rev-parse --is-inside-work-tree 2>&1)"
+    STUB_CHECK_RC=$?
+    if [ "$STUB_CHECK_RC" -eq "$STUB_RC" ] && [ "$STUB_CHECK_OUT" = "$STUB_MSG" ]; then
+      OUT="$(PATH="$STUB_DIR:$PATH" DEPLOY_CONFIG_REPO="$REPO" \
+        DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+        DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+        bash "$DEPLOY_CONFIG" --root "$ROOT" \
+        --slot staging --sha "deadbeef" --reason "case14b generic probe failure" 2>&1)"
+      RC=$?
+      if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF "$STUB_MSG"; then
+        pass "case14b: probe failure (rc=$STUB_RC) '$STUB_MSG' reaches the repo-root fatal verbatim"
+      else
+        fail "case14b: probe failure (rc=$STUB_RC) '$STUB_MSG' did not reach the fatal (rc=$RC, out=$OUT)"
+      fi
+    else
+      echo "SKIP: case14b: premise violated for variant rc=$STUB_RC — stub did not shadow real git (got rc=$STUB_CHECK_RC, out=$STUB_CHECK_OUT)"
+    fi
+  done
 }
 
 # ---------------------------------------------------------------- case 15
