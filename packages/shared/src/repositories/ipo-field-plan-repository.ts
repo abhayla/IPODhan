@@ -227,6 +227,14 @@ export interface PlanRowBelowVersion {
   ipoName: string | null;
   ipoSegment: 'MAINBOARD' | 'SME' | null;
   ipoListingExchanges: ('NSE' | 'BSE')[] | null;
+  /**
+   * CRITICAL-2 fix (independent Tier A review, item 3 S2): the row-insert
+   * gate needs the SAME fields `isInLiveWindow` reads for the live pipeline
+   * (`document-cycle.ts:988-1000` / `document-state-machine.ts:751`), so the
+   * repair tool can reuse that predicate instead of re-implementing it.
+   */
+  ipoStatus: string | null;
+  ipoListingDate: Date | null;
 }
 
 /** One row's new ranks, resolved by the caller from the current policy. */
@@ -319,7 +327,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
                p.rank1_source, p.rank2_source, p.rank3_source,
                p.state, p.manifest_version, p.policy_origin,
                i.slug AS ipo_slug, i.company_name AS ipo_name,
-               i.segment AS ipo_segment, i.listing_exchanges AS ipo_listing_exchanges
+               i.segment AS ipo_segment, i.listing_exchanges AS ipo_listing_exchanges,
+               i.status AS ipo_status, i.listing_date AS ipo_listing_date
           FROM ipo_field_plan p
           JOIN ipos i ON i.id = p.ipo_id
          WHERE p.manifest_version < ${currentVersion}
@@ -599,6 +608,8 @@ function mapBelowVersionRow(raw: Record<string, unknown>): PlanRowBelowVersion {
     ipoName: (raw.ipo_name as string) ?? null,
     ipoSegment: (raw.ipo_segment as 'MAINBOARD' | 'SME') ?? null,
     ipoListingExchanges: (raw.ipo_listing_exchanges as ('NSE' | 'BSE')[]) ?? null,
+    ipoStatus: (raw.ipo_status as string) ?? null,
+    ipoListingDate: raw.ipo_listing_date == null ? null : new Date(raw.ipo_listing_date as string),
   };
 }
 
