@@ -72,6 +72,10 @@ import {
 import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
 import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 import { checkPriceBand } from './lib/substance-checks.mjs';
+import {
+  checkPlanRankMatchesPolicy, checkWriteSourceInPolicy, checkManifestMatchesGenerator,
+  lookupManifestRanks, ipoTypeKey,
+} from './lib/pull-policy-checks.mjs';
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
 
@@ -1597,6 +1601,104 @@ async function checkR_provenanceParentNotNull() {
       : `${result.count} row(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`);
 }
 
+// ---- (S) item 3 slice S6: PULL-POLICY / PULL-WRITE-POLICY / PULL-PLAN-RANK --
+//
+// Three checks that compare what the pull-model system actually did against
+// what the field-manifest policy says it should have done (docs/design/
+// build-cards/item-03-s6-churn-stop-and-detection.md). Each reuses the SAME
+// pure predicate the unit test exercises (scripts/lib/pull-policy-checks.mjs)
+// — never a re-implementation here.
+
+function checkS_pullPolicy() {
+  let out = '';
+  let exitCode = 0;
+  try {
+    out = execFileSync('node', [join(REPO_ROOT, 'scripts', 'generate-field-manifest.mjs'), '--check'], {
+      encoding: 'utf8', cwd: REPO_ROOT,
+    });
+  } catch (e) {
+    exitCode = typeof e.status === 'number' ? e.status : 1;
+    out = (e.stdout || '') + (e.stderr || '');
+  }
+  const violation = checkManifestMatchesGenerator(() => ({ exitCode, output: out }));
+  record('pull_policy', 'committed field-manifest.json equals what generate-field-manifest.mjs produces',
+    violation ? 'FAIL' : 'PASS', violation || 'manifest matches the generator exactly');
+}
+
+async function checkS_pullWritePolicy() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('pull_write_policy', "last night's field_sources rows agree with the manifest policy", 'UNVERIFIABLE',
+      `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  let rows;
+  try {
+    rows = await q(
+      `SELECT fs.table_name AS "tableName", fs.row_key AS "rowKey", fs.field_name AS "fieldName",
+              fs.source, i.segment, i.listing_exchanges AS "listingExchanges"
+         FROM field_sources fs
+         JOIN ipos i ON i.id = fs.ipo_id
+        WHERE fs.updated_at >= now() - interval '24 hours'`
+    );
+  } catch (e) {
+    record('pull_write_policy', "last night's field_sources rows agree with the manifest policy", 'UNVERIFIABLE',
+      `field_sources not readable: ${e.message}`);
+    return;
+  }
+  const offenders = [];
+  for (const row of rows) {
+    const type = ipoTypeKey(row.segment, row.listingExchanges);
+    const ranks = lookupManifestRanks(manifest, row.tableName, row.fieldName, type);
+    if (ranks === null) continue; // field not in the manifest at all — not this check's population
+    const v = checkWriteSourceInPolicy(row, ranks);
+    if (v) { offenders.push(v); notify('pull_write_policy', 'P2', `${row.tableName}.${row.fieldName}`, 'field_sources write disagrees with policy', v); }
+  }
+  record('pull_write_policy', `${rows.length} sampled field_sources row(s) from the last 24h agree with the manifest policy`,
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    `0 of ${rows.length} sampled field_sources rows disagree with policy` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
+async function checkS_pullPlanRank() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('pull_plan_rank', 'plan rows agree with the manifest policy for their version', 'UNVERIFIABLE',
+      `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  let rows;
+  try {
+    rows = await q(
+      `SELECT p.table_name AS "tableName", p.row_key AS "rowKey", p.field_name AS "fieldName",
+              p.rank1_source AS "rank1Source", p.rank2_source AS "rank2Source", p.rank3_source AS "rank3Source",
+              p.manifest_version AS "manifestVersion", i.segment, i.listing_exchanges AS "listingExchanges"
+         FROM ipo_field_plan p
+         JOIN ipos i ON i.id = p.ipo_id
+        WHERE p.state <> 'SUPPLIED' AND p.manifest_version = $1`,
+      [manifest.version]
+    );
+  } catch (e) {
+    record('pull_plan_rank', 'plan rows agree with the manifest policy for their version', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  const offenders = [];
+  for (const row of rows) {
+    const type = ipoTypeKey(row.segment, row.listingExchanges);
+    const ranks = lookupManifestRanks(manifest, row.tableName, row.fieldName, type);
+    if (ranks === null) continue;
+    const v = checkPlanRankMatchesPolicy(row, ranks);
+    if (v) { offenders.push(v); notify('pull_plan_rank', 'P2', `${row.tableName}.${row.fieldName}`, 'plan row disagrees with policy', v); }
+  }
+  record('pull_plan_rank', `${rows.length} sampled non-terminal plan row(s) at manifestVersion=${manifest.version} agree with policy`,
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    `0 of ${rows.length} plan rows disagree with policy for their version` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+}
+
 async function checkNotApplicableDocuments() {
   let result;
   try {
@@ -1636,6 +1738,9 @@ async function main() {
   await checkQ_rowKeyCoverage();
   await checkR_provenanceParentNotNull();
   await checkNotApplicableDocuments();
+  checkS_pullPolicy();
+  await checkS_pullWritePolicy();
+  await checkS_pullPlanRank();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
