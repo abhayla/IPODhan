@@ -53,6 +53,12 @@ import { normalizeChosen } from './data-consolidation-service.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
+import {
+  resolveFieldSourcePolicy,
+  policyOriginString,
+  type FieldSourcePolicy,
+} from '../config/field-source-policy.js';
+import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
 
 /**
  * `plan.fieldName` is the manifest's raw snake_case key
@@ -223,6 +229,49 @@ export interface FieldPlanWalkDeps {
    * existing row and falls into a CREATE that throws on NOT NULL columns.
    */
   ipoRepository: FieldPlanWalkIPORepository;
+  /**
+   * The one resolver (item 3 slice S1a). Both `attemptOneField` and
+   * `tryProvisional` build their ask order from ONE call to this per field
+   * per walk (`policy.ranks`), never from the plan row's own rank columns —
+   * those stay the generator's record; S2 reconciles them when they drift.
+   * Defaulted to the real `resolveFieldSourcePolicy` so production callers
+   * need not wire it; tests stub it to prove the walk follows it.
+   */
+  resolvePolicy?: (query: {
+    table: string;
+    column: string;
+    ipoType: string;
+  }) => FieldSourcePolicy | Promise<FieldSourcePolicy>;
+}
+
+/** Default `resolvePolicy` — the real resolver, called with the deps-less production signature. */
+function defaultResolvePolicy(query: { table: string; column: string; ipoType: string }): FieldSourcePolicy {
+  return resolveFieldSourcePolicy(query);
+}
+
+/**
+ * Resolve one field's policy for the walk: read the IPO once (Redis-cached —
+ * not a new query pattern, `ipoRepository`'s own doc comment) to derive its
+ * type key the SAME way the generator does, then ask the resolver. Falls
+ * back to the plan row's OWN rank columns only when the IPO cannot be read
+ * at all (a real gap deps.ipoRepository already tolerates elsewhere in this
+ * file) — never silently falls back to MAINBOARD ranks for an SME issue.
+ */
+async function resolvePolicyForPlan(
+  ipoId: string,
+  plan: any,
+  deps: FieldPlanWalkDeps
+): Promise<FieldSourcePolicy> {
+  const resolvePolicy = deps.resolvePolicy ?? defaultResolvePolicy;
+  const existing = await deps.ipoRepository.findById(ipoId);
+  const ipoType = existing
+    ? resolveIpoTypeKey({
+        id: ipoId,
+        segment: (existing.segment as PlanIpo['segment']) ?? null,
+        listingExchanges: (existing.listingExchanges as PlanIpo['listingExchanges']) ?? null,
+      })
+    : 'MAINBOARD';
+  return resolvePolicy({ table: plan.tableName, column: plan.fieldName, ipoType });
 }
 
 export interface FieldPlanWalkBudget {
@@ -426,11 +475,24 @@ async function attemptOneField(
   deps: FieldPlanWalkDeps,
   result: FieldPlanWalkResult
 ): Promise<'SETTLED' | 'SUPERSEDED'> {
-  const ranks: [number, string | null][] = [
-    [1, plan.rank1Source],
-    [2, plan.rank2Source],
-    [3, plan.rank3Source],
-  ];
+  const policy = await resolvePolicyForPlan(ipoId, plan, deps);
+  const policyOrigin = policyOriginString(policy.origin);
+  const ranks: [number, string | null][] = policy.ranks.map((source, i) => [i + 1, source]);
+
+  const planRanks = [plan.rank1Source, plan.rank2Source, plan.rank3Source].filter(Boolean);
+  const policyRanksDiffer =
+    planRanks.length !== policy.ranks.length || planRanks.some((s, i) => s !== policy.ranks[i]);
+  if (policyRanksDiffer) {
+    logger.warn(
+      { ipoId, table: plan.tableName, field: plan.fieldName, policyRanks: policy.ranks, planRanks },
+      'PASS 3: policy ranks differ from plan row'
+    );
+  }
+  logger.info(
+    { ipoId, table: plan.tableName, field: plan.fieldName, policyOrigin, ranks: policy.ranks.join(',') },
+    `PASS 3: policy origin=${policyOrigin} ranks=${policy.ranks.join(',')}`
+  );
+
   const failures: string[] = [];
   /**
    * Did any rank fail for a reason that might not fail again?
@@ -526,7 +588,7 @@ async function attemptOneField(
       // here would close the ask against a value we already know is
       // second-best.
       result.fieldsNotAvailableYet += 1;
-      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures);
+      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures, policy);
       if (provisional) {
         result.fieldsProvisional += 1;
         logger.info(
@@ -544,6 +606,7 @@ async function attemptOneField(
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
+        policyOrigin,
         writeHappened: true,
         state: 'NOT_AVAILABLE_YET',
       });
@@ -581,6 +644,7 @@ async function attemptOneField(
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
+        policyOrigin,
         writeHappened: false,
         skipReason: verdict.skipReason,
       });
@@ -610,6 +674,7 @@ async function attemptOneField(
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
+        policyOrigin,
         writeHappened: true,
         state: 'CHECK_FAILED',
       });
@@ -619,6 +684,7 @@ async function attemptOneField(
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
+      policyOrigin,
       writeHappened: true,
       state: 'SUPPLIED',
       chosen: evidenceFor(source, rank, answer),
@@ -644,6 +710,7 @@ async function attemptOneField(
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
+      policyOrigin,
       writeHappened: true,
       state: 'CHECK_FAILED',
     });
@@ -661,6 +728,7 @@ async function attemptOneField(
   return recordAndClassify(deps, result, {
     planRowId: plan.id,
     claimToken: plan.claimToken,
+    policyOrigin,
     writeHappened: true,
     state: 'EXHAUSTED',
   });
@@ -682,13 +750,14 @@ async function tryProvisional(
   plan: any,
   authoritativeRank: number,
   deps: FieldPlanWalkDeps,
-  failures: string[]
+  failures: string[],
+  policy: FieldSourcePolicy
 ): Promise<{ source: string; rank: number } | null> {
-  const lowerRanks: [number, string | null][] = [
-    [1, plan.rank1Source],
-    [2, plan.rank2Source],
-    [3, plan.rank3Source],
-  ].filter(([r]) => (r as number) > authoritativeRank) as [number, string | null][];
+  // Same resolver call `attemptOneField` already made for this field this walk — passed in
+  // rather than re-resolved, so this stays ONE `resolvePolicy` call per field per walk.
+  const lowerRanks: [number, string | null][] = policy.ranks
+    .map((source, i): [number, string | null] => [i + 1, source])
+    .filter(([r]) => r > authoritativeRank);
 
   for (const [rank, source] of lowerRanks) {
     if (!source) continue;

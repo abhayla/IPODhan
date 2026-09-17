@@ -95,6 +95,7 @@ async function runGenerationPass(
       rank2Source: r.rank2Source,
       rank3Source: r.rank3Source,
       manifestVersion: r.manifestVersion,
+      policyOrigin: r.policyOrigin,
     }))
   );
 }
@@ -154,6 +155,19 @@ describe.skipIf(!DATABASE_URL)(`field-plan generation wiring (${RUN_LABEL})`, ()
     const rows = await rowsFor(MAINBOARD_IPO_ID);
     expect(rows.length).toBe(expectedCount);
     expect(rows.every((r) => r.state === 'PENDING' && r.attempts === 0)).toBe(true);
+  });
+
+  // item 3 slice S1a: the generator stamps policyOrigin from the ONE resolver, and the insert
+  // path (upsertGeneratedRows) carries it through to the real ipodhan_test row -- proving the
+  // wiring end to end, not just the pure generator function in isolation (defect-fix-contract.md).
+  it('every generated row carries policy_origin = registry:<manifest version> on the real DB row (S1a)', async () => {
+    const manifest = loadFieldManifest();
+    const mainboardIpo: PlanIpo = { id: MAINBOARD_IPO_ID, segment: 'MAINBOARD', listingExchanges: ['NSE', 'BSE'] };
+    await runGenerationPass(repo, mainboardIpo, manifest);
+
+    const rows = await rowsFor(MAINBOARD_IPO_ID);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.policyOrigin === `registry:${manifest.version}`)).toBe(true);
   });
 
   it("an SME-on-BSE IPO gets SME_BSE ranks, never NSE -- reads the manifest's per-segment rank arrays", async () => {

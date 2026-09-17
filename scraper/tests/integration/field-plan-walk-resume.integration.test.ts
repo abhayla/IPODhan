@@ -278,12 +278,36 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     };
   }
 
+  /**
+   * item 3 slice S1a: production resolves the ask order from ONE `resolvePolicy` call per field
+   * per walk, never from the plan row's rank columns directly. This suite seeds rows with
+   * synthetic field names (`field0`, `issueSize`) that do not exist in the real manifest, so the
+   * PRODUCTION default (`defaultResolvePolicy`, the real 190-row manifest) would throw
+   * "unknown field" here -- same reason the unit test file stubs it. This reads the row BACK from
+   * the real table by (tableName, fieldName) and echoes its own rank columns, so the resolver
+   * indirection is exercised against the real repository without requiring every synthetic field
+   * name in this suite to exist in the manifest.
+   */
+  function resolvePolicyFromSeededRow() {
+    return async ({ table, column }: { table: string; column: string }) => {
+      const [row] = await db
+        .select()
+        .from(schema.ipoFieldPlan)
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, table), eq(schema.ipoFieldPlan.fieldName, column)))
+        .limit(1);
+      const ranks = row ? [row.rank1Source, row.rank2Source, row.rank3Source] : [];
+      while (ranks.length > 0 && ranks[ranks.length - 1] == null) ranks.pop();
+      return { ranks, documentType: undefined, origin: { kind: 'registry' as const, version: 1 }, na: false };
+    };
+  }
+
   function deps(orchestrator: any, fetcher: FieldFetcher = suppliedFetcher) {
     return {
       fieldPlanRepository: repo as never,
       orchestrator,
       sourceFetchers: { NSE: fetcher, BSE: fetcher },
       ipoRepository: ipoRepositoryStub() as never,
+      resolvePolicy: resolvePolicyFromSeededRow() as never,
     };
   }
 
