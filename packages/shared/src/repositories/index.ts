@@ -105,3 +105,7 @@ export type {
   PipelineGrid,
   PipelineGridIpo,
 } from './ipo-pipeline-steps-repository';
+
+// Item 3 slice S4: field-manifest override layer (layer 2 of the policy resolver)
+export { FieldSourceOverridesRepository, isMissingTableError } from './field-source-overrides-repository';
+export type { FieldSourceOverridesRepositoryDeps } from './field-source-overrides-repository';

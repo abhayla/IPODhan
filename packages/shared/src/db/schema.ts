@@ -2304,3 +2304,40 @@ export const ipoPipelineStepsRelations = relations(ipoPipelineSteps, ({ one }) =
 
 export type IpoPipelineStep = typeof ipoPipelineSteps.$inferSelect;
 export type NewIpoPipelineStep = typeof ipoPipelineSteps.$inferInsert;
+
+// ==================== ITEM 3 SLICE S4: FIELD SOURCE OVERRIDES (layer 2) ====================
+
+// Per-(table,field[,ipo]) admin override of the field-manifest's rank order (layer 2 of the
+// three-layer policy — scraper/src/config/field-source-policy.ts's `deps.overrides`). Additive,
+// journaled. A missing table (pre-migration prod) means layer 2 is simply absent — the resolver
+// must tolerate that, never crash (see the resolver's table-absent handling).
+export const fieldSourceOverrides = pgTable(
+  'field_source_overrides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tableName: varchar('table_name', { length: 64 }).notNull(),
+    fieldName: varchar('field_name', { length: 64 }).notNull(),
+    // null = applies to all IPOs; non-null = this one IPO only (beats a global override).
+    ipoId: uuid('ipo_id').references(() => ipos.id, { onDelete: 'cascade' }),
+    rank1Source: varchar('rank1_source', { length: 32 }).notNull(),
+    rank2Source: varchar('rank2_source', { length: 32 }),
+    rank3Source: varchar('rank3_source', { length: 32 }),
+    reason: text('reason').notNull(),
+    setBy: varchar('set_by', { length: 64 }).notNull(),
+    setAt: timestamp('set_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    // Set by `expire`; the row is never deleted, so history survives.
+    expiredAt: timestamp('expired_at', { withTimezone: true }),
+  },
+  (table) => ({
+    activeIdx: index('idx_fso_active').on(
+      table.tableName,
+      table.fieldName,
+      table.ipoId,
+      table.expiresAt
+    ),
+  })
+);
+
+export type FieldSourceOverride = typeof fieldSourceOverrides.$inferSelect;
+export type NewFieldSourceOverride = typeof fieldSourceOverrides.$inferInsert;

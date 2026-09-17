@@ -12,6 +12,8 @@ import {
   checkManifestMatchesGenerator,
   lookupManifestRanks,
   ipoTypeKey,
+  checkOverrideRow,
+  validateOverrideRankSet,
 } from '../lib/pull-policy-checks.mjs';
 
 // ---- PULL-PLAN-RANK ---------------------------------------------------------
@@ -98,4 +100,68 @@ test('ipoTypeKey: SME_NSE when segment is SME and listingExchanges includes NSE'
 test('ipoTypeKey: SME_BSE when segment is SME and listingExchanges is missing/does not include NSE', () => {
   assert.equal(ipoTypeKey('SME', null), 'SME_BSE');
   assert.equal(ipoTypeKey('SME', ['BSE']), 'SME_BSE');
+});
+
+// ---- PULL-OVERRIDES (item 3 slice S4) ---------------------------------------------------------
+
+const REAL_MANIFEST_ISSUE_SIZE = {
+  fields: {
+    'ipos.issue_size': {
+      class: 'D',
+      rank: { MAINBOARD: ['DOC', 'CHITTORGARH'] },
+      capability: { DOC: { capable: true }, CHITTORGARH: { capable: true }, BSE: { capable: false, reason: 'measured wrong' } },
+    },
+    'ipos.open_date': {
+      class: 'T',
+      rank: { MAINBOARD: ['NSE', 'BSE'] },
+      capability: { NSE: { capable: true }, BSE: { capable: true } },
+    },
+  },
+};
+
+test('PULL-OVERRIDES: an active, valid override reports no violation and stays time-active', () => {
+  const row = {
+    id: 'ov-1', tableName: 'ipos', fieldName: 'issue_size', ipoId: null,
+    rank1Source: 'CHITTORGARH', rank2Source: 'DOC', rank3Source: null,
+    reason: 'valid', expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const result = checkOverrideRow(row, new Date(), (c) => validateOverrideRankSet(REAL_MANIFEST_ISSUE_SIZE, c.table, c.column, c.ranks));
+  assert.equal(result.violation, null);
+  assert.equal(result.stillTimeActive, true);
+});
+
+test('PULL-OVERRIDES FAILS a row past expires_at with no expired_at set', () => {
+  const row = {
+    id: 'ov-2', tableName: 'ipos', fieldName: 'issue_size', ipoId: null,
+    rank1Source: 'DOC', rank2Source: null, rank3Source: null,
+    reason: 'stale', expiresAt: new Date(Date.now() - 86400000).toISOString(),
+  };
+  const result = checkOverrideRow(row, new Date(), (c) => validateOverrideRankSet(REAL_MANIFEST_ISSUE_SIZE, c.table, c.column, c.ranks));
+  assert.ok(result.violation !== null);
+  assert.equal(result.stillTimeActive, false);
+});
+
+test('PULL-OVERRIDES FAILS an active row that ranks a now-incapable source (manifest drifted since it was set)', () => {
+  const row = {
+    id: 'ov-3', tableName: 'ipos', fieldName: 'issue_size', ipoId: null,
+    rank1Source: 'BSE', rank2Source: null, rank3Source: null,
+    reason: 'was valid once', expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const result = checkOverrideRow(row, new Date(), (c) => validateOverrideRankSet(REAL_MANIFEST_ISSUE_SIZE, c.table, c.column, c.ranks));
+  assert.ok(result.violation !== null);
+  assert.equal(result.stillTimeActive, true);
+});
+
+test('PULL-OVERRIDES FAILS an active row that ranks DOC on an E-1/class-T field (S-05 drift)', () => {
+  const row = {
+    id: 'ov-4', tableName: 'ipos', fieldName: 'open_date', ipoId: null,
+    rank1Source: 'DOC', rank2Source: 'NSE', rank3Source: null,
+    reason: 'was valid once', expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const result = checkOverrideRow(row, new Date(), (c) => validateOverrideRankSet(REAL_MANIFEST_ISSUE_SIZE, c.table, c.column, c.ranks));
+  assert.ok(result.violation !== null);
+});
+
+test('validateOverrideRankSet returns null for a capable, non-class-T ranking', () => {
+  assert.equal(validateOverrideRankSet(REAL_MANIFEST_ISSUE_SIZE, 'ipos', 'issue_size', ['CHITTORGARH']), null);
 });

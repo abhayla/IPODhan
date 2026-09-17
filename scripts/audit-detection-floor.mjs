@@ -74,7 +74,7 @@ import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 import { checkPriceBand } from './lib/substance-checks.mjs';
 import {
   checkPlanRankMatchesPolicy, checkWriteSourceInPolicy, checkManifestMatchesGenerator,
-  lookupManifestRanks, ipoTypeKey,
+  lookupManifestRanks, ipoTypeKey, checkOverrideRow, validateOverrideRankSet,
 } from './lib/pull-policy-checks.mjs';
 import { collectRowKeyCoverage, ROW_KEYED_CHILD_TABLES } from './lib/row-key-coverage-checks.mjs';
 import { collectNotApplicableDocuments, NOT_APPLICABLE_CHECK_NAME, EXTRACTABLE_DOC_TYPES_MIRROR } from './lib/not-applicable-documents.mjs';
@@ -1699,6 +1699,61 @@ async function checkS_pullPlanRank() {
     `0 of ${rows.length} plan rows disagree with policy for their version` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
+// ---- (S) item 3 slice S4: PULL-OVERRIDES -- every active field_source_overrides row still holds
+async function checkS_pullOverrides() {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json'), 'utf8'));
+  } catch (e) {
+    record('pull_overrides', 'every active field_source_overrides row is unexpired-and-flagged and still valid', 'UNVERIFIABLE',
+      `field-manifest.json not readable: ${e.message}`);
+    return;
+  }
+  let rows;
+  try {
+    rows = await q(
+      `SELECT id, table_name AS "tableName", field_name AS "fieldName", ipo_id AS "ipoId",
+              rank1_source AS "rank1Source", rank2_source AS "rank2Source", rank3_source AS "rank3Source",
+              reason, set_by AS "setBy", expires_at AS "expiresAt"
+         FROM field_source_overrides
+        WHERE expired_at IS NULL`
+    );
+  } catch (e) {
+    // S4's central safety property: a database with no field_source_overrides table (prod, before
+    // this slice's migration ships there) is "layer 2 not migrated here yet" -- a benign PASS, never
+    // UNVERIFIABLE/FAIL. Any OTHER read failure (a real outage) is still reported UNVERIFIABLE.
+    if (e.code === '42P01') {
+      record('pull_overrides', 'every active field_source_overrides row is unexpired-and-flagged and still valid', 'PASS',
+        'field_source_overrides table does not exist on this database -- layer 2 not migrated here yet.');
+      return;
+    }
+    record('pull_overrides', 'every active field_source_overrides row is unexpired-and-flagged and still valid', 'UNVERIFIABLE',
+      `field_source_overrides not readable: ${e.message}`);
+    return;
+  }
+  const now = new Date();
+  const offenders = [];
+  const active = [];
+  for (const row of rows) {
+    const { violation, stillTimeActive } = checkOverrideRow(row, now, (candidate) =>
+      validateOverrideRankSet(manifest, candidate.table, candidate.column, candidate.ranks)
+    );
+    if (stillTimeActive) active.push(row);
+    if (violation) {
+      offenders.push(violation);
+      notify('pull_overrides', 'P2', `${row.tableName}.${row.fieldName}`, 'field_source_overrides row invalid or unflagged-expired', violation);
+    }
+  }
+  const activeList = active
+    .map((r) => `${r.id}:${r.tableName}.${r.fieldName}:ipo=${r.ipoId ?? '(all)'}:expiresAt=${new Date(r.expiresAt).toISOString()}`)
+    .join('; ');
+  record('pull_overrides', `${rows.length} non-administratively-expired override row(s), ${active.length} still time-active`,
+    offenders.length === 0 ? 'PASS' : 'FAIL',
+    (offenders.length === 0
+      ? `0 violations. Active overrides: ${activeList || '(none)'}`
+      : `${offenders.length} violation(s): ${offenders.slice(0, MAX_OFFENDERS).join('; ')}`));
+}
+
 async function checkNotApplicableDocuments() {
   let result;
   try {
@@ -1741,6 +1796,7 @@ async function main() {
   checkS_pullPolicy();
   await checkS_pullWritePolicy();
   await checkS_pullPlanRank();
+  await checkS_pullOverrides();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');

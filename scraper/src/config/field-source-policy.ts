@@ -1,12 +1,16 @@
 /**
- * The one resolver — item 3, slice S1a. Answers "which sources, in which order, for this field,
- * table, IPO type" from the manifest (layer 1). The plan generator and the walk both call this
- * and nothing else; neither re-reads `entry.rank[...]` directly after this slice.
+ * The one resolver — item 3, slice S1a; layer 2 (overrides) filled in by S4. Answers "which
+ * sources, in which order, for this field, table, IPO type" — layer 2 (an active, unexpired
+ * `field_source_overrides` row) beats layer 1 (the manifest). The plan generator and the walk
+ * both call `resolveFieldSourcePolicy` (sync, registry-only — unchanged by this slice, per its
+ * scope limit) and neither re-reads `entry.rank[...]` directly.
  *
- * Layer 2 (per-IPO overrides, admin corrections) is a stub parameter here — S4 fills it in. The
- * signature is fixed now so S4 needs no caller change (design finding 6). Layer 3 (the walk's
- * existing `field_protection_metadata` skip, §2.7) is untouched by this slice; it sits above the
- * resolver in the walk, not inside it.
+ * `resolveFieldSourcePolicyAsync` (S4, NEW) is the override-aware entry point: same manifest
+ * logic, plus an optional `deps.overrides` reader consulted for layer 2. It is not wired into the
+ * generator/walk in this slice (out of scope — "Do NOT change the writer, the walk" — a future
+ * slice threads it through call sites that are currently synchronous, per-field loops). Layer 3
+ * (the walk's existing `field_protection_metadata` skip, §2.7) is untouched here; it sits above
+ * the resolver in the walk, not inside it.
  */
 import { loadFieldManifest } from './field-manifest-loader.js';
 import type { FieldManifest, FieldManifestEntry, SourceCode } from './field-manifest-schema.js';
@@ -43,17 +47,28 @@ export interface FieldSourcePolicy {
   incapable: Readonly<Record<string, string>>;
 }
 
+/** One active override row, as the reader hands it to the resolver (layer 2, S4). */
+export interface ResolvedOverride {
+  id: string;
+  ranks: SourceCode[];
+  expiresAt: string;
+  /** true when this row is scoped to the one IPO in the query; false for a global (all-IPO) row. */
+  ipoScoped: boolean;
+}
+
 /**
- * Reserved for S4 (layer 2, per-IPO overrides). Accepted and ignored in this slice — S4 wires
- * this reader in without changing the caller-facing signature.
+ * S4. `resolve` returns every currently-active row (not expired) for the query's (table, column) —
+ * both an ipo-scoped and a global row may be active at once; the resolver (not the reader) decides
+ * precedence (ipo-scoped beats global). Returning [] means "no active override" — including when
+ * the underlying table does not exist (the reader's job to catch that, never the resolver's).
  */
 export interface OverrideReader {
-  resolve(query: PolicyQuery): PolicyOrigin extends { kind: 'override' } ? PolicyOrigin : never;
+  resolve(query: PolicyQuery): Promise<ResolvedOverride[]>;
 }
 
 export interface PolicyDeps {
   manifest?: FieldManifest;
-  /** S4. Accepted and ignored — see `OverrideReader`'s doc comment. */
+  /** Consulted only by `resolveFieldSourcePolicyAsync` (S4) — the sync function ignores it. */
   overrides?: OverrideReader;
 }
 
@@ -94,4 +109,30 @@ export function resolveFieldSourcePolicy(query: PolicyQuery, deps: PolicyDeps = 
 
 export function policyOriginString(origin: PolicyOrigin): string {
   return origin.kind === 'registry' ? `registry:${origin.version}` : `override:${origin.id}`;
+}
+
+/**
+ * S4: the override-aware resolver. Same manifest read as `resolveFieldSourcePolicy`, plus layer 2
+ * — when `deps.overrides` is given and returns at least one active row for (table, column[, ipoId]),
+ * an ipo-scoped row beats a global row, and the winning row's ranks + origin replace the registry's.
+ * `incapable`/`documentType`/`na` always come from the manifest — an override changes WHICH sources
+ * rank, never what the manifest thinks each source can do.
+ */
+export async function resolveFieldSourcePolicyAsync(
+  query: PolicyQuery,
+  deps: PolicyDeps = {}
+): Promise<FieldSourcePolicy> {
+  const registryPolicy = resolveFieldSourcePolicy(query, deps);
+  if (!deps.overrides) return registryPolicy;
+
+  const active = await deps.overrides.resolve(query);
+  if (active.length === 0) return registryPolicy;
+
+  // ipo-scoped beats global (S4 precedence rule); among ties, the reader's own ordering
+  // (newest `setAt` first, per the repository) decides — take the first ipo-scoped row if any,
+  // else the first global row.
+  const winner = active.find((row) => row.ipoScoped) ?? active[0];
+
+  const origin: PolicyOrigin = { kind: 'override', id: winner.id, expiresAt: winner.expiresAt };
+  return { ...registryPolicy, ranks: [...winner.ranks], origin };
 }

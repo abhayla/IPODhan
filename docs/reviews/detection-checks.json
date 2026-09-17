@@ -440,6 +440,20 @@
       "unverifiableWhen": "field_sources is unreadable, or fewer than 20 provenance rows were written on the printed offer-term fields in the 14-day window"
     },
     {
+      "id": "pull_overrides",
+      "designId": "PULL-OVERRIDES",
+      "findingClass": "an active field_source_overrides row is past its expiry with no expired_at flag, or is no longer valid against the current manifest (an incapable source, or S-05 document-on-timetable-field, after a manifest drift since the row was set)",
+      "whatItAsks": "every field_source_overrides row with expired_at IS NULL is either genuinely still time-active AND valid against the current manifest, or is flagged expired",
+      "healthy": "0 violations across every non-administratively-expired override row",
+      "alarmsWhen": "a row's expires_at is in the past with expired_at still null, or a still-time-active row ranks a source the current manifest marks incapable, or ranks a document source on an E-1/class-T timetable field",
+      "scope": "every row in field_source_overrides with expired_at IS NULL, on whichever database the audit runs against",
+      "consumer": "nightly floor-delta (docs/reviews/build-cards/item-03-s4-override-layer.md)",
+      "consumerReason": "an override is a same-day production knob with no PR in front of it (Tier A, per the card) — the nightly floor is the only recurring check that a manifest drift since a row was set has not silently invalidated it",
+      "status": "built (item 3 slice S4)",
+      "sourceDesign": "docs/design/build-cards/item-03-s4-override-layer.md",
+      "note": "a missing field_source_overrides table (prod, before this slice's migration ships there) is reported PASS, not UNVERIFIABLE or FAIL -- layer 2 is simply absent on that database, matching the resolver's own table-absent tolerance."
+    },
+    {
       "id": "pull_plan_rank",
       "designId": "PULL-PLAN-RANK",
       "findingClass": "a non-terminal ipo_field_plan row whose stored ranks disagree with the manifest policy for its own manifest_version",
