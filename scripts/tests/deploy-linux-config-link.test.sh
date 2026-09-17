@@ -146,6 +146,39 @@ current_release_dir() {
   fi
 }
 
+# ----------------------------------------------------------------- case 4
+# An empty (0-byte) pre-existing shared manifest is treated as unseeded:
+# -e is true for a 0-byte file, so the old "! -e" guard would have skipped
+# seeding and left an empty file linked in. -s (size>0) must catch this.
+{
+  ROOT4="$(fresh_root)"
+  mkdir -p "$ROOT4/shared/config/staging"
+  : > "$ROOT4/shared/config/staging/field-manifest.json"
+
+  DEPLOY_ROOT="$ROOT4" bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-config-link-case4.log 2>&1
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case4: deploy over a pre-existing EMPTY shared manifest exits 0"
+  else
+    fail "case4: deploy exited $RC ($(tail -20 /tmp/deploy-config-link-case4.log))"
+  fi
+
+  SHARED_SIZE="$(wc -c < "$ROOT4/shared/config/staging/field-manifest.json" 2>&1)"
+  if [ "${SHARED_SIZE:-0}" -gt 0 ]; then
+    pass "case4: previously-empty shared manifest is now seeded (non-empty)"
+  else
+    fail "case4: shared manifest is still empty — empty file was treated as already seeded"
+  fi
+
+  SHARED_SHA4="$(cat "$ROOT4/shared/config/staging/CONFIG_SHA" 2>&1)"
+  if [ "$SHARED_SHA4" = "release" ]; then
+    pass "case4: CONFIG_SHA seeded as 'release' after re-seeding the empty file"
+  else
+    fail "case4: CONFIG_SHA not 'release' after re-seeding (value=$SHARED_SHA4)"
+  fi
+}
+
 echo "---"
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PASS"

@@ -1007,14 +1007,16 @@ ssh rfp-vps "cd /var/www/ipodhan/current-staging && bash scripts/ops/deploy-conf
 explicit word (the script refuses `--slot prod` without that flag):
 
 ```bash
-ssh rfp-vps "cd /var/www/ipodhan/current-prod && bash scripts/ops/deploy-config.sh \
+ssh rfp-vps "cd /var/www/ipodhan/current && bash scripts/ops/deploy-config.sh \
   --slot prod --sha <sha on origin/main> --reason \"<why>\" --i-have-the-owners-word"
 ```
 
 **Rollback** — the same command with the previous sha; it is logged like any other run, nothing
 destructive happens (the shared file is just overwritten again).
 
-**Reading the result:**
+**Reading the result:** (prod's current link is `current`, not `current-prod`; staging's is
+`current-staging` — substitute `current` for `<slot>=prod` below, `current-staging` for
+`<slot>=staging`)
 
 ```bash
 ssh rfp-vps "readlink /var/www/ipodhan/current-<slot>/scraper/config/field-manifest.json"  # -> /shared/config/<slot>/field-manifest.json

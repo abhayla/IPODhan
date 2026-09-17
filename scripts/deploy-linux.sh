@@ -1009,10 +1009,13 @@ fi
 # pattern as shared/env above: scripts/ops/deploy-config.sh is the ONLY
 # thing that ever writes $ROOT/shared/config/$SLOT/field-manifest.json
 # after this seed step. Seed ONCE from the release's own committed file
-# when the shared file does not exist yet (day-one behaviour is identical
-# to today, per the card's "Feature flag: none — inert until a config
-# deploy is run"); an EXISTING shared file is never overwritten by a
-# release deploy — only deploy-config.sh mutates it.
+# when the shared file is absent, a dangling symlink, or empty (Opus review
+# MINOR-3: `-e` alone is true for a 0-byte file and false only for a
+# dangling link, so either case would otherwise be treated as already
+# seeded and left unusable) — day-one behaviour is identical to today, per
+# the card's "Feature flag: none — inert until a config deploy is run"; an
+# EXISTING non-empty shared file is never overwritten by a release deploy
+# — only deploy-config.sh mutates it.
 #
 # Unlike the env/cert symlinks and the Next build cache above, this step
 # runs FOR REAL even under --dry-run: it is a cheap file copy + symlink
@@ -1023,7 +1026,8 @@ fi
 CONFIG_DIR="$ROOT/shared/config/$SLOT"
 RELEASE_MANIFEST="$RELEASE_DIR/scraper/config/field-manifest.json"
 mkdir -p "$CONFIG_DIR" "$RELEASE_DIR/scraper/config"
-if [ ! -e "$CONFIG_DIR/field-manifest.json" ]; then
+if [ ! -s "$CONFIG_DIR/field-manifest.json" ]; then
+  rm -f "$CONFIG_DIR/field-manifest.json"
   if [ -f "$RELEASE_MANIFEST" ]; then
     cp "$RELEASE_MANIFEST" "$CONFIG_DIR/field-manifest.json"
     printf '%s' "release" > "$CONFIG_DIR/CONFIG_SHA"
