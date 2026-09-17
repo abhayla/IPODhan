@@ -877,6 +877,12 @@ jobs:
       - name: Run staging-now manual button test suite (capped 2/day)
         run: bash scripts/tests/deploy-staging-now.test.sh
 
+      - name: Run config-only deploy test suite (item 3 S5)
+        run: bash scripts/tests/deploy-config.test.sh
+
+      - name: Run config-only deploy release-link test suite (item 3 S5, symlink-only on Linux)
+        run: bash scripts/tests/deploy-linux-config-link.test.sh
+
       # Item 7 slice 1: scripts/scraper-wake.sh replaced pm2's --cron-restart,
       # which was the only thing bounding a hung scraper on prod. Both of the
       # wrapper's guards fail SILENTLY - a lock-skip that stops printing its

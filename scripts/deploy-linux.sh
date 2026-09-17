@@ -1002,6 +1002,54 @@ else
   fi
 fi
 
+# ---------------------------------------- 5.1 link shared config (item 3 S5)
+# scraper/config/field-manifest.json becomes one more shared,
+# release-independent file (build card
+# docs/design/build-cards/item-03-s5-config-only-deploy.md), the same
+# pattern as shared/env above: scripts/ops/deploy-config.sh is the ONLY
+# thing that ever writes $ROOT/shared/config/$SLOT/field-manifest.json
+# after this seed step. Seed ONCE from the release's own committed file
+# when the shared file is absent, a dangling symlink, or empty (Opus review
+# MINOR-3: `-e` alone is true for a 0-byte file and false only for a
+# dangling link, so either case would otherwise be treated as already
+# seeded and left unusable) — day-one behaviour is identical to today, per
+# the card's "Feature flag: none — inert until a config deploy is run"; an
+# EXISTING non-empty shared file is never overwritten by a release deploy
+# — only deploy-config.sh mutates it.
+#
+# Unlike the env/cert symlinks and the Next build cache above, this step
+# runs FOR REAL even under --dry-run: it is a cheap file copy + symlink
+# (no build, no PM2, no real box needed), and the dry-run self-test
+# (scripts/tests/deploy-linux-config-link.test.sh) asserts the real
+# symlink shape the card's DoD row S5-2 requires — a simulated log line
+# would prove nothing about the actual mechanism.
+CONFIG_DIR="$ROOT/shared/config/$SLOT"
+RELEASE_MANIFEST="$RELEASE_DIR/scraper/config/field-manifest.json"
+mkdir -p "$CONFIG_DIR" "$RELEASE_DIR/scraper/config"
+if [ ! -s "$CONFIG_DIR/field-manifest.json" ]; then
+  rm -f "$CONFIG_DIR/field-manifest.json"
+  if [ -f "$RELEASE_MANIFEST" ]; then
+    cp "$RELEASE_MANIFEST" "$CONFIG_DIR/field-manifest.json"
+    printf '%s' "release" > "$CONFIG_DIR/CONFIG_SHA"
+    log "seeded $CONFIG_DIR/field-manifest.json from this release (CONFIG_SHA=release)"
+  elif (( DRY_RUN )); then
+    # The dry-run tree is a stub marker, not a real checkout (step 4 above)
+    # — there is no real committed manifest to seed from. Seed from a
+    # trivial placeholder so the link step still has something real to
+    # point at; a real (non-dry-run) deploy always has the release's own
+    # committed file here.
+    printf '{"version":0,"fields":{}}\n' > "$CONFIG_DIR/field-manifest.json"
+    printf '%s' "release" > "$CONFIG_DIR/CONFIG_SHA"
+    log "[dry-run] seeded $CONFIG_DIR/field-manifest.json from a placeholder (no real committed tree in dry-run)"
+  else
+    warn "release has no scraper/config/field-manifest.json — leaving $CONFIG_DIR unseeded"
+  fi
+fi
+if [ -f "$CONFIG_DIR/field-manifest.json" ]; then
+  ln -sfn "$CONFIG_DIR/field-manifest.json" "$RELEASE_MANIFEST"
+  log "linked $RELEASE_MANIFEST -> $CONFIG_DIR/field-manifest.json"
+fi
+
 # ------------------- 5.5 persistent Next build cache, OUTSIDE the release ---
 # web/.next/cache is a webpack/Next build cache: measured 2026-09-10 on the
 # live prod release, it is 1.5 GB of that release's 3.1 GB, it is never read

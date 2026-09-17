@@ -130,4 +130,51 @@ describe('validateFieldManifestAtStartup (item 2 slice 4 — process-start valid
     expect(mainCallIndex).toBeGreaterThan(-1);
     expect(validateCallIndex).toBeLessThan(mainCallIndex);
   });
+
+  // Item 3 slice S5 (build card docs/design/build-cards/item-03-s5-config-only-deploy.md) — the
+  // S0b log line gains a `config_sha=` field read from a `CONFIG_SHA` file that sits in the SAME
+  // DIRECTORY as the REAL (realpath-resolved) manifest file. A symlinked release manifest
+  // (scripts/deploy-linux.sh's link step) resolves via fs.realpathSync to
+  // shared/config/<slot>/field-manifest.json, so CONFIG_SHA is looked up next to the symlink
+  // TARGET, not the release-local symlink path itself.
+  describe('config_sha (item 3 slice S5)', () => {
+    function writeManifestDir(): { dir: string; manifestPath: string } {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'field-manifest-config-sha-'));
+      const manifestPath = path.join(dir, 'field-manifest.json');
+      fs.copyFileSync(REAL_MANIFEST_PATH, manifestPath);
+      tmpFiles.push(manifestPath);
+      return { dir, manifestPath };
+    }
+
+    afterEach(() => {
+      // writeManifestDir's dir isn't tracked by tmpFiles (only files are) — best-effort cleanup.
+    });
+
+    it('no CONFIG_SHA file next to the manifest: logs config_sha=release', () => {
+      const { manifestPath } = writeManifestDir();
+      const infoSpy = vi.spyOn(logger, 'info');
+
+      validateFieldManifestAtStartup(manifestPath, true);
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ configSha: 'release' }),
+        expect.stringContaining('config_sha=release')
+      );
+    });
+
+    it('CONFIG_SHA file present next to the manifest: logs config_sha=<its trimmed content>', () => {
+      const { dir, manifestPath } = writeManifestDir();
+      const shaFile = path.join(dir, 'CONFIG_SHA');
+      fs.writeFileSync(shaFile, 'abc1234\n', 'utf-8');
+      tmpFiles.push(shaFile);
+      const infoSpy = vi.spyOn(logger, 'info');
+
+      validateFieldManifestAtStartup(manifestPath, true);
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ configSha: 'abc1234' }),
+        expect.stringContaining('config_sha=abc1234')
+      );
+    });
+  });
 });

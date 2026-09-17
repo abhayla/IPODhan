@@ -56,7 +56,7 @@ import { checkCrossSourceDisagreements } from './services/cross-source-disagreem
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { FEATURE_FLAGS, validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
 import { loadFieldManifest, DEFAULT_MANIFEST_PATH } from './config/field-manifest-loader.js';
-import { readFileSync as readManifestFileSync } from 'fs';
+import { readFileSync as readManifestFileSync, realpathSync } from 'fs';
 import { loadValidationRules } from './config/validation-rules-loader.js';
 
 /** Days of scraper_logs history to retain. */
@@ -623,11 +623,25 @@ export function validateFieldManifestAtStartup(
   // Item 3 slice S0b: name the exact config every cycle ran with — version, field count, and a
   // content hash (first 12 hex chars of sha256) so a staging/prod log can be diffed against the
   // committed file's own hash without shipping the whole 190-row JSON into the log stream.
-  const raw = readManifestFileSync(manifestPath ?? DEFAULT_MANIFEST_PATH, 'utf8');
+  const resolvedManifestPath = manifestPath ?? DEFAULT_MANIFEST_PATH;
+  const raw = readManifestFileSync(resolvedManifestPath, 'utf8');
   const sha256 = createHash('sha256').update(raw).digest('hex').slice(0, 12);
+  // Item 3 slice S5: name the config-only deploy this cycle ran with. `configSha` is read from a
+  // `CONFIG_SHA` file that sits next to the REAL manifest file — fs.realpathSync resolves a
+  // symlinked release manifest (scripts/deploy-linux.sh's link step) to its target,
+  // shared/config/<slot>/field-manifest.json, so CONFIG_SHA is looked up next to the shared file,
+  // not the release-local symlink path. Absent/unreadable CONFIG_SHA (no config deploy has run
+  // yet, or a plain non-symlinked path in a test) means the literal 'release'.
+  let configSha = 'release';
+  try {
+    const realManifestDir = dirname(realpathSync(resolvedManifestPath));
+    configSha = readManifestFileSync(join(realManifestDir, 'CONFIG_SHA'), 'utf8').trim();
+  } catch {
+    configSha = 'release';
+  }
   logger.info(
-    { version: manifest.version, fields: Object.keys(manifest.fields).length, sha256 },
-    `field-manifest: version=${manifest.version} fields=${Object.keys(manifest.fields).length} sha256=${sha256}`
+    { version: manifest.version, fields: Object.keys(manifest.fields).length, sha256, configSha },
+    `field-manifest: version=${manifest.version} fields=${Object.keys(manifest.fields).length} sha256=${sha256} config_sha=${configSha}`
   );
 }
 
