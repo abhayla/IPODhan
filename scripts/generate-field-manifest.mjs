@@ -365,12 +365,17 @@ async function main() {
     return;
   }
 
-  // default / --check: compare against the committed file.
+  // default / --check: compare against the committed file. Comparison is line-ending-normalized
+  // (CRLF -> LF) so a Windows checkout with core.autocrlf=true (the committed file is LF in git's
+  // index, but checks out CRLF on those machines) does not report drift that CI never sees; a
+  // genuine content difference still fails, since resolvedPlanDiff() below operates on the parsed
+  // JSON, not on the raw bytes.
   const committedRaw = fs.existsSync(MANIFEST_PATH) ? fs.readFileSync(MANIFEST_PATH, 'utf8') : null;
   const committed = committedRaw ? JSON.parse(committedRaw) : null;
   const generatedRaw = stableStringify(manifest);
+  const normalizeEol = (s) => (s == null ? s : s.split('\r\n').join('\n'));
 
-  if (committedRaw === generatedRaw) {
+  if (normalizeEol(committedRaw) === normalizeEol(generatedRaw)) {
     console.log('field-manifest.json matches the generator exactly.');
     process.exit(0);
   }

@@ -13,6 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -132,4 +133,23 @@ test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/u
   }
 
   assert.deepEqual(mismatches, []);
+});
+
+// case 4 (fix round 1, PR #738 CRLF class): the committed manifest is LF in git's index, but a
+// Windows checkout with core.autocrlf=true reads it back CRLF -- the class this test pins. It
+// mutates the REAL committed file's line endings only (never its content), runs --check, then
+// restores the original bytes in a finally block so no other test or a developer's working tree is
+// left altered by this run.
+test('case 4: a CRLF-only working copy of the manifest still passes --check (exit 0)', () => {
+  const original = fs.readFileSync(MANIFEST_PATH, 'utf8');
+  assert.ok(!original.includes('\r\n'), 'fixture assumption: the committed file starts as LF');
+  const crlfVersion = original.replace(/\n/g, '\r\n');
+  fs.writeFileSync(MANIFEST_PATH, crlfVersion);
+  try {
+    const result = runCheck();
+    assert.equal(result.status, 0, `expected exit 0 on a CRLF-only diff, got ${result.status}:\n${result.output}`);
+    assert.match(result.output, /matches the generator exactly/);
+  } finally {
+    fs.writeFileSync(MANIFEST_PATH, original);
+  }
 });
