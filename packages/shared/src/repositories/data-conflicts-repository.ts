@@ -11,6 +11,7 @@ import * as schema from '../db/schema';
 import { dataConflicts } from '../db/schema';
 import { BaseRepository } from './base-repository';
 import { logger } from '../logger';
+import type { ScraperSource } from '../db/types';
 
 export interface DataConflictRecord {
   id: string;
@@ -18,11 +19,11 @@ export interface DataConflictRecord {
   tableName: string;
   rowKey: string;
   fieldName: string;
-  source1: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source1: ScraperSource;
   value1: string | null;
-  source2: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source2: ScraperSource;
   value2: string | null;
-  resolvedSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH' | null;
+  resolvedSource: ScraperSource | null;
   resolutionReason: string | null;
   severity: string; // Database column is VARCHAR, not enum
   adminNote: string | null;

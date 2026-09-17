@@ -10,6 +10,7 @@ import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
 import { fieldSources } from '../db/schema';
 import { BaseRepository } from './base-repository';
+import type { ScraperSource } from '../db/types';
 
 export interface FieldSourceRecord {
   id: string;
@@ -17,10 +18,10 @@ export interface FieldSourceRecord {
   tableName: string;
   rowKey: string;
   fieldName: string;
-  source: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH';
+  source: ScraperSource;
   confidence: number;
   previousValue: string | null;
-  previousSource: 'ADMIN' | 'DRHP' | 'NSE' | 'BSE' | 'API_FALLBACK' | 'MONEYCONTROL' | 'CHITTORGARH' | null;
+  previousSource: ScraperSource | null;
   dataLineage: unknown; // JSONB field from database
   updatedAt: Date;
   updatedBy: string | null;
