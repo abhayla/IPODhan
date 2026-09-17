@@ -274,6 +274,9 @@ describe.skipIf(!DATABASE_URL)(`item 3 S3: field-plan walk, REAL DataConsolidati
     expect(row.chosenRank).toBe(1);
     expect(row.claimedAt).toBeNull();
     expect(row.claimToken).toBeNull();
+    // The PLAN row's policy_origin comes from THIS TEST's own resolvePolicy
+    // stub (resolvePolicyChittorgarh, hardcoded 'registry:1') -- the walk
+    // records exactly what its resolvePolicy dependency told it (S1a).
     expect(row.policyOrigin).toBe('registry:1');
 
     const storedIssueSize = await readIssueSize();
@@ -282,6 +285,25 @@ describe.skipIf(!DATABASE_URL)(`item 3 S3: field-plan walk, REAL DataConsolidati
     const sources = await readFieldSources();
     expect(sources).toHaveLength(1);
     expect(sources[0].source).toBe('CHITTORGARH');
+    // S1d provenance write (data-consolidation-service.ts's computePolicyOrigin,
+    // trackFieldUpdate): the field_sources row's data_lineage is written by a
+    // SEPARATE call, inside the real orchestrator, to the REAL
+    // resolveFieldSourcePolicy against the REAL on-disk manifest
+    // (scraper/config/field-manifest.json, currently version 2 -- confirmed by
+    // reading the file directly, not assumed) -- NOT from this test's
+    // resolvePolicy stub, which only feeds the walk's own ranking/ask-order
+    // decision. That is WHY this deliberately reads 'registry:2' while the
+    // plan row above reads 'registry:1': two independent origin computations,
+    // one stubbed (the walk's ranks) and one real (the writer's own lineage
+    // resolution), and they are allowed to disagree because they answer
+    // different questions ("what ranks did the walk ask in" vs "what does the
+    // CURRENT real manifest say about this field"). On a fresh INSERT (this
+    // untracked row) trackFieldUpdate sets data_lineage directly, no jsonb
+    // merge involved (the COALESCE-merge path only fires on ON CONFLICT
+    // UPDATE -- see field-sources-repository.ts's trackFieldUpdate comment).
+    // Exact value, never toBeDefined()/truthiness -- a wrong version or a
+    // missing key must fail this test.
+    expect(sources[0].dataLineage).toEqual({ policyOrigin: 'registry:2' });
   });
 
   it('LOST: a stored DRHP value outranks CHITTORGARH — row NOT supplied, CHECK_FAILED, stored value and field_sources row unchanged', async () => {
