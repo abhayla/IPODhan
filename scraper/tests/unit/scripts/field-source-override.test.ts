@@ -72,6 +72,19 @@ describe('run -- guards, mutation-tested', () => {
     expect(result.exitCode).toBe(1);
   });
 
+  // CI type-check fix follow-up: the unnarrowed `{ subcommand: null }` union member is the
+  // parse-failure branch, and it was previously exercised only in two disconnected tests
+  // (parseArgs(['bogus']) above; run({subcommand:null}) here) -- never CHAINED the way `main()`
+  // actually calls them. This closes that gap end-to-end, matching the real CLI invocation
+  // (`npx tsx scripts/field-source-override.ts bogus` -> exit 1, proven manually this round).
+  it('parseArgs(bogus subcommand) chained into run() -> exit 1 with a usage message, the same path main() takes', async () => {
+    const errLines: string[] = [];
+    const cli = parseArgs(['bogus']);
+    const result = await run(cli, makeDeps({ error: (l) => errLines.push(l) }));
+    expect(result.exitCode).toBe(1);
+    expect(errLines[0]).toMatch(/usage:/);
+  });
+
   it('missing --expect-db -> exit 1, no DB call', async () => {
     const dbLike = testDbLike();
     const result = await run({ subcommand: 'list', apply: false, allowProd: false, expectDb: null }, makeDeps({ dbLike: dbLike as never }));

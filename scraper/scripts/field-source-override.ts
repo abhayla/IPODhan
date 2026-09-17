@@ -63,6 +63,20 @@ export interface ExpireCli {
 
 export type Cli = SetCli | ListCli | ExpireCli | { subcommand: null };
 
+/**
+ * CI type-check fix (PR #760 follow-up): this project's `tsconfig.scripts.json` extends the base
+ * `strict: false` config (no `strictNullChecks`), under which TS does NOT narrow a 4+ member
+ * discriminated union via `if (cli.subcommand === null) return;` at the call site — reproduced
+ * standalone (a minimal 4-member union with a shared field fails the same way; a 2-3 member union
+ * narrows fine, matching the SAME class of non-strict-mode narrowing gap already documented at
+ * `field-plan-walk.ts`'s `resolvePolicyForPlan`). An explicit type PREDICATE is not a cast or an
+ * `any` — it is a function whose declared return type IS the narrowing, checked by TS against the
+ * body (`cli.subcommand !== null`), and callers get real narrowing regardless of union size.
+ */
+function isParsedCli(cli: Cli): cli is SetCli | ListCli | ExpireCli {
+  return cli.subcommand !== null;
+}
+
 function flagValue(argv: readonly string[], flag: string): string | null {
   const at = argv.indexOf(flag);
   return at >= 0 && argv[at + 1] && !argv[at + 1].startsWith('--') ? argv[at + 1] : null;
@@ -120,7 +134,7 @@ export async function run(cli: Cli, deps: RunDeps): Promise<RunResult> {
   const log = deps.log ?? ((l: string) => console.log(l));
   const err = deps.error ?? ((l: string) => console.error(l));
 
-  if (cli.subcommand === null) {
+  if (!isParsedCli(cli)) {
     err(`${TOOL}: usage: set --table T --column C --ranks R1,R2 --reason "..." --expect-db DB [--ipo SLUG] [--apply] | list --expect-db DB | expire <id> --expect-db DB [--apply]`);
     return { exitCode: 1 };
   }
