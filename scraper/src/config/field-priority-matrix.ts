@@ -8,9 +8,11 @@ import { FINANCIAL_FIELD_BOUNDS } from '../scrapers/chittorgarh-detail-fields.js
 import { isFlipped } from './switchover.js';
 import { fieldNameToColumn } from './field-name-case.js';
 import { resolveFieldSourcePolicy } from './field-source-policy.js';
+import { loadFieldManifest } from './field-manifest-loader.js';
 import { mapManifestSourceToScraperSource } from './field-source-codes.js';
 import type { IpoTypeKey } from '../services/field-plan-generator.js';
 import { FEATURE_FLAGS } from './feature-flags.js';
+import { logger } from '../utils/logger.js';
 
 export type ScraperSource =
   | 'ADMIN'           // Manual admin overrides (highest priority)
@@ -143,41 +145,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Revenue for fiscal year 1 - DRHP is most accurate',
   },
 
-  revenue_fy2: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Revenue for fiscal year 2',
-  },
-
-  revenue_fy3: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Revenue for fiscal year 3',
-  },
-
-  profit_fy1: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Profit for fiscal year 1',
-  },
-
-  profit_fy2: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Profit for fiscal year 2',
-  },
-
-  profit_fy3: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Profit for fiscal year 3',
-  },
-
   // Specific fiscal year fields (camelCase - actual database fields)
   revenueFy2022: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
@@ -254,30 +221,6 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   marketCap: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Market capitalization (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.marketCap } },
   peer_companies: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Peer-comparison payload (one-to-many) from the detail page peer table' },
   objectives: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Objects-of-issue payload (ipos.objectives jsonb) from the detail page' },
-
-  roe_percentage: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'percentage',
-    confidenceThreshold: 75,
-    description: 'Return on Equity percentage',
-    validation: { min: -100, max: 500 },
-  },
-
-  roce_percentage: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'percentage',
-    confidenceThreshold: 75,
-    description: 'Return on Capital Employed',
-    validation: { min: -100, max: 500 },
-  },
-
-  pb_ratio: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 75,
-    description: 'Price-to-Book ratio',
-    validation: { min: 0, max: 100 },
-  },
 
   // ==================== IPO CORE DATA (NSE is primary) ====================
 
@@ -935,6 +878,83 @@ export function policyGoverns(fieldName: string, tableName?: string): boolean {
   return isFlipped(tableName, fieldNameToColumn(fieldName));
 }
 
+/** Once-per-process dedup keys for the shim/shadow log lines (card: "once per process per field"). */
+const shimLoggedFields = new Set<string>();
+const shadowLoggedFields = new Set<string>();
+
+/**
+ * Item 3 slice S1d: does the field/table have a row in the field manifest at all? Checked
+ * directly against `manifest.fields` — never through `resolveFieldSourcePolicy`, which THROWS
+ * for an unknown field (its own doc comment / test: "an unknown table.column throws"). A missing
+ * row is the row-less-field case the shim exists for, not an error.
+ */
+export function hasManifestRow(fieldName: string, tableName?: string): boolean {
+  if (!tableName) return false;
+  const manifest = loadFieldManifest();
+  const fieldKey = `${tableName}.${fieldNameToColumn(fieldName)}`;
+  return Object.prototype.hasOwnProperty.call(manifest.fields, fieldKey);
+}
+
+/**
+ * Item 3 slice S1d: does this field's WRITE-DECIDING functions (`getSourcePriority`,
+ * `isTimeBased`, `allowsSameSourceRefresh`) delegate to the resolver? Widens S1b's
+ * `policyGoverns` (flip-gated) to "has a manifest row" — but the `flipped` list still controls
+ * which groups' WRITE DECISIONS actually change: a field with a row whose group is NOT flipped
+ * still returns the legacy matrix answer from the three functions above (byte-identical to
+ * today), while this function logs `policy-shadow` once per process so the two answers are
+ * visible without acting on the resolver's one. A field with NO row is the shim case (below) —
+ * `delegatesToPolicy` is false for it, same as `policyGoverns`.
+ */
+function delegatesToPolicy(fieldName: string, tableName?: string): boolean {
+  if (!tableName) return false;
+  if (!FEATURE_FLAGS.ENABLE_POLICY_WRITER) return false;
+  if (!hasManifestRow(fieldName, tableName)) return false;
+  if (!isFlipped(tableName, fieldNameToColumn(fieldName))) {
+    logPolicyShadow(fieldName, tableName);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * A field WITH a manifest row whose group is not flipped: log both the legacy matrix order and
+ * the resolver's order, once per process per field, so drift is visible (S6's active-override
+ * report counts these) without changing the write decision yet.
+ */
+function logPolicyShadow(fieldName: string, tableName: string): void {
+  const dedupKey = `${tableName}.${fieldName}`;
+  if (shadowLoggedFields.has(dedupKey)) return;
+  shadowLoggedFields.add(dedupKey);
+
+  const matrixOrder = getFieldRules(fieldName).sources;
+  let policyOrder: string[];
+  try {
+    policyOrder = policyRanksAsWriterSources(fieldName, tableName, 'MAINBOARD');
+  } catch {
+    policyOrder = [];
+  }
+  logger.info(
+    { field: `${tableName}.${fieldNameToColumn(fieldName)}`, matrixOrder, policyOrder },
+    'policy-shadow'
+  );
+}
+
+/**
+ * A field with NO manifest row falls back to the matrix's `sources` — this is the shim the
+ * card names: logged once per process per field so a field the manifest never got a row for is
+ * visible (never a silent, permanent fallback). `sources` arrays STAY on the matrix rows for
+ * exactly this reason (S6 removes them once every writable field has a row).
+ */
+function logPolicyShim(fieldName: string, tableName: string): void {
+  const dedupKey = `${tableName}.${fieldName}`;
+  if (shimLoggedFields.has(dedupKey)) return;
+  shimLoggedFields.add(dedupKey);
+  logger.info(
+    { field: `${tableName}.${fieldNameToColumn(fieldName)}`, reason: 'no manifest row' },
+    'policy-shim'
+  );
+}
+
 /** The resolver's ranks for a flipped field, mapped to writer sources. ADMIN is never listed by
  * the resolver (field-source-policy.ts's own doc comment) — it is prepended here so ADMIN keeps
  * the fixed invariant of always ranking first, exactly like the matrix's own `ADMIN` entries. */
@@ -947,6 +967,11 @@ function policyRanksAsWriterSources(fieldName: string, tableName: string, ipoTyp
 /**
  * Get source priority index (lower = higher priority)
  * Returns -1 if source not in priority list
+ *
+ * Item 3 slice S1d: delegates to the resolver whenever the field has a manifest row AND its
+ * group is flipped (`delegatesToPolicy` — widened from S1b's flip-only gate to "has a row",
+ * while flip state still controls which groups' write decisions actually change). A field with
+ * NO manifest row falls back to the matrix `sources` order through the logged shim.
  */
 export function getSourcePriority(
   fieldName: string,
@@ -954,8 +979,11 @@ export function getSourcePriority(
   tableName?: string,
   ipoType: IpoTypeKey = 'MAINBOARD'
 ): number {
-  if (policyGoverns(fieldName, tableName)) {
+  if (delegatesToPolicy(fieldName, tableName)) {
     return policyRanksAsWriterSources(fieldName, tableName!, ipoType).indexOf(source);
+  }
+  if (tableName && FEATURE_FLAGS.ENABLE_POLICY_WRITER && !hasManifestRow(fieldName, tableName)) {
+    logPolicyShim(fieldName, tableName);
   }
   const rules = getFieldRules(fieldName);
   return rules.sources.indexOf(source);
@@ -1003,8 +1031,11 @@ export function allowsSameSourceRefresh(
 ): boolean {
   const rules = getFieldRules(fieldName);
   if (!rules.sameSourceRefresh) return false;
-  if (policyGoverns(fieldName, tableName)) {
+  if (delegatesToPolicy(fieldName, tableName)) {
     return policyRanksAsWriterSources(fieldName, tableName!, ipoType).indexOf(source) !== -1;
+  }
+  if (tableName && FEATURE_FLAGS.ENABLE_POLICY_WRITER && !hasManifestRow(fieldName, tableName)) {
+    logPolicyShim(fieldName, tableName);
   }
   return legacySameSourceRefreshAllowList(rules).indexOf(source) !== -1;
 }

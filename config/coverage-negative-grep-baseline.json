@@ -31,11 +31,6 @@
     "POSSIBLE_TEST_DATA"
   ],
   "scraperPriorityMatrixFields": [
-    "revenue_fy2",
-    "revenue_fy3",
-    "profit_fy1",
-    "profit_fy2",
-    "profit_fy3",
     "ebitdaFy2022"
   ]
 }

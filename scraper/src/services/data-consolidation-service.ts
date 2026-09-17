@@ -35,9 +35,9 @@ import {
   outranksUntrackedByMatrix,
 } from '../config/field-priority-matrix';
 import { isFlipped } from '../config/switchover.js';
-import { policyGoverns } from '../config/field-priority-matrix';
+import { policyGoverns, hasManifestRow } from '../config/field-priority-matrix';
 import { fieldNameToColumn } from '../config/field-name-case.js';
-import { resolveFieldSourcePolicy } from '../config/field-source-policy.js';
+import { resolveFieldSourcePolicy, policyOriginString } from '../config/field-source-policy.js';
 import { mapManifestSourceToScraperSource, writerSourceToManifestCode } from '../config/field-source-codes.js';
 import type { IpoTypeKey } from './field-plan-generator.js';
 import {
@@ -379,6 +379,36 @@ function resolveTzSignatureTiebreak(
  */
 function serializeFieldValue(value: any): string {
   return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
+}
+
+/**
+ * Item 3 slice S1d: the configuration that decided this write, for `field_sources.data_lineage`.
+ * Returns `undefined` (no policy origin) when the field has no manifest row at all — the write
+ * was then decided purely by the legacy matrix through the shim (field-priority-matrix.ts), not
+ * by any resolver configuration.
+ *
+ * `resolveFieldSourcePolicy`'s `origin` is built from `manifest.version` BEFORE the ipoType-
+ * specific rank lookup (field-source-policy.ts) — it is the SAME value for every `ipoType`, so
+ * this always resolves with 'MAINBOARD' rather than threading the caller's real ipoType through
+ * every one of `trackFieldSource`'s nine call sites for a value that would not change.
+ */
+function computePolicyOrigin(fieldName: string, tableName: string): string | undefined {
+  // CRITICAL-1 (Tier A review, PR #753): this must be byte-identical to origin/main when the
+  // flag is off -- no manifest load, no resolver call. Previously this ran unconditionally
+  // (no flag guard at all), which loaded+validated the 190-row manifest on EVERY write even
+  // with ENABLE_POLICY_WRITER off (the prod default via slotAwareFlagDefault).
+  if (!FEATURE_FLAGS.ENABLE_POLICY_WRITER) return undefined;
+  if (!hasManifestRow(fieldName, tableName)) return undefined;
+  try {
+    const policy = resolveFieldSourcePolicy({
+      table: tableName,
+      column: fieldNameToColumn(fieldName),
+      ipoType: 'MAINBOARD',
+    });
+    return policyOriginString(policy.origin);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -2619,6 +2649,8 @@ export class DataConsolidationService {
     }
 
     try {
+      const policyOrigin = computePolicyOrigin(params.fieldName, params.tableName);
+
       await this.fieldSourcesRepository.trackFieldUpdate({
         ipoId: params.ipoId,
         tableName: params.tableName,
@@ -2639,6 +2671,10 @@ export class DataConsolidationService {
           ? serializeFieldValue(params.previousValue)
           : undefined,
         previousSource: params.previousSource,
+        // Item 3 slice S1d: name the configuration that decided this write. Only set when the
+        // field has a manifest row at all (`hasManifestRow`) — a row-less field's write is
+        // decided purely by the legacy matrix (the shim), so it carries no policy origin.
+        dataLineage: policyOrigin ? { policyOrigin } : undefined,
       });
     } catch (error) {
       console.error('[DataConsolidation] Failed to track field source:', error);
