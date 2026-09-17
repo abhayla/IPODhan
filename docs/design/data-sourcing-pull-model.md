@@ -3479,7 +3479,7 @@ reading the document would not have shown. The current state:
 | One source, reason stated (§A.3) | 68 |
 | No source — computed (class C) or written by our own pipeline (class I) | 50 |
 | **Total** | **240** |
-<!-- /generated:source-depth -->
+<!-- end-source-depth -->
 
 **Not every sourced field has three, and they never will.** 140 of them have fewer (72 two-source, 68
 one-source) because a second publisher does not exist, or publishes a *different* number that would

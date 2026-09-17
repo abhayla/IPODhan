@@ -744,7 +744,7 @@ try {
   const missingNote = EX_MC_NEEDS_NOTE.filter((k) => !(byKey.get(k) && byKey.get(k).o && byKey.get(k).o.note));
   const depth = STATS().depth;
   const SD_OPEN = '<!-- generated:source-depth';
-  const SD_CLOSE = '<!-- /generated:source-depth -->';
+  const SD_CLOSE = '<!-- end-source-depth -->';
   const sdo = md.indexOf(SD_OPEN);
   const sdc = md.indexOf(SD_CLOSE);
   const sdBlockMissing = sdo < 0 || sdc < 0 || sdc < sdo;

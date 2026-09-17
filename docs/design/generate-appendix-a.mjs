@@ -116,7 +116,7 @@ try {
     `| **Total** | **${depth.three + depth.two + depth.one + depth.none}** |`,
   ].join('\n');
   const SD_OPEN = '<!-- generated:source-depth';
-  const SD_CLOSE = '<!-- /generated:source-depth -->';
+  const SD_CLOSE = '<!-- end-source-depth -->';
 
   // Is the generated evidence summary the one the probe would produce right now?
   const so = lines.findIndex((l) => l.startsWith(SUMMARY_OPEN));
