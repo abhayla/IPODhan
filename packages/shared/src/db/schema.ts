@@ -126,6 +126,8 @@ export const scraperSourceEnum = pgEnum('scraper_source', [
   'API_FALLBACK',
   'MONEYCONTROL',
   'CHITTORGARH',
+  'INVESTORGAIN_GMP',
+  'REG',
 ]);
 
 // W-03: what market a subscriptions row covers. NSE ships CONSOLIDATED

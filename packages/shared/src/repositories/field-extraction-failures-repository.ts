@@ -24,7 +24,9 @@ export type ScraperSourceValue =
   | 'BSE'
   | 'API_FALLBACK'
   | 'MONEYCONTROL'
-  | 'CHITTORGARH';
+  | 'CHITTORGARH'
+  | 'INVESTORGAIN_GMP'
+  | 'REG';
 
 export interface RecordFailureInput {
   ipoId: string;

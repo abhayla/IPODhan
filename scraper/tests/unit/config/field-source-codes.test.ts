@@ -25,6 +25,19 @@ function extractUnionMembers(filePath: string, typeName: string): Set<string> {
   return new Set(members);
 }
 
+/** Extracts the value array from a `pgEnum('scraper_source', [...])` call in schema.ts source text. */
+function extractPgEnumValues(filePath: string, enumName: string): Set<string> {
+  const src = fs.readFileSync(path.join(repoRoot, filePath), 'utf8');
+  const re = new RegExp(`pgEnum\\('${enumName}',\\s*\\[([\\s\\S]*?)\\]\\)`);
+  const match = src.match(re);
+  if (!match) {
+    throw new Error(`could not find "pgEnum('${enumName}', [...])" in ${filePath}`);
+  }
+  const body = match[1];
+  const members = [...body.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
+  return new Set(members);
+}
+
 
 describe('field-source-codes', () => {
   it('maps every sourceCodeSchema value to a writer source', () => {
@@ -77,13 +90,13 @@ describe('field-source-codes', () => {
     expect(dbTypes.has('REG')).toBe(true);
   });
 
-  it('ScraperSourceValue (backed by the DB-persisted pg enum scraper_source, schema.ts:121) is a SUBSET of the writer union, not required to be equal', () => {
+  it('ScraperSourceValue (backed by the DB-persisted pg enum scraper_source, schema.ts:121) is EQUAL to the writer union (S0d)', () => {
     // scraper_source is a real Postgres enum (packages/shared/src/db/schema.ts:121),
     // also typing field_sources.source (schema.ts:1483) and data_conflicts.source1/
-    // source2/resolved_source (schema.ts:1549-1555). Widening it needs a migration —
-    // that is slice S0d (Tier A), not this slice. ScraperSourceValue therefore stays
-    // a SUBSET of the writer union until S0d lands; it must never gain a member the
-    // writer union lacks, but it is allowed to lag (missing INVESTORGAIN_GMP/REG).
+    // source2/resolved_source (schema.ts:1549-1555). S0d widened the pg enum to match
+    // the writer union, so ScraperSourceValue must now be EQUAL to it, not a lagging
+    // subset — a future widening of the writer union without a matching migration
+    // must go red here.
     const dbTypes = extractUnionMembers('packages/shared/src/db/types.ts', 'ScraperSource');
     const failuresRepo = extractUnionMembers(
       'packages/shared/src/repositories/field-extraction-failures-repository.ts',
@@ -91,17 +104,43 @@ describe('field-source-codes', () => {
     );
 
     expect(failuresRepo.size).toBeGreaterThan(0);
-    for (const value of failuresRepo) {
-      expect(dbTypes.has(value), `ScraperSourceValue member ${value} not in writer union`).toBe(true);
-    }
+    expect([...failuresRepo].sort()).toEqual([...dbTypes].sort());
 
-    // Documents the current lag (S0d closes this gap); not a widening of scope here.
-    expect(failuresRepo.has('INVESTORGAIN_GMP')).toBe(false);
-    expect(failuresRepo.has('REG')).toBe(false);
+    expect(failuresRepo.has('INVESTORGAIN_GMP')).toBe(true);
+    expect(failuresRepo.has('REG')).toBe(true);
+  });
+
+  it('the pg enum scraper_source (schema.ts) is EQUAL to the writer union (S0d closes the enum-widening gap)', () => {
+    const dbTypes = extractUnionMembers('packages/shared/src/db/types.ts', 'ScraperSource');
+    const pgEnumValues = extractPgEnumValues('packages/shared/src/db/schema.ts', 'scraper_source');
+
+    expect(pgEnumValues.size).toBeGreaterThan(0);
+    expect([...pgEnumValues].sort()).toEqual([...dbTypes].sort());
+
+    expect(pgEnumValues.has('INVESTORGAIN_GMP')).toBe(true);
+    expect(pgEnumValues.has('REG')).toBe(true);
   });
 
   it('does NOT widen the health unions (types/types.ts, web/lib/db/types.ts) with REG', () => {
     const healthUnion = extractUnionMembers('packages/shared/src/types/types.ts', 'ScraperSource');
     expect(healthUnion.has('REG')).toBe(false);
+  });
+
+  it('no literal source-vocabulary union remains in the four provenance repositories (S0d fix round 1, literal-union grep)', () => {
+    const files = [
+      'packages/shared/src/repositories/field-sources-repository.ts',
+      'packages/shared/src/repositories/data-conflicts-repository.ts',
+      'web/lib/repositories/field-sources-repository.ts',
+      'web/lib/repositories/data-conflicts-repository.ts',
+      'web/lib/services/conflict-resolution.ts',
+    ];
+    const literalUnionRe =
+      /'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'\s*\|\s*'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'/g;
+
+    for (const relPath of files) {
+      const content = fs.readFileSync(path.join(repoRoot, relPath), 'utf8');
+      const matches = content.match(literalUnionRe) ?? [];
+      expect(matches.length, `${relPath} still has a hand-typed literal union: ${matches.join(', ')}`).toBe(0);
+    }
   });
 });

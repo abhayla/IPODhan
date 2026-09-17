@@ -127,6 +127,11 @@ Scraper tsc baseline on 2026-09-06: 87 errors (`cd scraper && npx tsc --noEmit -
 - Timestamps in ledger lines come from `date`, never estimated.
 - The `postgres` superuser is localhost-only on the DB host; through the tunnel it still works, but use
   `ipodhan_app` for app tables anyway.
+- Widening a Postgres enum (e.g. `scraper_source`, S0d #740) is additive and needs no data backfill: the
+  generated migration is one `ALTER TYPE ... ADD VALUE IF NOT EXISTS '<v>'` per new value, applied inside the
+  drizzle migration transaction. It **cannot be rolled back by dropping the value** — Postgres has no
+  `DROP VALUE` for enums. Rollback is reverting the code (schema.ts, the TS unions, the test); the extra
+  enum values stay in the type, permanently unused, and touch no existing rows.
 
 ### Running a scraper integration test against `ipodhan_test` (item 5 slice s4, 2026-09-16)
 There is **no `scraper/.env.test` file, and there never was one to find** — `vitest.integration.config.ts`
