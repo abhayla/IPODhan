@@ -3471,15 +3471,17 @@ reading the document would not have shown. The current state:
 
 **Mainboard source depth, stated plainly rather than claimed complete:**
 
+<!-- generated:source-depth — regenerate with `node docs/design/generate-appendix-a.mjs --write`. Hand-editing these numbers is what D2/D21 exist to catch: this table said three-sources 97 / two 22 / one 71 for the whole of this session while the spec's own STATS().depth returned 50/72/68 (Moneycontrol's retirement moved fields between buckets and nobody regenerated the count that describes it). -->
 | | Fields |
 |---|---:|
-| Three sources | **97** |
-| Two sources, reason stated (§A.3) | 22 |
-| One source, reason stated (§A.3) | 71 |
+| Three sources | **50** |
+| Two sources, reason stated (§A.3) | 72 |
+| One source, reason stated (§A.3) | 68 |
 | No source — computed (class C) or written by our own pipeline (class I) | 50 |
 | **Total** | **240** |
+<!-- end-source-depth -->
 
-**Not every sourced field has three, and they never will.** 93 of them have fewer (22 two-source, 71
+**Not every sourced field has three, and they never will.** 140 of them have fewer (72 two-source, 68
 one-source) because a second publisher does not exist, or publishes a *different* number that would
 be wrong to substitute — every one carries its reason inline in this appendix's Note column, and the
 original 40 (the fields present before this session) are narrated by name in **§A.3**. Claiming three
@@ -3638,27 +3640,27 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 10 | `ipos.registrar_id` | C | — | — | — | — · — · — | — · — · — | — | computed: FK resolved from registrar |
 | 11 | `ipos.rating_override` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
 | 12 | `ipos.slug` | C | — | — | — | — · — · — | — · — · — | — | computed: generateIPOSlug(company_name) |
-| 13 | `ipos.sector` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 |  |
+| 13 | `ipos.sector` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no sector field, so CG is the only remaining website source |
 | 14 | `ipos.price_range_min` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 15 | `ipos.price_range_max` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A1 |  |
 | 16 | `ipos.last_scraped_at` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 17 | `ipos.listing_exchanges` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
 | 18 | `ipos.face_value` | D | DOC | BSE | NSE | DOC · BSE · CG | DOC · NSE · CG | A2 |  |
 | 19 | `ipos.allotment_date` | T | NSE | BSE | CG | BSE · CG · — | NSE · CG · — | — | **E-1** (§1.2.1) |
-| 20 | `ipos.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 |  |
+| 20 | `ipos.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source |
 | 21 | `ipos.lead_managers` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E1 | VERIFIED: NSE returns "Book Running Lead Managers"; BSE returns Book_Running_Lead_Manager |
 | 22 | `ipos.isin` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | E7 |  |
 | 23 | `ipos.segment` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | A15 |  |
 | 24 | `ipos.offering_type` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A11 |  |
 | 25 | `ipos.scraper_locked` | I | ADMIN | — | — | ADMIN · — · — | ADMIN · — · — | — | no rank 2: admin-only by design; no external source exists |
 | 26 | `ipos.last_manual_edit_at` | I | — | — | — | — · — · — | — · — · — | — |  |
-| 27 | `ipos.objectives` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F4 |  |
+| 27 | `ipos.objectives` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F4 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no objects-of-issue text, so CG is the only remaining website source |
 | 28 | `ipos.bse_ipo_no` | I | BSE | — | — | BSE · — · — | BSE · — · — | — | no rank 2: BSE payload identifier |
 | 29 | `ipos.bse_payload_lead_manager_count` | I | BSE | — | — | BSE · — · — | BSE · — · — | — | no rank 2: BSE payload cross-check only |
 | 30 | `ipos.company_website` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | E7 |  |
 | 31 | `ipos.verifier_url` | I | — | — | — | — · — · — | — · — · — | — |  |
 | 32 | `ipos.cin` | D | DOC | — | — | DOC · — · — | DOC · — · — | E7 | no rank 2: no website or exchange publishes the CIN |
-| 33 | `ipo_details.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 |  |
+| 33 | `ipo_details.company_description` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | F1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source |
 | 34 | `ipo_details.issue_type` | D | DOC | NSE | CG | DOC · CG · — | DOC · NSE · CG | A11 | CORRECTED: NSE returns "Issue Type: Book Building". BSE detail does NOT carry it - an earlier draft ranked BSE here |
 | 35 | `ipo_details.fresh_issue` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A5 |  |
 | 36 | `ipo_details.ofs_issue` | D | DOC | BSE | CG | DOC · BSE · CG | DOC · CG · — | A6 |  |
@@ -3706,32 +3708,32 @@ number means, cut the total to 114 — and made every one of them auditable.
 | 78 | `ipo_details.ipo_market_timings` | D | DOC | NSE | BSE | DOC · BSE · CG | DOC · NSE · CG | B8 | CORRECTED 2026-09-09: BOTH exchanges carry it - NSE "IPO Market Timings", BSE IPO_Market_Timings |
 | 79 | `ipo_details.category_details` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | A13 | no rank 2: the exchange circular carries the allocation |
 | 80 | `ipo_details.sub_categories_upi` | D | DOC | NSE | — | DOC · — · — | DOC · NSE · — | B7 | no rank 2: the exchange circular carries the allocation |
-| 81 | `financial_data.revenue_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 82 | `financial_data.revenue_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 83 | `financial_data.revenue_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 84 | `financial_data.profit_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 85 | `financial_data.profit_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 86 | `financial_data.profit_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 87 | `financial_data.net_worth` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 |  |
-| 88 | `financial_data.eps` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C6 |  |
-| 89 | `financial_data.roe` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | — |  |
-| 90 | `financial_data.debt_to_equity` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | — |  |
-| 91 | `financial_data.reserves_and_surplus` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 |  |
-| 92 | `financial_data.total_assets` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 |  |
-| 93 | `financial_data.total_borrowing` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 |  |
-| 94 | `financial_data.promoter_holding_pre_issue` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | D8 |  |
-| 95 | `financial_data.promoter_holding_post_issue` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | D8 |  |
-| 96 | `financial_data.market_cap` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A8 |  |
-| 97 | `financial_data.pre_ipo_eps` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C6 |  |
-| 98 | `financial_data.post_ipo_eps` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C6 |  |
-| 99 | `financial_data.ronw` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A10 |  |
+| 81 | `financial_data.revenue_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 82 | `financial_data.revenue_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 83 | `financial_data.revenue_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 84 | `financial_data.profit_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 85 | `financial_data.profit_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 86 | `financial_data.profit_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 87 | `financial_data.net_worth` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 88 | `financial_data.eps` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C6 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 89 | `financial_data.roe` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | — | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 90 | `financial_data.debt_to_equity` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | — | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 91 | `financial_data.reserves_and_surplus` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 92 | `financial_data.total_assets` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 93 | `financial_data.total_borrowing` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C2 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 94 | `financial_data.promoter_holding_pre_issue` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | D8 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 95 | `financial_data.promoter_holding_post_issue` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | D8 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 96 | `financial_data.market_cap` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A8 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 97 | `financial_data.pre_ipo_eps` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C6 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 98 | `financial_data.post_ipo_eps` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C6 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 99 | `financial_data.ronw` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | A10 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
 | 100 | `financial_data.pe_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | A9 | no rank 2: observed 2026-09-08: CG prints a PE Ratio column only for OTHER recently listed IPOs in a comparison table, never this IPO own |
-| 101 | `financial_data.ebitda_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 102 | `financial_data.ebitda_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 103 | `financial_data.ebitda_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 104 | `financial_data.total_income_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 105 | `financial_data.total_income_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
-| 106 | `financial_data.total_income_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 |  |
+| 101 | `financial_data.ebitda_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 102 | `financial_data.ebitda_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 103 | `financial_data.ebitda_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 104 | `financial_data.total_income_fy2022` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 105 | `financial_data.total_income_fy2023` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
+| 106 | `financial_data.total_income_fy2024` | D | DOC | CG | — | DOC · CG · — | DOC · CG · — | C1 | Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source |
 | 107 | `financial_data.current_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |
 | 108 | `financial_data.quick_ratio` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |
 | 109 | `financial_data.inventory_turnover` | D | DOC | — | — | DOC · — · — | DOC · — · — | C9 | no rank 2: KPI table only |

@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 // opts.doc = extraction-contract section; opts.only = why there is no rank 2;
 // opts.e1 = named exception E-1; opts.formula = computed; opts.na = offering types where N/A
 const D_FIN = { na: ['NCD', 'INVITS', 'REITS', 'TENDER', 'BUYBACK'] };
+// Moneycontrol retired 2026-09-09 (MC_SERVES is empty, below). NSE/BSE payloads carry no restated
+// financials; CG is the only website that prints the per-FY table (financial_data, financial_statements).
+const MC_RETIRED_NOTE = 'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source';
 export const F = [];
 const add = (t, c, cls, r, o = {}) => F.push({ t, c, cls, r, o });
 
@@ -22,21 +25,21 @@ add('ipos','registrar','D',['DOC','NSE','BSE'],{doc:'E3',note:'VERIFIED: NSE iss
 add('ipos','registrar_id','C',['—','—','—'],{formula:'FK resolved from registrar'});
 add('ipos','rating_override','I',['ADMIN','—','—'],{only:'admin-only by design; no external source exists'});
 add('ipos','slug','C',['—','—','—'],{formula:'generateIPOSlug(company_name)'});
-add('ipos','sector','D',['DOC','CG','MC'],{doc:'F1'});
+add('ipos','sector','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no sector field, so CG is the only remaining website source'});
 add('ipos','price_range_min','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK']});
 add('ipos','price_range_max','D',['DOC','NSE','BSE'],{doc:'A1',na:['NCD','TENDER','BUYBACK']});
 add('ipos','last_scraped_at','I',['—','—','—'],{});
 add('ipos','listing_exchanges','T',['NSE','BSE','CG'],{e1:1});
 add('ipos','face_value','D',['DOC','BSE','NSE'],{doc:'A2',na:['INVITS','REITS']});
 add('ipos','allotment_date','T',['NSE','BSE','CG'],{e1:1});
-add('ipos','company_description','D',['DOC','CG','MC'],{doc:'F1'});
+add('ipos','company_description','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source'});
 add('ipos','lead_managers','D',['DOC','NSE','BSE'],{doc:'E1',note:'VERIFIED: NSE returns "Book Running Lead Managers"; BSE returns Book_Running_Lead_Manager'});
 add('ipos','isin','D',['DOC','NSE','BSE'],{doc:'E7'});
 add('ipos','segment','D',['DOC','NSE','BSE'],{doc:'A15',na:['INVITS','REITS']});
 add('ipos','offering_type','D',['DOC','BSE','CG'],{doc:'A11'});
 add('ipos','scraper_locked','I',['ADMIN','—','—'],{only:'admin-only by design; no external source exists'});
 add('ipos','last_manual_edit_at','I',['—','—','—'],{});
-add('ipos','objectives','D',['DOC','CG','MC'],{doc:'F4',na:['OFS','RIGHTS','TENDER','BUYBACK']});
+add('ipos','objectives','D',['DOC','CG'],{doc:'F4',na:['OFS','RIGHTS','TENDER','BUYBACK'],note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no objects-of-issue text, so CG is the only remaining website source'});
 add('ipos','bse_ipo_no','I',['BSE','—','—'],{only:'BSE payload identifier'});
 add('ipos','bse_payload_lead_manager_count','I',['BSE','—','—'],{only:'BSE payload cross-check only'});
 add('ipos','company_website','D',['DOC','CG','—'],{doc:'E7'});
@@ -44,7 +47,7 @@ add('ipos','verifier_url','I',['—','—','—'],{});
 add('ipos','cin','D',['DOC','—','—'],{doc:'E7',only:'no website or exchange publishes the CIN'});
 
 // ---------- ipo_details (23) ----------
-add('ipo_details','company_description','D',['DOC','CG','MC'],{doc:'F1'});
+add('ipo_details','company_description','D',['DOC','CG'],{doc:'F1',note:'Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source'});
 add('ipo_details','issue_type','D',['DOC','NSE','CG'],{doc:'A11',note:'CORRECTED: NSE returns "Issue Type: Book Building". BSE detail does NOT carry it - an earlier draft ranked BSE here'});
 add('ipo_details','fresh_issue','D',['DOC','BSE','CG'],{doc:'A5',na:['OFS','TENDER','BUYBACK']});
 add('ipo_details','ofs_issue','D',['DOC','BSE','CG'],{doc:'A6',na:['RIGHTS','NCD']});
@@ -101,20 +104,20 @@ add('ipo_details','category_details','D',['DOC','NSE','—'],{doc:'A13',only:'th
 add('ipo_details','sub_categories_upi','D',['DOC','NSE','—'],{doc:'B7',only:'the exchange circular carries the allocation',neverPopulated:true});
 
 // ---------- financial_data (26) ----------
-for (const y of ['2022','2023','2024']) add('financial_data',`revenue_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
-for (const y of ['2022','2023','2024']) add('financial_data',`profit_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
+for (const y of ['2022','2023','2024']) add('financial_data',`revenue_fy${y}`,'D',['DOC','CG'],{doc:'C1',note:MC_RETIRED_NOTE,...D_FIN});
+for (const y of ['2022','2023','2024']) add('financial_data',`profit_fy${y}`,'D',['DOC','CG'],{doc:'C1',note:MC_RETIRED_NOTE,...D_FIN});
 for (const [c,d] of [['net_worth','C2'],['eps','C6'],['roe','—'],['debt_to_equity','—'],
   ['reserves_and_surplus','C2'],['total_assets','C2'],['total_borrowing','C2'],
   // pe_ratio moved out of this loop - see the observation below.
   ['promoter_holding_pre_issue','D8'],['promoter_holding_post_issue','D8'],['market_cap','A8'],
   ['pre_ipo_eps','C6'],['post_ipo_eps','C6'],['ronw','A10']])
-  add('financial_data',c,'D',['DOC','CG','MC'],{doc:d,...D_FIN});
+  add('financial_data',c,'D',['DOC','CG'],{doc:d,note:MC_RETIRED_NOTE,...D_FIN});
 // OBSERVED 2026-09-08: a live CG detail page shows "PE Ratio" ONLY inside a "Recently Listed IPOs
 // in <sector>" table - other companies' ratios, not this IPO's. Matching that label anywhere on the
 // page would write a peer's P/E onto this IPO. CG is NOT a source for it.
 add('financial_data','pe_ratio','D',['DOC','—','—'],{doc:'A9',only:'observed 2026-09-08: CG prints a PE Ratio column only for OTHER recently listed IPOs in a comparison table, never this IPO own',...D_FIN});
-for (const y of ['2022','2023','2024']) add('financial_data',`ebitda_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
-for (const y of ['2022','2023','2024']) add('financial_data',`total_income_fy${y}`,'D',['DOC','CG','MC'],{doc:'C1',...D_FIN});
+for (const y of ['2022','2023','2024']) add('financial_data',`ebitda_fy${y}`,'D',['DOC','CG'],{doc:'C1',note:MC_RETIRED_NOTE,...D_FIN});
+for (const y of ['2022','2023','2024']) add('financial_data',`total_income_fy${y}`,'D',['DOC','CG'],{doc:'C1',note:MC_RETIRED_NOTE,...D_FIN});
 // F-13: KPI-table ratios the document prints but that hold no data on production today.
 for (const c of ['current_ratio','quick_ratio','inventory_turnover'])
   add('financial_data',c,'D',['DOC','—','—'],{doc:'C9',only:'KPI table only',neverPopulated:true,...D_FIN});
@@ -127,8 +130,8 @@ for (const c of ['current_ratio','quick_ratio','inventory_turnover'])
 // restated statement" - that was wrong, and our own scraper disproves it.
 const FS_NA = ['INVITS','REITS','TENDER','BUYBACK'];
 for (const [c,d] of [['fiscal_year','C1'],['revenue','C1'],['total_income','C1'],['ebitda','C1'],['pat','C1']])
-  add('financial_statements',c,'D',['DOC','CG','MC'],{doc:d,na:FS_NA,note:'CG restated table carries this per fiscal year'});
-add('financial_statements','net_worth','D',['DOC','CG','MC'],{doc:'C2',na:FS_NA,note:'CG gives the most-recent year only, not the full series'});
+  add('financial_statements',c,'D',['DOC','CG'],{doc:d,na:FS_NA,note:'CG restated table carries this per fiscal year'});
+add('financial_statements','net_worth','D',['DOC','CG'],{doc:'C2',na:FS_NA,note:'CG gives the most-recent year only, not the full series'});
 // OBSERVED 2026-09-08 on a live CG detail page: the table is headed "Financials (Restated
 // Consolidated)" and footed "Amount in Rs Crore", with a per-year note ("FY 2026 financials are
 // on standalone basis"). So CG DOES carry basis and unit - an earlier draft said it did not.
@@ -148,8 +151,8 @@ const VAL_NA = ['RIGHTS','OFS','NCD','INVITS','REITS','TENDER','BUYBACK'];
 // cap, the weighted 3-year RoNW) appears nowhere but the advertisement.
 add('ipo_valuation','price_floor','D',['DOC','NSE','BSE'],{doc:'A1',na:VAL_NA,note:'same number as ipos.price_range_min'});
 add('ipo_valuation','price_cap','D',['DOC','NSE','BSE'],{doc:'A1',na:VAL_NA,note:'same number as ipos.price_range_max'});
-add('ipo_valuation','mcap_at_cap','D',['DOC','CG','MC'],{doc:'A8',na:VAL_NA,note:'CG prints a single market cap, which is the at-cap figure'});
-add('ipo_valuation','pe_at_cap','D',['DOC','CG','MC'],{doc:'A9',na:VAL_NA,note:'CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap)'});
+add('ipo_valuation','mcap_at_cap','D',['DOC','CG'],{doc:'A8',na:VAL_NA,note:'CG prints a single market cap, which is the at-cap figure'});
+add('ipo_valuation','pe_at_cap','D',['DOC','CG'],{doc:'A9',na:VAL_NA,note:'CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap)'});
 add('ipo_valuation','mcap_at_floor','D',['DOC','—','—'],{doc:'A8',only:'CG prints only ONE market cap (the at-cap one); no website prints the value at the floor price',na:VAL_NA});
 add('ipo_valuation','pe_at_floor','D',['DOC','—','—'],{doc:'A9',only:'CG prints only ONE P/E (post-issue, at cap); no website prints the value at the floor price',na:VAL_NA});
 add('ipo_valuation','ronw_weighted_3y','D',['DOC','—','—'],{doc:'A10',only:'CG prints a single-year RoNW; the 3-year WEIGHTED average is a different metric and appears only in the advertisement',na:VAL_NA});
@@ -164,7 +167,7 @@ add('ipo_valuation','pe_not_ascertainable_reason','D',['DOC','—','—'],{doc:'
 
 // ---------- promoters (3), intermediaries (2), risk factors (2), brlm (4) ----------
 const PROM_NA = ['INVITS','REITS','NCD','TENDER','BUYBACK'];
-add('promoters','name','D',['DOC','CG','MC'],{doc:'D1',na:PROM_NA,note:'OBSERVED 2026-09-08 on a live CG IPO page: "Company Promoters: <names>". An earlier draft called this document-only; a real fetch disproved it'});
+add('promoters','name','D',['DOC','CG'],{doc:'D1',na:PROM_NA,note:'OBSERVED 2026-09-08 on a live CG IPO page: "Company Promoters: <names>". An earlier draft called this document-only; a real fetch disproved it'});
 add('promoters','waca','D',['DOC','—','—'],{doc:'D3',only:'basis-for-offer-price table only',na:PROM_NA});
 add('promoters','is_promoter_group','D',['DOC','—','—'],{doc:'D1',only:'capital-structure table only',na:PROM_NA});
 add('ipo_intermediaries','role','D',['DOC','BSE','—'],{doc:'E1–E6'});
@@ -413,11 +416,24 @@ export function renderA2() {
   return na;
 }
 
+// Mainboard source depth (OD-18): how many of the sourced classes (D/T/X/W/M) resolve, on
+// MAINBOARD, to three/two/one/zero real sources once N/A and '—' are removed. C and I fields carry
+// no source by design (computed or pipeline-written) and are counted as `none` alongside any
+// sourced field that genuinely resolves to zero.
+const SOURCED_CLASSES = new Set(['D', 'T', 'X', 'W', 'M']);
+const depthOf = (f) => resolve(f, 'MAINBOARD').filter((s) => s !== '—' && s !== 'N/A').length;
+
 export const STATS = () => ({
   fields: F.length,
   classes: F.reduce((a, f) => (a[f.cls] = (a[f.cls] || 0) + 1, a), {}),
   e1: F.filter(f => f.o.e1).length,
   singleSource: F.filter(f => f.r[1] === '—' && f.r[0] !== '—').length,
+  depth: {
+    three: F.filter((f) => SOURCED_CLASSES.has(f.cls) && depthOf(f) === 3).length,
+    two: F.filter((f) => SOURCED_CLASSES.has(f.cls) && depthOf(f) === 2).length,
+    one: F.filter((f) => SOURCED_CLASSES.has(f.cls) && depthOf(f) === 1).length,
+    none: F.filter((f) => !SOURCED_CLASSES.has(f.cls) || depthOf(f) === 0).length,
+  },
 });
 
 // The CLI half runs only when this file is the process entry point. Before this guard it ran on
