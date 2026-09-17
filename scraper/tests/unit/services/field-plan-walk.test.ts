@@ -94,10 +94,18 @@ function planRow(overrides: PlanRowOverrides = {}) {
 function makeRepo(queue: ReturnType<typeof planRow>[]) {
   const recorded: any[] = [];
   const released: any[] = [];
+  // Tracked so the test-default `resolvePolicy` (below) can echo the ranks of whichever row
+  // `walkFieldPlanForIPO` most recently claimed -- see echoPlanRanksAsPolicy's doc comment.
+  const lastClaimed: { current: any } = { current: null };
   return {
     recorded,
     released,
-    claimNextDueField: vi.fn(async () => queue.shift() ?? null),
+    lastClaimed,
+    claimNextDueField: vi.fn(async () => {
+      const row = queue.shift() ?? null;
+      lastClaimed.current = row;
+      return row;
+    }),
     recordOutcome: vi.fn(async (params: any) => {
       recorded.push(params);
       return { written: true, row: undefined };
@@ -171,12 +179,48 @@ function makeIpoRepository(existing: unknown = makeExistingIpo()) {
   return { findById: vi.fn(async () => existing) };
 }
 
+/**
+ * item 3 slice S1a: production resolves the ask order from ONE
+ * `resolvePolicy` call per field per walk, never from the plan row's own
+ * rank columns. These ~15 PRE-EXISTING tests build their fixtures the OLD
+ * way (`planRow({ rank1Source, ... })`) and exercise unrelated behaviour
+ * (budget, claim supersession, protection, resume) -- rewriting every one of
+ * them to also stub `resolvePolicy` would be pure churn with no coverage
+ * gain. So the default test-only `resolvePolicy` below reads whichever row
+ * `repo.lastClaimed` names (the one `attemptOneField` is currently
+ * processing -- `makeRepo`'s `claimNextDueField` stub records it) and echoes
+ * ITS rank columns back as the policy's ranks. Production's real default
+ * (`defaultResolvePolicy`, the manifest resolver) is untouched -- only this
+ * test file's harness changes. A test that wants to prove the walk actually
+ * FOLLOWS the resolver (not the plan row) passes an explicit `resolvePolicy`
+ * override via `deps({ resolvePolicy })`, which wins.
+ */
+function echoPlanRanksAsPolicy(repo: ReturnType<typeof makeRepo>) {
+  return () => {
+    const row = repo.lastClaimed.current;
+    // A null in the MIDDLE (rank1 absent, rank2 present) is a real manifest shape (§2.3.5:
+    // "no source at this rank for this type"), so nulls are preserved positionally -- only a
+    // trailing run of nulls is trimmed, matching how generateFieldPlan itself never plans a
+    // rank2/rank3 without a rank1 value from the SAME manifest array.
+    const raw: (string | null)[] = row ? [row.rank1Source, row.rank2Source, row.rank3Source] : [];
+    while (raw.length > 0 && raw[raw.length - 1] == null) raw.pop();
+    return {
+      ranks: raw as any,
+      documentType: undefined,
+      origin: { kind: 'registry' as const, version: 1 },
+      na: false,
+    };
+  };
+}
+
 function deps(over: Partial<FieldPlanWalkDeps> = {}): FieldPlanWalkDeps {
+  const repo = (over.fieldPlanRepository as ReturnType<typeof makeRepo> | undefined) ?? makeRepo([]);
   return {
-    fieldPlanRepository: makeRepo([]) as any,
+    fieldPlanRepository: repo as any,
     orchestrator: makeOrchestrator() as any,
     sourceFetchers: { NSE: supplied, BSE: supplied, CHITTORGARH: supplied } as any,
     ipoRepository: makeIpoRepository() as any,
+    resolvePolicy: echoPlanRanksAsPolicy(repo) as any,
     ...over,
   } as FieldPlanWalkDeps;
 }
@@ -471,6 +515,48 @@ describe('field-plan walk -- NOT_AVAILABLE_YET', () => {
     expect(bse).toHaveBeenCalledTimes(1);
     expect(chit).toHaveBeenCalledTimes(1);
   });
+
+  // S1a review MAJOR-1: `tryProvisional`'s lower-rank ask order must come
+  // from the RESOLVER's `policy.ranks`, never from `plan.rank1Source..` —
+  // proven by deliberately making the plan row's OWN rank columns disagree
+  // with the stubbed resolver's order and checking which one the provisional
+  // loop actually followed.
+  it('tryProvisional asks the RESOLVER order, not the plan row\'s own rank columns', async () => {
+    // Plan row says NSE / BSE / CHITTORGARH (rank1..3). The stubbed resolver
+    // disagrees: DOC (authoritative) / CHITTORGARH / BSE. If the provisional
+    // loop read `plan.rank2Source`/`rank3Source` instead of `policy.ranks`,
+    // it would ask BSE before CHITTORGARH -- the opposite of what the
+    // resolver said.
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: 'CHITTORGARH' })]);
+    const doc = vi.fn(async () => ({ outcome: 'NOT_AVAILABLE_YET' }) as any);
+    const chit = vi.fn(async () => ({ outcome: 'SUPPLIED', value: 42 }) as any);
+    const bse = vi.fn(async () => ({ outcome: 'SUPPLIED', value: 99 }) as any);
+    const resolvePolicy = () => ({
+      ranks: ['DOC', 'CHITTORGARH', 'BSE'] as any,
+      documentType: undefined,
+      origin: { kind: 'registry' as const, version: 2 },
+      na: false,
+    });
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chit, BSE: bse } as any,
+      resolvePolicy: resolvePolicy as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    // The resolver's rank 2 (CHITTORGARH) is what actually got asked, and
+    // won the provisional value -- rank 3 (BSE, resolver order) or the plan
+    // row's own rank2Source (BSE) never got a chance.
+    expect(chit).toHaveBeenCalledTimes(1);
+    expect(bse).not.toHaveBeenCalled();
+    expect(result.fieldsProvisional).toBe(1);
+  });
+
+  // Mutation proof (S1a review MAJOR-1): the test above is red when
+  // `tryProvisional`'s ask order is reverted to `plan.rank1Source..` — run
+  // manually to confirm the test can fail (see PR body "Fix round 1" section
+  // for the red/green transcript), then the source is restored by hand.
 });
 
 describe('field-plan walk -- admin protection (§2.7: skip, do NOT store a state)', () => {
@@ -584,7 +670,10 @@ describe('field-plan walk -- a re-claimable row must not livelock the walk', () 
     // against the real repository: three integration tests timed out at 60s.
     const row = planRow();
     const repo = makeRepo([]);
-    repo.claimNextDueField = vi.fn(async () => ({ ...row })) as any;
+    repo.claimNextDueField = vi.fn(async () => {
+      repo.lastClaimed.current = row;
+      return { ...row };
+    }) as any;
     const orch = makeOrchestrator({ ipoId: '', isNew: false, locked: false, skipped: true, skipReason: 'LOCK_NOT_ACQUIRED' });
     const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any });
 
@@ -602,7 +691,10 @@ describe('field-plan walk -- a re-claimable row must not livelock the walk', () 
   it('stops instead of re-claiming a row it just released as admin-protected', async () => {
     const row = planRow();
     const repo = makeRepo([]);
-    repo.claimNextDueField = vi.fn(async () => ({ ...row })) as any;
+    repo.claimNextDueField = vi.fn(async () => {
+      repo.lastClaimed.current = row;
+      return { ...row };
+    }) as any;
     const d = deps({ fieldPlanRepository: repo as any, protectionFilter: async () => true });
 
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
@@ -976,18 +1068,99 @@ describe('field-plan walk -- writes through the pre-resolved IPO identity (revie
     expect(strictOrchestrator.consolidatedUpsertIPO).toHaveBeenCalledTimes(1);
   });
 
-  it('the existing IPO row missing (findById returns null) records CHECK_FAILED with cause "ipo row missing", never a create attempt', async () => {
+  // S1a review MINOR-1: `resolvePolicyForPlan` now resolves the IPO's type
+  // BEFORE calling any `resolvePolicy` (its own `ipoType` argument requires
+  // it), so a missing IPO row short-circuits there for EVERY caller,
+  // including one with a `resolvePolicy` override that would not otherwise
+  // have needed `findById`. That moves this test's failure point earlier
+  // than `runWrite`'s own "ipo row missing" guard -- the CHECK_FAILED test
+  // right below this one is the one that now exercises `runWrite`'s guard
+  // directly (echoPlanRanksAsPolicy's ipoType input is simply never reached
+  // when the row cannot be read at all).
+  it('the existing IPO row missing (findById returns null) is caught at POLICY RESOLUTION, never reaches runWrite\'s own guard', async () => {
     const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' })]);
     const orch = makeOrchestrator();
     const ipoRepository = makeIpoRepository(null);
     const d = deps({ fieldPlanRepository: repo as any, orchestrator: orch as any, ipoRepository: ipoRepository as any });
 
-    await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
     expect(orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
     expect(repo.recorded).toHaveLength(1);
-    expect(repo.recorded[0].writeHappened).toBe(false);
-    expect(repo.recorded[0].skipReason).toContain('ipo row missing');
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(repo.recorded[0].writeHappened).toBe(true);
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+  });
+
+  // S1a review MINOR-1: this test's `resolvePolicy` override
+  // (`echoPlanRanksAsPolicy`) never calls `ipoRepository.findById` itself, so
+  // the ABOVE test's null-row case is only reachable inside `runWrite`, past
+  // policy resolution. With the REAL default resolver (no override), a
+  // missing IPO row is caught EARLIER, in `resolvePolicyForPlan` itself,
+  // before any rank is walked — proven here with `resolvePolicy` unset so
+  // `defaultResolvePolicy` would run if reached at all (it must not be).
+  it('with no resolvePolicy override, a missing IPO row is CHECK_FAILED from policy resolution — never falls back to MAINBOARD ranks', async () => {
+    const repo = makeRepo([planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size', rank1Source: 'NSE', rank2Source: 'BSE' })]);
+    const orch = makeOrchestrator();
+    const ipoRepository = makeIpoRepository(null);
+    const resolvePolicy = vi.fn();
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orch as any,
+      ipoRepository: ipoRepository as any,
+      resolvePolicy: resolvePolicy as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    // Never guessed MAINBOARD ranks and asked the resolver with them.
+    expect(resolvePolicy).not.toHaveBeenCalled();
+    expect(orch.consolidatedUpsertIPO).not.toHaveBeenCalled();
+    expect(result.fieldsCheckFailed).toBe(1);
+    expect(repo.recorded).toHaveLength(1);
+    expect(repo.recorded[0].writeHappened).toBe(true);
+    expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+  });
+});
+
+describe('field-plan walk -- one IPO-type read per walk, not per field (S1a review MINOR-2)', () => {
+  it('findById for POLICY RESOLUTION is called exactly once for a walk over three fields of the same IPO', async () => {
+    // All three fields answer NOT_PRINTED, so `runWrite` (which does its OWN
+    // separate, unrelated `findById` for write identity, review round 2
+    // RCA1) is never reached -- this isolates the ONE read this finding is
+    // about: the memoized IPO-type lookup inside `resolvePolicyForPlan`.
+    const repo = makeRepo([
+      planRow({ tableName: 'ipos', rowKey: '', fieldName: 'issue_size' }),
+      planRow({ tableName: 'ipos', rowKey: '', fieldName: 'fresh_issue' }),
+      planRow({ tableName: 'financial_statements', rowKey: 'FY2025', fieldName: 'revenue' }),
+    ]);
+    const existing = makeExistingIpo();
+    const ipoRepository = makeIpoRepository(existing);
+    // A stubbed `resolvePolicy` (no real manifest lookup needed for these
+    // field names) that still runs through the REAL `resolvePolicyForPlan` /
+    // `makeIpoTypeResolver` chain -- that chain is what calls
+    // `ipoRepository.findById`, independent of which resolver answers the
+    // rank query. The test-only `echoPlanRanksAsPolicy` harness bypasses
+    // `findById` entirely, so this test must supply its own `resolvePolicy`
+    // rather than use `deps()`'s default.
+    const resolvePolicy = () => ({
+      ranks: ['NSE'] as any,
+      documentType: undefined,
+      origin: { kind: 'registry' as const, version: 1 },
+      na: false,
+    });
+    const d: FieldPlanWalkDeps = {
+      fieldPlanRepository: repo as any,
+      orchestrator: makeOrchestrator() as any,
+      sourceFetchers: { NSE: notPrinted } as any,
+      ipoRepository: ipoRepository as any,
+      resolvePolicy: resolvePolicy as any,
+    };
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsExhausted).toBe(3);
+    expect(ipoRepository.findById).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1209,5 +1382,48 @@ describe('field-plan walk -- the win/loss comparison normalizes before comparing
     expect(result.fieldsSupplied).toBe(0);
     expect(result.fieldsCheckFailed).toBe(1);
     expect(repo.recorded[0].state).toBe('CHECK_FAILED');
+  });
+});
+
+// implements: item 3 slice S1a -- the walk's ask order comes from ONE `resolvePolicy` call per
+// field per walk (`policy.ranks`), never from the plan row's own rank columns.
+describe('field-plan walk -- the resolver decides the ask order, not the plan row (item 3 S1a)', () => {
+  it('asks CHITTORGARH before DOC when resolvePolicy is stubbed to a swapped order, even though the plan row says DOC, CHITTORGARH', async () => {
+    // The plan row's OWN rank columns say DOC first -- if the walk built its ask order from
+    // `plan.rank1Source`/`rank2Source` (the pre-S1a behaviour), it would ask DOC first and this
+    // test would go red. Mutation check M1 (reviewer checklist): temporarily reverting the
+    // walk's rank-build back to `plan.rank1Source` must fail this exact assertion.
+    const repo = makeRepo([planRow({ rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
+    const callOrder: string[] = [];
+    const doc = vi.fn(async () => {
+      callOrder.push('DOC');
+      return { outcome: 'NOT_PRINTED' as const };
+    });
+    const chittorgarh = vi.fn(async () => {
+      callOrder.push('CHITTORGARH');
+      return { outcome: 'SUPPLIED' as const, value: 10 };
+    });
+    const resolvePolicy = vi.fn(() => ({
+      ranks: ['CHITTORGARH', 'DOC'],
+      documentType: 'PRICE_BAND_AD' as const,
+      origin: { kind: 'registry' as const, version: 2 },
+      na: false,
+    }));
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chittorgarh } as any,
+      resolvePolicy: resolvePolicy as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(callOrder).toEqual(['CHITTORGARH']);
+    expect(doc).not.toHaveBeenCalled();
+    expect(result.fieldsSupplied).toBe(1);
+    expect(repo.recorded[0].chosen.source).toBe('CHITTORGARH');
+    expect(repo.recorded[0].chosen.rank).toBe(1);
+    // Mutation check M2 (reviewer checklist): dropping `policyOrigin` from the recorded
+    // params must fail this assertion.
+    expect(repo.recorded[0].policyOrigin).toBe('registry:2');
   });
 });

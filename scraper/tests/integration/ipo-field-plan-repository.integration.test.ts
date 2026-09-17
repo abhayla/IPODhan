@@ -383,6 +383,10 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
         sha256: 'a'.repeat(64),
         page: 42,
       },
+      // S1a review CRITICAL-1: policy_origin travels with the SAME UPDATE
+      // as chosen_*, so this one test proves both column families are set
+      // by the SAME recordOutcome call rather than needing a second test.
+      policyOrigin: 'registry:3',
     });
 
     expect(result.written).toBe(true);
@@ -396,9 +400,28 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(persisted.chosenDocumentType).toBe('RHP');
     expect(persisted.chosenSha256).toBe('a'.repeat(64));
     expect(persisted.chosenPage).toBe(42);
+    expect(persisted.policyOrigin).toBe('registry:3');
     // the claim is released so nothing holds the row
     expect(persisted.claimToken).toBeNull();
     expect(persisted.claimedAt).toBeNull();
+  });
+
+  it('policyOrigin omitted leaves the column exactly as it was (no accidental null-out)', async () => {
+    const id = await seedRow();
+    await db.execute(sql`UPDATE ipo_field_plan SET policy_origin = 'registry:1' WHERE id = ${id}::uuid`);
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID });
+
+    await repo.recordOutcome({
+      planRowId: id,
+      claimToken: claimed!.claimToken!,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+      // policyOrigin deliberately omitted.
+    });
+
+    const persisted = await readRow(id);
+    expect(persisted.state).toBe('CHECK_FAILED');
+    expect(persisted.policyOrigin).toBe('registry:1');
   });
 
   it('a FAILED attempt stays PENDING, bumps attempts and schedules a backoff', async () => {

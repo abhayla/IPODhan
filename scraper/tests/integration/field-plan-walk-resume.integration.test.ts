@@ -278,12 +278,36 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     };
   }
 
+  /**
+   * item 3 slice S1a: production resolves the ask order from ONE `resolvePolicy` call per field
+   * per walk, never from the plan row's rank columns directly. This suite seeds rows with
+   * synthetic field names (`field0`, `issueSize`) that do not exist in the real manifest, so the
+   * PRODUCTION default (`defaultResolvePolicy`, the real 190-row manifest) would throw
+   * "unknown field" here -- same reason the unit test file stubs it. This reads the row BACK from
+   * the real table by (tableName, fieldName) and echoes its own rank columns, so the resolver
+   * indirection is exercised against the real repository without requiring every synthetic field
+   * name in this suite to exist in the manifest.
+   */
+  function resolvePolicyFromSeededRow() {
+    return async ({ table, column }: { table: string; column: string }) => {
+      const [row] = await db
+        .select()
+        .from(schema.ipoFieldPlan)
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, table), eq(schema.ipoFieldPlan.fieldName, column)))
+        .limit(1);
+      const ranks = row ? [row.rank1Source, row.rank2Source, row.rank3Source] : [];
+      while (ranks.length > 0 && ranks[ranks.length - 1] == null) ranks.pop();
+      return { ranks, documentType: undefined, origin: { kind: 'registry' as const, version: 1 }, na: false };
+    };
+  }
+
   function deps(orchestrator: any, fetcher: FieldFetcher = suppliedFetcher) {
     return {
       fieldPlanRepository: repo as never,
       orchestrator,
       sourceFetchers: { NSE: fetcher, BSE: fetcher },
       ipoRepository: ipoRepositoryStub() as never,
+      resolvePolicy: resolvePolicyFromSeededRow() as never,
     };
   }
 
@@ -307,6 +331,46 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
       expect(row.chosenRank).toBe(1);
       expect(row.attempts).toBe(1);
     }
+  });
+
+  // S1a review CRITICAL-1: the walk computes `policyOrigin` and passes it to
+  // `recordAndClassify`, but the repository's SQL never set `policy_origin`
+  // -- an untyped `params: Record<string, unknown>` bag hid the missing
+  // field from the compiler and no test asserted the WALK's write (only the
+  // generator's own insert wrote the column, which would mask this defect
+  // in a lazier test). This nulls the column FIRST, by hand, via a raw
+  // UPDATE, so the generator's original value cannot be the thing the
+  // assertion is actually reading.
+  it('the WALK records policy_origin on the outcome (S1a review CRITICAL-1) -- the generator\'s value cannot mask this', async () => {
+    const id = await seedRow({ fieldName: 'issueSize', rank1Source: 'NSE', rank2Source: 'BSE', manifestVersion: 2 });
+
+    // Prove the column starts non-authoritative for this assertion: null it
+    // explicitly so a later read of 'registry:2' can only have come from the
+    // WALK's own write, never a value the seed/generator happened to leave.
+    await db.execute(sql`UPDATE ipo_field_plan SET policy_origin = NULL WHERE id = ${id}::uuid`);
+    const [beforeRow] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
+    expect(beforeRow.policyOrigin).toBeNull();
+
+    // A resolvePolicy stubbed to answer 'registry:2' specifically, so the
+    // assertion below checks an exact, deliberate value rather than
+    // whatever `resolvePolicyFromSeededRow`'s default origin happens to be.
+    const resolvePolicyRegistry2 = async () => ({
+      ranks: ['NSE', 'BSE'],
+      documentType: undefined,
+      origin: { kind: 'registry' as const, version: 2 },
+      na: false,
+    });
+    const walkDeps = { ...deps(okOrchestrator()), resolvePolicy: resolvePolicyRegistry2 as never };
+
+    const result = await walkFieldPlanForIPO(IPO_ID, walkDeps, openBudget());
+    expect(result.fieldsSupplied).toBe(1);
+
+    const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
+    expect(row.state).toBe('SUPPLIED');
+    // The WALK's own recordOutcome call is what put this value back after
+    // this test nulled the column by hand -- the generator's original write
+    // (nulled above) cannot be what this assertion is reading.
+    expect(row.policyOrigin).toBe('registry:2');
   });
 
   it('a dropped write leaves the row PENDING with attempts UNTOUCHED, read back from the table', async () => {

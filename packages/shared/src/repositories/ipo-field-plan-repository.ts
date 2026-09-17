@@ -112,6 +112,7 @@ export interface IpoFieldPlanRow {
   claimedAt: Date | null;
   claimToken: string | null;
   manifestVersion: number;
+  policyOrigin: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -149,6 +150,14 @@ export interface RecordOutcomeParams {
   /** The state the attempt concluded in. Ignored entirely when skipped. */
   state?: FieldPlanState;
   chosen?: ChosenEvidence;
+  /**
+   * 'registry:<version>' | 'override:<id>' — which configuration produced
+   * the ranks this attempt walked (S1a review CRITICAL-1). Provided on
+   * every non-skipped branch so `policy_origin` tracks the ranks the walk
+   * actually asked, not just the generator's original write. Omitted (the
+   * skipped branch, where no ranks were walked) leaves the column as-is.
+   */
+  policyOrigin?: string | null;
   now?: Date;
 }
 
@@ -187,6 +196,8 @@ export interface GeneratedFieldPlanRow {
   rank2Source: string | null;
   rank3Source: string | null;
   manifestVersion: number;
+  /** 'registry:<version>' | 'override:<id>' — which configuration produced this row's ranks. */
+  policyOrigin: string;
 }
 
 export interface UpsertGeneratedRowsResult {
@@ -224,7 +235,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const values = sql.join(
         rows.map(
           (r) =>
-            sql`(${r.ipoId}::uuid, ${r.tableName}, ${r.rowKey}, ${r.fieldName}, ${r.rank1Source}, ${r.rank2Source}, ${r.rank3Source}, ${r.manifestVersion})`
+            sql`(${r.ipoId}::uuid, ${r.tableName}, ${r.rowKey}, ${r.fieldName}, ${r.rank1Source}, ${r.rank2Source}, ${r.rank3Source}, ${r.manifestVersion}, ${r.policyOrigin})`
         ),
         sql`, `
       );
@@ -232,7 +243,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const result = await this.db.execute(sql`
         INSERT INTO ipo_field_plan (
           ipo_id, table_name, row_key, field_name,
-          rank1_source, rank2_source, rank3_source, manifest_version
+          rank1_source, rank2_source, rank3_source, manifest_version, policy_origin
         )
         VALUES ${values}
         ON CONFLICT (ipo_id, table_name, row_key, field_name) DO NOTHING
@@ -390,6 +401,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // columns exactly as they were -- there is no new fact to record.
       const hasChosen = params.chosen !== undefined;
       const chosen = params.chosen ?? {};
+      const hasPolicyOrigin = params.policyOrigin !== undefined;
 
       // A real attempt: count it, stamp it, and schedule the next one unless
       // the state is terminal. `attempts + 1` is computed in SQL from the
@@ -408,6 +420,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
                 )::int
               )
             END,
+            policy_origin = CASE WHEN ${hasPolicyOrigin} THEN ${params.policyOrigin ?? null} ELSE policy_origin END,
             chosen_source = CASE WHEN ${hasChosen} THEN ${chosen.source ?? null} ELSE chosen_source END,
             chosen_rank = CASE WHEN ${hasChosen} THEN ${chosen.rank ?? null} ELSE chosen_rank END,
             chosen_document_id = CASE WHEN ${hasChosen} THEN ${chosen.documentId ?? null}::uuid ELSE chosen_document_id END,
@@ -466,6 +479,7 @@ function mapRow(raw: Record<string, unknown>): IpoFieldPlanRow {
     claimedAt: date(raw.claimed_at),
     claimToken: (raw.claim_token as string) ?? null,
     manifestVersion: raw.manifest_version as number,
+    policyOrigin: (raw.policy_origin as string) ?? null,
     createdAt: date(raw.created_at) as Date,
     updatedAt: date(raw.updated_at) as Date,
   };

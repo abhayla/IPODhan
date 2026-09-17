@@ -53,6 +53,12 @@ import { normalizeChosen } from './data-consolidation-service.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
+import {
+  resolveFieldSourcePolicy,
+  policyOriginString,
+  type FieldSourcePolicy,
+} from '../config/field-source-policy.js';
+import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
 
 /**
  * `plan.fieldName` is the manifest's raw snake_case key
@@ -161,10 +167,36 @@ export type ProtectionFilter = (
   fieldName: string
 ) => Promise<boolean>;
 
+/**
+ * A real interface, not `Record<string, unknown>` (S1a review CRITICAL-1):
+ * an untyped bag let `policyOrigin` be passed at every call site and silently
+ * dropped by `recordOutcome`'s SQL — a missing field is now a compile error
+ * at every one of `recordAndClassify`'s six call sites.
+ */
+export interface RecordOutcomeCallParams {
+  planRowId: string;
+  claimToken: string;
+  writeHappened: boolean;
+  skipReason?: string;
+  state?: string;
+  chosen?: {
+    source?: string | null;
+    rank?: number | null;
+    documentId?: string | null;
+    documentType?: string | null;
+    sha256?: string | null;
+    page?: number | null;
+  };
+  /** 'registry:<version>' | 'override:<id>' — see `RecordOutcomeParams` in the shared repository. */
+  policyOrigin?: string | null;
+}
+
 /** The slice of item 5's repository the walk uses. */
 export interface FieldPlanWalkRepository {
   claimNextDueField(params: { ipoId?: string }): Promise<any | null>;
-  recordOutcome(params: any): Promise<{ written: boolean; reason?: string; skipped?: boolean }>;
+  recordOutcome(
+    params: RecordOutcomeCallParams
+  ): Promise<{ written: boolean; reason?: string; skipped?: boolean }>;
   releaseClaimUnrecorded(params: {
     planRowId: string;
     claimToken: string;
@@ -223,6 +255,85 @@ export interface FieldPlanWalkDeps {
    * existing row and falls into a CREATE that throws on NOT NULL columns.
    */
   ipoRepository: FieldPlanWalkIPORepository;
+  /**
+   * The one resolver (item 3 slice S1a). Both `attemptOneField` and
+   * `tryProvisional` build their ask order from ONE call to this per field
+   * per walk (`policy.ranks`), never from the plan row's own rank columns —
+   * those stay the generator's record; S2 reconciles them when they drift.
+   * Defaulted to the real `resolveFieldSourcePolicy` so production callers
+   * need not wire it; tests stub it to prove the walk follows it.
+   */
+  resolvePolicy?: (query: {
+    table: string;
+    column: string;
+    ipoType: string;
+  }) => FieldSourcePolicy | Promise<FieldSourcePolicy>;
+}
+
+/** Default `resolvePolicy` — the real resolver, called with the deps-less production signature. */
+function defaultResolvePolicy(query: { table: string; column: string; ipoType: string }): FieldSourcePolicy {
+  return resolveFieldSourcePolicy(query);
+}
+
+/**
+ * Resolve one IPO's type key ONCE per walk run (S1a review MINOR-2), never
+ * once per field: `findById` is Redis-cached so a repeat call is cheap, but
+ * `resolvePolicyForPlan` used to call it for every field on the IPO — N
+ * reads for an N-field walk when the type cannot change mid-walk. Memoized
+ * by closing over a single promise the first caller creates; every
+ * subsequent field in the same `walkFieldPlanForIPO` call awaits the SAME
+ * promise instead of issuing its own read.
+ *
+ * Returns `null` when the IPO row cannot be read at all — a real gap
+ * `deps.ipoRepository` already tolerates elsewhere in this file. The caller
+ * (`resolvePolicyForPlan`) treats that as "policy cannot be resolved", never
+ * as a silent MAINBOARD guess (S1a review MINOR-1).
+ */
+function makeIpoTypeResolver(
+  ipoId: string,
+  deps: FieldPlanWalkDeps
+): () => Promise<ReturnType<typeof resolveIpoTypeKey> | null> {
+  let cached: Promise<ReturnType<typeof resolveIpoTypeKey> | null> | undefined;
+  return () => {
+    if (!cached) {
+      cached = deps.ipoRepository.findById(ipoId).then((existing) =>
+        existing
+          ? resolveIpoTypeKey({
+              id: ipoId,
+              segment: (existing.segment as PlanIpo['segment']) ?? null,
+              listingExchanges: (existing.listingExchanges as PlanIpo['listingExchanges']) ?? null,
+            })
+          : null
+      );
+    }
+    return cached;
+  };
+}
+
+/**
+ * Resolve one field's policy for the walk: use the walk-scoped memoized IPO
+ * type (see `makeIpoTypeResolver`), then ask the resolver. When the IPO row
+ * cannot be read at all, returns `ipoRowNotFound: true` instead of guessing
+ * MAINBOARD ranks for what might be an SME issue (S1a review MINOR-1) — the
+ * caller records the field as CHECK_FAILED rather than walking wrong ranks.
+ */
+async function resolvePolicyForPlan(
+  plan: any,
+  deps: FieldPlanWalkDeps,
+  resolveIpoType: () => Promise<ReturnType<typeof resolveIpoTypeKey> | null>
+): Promise<{ outcome: 'IPO_ROW_NOT_FOUND' } | { outcome: 'RESOLVED'; policy: FieldSourcePolicy }> {
+  // A string-literal discriminant, not a boolean one: with this project's
+  // `strict: false` (no `strictNullChecks`), TS fails to narrow a
+  // `{ x: true } | { x: false; ... }` union after an `if (r.x)` check — a
+  // real compiler quirk reproduced standalone while fixing this finding —
+  // but narrows correctly on a string-literal `outcome` tag either way.
+  const resolvePolicy = deps.resolvePolicy ?? defaultResolvePolicy;
+  const ipoType = await resolveIpoType();
+  if (ipoType === null) {
+    return { outcome: 'IPO_ROW_NOT_FOUND' };
+  }
+  const policy = await resolvePolicy({ table: plan.tableName, column: plan.fieldName, ipoType });
+  return { outcome: 'RESOLVED', policy };
 }
 
 export interface FieldPlanWalkBudget {
@@ -322,6 +433,11 @@ export async function walkFieldPlanForIPO(
    */
   const settledThisWalk = new Set<string>();
 
+  // One IPO-type read for the whole walk (S1a review MINOR-2) — every field
+  // on this IPO shares the same memoized resolver rather than each paying
+  // its own `findById`.
+  const resolveIpoType = makeIpoTypeResolver(ipoId, deps);
+
   for (;;) {
     // Checked BEFORE the claim, so the walk never takes a claim it has no
     // budget to settle — a claimed-but-unsettled row is exactly the stuck
@@ -407,7 +523,7 @@ export async function walkFieldPlanForIPO(
     }
 
     result.fieldsAttempted += 1;
-    const settled = await attemptOneField(ipoId, plan, deps, result);
+    const settled = await attemptOneField(ipoId, plan, deps, result, resolveIpoType);
     if (settled === 'SUPERSEDED') {
       result.stoppedReason = 'CLAIM_SUPERSEDED';
       return result;
@@ -424,13 +540,46 @@ async function attemptOneField(
   ipoId: string,
   plan: any,
   deps: FieldPlanWalkDeps,
-  result: FieldPlanWalkResult
+  result: FieldPlanWalkResult,
+  resolveIpoType: () => Promise<ReturnType<typeof resolveIpoTypeKey> | null>
 ): Promise<'SETTLED' | 'SUPERSEDED'> {
-  const ranks: [number, string | null][] = [
-    [1, plan.rank1Source],
-    [2, plan.rank2Source],
-    [3, plan.rank3Source],
-  ];
+  const policyResolution = await resolvePolicyForPlan(plan, deps, resolveIpoType);
+  if (policyResolution.outcome === 'IPO_ROW_NOT_FOUND') {
+    // S1a review MINOR-1: the IPO row could not be read at all, so there is
+    // no type key to resolve ranks from — never guess MAINBOARD for what may
+    // be an SME issue. This is a fact about THIS MINUTE (the row may be
+    // readable next pass), so CHECK_FAILED/transient, never a terminal state
+    // and no ranks are walked.
+    result.fieldsCheckFailed += 1;
+    logger.warn(
+      { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName },
+      'PASS 3: ipo row not found for policy resolution — CHECK_FAILED, re-asked after backoff (no ranks guessed)'
+    );
+    return recordAndClassify(deps, result, {
+      planRowId: plan.id,
+      claimToken: plan.claimToken,
+      writeHappened: true,
+      state: 'CHECK_FAILED',
+    });
+  }
+  const policy = policyResolution.policy;
+  const policyOrigin = policyOriginString(policy.origin);
+  const ranks: [number, string | null][] = policy.ranks.map((source, i) => [i + 1, source]);
+
+  const planRanks = [plan.rank1Source, plan.rank2Source, plan.rank3Source].filter(Boolean);
+  const policyRanksDiffer =
+    planRanks.length !== policy.ranks.length || planRanks.some((s, i) => s !== policy.ranks[i]);
+  if (policyRanksDiffer) {
+    logger.warn(
+      { ipoId, table: plan.tableName, field: plan.fieldName, policyRanks: policy.ranks, planRanks },
+      'PASS 3: policy ranks differ from plan row'
+    );
+  }
+  logger.info(
+    { ipoId, table: plan.tableName, field: plan.fieldName, policyOrigin, ranks: policy.ranks.join(',') },
+    `PASS 3: policy origin=${policyOrigin} ranks=${policy.ranks.join(',')}`
+  );
+
   const failures: string[] = [];
   /**
    * Did any rank fail for a reason that might not fail again?
@@ -526,7 +675,7 @@ async function attemptOneField(
       // here would close the ask against a value we already know is
       // second-best.
       result.fieldsNotAvailableYet += 1;
-      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures);
+      const provisional = await tryProvisional(ipoId, plan, rank, deps, failures, policy);
       if (provisional) {
         result.fieldsProvisional += 1;
         logger.info(
@@ -544,6 +693,7 @@ async function attemptOneField(
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
+        policyOrigin,
         writeHappened: true,
         state: 'NOT_AVAILABLE_YET',
       });
@@ -581,6 +731,7 @@ async function attemptOneField(
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
+        policyOrigin,
         writeHappened: false,
         skipReason: verdict.skipReason,
       });
@@ -610,6 +761,7 @@ async function attemptOneField(
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
+        policyOrigin,
         writeHappened: true,
         state: 'CHECK_FAILED',
       });
@@ -619,6 +771,7 @@ async function attemptOneField(
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
+      policyOrigin,
       writeHappened: true,
       state: 'SUPPLIED',
       chosen: evidenceFor(source, rank, answer),
@@ -644,6 +797,7 @@ async function attemptOneField(
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
+      policyOrigin,
       writeHappened: true,
       state: 'CHECK_FAILED',
     });
@@ -661,6 +815,7 @@ async function attemptOneField(
   return recordAndClassify(deps, result, {
     planRowId: plan.id,
     claimToken: plan.claimToken,
+    policyOrigin,
     writeHappened: true,
     state: 'EXHAUSTED',
   });
@@ -682,13 +837,14 @@ async function tryProvisional(
   plan: any,
   authoritativeRank: number,
   deps: FieldPlanWalkDeps,
-  failures: string[]
+  failures: string[],
+  policy: FieldSourcePolicy
 ): Promise<{ source: string; rank: number } | null> {
-  const lowerRanks: [number, string | null][] = [
-    [1, plan.rank1Source],
-    [2, plan.rank2Source],
-    [3, plan.rank3Source],
-  ].filter(([r]) => (r as number) > authoritativeRank) as [number, string | null][];
+  // Same resolver call `attemptOneField` already made for this field this walk — passed in
+  // rather than re-resolved, so this stays ONE `resolvePolicy` call per field per walk.
+  const lowerRanks: [number, string | null][] = policy.ranks
+    .map((source, i): [number, string | null] => [i + 1, source])
+    .filter(([r]) => r > authoritativeRank);
 
   for (const [rank, source] of lowerRanks) {
     if (!source) continue;
@@ -895,7 +1051,7 @@ async function runWrite(
 async function recordAndClassify(
   deps: FieldPlanWalkDeps,
   result: FieldPlanWalkResult,
-  params: Record<string, unknown>
+  params: RecordOutcomeCallParams
 ): Promise<'SETTLED' | 'SUPERSEDED'> {
   // F4 (Tier A review): `recordOutcome` wraps any driver error in a
   // DatabaseError and RETHROWS. Unwrapped, that propagates out of
@@ -946,7 +1102,7 @@ async function recordAndClassify(
  */
 async function releaseQuietly(
   deps: FieldPlanWalkDeps,
-  params: Record<string, unknown>,
+  params: RecordOutcomeCallParams,
   why: string
 ): Promise<void> {
   try {
@@ -963,7 +1119,7 @@ async function releaseQuietly(
 }
 
 /** A refused write means the counter that was just incremented is fiction. */
-function unwind(result: FieldPlanWalkResult, params: Record<string, unknown>): void {
+function unwind(result: FieldPlanWalkResult, params: RecordOutcomeCallParams): void {
   if (params.writeHappened === false) {
     result.fieldsWriteSkipped = Math.max(0, result.fieldsWriteSkipped - 1);
     // The identity this same branch just pushed is fiction too (review round 2).

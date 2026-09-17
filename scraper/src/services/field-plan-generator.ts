@@ -11,6 +11,7 @@
  */
 import { loadFieldManifest } from '../config/field-manifest-loader.js';
 import type { FieldManifest } from '../config/field-manifest-schema.js';
+import { resolveFieldSourcePolicy, policyOriginString } from '../config/field-source-policy.js';
 
 /**
  * The manifest keys its rank arrays by IPO type, not by the DB `segment` enum. `segment` is only
@@ -52,6 +53,8 @@ export interface PlannedFieldRow {
   attempts: number;
   lastAttemptAt: Date | null;
   manifestVersion: number;
+  /** 'registry:<version>' | 'override:<id>' — which configuration produced this row's ranks. */
+  policyOrigin: string;
 }
 
 /**
@@ -110,9 +113,12 @@ export function generateFieldPlan(
     const tableName = fieldKey.slice(0, dot);
     const fieldName = fieldKey.slice(dot + 1);
 
-    const ranks = entry.rank[typeKey];
-    if (!Array.isArray(ranks)) continue;
+    // The resolver is the ONE place rank[typeKey] is read (S1a) — the generator no longer reads
+    // entry.rank directly, so it and the walk can never disagree on "no entry for this type".
+    const policy = resolveFieldSourcePolicy({ table: tableName, column: fieldName, ipoType: typeKey }, { manifest });
+    if (policy.na) continue;
 
+    const ranks = policy.ranks;
     if (ranks.length > RANK_COLUMNS) {
       throw new Error(
         `generateFieldPlan: field "${fieldKey}" ranks ${ranks.length} sources for ${typeKey} ` +
@@ -139,6 +145,7 @@ export function generateFieldPlan(
       lastAttemptAt: null,
       // Stamped so the plan is RECONCILED when the manifest changes, never regenerated per cycle.
       manifestVersion: manifest.version,
+      policyOrigin: policyOriginString(policy.origin),
     });
   }
 
