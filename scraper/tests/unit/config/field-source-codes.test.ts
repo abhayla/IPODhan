@@ -132,6 +132,7 @@ describe('field-source-codes', () => {
       'packages/shared/src/repositories/data-conflicts-repository.ts',
       'web/lib/repositories/field-sources-repository.ts',
       'web/lib/repositories/data-conflicts-repository.ts',
+      'web/lib/services/conflict-resolution.ts',
     ];
     const literalUnionRe =
       /'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'\s*\|\s*'(ADMIN|DRHP|NSE|BSE|API_FALLBACK|MONEYCONTROL|CHITTORGARH)'/g;
