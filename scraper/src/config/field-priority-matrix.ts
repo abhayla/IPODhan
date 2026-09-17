@@ -14,7 +14,8 @@ export type ScraperSource =
   | 'MONEYCONTROL'    // Moneycontrol scraper
   | 'CHITTORGARH'     // Chittorgarh GMP scraper
   | 'INVESTORGAIN_GMP'// InvestorGain GMP scraper
-  | 'API_FALLBACK';   // Fallback API scraper
+  | 'API_FALLBACK'    // Fallback API scraper
+  | 'REG';            // Registrar (allotment/basis data; no fetcher yet — stage 3 S6 NO_FETCHER)
 
 export type NormalizationType =
   | 'currency'           // Indian currency formats (₹500 Cr, 500 Crores, etc.)

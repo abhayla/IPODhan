@@ -40,6 +40,7 @@ export const BASE_SOURCE_CONFIDENCE: Record<ScraperSource, number> = {
   MONEYCONTROL: 60, // aggregator
   INVESTORGAIN_GMP: 60, // aggregator
   API_FALLBACK: 40, // last-resort fallback
+  REG: 90, // registrar: official allotment/basis data; no fetcher yet (stage 3 S6 NO_FETCHER)
 };
 
 /** Confidence for a source the tier table does not know (never fabricate a high number). */

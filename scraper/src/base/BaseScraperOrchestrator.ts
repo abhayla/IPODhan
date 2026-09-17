@@ -727,6 +727,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       'MONEYCONTROL': 75,     // Reliable third-party aggregator
       'INVESTORGAIN_GMP': 75, // InvestorGain GMP data
       'API_FALLBACK': 70,     // Fallback API, less reliable
+      'REG': 90,              // registrar: official allotment/basis data; no fetcher yet (stage 3 S6 NO_FETCHER)
     };
 
     return confidenceScores[source] || 50; // Default to medium confidence

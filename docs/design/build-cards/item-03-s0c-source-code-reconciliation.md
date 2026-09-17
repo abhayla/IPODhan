@@ -38,10 +38,10 @@ it, in one module that the walk, the generator's self-check and (in S1) the writ
 |---|---|---|
 | `scraper/src/config/field-source-codes.ts` | NEW (module: config) | `MANIFEST_TO_WRITER: Record<SourceCode, {writerSource: ScraperSource; docTypes?: DocType[]}>` covering `DOC`→`DRHP` (docTypes: the manifest row's `documentType` order), `DRHP/RHP/PROSPECTUS/CORRIGENDUM/PRICE_BAND_AD`→`DRHP` with the single docType, `REG`→`REG`, `INVESTORGAIN_GMP`→`INVESTORGAIN_GMP`, `API_FALLBACK`→`API_FALLBACK`, `NSE/BSE/CHITTORGARH/MONEYCONTROL/ADMIN`→ identity; `mapManifestSourceToScraperSource` moved here; `writerSourceToManifestCode(source, docType?)` inverse |
 | `scraper/src/services/field-plan-walk.ts` | exists | line 765 body replaced by `export { mapManifestSourceToScraperSource } from '../config/field-source-codes.js'` |
-| `scraper/src/config/field-manifest-schema.ts` | exists | `sourceCodeSchema` gains `API_FALLBACK`; a `.refine` that every code has a `MANIFEST_TO_WRITER` entry |
-| the four `ScraperSource` unions | exist | `'REG'` added |
-| `scraper/tests/unit/config/field-source-codes.test.ts` | NEW | every `sourceCodeSchema` value maps; inverse round-trips; `DOC` maps to `DRHP`; the four unions are equal sets |
-| `packages/shared/src/db/schema.ts` | exists | NO change — `field_sources.source` is `varchar`, not a pg enum (verify with `git grep -n "source: varchar" origin/main -- packages/shared/src/db/schema.ts`; if it is an enum, this slice stops and reports: a migration is Tier A and not in this card) |
+| `scraper/src/config/field-manifest-schema.ts` | exists | `sourceCodeSchema` gains `API_FALLBACK`; no refine: `MANIFEST_TO_WRITER` is typed `Record<ManifestSourceCode, …>`, so a code without an entry fails `tsc`, and the unit test iterates `sourceCodeSchema.options` |
+| the two pure-TS `ScraperSource` unions (`db/types.ts`, `field-priority-matrix.ts`) | exist | `'REG'` added |
+| `scraper/tests/unit/config/field-source-codes.test.ts` | NEW | every `sourceCodeSchema` value maps; inverse round-trips; `DOC` maps to `DRHP`; the two pure-TS unions are equal sets; `ScraperSourceValue` (pg-enum-backed) asserted a SUBSET of the writer union, not required equal (S0d closes the gap) |
+| `packages/shared/src/db/schema.ts` | exists | NO change in this slice — `field_sources.source` (schema.ts:1483) is `scraperSourceEnum('source')`, a real pg enum (schema.ts:121: `ADMIN\|DRHP\|NSE\|BSE\|API_FALLBACK\|MONEYCONTROL\|CHITTORGARH`), also typing `data_conflicts.source1`/`source2`/`resolved_source` (schema.ts:1549-1555). Line 501's `varchar('source', ...)` is a DIFFERENT table (`gmp_records`) — this card's earlier "varchar" claim was wrong. Widening this enum to add `INVESTORGAIN_GMP`/`REG` is a migration: **slice S0d** (Tier A, issue #740), landing before S1a. |
 
 ## Schema
 
@@ -84,10 +84,12 @@ walk with the moved map: `walk-proof.mjs --expect-db ipodhan_staging` still ≥3
 | id | command | expect | env |
 |---|---|---|---|
 | S0c-1 | `cd scraper && npx vitest run tests/unit/config/field-source-codes.test.ts` | exit 0 | local |
-| S0c-2 | `git grep -c "mapManifestSourceToScraperSource" HEAD -- scraper/src/config/field-source-codes.ts` | regex: `^[1-9]` | local |
+| S0c-2 | `git grep -c "mapManifestSourceToScraperSource" HEAD -- scraper/src/config/field-source-codes.ts` | regex: `:[1-9][0-9]*$` | local |
 | S0c-3 | `git grep -n "manifestSource === 'DOC' ? 'DRHP'" HEAD -- scraper/src/services/field-plan-walk.ts` | exit 1 | local |
-| S0c-4 | `git grep -c "'REG'" HEAD -- packages/shared/src/db/types.ts scraper/src/config/field-priority-matrix.ts packages/shared/src/types/types.ts packages/shared/src/repositories/field-extraction-failures-repository.ts` | regex: `(?s)(.*:[1-9].*){4}` | local |
+| S0c-4 | `git grep -c "'REG'" HEAD -- packages/shared/src/db/types.ts scraper/src/config/field-priority-matrix.ts` | regex: `(?s)(.*:[1-9].*){2}` | local |
 | S0c-5 | `cd scraper && npx vitest run tests/unit/services/field-plan-walk` | exit 0 | local |
+| S0c-6 | `git grep -c "'REG'" HEAD -- packages/shared/src/types/types.ts web/lib/db/types.ts` | exit 1 | local |
+| S0c-7 | `git grep -c "'REG'" HEAD -- packages/shared/src/repositories/field-extraction-failures-repository.ts packages/shared/src/db/schema.ts` | exit 1 | local |
 
 ## Rollback
 
@@ -114,3 +116,8 @@ None hard; lands before S0b's 190-row manifest can rank `REG`/`API_FALLBACK`. S1
 - Registrar (`REG`) has no fetcher in the walk (`field-plan-walk-deps.ts`); ranking it is legal after
   this slice, asking it is S6's `NO_FETCHER` case, and building the fetcher is a follow-up after the
   stage (plan §4 last paragraph names NSE first).
+- The pg enum `scraper_source` (schema.ts:121) lacks `INVESTORGAIN_GMP` and `REG` — it types
+  `field_sources.source` (schema.ts:1483) and `data_conflicts.source1`/`source2`/`resolved_source`
+  (schema.ts:1549-1555). Widening it is a DB migration, out of scope for this Tier B slice. **Slice
+  S0d** (Tier A, issue #740) must land before S1a, which will need the writer to persist `REG`/
+  `INVESTORGAIN_GMP` rows through these columns.
