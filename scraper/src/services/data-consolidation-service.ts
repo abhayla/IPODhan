@@ -963,9 +963,16 @@ export class DataConsolidationService {
       // way to tell MAINBOARD from SME — resolveIpoTypeKey requires `segment !== 'SME'` to
       // mean MAINBOARD, so an explicit unknown-segment `null`/undefined already falls there.
       // Identity fields (`ipos.segment`, `ipos.listing_exchanges` themselves) always resolve
-      // with the MAINBOARD list — the manifest ranks those two fields identically across all
-      // three ipoType keys today, so this is a safe, re-resolved-next-wake default, not a
-      // permanent misclassification.
+      // with the MAINBOARD list. This is safe today only because NEITHER field is in any
+      // `flipped` group (switchover.json's only flipped group is `issue-size`, which does not
+      // list them) — an identity field's own rank is never actually consulted, so which
+      // ipoType key it falls back to doesn't matter yet. The ranks are NOT identical across
+      // ipoType keys for fields that ARE flipped (e.g. `ipos.issue_size` MAINBOARD/SME_BSE/
+      // SME_NSE all list `[DOC, CHITTORGARH]`, but `ipos.lot_size` ranks differ per key:
+      // MAINBOARD `[DOC, BSE, NSE]` vs SME_BSE `[DOC, BSE, CHITTORGARH]` vs SME_NSE `[DOC, NSE,
+      // CHITTORGARH]`). This is a re-resolved-next-wake default for the create path, not a
+      // permanent misclassification — but whoever flips an identity group later must revisit
+      // this MAINBOARD fallback, since the identical-ranks assumption will no longer hold.
       const ipoTypeForPolicy = resolveIpoTypeKey({
         id: input.ipoId,
         segment: (smeSegment as 'MAINBOARD' | 'SME' | null) ?? null,

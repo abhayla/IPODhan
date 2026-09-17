@@ -182,3 +182,6 @@ docs hunk in the S1b build PR.
   until S1d's shim statement and a later item.
 - config-deploy of switchover.json = follow-up (extend deploy-config.sh, separate Tier A PR);
   until then a flip is a code deploy (C3).
+- `isTimeBased(fieldName, tableName)` accepts a `tableName` parameter it ignores — no flipped
+  field is time-based today. Honour it when a time-based field joins a group (S1c/S1d);
+  review round 1 (MINOR-3), 2026-09-17.

@@ -78,6 +78,11 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
     vi.restoreAllMocks();
   });
 
+  // MINOR-2 (review round 1): this test documents the INTENDED outcome but does NOT discriminate
+  // the policy path from the legacy path — CHITTORGARH is allowed to heal an untracked value under
+  // BOTH the manifest policy and the legacy per-field matrix rule for issueSize (a 6-source list that
+  // also ranks CHITTORGARH above the worst-listed source). Set `flipped: []` in switchover.json and this
+  // test still passes. Tests (iv), (vii), (viii) and (ix) are the ones that discriminate.
   it('(i) RED-FIRST: incoming CHITTORGARH beats an UNTRACKED stored ipos.issue_size under the real two-rank policy [DOC, CHITTORGARH]', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
 
@@ -95,6 +100,10 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
     expect(fieldResult?.chosenSource).toBe('CHITTORGARH');
   });
 
+  // MINOR-2 (review round 1): documents the intended outcome; does NOT discriminate the policy path
+  // from the legacy path — DRHP/DOC outranks CHITTORGARH under both the manifest policy ([DOC,
+  // CHITTORGARH], DOC first) and the legacy matrix (DRHP ranks above CHITTORGARH there too). Set
+  // `flipped: []` and this test still passes. Tests (iv), (vii), (viii) and (ix) discriminate.
   it('(ii) incoming DOC (via DRHP write source) beats a tracked CHITTORGARH ipos.issue_size', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('issueSize', 'CHITTORGARH', '54210000000.00'),
@@ -115,6 +124,10 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
     expect(fieldResult?.chosenSource).toBe('DRHP');
   });
 
+  // MINOR-2 (review round 1): documents the intended outcome; does NOT discriminate the policy path
+  // from the legacy path — BSE is unranked/low-ranked for issueSize under BOTH the manifest policy
+  // ([DOC, CHITTORGARH], BSE absent) and the legacy matrix (BSE ranks below CHITTORGARH there too).
+  // Set `flipped: []` and this test still passes. Tests (iv), (vii), (viii) and (ix) discriminate.
   it('(iii) incoming BSE LOSES to a tracked CHITTORGARH ipos.issue_size — BSE is not in the manifest ranks for this field', async () => {
     vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
       fieldSourceRow('issueSize', 'CHITTORGARH', '54210000000.00'),
@@ -241,6 +254,109 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
       });
       // Legacy rule: NSE ranks below the worst-listed source -> outranks the untracked value.
       expect(flagOffResult.fieldResults.find((f) => f.fieldName === 'issueSize')?.finalValue).toBe(1500000000);
+    } finally {
+      (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = true;
+    }
+  });
+
+  // Review round 1, MAJOR-1: prove `getSourcePriority` (both call sites) receives `tableName`
+  // through the REAL orchestrator — the config-level test only calls the matrix function
+  // directly. Discriminator, MEASURED: `ipo_details.fresh_issue` has NO explicit camelCase
+  // entry in FIELD_PRIORITY_MATRIX (`freshIssue` matches neither `fresh_issue_size`'s snake_case
+  // key nor any camelCase key), so `getFieldRules('freshIssue')` falls through to the DEFAULT
+  // rule `['ADMIN','DRHP','NSE','BSE','MONEYCONTROL','CHITTORGARH','API_FALLBACK']` — NSE
+  // (index 2) outranks BSE (index 3). The manifest POLICY for `ipo_details.fresh_issue`
+  // MAINBOARD ranks `[DOC, BSE, CHITTORGARH]` — NSE is ABSENT (unranked, priority -1), BSE is
+  // ranked (priority 1). So: stored NSE vs incoming BSE — under the LEGACY default list NSE
+  // (ranked) beats BSE (also ranked, but worse) and the stored value survives; under the POLICY,
+  // BSE (ranked) beats NSE (unranked) and the incoming value replaces it. The two paths give
+  // OPPOSITE outcomes on this exact input, so reverting `tableName` at the getSourcePriority
+  // call sites (which forces the one-arg `getFieldRules` fallback regardless of the flag/flip
+  // state) must turn this test red.
+  it('(viii) TRACKED vs TRACKED: stored NSE (legacy-default-ranked, POLICY-unranked) loses to incoming BSE through the real orchestrator', async () => {
+    // NOTE: `fieldSourceRow()` hardcodes `tableName: 'ipos'` (it is used by every other test in
+    // this file, all of which target `ipos.*`) — this field is `ipo_details.fresh_issue`, so the
+    // tracked row is built inline with the correct tableName; otherwise the row-key match
+    // (`fieldSource.tableName === input.tableName`) silently fails and the field reads as
+    // untracked, masking the tracked-vs-tracked case this test exists to prove.
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      {
+        ipoId: 'policy-test', tableName: 'ipo_details', fieldName: 'freshIssue', source: 'NSE', value: '1400000000',
+        confidence: 100, dataLineage: null, previousValue: null, previousSource: null,
+        updatedAt: new Date('2026-09-01T00:00:00Z'), createdAt: new Date('2026-09-01T00:00:00Z'),
+      } as any,
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipo_details',
+      incomingData: { freshIssue: 1500000000 },
+      existingData: { segment: 'MAINBOARD' },
+      source: 'BSE',
+      confidence: 80,
+    });
+
+    // Policy ranks: [DOC, BSE, CHITTORGARH] -- NSE is UNRANKED (priority -1), BSE is ranked
+    // (priority 1) -- BSE must win regardless of what the legacy DEFAULT list says about NSE.
+    expect(Number(result.consolidatedData.freshIssue)).toBe(1500000000);
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'freshIssue');
+    expect(fieldResult?.chosenSource).toBe('BSE');
+    expect(fieldResult?.conflictReason).toBe('SOURCE_PRIORITY');
+  });
+
+  // Review round 1, MAJOR-1: prove `allowsSameSourceRefresh` (:2365) receives `tableName` through
+  // the REAL orchestrator. `ipos.lot_size` is in the flipped `issue-size` group (switchover.json),
+  // has `sameSourceRefresh: true` in the legacy matrix (issueSize itself does NOT, so it cannot be
+  // used here -- allowsSameSourceRefresh short-circuits false before reaching tableName/policy
+  // logic when the field has no sameSourceRefresh flag at all). Legacy lotSize entry:
+  // `sameSourceRefreshSources: ['DRHP']` only -- BSE is EXCLUDED from self-refresh. Manifest
+  // policy MAINBOARD ranks `[DOC, BSE, NSE]` for ipos.lot_size -- BSE IS ranked. A same-source
+  // BSE-vs-BSE conflict (newer BSE value replacing an older BSE value) must be REFUSED under the
+  // legacy allow-list and ALLOWED under the policy allow-list -- the two answers differ, proving
+  // this is a genuine behavioural discriminator, not a tableName-presence check in disguise.
+  it('(ix) same-source refresh through the orchestrator: BSE-vs-BSE on ipos.lot_size — legacy refuses, policy allows', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('lotSize', 'BSE', '100', '2026-09-01T00:00:00Z'),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipos',
+      incomingData: { lotSize: 150 },
+      existingData: { segment: 'MAINBOARD' },
+      source: 'BSE',
+      confidence: 90,
+      scrapedAt: new Date('2026-09-05T00:00:00Z'),
+    } as any);
+
+    // Policy allows BSE self-refresh for ipos.lot_size (BSE is ranked) -- the newer BSE value
+    // (scrapedAt 09-05 > stored 09-01) replaces the older one via SAME_SOURCE_REFRESH.
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'lotSize');
+    expect(fieldResult?.finalValue).toBe(150);
+    expect(fieldResult?.chosenSource).toBe('BSE');
+    expect(fieldResult?.conflictReason).toBe('SAME_SOURCE_REFRESH');
+
+    // Flag OFF: legacy allow-list excludes BSE from lotSize self-refresh (sameSourceRefreshSources:
+    // ['DRHP'] only) -- same-source BSE-vs-BSE falls through to DEFAULT_KEEP_EXISTING, proving the
+    // two paths genuinely disagree on this exact input.
+    const featureFlags = await import('../../../src/config/feature-flags.js');
+    (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = false;
+    try {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+        fieldSourceRow('lotSize', 'BSE', '100', '2026-09-01T00:00:00Z'),
+      ]);
+      const flagOffResult = await service.consolidateIPOData({
+        ipoId: 'policy-test',
+        tableName: 'ipos',
+        incomingData: { lotSize: 150 },
+        existingData: { segment: 'MAINBOARD' },
+        source: 'BSE',
+        confidence: 90,
+        scrapedAt: new Date('2026-09-05T00:00:00Z'),
+      } as any);
+      const flagOffField = flagOffResult.fieldResults.find((f) => f.fieldName === 'lotSize');
+      expect(Number(flagOffField?.finalValue)).toBe(100);
+      expect(flagOffField?.conflictReason).not.toBe('SAME_SOURCE_REFRESH');
     } finally {
       (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = true;
     }
