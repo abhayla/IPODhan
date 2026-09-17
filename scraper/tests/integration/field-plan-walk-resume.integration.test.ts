@@ -333,6 +333,46 @@ describe.skipIf(!DATABASE_URL)(`item 6 field-plan walk, real repository (${RUN_L
     }
   });
 
+  // S1a review CRITICAL-1: the walk computes `policyOrigin` and passes it to
+  // `recordAndClassify`, but the repository's SQL never set `policy_origin`
+  // -- an untyped `params: Record<string, unknown>` bag hid the missing
+  // field from the compiler and no test asserted the WALK's write (only the
+  // generator's own insert wrote the column, which would mask this defect
+  // in a lazier test). This nulls the column FIRST, by hand, via a raw
+  // UPDATE, so the generator's original value cannot be the thing the
+  // assertion is actually reading.
+  it('the WALK records policy_origin on the outcome (S1a review CRITICAL-1) -- the generator\'s value cannot mask this', async () => {
+    const id = await seedRow({ fieldName: 'issueSize', rank1Source: 'NSE', rank2Source: 'BSE', manifestVersion: 2 });
+
+    // Prove the column starts non-authoritative for this assertion: null it
+    // explicitly so a later read of 'registry:2' can only have come from the
+    // WALK's own write, never a value the seed/generator happened to leave.
+    await db.execute(sql`UPDATE ipo_field_plan SET policy_origin = NULL WHERE id = ${id}::uuid`);
+    const [beforeRow] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
+    expect(beforeRow.policyOrigin).toBeNull();
+
+    // A resolvePolicy stubbed to answer 'registry:2' specifically, so the
+    // assertion below checks an exact, deliberate value rather than
+    // whatever `resolvePolicyFromSeededRow`'s default origin happens to be.
+    const resolvePolicyRegistry2 = async () => ({
+      ranks: ['NSE', 'BSE'],
+      documentType: undefined,
+      origin: { kind: 'registry' as const, version: 2 },
+      na: false,
+    });
+    const walkDeps = { ...deps(okOrchestrator()), resolvePolicy: resolvePolicyRegistry2 as never };
+
+    const result = await walkFieldPlanForIPO(IPO_ID, walkDeps, openBudget());
+    expect(result.fieldsSupplied).toBe(1);
+
+    const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
+    expect(row.state).toBe('SUPPLIED');
+    // The WALK's own recordOutcome call is what put this value back after
+    // this test nulled the column by hand -- the generator's original write
+    // (nulled above) cannot be what this assertion is reading.
+    expect(row.policyOrigin).toBe('registry:2');
+  });
+
   it('a dropped write leaves the row PENDING with attempts UNTOUCHED, read back from the table', async () => {
     const id = await seedRow();
 

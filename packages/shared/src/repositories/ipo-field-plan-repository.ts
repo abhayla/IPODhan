@@ -150,6 +150,14 @@ export interface RecordOutcomeParams {
   /** The state the attempt concluded in. Ignored entirely when skipped. */
   state?: FieldPlanState;
   chosen?: ChosenEvidence;
+  /**
+   * 'registry:<version>' | 'override:<id>' — which configuration produced
+   * the ranks this attempt walked (S1a review CRITICAL-1). Provided on
+   * every non-skipped branch so `policy_origin` tracks the ranks the walk
+   * actually asked, not just the generator's original write. Omitted (the
+   * skipped branch, where no ranks were walked) leaves the column as-is.
+   */
+  policyOrigin?: string | null;
   now?: Date;
 }
 
@@ -393,6 +401,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // columns exactly as they were -- there is no new fact to record.
       const hasChosen = params.chosen !== undefined;
       const chosen = params.chosen ?? {};
+      const hasPolicyOrigin = params.policyOrigin !== undefined;
 
       // A real attempt: count it, stamp it, and schedule the next one unless
       // the state is terminal. `attempts + 1` is computed in SQL from the
@@ -411,6 +420,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
                 )::int
               )
             END,
+            policy_origin = CASE WHEN ${hasPolicyOrigin} THEN ${params.policyOrigin ?? null} ELSE policy_origin END,
             chosen_source = CASE WHEN ${hasChosen} THEN ${chosen.source ?? null} ELSE chosen_source END,
             chosen_rank = CASE WHEN ${hasChosen} THEN ${chosen.rank ?? null} ELSE chosen_rank END,
             chosen_document_id = CASE WHEN ${hasChosen} THEN ${chosen.documentId ?? null}::uuid ELSE chosen_document_id END,
