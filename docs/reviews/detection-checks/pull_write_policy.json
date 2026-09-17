@@ -1,0 +1,14 @@
+{
+  "id": "pull_write_policy",
+  "designId": "PULL-WRITE-POLICY",
+  "findingClass": "a field_sources row written by a source the manifest policy does not rank for that field/IPO-type",
+  "whatItAsks": "the last 24h of field_sources writes were made by a source in the manifest's ranked set for that field and IPO type (ADMIN exempt)",
+  "healthy": "0",
+  "alarmsWhen": "any non-zero, sampled over the last 24h of field_sources.updated_at",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots",
+  "consumer": "nightly floor-delta (docs/reviews/build-cards/item-03-s6-churn-stop-and-detection.md)",
+  "consumerReason": "a write from an unranked source is a per-cycle write-path fact, resolved to the field_sources row that produced it",
+  "status": "built (item 3 slice S6)",
+  "sourceDesign": "docs/design/build-cards/item-03-s6-churn-stop-and-detection.md",
+  "section": "checks"
+}

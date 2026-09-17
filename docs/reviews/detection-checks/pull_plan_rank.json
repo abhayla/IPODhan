@@ -1,0 +1,14 @@
+{
+  "id": "pull_plan_rank",
+  "designId": "PULL-PLAN-RANK",
+  "findingClass": "a non-terminal ipo_field_plan row whose stored ranks disagree with the manifest policy for its own manifest_version",
+  "whatItAsks": "every non-terminal plan row's rank1/rank2/rank3 match the manifest's ranked set for that field, IPO type, at the row's own manifest_version",
+  "healthy": "0",
+  "alarmsWhen": "any non-zero",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots; non-terminal (state <> SUPPLIED) rows only — a SUPPLIED row's ranks are frozen audit trail, not a live mis-plan",
+  "consumer": "nightly floor-delta (docs/reviews/build-cards/item-03-s6-churn-stop-and-detection.md)",
+  "consumerReason": "the plan is reconciled to the manifest on generation, not every cycle — a rank disagreement is a per-run structural fact, read by identity (plan row) each run",
+  "status": "built (item 3 slice S6)",
+  "sourceDesign": "docs/design/build-cards/item-03-s6-churn-stop-and-detection.md",
+  "section": "checks"
+}
