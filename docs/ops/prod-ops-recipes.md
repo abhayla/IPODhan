@@ -985,3 +985,53 @@ changes are docs) is a correct skip, not a failure — the workflow still exits 
 outright (separate step, fails loudly) — a window can only ever reach staging; the only route to
 prod remains an explicit human `workflow_dispatch` with `slot=prod` from a `release/prod-<date>`
 branch (W-141, unchanged by this rule).
+
+## 15. Config-only deploy (S5) — a manifest change reaches a slot without a build (item 3 S5, 2026-09-17)
+
+**What it does.** `scripts/ops/deploy-config.sh` copies ONLY `scraper/config/field-manifest.json`
+from a sha on `origin/main` into `$ROOT/shared/config/<slot>/field-manifest.json`, verifies it,
+writes a `CONFIG_SHA` file next to it, and appends one line to `shared/config/deploy-config.log`.
+Every release's `scraper/config/field-manifest.json` is a symlink into that shared file
+(`scripts/deploy-linux.sh`'s release-link block, step 5.1) — no build, no PM2 restart, no new
+release directory. The next scraper wake reads through the symlink and logs
+`field-manifest: version=... fields=... sha256=... config_sha=<sha>`.
+
+**Run it (staging, from the laptop):**
+
+```bash
+ssh rfp-vps "cd /var/www/ipodhan/current-staging && bash scripts/ops/deploy-config.sh \
+  --slot staging --sha <sha on origin/main> --reason \"<why>\""
+```
+
+**Run it (prod)** — same command with `--slot prod --i-have-the-owners-word`, only on the owner's
+explicit word (the script refuses `--slot prod` without that flag):
+
+```bash
+ssh rfp-vps "cd /var/www/ipodhan/current-prod && bash scripts/ops/deploy-config.sh \
+  --slot prod --sha <sha on origin/main> --reason \"<why>\" --i-have-the-owners-word"
+```
+
+**Rollback** — the same command with the previous sha; it is logged like any other run, nothing
+destructive happens (the shared file is just overwritten again).
+
+**Reading the result:**
+
+```bash
+ssh rfp-vps "readlink /var/www/ipodhan/current-<slot>/scraper/config/field-manifest.json"  # -> /shared/config/<slot>/field-manifest.json
+ssh rfp-vps "cat /var/www/ipodhan/shared/config/<slot>/CONFIG_SHA"                          # the sha just deployed, or 'release'
+ssh rfp-vps "tail -1 /var/www/ipodhan/shared/config/deploy-config.log"                      # <iso> <slot> <sha> <sha256> <user> <reason>
+```
+
+The next scraper cycle's start-of-run log line names the same sha:
+`field-manifest: version=... fields=... sha256=... config_sha=<sha>` — that line, read from the
+cycle log, is the runtime proof a config-only deploy actually took effect.
+
+**The files involved.** `$ROOT/shared/config/<slot>/field-manifest.json` (the live file, symlinked
+into every release), `$ROOT/shared/config/<slot>/CONFIG_SHA` (`<sha>` or the literal `release` when
+no config deploy has run yet — the release's own committed file is what is being served), and
+`$ROOT/shared/config/deploy-config.log` (append-only history of every run, any slot).
+
+**The cap.** Staging is capped at **4 config-deploy runs per UTC calendar day**
+(`scripts/ops/state/deploy-config-staging-<date>.json`, laptop/box-local, gitignored) — a 5th run
+the same day is refused with reason `cap`. Prod carries no daily cap; `--i-have-the-owners-word`
+is the gate instead. `--dry-run` prints what would happen and writes nothing.
