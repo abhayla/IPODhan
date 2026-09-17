@@ -577,4 +577,37 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
     expect(call).toBeDefined();
     expect(call![0].dataLineage).toBeUndefined();
   });
+
+  // CRITICAL-1 (Tier A review round on PR #753): flag OFF must be byte-identical to
+  // origin/main for a field that DOES have a manifest row (issueSize) -- no manifest load, no
+  // resolver call, no dataLineage key at all. RED before the fix: computePolicyOrigin ran
+  // unconditionally (no ENABLE_POLICY_WRITER guard), so dataLineage was populated even with the
+  // flag off.
+  it('(xviii) CRITICAL-1: flag OFF carries no dataLineage/policyOrigin even for a manifest-row field (ipos.issue_size)', async () => {
+    const featureFlags = await import('../../../src/config/feature-flags.js');
+    (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = false;
+    try {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+      await service.consolidateIPOData({
+        ipoId: 'policy-test',
+        tableName: 'ipos',
+        incomingData: { issueSize: 54210000000 },
+        existingData: { issueSize: 30850000000, segment: 'MAINBOARD' },
+        source: 'CHITTORGARH',
+        confidence: 80,
+      });
+
+      const call = vi.mocked(mockFieldSourcesRepo.trackFieldUpdate).mock.calls.find(
+        (c) => c[0].fieldName === 'issueSize'
+      );
+      expect(call).toBeDefined();
+      // undefined, matching the pre-S1d call shape's effective value (drizzle/JSON both treat
+      // an explicit `undefined` the same as an omitted key -- no manifest read, no resolver
+      // call, nothing written to data_lineage).
+      expect(call![0].dataLineage).toBeUndefined();
+    } finally {
+      (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = true;
+    }
+  });
 });

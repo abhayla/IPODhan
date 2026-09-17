@@ -70,19 +70,20 @@ const GROUP_C_TO_REAL_FIELD: Record<string, string> = {
 const NOT_MANIFEST_ELIGIBLE: Record<string, string> = {
   peer_companies:
     'the matrix key writes the whole peer_companies table (one-to-many, 10 real columns) — no single table.column it resolves to',
-  roe_percentage: 'ipo_financials.roe_percentage has zero rows written anywhere in scraper/src and zero entries in the spec F array (orphaned table)',
-  roce_percentage: 'ipo_financials.roce_percentage — same orphaned-table reasoning as roe_percentage',
-  pb_ratio: 'ipo_financials.pb_ratio — same orphaned-table reasoning as roe_percentage',
+  // roe_percentage/roce_percentage/pb_ratio DELETED from field-priority-matrix.ts (item 3
+  // S1d): git grep for each of the three matrix keys returns zero hits in scraper/src and
+  // scraper/tests, confirming they were unreachable dead code, not a live orphaned field --
+  // see item-03-s1d-matrix-shim-and-provenance.md's DoD row S1d-2.
   issue_price: 'listing_performance.issue_price is spec class C — computed as ipos.price_range_max at listing, not sourced',
   gmp_percentage: 'gmp_records.gmp_percentage is spec class C — computed as gmp ÷ price_range_max × 100, not sourced',
   expected_listing_price: 'gmp_records.expected_listing_price has zero entries in the spec F array (orphaned column, no writer)',
   listing_gain_percentage: 'ipos.listing_gain_percentage (Story 7.10 legacy) has zero entries in the spec F array (orphaned column, no writer)',
 };
 
-describe('field-manifest.json content — 16 Group-C fields (item 2 slice 5)', () => {
-  it('names exactly 16 Group-C keys between the two maps', () => {
+describe('field-manifest.json content — Group-C fields (item 2 slice 5; 13 of the original 16 after item 3 S1d deleted 3 dead matrix keys)', () => {
+  it('names exactly 13 Group-C keys between the two maps (16 minus the 3 deleted dead matrix keys: roe_percentage, roce_percentage, pb_ratio)', () => {
     const total = Object.keys(GROUP_C_TO_REAL_FIELD).length + Object.keys(NOT_MANIFEST_ELIGIBLE).length;
-    expect(total).toBe(16);
+    expect(total).toBe(13);
   });
 
   it('has a manifest entry for every eligible Group-C real field', () => {
@@ -99,9 +100,6 @@ describe('field-manifest.json content — 16 Group-C fields (item 2 slice 5)', (
     // rank/capability row for a computed or orphaned field would be worse
     // than no row (it would claim sources the field never actually uses).
     const notEligibleRealFields = [
-      'ipo_financials.roe_percentage',
-      'ipo_financials.roce_percentage',
-      'ipo_financials.pb_ratio',
       'listing_performance.issue_price',
       'gmp_records.gmp_percentage',
       'gmp_records.expected_listing_price',

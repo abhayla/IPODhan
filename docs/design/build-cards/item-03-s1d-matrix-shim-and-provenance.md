@@ -76,7 +76,7 @@ expected: `gmp_records.*` and any class-C/I field the writer touches); `walk-pro
 | id | command | expect | env |
 |---|---|---|---|
 | S1d-1 | `cd scraper && npx vitest run tests/unit/config/field-priority-matrix.test.ts` | exit 0 | local |
-| S1d-2 | `git grep -c -E "^  (revenue_fy[123]|profit_fy[123]|peer_companies|roe_percentage|roce_percentage|pb_ratio|fresh_issue_size|offer_for_sale_size|issue_price|min_investment|total_subscription|retail_subscription|qib_subscription|nii_subscription|gmp_percentage|expected_listing_price|listing_price|listing_gain_percentage):" HEAD -- scraper/src/config/field-priority-matrix.ts` | exit 1 | local |
+| S1d-2 | `git grep -c -E "^  (revenue_fy2|revenue_fy3|profit_fy1|profit_fy2|profit_fy3|roe_percentage|roce_percentage|pb_ratio):" HEAD -- scraper/src/config/field-priority-matrix.ts` | exit 1 (was exit 0, count 8, on `origin/main`) | local |
 | S1d-2b | `cd scraper && npx vitest run tests/unit/config/field-priority-matrix-camelcase-siblings.test.ts` | exit 0 (the 5 keys WITH camelCase siblings must survive the deletion) | local |
 | S1d-3 | `git grep -c "policyOrigin" HEAD -- scraper/src/services/data-consolidation-service.ts` | regex: `^[1-9]` | local |
 | S1d-4 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/field-sources-row-key-provenance.integration.test.ts` | exit 0 | test-db |

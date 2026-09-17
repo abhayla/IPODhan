@@ -393,6 +393,11 @@ function serializeFieldValue(value: any): string {
  * every one of `trackFieldSource`'s nine call sites for a value that would not change.
  */
 function computePolicyOrigin(fieldName: string, tableName: string): string | undefined {
+  // CRITICAL-1 (Tier A review, PR #753): this must be byte-identical to origin/main when the
+  // flag is off -- no manifest load, no resolver call. Previously this ran unconditionally
+  // (no flag guard at all), which loaded+validated the 190-row manifest on EVERY write even
+  // with ENABLE_POLICY_WRITER off (the prod default via slotAwareFlagDefault).
+  if (!FEATURE_FLAGS.ENABLE_POLICY_WRITER) return undefined;
   if (!hasManifestRow(fieldName, tableName)) return undefined;
   try {
     const policy = resolveFieldSourcePolicy({
