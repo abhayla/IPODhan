@@ -23,10 +23,10 @@ which configuration produced its ranks.
 |---|---|
 | `scraper/src/config/field-manifest-loader.ts` `loadFieldManifest()` (parses + capability cross-check) | layer 1 read; the resolver never re-validates |
 | `scraper/src/services/field-plan-generator.ts` — `resolveIpoTypeKey(ipo)` (78-83), `generateFieldPlan(ipo, …, manifest)` reading `entry.rank[typeKey]` (113-142: `rank1Source..rank3Source`, `manifestVersion: manifest.version`) | the generator keeps `resolveIpoTypeKey`; its rank lookup becomes one `resolveFieldSourcePolicy` call per field |
-| `scraper/src/services/field-plan-walk-deps.ts` `manifestFieldEntry(tableName, fieldName)` (103-107) and the fetcher map keyed by manifest source | the walk's rank read goes through the resolver; the fetcher map is untouched |
-| `scraper/src/services/field-plan-walk.ts` `mapManifestSourceToScraperSource` use (790), `NO_FETCHER_REGISTERED` (477) | unchanged behaviour; the walk asks in `policy.ranks` order |
-| `scraper/src/config/field-source-codes.ts` (NEW in S0c) | `documentTypeOrder` resolution for `DOC` |
-| `packages/shared/src/db/schema.ts` `ipoFieldPlan` (1696), `rank1_source..rank3_source` (1718-1720), `manifest_version` (1752) | where origin is recorded; see Schema |
+| `scraper/src/services/field-plan-walk-deps.ts` `manifestFieldEntry(tableName, fieldName)` (104-107), `manifestDocumentType` (145) and the fetcher map keyed by manifest source | `buildFieldPlanWalkDeps` gains a `resolvePolicy` dep (default `resolveFieldSourcePolicy`); the fetcher map and the doc fetcher's own `manifestDocumentType` lookup are untouched |
+| `scraper/src/services/field-plan-walk.ts` — the ask order is built from the PLAN ROW's rank columns today: `attemptOneField` (430-433) and `tryProvisional` (688-691) read `plan.rank1Source..rank3Source`; `NO_FETCHER_REGISTERED` (477); `mapManifestSourceToScraperSource` re-export (769) | both rank lists come from ONE `resolvePolicy({table, column, ipoType, ipoId})` call per field per walk (`policy.ranks`); the plan row's rank columns are no longer the driver (they stay the generator's record; S2 reconciles them) |
+| `scraper/src/config/field-source-codes.ts` (S0c) | the DOC→DRHP map the walk's agreement check already uses; unchanged by this slice (the resolver imports nothing from it) |
+| `packages/shared/src/db/schema.ts` `ipoFieldPlan` (1698), `rank1_source` (1720), `manifest_version` (1754) | where origin is recorded; see Schema |
 | `packages/shared/src/repositories/ipo-field-plan-repository.ts` insert (`ON CONFLICT … DO NOTHING`, 238) | one new column in the insert list; S2 handles re-ranking |
 | `scraper/src/config/feature-flags.ts` `ENABLE_FIELD_PLAN` (266), `ENABLE_FIELD_PLAN_WALK` (356) | no new flag: the resolver is a pure read; generator and walk are already flagged |
 | `scraper/tests/unit/services/field-plan-generator.test.ts`, `field-plan-walk*.test.ts`, `tests/integration/field-plan-generation-wiring.integration.test.ts`, `field-plan-walk-resume.integration.test.ts` (in pr-gate run list, pr-gate.yml:782-800) | extend; the integration tests prove the wiring end to end |
@@ -37,7 +37,7 @@ which configuration produced its ranks.
 |---|---|---|
 | `scraper/src/config/field-source-policy.ts` | NEW (module: config) | `resolveFieldSourcePolicy({table, column, ipoType, ipoId?}, deps)`; layer 1 only in this slice (layer 2 arrives in S4 behind the same signature; layer 3 stays the walk's existing `field_protection_metadata` skip, §2.7) |
 | `scraper/src/services/field-plan-generator.ts` | exists | rank lookup replaced by the resolver; `manifestVersion` and the new `policy_origin` written from `policy.origin` |
-| `scraper/src/services/field-plan-walk-deps.ts` / `field-plan-walk.ts` | exist | rank order read from the resolver (one call per field per walk); log line per field `policy origin=registry:v2` |
+| `scraper/src/services/field-plan-walk-deps.ts` / `field-plan-walk.ts` | exist | ask order = `policy.ranks` from one resolver call per field per walk (both `attemptOneField` and `tryProvisional`); `policy_origin` recorded with the outcome; one log line per field `policy origin=registry:2 ranks=DOC,CHITTORGARH`; when `policy.ranks` differs from the row's rank columns, log `policy ranks differ from plan row` once per field, no write (S2 reconciles) |
 | `packages/shared/src/db/schema.ts` + migration | exists | `ipo_field_plan.policy_origin varchar(64) NULL` (e.g. `registry:2`, later `override:<id>`) — see Schema |
 | `packages/shared/src/repositories/ipo-field-plan-repository.ts` | exists | insert list + row mapper carry `policy_origin` |
 | tests listed above | exist | extended (see Tests) |
@@ -45,7 +45,7 @@ which configuration produced its ranks.
 ## Schema
 
 ```ts
-// packages/shared/src/db/schema.ts, inside ipoFieldPlan (line 1696+)
+// packages/shared/src/db/schema.ts, inside ipoFieldPlan (line 1698+)
 policyOrigin: varchar('policy_origin', { length: 64 }),   // 'registry:<version>' | 'override:<id>' | null (pre-S1a rows)
 ```
 `npm run db:generate` → `ALTER TABLE "ipo_field_plan" ADD COLUMN "policy_origin" varchar(64);`
@@ -59,7 +59,12 @@ in the Saturday release; this migration is journaled after them.
 export interface PolicyQuery { table: string; column: string; ipoType: IpoTypeKey; ipoId?: string }
 export interface FieldSourcePolicy {
   ranks: SourceCode[];                       // e.g. ['DOC','CHITTORGARH']; ADMIN never listed (layer 3)
-  documentTypeOrder: DocumentType[];         // what DOC resolves to for this field (OD-30, from the manifest row)
+  documentType?: FieldManifestEntry['documentType'];  // the manifest row's ONE document type (measured 2026-09-17 on the 190-row
+                                             // manifest: RHP on 103 rows, PRICE_BAND_AD on 52, absent on 35). There is NO per-field
+                                             // document-type ORDER anywhere in the data (field-manifest-schema.ts:45 is a single enum);
+                                             // precedence among document types stays the writer's incomingDocumentOutranksStored rule
+                                             // and the doc fetcher's family order. Absent -> undefined (DOC cannot answer: the fetcher's
+                                             // existing CHECK_FAILED 'no documentType in manifest' path is unchanged).
   origin: { kind: 'registry'; version: number } | { kind: 'override'; id: string; expiresAt: string };
   na: boolean;                               // field does not apply to this offering type
 }
@@ -68,7 +73,8 @@ export function resolveFieldSourcePolicy(q: PolicyQuery, deps?: PolicyDeps): Fie
 export function policyOriginString(o: FieldSourcePolicy['origin']): string;                     // 'registry:2' | 'override:<id>'
 ```
 Worked example: `resolveFieldSourcePolicy({table:'ipos', column:'issue_size', ipoType:'MAINBOARD'})` →
-`{ranks:['DOC','CHITTORGARH'], documentTypeOrder:['PRICE_BAND_AD','CORRIGENDUM','RHP','PROSPECTUS','DRHP'], origin:{kind:'registry',version:2}, na:false}`.
+`{ranks:['DOC','CHITTORGARH'], documentType:'PRICE_BAND_AD', origin:{kind:'registry',version:2}, na:false}` (the manifest row `ipos.issue_size` carries `documentType: "PRICE_BAND_AD"` and `rank.MAINBOARD: ["DOC","CHITTORGARH"]`).
+`na` is true when the manifest row has no `rank` entry for the query's `ipoType` (the generator's existing skip rule, field-plan-generator.ts:88-93); then `ranks` is `[]`. Layer 2 (`overrides`) is accepted and ignored in this slice.
 
 ## Feature flag
 
@@ -80,11 +86,13 @@ staging). Rollback is the flag pair, unchanged.
 ### Failing test first
 
 1. `scraper/tests/unit/config/field-source-policy.test.ts` (NEW): red by absence; asserts the
-   worked example, `na` for an N/A offering type, SME_BSE never returns NSE, unknown field throws.
+   worked example (including `documentType: 'PRICE_BAND_AD'`), a row with no `documentType` yields `undefined`,
+   `na` + `ranks: []` for an IPO type the row does not rank, SME_BSE never returns NSE for `ipos.lot_size`, unknown field throws.
 2. `field-plan-generator.test.ts`: a generated row carries `policyOrigin: 'registry:2'` — red today
    (no such column/field).
 3. `field-plan-walk` unit: the walk asks sources in the resolver's order when the resolver is
-   stubbed to a swapped order — red today (the walk reads the manifest directly).
+   stubbed to a swapped order (CHITTORGARH before DOC while the plan row says DOC, CHITTORGARH) — red
+   today (the walk builds its ask order from the plan row's rank columns, field-plan-walk.ts:430-433).
 4. `tests/integration/field-plan-generation-wiring.integration.test.ts`: the inserted row has
    `policy_origin = 'registry:2'` on ipodhan_test — red today.
 Tiers: unit + integration (already in the pr-gate run list).
@@ -140,3 +148,9 @@ Needs S0b (version 2 manifest, 190 rows) and S0c (source-code map). S1b builds o
 - Layer 2 (overrides) is a stub parameter here; S4 fills it. The signature is fixed now so S4 needs
   no caller change (finding 6: "S4 needs only S1b's interface").
 - The walk still has no NSE/REG fetcher; `NO_FETCHER_REGISTERED` behaviour is S6's.
+- The doc fetcher keeps its own `manifestDocumentType` lookup (field-plan-walk-deps.ts:145); routing it
+  through `policy.documentType` is a follow-up after S1b, not this slice.
+- The walk does not rewrite the plan row's rank columns when the policy differs from them; it logs the
+  difference once per field and S2 reconciles (#731).
+- Card correction 2026-09-17 17:5x IST: the earlier `documentTypeOrder: DocumentType[]` interface and its
+  five-type worked example described data that does not exist; replaced by the manifest's single `documentType`.
