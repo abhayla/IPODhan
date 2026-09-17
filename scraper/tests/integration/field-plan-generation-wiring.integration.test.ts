@@ -169,10 +169,13 @@ describe.skipIf(!DATABASE_URL)(`field-plan generation wiring (${RUN_LABEL})`, ()
 
     const revenueRow = rows.find((r) => r.tableName === 'financial_statements' && r.fieldName === 'revenue');
     expect(revenueRow).toBeDefined();
+    // Moneycontrol is retired (OD-3; field-manifest.json v2, PR #738) — the manifest's
+    // financial_statements.revenue rank array for SME_BSE now has only 2 entries, so
+    // rank3Source resolves to null (field-plan-generator.ts: `ranks[2] ?? null`).
     expect([revenueRow!.rank1Source, revenueRow!.rank2Source, revenueRow!.rank3Source]).toEqual([
       'DOC',
       'CHITTORGARH',
-      'MONEYCONTROL',
+      null,
     ]);
   });
 

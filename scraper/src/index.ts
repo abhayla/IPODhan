@@ -43,7 +43,7 @@ import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan }
 import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
 import { DistributedLock } from './utils/distributed-lock.js';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { scraperLogs, scraperSteps, ipos } from '@ipodhan/shared/db/schema';
@@ -55,7 +55,8 @@ import { checkDeployDrift, getMainShaFromOrigin, getServedShaForSlot } from './s
 import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { FEATURE_FLAGS, validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
-import { loadFieldManifest } from './config/field-manifest-loader.js';
+import { loadFieldManifest, DEFAULT_MANIFEST_PATH } from './config/field-manifest-loader.js';
+import { readFileSync as readManifestFileSync } from 'fs';
 import { loadValidationRules } from './config/validation-rules-loader.js';
 
 /** Days of scraper_logs history to retain. */
@@ -618,7 +619,16 @@ export function validateFieldManifestAtStartup(
   enabled: boolean = FEATURE_FLAGS.ENABLE_FIELD_MANIFEST
 ): void {
   if (!enabled) return;
-  loadFieldManifest(manifestPath);
+  const manifest = loadFieldManifest(manifestPath);
+  // Item 3 slice S0b: name the exact config every cycle ran with — version, field count, and a
+  // content hash (first 12 hex chars of sha256) so a staging/prod log can be diffed against the
+  // committed file's own hash without shipping the whole 190-row JSON into the log stream.
+  const raw = readManifestFileSync(manifestPath ?? DEFAULT_MANIFEST_PATH, 'utf8');
+  const sha256 = createHash('sha256').update(raw).digest('hex').slice(0, 12);
+  logger.info(
+    { version: manifest.version, fields: Object.keys(manifest.fields).length, sha256 },
+    `field-manifest: version=${manifest.version} fields=${Object.keys(manifest.fields).length} sha256=${sha256}`
+  );
 }
 
 /**

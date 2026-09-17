@@ -1,0 +1,403 @@
+#!/usr/bin/env node
+// scripts/generate-field-manifest.mjs — item 3 slice S0b.
+//
+// WHY THIS EXISTS. `scraper/config/field-manifest.json` was 10 hand-written rows (item 2), and every
+// rank change since has been a JSON diff nobody reviewed as "these fields now resolve differently"
+// (OD-5 §7.6). This script is the missing generator: it reads
+// `docs/design/field-source-resolution.spec.mjs` — the single authored source of truth for every
+// sourced field's rank order and offering-type applicability — and produces the FULL manifest (every
+// class D/T/X/W/M field, all three phase-1 IPO types) at `version: 2`. The generator is the only
+// writer; CI (`scripts/ci/check-field-manifest-current.mjs`) refuses drift from a committed file this
+// script did not produce.
+//
+//   node scripts/generate-field-manifest.mjs --write            rewrite scraper/config/field-manifest.json
+//   node scripts/generate-field-manifest.mjs --check            exit 1 + resolved-plan diff if the committed file differs
+//   node scripts/generate-field-manifest.mjs --diff <base-sha>  resolved-plan diff vs that sha's committed manifest
+//
+// CORE PROOF (S0b build, 2026-09-17): before this generator existed, RESOLVE() from the spec was run
+// by hand against the 10 committed rows. 9/10 were byte-identical (rank/capability-code level).
+// `financial_statements.revenue` differs: the committed row still ranks MONEYCONTROL as MAINBOARD[2],
+// but S0a already retired Moneycontrol from every authored rank (MC_SERVES is the empty set) — the
+// spec now correctly resolves that field to two sources, not three. This is the manifest catching up
+// to a spec correction already landed on origin/main, not a spec defect; the generator emits the
+// corrected two-source row and this file documents why, per the build brief's "STOP and report, don't
+// force a match" instruction (see the PR body for the full diff).
+//
+// SOURCE-CODE MAPPING (R-155, supervisor card adjustment 1). The spec's labels are CG/IG/REG/DOC/
+// ADMIN/NSE/BSE/MC; the manifest's `sourceCodeSchema` (scraper/src/config/field-manifest-schema.ts)
+// uses CHITTORGARH/INVESTORGAIN_GMP/REG/DOC/ADMIN/NSE/BSE/MONEYCONTROL. `API_FALLBACK` is not yet a
+// valid manifest code (S0c adds it) — a field whose ONLY resolvable source is one the CURRENT schema
+// rejects is skipped with a printed line, never silently dropped from that line count.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, '..');
+const SPEC_PATH = path.join(REPO_ROOT, 'docs', 'design', 'field-source-resolution.spec.mjs');
+const MANIFEST_PATH = path.join(REPO_ROOT, 'scraper', 'config', 'field-manifest.json');
+
+// Manifest source codes currently accepted by scraper/src/config/field-manifest-schema.ts's
+// sourceCodeSchema. Kept as a literal list (not imported — this is a .mjs script, the schema is a .ts
+// module compiled separately) so a schema change is a one-line diff here, reviewed alongside it.
+const VALID_MANIFEST_CODES = new Set([
+  'ADMIN', 'DOC', 'DRHP', 'RHP', 'PROSPECTUS', 'CORRIGENDUM', 'PRICE_BAND_AD',
+  'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'INVESTORGAIN_GMP', 'REG',
+]);
+
+// Spec label -> manifest SourceCode (R-155).
+const CODE_MAP = {
+  CG: 'CHITTORGARH',
+  IG: 'INVESTORGAIN_GMP',
+  REG: 'REG',
+  DOC: 'DOC',
+  ADMIN: 'ADMIN',
+  NSE: 'NSE',
+  BSE: 'BSE',
+  MC: 'MONEYCONTROL',
+};
+
+const TYPES = ['MAINBOARD', 'SME_BSE', 'SME_NSE'];
+const SOURCED_CLASSES = new Set(['D', 'T', 'X', 'W', 'M']);
+
+// documentType derived from the spec's `o.doc` section letter, per
+// docs/reviews/wp-c-extraction-contract.md §1 ("Where each group lives"): groups A/B live in the
+// price-band advertisement / RHP cover + "The Offer" / timetable sections (PRICE_BAND_AD); groups
+// C/D/E/F live in RHP-only sections (financials, WACA, intermediaries, business/risk text). This is
+// the "DOC-type map" the card refers to — it is read off the extraction contract, not invented.
+function documentTypeForDocCode(docCode) {
+  if (!docCode || docCode === '—') return undefined;
+  const letter = docCode.trim()[0];
+  if (letter === 'A' || letter === 'B') return 'PRICE_BAND_AD';
+  if (['C', 'D', 'E', 'F'].includes(letter)) return 'RHP';
+  return undefined;
+}
+
+// Capability reasons for the 10 fields item 2 hand-authored (item-02-field-manifest-and-priority-
+// config.md). These are prose that references review-round history, spec line numbers and probe
+// dates not expressible as a spec data field today — carried forward VERBATIM from the committed
+// v1 manifest rather than paraphrased or invented, per the S0b card adjustment 2. `financial_
+// statements.revenue`'s MONEYCONTROL entry is deliberately DROPPED here: S0a retired MC from every
+// authored rank, so a manifest that still ranked it would misstate spec truth (see the header note
+// above and the PR body's 10-row diff).
+const HAND_AUTHORED_CAPABILITY = {
+  'ipos.issue_size': {
+    DOC: { capable: true, reason: 'the PBA prints the total offer size at the cap (fresh + OFS)' },
+    BSE: { capable: false, reason: "review round 5, item C: BSE measured live 2026-09-16 on all 6 live mainboard IPOs, 41-76% BELOW the printed total offer on 6/6 (Hero Motors 7,000,000,084 vs 10,000,000,000; SS Retail 3,543,935,252 vs 5,007,500,000; NSE 150,692,948,700 vs 265,796,400,000; Jindal Supreme 827,164,800 vs 1,248,800,000; Manika Plastech 855,476,760 vs 1,255,000,000; Sonaselection 940,940,000 vs 1,415,700,000). computeBSEIssueSize (bse-api-scraper.ts) never implemented the anchor-portion add-back the 2026-09-09 ARCIL note proposed. UNVERIFIED HYPOTHESIS: BSE's Issue_Size_No_of_shares may be the public portion excluding anchors/reservations -- not yet confirmed. See docs/design/field-source-resolution.spec.mjs's ipos.issue_size note for the full history." },
+    CHITTORGARH: { capable: true, reason: "CG list API field 'Total Issue Amount (Incl. Firm reservations) (Rs.cr.)' reads the printed total directly, not shares x price (field-priority-matrix.ts:415-421, T-453 comment)" },
+    NSE: { capable: false, reason: 'NSE computes (sharesOffered/netOffer) x price, excluding the OFS portion — it cannot print the total (field-priority-matrix.ts:406-412, T-453). The CURRENT field-priority-matrix.ts issueSize entry still lists NSE (rank 4, below CHITTORGARH) — item 3 removes it to match this manifest.' },
+    MONEYCONTROL: { capable: false, reason: 'OD-3 retires Moneycontrol as a scheduled source' },
+  },
+  'ipo_details.fresh_issue': {
+    DOC: { capable: true, reason: 'the PBA prints the fresh-issue rupee amount separately from the OFS amount' },
+    BSE: { capable: true, reason: 'BSE detail payload carries a fresh-issue figure' },
+    CHITTORGARH: { capable: true, reason: 'CG list API carries the fresh-issue line item' },
+    NSE: { capable: false, reason: 'same T-453 reasoning as ipos.issue_size — no printed fresh/OFS split' },
+    MONEYCONTROL: { capable: false, reason: 'OD-3 retires Moneycontrol as a scheduled source' },
+  },
+  'financial_statements.revenue': {
+    DOC: { capable: true, reason: 'the RHP prints the full restated 3-5 year revenue series' },
+    CHITTORGARH: { capable: true, reason: "CG's 'financialTable' (chittorgarh-detail-fields.ts, getTableById 'financialTable') DOES carry a restated per-fiscal-year revenue/total-income/EBITDA/PAT series — field-source-resolution.spec.mjs:122-124 corrects an earlier draft's wrong claim that no website publishes this" },
+    NSE: { capable: false, reason: "§2.3.5: NSE's API returns bidding and demand data only — no financial fields" },
+    BSE: { capable: false, reason: 'no BSE financials endpoint carries a restated series' },
+    // MONEYCONTROL intentionally NOT carried forward — see header note: S0a retired MC from every
+    // authored rank, so this generator does not resurrect a capable:true entry for it here either.
+  },
+  'ipo_details.ofs_issue': {
+    DOC: { capable: true, reason: 'the PBA prints the offer-for-sale rupee amount separately from the fresh-issue amount' },
+    BSE: { capable: true, reason: 'BSE detail payload carries an OFS figure alongside the fresh-issue figure' },
+    CHITTORGARH: { capable: true, reason: 'CG list API carries the offer-for-sale line item' },
+    NSE: { capable: false, reason: 'same T-453 reasoning as ipos.issue_size — NSE computes offer value from shares×price with no printed fresh/OFS split' },
+    MONEYCONTROL: { capable: false, reason: 'OD-3 retires Moneycontrol as a scheduled source' },
+  },
+  'ipo_details.min_investment': {
+    DOC: { capable: true, reason: 'the PBA states the lot size and price band the minimum investment is derived from — spec (field-source-resolution.spec.mjs:78) tags it neverPopulated: no second publisher prints this display value separately' },
+  },
+  'subscriptions.total_subscription': {
+    NSE: { capable: true, reason: "NSE's bidding-detail API returns the aggregate subscription multiple across all investor categories live during the bid window" },
+    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
+    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
+    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
+  },
+  'subscriptions.retail_subscription': {
+    NSE: { capable: true, reason: "NSE's bidding-detail API returns the retail-category subscription multiple live during the bid window" },
+    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
+    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
+    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
+  },
+  'subscriptions.qib_subscription': {
+    NSE: { capable: true, reason: "NSE's bidding-detail API returns the QIB-category subscription multiple live during the bid window" },
+    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
+    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
+    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
+  },
+  'subscriptions.nii_subscription': {
+    NSE: { capable: true, reason: "NSE's bidding-detail API returns the NII-category subscription multiple live during the bid window" },
+    BSE: { capable: true, reason: "BSE's bidding-detail API returns the same live figure" },
+    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange live subscription figures during the bid window' },
+    DOC: { capable: false, reason: 'no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)' },
+  },
+  'listing_performance.listing_price': {
+    NSE: { capable: true, reason: 'NSE publishes the actual listing-day traded price' },
+    BSE: { capable: true, reason: 'BSE publishes the actual listing-day traded price' },
+    CHITTORGARH: { capable: true, reason: 'CG mirrors the exchange listing-day price' },
+    DOC: { capable: false, reason: 'listing price is post-listing market data — no filing document carries it (spec field-source-resolution.spec.mjs:245)' },
+  },
+};
+
+// documentSection prose for the same 10 fields — hand-authored quotes of RHP/PBA table names that
+// are not spec data either. Carried forward verbatim; NOT regenerated for the other 180 fields
+// (schema marks documentSection optional for exactly this reason).
+const HAND_AUTHORED_SECTION = {
+  'ipos.issue_size': 'wp-c-extraction-contract.md §A5+A6 — PBA cover + "The Offer", and the table "details of the Fresh Issue and post-issue market capitalisation"',
+  'ipo_details.fresh_issue': 'wp-c-extraction-contract.md §A — PBA cover + "The Offer"',
+  'financial_statements.revenue': 'wp-c-extraction-contract.md §C1-C2 — "Restated Consolidated Statement of Profit and Loss" (falls back to "Summary of Financial Information")',
+  'ipo_details.ofs_issue': 'wp-c-extraction-contract.md §A6 — PBA cover + "The Offer" (offer-for-sale rupee amount)',
+  'ipo_details.min_investment': 'wp-c-extraction-contract.md §A13 — derived minimum retail investment amount (lot size × cap price)',
+};
+
+// §5.2 of data-sourcing-pull-model.md: `unit` is the DIRECT consequence of the schema column's
+// amount class from docs/design/probes/amount-columns.mjs (OD-20) — CRORE -> crore, RUPEES_KEPT ->
+// rupee, everything else (PER_SHARE/PERCENT/RATIO/MULTIPLE) -> keep. field-manifest-content.test.ts
+// asserts exactly this for the 8 probed Group-C fields; this reads the SAME probe output rather than
+// a hand-typed guess, so it cannot silently diverge from the test's own source of truth.
+const AMOUNT_COLUMNS_PATH = path.join(REPO_ROOT, 'docs', 'design', 'probes', 'amount-columns.out.json');
+let AMOUNT_CLASS_BY_KEY = null;
+function amountClassForKey(key) {
+  if (!AMOUNT_CLASS_BY_KEY) {
+    const probe = JSON.parse(fs.readFileSync(AMOUNT_COLUMNS_PATH, 'utf8'));
+    AMOUNT_CLASS_BY_KEY = new Map(probe.columns.map((c) => [`${c.table}.${c.col}`, c.cls]));
+  }
+  return AMOUNT_CLASS_BY_KEY.get(key);
+}
+
+function unitForField(f) {
+  const key = `${f.t}.${f.c}`;
+  const cls = amountClassForKey(key);
+  if (cls === 'CRORE') return 'crore';
+  if (cls === 'RUPEES_KEPT') return 'rupee';
+  if (cls) return 'keep'; // PER_SHARE / PERCENT / RATIO / MULTIPLE
+  // Not in the probe (a table the probe doesn't cover, e.g. subscriptions/registrars/documents):
+  // no amount-shaped column, so 'keep' (unchanged) is the honest default — never a guessed rupee/crore.
+  return 'keep';
+}
+
+function capabilityReasonFallback(f, sourceLabel) {
+  // Card adjustment 2: for the 180 non-hand-authored rows, source the reason text from the spec's
+  // own capability facts (o.note / o.doc / o.only), never invented. If none apply, the honest,
+  // explicit fallback line — never a fabricated measurement.
+  if (f.o.note) return f.o.note;
+  if (f.o.only && sourceLabel === f.r[0]) return f.o.only;
+  if (f.o.doc && f.o.doc !== '—') return `sourced per docs/reviews/wp-c-extraction-contract.md §${f.o.doc}`;
+  return 'ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured';
+}
+
+function incapableReason(f, sourceLabel) {
+  if (sourceLabel === 'MC') return 'OD-3 retires Moneycontrol as a scheduled source';
+  if (sourceLabel === 'CG' && f.t === 'financial_data' && f.c === 'pe_ratio') {
+    return 'observed 2026-09-08: CG prints a PE Ratio column only for OTHER recently listed IPOs in a comparison table, never this IPO own';
+  }
+  return `${sourceLabel} does not serve this field per the spec's capability pool (docs/design/field-source-resolution.spec.mjs)`;
+}
+
+async function loadSpec() {
+  return import(pathToFileURL(SPEC_PATH).href);
+}
+
+// pool(f) equivalent, re-derived here ONLY to know which codes are "in the capability universe" for
+// a field so we can emit a capable:false entry for a code that could apply but was excluded (CG_CANNOT,
+// MC retirement) — the generator does not re-implement resolve()/pool()'s ranking logic; RESOLVE() is
+// the sole source of rank order and na handling.
+function candidatePoolCodes(f) {
+  const codes = new Set(f.r.filter((x) => x !== '—'));
+  if (['ipos', 'ipo_details', 'financial_data', 'peer_companies', 'subscriptions', 'listing_performance',
+       'registrars', 'ipo_intermediaries', 'gmp_records', 'financial_statements', 'ipo_valuation', 'promoters']
+      .includes(f.t) && !f.o.only) {
+    codes.add('CG');
+  }
+  return codes;
+}
+
+export function generateManifest({ F, RESOLVE }) {
+  const fields = {};
+  const skipped = [];
+  let fieldCount = 0;
+
+  for (const f of F) {
+    if (!SOURCED_CLASSES.has(f.cls)) continue; // C/I: never sourced, no manifest row (item-02 rule)
+    const key = `${f.t}.${f.c}`;
+
+    const rankByType = {};
+    let hasAnyRealRank = false;
+    let unresolvableCode = null;
+    for (const type of TYPES) {
+      const resolved = RESOLVE(f, type).filter((s) => s !== '—' && s !== 'N/A');
+      const mapped = [];
+      for (const code of resolved) {
+        const manifestCode = CODE_MAP[code] ?? code;
+        if (!VALID_MANIFEST_CODES.has(manifestCode)) {
+          unresolvableCode = manifestCode;
+          break;
+        }
+        mapped.push(manifestCode);
+      }
+      if (unresolvableCode) break;
+      rankByType[type] = mapped;
+      if (mapped.length > 0) hasAnyRealRank = true;
+    }
+
+    if (unresolvableCode) {
+      skipped.push(`skipped ${key}: code ${unresolvableCode} not in sourceCodeSchema (S0c)`);
+      continue;
+    }
+    if (!hasAnyRealRank) {
+      // Card's "known gaps": MAINBOARD rank list empty after N/A filtering on every type — print, no row.
+      skipped.push(`skipped ${key}: resolves to no real source on any of ${TYPES.join('/')} (N/A or exhausted pool)`);
+      continue;
+    }
+
+    // capability: every candidate pool code the field could use, keyed by its MANIFEST code.
+    const capability = {};
+    const poolCodes = candidatePoolCodes(f);
+    const rankedManifestCodes = new Set(Object.values(rankByType).flat());
+
+    const hand = HAND_AUTHORED_CAPABILITY[key];
+    if (hand) {
+      Object.assign(capability, hand);
+    } else {
+      for (const code of poolCodes) {
+        const manifestCode = CODE_MAP[code] ?? code;
+        if (!VALID_MANIFEST_CODES.has(manifestCode)) continue;
+        const isRanked = rankedManifestCodes.has(manifestCode);
+        capability[manifestCode] = isRanked
+          ? { capable: true, reason: capabilityReasonFallback(f, code) }
+          : { capable: false, reason: incapableReason(f, code) };
+      }
+      // Every ranked code MUST have a capable:true entry (loader cross-check) even if it fell
+      // outside candidatePoolCodes's approximation (e.g. DOC, which is not in WEB_OK's auto-append).
+      for (const manifestCode of rankedManifestCodes) {
+        if (!capability[manifestCode]) {
+          capability[manifestCode] = { capable: true, reason: capabilityReasonFallback(f, manifestCode) };
+        }
+      }
+    }
+
+    const entry = { class: f.cls };
+    const docType = documentTypeForDocCode(f.o.doc);
+    if (docType) entry.documentType = docType;
+    const section = HAND_AUTHORED_SECTION[key];
+    if (section) entry.documentSection = section;
+    entry.rank = rankByType;
+    entry.capability = capability;
+    if (f.o.na && f.o.na.length) entry.na = f.o.na;
+    else entry.na = [];
+    entry.unit = unitForField(f);
+
+    fields[key] = entry;
+    fieldCount++;
+  }
+
+  return {
+    manifest: {
+      version: 2,
+      generatedFrom: 'docs/design/field-source-resolution.spec.mjs',
+      fields,
+    },
+    skipped,
+    fieldCount,
+  };
+}
+
+export function resolvedPlanDiff(a, b) {
+  const diffs = [];
+  const keys = new Set([...Object.keys(a.fields || {}), ...Object.keys(b.fields || {})]);
+  for (const key of keys) {
+    const fa = a.fields?.[key];
+    const fb = b.fields?.[key];
+    if (!fa && fb) { diffs.push({ field: key, type: 'NEW', from: [], to: fb.rank?.MAINBOARD || [] }); continue; }
+    if (fa && !fb) { diffs.push({ field: key, type: 'REMOVED', from: fa.rank?.MAINBOARD || [], to: [] }); continue; }
+    for (const t of TYPES) {
+      const ra = fa.rank?.[t] || [];
+      const rb = fb.rank?.[t] || [];
+      if (JSON.stringify(ra) !== JSON.stringify(rb)) {
+        diffs.push({ field: key, type: t, from: ra, to: rb });
+      }
+    }
+  }
+  return diffs;
+}
+
+function stableStringify(manifest) {
+  return JSON.stringify(manifest, null, 2) + '\n';
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const write = args.includes('--write');
+  const check = args.includes('--check');
+  const diffIdx = args.indexOf('--diff');
+  const baseSha = diffIdx >= 0 ? args[diffIdx + 1] : null;
+
+  const spec = await loadSpec();
+  const { manifest, skipped, fieldCount } = generateManifest(spec);
+
+  for (const line of skipped) console.log(line);
+  console.log(`generated: version=${manifest.version} fields=${fieldCount}`);
+
+  if (baseSha) {
+    const baseContent = execFileSync('git', ['show', `${baseSha}:scraper/config/field-manifest.json`], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+    const baseManifest = JSON.parse(baseContent);
+    const diffs = resolvedPlanDiff(baseManifest, manifest);
+    console.log(`${diffs.length} field(s) resolve differently vs ${baseSha}:`);
+    for (const d of diffs) {
+      console.log(`  ${d.field} ${d.type}: [${d.from.join(',')}] -> [${d.to.join(',')}]`);
+    }
+    return;
+  }
+
+  if (write) {
+    fs.writeFileSync(MANIFEST_PATH, stableStringify(manifest));
+    console.log(`written: ${MANIFEST_PATH}`);
+    return;
+  }
+
+  // default / --check: compare against the committed file. Comparison is line-ending-normalized
+  // (CRLF -> LF) so a Windows checkout with core.autocrlf=true (the committed file is LF in git's
+  // index, but checks out CRLF on those machines) does not report drift that CI never sees; a
+  // genuine content difference still fails, since resolvedPlanDiff() below operates on the parsed
+  // JSON, not on the raw bytes.
+  const committedRaw = fs.existsSync(MANIFEST_PATH) ? fs.readFileSync(MANIFEST_PATH, 'utf8') : null;
+  const committed = committedRaw ? JSON.parse(committedRaw) : null;
+  const generatedRaw = stableStringify(manifest);
+  const normalizeEol = (s) => (s == null ? s : s.split('\r\n').join('\n'));
+
+  if (normalizeEol(committedRaw) === normalizeEol(generatedRaw)) {
+    console.log('field-manifest.json matches the generator exactly.');
+    process.exit(0);
+  }
+
+  const diffs = committed ? resolvedPlanDiff(committed, manifest) : [];
+  console.log(`DRIFT — committed file differs from the generator.`);
+  if (diffs.length) {
+    console.log(`${diffs.length} field(s) resolve differently:`);
+    for (const d of diffs) {
+      console.log(`  ${d.field} ${d.type}: [${d.from.join(',')}] -> [${d.to.join(',')}]`);
+    }
+  } else {
+    console.log('(byte-level formatting difference only — no resolved-plan diff)');
+  }
+  console.log('  fix: node scripts/generate-field-manifest.mjs --write');
+  process.exit(check ? 1 : 0);
+}
+
+const IS_ENTRY = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (IS_ENTRY) {
+  main().catch((err) => {
+    console.error('generate-field-manifest: the generator itself failed —', err.message);
+    process.exit(2);
+  });
+}

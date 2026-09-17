@@ -150,7 +150,7 @@ describe('field-manifest.json content — 16 Group-C fields (item 2 slice 5)', (
     expect(mismatches).toEqual([]);
   });
 
-  it('surfaces (does not silently accept) any row naming MONEYCONTROL in a rank — pending decision C-1', () => {
+  it('names zero rows with MONEYCONTROL in a rank — retired source (OD-3)', () => {
     const manifest = loadManifestRaw();
     const rowsNamingMoneycontrol: string[] = [];
     for (const [key, entry] of Object.entries(manifest.fields) as [string, any][]) {
@@ -161,10 +161,8 @@ describe('field-manifest.json content — 16 Group-C fields (item 2 slice 5)', (
         }
       }
     }
-    // This is a KNOWN, tracked pending decision (item-02 card's C-1), not a
-    // failure — the test surfaces the list so it is never silently missed.
-    // eslint-disable-next-line no-console
-    console.log('MONEYCONTROL rows pending C-1:', rowsNamingMoneycontrol);
-    expect(Array.isArray(rowsNamingMoneycontrol)).toBe(true);
+    // OD-3 retired MONEYCONTROL from the v2 manifest; this asserts the count is exactly 0,
+    // not merely that the list is an array (which can never fail).
+    expect(rowsNamingMoneycontrol).toEqual([]);
   });
 });

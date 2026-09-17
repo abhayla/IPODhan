@@ -41,7 +41,8 @@ function baseField() {
 describe('loadFieldManifest', () => {
   it('loads the real scraper/config/field-manifest.json and returns the typed object', () => {
     const manifest = loadFieldManifest(REAL_MANIFEST_PATH);
-    expect(manifest.version).toBe(1);
+    // item 3 slice S0b: the manifest is now version 2, generated from the spec (190 fields).
+    expect(manifest.version).toBe(2);
     // Review round 5, item C: BSE removed from ipos.issue_size's rank
     // (capability.BSE.capable flipped to false) -- measured live 2026-09-16,
     // BSE-derived issue_size was 41-76% below the printed total on 6/6 live
@@ -49,10 +50,12 @@ describe('loadFieldManifest', () => {
     // add-back the earlier 2026-09-09 note proposed.
     expect(manifest.fields['ipos.issue_size'].rank.MAINBOARD).toEqual(['DOC', 'CHITTORGARH']);
     expect(manifest.fields['ipo_details.fresh_issue'].unit).toBe('crore');
+    // S0a retired Moneycontrol from every authored rank in the spec (MC_SERVES is empty); S0b's
+    // generator reproduces that correction rather than the stale 3-source row item 2 hand-wrote —
+    // see scripts/generate-field-manifest.mjs's header note and the S0b PR's 10-row diff.
     expect(manifest.fields['financial_statements.revenue'].rank.MAINBOARD).toEqual([
       'DOC',
       'CHITTORGARH',
-      'MONEYCONTROL',
     ]);
   });
 

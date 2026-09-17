@@ -13,8 +13,8 @@ it (never a worker) and no slice is dispatched until the previous slice's run is
 
 | Slice | Tier | Card | PR | Merged sha | Review verdict | Staging proof (identity, cycle) | Gate run (date, PASS/total) | Board | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| STEP 1 | C | all 12 cards + this ledger + `scripts/check-stage3-dod.mjs` | | | | n/a (docs) | | item-03 | in progress 2026-09-17 |
-| S0a | C | item-03-s0a-spec-repair.md | | | | | | | queued |
+| STEP 1 | C | all 12 cards + this ledger + `scripts/check-stage3-dod.mjs` | #734 | ec6b8eb5 | | n/a (docs) | | item-03 | landed 2026-09-17 13:08 IST |
+| S0a | C | item-03-s0a-spec-repair.md | #737 | a8ba7e2b | Tier C, none | | 2026-09-17 13:25 IST, 7/7 PASS | | landed |
 | S0b | B | item-03-s0b-generate-registry.md | | | | | | | queued |
 | S0c | B | item-03-s0c-source-code-reconciliation.md | | | | | | | queued |
 | S5 | A | item-03-s5-config-only-deploy.md | | | | | | | queued |

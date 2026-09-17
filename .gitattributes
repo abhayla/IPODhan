@@ -27,3 +27,10 @@ docs/contracts/*.md text eol=lf
 # touches. Those commands are genuinely broken on main from some earlier edit and
 # are repaired by item 01 slice s3, independently of this rule.
 docs/ops/prod-ops-recipes.md text eol=crlf
+
+# S0b fix round 1 (PR #738): scraper/config/field-manifest.json is committed LF in git's index, but a
+# Windows checkout with core.autocrlf=true reads it back CRLF, making the byte-level drift check in
+# scripts/generate-field-manifest.mjs --check (and its CI wrapper) fail on Windows while passing on
+# Linux CI. Pinning the working-copy line ending to LF on every machine removes the class, alongside
+# the generator's own line-ending-normalized compare.
+scraper/config/*.json text eol=lf

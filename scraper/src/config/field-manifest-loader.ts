@@ -7,7 +7,9 @@ import { fieldManifestSchema, type FieldManifest } from './field-manifest-schema
 // It must be derived from import.meta.url. See scripts/ci/check-esm-module-globals.mjs.
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
-const DEFAULT_MANIFEST_PATH = join(MODULE_DIR, '..', '..', '..', 'scraper', 'config', 'field-manifest.json');
+// Exported (item 3 slice S0b) so the process-start log line in scraper/src/index.ts can name the
+// same file loadFieldManifest actually read, without duplicating this path-join logic.
+export const DEFAULT_MANIFEST_PATH = join(MODULE_DIR, '..', '..', '..', 'scraper', 'config', 'field-manifest.json');
 
 /**
  * Reads and validates scraper/config/field-manifest.json via the shared
