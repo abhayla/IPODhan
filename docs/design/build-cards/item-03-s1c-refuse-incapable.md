@@ -9,6 +9,14 @@ After this ships, an incoming BSE issue size (BSE is `capable:false` for `ipos.i
 manifest) is refused by the writer with `REJECTED_INCAPABLE_SOURCE` and a `data_conflicts` row, so a
 wrong-quantity value can never win by arriving first or by filling an empty slot.
 
+The refusal covers the class generically over (table, column, source) -- it is not a special case
+for BSE/issue_size. 7 of the 14 `capable:false` pairs in the manifest are active at today's flip
+state (`switchover.json` flips only the `issue-size` group: `ipos.issue_size`,
+`ipo_details.fresh_issue`, `ipo_details.ofs_issue`); the remaining 7 pairs (`financial_statements.
+revenue`, `subscriptions.*_subscription`, `listing_performance.listing_price`) activate on their
+own group's flip, per `policyGoverns`'s gate. Do not describe this slice as covering "all 14
+pairs" -- it covers the mechanism generically, but only the flipped groups are LIVE today.
+
 ## Serves
 
 - §2.3.5 (capability decided by reality; priority only within capability); plan v2 §2 bullet 3 and
@@ -102,7 +110,8 @@ and zero new `field_sources` rows with `source='BSE'` for `issueSize` in that cy
 | S1c-1 | `cd scraper && npx vitest run tests/unit/services/data-consolidation-service.policy.test.ts` | exit 0 | local |
 | S1c-2 | `git grep -c "REJECTED_INCAPABLE_SOURCE" HEAD -- scraper/src/services/data-consolidation-service.ts` | regex: `^[1-9]` | local |
 | S1c-3 | `node scripts/build-detection-registry.mjs --check` | exit 0 | local |
-| S1c-4 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/data-conflicts-repository-hold.integration.test.ts` | exit 0 | test-db |
+| S1c-4 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/incapable-source-refusal.integration.test.ts` | exit 0 | test-db |
+| S1c-4b | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/data-conflicts-repository-hold.integration.test.ts` | exit 0 | test-db |
 | S1c-5 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from data_conflicts where resolution_reason='REJECTED_INCAPABLE_SOURCE' and created_at > now() - interval '1 day'" --expect-db ipodhan_staging` | regex: `n=[1-9]` | staging |
 | S1c-6 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from field_sources where table_name='ipos' and field_name='issueSize' and source='BSE' and updated_at > now() - interval '6 hours'" --expect-db ipodhan_staging` | line: `n=0` | staging |
 
