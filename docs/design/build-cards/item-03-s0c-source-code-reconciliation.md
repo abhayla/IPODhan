@@ -84,7 +84,7 @@ walk with the moved map: `walk-proof.mjs --expect-db ipodhan_staging` still ≥3
 | id | command | expect | env |
 |---|---|---|---|
 | S0c-1 | `cd scraper && npx vitest run tests/unit/config/field-source-codes.test.ts` | exit 0 | local |
-| S0c-2 | `git grep -c "mapManifestSourceToScraperSource" HEAD -- scraper/src/config/field-source-codes.ts` | regex: `^[1-9]` | local |
+| S0c-2 | `git grep -c "mapManifestSourceToScraperSource" HEAD -- scraper/src/config/field-source-codes.ts` | regex: `:[1-9][0-9]*$` | local |
 | S0c-3 | `git grep -n "manifestSource === 'DOC' ? 'DRHP'" HEAD -- scraper/src/services/field-plan-walk.ts` | exit 1 | local |
 | S0c-4 | `git grep -c "'REG'" HEAD -- packages/shared/src/db/types.ts scraper/src/config/field-priority-matrix.ts` | regex: `(?s)(.*:[1-9].*){2}` | local |
 | S0c-5 | `cd scraper && npx vitest run tests/unit/services/field-plan-walk` | exit 0 | local |
