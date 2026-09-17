@@ -20,6 +20,25 @@ fresh_dir() {
   printf '%s' "$d"
 }
 
+# MINOR-7: case10 relies on its temp dir having no '.git' anywhere above
+# it (mktemp -d alone never guarantees that — it depends on TMPDIR not
+# itself living under a git checkout). Walk up to the filesystem root and
+# fail loudly if one is found, so the case guards the real "no-git tree"
+# shape instead of silently assuming it.
+assert_no_git_above() {
+  local dir="$1"
+  dir="$(cd "$dir" && pwd)"
+  while :; do
+    if [ -e "$dir/.git" ]; then
+      echo "PREMISE VIOLATION: found $dir/.git — case10's no-git-tree assumption is false in this environment" >&2
+      return 1
+    fi
+    [ "$dir" = "/" ] && break
+    dir="$(dirname "$dir")"
+  done
+  return 0
+}
+
 # --------------------------------------------------------------- fixture repo
 # A tiny throwaway git repo standing in for the real IPODhan repo/origin.
 # It has its own "origin/main" branch (a local ref, not a network remote —
@@ -432,6 +451,12 @@ run_deploy() {
   cp "$DEPLOY_CONFIG" "$NOGIT_SCRIPT_DIR/deploy-config.sh"
   chmod +x "$NOGIT_SCRIPT_DIR/deploy-config.sh"
 
+  if assert_no_git_above "$NOGIT_ROOT"; then
+    pass "case10: premise holds — no .git anywhere above the no-git tree"
+  else
+    fail "case10: premise violated — a .git dir exists above the supposedly git-free tree"
+  fi
+
   OUT="$(DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
     DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
     bash "$NOGIT_SCRIPT_DIR/deploy-config.sh" --root "$ROOT" \
@@ -495,14 +520,15 @@ run_deploy() {
 {
   MODE="$(cd "$SCRIPT_DIR/.." && git ls-tree HEAD -- ops/deploy-config.sh 2>/dev/null | awk '{print $1}')"
   if [ -z "$MODE" ]; then
-    # Not running inside a git checkout (e.g. a release dir) — fall back
-    # to a plain filesystem executable check, which is the property that
-    # actually matters at runtime.
-    if [ -x "$DEPLOY_CONFIG" ]; then
-      pass "case12: deploy-config.sh is executable on disk (no git tree to check the committed mode)"
-    else
-      fail "case12: deploy-config.sh is NOT executable on disk"
-    fi
+    # MINOR-5: not running inside a git checkout (e.g. a release dir) —
+    # there is no committed mode to consult here. An on-disk '-x' check
+    # is NOT a substitute: a local 'chmod +x' (or core.fileMode=false)
+    # sets the filesystem bit independently of what git actually
+    # committed, so a tree committed 100644 could still pass this
+    # fallback. SKIP explicitly instead of asserting a weaker property —
+    # a skip is not counted as a PASS and does not mask the defect this
+    # case exists to catch.
+    echo "SKIP: case12: no git tree to check the committed mode (on-disk -x is not proof of committed mode)"
   elif [ "$MODE" = "100755" ]; then
     pass "case12: deploy-config.sh is committed with mode 100755 (executable) in git"
   else
@@ -510,6 +536,112 @@ run_deploy() {
   fi
 }
 
+
+# ---------------------------------------------------------------- case 13
+# MAJOR-3: a bare repo, and a directory INSIDE a .git dir, both make
+# 'git rev-parse --is-inside-work-tree' PRINT "false" but still EXIT 0 —
+# an exit-code-only guard lets both slip past the repo-root guard into
+# raw git errors further down instead of being refused here with a clear
+# message.
+{
+  BARE_REPO="$(fresh_dir)/bare.git"
+  git init -q --bare "$BARE_REPO" >/dev/null 2>&1
+  ROOT="$(fresh_dir)"
+
+  OUT="$(DEPLOY_CONFIG_REPO="$BARE_REPO" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "deadbeef" --reason "case13 bare repo" 2>&1)"
+  RC=$?
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root"; then
+    pass "case13: a bare repo as DEPLOY_CONFIG_REPO is refused by the repo-root guard"
+  else
+    fail "case13: expected a repo-root refusal for a bare repo, got rc=$RC ($OUT)"
+  fi
+}
+
+{
+  REPO="$(build_fixture_repo)"
+  GIT_DIR_PATH="$REPO/.git"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(DEPLOY_CONFIG_REPO="$GIT_DIR_PATH" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "deadbeef" --reason "case13b .git dir" 2>&1)"
+  RC=$?
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root"; then
+    pass "case13: a .git directory as DEPLOY_CONFIG_REPO is refused by the repo-root guard"
+  else
+    fail "case13: expected a repo-root refusal for a .git dir, got rc=$RC ($OUT)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 14
+# MAJOR-4: a root-owned checkout hit by a non-root invoker triggers git's
+# own 'dubious ownership' safe.directory refusal (exit 128) — the fatal
+# message must show git's actual words, not just the generic
+# DEPLOY_CONFIG_REPO advice the operator has already followed.
+{
+  REPO="$(build_fixture_repo)"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(DEPLOY_CONFIG_REPO="$REPO" GIT_TEST_ASSUME_DIFFERENT_OWNER=1 \
+    DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "deadbeef" --reason "case14 dubious ownership" 2>&1)"
+  RC=$?
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qi "dubious ownership"; then
+    pass "case14: dubious-ownership refusal shows git's own cause, not only generic advice"
+  else
+    fail "case14: expected 'dubious ownership' in the refusal text, got rc=$RC ($OUT)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 15
+# CRITICAL-1/2: the documented on-box command (no DEPLOY_CONFIG_REPO set)
+# must SUCCEED when the script runs from a no-.git release tree and a
+# real work tree exists at the server-default path — this is the
+# fallback chain's whole point. SERVER_REPO_DEFAULT is pointed at a
+# fixture via DEPLOY_CONFIG_SERVER_REPO_DEFAULT so this does not touch
+# /var/www.
+{
+  REPO="$(build_fixture_repo)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+  ROOT="$(fresh_dir)"
+
+  NOGIT_ROOT="$(fresh_dir)"
+  NOGIT_SCRIPT_DIR="$NOGIT_ROOT/current-staging/scripts/ops"
+  mkdir -p "$NOGIT_SCRIPT_DIR"
+  cp "$DEPLOY_CONFIG" "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  chmod +x "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+
+  OUT="$(env -u DEPLOY_CONFIG_REPO DEPLOY_CONFIG_SERVER_REPO_DEFAULT="$REPO" \
+    DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$NOGIT_SCRIPT_DIR/deploy-config.sh" --root "$ROOT" \
+    --slot staging --sha "$SHA_V2" --reason "case15 server default fallback" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case15: documented command with no DEPLOY_CONFIG_REPO succeeds via the server-default fallback"
+  else
+    fail "case15: expected exit 0 via server-default fallback, got $RC ($OUT)"
+  fi
+
+  if [ -f "$ROOT/shared/config/staging/field-manifest.json" ] && grep -q '"version":2' "$ROOT/shared/config/staging/field-manifest.json"; then
+    pass "case15: manifest deployed correctly via the server-default fallback"
+  else
+    fail "case15: manifest not deployed via the server-default fallback"
+  fi
+
+  if printf '%s' "$OUT" | grep -q "server default"; then
+    pass "case15: log names which repo-root source was chosen (server default)"
+  else
+    fail "case15: expected a 'server default' log line naming the chosen source ($OUT)"
+  fi
+}
 echo "---"
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PASS"

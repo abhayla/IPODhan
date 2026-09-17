@@ -16,13 +16,18 @@
 #     [--dry-run] [--root <dir>] [--i-have-the-owners-word]
 #
 # Exit 0: deployed (or dry-run printed). Exit 1: refused, reason printed
-# first (lineage | hash | prod-guard | cap | missing arg).
+# first (lineage | hash | prod-guard | cap | missing arg | repo-root).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${DEPLOY_CONFIG_REPO:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 MANIFEST_REL_PATH="scraper/config/field-manifest.json"
+
+# The on-box checkout that a deployed release (a git-free 'git archive |
+# tar -x' export, #748) falls back to when nothing overrides it. A
+# constant, not buried inline, so it is easy to find/override; tests point
+# it at a fixture via DEPLOY_CONFIG_SERVER_REPO_DEFAULT.
+SERVER_REPO_DEFAULT="${DEPLOY_CONFIG_SERVER_REPO_DEFAULT:-/var/www/ipodhan/repo}"
 
 SLOT=""
 SHA=""
@@ -76,11 +81,51 @@ fi
 # (scripts/deploy-linux.sh step 4 ships releases as a 'git archive | tar -x'
 # export, #748) — the default REPO_ROOT computation ($SCRIPT_DIR/../..) then
 # points at a plain, git-free directory and every git call below would fail
-# with a raw, unhelpful git error. Fail fast here with a message that names
-# the fix: set DEPLOY_CONFIG_REPO to a real checkout (e.g. the on-box
-# /var/www/ipodhan/repo clone) that can reach origin/main.
-if ! (cd "$REPO_ROOT" && git rev-parse --is-inside-work-tree) >/dev/null 2>&1; then
-  fatal "repo-root: '$REPO_ROOT' is not a git working tree (this script has no .git above it — expected on a deployed release) — set DEPLOY_CONFIG_REPO to a checkout that can reach origin/main, e.g. DEPLOY_CONFIG_REPO=/var/www/ipodhan/repo (lineage)"
+# with a raw, unhelpful git error.
+#
+# is_real_work_tree tests the PRINTED VALUE of 'git rev-parse
+# --is-inside-work-tree', never just its exit code: in a bare repo or
+# inside a .git directory that command prints "false" but still exits 0
+# (MAJOR-3), so an exit-code-only guard lets both cases fall through into
+# raw git errors below instead of being refused here.
+is_real_work_tree() {
+  local dir="$1" out
+  out="$(cd "$dir" 2>/dev/null && git rev-parse --is-inside-work-tree 2>/dev/null)" || return 1
+  [ "$out" = "true" ]
+}
+
+# Fallback chain for REPO_ROOT, in priority order:
+#   1. DEPLOY_CONFIG_REPO, if set — explicit override always wins, even if
+#      it turns out not to be a real work tree (the guard below will still
+#      refuse it, with git's own error attached).
+#   2. $SCRIPT_DIR/../.. (the laptop/CI case: running from inside the repo
+#      checkout) — used only when it IS a real work tree.
+#   3. SERVER_REPO_DEFAULT (the deployed-release case: the on-box sibling
+#      checkout at /var/www/ipodhan/repo, overridable for tests) — used
+#      only when it IS a real work tree.
+# Whichever candidate is chosen is logged so an operator can see what the
+# script picked without reading the source.
+if [ -n "${DEPLOY_CONFIG_REPO:-}" ]; then
+  REPO_ROOT="$DEPLOY_CONFIG_REPO"
+  log "repo-root: using $REPO_ROOT (DEPLOY_CONFIG_REPO override)"
+elif is_real_work_tree "$SCRIPT_DIR/../.."; then
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  log "repo-root: using $REPO_ROOT (script's own checkout)"
+elif is_real_work_tree "$SERVER_REPO_DEFAULT"; then
+  REPO_ROOT="$(cd "$SERVER_REPO_DEFAULT" && pwd)"
+  log "repo-root: using $REPO_ROOT (server default)"
+else
+  REPO_ROOT="$SCRIPT_DIR/../.."
+fi
+
+# Re-verify the chosen REPO_ROOT (needed for the DEPLOY_CONFIG_REPO branch,
+# which is not pre-checked above, and as a final guard for the no-candidate
+# case). Capture stderr so the operator sees git's OWN words — e.g.
+# 'dubious ownership' when /var/www/ipodhan/repo is root-owned and this
+# runs as a non-root user (MAJOR-4) — instead of only generic advice that
+# does not match a cause the operator has already worked around.
+if ! REPO_ROOT_CHECK_OUT="$(cd "$REPO_ROOT" 2>&1 && git rev-parse --is-inside-work-tree 2>&1)" || [ "$REPO_ROOT_CHECK_OUT" != "true" ]; then
+  fatal "repo-root: '$REPO_ROOT' is not a usable git working tree ($REPO_ROOT_CHECK_OUT) — set DEPLOY_CONFIG_REPO to a checkout that can reach origin/main, e.g. DEPLOY_CONFIG_REPO=/var/www/ipodhan/repo (repo-root)"
 fi
 
 # ------------------------------------------------------------------ lineage

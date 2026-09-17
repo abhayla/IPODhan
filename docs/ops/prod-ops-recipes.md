@@ -1014,6 +1014,15 @@ ssh rfp-vps "cd /var/www/ipodhan/current && bash scripts/ops/deploy-config.sh \
 **Rollback** — the same command with the previous sha; it is logged like any other run, nothing
 destructive happens (the shared file is just overwritten again).
 
+**Repo-root resolution.** A release directory (what `current`/`current-staging` point at) has no
+`.git` above it — it is a `git archive | tar -x` export (#748) — so the script can't read
+`origin/main` from its own checkout. It resolves the checkout to use, in order: `DEPLOY_CONFIG_REPO`
+if set; else its own tree, if that happens to be a real git checkout (laptop/CI); else the on-box
+clone at `/var/www/ipodhan/repo` (the server default). The command above works unmodified because
+that on-box clone is the server default. Set `DEPLOY_CONFIG_REPO=<path>` only on a box where the
+repo clone lives somewhere else. The run's first log line names which one it picked
+(`repo-root: using <path> (...)`).
+
 **Reading the result:** (prod's current link is `current`, not `current-prod`; staging's is
 `current-staging` — substitute `current` for `<slot>=prod` below, `current-staging` for
 `<slot>=staging`)
