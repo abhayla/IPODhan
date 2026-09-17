@@ -52,6 +52,7 @@ export const MANIFEST_TO_WRITER: Readonly<Record<ManifestSourceCode, SourceCodeM
   MONEYCONTROL: { writerSource: 'MONEYCONTROL' },
   INVESTORGAIN_GMP: { writerSource: 'INVESTORGAIN_GMP' },
   REG: { writerSource: 'REG' },
+  API_FALLBACK: { writerSource: 'API_FALLBACK' },
 };
 
 /**

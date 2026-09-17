@@ -61,26 +61,43 @@ describe('field-source-codes', () => {
     expect(writerSourceToManifestCode('DRHP')).toBe('DOC');
   });
 
-  it('the three writer-source unions are equal sets (db/types.ts, field-priority-matrix.ts, ScraperSourceValue)', () => {
+  it('the two pure-TS writer-source unions are equal sets (db/types.ts, field-priority-matrix.ts)', () => {
     const dbTypes = extractUnionMembers('packages/shared/src/db/types.ts', 'ScraperSource');
     const priorityMatrix = extractUnionMembers(
       'scraper/src/config/field-priority-matrix.ts',
       'ScraperSource'
     );
+
+    expect(dbTypes.size).toBeGreaterThan(0);
+    expect(priorityMatrix.size).toBeGreaterThan(0);
+
+    expect([...dbTypes].sort()).toEqual([...priorityMatrix].sort());
+
+    // REG must be present in both pure-TS writer unions after this slice.
+    expect(dbTypes.has('REG')).toBe(true);
+  });
+
+  it('ScraperSourceValue (backed by the DB-persisted pg enum scraper_source, schema.ts:121) is a SUBSET of the writer union, not required to be equal', () => {
+    // scraper_source is a real Postgres enum (packages/shared/src/db/schema.ts:121),
+    // also typing field_sources.source (schema.ts:1483) and data_conflicts.source1/
+    // source2/resolved_source (schema.ts:1549-1555). Widening it needs a migration —
+    // that is slice S0d (Tier A), not this slice. ScraperSourceValue therefore stays
+    // a SUBSET of the writer union until S0d lands; it must never gain a member the
+    // writer union lacks, but it is allowed to lag (missing INVESTORGAIN_GMP/REG).
+    const dbTypes = extractUnionMembers('packages/shared/src/db/types.ts', 'ScraperSource');
     const failuresRepo = extractUnionMembers(
       'packages/shared/src/repositories/field-extraction-failures-repository.ts',
       'ScraperSourceValue'
     );
 
-    expect(dbTypes.size).toBeGreaterThan(0);
-    expect(priorityMatrix.size).toBeGreaterThan(0);
     expect(failuresRepo.size).toBeGreaterThan(0);
+    for (const value of failuresRepo) {
+      expect(dbTypes.has(value), `ScraperSourceValue member ${value} not in writer union`).toBe(true);
+    }
 
-    expect([...dbTypes].sort()).toEqual([...priorityMatrix].sort());
-    expect([...dbTypes].sort()).toEqual([...failuresRepo].sort());
-
-    // REG must be present in every writer union after this slice.
-    expect(dbTypes.has('REG')).toBe(true);
+    // Documents the current lag (S0d closes this gap); not a widening of scope here.
+    expect(failuresRepo.has('INVESTORGAIN_GMP')).toBe(false);
+    expect(failuresRepo.has('REG')).toBe(false);
   });
 
   it('does NOT widen the health unions (types/types.ts, web/lib/db/types.ts) with REG', () => {

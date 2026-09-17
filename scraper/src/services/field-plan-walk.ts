@@ -52,6 +52,7 @@ import { logger } from '../utils/logger.js';
 import { normalizeChosen } from './data-consolidation-service.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
+import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
 
 /**
  * `plan.fieldName` is the manifest's raw snake_case key
@@ -761,10 +762,11 @@ function identityFieldsFor(existing: Record<string, unknown>): Record<string, un
  * stores the manifest word (`'DOC'`), matching `evidenceFor` and the proof
  * tool's own DOC<->DRHP mapping (review round 5, item B) — one canonical
  * mapping, referenced from both places rather than duplicated.
+ *
+ * Moved to `field-source-codes.ts` (stage 3 S0c); re-exported here so this
+ * module's own use below and its existing importers keep working.
  */
-export function mapManifestSourceToScraperSource(manifestSource: string): string {
-  return manifestSource === 'DOC' ? 'DRHP' : manifestSource;
-}
+export { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
 
 /**
  * Does the consolidator's OWN field result say OUR source/value won? Reads

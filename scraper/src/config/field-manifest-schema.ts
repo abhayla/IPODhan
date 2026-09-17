@@ -17,6 +17,7 @@ export const sourceCodeSchema = z.enum([
   'MONEYCONTROL',
   'INVESTORGAIN_GMP',
   'REG',
+  'API_FALLBACK',
 ]);
 
 export type SourceCode = z.infer<typeof sourceCodeSchema>;

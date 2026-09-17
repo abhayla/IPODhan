@@ -14,9 +14,10 @@ it (never a worker) and no slice is dispatched until the previous slice's run is
 | Slice | Tier | Card | PR | Merged sha | Review verdict | Staging proof (identity, cycle) | Gate run (date, PASS/total) | Board | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | STEP 1 | C | all 12 cards + this ledger + `scripts/check-stage3-dod.mjs` | #734 | ec6b8eb5 | | n/a (docs) | | item-03 | landed 2026-09-17 13:08 IST |
-| S0a | C | item-03-s0a-spec-repair.md | #737 | a8ba7e2b | Tier C, none | | 2026-09-17 13:25 IST, 7/7 PASS | | landed |
-| S0b | B | item-03-s0b-generate-registry.md | | | | | | | queued |
+| S0a | C | item-03-s0a-spec-repair.md | #737 | a8ba7e2b | Tier C, none | | 2026-09-17 13:25 IST, 7/7 PASS | item-03 v13 | landed |
+| S0b | B | item-03-s0b-generate-registry.md | #738 | 5f57aa66 | Tier B Sonnet + independent Opus review after 2nd occurrence | 2026-09-17 14:4x IST, 6/8 local PASS; staging rows S0b-7/S0b-8 tonight | item-03 v14 | merged, staging proof owed |
 | S0c | B | item-03-s0c-source-code-reconciliation.md | | | | | | | queued |
+| S0d | A | item-03-s0d-scraper-source-enum.md (card owed) | | | | | | | queued — inserted 2026-09-17: pg enum scraper_source lacks INVESTORGAIN_GMP/REG (issue #740) |
 | S5 | A | item-03-s5-config-only-deploy.md | | | | | | | queued |
 | S1a | A | item-03-s1a-resolver.md | | | | | | | queued |
 | S1b | A | item-03-s1b-writer-adopts-resolver.md | | | | | | | queued |
@@ -30,8 +31,9 @@ it (never a worker) and no slice is dispatched until the previous slice's run is
 
 ## Order and dependencies
 
-S0a → S0b → S0c → S5 → S1a → S1b → S1c → S1d → S2 → S3 → S4 → S6. Hard edges: S2 needs S0b
-(manifest version 2); S4 needs S1a's resolver interface and S1b's writer adoption; S5 needs nothing.
+S0a → S0b → S0c → S0d → S5 → S1a → S1b → S1c → S1d → S2 → S3 → S4 → S6. Hard edges: S2 needs S0b
+(manifest version 2); S1a/S1b/S1c need S0d (enum); S4 needs S1a's resolver interface and S1b's writer
+adoption; S5 needs nothing.
 Acceptance for the stage: the Swap Test through both paths (registry PR + config deploy; override CLI)
 on staging, run by the supervisor with zero code edits.
 
@@ -52,6 +54,10 @@ on staging, run by the supervisor with zero code edits.
 - PR body carries either the detection-check change or the literal line
   `No detection change: <reason of 20+ characters>` (the recurrence gate greps it verbatim).
 - Reviewers get no scratch worktree: read `gh pr diff`, run tests in the builder's worktree.
+- `Readers:` — every file on origin/main that reads a file, key set, union or schema the slice
+  regenerates or widens (from `git grep -ln`), listed with their tests in the DoD.
+- The supervisor removes its own verify worktree (`wt-rm.ps1`) before dispatching a fix round on
+  that branch (git refuses two worktrees on one branch).
 
 ## Landing checklist per slice (supervisor)
 
@@ -61,4 +67,8 @@ on staging, run by the supervisor with zero code edits.
 3. `node scripts/check-stage3-dod.mjs --slice <id> [--staging]` all PASS, run by the supervisor.
 4. ONE `read_db get items/item-03` + ONE `write_db update` with `if_version` (full `slices` array).
 5. Row above updated; one plain-words message to the owner with an evidence table.
-6. If the same failure class appears twice: STOP, root-cause report to the owner before a third fix.
+6. If the same failure class is red twice after one fix round: no owner wait — dispatch an
+   independent fresh-context reviewer (different model or instance, never the builder/fixer) with
+   the class, both diffs and the evidence; accept/reject each finding with evidence; write the
+   third brief around the findings; then inform the owner. A third red after that is the real stop
+   (escalate).
