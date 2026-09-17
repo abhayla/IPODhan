@@ -73,7 +73,8 @@ export function allowsSameSourceRefresh(fieldName: string, source: ScraperSource
 
 `ENABLE_POLICY_WRITER` (NEW, `slotAwareFlagDefault`: staging ON when unset, prod/local OFF). Off:
 the writer is byte-for-byte today's behaviour. On: flipped groups decide from the resolver. Per-field
-rollback (OD-44) = remove the group from `switchover.json` `flipped` and config-deploy it (S5).
+rollback (OD-44) = remove the group from `switchover.json` `flipped` and deploy it (config-deploy
+is the follow-up above).
 
 ## Tests
 
@@ -144,9 +145,43 @@ Needs S1a (resolver) and S0c (source map). S1c, S1d and S4 build on this interfa
 | §2.3.5 | R-054 |
 | §7.6 | R-142 |
 
+## Card corrections
+
+Decided by the supervisor after measuring this card against 0abf8a37 (S1a merged); landed as a
+docs hunk in the S1b build PR.
+
+- **C1.** NEW `scraper/src/config/field-name-case.ts`: re-exports `columnToCamelCase` from
+  `@ipodhan/shared/utils/duplicate-ipo-merge` and exports its inverse `fieldNameToColumn(fieldName:
+  string): string` (camel->snake: each uppercase letter -> `_` + lowercase; digits and existing
+  underscores untouched). The walk's private `toCamelFieldName` was DELETED and replaced by the
+  import (one concept, one place; no third copy). The writer converts its camel `fieldName` to the
+  resolver's snake `column` with `fieldNameToColumn` at the four decision sites.
+- **C2.** NEW test `scraper/tests/unit/config/field-name-case.test.ts`: for EVERY key of the real
+  `scraper/config/field-manifest.json` (190; asserts the count equals
+  `Object.keys(manifest.fields).length`, no hard-coded subset), splits `table.column`, asserts
+  `fieldNameToColumn(columnToCamelCase(column)) === column`.
+- **C3.** `scraper/config/switchover.json` ships INSIDE the release (a committed file under
+  `scraper/config/`, like `field-manifest.json` before S5). It is NOT config-deployed and NOT
+  symlinked by S5 (`deploy-config.sh` copies only `field-manifest.json`). Known gaps below gains:
+  "config-deploy of switchover.json = follow-up (extend deploy-config.sh, separate Tier A PR);
+  until then a flip is a code deploy." The Feature-flag paragraph's rollback sentence is reworded
+  accordingly (above).
+- **C4.** Card line numbers refreshed to the ones actually measured on 0abf8a37: `field-priority-
+  matrix.ts` 879/907/924/932/943/946; `data-consolidation-service.ts` 382-386/1448/2268/2292/
+  2315/2330; `index.ts` 617/1624.
+- **C5.** `switchover.json` validation rules stay as originally specified (every named field
+  exists in the manifest; a field in at most one group; `flipped` names existing groups;
+  `identityFields` exist in the manifest). Addition: the loader throws with the offending key
+  named in the error message (see `switchover.ts`'s `loadSwitchover`).
+
 ## Known gaps
 
 - Only the `issue-size` group is flipped in this slice. Other groups are flipped one per config
   deploy after two clean cycles each (OD-44); the ledger records each flip.
 - GMP writes (`data-persister.ts` ~1758-1775) bypass the child-row consolidator and are untouched
   until S1d's shim statement and a later item.
+- config-deploy of switchover.json = follow-up (extend deploy-config.sh, separate Tier A PR);
+  until then a flip is a code deploy (C3).
+- `isTimeBased(fieldName, tableName)` accepts a `tableName` parameter it ignores — no flipped
+  field is time-based today. Honour it when a time-based field joins a group (S1c/S1d);
+  review round 1 (MINOR-3), 2026-09-17.

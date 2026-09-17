@@ -116,11 +116,13 @@ walk log line `policy origin=registry:2` for `ipos.issue_size` of a named live I
 |---|---|---|---|
 | S1a-1 | `cd scraper && npx vitest run tests/unit/config/field-source-policy.test.ts tests/unit/services/field-plan-generator.test.ts` | exit 0 | local |
 | S1a-2 | `git grep -c "resolveFieldSourcePolicy" HEAD -- scraper/src/services/field-plan-generator.ts scraper/src/services/field-plan-walk-deps.ts scraper/src/services/field-plan-walk.ts` | regex: `(?s)(.*:[1-9].*){2}` | local |
-| S1a-3 | `git grep -c "policy_origin" HEAD -- packages/shared/src/db/schema.ts` | regex: `^[1-9]` | local |
+| S1a-3 | `git grep -c "policy_origin" HEAD -- packages/shared/src/db/schema.ts` | regex: `:[1-9]$` | local |
 | S1a-4 | `node scripts/ci/check-migration-journal.mjs` | exit 0 | local |
 | S1a-5 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/field-plan-generation-wiring.integration.test.ts` | exit 0 | test-db |
 | S1a-6 | `node scripts/ops/walk-proof.mjs --expect-db ipodhan_staging` | regex: `MATCH.*[3-9]` | staging |
 | S1a-7 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan where policy_origin is null and manifest_version = 2 and state not in ('SUPPLIED','RETIRED')" --expect-db ipodhan_staging` | line: `n=0` | staging |
+
+test-db rows: `DATABASE_URL` names `ipodhan_test` AND `REDIS_URL=redis://localhost:6379`.
 
 ## Rollback
 

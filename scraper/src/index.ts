@@ -56,6 +56,7 @@ import { checkCrossSourceDisagreements } from './services/cross-source-disagreem
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { FEATURE_FLAGS, validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
 import { loadFieldManifest, DEFAULT_MANIFEST_PATH } from './config/field-manifest-loader.js';
+import { loadSwitchover, DEFAULT_SWITCHOVER_PATH } from './config/switchover.js';
 import { readFileSync as readManifestFileSync, realpathSync } from 'fs';
 import { loadValidationRules } from './config/validation-rules-loader.js';
 
@@ -642,6 +643,27 @@ export function validateFieldManifestAtStartup(
   logger.info(
     { version: manifest.version, fields: Object.keys(manifest.fields).length, sha256, configSha },
     `field-manifest: version=${manifest.version} fields=${Object.keys(manifest.fields).length} sha256=${sha256} config_sha=${configSha}`
+  );
+}
+
+/**
+ * Item 3 slice S1b — validate `scraper/config/switchover.json` at process start, beside the
+ * field-manifest check and for exactly the same reason: a malformed switchover file (a group
+ * naming an unknown field, a field in two groups, a `flipped` entry naming no group) must be a
+ * loud startup failure, never a wrong write-time decision three fields into a cycle. Gated on
+ * `ENABLE_POLICY_WRITER` (default off in prod/local) so a `false` value is a pure no-op —
+ * `loadSwitchover()` is never even called.
+ */
+export function validateSwitchoverAtStartup(
+  switchoverPath?: string,
+  enabled: boolean = FEATURE_FLAGS.ENABLE_POLICY_WRITER
+): void {
+  if (!enabled) return;
+  const sw = loadSwitchover(switchoverPath);
+  const resolvedPath = switchoverPath ?? DEFAULT_SWITCHOVER_PATH;
+  logger.info(
+    { version: sw.version, groups: Object.keys(sw.groups).length, flipped: sw.flipped.join(',') || '(none)' },
+    `switchover: version=${sw.version} groups=${Object.keys(sw.groups).length} flipped=${sw.flipped.join(',') || '(none)'} path=${resolvedPath}`
   );
 }
 
@@ -1622,6 +1644,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   // doc comment. A malformed manifest (flag ON) throws synchronously here and
   // main() never runs, so no cycle-start log line is ever emitted.
   validateFieldManifestAtStartup();
+  // Item 3 slice S1b: same contract, same reason — a malformed switchover.json fails loudly here.
+  validateSwitchoverAtStartup();
   // Item 4 slice 1: same contract, same reason — malformed rules fail loudly here.
   validateValidationRulesAtStartup();
   main();

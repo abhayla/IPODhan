@@ -32,7 +32,13 @@ import {
   getFieldRules,
   getSourcePriority,
   isTimeBased,
+  outranksUntrackedByMatrix,
 } from '../config/field-priority-matrix';
+import { isFlipped } from '../config/switchover.js';
+import { fieldNameToColumn } from '../config/field-name-case.js';
+import { resolveFieldSourcePolicy } from '../config/field-source-policy.js';
+import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
+import type { IpoTypeKey } from './field-plan-generator.js';
 import {
   normalize,
   areEquivalent,
@@ -52,6 +58,7 @@ import logger from '../utils/logger.js';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 import { validateFieldValue, type ValidationRule } from './field-extraction-validation.js';
 import { loadValidationRules } from '../config/validation-rules-loader.js';
+import { resolveIpoTypeKey } from './field-plan-generator.js';
 
 /**
  * Result of field consolidation
@@ -374,16 +381,33 @@ function serializeFieldValue(value: any): string {
 }
 
 /**
- * M-1: may `source` replace a stored value that has NO provenance row? Only if
- * the matrix ranks it for this field AND strictly better than the worst source
- * it lists — an unranked or bottom-ranked source (e.g. API_FALLBACK for
- * `registrar`) can never silently replace a value whose origin is unknown.
+ * M-1: may `source` replace a stored value that has NO provenance row?
+ *
+ * Item 3 slice S1b: when the field's reconciliation group is FLIPPED (and `ENABLE_POLICY_WRITER`
+ * is on), the untracked rule is redefined per card finding 2 — any source the resolver RANKS for
+ * this table/column/ipoType may replace an untracked value (ADMIN included). This intentionally
+ * widens the legacy rule ("strictly better than the single WORST-ranked source the field
+ * lists"): with a two-rank policy like `ipos.issue_size` -> [DOC, CHITTORGARH], the old rule made
+ * the second (and worst-listed) rank, CHITTORGARH, permanently unable to heal an untracked value
+ * — exactly the #728 prod class (27 staging rows a BSE-only history could never repair). Being
+ * ranked at all is proof enough the manifest trusts this source for this field.
+ *
+ * Unflipped fields (or the flag off) keep today's rule UNCHANGED, delegated to
+ * `outranksUntrackedByMatrix` in field-priority-matrix.ts — moved there in this slice so the
+ * worst-rank arithmetic lives in one place, not duplicated across the flip boundary.
  */
-function outranksUntrackedValue(fieldName: string, source: ScraperSource): boolean {
-  const rank = getSourcePriority(fieldName, source);
-  if (rank === -1) return false;
-  const worstRank = getFieldRules(fieldName).sources.length - 1;
-  return rank < worstRank;
+function outranksUntrackedValue(
+  fieldName: string,
+  source: ScraperSource,
+  tableName?: string,
+  ipoType: IpoTypeKey = 'MAINBOARD'
+): boolean {
+  if (tableName && FEATURE_FLAGS.ENABLE_POLICY_WRITER && isFlipped(tableName, fieldNameToColumn(fieldName))) {
+    const policy = resolveFieldSourcePolicy({ table: tableName, column: fieldNameToColumn(fieldName), ipoType });
+    if (source === 'ADMIN') return true;
+    return policy.ranks.some((code) => mapManifestSourceToScraperSource(code) === source);
+  }
+  return outranksUntrackedByMatrix(fieldName, source);
 }
 
 /**
@@ -934,6 +958,26 @@ export class DataConsolidationService {
       // evidence is gathered once per call, and only for the rows that need it.
       const storedExchanges = input.existingData?.listingExchanges;
       const smeSegment = input.existingData?.segment ?? input.incomingData.segment ?? null;
+      // Item 3 slice S1b, card finding 8: which manifest ipoType a FLIPPED field's policy is
+      // resolved for. A create (no stored row) or a row whose segment isn't known yet has no
+      // way to tell MAINBOARD from SME — resolveIpoTypeKey requires `segment !== 'SME'` to
+      // mean MAINBOARD, so an explicit unknown-segment `null`/undefined already falls there.
+      // Identity fields (`ipos.segment`, `ipos.listing_exchanges` themselves) always resolve
+      // with the MAINBOARD list. This is safe today only because NEITHER field is in any
+      // `flipped` group (switchover.json's only flipped group is `issue-size`, which does not
+      // list them) — an identity field's own rank is never actually consulted, so which
+      // ipoType key it falls back to doesn't matter yet. The ranks are NOT identical across
+      // ipoType keys for fields that ARE flipped (e.g. `ipos.issue_size` MAINBOARD/SME_BSE/
+      // SME_NSE all list `[DOC, CHITTORGARH]`, but `ipos.lot_size` ranks differ per key:
+      // MAINBOARD `[DOC, BSE, NSE]` vs SME_BSE `[DOC, BSE, CHITTORGARH]` vs SME_NSE `[DOC, NSE,
+      // CHITTORGARH]`). This is a re-resolved-next-wake default for the create path, not a
+      // permanent misclassification — but whoever flips an identity group later must revisit
+      // this MAINBOARD fallback, since the identical-ranks assumption will no longer hold.
+      const ipoTypeForPolicy = resolveIpoTypeKey({
+        id: input.ipoId,
+        segment: (smeSegment as 'MAINBOARD' | 'SME' | null) ?? null,
+        listingExchanges: storedExchanges ?? input.incomingData?.listingExchanges ?? null,
+      });
       let smeCollapseEvidence: SmeCollapseEvidence | undefined;
       if (violatesSmeSingleExchange(smeSegment, storedExchanges)) {
         let listingRecordExchange: any = null;
@@ -1025,6 +1069,7 @@ export class DataConsolidationService {
             incomingDates,
             segment: smeSegment,
             smeCollapseEvidence,
+            ipoType: ipoTypeForPolicy,
           });
 
           result.fieldResults.push(fieldResult);
@@ -1151,6 +1196,13 @@ export class DataConsolidationService {
     // W-145 round 2: evidence for collapsing an SME row that is ALREADY stored
     // with two exchanges (present only for such rows).
     smeCollapseEvidence?: SmeCollapseEvidence;
+    /**
+     * Item 3 slice S1b: which manifest ipoType a FLIPPED field's policy resolves for — computed
+     * once per `consolidateIPOData` call (see `ipoTypeForPolicy` there) from the row's segment
+     * and listing exchanges, MAINBOARD when unknown (card finding 8). Unused when the field's
+     * group is not flipped or `ENABLE_POLICY_WRITER` is off.
+     */
+    ipoType?: string;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -1162,6 +1214,7 @@ export class DataConsolidationService {
       existingSource,
     } = params;
     const rowKey = params.rowKey ?? '';
+    const ipoType = params.ipoType ?? 'MAINBOARD';
 
     const rules = getFieldRules(fieldName);
 
@@ -1445,7 +1498,7 @@ export class DataConsolidationService {
         };
       }
 
-      if (!outranksUntrackedValue(fieldName, incomingSource)) {
+      if (!outranksUntrackedValue(fieldName, incomingSource, tableName, ipoType)) {
         logger.warn(
           { ipoId, tableName, fieldName, incomingSource, storedValue, incomingValue },
           'untracked_existing_value_kept: incoming source does not outrank an untracked stored value'
@@ -1819,6 +1872,7 @@ export class DataConsolidationService {
       ipoStatus: params.ipoStatus,
       heldDates: params.heldDates,
       incomingDates: params.incomingDates,
+      ipoType,
     });
 
     return conflict;
@@ -2005,6 +2059,8 @@ export class DataConsolidationService {
     // payload) date triples, computed once per `consolidateIPOData` call.
     heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
     incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    /** Item 3 slice S1b — see `consolidateField`'s `ipoType` doc comment. */
+    ipoType?: string;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -2022,6 +2078,7 @@ export class DataConsolidationService {
       ipoStatus,
     } = params;
     const rowKey = params.rowKey ?? '';
+    const ipoType = params.ipoType ?? 'MAINBOARD';
 
     let chosenSource: ScraperSource;
     let chosenValue: any;
@@ -2265,8 +2322,8 @@ export class DataConsolidationService {
     // T-328: the TZ-signature tie-break above already decided chosenValue/
     // chosenSource/resolutionReason for this field — skip the normal
     // priority/time-based resolution so it can't be silently overwritten.
-    const existingPriority = getSourcePriority(fieldName, existingSource);
-    const incomingPriority = getSourcePriority(fieldName, incomingSource);
+    const existingPriority = getSourcePriority(fieldName, existingSource, tableName, ipoType);
+    const incomingPriority = getSourcePriority(fieldName, incomingSource, tableName, ipoType);
 
     if (tiebreakResolved) {
       // tie-break already resolved this field — chosenValue/chosenSource/resolutionReason stand.
@@ -2289,7 +2346,7 @@ export class DataConsolidationService {
         chosenValue = existingValue;
         resolutionReason = 'DEFAULT_KEEP_EXISTING';
       }
-    } else if (isTimeBased(fieldName)) {
+    } else if (isTimeBased(fieldName, tableName)) {
       // Same source priority - use time-based resolution (newest wins)
       // This allows updates from the SAME source to be time-based
       if (scrapedAt && existingUpdatedAt) {
@@ -2312,7 +2369,7 @@ export class DataConsolidationService {
       }
     } else if (
       existingSource === incomingSource &&
-      allowsSameSourceRefresh(fieldName, incomingSource)
+      allowsSameSourceRefresh(fieldName, incomingSource, tableName, ipoType)
     ) {
       // T-276: the SAME authoritative source has changed its mind. Keeping the
       // stored value here is what made the price-band floor permanent

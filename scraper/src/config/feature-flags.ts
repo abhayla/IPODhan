@@ -468,6 +468,20 @@ export const FEATURE_FLAGS = {
   ENABLE_CHILD_TABLE_CONSOLIDATION: slotAwareFlagDefault('ENABLE_CHILD_TABLE_CONSOLIDATION'),
 
   /**
+   * Item 3 slice S1b: gates whether the writer (`data-consolidation-service.ts`) decides a
+   * field's source priority / untracked-replacement rule / same-source-refresh rule from
+   * `resolveFieldSourcePolicy(...)` (the manifest-driven resolver, S1a) instead of the legacy
+   * `field-priority-matrix.ts` rank list, for fields whose reconciliation group is FLIPPED in
+   * `scraper/config/switchover.json`. OFF is byte-identical to today's matrix-only behaviour for
+   * every field, flipped or not.
+   *
+   * Uses `slotAwareFlagDefault` (slice s5a): this writer has never been deployed, so it defaults
+   * ON in staging (where a wake can be read against real documents, per the item-03 S1b card's
+   * staging-proof section) and OFF in prod and every unset slot until that reading exists.
+   */
+  ENABLE_POLICY_WRITER: slotAwareFlagDefault('ENABLE_POLICY_WRITER'),
+
+  /**
    * Item 2 slice 4: gates whether the CLI entry point (the guard at the
    * bottom of `scraper/src/index.ts`) validates `scraper/config/field-manifest.json`
    * at process start. Default: false (Phase 0 — plain `process.env.X === 'true'`
