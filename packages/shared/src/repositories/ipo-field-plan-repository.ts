@@ -112,6 +112,7 @@ export interface IpoFieldPlanRow {
   claimedAt: Date | null;
   claimToken: string | null;
   manifestVersion: number;
+  policyOrigin: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -187,6 +188,8 @@ export interface GeneratedFieldPlanRow {
   rank2Source: string | null;
   rank3Source: string | null;
   manifestVersion: number;
+  /** 'registry:<version>' | 'override:<id>' — which configuration produced this row's ranks. */
+  policyOrigin: string;
 }
 
 export interface UpsertGeneratedRowsResult {
@@ -224,7 +227,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const values = sql.join(
         rows.map(
           (r) =>
-            sql`(${r.ipoId}::uuid, ${r.tableName}, ${r.rowKey}, ${r.fieldName}, ${r.rank1Source}, ${r.rank2Source}, ${r.rank3Source}, ${r.manifestVersion})`
+            sql`(${r.ipoId}::uuid, ${r.tableName}, ${r.rowKey}, ${r.fieldName}, ${r.rank1Source}, ${r.rank2Source}, ${r.rank3Source}, ${r.manifestVersion}, ${r.policyOrigin})`
         ),
         sql`, `
       );
@@ -232,7 +235,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const result = await this.db.execute(sql`
         INSERT INTO ipo_field_plan (
           ipo_id, table_name, row_key, field_name,
-          rank1_source, rank2_source, rank3_source, manifest_version
+          rank1_source, rank2_source, rank3_source, manifest_version, policy_origin
         )
         VALUES ${values}
         ON CONFLICT (ipo_id, table_name, row_key, field_name) DO NOTHING
@@ -466,6 +469,7 @@ function mapRow(raw: Record<string, unknown>): IpoFieldPlanRow {
     claimedAt: date(raw.claimed_at),
     claimToken: (raw.claim_token as string) ?? null,
     manifestVersion: raw.manifest_version as number,
+    policyOrigin: (raw.policy_origin as string) ?? null,
     createdAt: date(raw.created_at) as Date,
     updatedAt: date(raw.updated_at) as Date,
   };

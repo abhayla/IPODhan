@@ -1753,6 +1753,10 @@ export const ipoFieldPlan = pgTable(
     // ---- so the plan is RECONCILED when the manifest changes, never regenerated per cycle ----
     manifestVersion: integer('manifest_version').notNull(),
 
+    // ---- which configuration produced this row's ranks (item 3 slice S1a) ----
+    // 'registry:<version>' | 'override:<id>' (S4); null on rows written before this slice.
+    policyOrigin: varchar('policy_origin', { length: 64 }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
