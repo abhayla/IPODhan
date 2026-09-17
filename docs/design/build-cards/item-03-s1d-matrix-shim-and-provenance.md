@@ -8,7 +8,7 @@ Stage 3 ("one source table", plan v2 §2 bullets 4-5 and §4b finding 4). Ledger
 After this ships, `field-priority-matrix.ts` no longer decides order for any field that has a policy
 row, a field with no row falls back to its matrix `sources` through one logged shim (once per cycle
 per field), every `field_sources` row written under the policy stores which configuration produced it,
-and the 27 dead snake_case keys the old item-03 card measured are gone.
+and the 22 genuinely dead snake_case keys are gone. NOT 27: of the 27 snake_case keys measured on origin/main 2026-09-18, FIVE (`open_date`, `close_date`, `lot_size`, `gmp_price`, `company_description`) have a camelCase sibling in the matrix and are asserted by the existing W-49 regression test `scraper/tests/unit/config/field-priority-matrix-camelcase-siblings.test.ts`. Deleting them was measured to break 3 tests in that file (including its "found at least one snake/camel sibling pair" sanity check). They STAY.
 
 ## Serves
 
@@ -24,17 +24,17 @@ and the 27 dead snake_case keys the old item-03 card measured are gone.
 
 | Exists on origin/main | Reuse for |
 |---|---|
-| `scraper/src/config/field-priority-matrix.ts` — `FIELD_PRIORITY_MATRIX` (129-800, 77-78 keys; 27 with an underscore measured 2026-09-10 by the old item-03 card, groups A/B/C listed there), `getFieldRules` (906), `generatePriorityMatrixSummary` (976) | delete the 27 keys (Group C's 16 live fields get their manifest row from S0b, so no minimal TS entry is needed — verify each of the 16 is in the 190-row manifest before deleting); `sources` arrays STAY on the remaining rows as the shim source |
+| `scraper/src/config/field-priority-matrix.ts` — `FIELD_PRIORITY_MATRIX` (129-800, 77-78 keys; 27 with an underscore, re-measured 2026-09-18 on origin/main: 78 total keys, 27 snake_case, of which 22 are deletable and 5 have camelCase siblings that must stay), `getFieldRules` (906), `generatePriorityMatrixSummary` (976) | delete the 22 deletable keys (Group C's 16 live fields get their manifest row from S0b, so no minimal TS entry is needed — verify each of the 16 is in the 190-row manifest before deleting); `sources` arrays STAY on the remaining rows as the shim source |
 | `data-consolidation-service.ts` `dataLineage` on `field_sources` (791; schema 1491 `data_lineage jsonb`) | provenance: add `policyOrigin` to the lineage object for policy-path writes |
 | `packages/shared/src/db/schema.ts:1465-1520` `fieldSources` | no column change; `data_lineage` is jsonb |
 | the old card's detection idea matrix-manifest-drift.json (never built, never committed) | superseded by S6's `PULL-POLICY`; not created |
-| `scraper/tests/unit/config/field-priority-matrix.test.ts` (NEW; check existence with `git ls-tree origin/main scraper/tests/unit/config/`) | extend or create per the old card's four assertions |
+| EIGHT `field-priority-matrix-*.test.ts` files already exist under `scraper/tests/unit/config/` (camelcase-siblings, conflict-convergence, filing-source, gmp, identifiers, lot-floor, policy-same-source-refresh, price-band) | EXTEND the nearest existing file; a plain `field-priority-matrix.test.ts` does not exist, but do NOT add a parallel file for an assertion one of these already owns. `camelcase-siblings` already owns the sibling-pair assertions |
 
 ### Changes
 
 | Path | State | Change |
 |---|---|---|
-| `scraper/src/config/field-priority-matrix.ts` | exists | 27 dead keys deleted (named in the test); `getSourcePriority`/`isTimeBased`/`allowsSameSourceRefresh` for a field WITH a policy row delegate to the resolver regardless of flip state once `ENABLE_POLICY_WRITER` is on (S1b limited this to flipped groups; this slice widens to "has a row" while the `flipped` list still controls which groups' WRITE decisions change — a non-flipped field with a row logs `policy-shadow` with both answers and keeps the matrix decision); a field with NO row uses `rules.sources` and logs `policy-shim field=<table.column>` once per process |
+| `scraper/src/config/field-priority-matrix.ts` | exists | 22 dead keys deleted (named in the test; the 5 with camelCase siblings STAY — see Purpose); `getSourcePriority`/`isTimeBased`/`allowsSameSourceRefresh` for a field WITH a policy row delegate to the resolver regardless of flip state once `ENABLE_POLICY_WRITER` is on (S1b limited this to flipped groups; this slice widens to "has a row" while the `flipped` list still controls which groups' WRITE decisions change — a non-flipped field with a row logs `policy-shadow` with both answers and keeps the matrix decision); a field with NO row uses `rules.sources` and logs `policy-shim field=<table.column>` once per process |
 | `scraper/src/services/data-consolidation-service.ts` | exists | `dataLineage.policyOrigin = policyOriginString(policy.origin)` on every write decided by the policy |
 | `scraper/tests/unit/config/field-priority-matrix.test.ts` (NEW) | exists/NEW | the 27 keys absent; the 5 Group-A camelCase siblings unchanged; a row-less field (`gmpRecords.gmp` until it has a row) logs the shim once and keeps its matrix order; a field with a row returns the resolver's order |
 | `tests/integration/field-sources-row-key-provenance.integration.test.ts` | exists | a policy-path write on ipodhan_test stores `data_lineage->>'policyOrigin' = 'registry:2'` |
@@ -76,7 +76,8 @@ expected: `gmp_records.*` and any class-C/I field the writer touches); `walk-pro
 | id | command | expect | env |
 |---|---|---|---|
 | S1d-1 | `cd scraper && npx vitest run tests/unit/config/field-priority-matrix.test.ts` | exit 0 | local |
-| S1d-2 | `git grep -c -E "^  (open_date|close_date|lot_size|company_description|gmp_price|revenue_fy[123]|profit_fy[123]|peer_companies|roe_percentage|roce_percentage|pb_ratio|fresh_issue_size|offer_for_sale_size|issue_price|min_investment|total_subscription|retail_subscription|qib_subscription|nii_subscription|gmp_percentage|expected_listing_price|listing_price|listing_gain_percentage):" HEAD -- scraper/src/config/field-priority-matrix.ts` | exit 1 | local |
+| S1d-2 | `git grep -c -E "^  (revenue_fy[123]|profit_fy[123]|peer_companies|roe_percentage|roce_percentage|pb_ratio|fresh_issue_size|offer_for_sale_size|issue_price|min_investment|total_subscription|retail_subscription|qib_subscription|nii_subscription|gmp_percentage|expected_listing_price|listing_price|listing_gain_percentage):" HEAD -- scraper/src/config/field-priority-matrix.ts` | exit 1 | local |
+| S1d-2b | `cd scraper && npx vitest run tests/unit/config/field-priority-matrix-camelcase-siblings.test.ts` | exit 0 (the 5 keys WITH camelCase siblings must survive the deletion) | local |
 | S1d-3 | `git grep -c "policyOrigin" HEAD -- scraper/src/services/data-consolidation-service.ts` | regex: `^[1-9]` | local |
 | S1d-4 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/field-sources-row-key-provenance.integration.test.ts` | exit 0 | test-db |
 | S1d-5 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from field_sources where data_lineage->>'policyOrigin' like 'registry:%' and updated_at > now() - interval '1 day'" --expect-db ipodhan_staging` | regex: `n=[1-9]` | staging |

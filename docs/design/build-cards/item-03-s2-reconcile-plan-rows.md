@@ -36,7 +36,7 @@ and SME IPOs have plan rows for the fields the version-1 manifest never planned 
 
 | Path | State | Change |
 |---|---|---|
-| `scraper/scripts/repair-plan-rows-to-manifest-version.ts` | NEW | dry-run default; `--apply`; `--expect-db <name>` required; refuses unless `ipo_field_plan` and its `manifest_version` column exist (schema query, not a name check); refuses prod unless `--prod-has-migrated` AND the schema check passes; for each non-terminal row (`state not in SUPPLIED/RETIRED`) with `manifest_version < current`: new ranks from the resolver for that IPO's type, `manifest_version`, `policy_origin` updated; SUPPLIED rows untouched; prints per-IPO, per-field before→after and counts; also INSERTS rows the current manifest plans for an IPO but the table lacks (the SME rows), through the repository insert |
+| `scraper/scripts/repair-plan-rows-to-manifest-version.ts` | NEW | dry-run default; `--apply`; `--expect-db <name>` required; refuses unless `ipo_field_plan` and its `manifest_version` column exist (schema query, not a name check); refuses prod unless `--prod-has-migrated` AND the schema check passes; for each non-terminal row (`state <> 'SUPPLIED'`) with `manifest_version < current`: new ranks from the resolver for that IPO's type, `manifest_version`, `policy_origin` updated; SUPPLIED rows untouched; prints per-IPO, per-field before→after and counts; also INSERTS rows the current manifest plans for an IPO but the table lacks (the SME rows), through the repository insert |
 | `packages/shared/src/repositories/ipo-field-plan-repository.ts` | exists | `updateRanksForVersion(rows)`; `listBelowVersion(version)` |
 | `scraper/tests/unit/scripts/repair-plan-rows-to-manifest-version.test.ts` | NEW | dry-run writes nothing; schema-check refusal; prod refusal |
 | `tests/integration/ipo-field-plan-repository.integration.test.ts` | exists | on ipodhan_test with the REAL repository: a version-1 row `(DOC, BSE, null)` becomes `(DOC, CHITTORGARH, null)` at version 2; a SUPPLIED row is untouched; an SME IPO gains its `subscriptions.*` rows |
@@ -90,7 +90,7 @@ plan-rank2-never-bse-for-issue-size --cycles 2` PASS after two real wakes.
 | S2-2 | `node scripts/ci/require-repair-tool-module.mjs` | exit 0 | local |
 | S2-3 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/ipo-field-plan-repository.integration.test.ts` | exit 0 | test-db |
 | S2-4 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan where field_name='issue_size' and rank2_source='BSE'" --expect-db ipodhan_staging` | line: `n=0` | staging |
-| S2-5 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan where manifest_version < 2 and state not in ('SUPPLIED','RETIRED')" --expect-db ipodhan_staging` | line: `n=0` | staging |
+| S2-5 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan where manifest_version < 2 and state <> 'SUPPLIED'" --expect-db ipodhan_staging` | line: `n=0` | staging |
 | S2-6 | `node scripts/check-stage3-dod.mjs --sql "select count(*) as n from ipo_field_plan p join ipos i on i.id=p.ipo_id where i.segment='SME' and p.table_name='subscriptions'" --expect-db ipodhan_staging` | regex: `n=[1-9]` | staging |
 | S2-7 | `node scripts/assert-repair-held.mjs plan-rank2-never-bse-for-issue-size --cycles 2 --expect-db ipodhan_staging` | exit 0 | staging |
 

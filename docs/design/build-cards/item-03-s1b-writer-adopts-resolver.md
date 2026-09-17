@@ -113,7 +113,7 @@ stored DOC value for one named IPO; then swapped back.
 |---|---|---|---|
 | S1b-1 | `cd scraper && npx vitest run tests/unit/services/data-consolidation-service.policy.test.ts tests/unit/config/switchover.test.ts` | exit 0 | local |
 | S1b-2 | `git grep -n "getSourcePriority(fieldName, existingSource)" HEAD -- scraper/src/services/data-consolidation-service.ts` | exit 1 | local |
-| S1b-3 | `git grep -c "sources.length - 1" HEAD -- scraper/src/services/data-consolidation-service.ts` | exit 1 | local |
+| S1b-3 | `git grep -c "sources.length - 1" HEAD -- scraper/src/services/data-consolidation-service.ts` (expect exit 1) **and** `git grep -c "sources.length - 1" HEAD -- scraper/src/config/field-priority-matrix.ts` (expect `1`) | writer: exit 1; matrix: `1` | local |
 | S1b-4 | `git grep -c "rules.sameSourceRefreshSources ?? rules.sources" HEAD -- scraper/src/config/field-priority-matrix.ts` | exit 1 | local |
 | S1b-5 | `node -e "const s=require('./scraper/config/switchover.json');console.log('flipped='+s.flipped.join(','));process.exit(s.flipped.includes('issue-size')?0:1)"` | line: `flipped=issue-size` | local |
 | S1b-6 | `cd scraper && npx vitest run -c vitest.integration.config.ts tests/integration/child-row-consolidation-financials.integration.test.ts` | exit 0 | test-db |

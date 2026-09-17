@@ -20,6 +20,25 @@ fresh_dir() {
   printf '%s' "$d"
 }
 
+# MINOR-7: case10 relies on its temp dir having no '.git' anywhere above
+# it (mktemp -d alone never guarantees that — it depends on TMPDIR not
+# itself living under a git checkout). Walk up to the filesystem root and
+# fail loudly if one is found, so the case guards the real "no-git tree"
+# shape instead of silently assuming it.
+assert_no_git_above() {
+  local dir="$1"
+  dir="$(cd "$dir" && pwd)"
+  while :; do
+    if [ -e "$dir/.git" ]; then
+      echo "PREMISE VIOLATION: found $dir/.git — case10's no-git-tree assumption is false in this environment" >&2
+      return 1
+    fi
+    [ "$dir" = "/" ] && break
+    dir="$(dirname "$dir")"
+  done
+  return 0
+}
+
 # --------------------------------------------------------------- fixture repo
 # A tiny throwaway git repo standing in for the real IPODhan repo/origin.
 # It has its own "origin/main" branch (a local ref, not a network remote —
@@ -409,6 +428,312 @@ run_deploy() {
   fi
 }
 
+# ---------------------------------------------------------------- case 10
+# Deployed-shape run: the script must complete a real config-only deploy
+# when it lives inside a directory tree with NO .git anywhere up to the
+# filesystem root (the actual deployed shape — a release dir under
+# /var/www/ipodhan/current-staging/scripts/ops/, #748). DEPLOY_CONFIG_REPO
+# points the script's git operations at a fixture repo instead of the
+# no-git tree it is physically copied into.
+{
+  REPO="$(build_fixture_repo)"
+  ROOT="$(fresh_dir)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+
+  # A standalone, git-free copy of the script tree, several directories
+  # below a filesystem root that has no .git anywhere above it — this is
+  # what scripts/ops/deploy-config.sh's own default REPO_ROOT computation
+  # ($SCRIPT_DIR/../..) resolves to on a deployed release, and why it
+  # breaks: there is no .git up that chain at all.
+  NOGIT_ROOT="$(fresh_dir)"
+  NOGIT_SCRIPT_DIR="$NOGIT_ROOT/current-staging/scripts/ops"
+  mkdir -p "$NOGIT_SCRIPT_DIR"
+  cp "$DEPLOY_CONFIG" "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  chmod +x "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+
+  if assert_no_git_above "$NOGIT_ROOT"; then
+    pass "case10: premise holds — no .git anywhere above the no-git tree"
+  else
+    fail "case10: premise violated — a .git dir exists above the supposedly git-free tree"
+  fi
+
+  OUT="$(DEPLOY_CONFIG_REPO="$REPO" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$NOGIT_SCRIPT_DIR/deploy-config.sh" --root "$ROOT" \
+    --slot staging --sha "$SHA_V2" --reason "case10 deployed shape" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case10: deploy-config.sh run from a no-.git tree (with DEPLOY_CONFIG_REPO set) exits 0"
+  else
+    fail "case10: expected exit 0 from a no-.git tree, got $RC ($OUT)"
+  fi
+
+  if [ -f "$ROOT/shared/config/staging/field-manifest.json" ] && grep -q '"version":2' "$ROOT/shared/config/staging/field-manifest.json"; then
+    pass "case10: manifest deployed correctly from the no-.git tree"
+  else
+    fail "case10: manifest not deployed from the no-.git tree"
+  fi
+}
+
+# ---------------------------------------------------------------- case 11
+# Same no-.git tree, but DEPLOY_CONFIG_REPO is left UNSET: the script's own
+# default REPO_ROOT ($SCRIPT_DIR/../..) is a directory with no .git in it
+# or above it, so every git call in the script fails. The failure MUST
+# name DEPLOY_CONFIG_REPO and tell the operator what to set — not just
+# surface a raw git error, which gives the operator nothing to act on.
+{
+  NOGIT_ROOT="$(fresh_dir)"
+  NOGIT_SCRIPT_DIR="$NOGIT_ROOT/current-staging/scripts/ops"
+  mkdir -p "$NOGIT_SCRIPT_DIR"
+  cp "$DEPLOY_CONFIG" "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  chmod +x "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  ROOT="$(fresh_dir)"
+
+  # Deliberately unset DEPLOY_CONFIG_REPO (env -u belt-and-braces in case a
+  # caller's shell exported it earlier in this suite).
+  OUT="$(env -u DEPLOY_CONFIG_REPO DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$NOGIT_SCRIPT_DIR/deploy-config.sh" --root "$ROOT" \
+    --slot staging --sha "deadbeef" --reason "case11 no repo override" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -ne 0 ]; then
+    pass "case11: no-.git tree with DEPLOY_CONFIG_REPO unset is refused, not silently mis-resolved"
+  else
+    fail "case11: expected non-zero exit with DEPLOY_CONFIG_REPO unset from a no-.git tree, got 0"
+  fi
+
+  if printf '%s' "$OUT" | grep -q "DEPLOY_CONFIG_REPO"; then
+    pass "case11: refusal names DEPLOY_CONFIG_REPO so the operator knows what to set"
+  else
+    fail "case11: refusal did not name DEPLOY_CONFIG_REPO ($OUT)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 12
+# The committed script must carry the executable bit in git itself — a
+# release is a 'git archive | tar -x' export (scripts/deploy-linux.sh
+# step 4) which faithfully reproduces the committed mode, so a 100644 blob
+# ships non-executable on every release regardless of any chmod done on
+# the source checkout (#748's second, unnamed defect).
+{
+  MODE="$(cd "$SCRIPT_DIR/.." && git ls-tree HEAD -- ops/deploy-config.sh 2>/dev/null | awk '{print $1}')"
+  if [ -z "$MODE" ]; then
+    # MINOR-5: not running inside a git checkout (e.g. a release dir) —
+    # there is no committed mode to consult here. An on-disk '-x' check
+    # is NOT a substitute: a local 'chmod +x' (or core.fileMode=false)
+    # sets the filesystem bit independently of what git actually
+    # committed, so a tree committed 100644 could still pass this
+    # fallback. SKIP explicitly instead of asserting a weaker property —
+    # a skip is not counted as a PASS and does not mask the defect this
+    # case exists to catch.
+    echo "SKIP: case12: no git tree to check the committed mode (on-disk -x is not proof of committed mode)"
+  elif [ "$MODE" = "100755" ]; then
+    pass "case12: deploy-config.sh is committed with mode 100755 (executable) in git"
+  else
+    fail "case12: deploy-config.sh is committed with mode $MODE, not 100755 — git archive will ship it non-executable on every release"
+  fi
+}
+
+
+# ---------------------------------------------------------------- case 13
+# MAJOR-3: a bare repo, and a directory INSIDE a .git dir, both make
+# 'git rev-parse --is-inside-work-tree' PRINT "false" but still EXIT 0 —
+# an exit-code-only guard lets both slip past the repo-root guard into
+# raw git errors further down instead of being refused here with a clear
+# message.
+{
+  BARE_REPO="$(fresh_dir)/bare.git"
+  git init -q --bare "$BARE_REPO" >/dev/null 2>&1
+  ROOT="$(fresh_dir)"
+
+  OUT="$(DEPLOY_CONFIG_REPO="$BARE_REPO" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "deadbeef" --reason "case13 bare repo" 2>&1)"
+  RC=$?
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root"; then
+    pass "case13: a bare repo as DEPLOY_CONFIG_REPO is refused by the repo-root guard"
+  else
+    fail "case13: expected a repo-root refusal for a bare repo, got rc=$RC ($OUT)"
+  fi
+}
+
+{
+  REPO="$(build_fixture_repo)"
+  GIT_DIR_PATH="$REPO/.git"
+  ROOT="$(fresh_dir)"
+
+  OUT="$(DEPLOY_CONFIG_REPO="$GIT_DIR_PATH" DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$DEPLOY_CONFIG" --root "$ROOT" \
+    --slot staging --sha "deadbeef" --reason "case13b .git dir" 2>&1)"
+  RC=$?
+  if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -q "repo-root"; then
+    pass "case13: a .git directory as DEPLOY_CONFIG_REPO is refused by the repo-root guard"
+  else
+    fail "case13: expected a repo-root refusal for a .git dir, got rc=$RC ($OUT)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 14
+# MAJOR-4: a root-owned checkout hit by a non-root invoker triggers git's
+# own 'dubious ownership' safe.directory refusal (exit 128) — the fatal
+# message must show git's actual words, not just the generic
+# DEPLOY_CONFIG_REPO advice the operator has already followed.
+#
+# round 2 asserted this with GIT_TEST_ASSUME_DIFFERENT_OWNER=1, which
+# fakes the refusal only on a SID-based ownership check (Windows git).
+# On the Linux CI runner (POSIX uid check, git 2.55.0) the fixture is
+# owned by the invoking uid, so the env var is simply inert: the script
+# runs past the repo-root guard and dies later at lineage, and the
+# asserted text never appears (CI: 'FAIL: case14 ... got rc=1 ...
+# FATAL: lineage: deadbeef is not an ancestor of origin/main'). That is a
+# vacuous assertion, not a broken guard — round 1 and round 2 both made
+# this mistake (case10's premise-assertion idiom exists for exactly this
+# reason and was not applied here).
+#
+# Fix: stand in for the real-world condition (a root-owned
+# /var/www/ipodhan/repo hit by a non-root invoker) with a stub 'git'
+# ahead of PATH on 'rev-parse --is-inside-work-tree' only, printing git's
+# own real refusal text and exiting 128 — deterministic on every
+# platform, git version and uid, because it does not depend on the OS's
+# ownership-check mechanism at all. Every other git subcommand passes
+# through to the real git so the rest of the script (log(), fatal(), the
+# parts that run BEFORE the probe) is unaffected.
+{
+  REPO="$(build_fixture_repo)"
+  ROOT="$(fresh_dir)"
+
+  STUB_DIR="$(fresh_dir)"
+  REAL_GIT="$(command -v git)"
+  cat > "$STUB_DIR/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "rev-parse" ] && [ "\$2" = "--is-inside-work-tree" ]; then
+  echo "fatal: detected dubious ownership in repository at '\$PWD'" >&2
+  exit 128
+fi
+exec "$REAL_GIT" "\$@"
+STUBEOF
+  chmod +x "$STUB_DIR/git"
+
+  # Premise: the stub actually shadows the real git for this probe,
+  # case10-style — assert it before trusting the outcome, so an inert
+  # stub (wrong PATH order, non-executable, wrong git resolved) is loud
+  # as a SKIP instead of masquerading as a guard defect either way.
+  STUB_CHECK_OUT="$(PATH="$STUB_DIR:$PATH" git rev-parse --is-inside-work-tree 2>&1)"
+  STUB_CHECK_RC=$?
+  if [ "$STUB_CHECK_RC" -eq 128 ] && printf '%s' "$STUB_CHECK_OUT" | grep -qi "dubious ownership"; then
+    OUT="$(PATH="$STUB_DIR:$PATH" DEPLOY_CONFIG_REPO="$REPO" \
+      DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+      DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+      bash "$DEPLOY_CONFIG" --root "$ROOT" \
+      --slot staging --sha "deadbeef" --reason "case14 dubious ownership" 2>&1)"
+    RC=$?
+    if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qi "dubious ownership"; then
+      pass "case14: dubious-ownership refusal shows git's own cause, not only generic advice"
+    else
+      fail "case14: expected 'dubious ownership' in the refusal text, got rc=$RC ($OUT)"
+    fi
+  else
+    echo "SKIP: case14: premise violated — the stub git did not shadow the real git (rc=$STUB_CHECK_RC, out=$STUB_CHECK_OUT)"
+  fi
+}
+
+# ---------------------------------------------------------------- case 14b
+# Generic form of case14's property: ANY probe result that is not exactly
+# "true" on stdout, together with non-empty stderr, must end up verbatim
+# inside the repo-root fatal — not just the one 'dubious ownership'
+# string. This is the case that would also have caught round 1's guard
+# (exit-code-only, ignored stderr entirely): it exercises several
+# different stub outcomes, not one hand-picked message.
+{
+  for VARIANT in \
+    "128:fatal: detected dubious ownership in repository at '/fixture'" \
+    "1:error: not a git repository (or any of the parent directories): .git" \
+    "128:fatal: unsafe repository ('/fixture' is owned by someone else)"
+  do
+    STUB_RC="${VARIANT%%:*}"
+    STUB_MSG="${VARIANT#*:}"
+
+    REPO="$(build_fixture_repo)"
+    ROOT="$(fresh_dir)"
+    STUB_DIR="$(fresh_dir)"
+    REAL_GIT="$(command -v git)"
+    cat > "$STUB_DIR/git" << STUBEOF
+#!/usr/bin/env bash
+if [ "\$1" = "rev-parse" ] && [ "\$2" = "--is-inside-work-tree" ]; then
+  echo "$STUB_MSG" >&2
+  exit $STUB_RC
+fi
+exec "$REAL_GIT" "\$@"
+STUBEOF
+    chmod +x "$STUB_DIR/git"
+
+    STUB_CHECK_OUT="$(PATH="$STUB_DIR:$PATH" git rev-parse --is-inside-work-tree 2>&1)"
+    STUB_CHECK_RC=$?
+    if [ "$STUB_CHECK_RC" -eq "$STUB_RC" ] && [ "$STUB_CHECK_OUT" = "$STUB_MSG" ]; then
+      OUT="$(PATH="$STUB_DIR:$PATH" DEPLOY_CONFIG_REPO="$REPO" \
+        DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+        DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+        bash "$DEPLOY_CONFIG" --root "$ROOT" \
+        --slot staging --sha "deadbeef" --reason "case14b generic probe failure" 2>&1)"
+      RC=$?
+      if [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF "$STUB_MSG"; then
+        pass "case14b: probe failure (rc=$STUB_RC) '$STUB_MSG' reaches the repo-root fatal verbatim"
+      else
+        fail "case14b: probe failure (rc=$STUB_RC) '$STUB_MSG' did not reach the fatal (rc=$RC, out=$OUT)"
+      fi
+    else
+      echo "SKIP: case14b: premise violated for variant rc=$STUB_RC — stub did not shadow real git (got rc=$STUB_CHECK_RC, out=$STUB_CHECK_OUT)"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------- case 15
+# CRITICAL-1/2: the documented on-box command (no DEPLOY_CONFIG_REPO set)
+# must SUCCEED when the script runs from a no-.git release tree and a
+# real work tree exists at the server-default path — this is the
+# fallback chain's whole point. SERVER_REPO_DEFAULT is pointed at a
+# fixture via DEPLOY_CONFIG_SERVER_REPO_DEFAULT so this does not touch
+# /var/www.
+{
+  REPO="$(build_fixture_repo)"
+  SHA_V2="$(commit_v2_on_main "$REPO")"
+  ROOT="$(fresh_dir)"
+
+  NOGIT_ROOT="$(fresh_dir)"
+  NOGIT_SCRIPT_DIR="$NOGIT_ROOT/current-staging/scripts/ops"
+  mkdir -p "$NOGIT_SCRIPT_DIR"
+  cp "$DEPLOY_CONFIG" "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+  chmod +x "$NOGIT_SCRIPT_DIR/deploy-config.sh"
+
+  OUT="$(env -u DEPLOY_CONFIG_REPO DEPLOY_CONFIG_SERVER_REPO_DEFAULT="$REPO" \
+    DEPLOY_CONFIG_LINEAGE_SKIP_FETCH=1 \
+    DEPLOY_CONFIG_STATE_DIR="$(fresh_dir)" \
+    bash "$NOGIT_SCRIPT_DIR/deploy-config.sh" --root "$ROOT" \
+    --slot staging --sha "$SHA_V2" --reason "case15 server default fallback" 2>&1)"
+  RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    pass "case15: documented command with no DEPLOY_CONFIG_REPO succeeds via the server-default fallback"
+  else
+    fail "case15: expected exit 0 via server-default fallback, got $RC ($OUT)"
+  fi
+
+  if [ -f "$ROOT/shared/config/staging/field-manifest.json" ] && grep -q '"version":2' "$ROOT/shared/config/staging/field-manifest.json"; then
+    pass "case15: manifest deployed correctly via the server-default fallback"
+  else
+    fail "case15: manifest not deployed via the server-default fallback"
+  fi
+
+  if printf '%s' "$OUT" | grep -q "server default"; then
+    pass "case15: log names which repo-root source was chosen (server default)"
+  else
+    fail "case15: expected a 'server default' log line naming the chosen source ($OUT)"
+  fi
+}
 echo "---"
 if [ "$FAILED" -eq 0 ]; then
   echo "ALL PASS"
