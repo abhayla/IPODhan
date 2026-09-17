@@ -49,6 +49,16 @@ Additive enum widening only. Postgres 16: `ADD VALUE IF NOT EXISTS` runs inside 
 the new values are usable from the next transaction (nothing in the same migration uses them). No table rewrite,
 no lock beyond the type.
 
+## Interfaces
+
+```
+-- web/drizzle/migrations/20260917101006_clammy_titania.sql (additive; precedent 0010)
+ALTER TYPE "public"."scraper_source" ADD VALUE IF NOT EXISTS 'INVESTORGAIN_GMP';
+ALTER TYPE "public"."scraper_source" ADD VALUE IF NOT EXISTS 'REG';
+-- after: enum_range(null::scraper_source) = ADMIN,DRHP,NSE,BSE,API_FALLBACK,MONEYCONTROL,CHITTORGARH,INVESTORGAIN_GMP,REG
+-- TS: ScraperSource (db/types.ts) == ScraperSource (field-priority-matrix.ts) == ScraperSourceValue (both repositories) == the pgEnum array
+```
+
 ## Feature flag
 
 None. No code path writes `REG`/`INVESTORGAIN_GMP` into these columns until S1b/S1c; this slice only makes the
