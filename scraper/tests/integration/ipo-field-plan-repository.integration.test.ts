@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { sql, inArray, eq } from 'drizzle-orm';
+import { sql, inArray, eq, and } from 'drizzle-orm';
 // Relative imports, NOT the `@ipodhan/shared` alias -- a worktree's
 // node_modules junction can resolve the alias back to the PRIMARY checkout
 // (see ipo-field-plan-row-key-unique.integration.test.ts for the same guard).
@@ -11,6 +11,9 @@ import {
   IpoFieldPlanRepository,
   FIELD_PLAN_CLAIM_STALE_MINUTES,
 } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
+import { resolveFieldSourcePolicy, policyOriginString } from '../../src/config/field-source-policy';
+import { resolveIpoTypeKey } from '../../src/services/field-plan-generator';
+import { loadFieldManifest } from '../../src/config/field-manifest-loader';
 
 /**
  * Item 5 slice s3 -- the repository that claims a due plan row and writes an
@@ -784,6 +787,182 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(second!.id).toBe(id);
     expect(second!.claimToken).not.toBe(first!.claimToken);
     expect((await readRow(id)).attempts).toBe(0);
+  });
+
+  // ------------------------------------------------ item 3 slice S2 -------
+  // Re-ranking non-terminal rows to the current manifest version, and
+  // planning the SME rows the version-1 manifest never planned. FAILING
+  // FIRST: `listBelowVersion` / `updateRanksForVersion` did not exist before
+  // this slice — this block is red by absence until they are added.
+
+  describe('S2 -- listBelowVersion / updateRanksForVersion (manifest reconciliation)', () => {
+    const manifest = loadFieldManifest();
+    const CURRENT_VERSION = manifest.version;
+
+    it('a version-1 row (DOC, BSE, null) for face_value becomes (DOC, CHITTORGARH, null) at the current version', async () => {
+      // face_value ranks SME_NSE as [DOC, CHITTORGARH] (no BSE) — an SME-on-NSE
+      // IPO with a stale BSE rank2 is exactly the manifest-drift class S2 fixes.
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'BSE',
+        rank3Source: null,
+        manifestVersion: 1,
+        state: 'PENDING',
+      });
+      await db
+        .update(schema.ipos)
+        .set({ segment: 'SME', listingExchanges: ['NSE'] })
+        .where(eq(schema.ipos.id, IPO_ID));
+
+      const stale = await repo.listBelowVersion(CURRENT_VERSION);
+      const row = stale.find((r) => r.id === id);
+      expect(row).toBeDefined();
+      expect(row!.rank1Source).toBe('DOC');
+      expect(row!.rank2Source).toBe('BSE');
+
+      const ipoType = resolveIpoTypeKey({ segment: 'SME', listingExchanges: ['NSE'] });
+      expect(ipoType).toBe('SME_NSE');
+      const policy = resolveFieldSourcePolicy(
+        { table: 'ipo_details', column: 'face_value', ipoType },
+        { manifest }
+      );
+      expect(policy.ranks).toEqual(['DOC', 'CHITTORGARH']);
+
+      const { updated } = await repo.updateRanksForVersion([
+        {
+          id,
+          rank1Source: policy.ranks[0] ?? null,
+          rank2Source: policy.ranks[1] ?? null,
+          rank3Source: policy.ranks[2] ?? null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: policyOriginString(policy.origin),
+        },
+      ]);
+      expect(updated).toBe(1);
+
+      const persisted = await readRow(id);
+      expect(persisted.rank1Source).toBe('DOC');
+      expect(persisted.rank2Source).toBe('CHITTORGARH');
+      expect(persisted.rank3Source).toBeNull();
+      expect(persisted.manifestVersion).toBe(CURRENT_VERSION);
+      expect(persisted.policyOrigin).toBe(`registry:${CURRENT_VERSION}`);
+
+      // Reverted so it does not leak into other tests in this file that
+      // assume the fixture IPO is plain MAINBOARD.
+      await db
+        .update(schema.ipos)
+        .set({ segment: null, listingExchanges: null })
+        .where(eq(schema.ipos.id, IPO_ID));
+    });
+
+    it('a SUPPLIED row is NEVER touched, even when it is below the current version', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'BSE',
+        rank3Source: null,
+        manifestVersion: 1,
+        state: 'SUPPLIED',
+        chosenSource: 'BSE',
+      });
+
+      const stale = await repo.listBelowVersion(CURRENT_VERSION);
+      expect(stale.find((r) => r.id === id)).toBeUndefined();
+
+      // Even a caller that (wrongly) tries to update a SUPPLIED row's id is
+      // refused by the WHERE clause -- state <> 'SUPPLIED' is enforced in the
+      // SQL itself, not only by what listBelowVersion returns.
+      const { updated } = await repo.updateRanksForVersion([
+        {
+          id,
+          rank1Source: 'DOC',
+          rank2Source: 'CHITTORGARH',
+          rank3Source: null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: `registry:${CURRENT_VERSION}`,
+        },
+      ]);
+      expect(updated).toBe(0);
+
+      const persisted = await readRow(id);
+      expect(persisted.rank1Source).toBe('DOC');
+      expect(persisted.rank2Source).toBe('BSE');
+      expect(persisted.manifestVersion).toBe(1);
+      expect(persisted.state).toBe('SUPPLIED');
+    });
+
+    it('a row already AT the current version is not returned by listBelowVersion', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        manifestVersion: CURRENT_VERSION,
+        state: 'PENDING',
+      });
+      const stale = await repo.listBelowVersion(CURRENT_VERSION);
+      expect(stale.find((r) => r.id === id)).toBeUndefined();
+    });
+
+    it('a non-SUPPLIED, non-PENDING row (e.g. EXHAUSTED) below the current version IS in scope', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'BSE',
+        rank3Source: null,
+        manifestVersion: 1,
+        state: 'EXHAUSTED',
+      });
+      const stale = await repo.listBelowVersion(CURRENT_VERSION);
+      expect(stale.find((r) => r.id === id)).toBeDefined();
+    });
+
+    it('an SME IPO gains its subscriptions.* rows via upsertGeneratedRows (the rows the version-1 manifest never planned)', async () => {
+      await db
+        .update(schema.ipos)
+        .set({ segment: 'SME', listingExchanges: ['BSE'] })
+        .where(eq(schema.ipos.id, IPO_ID));
+
+      const before = await db
+        .select()
+        .from(schema.ipoFieldPlan)
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, 'subscriptions')));
+      expect(before.length).toBe(0);
+
+      const ipoType = resolveIpoTypeKey({ segment: 'SME', listingExchanges: ['BSE'] });
+      expect(ipoType).toBe('SME_BSE');
+      const policy = resolveFieldSourcePolicy(
+        { table: 'subscriptions', column: 'total_subscription', ipoType },
+        { manifest }
+      );
+      expect(policy.ranks).toEqual(['BSE', 'CHITTORGARH']);
+
+      const { inserted } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'subscriptions',
+          rowKey: '',
+          fieldName: 'total_subscription',
+          rank1Source: policy.ranks[0] ?? null,
+          rank2Source: policy.ranks[1] ?? null,
+          rank3Source: policy.ranks[2] ?? null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: policyOriginString(policy.origin),
+        },
+      ]);
+      expect(inserted).toBe(1);
+
+      const after = await db
+        .select()
+        .from(schema.ipoFieldPlan)
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.tableName, 'subscriptions')));
+      expect(after.length).toBe(1);
+      expect(after[0].rank1Source).toBe('BSE');
+      expect(after[0].rank2Source).toBe('CHITTORGARH');
+
+      await db
+        .update(schema.ipos)
+        .set({ segment: null, listingExchanges: null })
+        .where(eq(schema.ipos.id, IPO_ID));
+    });
   });
 
 });

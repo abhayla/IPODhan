@@ -41,6 +41,8 @@ export type {
   ClaimNextDueFieldParams,
   GeneratedFieldPlanRow,
   UpsertGeneratedRowsResult,
+  PlanRowBelowVersion,
+  PlanRowRankUpdate,
 } from './ipo-field-plan-repository';
 export type {
   IDocumentFetchStateStore,

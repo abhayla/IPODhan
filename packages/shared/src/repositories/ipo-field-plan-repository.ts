@@ -205,6 +205,40 @@ export interface UpsertGeneratedRowsResult {
   inserted: number;
 }
 
+/**
+ * Item 3 slice S2 — one non-terminal, stale-version row, joined with the
+ * `ipos` identity fields a repair tool needs to (a) print identities, never a
+ * bare count, and (b) resolve the current policy for that IPO's type without
+ * a second query per row.
+ */
+export interface PlanRowBelowVersion {
+  id: string;
+  ipoId: string;
+  tableName: string;
+  rowKey: string;
+  fieldName: string;
+  rank1Source: string | null;
+  rank2Source: string | null;
+  rank3Source: string | null;
+  state: FieldPlanState;
+  manifestVersion: number;
+  policyOrigin: string | null;
+  ipoSlug: string | null;
+  ipoName: string | null;
+  ipoSegment: 'MAINBOARD' | 'SME' | null;
+  ipoListingExchanges: ('NSE' | 'BSE')[] | null;
+}
+
+/** One row's new ranks, resolved by the caller from the current policy. */
+export interface PlanRowRankUpdate {
+  id: string;
+  rank1Source: string | null;
+  rank2Source: string | null;
+  rank3Source: string | null;
+  manifestVersion: number;
+  policyOrigin: string;
+}
+
 export class IpoFieldPlanRepository extends BaseRepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
     super(db, redis);
@@ -255,6 +289,99 @@ export class IpoFieldPlanRepository extends BaseRepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to upsert generated field plan rows${rows[0] ? ` for IPO ${rows[0].ipoId}` : ''}`,
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
+   * Item 3 slice S2 — the rows a manifest-version reconciliation must look at:
+   * every row whose `manifest_version` is older than the current registry
+   * version AND whose state is non-terminal (`state <> 'SUPPLIED'`). A
+   * SUPPLIED row already answered the ask; re-ranking it would let a manifest
+   * bump silently discard a value that was already delivered, which is a
+   * regression the tool must never cause (card DoD: "SUPPLIED rows are never
+   * touched"). The other five states (PENDING, NOT_PRINTED,
+   * NOT_AVAILABLE_YET, CHECK_FAILED, EXHAUSTED) are all still in scope: each
+   * one is an ask that has not been definitively answered by SUPPLYING a
+   * value, so a stale rank list on any of them can walk the wrong sources on
+   * the next attempt.
+   *
+   * Joined to `ipos` for the identity fields the tool prints (slug, name,
+   * segment, listing_exchanges) — signal-ownership R1: a repair prints
+   * identities, never a bare count.
+   */
+  async listBelowVersion(currentVersion: number): Promise<PlanRowBelowVersion[]> {
+    try {
+      const result = await this.db.execute(sql`
+        SELECT p.id, p.ipo_id, p.table_name, p.row_key, p.field_name,
+               p.rank1_source, p.rank2_source, p.rank3_source,
+               p.state, p.manifest_version, p.policy_origin,
+               i.slug AS ipo_slug, i.company_name AS ipo_name,
+               i.segment AS ipo_segment, i.listing_exchanges AS ipo_listing_exchanges
+          FROM ipo_field_plan p
+          JOIN ipos i ON i.id = p.ipo_id
+         WHERE p.manifest_version < ${currentVersion}
+           AND p.state <> 'SUPPLIED'
+         ORDER BY i.slug, p.table_name, p.field_name, p.row_key
+      `);
+      const rows = (result as unknown as { rows: Record<string, unknown>[] }).rows ?? [];
+      return rows.map(mapBelowVersionRow);
+    } catch (error) {
+      throw new DatabaseError(
+        'Failed to list ipo_field_plan rows below the current manifest version',
+        undefined,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
+   * Item 3 slice S2 — re-rank a batch of non-terminal rows to the current
+   * policy in ONE statement (a `VALUES` list joined back onto the table),
+   * never a per-row round trip. Every row is matched by its primary key
+   * (`id`), so a row that changed state between `listBelowVersion` reading it
+   * and this call running (e.g. a live walk just recorded SUPPLIED) is
+   * re-guarded here too: the `WHERE` clause repeats `state <> 'SUPPLIED'` so
+   * a race can never overwrite a rank list on a row that became SUPPLIED in
+   * between the read and the write.
+   *
+   * `policy_origin` is written from the SAME resolved policy that produced
+   * the new ranks (never re-derived here) so the row's provenance always
+   * matches its actual rank1/2/3.
+   */
+  async updateRanksForVersion(rows: PlanRowRankUpdate[]): Promise<{ updated: number }> {
+    if (rows.length === 0) return { updated: 0 };
+
+    try {
+      const values = sql.join(
+        rows.map(
+          (r) =>
+            sql`(${r.id}::uuid, ${r.rank1Source}, ${r.rank2Source}, ${r.rank3Source}, ${r.manifestVersion}, ${r.policyOrigin})`
+        ),
+        sql`, `
+      );
+
+      const result = await this.db.execute(sql`
+        UPDATE ipo_field_plan AS p
+           SET rank1_source = v.rank1_source,
+               rank2_source = v.rank2_source,
+               rank3_source = v.rank3_source,
+               manifest_version = v.manifest_version::int,
+               policy_origin = v.policy_origin,
+               updated_at = now()
+          FROM (VALUES ${values}) AS v(id, rank1_source, rank2_source, rank3_source, manifest_version, policy_origin)
+         WHERE p.id = v.id::uuid
+           AND p.state <> 'SUPPLIED'
+        RETURNING p.id
+      `);
+
+      const updated = ((result as unknown as { rows: unknown[] }).rows ?? []).length;
+      return { updated };
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to update ipo_field_plan ranks for version${rows[0] ? ` (first row ${rows[0].id})` : ''}`,
         undefined,
         error instanceof Error ? error : undefined
       );
@@ -452,6 +579,27 @@ export class IpoFieldPlanRepository extends BaseRepository {
       );
     }
   }
+}
+
+/** Raw pg row (`listBelowVersion`'s join, snake_case) -> the camelCase row callers read. */
+function mapBelowVersionRow(raw: Record<string, unknown>): PlanRowBelowVersion {
+  return {
+    id: raw.id as string,
+    ipoId: raw.ipo_id as string,
+    tableName: raw.table_name as string,
+    rowKey: raw.row_key as string,
+    fieldName: raw.field_name as string,
+    rank1Source: (raw.rank1_source as string) ?? null,
+    rank2Source: (raw.rank2_source as string) ?? null,
+    rank3Source: (raw.rank3_source as string) ?? null,
+    state: raw.state as FieldPlanState,
+    manifestVersion: raw.manifest_version as number,
+    policyOrigin: (raw.policy_origin as string) ?? null,
+    ipoSlug: (raw.ipo_slug as string) ?? null,
+    ipoName: (raw.ipo_name as string) ?? null,
+    ipoSegment: (raw.ipo_segment as 'MAINBOARD' | 'SME') ?? null,
+    ipoListingExchanges: (raw.ipo_listing_exchanges as ('NSE' | 'BSE')[]) ?? null,
+  };
 }
 
 /** Raw pg row (snake_case) -> the camelCase row the callers read. */
