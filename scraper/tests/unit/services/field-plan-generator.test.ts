@@ -54,6 +54,13 @@ describe('generateFieldPlan - over the real manifest', () => {
     expect(row!.ipoId).toBe('ipo-mb');
   });
 
+  it('stamps policyOrigin from the resolver (item 3 slice S1a)', () => {
+    const rows = generateFieldPlan(MAINBOARD_IPO, manifest);
+    const row = rowFor(rows, 'ipos', 'issue_size')!;
+    expect(row.policyOrigin).toBe(`registry:${manifest.version}`);
+    expect(rows.every((r) => r.policyOrigin === `registry:${manifest.version}`)).toBe(true);
+  });
+
   it('starts every row PENDING with zero attempts and nothing chosen', () => {
     const rows = generateFieldPlan(MAINBOARD_IPO, manifest);
     for (const r of rows) {

@@ -1701,6 +1701,7 @@ export async function runDocumentCycle(
                 rank2Source: r.rank2Source,
                 rank3Source: r.rank3Source,
                 manifestVersion: r.manifestVersion,
+                policyOrigin: r.policyOrigin,
               }))
             );
             fieldPlanTotals.ipos++;
