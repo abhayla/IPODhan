@@ -99,12 +99,39 @@ try {
   const SUMMARY_OPEN = '<!-- generated:evidence-summary';
   const SUMMARY_CLOSE = '<!-- /generated:evidence-summary -->';
 
+  // ---------------------------------------------------------------------------
+  // Mainboard source depth (OD-18, S0a). Was hand-typed prose (97/22/71/50) against the spec's real
+  // 50/72/68/50 — no `<!-- generated:` marker, so D2 never had a block to check it against. Rendered
+  // from STATS().depth, the same numbers D21 asserts, so this table can never drift from the spec
+  // silently again.
+  // ---------------------------------------------------------------------------
+  const depth = s.depth;
+  const depthTable = [
+    '| | Fields |',
+    '|---|---:|',
+    `| Three sources | **${depth.three}** |`,
+    `| Two sources, reason stated (§A.3) | ${depth.two} |`,
+    `| One source, reason stated (§A.3) | ${depth.one} |`,
+    `| No source — computed (class C) or written by our own pipeline (class I) | ${depth.none} |`,
+    `| **Total** | **${depth.three + depth.two + depth.one + depth.none}** |`,
+  ].join('\n');
+  const SD_OPEN = '<!-- generated:source-depth';
+  const SD_CLOSE = '<!-- /generated:source-depth -->';
+
   // Is the generated evidence summary the one the probe would produce right now?
   const so = lines.findIndex((l) => l.startsWith(SUMMARY_OPEN));
   const sc = lines.findIndex((l) => l.trim() === SUMMARY_CLOSE);
   if (summary !== null && so >= 0 && sc > so &&
       lines.slice(so + 1, sc).join('\n').trim() !== summary.trim()) {
     drift.push('the A.0 evidence summary differs from the probe output');
+  }
+
+  // Is the generated source-depth table the one STATS().depth would produce right now?
+  const sdo = lines.findIndex((l) => l.startsWith(SD_OPEN));
+  const sdc = lines.findIndex((l) => l.trim() === SD_CLOSE);
+  if (sdo >= 0 && sdc > sdo &&
+      lines.slice(sdo + 1, sdc).join('\n').trim() !== depthTable.trim()) {
+    drift.push('the mainboard source-depth table differs from STATS().depth');
   }
 
   if (write) {
@@ -117,6 +144,13 @@ try {
     out = out.slice(0, a1.start).concat(want.A1, out.slice(a1.end));
     if (summary !== null && so >= 0 && sc > so) {
       out = out.slice(0, so + 1).concat(summary.split('\n'), out.slice(sc));
+    }
+    // Recompute the source-depth block's position AFTER the summary splice above (it can move line
+    // offsets), the same reasoning that already governs the A2/A1-then-summary ordering.
+    const sdo2 = out.findIndex((l) => l.startsWith(SD_OPEN));
+    const sdc2 = out.findIndex((l) => l.trim() === SD_CLOSE);
+    if (sdo2 >= 0 && sdc2 > sdo2) {
+      out = out.slice(0, sdo2 + 1).concat(depthTable.split('\n'), out.slice(sdc2));
     }
     fs.writeFileSync(DESIGN, out.join(eol));
     console.log(drift.length ? `written: ${drift.join(' · ')}` : 'written: no change (already in sync)');

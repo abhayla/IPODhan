@@ -391,6 +391,37 @@ const CASES = [
     gate: designGate,
     expect: /^\[FAIL\] D19\b/m,
   },
+  {
+    // drift: re-insert the retired source into one authored rank — the exact shape OD-3 left behind
+    // before S0a. expect: D21 names the field.
+    id: 'D21 retired source — re-insert MC into one authored rank',
+    files: ['docs/design/field-source-resolution.spec.mjs'],
+    mutate() {
+      const p = 'docs/design/field-source-resolution.spec.mjs';
+      write(p, read(p).replace(
+        "add('ipos','sector','D',['DOC','CG'],",
+        "add('ipos','sector','D',['DOC','CG','MC'],"));
+    },
+    gate: designGate,
+    expect: /^\[FAIL\] D21\b/m,
+  },
+  {
+    // drift: blank one of the 29 ex-Moneycontrol notes — a field falls to two sources with no
+    // stated reason again. expect: D21 names the field.
+    id: 'D21 missing reason — blank one of the 29 ex-MC notes',
+    files: ['docs/design/field-source-resolution.spec.mjs'],
+    mutate() {
+      const p = 'docs/design/field-source-resolution.spec.mjs';
+      const s = read(p);
+      const marker = "add('ipos','sector','D',['DOC','CG'],{doc:'F1',note:";
+      const i = s.indexOf(marker);
+      if (i < 0) throw new Error('D21 mutation case: marker not found — did the note text change?');
+      const closeIdx = s.indexOf('});', i);
+      write(p, s.slice(0, i) + "add('ipos','sector','D',['DOC','CG'],{doc:'F1'" + s.slice(closeIdx));
+    },
+    gate: designGate,
+    expect: /^\[FAIL\] D21\b/m,
+  },
 ];
 
 try {

@@ -46,7 +46,7 @@ try {
   const findings = JSON.parse(fs.readFileSync(FINDINGS, 'utf8'));
 
   // --- D1: the appendix in the design still has one row per field in the spec ---
-  const { F, RESOLVE, EVIDENCE_FLOOR } = await import('file://' + SPEC.replace(/\\/g, '/'));
+  const { F, RESOLVE, EVIDENCE_FLOOR, STATS } = await import('file://' + SPEC.replace(/\\/g, '/'));
   const appendix = md.slice(md.indexOf('### A.1'));
   const rowFields = [...appendix.matchAll(/^\| \d+ \| `([a-z_]+\.[a-z_0-9]+)`/gm)].map((m) => m[1]);
   const specFields = F.map((f) => `${f.t}.${f.c}`);
@@ -715,6 +715,55 @@ try {
     } else {
       ok('D19', liveIds.length + ' design rules, every one claimed by a build card or declared unclaimed with a reason; zero orphans.');
     }
+  }
+
+  // --- D21: Moneycontrol out of the authored ranks; the ex-MC fields carry a reason; the
+  //     mainboard source-depth table is generated, not hand-typed ---
+  // WHY. OD-3 retired Moneycontrol on 2026-09-09 (`MC_SERVES = new Set([])`, so `resolve()` never
+  // emits it) but 38 `r` arrays in the spec still NAME it — the read-time filter hides the lie from
+  // Appendix A while the authored data stays false. And the design's "mainboard source depth" table
+  // (data-sourcing-pull-model.md, the paragraph after A.0) was hand-typed: 97/22/71/50 against the
+  // spec's real 50/72/68/50, with no `<!-- generated:` marker for D2 to catch it by.
+  const mcNamed = F.filter((f) => (f.r || []).includes('MC')).map((f) => `${f.t}.${f.c}`);
+  // The 29 fields the card names: fields that fall from three sources to two once MC is dropped,
+  // and that carried no reason before this slice (the other 9 of the 38 already had one).
+  const EX_MC_NEEDS_NOTE = [
+    'ipos.sector', 'ipos.company_description', 'ipos.objectives', 'ipo_details.company_description',
+    'financial_data.revenue_fy2022', 'financial_data.revenue_fy2023', 'financial_data.revenue_fy2024',
+    'financial_data.profit_fy2022', 'financial_data.profit_fy2023', 'financial_data.profit_fy2024',
+    'financial_data.net_worth', 'financial_data.eps', 'financial_data.roe',
+    'financial_data.debt_to_equity', 'financial_data.reserves_and_surplus',
+    'financial_data.total_assets', 'financial_data.total_borrowing',
+    'financial_data.promoter_holding_pre_issue', 'financial_data.promoter_holding_post_issue',
+    'financial_data.market_cap', 'financial_data.pre_ipo_eps', 'financial_data.post_ipo_eps',
+    'financial_data.ronw', 'financial_data.ebitda_fy2022', 'financial_data.ebitda_fy2023',
+    'financial_data.ebitda_fy2024', 'financial_data.total_income_fy2022',
+    'financial_data.total_income_fy2023', 'financial_data.total_income_fy2024',
+  ];
+  const byKey = new Map(F.map((f) => [`${f.t}.${f.c}`, f]));
+  const missingNote = EX_MC_NEEDS_NOTE.filter((k) => !(byKey.get(k) && byKey.get(k).o && byKey.get(k).o.note));
+  const depth = STATS().depth;
+  const SD_OPEN = '<!-- generated:source-depth';
+  const SD_CLOSE = '<!-- /generated:source-depth -->';
+  const sdo = md.indexOf(SD_OPEN);
+  const sdc = md.indexOf(SD_CLOSE);
+  const sdBlockMissing = sdo < 0 || sdc < 0 || sdc < sdo;
+  let sdMismatch = false;
+  if (!sdBlockMissing && depth) {
+    const block = md.slice(sdo, sdc);
+    const nums = { three: /Three sources \| \*?\*?(\d+)/, two: /Two sources, reason stated[^|]*\|\s*\*?\*?(\d+)/,
+      one: /One source, reason stated[^|]*\|\s*\*?\*?(\d+)/, none: /No source[^|]*\|\s*\*?\*?(\d+)/ };
+    for (const k of Object.keys(nums)) {
+      const m = block.match(nums[k]);
+      if (!m || Number(m[1]) !== depth[k]) sdMismatch = true;
+    }
+  }
+  if (mcNamed.length || missingNote.length || sdBlockMissing || sdMismatch) {
+    fail('D21', `${mcNamed.length} authored rank(s) still name a retired source; ${missingNote.length} field(s) fell below three sources with no reason; source-depth block ${sdBlockMissing ? 'absent' : sdMismatch ? 'drifted from STATS().depth' : 'ok'}` +
+      (mcNamed.length ? ` (MC in: ${mcNamed.slice(0, 5).join(', ')}${mcNamed.length > 5 ? ', …' : ''})` : '') +
+      (missingNote.length ? ` (no note: ${missingNote.slice(0, 5).join(', ')}${missingNote.length > 5 ? ', …' : ''})` : ''));
+  } else {
+    ok('D21', `0 authored rank(s) name a retired source; ${EX_MC_NEEDS_NOTE.length} ex-Moneycontrol field(s) carry a reason; source-depth block matches STATS().depth (${JSON.stringify(depth)}).`);
   }
 
 } catch (err) {
