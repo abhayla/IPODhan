@@ -103,17 +103,30 @@ describe('generateFieldPlan - over the real manifest', () => {
   });
 
   it('plans NO row for a field whose rank map has no entry for this IPO type', () => {
-    // Measured on the real manifest: subscriptions.* and listing_performance.listing_price
-    // declare rank.MAINBOARD only. field-manifest-schema.ts says MAINBOARD is the one required
-    // key and the loader does NOT default a missing key to []. A generator that silently fell
-    // back to MAINBOARD would plan NSE as rank 1 for an SME-on-BSE IPO - the wrong-segment bug.
-    const mainboard = generateFieldPlan(MAINBOARD_IPO, manifest);
-    expect(rowFor(mainboard, 'subscriptions', 'total_subscription')).toBeDefined();
+    // A field with no rank entry for this IPO type gets no plan row.
+    // field-manifest-schema.ts says MAINBOARD is the one required key and the loader does NOT
+    // default a missing key to []. A generator that silently fell back to MAINBOARD would plan
+    // NSE as rank 1 for an SME-on-BSE IPO - the wrong-segment bug. Built from a temp manifest
+    // (same idiom as 'generateFieldPlan - refusals' below) with ONE field declaring
+    // rank.MAINBOARD only, so this test does not depend on which real manifest fields happen to
+    // lack an SME entry (round-3 review: subscriptions/listing_performance are spec-correct in
+    // v2 and are not that fixture).
+    const mainboardOnly = {
+      ...manifest,
+      fields: {
+        'ipos.issue_size': {
+          ...manifest.fields['ipos.issue_size'],
+          rank: { MAINBOARD: ['DOC', 'CHITTORGARH'] },
+        },
+      },
+    } as unknown as typeof manifest;
+
+    const mainboard = generateFieldPlan(MAINBOARD_IPO, mainboardOnly);
+    expect(rowFor(mainboard, 'ipos', 'issue_size')).toBeDefined();
 
     for (const ipo of [SME_BSE_IPO, SME_NSE_IPO]) {
-      const rows = generateFieldPlan(ipo, manifest);
-      expect(rowFor(rows, 'subscriptions', 'total_subscription')).toBeUndefined();
-      expect(rowFor(rows, 'listing_performance', 'listing_price')).toBeUndefined();
+      const rows = generateFieldPlan(ipo, mainboardOnly);
+      expect(rowFor(rows, 'ipos', 'issue_size')).toBeUndefined();
     }
   });
 
