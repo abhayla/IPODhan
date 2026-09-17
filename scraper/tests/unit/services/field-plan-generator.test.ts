@@ -89,12 +89,15 @@ describe('generateFieldPlan - over the real manifest', () => {
   });
 
   it('resolves ranks from the IPO OWN type key, not from MAINBOARD', () => {
+    // Moneycontrol is retired (OD-3; field-manifest.json v2, PR #738) — the manifest's
+    // financial_statements.revenue rank arrays now have only 2 entries for every IPO
+    // type, so rank3Source resolves to null (field-plan-generator.ts: `ranks[2] ?? null`).
     for (const ipo of [MAINBOARD_IPO, SME_BSE_IPO, SME_NSE_IPO]) {
       const row = rowFor(generateFieldPlan(ipo, manifest), 'financial_statements', 'revenue')!;
       expect([row.rank1Source, row.rank2Source, row.rank3Source]).toEqual([
         'DOC',
         'CHITTORGARH',
-        'MONEYCONTROL',
+        null,
       ]);
     }
   });
