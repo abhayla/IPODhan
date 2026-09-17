@@ -1201,3 +1201,49 @@ test('(coverage floor) stays quiet (null) at or below the threshold', () => {
   assert.equal(computeOracleCoverageWarning({ liveCount: 0, matched: 0, unparseable: 0 }), null, 'no live IPOs tonight is not a coverage problem');
   assert.equal(computeOracleCoverageWarning({ liveCount: 10, matched: 8, unparseable: 0 }), null);
 });
+
+// ---- MAJOR-2 fix (S4 review round 2): the card's required pull_overrides floor test -----------
+// The card's Tests section required this file to carry a pull_overrides case, red on a planted
+// expired row. It had zero mentions of pull_overrides before this fix -- checkS_pullOverrides
+// (the SQL, the 42P01 PASS branch, record/notify wiring) was executed by no test; only the
+// pure helper checkOverrideRow was covered, and only in scripts/tests/pull-policy-checks.test.mjs.
+// This imports checkOverrideRow + validateOverrideRankSet from the SAME lib checkS_pullOverrides
+// itself imports (scripts/lib/pull-policy-checks.mjs, not scripts/audit-detection-floor.mjs's own
+// SQL wiring, which needs a live DB) so a weakened/deleted predicate fails here too.
+import { checkOverrideRow, validateOverrideRankSet } from '../lib/pull-policy-checks.mjs';
+
+const PULL_OVERRIDES_MANIFEST = {
+  fields: {
+    'ipos.issue_size': {
+      class: 'D',
+      rank: { MAINBOARD: ['DOC', 'CHITTORGARH'] },
+      capability: { DOC: { capable: true }, CHITTORGARH: { capable: true } },
+    },
+  },
+};
+
+test('(pull_overrides floor) FAILS on a planted row past expires_at with expired_at not set', () => {
+  const row = {
+    id: 'ov-stale', tableName: 'ipos', fieldName: 'issue_size', ipoId: null,
+    rank1Source: 'CHITTORGARH', rank2Source: null, rank3Source: null,
+    reason: 'valid override reason text here', expiresAt: new Date(Date.now() - 86400000).toISOString(),
+  };
+  const result = checkOverrideRow(row, new Date(), (c) =>
+    validateOverrideRankSet(PULL_OVERRIDES_MANIFEST, c.table, c.column, c.ranks)
+  );
+  assert.ok(result.violation !== null, 'expired-but-unflagged row must be a violation');
+  assert.equal(result.stillTimeActive, false);
+});
+
+test('(pull_overrides floor) PASSES a clean, still-active, manifest-valid row', () => {
+  const row = {
+    id: 'ov-clean', tableName: 'ipos', fieldName: 'issue_size', ipoId: null,
+    rank1Source: 'CHITTORGARH', rank2Source: null, rank3Source: null,
+    reason: 'valid override reason text here', expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const result = checkOverrideRow(row, new Date(), (c) =>
+    validateOverrideRankSet(PULL_OVERRIDES_MANIFEST, c.table, c.column, c.ranks)
+  );
+  assert.equal(result.violation, null);
+  assert.equal(result.stillTimeActive, true);
+});

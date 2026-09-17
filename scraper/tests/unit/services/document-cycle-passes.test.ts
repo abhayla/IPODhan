@@ -36,10 +36,22 @@ const dbInsertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue
 // (or did not call) the repository, independent of the vi.mock factory.
 const upsertGeneratedRowsMock = vi.fn().mockResolvedValue({ inserted: 0 });
 
+// CRITICAL-1 fix (S4 review round 2): document-cycle.ts now builds a FieldSourceOverridesRepository
+// once per cycle for the field-plan generate/walk paths -- it calls db.select()...where()...orderBy()
+// (listActiveFor/listActive). None of these unit tests exercise overrides, so the mock resolves to
+// an empty result set (matching the resolver's own "no active override" contract), never a DB call.
+const dbSelectChain = {
+  from: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+  orderBy: vi.fn().mockResolvedValue([]),
+};
+const dbSelectMock = vi.fn(() => dbSelectChain);
+
 vi.mock('@ipodhan/shared', () => ({
   db: {
     execute: (...args: unknown[]) => dbExecuteMock(...args),
     insert: (...args: unknown[]) => dbInsertMock(...args),
+    select: (...args: unknown[]) => dbSelectMock(...args),
   },
   getRedisClient: () => ({}),
   DocumentRepository: vi.fn().mockImplementation(() => ({

@@ -59,6 +59,27 @@ describe('resolveFieldSourcePolicyAsync -- S4 layer 2', () => {
     expect(policy.ranks).toEqual(['DOC']);
   });
 
+  // MAJOR-5 fix (S4 review round 2): the SAME-SCOPE tie was previously undefined (two active
+  // ipo-scoped rows both winning depending on nondeterministic setAt-tie ordering). The reader's
+  // contract (repository, MAJOR-5) is now `desc(setAt), desc(id)` -- deterministic given the same
+  // rows. The resolver's job is simply "trust the reader's order, take the first ipo-scoped row" --
+  // this test pins that the resolver does NOT re-sort or pick arbitrarily; it is stable given a
+  // fixed reader order, run twice.
+  it('a same-scope tie (two active ipo-scoped rows) resolves to the FIRST row the reader returns, deterministically, every call', async () => {
+    const reader = readerReturning([
+      { id: 'ov-second-set', ranks: ['DOC'], expiresAt: '2026-10-18T00:00:00.000Z', ipoScoped: true },
+      { id: 'ov-first-set', ranks: ['CHITTORGARH'], expiresAt: '2026-10-18T00:00:00.000Z', ipoScoped: true },
+    ]);
+    const query = { table: 'ipos', column: 'issue_size', ipoType: 'MAINBOARD', ipoId: 'some-ipo-id' } as const;
+
+    const first = await resolveFieldSourcePolicyAsync(query, { manifest, overrides: reader });
+    const second = await resolveFieldSourcePolicyAsync(query, { manifest, overrides: reader });
+
+    expect(first.origin).toEqual({ kind: 'override', id: 'ov-second-set', expiresAt: '2026-10-18T00:00:00.000Z' });
+    expect(second.origin).toEqual(first.origin);
+    expect(first.ranks).toEqual(['DOC']);
+  });
+
   it('an override never changes documentType/incapable/na -- those stay manifest-sourced', async () => {
     const reader = readerReturning([
       { id: 'ov-1', ranks: ['CHITTORGARH'], expiresAt: '2026-10-18T00:00:00.000Z', ipoScoped: false },

@@ -128,9 +128,11 @@ export async function resolveFieldSourcePolicyAsync(
   const active = await deps.overrides.resolve(query);
   if (active.length === 0) return registryPolicy;
 
-  // ipo-scoped beats global (S4 precedence rule); among ties, the reader's own ordering
-  // (newest `setAt` first, per the repository) decides — take the first ipo-scoped row if any,
-  // else the first global row.
+  // ipo-scoped beats global (S4 precedence rule); among ties (two active rows of the SAME scope,
+  // e.g. two ipo-scoped `set` calls for the same field in the same tick), the reader's own
+  // ordering decides deterministically — MAJOR-5 fix (S4 review round 2): the repository orders
+  // `desc(setAt), desc(id)`, so "first ipo-scoped row" / "first global row" is now the same row on
+  // every call given the same data, never a race between rows with an identical `setAt`.
   const winner = active.find((row) => row.ipoScoped) ?? active[0];
 
   const origin: PolicyOrigin = { kind: 'override', id: winner.id, expiresAt: winner.expiresAt };

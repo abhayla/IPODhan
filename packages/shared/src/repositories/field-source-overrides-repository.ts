@@ -44,6 +44,11 @@ export class FieldSourceOverridesRepository {
    * row over the global one itself (S4 precedence rule), so this returns BOTH candidates.
    * Returns [] (never throws) when the table does not exist — S4's single most important
    * safety property.
+   *
+   * MAJOR-5 fix (S4 review round 2): ordered `desc(setAt), desc(id)` — `setAt` alone is not a
+   * deterministic tiebreak for two `set` calls in the same tick (same-scope precedence was
+   * previously undefined for that case); `id` (a UUID, assigned once, never reused) makes the
+   * ORDER BY result the same on every call given the same rows, even when `setAt` ties.
    */
   async listActiveFor(tableName: string, fieldName: string, now: Date = new Date()): Promise<FieldSourceOverride[]> {
     try {
@@ -58,7 +63,7 @@ export class FieldSourceOverridesRepository {
             sql`${fieldSourceOverrides.expiresAt} > ${now.toISOString()}`
           )
         )
-        .orderBy(desc(fieldSourceOverrides.setAt));
+        .orderBy(desc(fieldSourceOverrides.setAt), desc(fieldSourceOverrides.id));
     } catch (err) {
       if (isMissingTableError(err)) {
         this.warnAbsentOnce('listActiveFor');
@@ -80,7 +85,7 @@ export class FieldSourceOverridesRepository {
             sql`${fieldSourceOverrides.expiresAt} > ${now.toISOString()}`
           )
         )
-        .orderBy(desc(fieldSourceOverrides.setAt));
+        .orderBy(desc(fieldSourceOverrides.setAt), desc(fieldSourceOverrides.id));
     } catch (err) {
       if (isMissingTableError(err)) {
         this.warnAbsentOnce('listActive');

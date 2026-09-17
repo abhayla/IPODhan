@@ -147,7 +147,11 @@ export function checkOverrideRow(row, now, validateCandidate) {
  * `validateOverrideCandidate` (capable-source + S-05 rules only -- reason length and duplicate-
  * rank checks are a CLI-input concern, not a re-validation-against-drift concern, so they are not
  * repeated here). Reads the manifest JSON directly, same reason as `lookupManifestRanks` above (no
- * TS import from a plain .mjs script) -- KNOWN DUPLICATION, same scoped risk.
+ * TS import from a plain .mjs script) -- KNOWN DUPLICATION, same scoped risk. MAJOR-3 fix (S4
+ * review round 2): pinned against divergence by `scripts/tests/pull-policy-checks.test.mjs`'s
+ * "validateOverrideCandidate and validateOverrideRankSet agree" cases, which import the REAL TS
+ * validator directly (Node 22 native TS stripping) and compare its verdict to this mirror's on the
+ * same candidates -- a future rule added to one but not the other fails that test.
  */
 const DOCUMENT_SOURCES = new Set(['DOC', 'DRHP', 'RHP', 'PROSPECTUS', 'CORRIGENDUM', 'PRICE_BAND_AD']);
 

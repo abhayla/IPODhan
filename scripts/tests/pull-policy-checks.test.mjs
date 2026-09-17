@@ -165,3 +165,50 @@ test('PULL-OVERRIDES FAILS an active row that ranks DOC on an E-1/class-T field 
 test('validateOverrideRankSet returns null for a capable, non-class-T ranking', () => {
   assert.equal(validateOverrideRankSet(REAL_MANIFEST_ISSUE_SIZE, 'ipos', 'issue_size', ['CHITTORGARH']), null);
 });
+
+// ---- MAJOR-3 fix (S4 review round 2): pin the KNOWN DUPLICATION in lockstep --------------------
+// `validateOverrideRankSet` (this file's .mjs mirror) and `validateOverrideCandidate` (the real TS
+// module the CLI uses) are two implementations by necessity (plain .mjs test scripts cannot import
+// scraper/src TS modules with capability/S-05 logic bundled with a manifest LOADER -- see this
+// file's own header). This test imports the REAL TS validator directly (Node 22's native TS
+// stripping, same pattern as scripts/tests/heading-hash-current.test.mjs) and asserts BOTH
+// validators agree on capable/incapable/S-05 outcomes for the same candidates -- so a future
+// divergence (one adds a rule the other doesn't) fails HERE, not silently in production.
+import { validateOverrideCandidate } from '../../scraper/src/config/field-source-override-validation.ts';
+
+const PARITY_MANIFEST = {
+  version: 1,
+  fields: {
+    'ipos.issue_size': {
+      class: 'D',
+      rank: { MAINBOARD: ['DOC', 'CHITTORGARH'] },
+      capability: { DOC: { capable: true }, CHITTORGARH: { capable: true }, BSE: { capable: false, reason: 'measured wrong' } },
+    },
+    'ipos.open_date': {
+      class: 'T',
+      rank: { MAINBOARD: ['NSE', 'BSE'] },
+      capability: { NSE: { capable: true }, BSE: { capable: true }, DOC: { capable: true } },
+    },
+  },
+};
+
+const PARITY_CASES = [
+  { table: 'ipos', column: 'issue_size', ranks: ['CHITTORGARH'], label: 'capable, non-class-T' },
+  { table: 'ipos', column: 'issue_size', ranks: ['BSE'], label: 'incapable source' },
+  { table: 'ipos', column: 'open_date', ranks: ['DOC'], label: 'S-05 document-on-timetable-field' },
+  { table: 'ipos', column: 'open_date', ranks: ['NSE'], label: 'capable, class-T, non-document source' },
+];
+
+for (const c of PARITY_CASES) {
+  test(`MUTATION TARGET: validateOverrideCandidate and validateOverrideRankSet agree (${c.label})`, () => {
+    const tsResult = validateOverrideCandidate(
+      { table: c.table, column: c.column, ranks: c.ranks, reason: 'a reason at least twenty chars long' },
+      PARITY_MANIFEST
+    );
+    const mjsResult = validateOverrideRankSet(PARITY_MANIFEST, c.table, c.column, c.ranks);
+    // Agreement is on PASS/FAIL, not on the exact message shape (the TS validator also runs
+    // reason-length/duplicate-rank checks the .mjs mirror deliberately omits -- see this file's
+    // header -- so only the capability/S-05 verdict is compared, which both implement).
+    assert.equal(tsResult === null, mjsResult === null, `TS=${JSON.stringify(tsResult)} vs mjs=${JSON.stringify(mjsResult)}`);
+  });
+}
