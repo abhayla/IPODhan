@@ -929,7 +929,7 @@ export function getFieldRules(fieldName: string): FieldRules {
  * (every pre-S1b caller — one-arg calls keep compiling and keep today's behaviour byte-for-byte),
  * or the field's group is not in `switchover.json`'s `flipped` list.
  */
-function policyGoverns(fieldName: string, tableName?: string): boolean {
+export function policyGoverns(fieldName: string, tableName?: string): boolean {
   if (!tableName) return false;
   if (!FEATURE_FLAGS.ENABLE_POLICY_WRITER) return false;
   return isFlipped(tableName, fieldNameToColumn(fieldName));

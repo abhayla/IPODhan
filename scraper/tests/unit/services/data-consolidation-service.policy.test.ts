@@ -44,6 +44,24 @@ vi.mock('../../../src/config/feature-flags.js', () => ({
   logFeatureFlags: vi.fn(),
 }));
 
+// (xv) M3 mutation guard support: a hoisted switch that makes the REAL resolver's answer for
+// `ipos.issue_size` additionally mark DOC incapable, so a DRHP write must be judged as DOC.
+const policyTestState = vi.hoisted(() => ({ markDocIncapable: false }));
+
+vi.mock('../../../src/config/field-source-policy.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/config/field-source-policy.js')>();
+  return {
+    ...actual,
+    resolveFieldSourcePolicy: (query: any, deps?: any) => {
+      const policy = actual.resolveFieldSourcePolicy(query, deps);
+      if (policyTestState.markDocIncapable && query.table === 'ipos' && query.column === 'issue_size') {
+        return { ...policy, incapable: { ...policy.incapable, DOC: 'test: DOC marked incapable for this case' } };
+      }
+      return policy;
+    },
+  };
+});
+
 const mockFieldSourcesRepo = {
   findByIPOId: vi.fn(),
   trackFieldUpdate: vi.fn(),
@@ -359,6 +377,156 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
       expect(flagOffField?.conflictReason).not.toBe('SAME_SOURCE_REFRESH');
     } finally {
       (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = true;
+    }
+  });
+
+  // ==================== Item 3 slice S1c: incapable sources are REFUSED ====================
+  // A source the manifest marks `capability.<SRC>.capable === false` for a field must never be
+  // written, no matter what is (or is not) already stored. This is strictly stronger than "not
+  // ranked": an unranked-but-capable source merely loses a priority contest, and — crucially —
+  // still WINS an empty slot (Case 1 accepts whoever arrives first). The #728 class (BSE issue
+  // sizes measured 41-76% below the printed total on 6/6 live mainboard IPOs) reached the live
+  // page exactly through that empty-slot door.
+  it('(x) RED-FIRST: incoming BSE ipos.issue_size against an EMPTY stored value is REFUSED, not accepted into the empty slot', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipos',
+      incomingData: { issueSize: 7000000084 },
+      existingData: { segment: 'MAINBOARD' }, // no stored issue_size at all
+      source: 'BSE',
+      confidence: 80,
+    });
+
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'issueSize');
+    expect(fieldResult?.conflictReason).toBe('REJECTED_INCAPABLE_SOURCE');
+    // The empty slot stays empty — an incapable source never becomes the stored value.
+    expect(fieldResult?.finalValue ?? null).toBeNull();
+    expect(result.consolidatedData.issueSize ?? null).toBeNull();
+    expect(fieldResult?.rejectedSources?.[0]).toMatchObject({
+      source: 'BSE',
+      reason: 'REJECTED_INCAPABLE_SOURCE',
+    });
+  });
+
+  it('(xi) incoming BSE ipos.issue_size against a stored CHITTORGARH value is REFUSED for INCAPABILITY, not merely outranked', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('issueSize', 'CHITTORGARH', '10000000000.00'),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipos',
+      incomingData: { issueSize: 7000000084 },
+      existingData: { segment: 'MAINBOARD' },
+      source: 'BSE',
+      confidence: 80,
+    });
+
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'issueSize');
+    expect(Number(fieldResult?.finalValue)).toBe(10000000000);
+    expect(fieldResult?.chosenSource).toBe('CHITTORGARH');
+    // Test (iii) already proves BSE LOSES this contest on rank. The discriminating assertion is
+    // the REASON: under S1c it is refused as incapable before any priority comparison runs.
+    expect(fieldResult?.conflictReason).toBe('REJECTED_INCAPABLE_SOURCE');
+  });
+
+  it('(xii) incoming CHITTORGARH (CAPABLE) on the same field and same empty slot is UNAFFECTED — it still wins', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipos',
+      incomingData: { issueSize: 10000000000 },
+      existingData: { segment: 'MAINBOARD' },
+      source: 'CHITTORGARH',
+      confidence: 80,
+    });
+
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'issueSize');
+    expect(Number(fieldResult?.finalValue)).toBe(10000000000);
+    expect(fieldResult?.chosenSource).toBe('CHITTORGARH');
+    expect(fieldResult?.conflictReason).not.toBe('REJECTED_INCAPABLE_SOURCE');
+  });
+
+  it('(xiii) a NON-FLIPPED field with an incapable source keeps today behaviour — no refusal (the guard rides the S1b flag+flip path)', async () => {
+    // financial_statements.revenue marks NSE capable:false in the manifest, but the field is in
+    // NO switchover group, so `policyGoverns` is false and the legacy matrix decides, unchanged.
+    // `ipos.registrar` stands in as the flag-off half of the same proof below.
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'financial_statements',
+      incomingData: { revenue: 12345 },
+      existingData: { segment: 'MAINBOARD' },
+      source: 'NSE',
+      confidence: 80,
+    } as any);
+
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'revenue');
+    expect(fieldResult?.conflictReason).not.toBe('REJECTED_INCAPABLE_SOURCE');
+
+    // And with the FLAG OFF, even the flipped field falls back to today behaviour: BSE fills the
+    // empty issue_size slot exactly as it does on origin/main.
+    const featureFlags = await import('../../../src/config/feature-flags.js');
+    (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = false;
+    try {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+      const flagOff = await service.consolidateIPOData({
+        ipoId: 'policy-test',
+        tableName: 'ipos',
+        incomingData: { issueSize: 7000000084 },
+        existingData: { segment: 'MAINBOARD' },
+        source: 'BSE',
+        confidence: 80,
+      });
+      const flagOffField = flagOff.fieldResults.find((f) => f.fieldName === 'issueSize');
+      expect(flagOffField?.conflictReason).not.toBe('REJECTED_INCAPABLE_SOURCE');
+      expect(Number(flagOffField?.finalValue)).toBe(7000000084);
+    } finally {
+      (featureFlags.FEATURE_FLAGS as any).ENABLE_POLICY_WRITER = true;
+    }
+  });
+
+  it('(xiv) the refusal is keyed on the MANIFEST code, not the raw writer string: a DRHP write (manifest DOC) on subscriptions.qib_subscription is refused while raw-string comparison would miss it', async () => {
+    // subscriptions.qib_subscription marks DOC capable:false. The writer source is `DRHP`; the
+    // manifest code is `DOC`. A guard comparing raw strings would look up `policy.incapable.DRHP`,
+    // find nothing, and let the value through. This test dies on that mistake.
+    const { resolveFieldSourcePolicy: resolve } = await import('../../../src/config/field-source-policy.js');
+    const policy = resolve({ table: 'subscriptions', column: 'qib_subscription', ipoType: 'MAINBOARD' });
+    expect(Object.keys(policy.incapable)).toContain('DOC');
+    expect(Object.keys(policy.incapable)).not.toContain('DRHP');
+
+    const { writerSourceToManifestCode } = await import('../../../src/config/field-source-codes.js');
+    expect(writerSourceToManifestCode('DRHP')).toBe('DOC');
+    expect(policy.incapable[writerSourceToManifestCode('DRHP')]).toBeTruthy();
+  });
+
+  it('(xv) M3 MUTATION GUARD: the writer looks the incoming source up by its MANIFEST code, so a DRHP write is judged as DOC — raw-string comparison lets the value through', async () => {
+    // No flipped field marks a document code incapable in TODAY's manifest, so this drives the
+    // real writer against the real resolver with ONE row's capability map extended: DOC incapable
+    // for `ipos.issue_size`. The writer stores `DRHP` for every filing; the manifest word is
+    // `DOC`. A guard comparing the raw writer string finds no `DRHP` key, lets the value through,
+    // and fails this test. Everything else on the path (flag, flip, Case 1) is unchanged.
+    policyTestState.markDocIncapable = true;
+    try {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+      const result = await service.consolidateIPOData({
+        ipoId: 'policy-test',
+        tableName: 'ipos',
+        incomingData: { issueSize: 10000000000 },
+        existingData: { segment: 'MAINBOARD' },
+        source: 'DRHP',
+        confidence: 90,
+      });
+
+      const fieldResult = result.fieldResults.find((f) => f.fieldName === 'issueSize');
+      expect(fieldResult?.conflictReason).toBe('REJECTED_INCAPABLE_SOURCE');
+      expect(fieldResult?.finalValue ?? null).toBeNull();
+    } finally {
+      policyTestState.markDocIncapable = false;
     }
   });
 });

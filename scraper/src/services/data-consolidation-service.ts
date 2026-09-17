@@ -35,9 +35,10 @@ import {
   outranksUntrackedByMatrix,
 } from '../config/field-priority-matrix';
 import { isFlipped } from '../config/switchover.js';
+import { policyGoverns } from '../config/field-priority-matrix';
 import { fieldNameToColumn } from '../config/field-name-case.js';
 import { resolveFieldSourcePolicy } from '../config/field-source-policy.js';
-import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
+import { mapManifestSourceToScraperSource, writerSourceToManifestCode } from '../config/field-source-codes.js';
 import type { IpoTypeKey } from './field-plan-generator.js';
 import {
   normalize,
@@ -1451,6 +1452,90 @@ export class DataConsolidationService {
           },
         ],
       };
+    }
+
+    // ==================== Item 3 slice S1c: an INCAPABLE source is refused ====================
+    // The manifest marks some (field, source) pairs `capability.<SRC>.capable === false`: the
+    // source structurally CANNOT produce a correct value for that field (BSE's issue size
+    // measured 41-76% below the printed total on 6/6 live mainboard IPOs, #728; NSE's computed
+    // offer value excludes the OFS portion; no filing document carries a live intra-bid
+    // subscription figure). This is strictly stronger than "not ranked": an unranked-but-capable
+    // source merely loses a priority contest and still WINS an empty slot, because Case 1 below
+    // accepts whoever arrives first. #728 reached the live page through exactly that door, so
+    // the refusal must sit ABOVE Case 1, the untracked-value rule and the priority decision --
+    // not inside them. There is no "rank last" fallback: an incapable source is never written.
+    //
+    // Gated by the same flag+flip condition as every other S1b resolver decision
+    // (`policyGoverns`), so an unflipped field's behaviour is byte-identical to today's.
+    // The lookup key is the MANIFEST code, via `writerSourceToManifestCode` -- the writer stores
+    // `DRHP` for every filing document while the manifest says `DOC`/`RHP`/`PRICE_BAND_AD`, so a
+    // raw-string comparison would silently miss every document-sourced refusal.
+    if (policyGoverns(fieldName, tableName)) {
+      const policy = resolveFieldSourcePolicy({
+        table: tableName,
+        column: fieldNameToColumn(fieldName),
+        ipoType: ipoType as IpoTypeKey,
+      });
+      const manifestCode = writerSourceToManifestCode(incomingSource, params.incomingDocType);
+      const incapableReason = policy.incapable[manifestCode];
+
+      if (incapableReason !== undefined) {
+        logger.warn(
+          {
+            ipoId,
+            tableName,
+            fieldName,
+            incomingSource,
+            manifestCode,
+            incomingValue,
+            storedValue,
+            reason: incapableReason,
+          },
+          '[DataConsolidation] REJECTED_INCAPABLE_SOURCE - the manifest marks this source incapable of this field; value refused'
+        );
+
+        if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+          try {
+            await this.dataConflictsRepository.upsertConflict({
+              ipoId,
+              tableName,
+              rowKey,
+              fieldName,
+              source1: existingSource ?? incomingSource,
+              value1: storedValue === null || storedValue === undefined ? null : String(storedValue),
+              source2: incomingSource,
+              value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
+              resolvedSource: existingSource ?? incomingSource,
+              resolutionReason: 'REJECTED_INCAPABLE_SOURCE',
+              severity: 'WARNING',
+            });
+          } catch (error) {
+            console.error(
+              '[DataConsolidation] Failed to record REJECTED_INCAPABLE_SOURCE conflict (non-fatal):',
+              error
+            );
+          }
+        }
+
+        // The stored value is returned untouched -- including `undefined`/`null` for an empty
+        // slot, which is the whole point of the guard. No `trackFieldSource` call: an incapable
+        // source never earns provenance on this field.
+        return {
+          fieldName,
+          finalValue: storedValue ?? null,
+          chosenSource: existingSource ?? incomingSource,
+          hadConflict: true,
+          conflictSeverity: 'WARNING',
+          conflictReason: 'REJECTED_INCAPABLE_SOURCE',
+          rejectedSources: [
+            {
+              source: incomingSource,
+              value: incomingValue,
+              reason: 'REJECTED_INCAPABLE_SOURCE',
+            },
+          ],
+        };
+      }
     }
 
     // M-1 (round-2 review): a stored value with NO `field_sources` row is still

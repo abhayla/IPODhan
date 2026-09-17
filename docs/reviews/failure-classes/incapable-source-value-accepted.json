@@ -1,0 +1,9 @@
+{
+  "class_id": "incapable source value accepted",
+  "feature": "scraper/src/services/data-consolidation-service.ts (consolidateField) + scraper/config/field-manifest.json capability map",
+  "symptom": "a source the field manifest marks `capability.<SRC>.capable === false` for a field still reaches the row, because \"not ranked\" only loses a PRIORITY contest — an unranked value still wins an EMPTY slot (Case 1 accepts whoever arrives first) and still wins over an untracked stored value. Measured sample: BSE's `ipos.issue_size` ran 41-76% BELOW the printed total offer on 6/6 live mainboard IPOs on 2026-09-16 (#728). Class: all 14 (field, source) pairs the manifest marks capable:false — ipos.issue_size x {BSE,NSE,MONEYCONTROL}, ipo_details.fresh_issue x {NSE,MONEYCONTROL}, ipo_details.ofs_issue x {NSE,MONEYCONTROL}, financial_statements.revenue x {NSE,BSE}, subscriptions.{qib,nii,retail,total}_subscription x DOC, listing_performance.listing_price x DOC.",
+  "first_seen": "2026-09-16 (review round 5 item C, #728); manifest capability map added item 3 slice S0b",
+  "fix_prs": "this PR (item 3 slice S1c): the resolver carries the row's `incapable` map and `consolidateField` refuses an incapable incoming source ABOVE Case 1, the untracked-value rule and the priority decision, recording one `data_conflicts` row with `resolution_reason = 'REJECTED_INCAPABLE_SOURCE'`",
+  "detection_check": "not yet one of the three sanctioned check types — the audit check that reads `data_conflicts` for REJECTED_INCAPABLE_SOURCE rows and cross-checks stored values against the manifest capability map is built in item 3 slice S6 (PULL-WRITE-POLICY). Guarded today by scraper/tests/unit/services/data-consolidation-service.policy.test.ts cases (x)-(xv) through the REAL orchestrator, plus scraper/tests/unit/config/field-source-policy.test.ts for the resolver's capability map.",
+  "status": "unguarded"
+}
