@@ -86,6 +86,18 @@ fi
 if ! (cd "$REPO_ROOT" && git merge-base --is-ancestor "$SHA" origin/main) 2>/dev/null; then
   fatal "lineage: $SHA is not an ancestor of origin/main — refusing (lineage)"
 fi
+
+# Resolve whatever text --sha received (HEAD, a branch name, a short sha,
+# origin/main, ...) to the full 40-hex commit it names, so CONFIG_SHA and
+# the log line always record a stable commit identity, never a symbolic
+# ref that can move or be ambiguous later.
+RESOLVED_SHA="$(cd "$REPO_ROOT" && git rev-parse --verify "$SHA^{commit}" 2>/tmp/deploy-config-resolve-$$.err)" || {
+  msg="$(cat /tmp/deploy-config-resolve-$$.err 2>/dev/null)"; rm -f /tmp/deploy-config-resolve-$$.err
+  fatal "lineage: could not resolve '$SHA' to a commit ($msg) (lineage)"
+}
+rm -f /tmp/deploy-config-resolve-$$.err
+SHA="$RESOLVED_SHA"
+
 log "lineage OK: $SHA is on origin/main"
 
 # --------------------------------------------------------------------- cap

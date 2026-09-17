@@ -18,7 +18,7 @@ it (never a worker) and no slice is dispatched until the previous slice's run is
 | S0b | B | item-03-s0b-generate-registry.md | #738 | 5f57aa66 | Tier B Sonnet + independent Opus review after 2nd occurrence | 2026-09-17 14:4x IST, 6/8 local PASS; staging rows S0b-7/S0b-8 tonight | item-03 v14 | merged, staging proof owed |
 | S0c | B | item-03-s0c-source-code-reconciliation.md | #741 | c0a0d5a4 | Tier B Sonnet, PASS-with-minors (card overstated a .refine; corrected) | n/a (no runtime change) | 2026-09-17 15:33 IST, 7/7 PASS (supervisor, merged sha) | item-03 v15 | landed 2026-09-17 15:33 IST |
 | S0d | A | item-03-s0d-scraper-source-enum.md | #742 | 8bb4bc7f | Tier A Opus x2 (round 1 FAIL: nine literal unions; round 2 PASS 6/6) | owed: S0d-7 after the 21:30 window | 2026-09-17 16:18 IST, 7/8 PASS (S0d-7 SKIP), supervisor, merged sha, ipodhan_test | item-03 v16 | merged, staging proof owed |
-| S5 | A | item-03-s5-config-only-deploy.md | #743 | pending merge | Tier A Opus (pending) | owed: S5-5..S5-7 after the 21:30 window | pending | item-03 v16 | PR open |
+| S5 | A | item-03-s5-config-only-deploy.md | #743 | 888f9330 | Tier A Opus PASS, 3 MINOR (MINOR-3 seed guard fixed round 1; MINOR-1/2 accepted as known gaps) | owed: S5-5..S5-7 after the 21:30 window | 2026-09-17 17:31 IST, S5-3/S5-4 PASS on main; S5-1 by hand ALL PASS + CI; S5-2 CI ALL PASS (no symlinks on the laptop); supervisor, 888f9330 | item-03 v17 | merged, staging proof owed |
 | S1a | A | item-03-s1a-resolver.md | | | | | | | queued |
 | S1b | A | item-03-s1b-writer-adopts-resolver.md | | | | | | | queued |
 | S1c | A | item-03-s1c-refuse-incapable.md | | | | | | | queued |
