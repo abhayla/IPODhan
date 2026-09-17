@@ -802,6 +802,7 @@ jobs:
           tests/integration/ipo-field-plan-repository.integration.test.ts
           tests/integration/field-plan-walk-resume.integration.test.ts
           tests/integration/field-plan-generation-wiring.integration.test.ts
+          tests/integration/field-plan-walk-real-writer.integration.test.ts
           tests/integration/normalizer-sql-agreement.integration.test.ts
           tests/integration/derived-key-recompute-guard.integration.test.ts
           tests/integration/alternative-sources.integration.test.ts
