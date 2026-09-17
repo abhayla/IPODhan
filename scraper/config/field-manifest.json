@@ -1,7 +1,88 @@
 {
-  "version": 1,
+  "version": 2,
   "generatedFrom": "docs/design/field-source-resolution.spec.mjs",
   "fields": {
+    "ipos.symbol": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7 cover"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7 cover"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7 cover"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7 cover"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.company_name": {
+      "class": "D",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §cover"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §cover"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §cover"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §cover"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
     "ipos.issue_size": {
       "class": "D",
       "documentType": "PRICE_BAND_AD",
@@ -45,6 +126,808 @@
       "na": [],
       "unit": "crore"
     },
+    "ipos.lot_size": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipos.open_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.close_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.listing_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.status": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.registrar": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "VERIFIED: NSE issueInfo returns \"Name of the Registrar\"; BSE detail returns Registrar with address"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "VERIFIED: NSE issueInfo returns \"Name of the Registrar\"; BSE detail returns Registrar with address"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "VERIFIED: NSE issueInfo returns \"Name of the Registrar\"; BSE detail returns Registrar with address"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "VERIFIED: NSE issueInfo returns \"Name of the Registrar\"; BSE detail returns Registrar with address"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.sector": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no sector field, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no sector field, so CG is the only remaining website source"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.price_range_min": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        }
+      },
+      "na": [
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipos.price_range_max": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A1"
+        }
+      },
+      "na": [
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipos.listing_exchanges": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.face_value": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A2"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A2"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A2"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A2"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS"
+      ],
+      "unit": "keep"
+    },
+    "ipos.allotment_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.company_description": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.lead_managers": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "VERIFIED: NSE returns \"Book Running Lead Managers\"; BSE returns Book_Running_Lead_Manager"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "VERIFIED: NSE returns \"Book Running Lead Managers\"; BSE returns Book_Running_Lead_Manager"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "VERIFIED: NSE returns \"Book Running Lead Managers\"; BSE returns Book_Running_Lead_Manager"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "VERIFIED: NSE returns \"Book Running Lead Managers\"; BSE returns Book_Running_Lead_Manager"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.isin": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.segment": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS"
+      ],
+      "unit": "keep"
+    },
+    "ipos.offering_type": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A11"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A11"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A11"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.objectives": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no objects-of-issue text, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no objects-of-issue text, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "OFS",
+        "RIGHTS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipos.company_website": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipos.cin": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "no website or exchange publishes the CIN"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.company_description": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no company description, so CG is the only remaining website source"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.issue_type": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CORRECTED: NSE returns \"Issue Type: Book Building\". BSE detail does NOT carry it - an earlier draft ranked BSE here"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "CORRECTED: NSE returns \"Issue Type: Book Building\". BSE detail does NOT carry it - an earlier draft ranked BSE here"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CORRECTED: NSE returns \"Issue Type: Book Building\". BSE detail does NOT carry it - an earlier draft ranked BSE here"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
     "ipo_details.fresh_issue": {
       "class": "D",
       "documentType": "PRICE_BAND_AD",
@@ -62,7 +945,6 @@
         ],
         "SME_NSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ]
       },
@@ -95,57 +977,6 @@
       ],
       "unit": "crore"
     },
-    "financial_statements.revenue": {
-      "class": "D",
-      "documentType": "RHP",
-      "documentSection": "wp-c-extraction-contract.md §C1-C2 — \"Restated Consolidated Statement of Profit and Loss\" (falls back to \"Summary of Financial Information\")",
-      "rank": {
-        "MAINBOARD": [
-          "DOC",
-          "CHITTORGARH",
-          "MONEYCONTROL"
-        ],
-        "SME_BSE": [
-          "DOC",
-          "CHITTORGARH",
-          "MONEYCONTROL"
-        ],
-        "SME_NSE": [
-          "DOC",
-          "CHITTORGARH",
-          "MONEYCONTROL"
-        ]
-      },
-      "capability": {
-        "DOC": {
-          "capable": true,
-          "reason": "the RHP prints the full restated 3-5 year revenue series"
-        },
-        "CHITTORGARH": {
-          "capable": true,
-          "reason": "CG's 'financialTable' (chittorgarh-detail-fields.ts, getTableById 'financialTable') DOES carry a restated per-fiscal-year revenue/total-income/EBITDA/PAT series — field-source-resolution.spec.mjs:122-124 corrects an earlier draft's wrong claim that no website publishes this"
-        },
-        "MONEYCONTROL": {
-          "capable": true,
-          "reason": "historically ranked rank 3 in field-source-resolution.spec.mjs:130 — SEE CONTRADICTION flagged in the design card (OD-3 retires Moneycontrol scheduling; card leaves the capability true pending owner decision C-1)"
-        },
-        "NSE": {
-          "capable": false,
-          "reason": "§2.3.5: NSE's API returns bidding and demand data only — no financial fields"
-        },
-        "BSE": {
-          "capable": false,
-          "reason": "no BSE financials endpoint carries a restated series"
-        }
-      },
-      "na": [
-        "INVITS",
-        "REITS",
-        "TENDER",
-        "BUYBACK"
-      ],
-      "unit": "crore"
-    },
     "ipo_details.ofs_issue": {
       "class": "D",
       "documentType": "PRICE_BAND_AD",
@@ -163,7 +994,6 @@
         ],
         "SME_NSE": [
           "DOC",
-          "BSE",
           "CHITTORGARH"
         ]
       },
@@ -195,12 +1025,556 @@
       ],
       "unit": "crore"
     },
+    "ipo_details.face_value": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A2"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A2"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A2"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS"
+      ],
+      "unit": "keep"
+    },
+    "ipo_details.basis_of_allotment_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.initiation_of_refunds_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.credit_of_shares_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.exchanges": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A15"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.compliance_officer": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "named only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.compliance_officer_phone": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "named only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.compliance_officer_email": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "named only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.upi_cutoff_time": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "clock time, not a date — deliberately NOT in E-1"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "clock time, not a date — deliberately NOT in E-1"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "clock time, not a date — deliberately NOT in E-1"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.designated_exchange": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "observed absent from both exchange payloads 2026-09-09 - neither NSE issueInfo nor BSE detail names a designated exchange"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.lot_multiple": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A3"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.allocation_pct": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "observed absent 2026-09-09 - an earlier draft matched \"Anchor Allocation Report\" and mistook a document link for the allocation percentages"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.pre_ipo_placement": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "disclosure exists only in the filing; stored as a boolean today, but a pre-IPO placement reduces the fresh issue and should carry an amount — issue-size fields are provisional until sourced from a PROSPECTUS"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_details.bid_windows": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "clock windows, not dates — deliberately NOT in E-1"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "clock windows, not dates — deliberately NOT in E-1"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "clock windows, not dates — deliberately NOT in E-1"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.promoter_shares_held": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "capital-structure table only"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD"
+      ],
+      "unit": "keep"
+    },
+    "ipo_details.sebi_regulation_cited": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "printed only on the advertisement"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.promoter_group_transactions_since_drhp": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "disclosure exists only in the filing"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_details.cut_off_price": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the cut-off price is fixed only in the offer document; no website republishes it separately from the price band"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
     "ipo_details.min_investment": {
       "class": "D",
       "documentType": "PRICE_BAND_AD",
       "documentSection": "wp-c-extraction-contract.md §A13 — derived minimum retail investment amount (lot size × cap price)",
       "rank": {
         "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
           "DOC"
         ]
       },
@@ -213,31 +1587,2828 @@
       "na": [],
       "unit": "rupee"
     },
-    "subscriptions.total_subscription": {
-      "class": "X",
+    "ipo_details.isin": {
+      "class": "D",
+      "documentType": "RHP",
       "rank": {
         "MAINBOARD": [
+          "DOC",
           "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
           "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
           "CHITTORGARH"
         ]
       },
       "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        },
         "NSE": {
           "capable": true,
-          "reason": "NSE's bidding-detail API returns the aggregate subscription multiple across all investor categories live during the bid window"
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
         },
         "BSE": {
           "capable": true,
-          "reason": "BSE's bidding-detail API returns the same live figure"
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
         },
         "CHITTORGARH": {
           "capable": true,
-          "reason": "CG mirrors the exchange live subscription figures during the bid window"
-        },
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.registrar_link": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
         "DOC": {
+          "capable": true,
+          "reason": "no website separately publishes the per-IPO registrar link"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.lead_managers": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E7"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.company_address": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "contact/address field — printed only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.company_phone": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "contact/address field — printed only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.company_email": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "contact/address field — printed only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.company_city": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "contact/address field — printed only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.company_state": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "contact/address field — printed only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.company_pincode": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "contact/address field — printed only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.qib_shares_offered": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A13"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.nii_shares_offered": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A13"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.retail_shares_offered": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A13"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.retail_max_allottees": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.employee_shares_offered": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.anchor_shares_offered": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.max_retail_subscription": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
+        }
+      },
+      "na": [],
+      "unit": "rupee"
+    },
+    "ipo_details.max_employee_subscription": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
+        }
+      },
+      "na": [],
+      "unit": "rupee"
+    },
+    "ipo_details.employee_discount": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A16"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.sponsor_banks": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo \"Sponsor Bank\", BSE detail Sponsor_Bank. An earlier draft called it filing-only"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo \"Sponsor Bank\", BSE detail Sponsor_Bank. An earlier draft called it filing-only"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo \"Sponsor Bank\", BSE detail Sponsor_Bank. An earlier draft called it filing-only"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE issueInfo \"Sponsor Bank\", BSE detail Sponsor_Bank. An earlier draft called it filing-only"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.tick_size": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"Tick Size\", BSE Tick_Size"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"Tick Size\", BSE Tick_Size"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"Tick Size\", BSE Tick_Size"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"Tick Size\", BSE Tick_Size"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.ipo_market_timings": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"IPO Market Timings\", BSE IPO_Market_Timings"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"IPO Market Timings\", BSE IPO_Market_Timings"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"IPO Market Timings\", BSE IPO_Market_Timings"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: BOTH exchanges carry it - NSE \"IPO Market Timings\", BSE IPO_Market_Timings"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.category_details": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §A13"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_details.sub_categories_upi": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the exchange circular carries the allocation"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §B7"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "financial_data.revenue_fy2022": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.revenue_fy2023": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.revenue_fy2024": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.profit_fy2022": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.profit_fy2023": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.profit_fy2024": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.net_worth": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.eps": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.roe": {
+      "class": "D",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.debt_to_equity": {
+      "class": "D",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.reserves_and_surplus": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.total_assets": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.total_borrowing": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.promoter_holding_pre_issue": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.promoter_holding_post_issue": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.market_cap": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.pre_ipo_eps": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.post_ipo_eps": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.ronw": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.pe_ratio": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "observed 2026-09-08: CG prints a PE Ratio column only for OTHER recently listed IPOs in a comparison table, never this IPO own"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.ebitda_fy2022": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.ebitda_fy2023": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.ebitda_fy2024": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.total_income_fy2022": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.total_income_fy2023": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.total_income_fy2024": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "Moneycontrol retired 2026-09-09 (MC_SERVES is empty); NSE/BSE payloads carry no restated financials, so CG is the only remaining website source"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_data.current_ratio": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "KPI table only"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.quick_ratio": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "KPI table only"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_data.inventory_turnover": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "KPI table only"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_statements.fiscal_year": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_statements.revenue": {
+      "class": "D",
+      "documentType": "RHP",
+      "documentSection": "wp-c-extraction-contract.md §C1-C2 — \"Restated Consolidated Statement of Profit and Loss\" (falls back to \"Summary of Financial Information\")",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the RHP prints the full restated 3-5 year revenue series"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG's 'financialTable' (chittorgarh-detail-fields.ts, getTableById 'financialTable') DOES carry a restated per-fiscal-year revenue/total-income/EBITDA/PAT series — field-source-resolution.spec.mjs:122-124 corrects an earlier draft's wrong claim that no website publishes this"
+        },
+        "NSE": {
           "capable": false,
-          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+          "reason": "§2.3.5: NSE's API returns bidding and demand data only — no financial fields"
+        },
+        "BSE": {
+          "capable": false,
+          "reason": "no BSE financials endpoint carries a restated series"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_statements.total_income": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_statements.ebitda": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_statements.pat": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG restated table carries this per fiscal year"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_statements.net_worth": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG gives the most-recent year only, not the full series"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG gives the most-recent year only, not the full series"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_statements.basis": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "OBSERVED on a live CG page: heading gives restated/consolidated, footer gives the unit, and a note flags a year on a different basis"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "OBSERVED on a live CG page: heading gives restated/consolidated, footer gives the unit, and a note flags a year on a different basis"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_statements.unit": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "OBSERVED on a live CG page: heading gives restated/consolidated, footer gives the unit, and a note flags a year on a different basis"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "OBSERVED on a live CG page: heading gives restated/consolidated, footer gives the unit, and a note flags a year on a different basis"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_statements.eps_basic": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "observed absent from a live CG detail page 2026-09-08 - it prints a single pre/post-issue EPS pair, never the per-fiscal-year basic-vs-diluted split, and no cash-flow line"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_statements.eps_diluted": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "observed absent from a live CG detail page 2026-09-08 - it prints a single pre/post-issue EPS pair, never the per-fiscal-year basic-vs-diluted split, and no cash-flow line"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_statements.op_cash_flow": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "observed absent from a live CG detail page 2026-09-08 - it prints a single pre/post-issue EPS pair, never the per-fiscal-year basic-vs-diluted split, and no cash-flow line"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "financial_statements.dscr": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "DSCR appears only in the Risk Factors financial tables"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "financial_statements.rent_expense": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "rent expense line appears only in Other Financial Information"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "ipo_valuation.price_floor": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_min"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_min"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_min"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_min"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.price_cap": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_max"
+        },
+        "NSE": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_max"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_max"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "same number as ipos.price_range_max"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.mcap_at_cap": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG prints a single market cap, which is the at-cap figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG prints a single market cap, which is the at-cap figure"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "ipo_valuation.pe_at_cap": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap)"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG prints a single post-issue P/E, which is the at-cap figure (same logic as mcap_at_cap)"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.mcap_at_floor": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG prints only ONE market cap (the at-cap one); no website prints the value at the floor price"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "ipo_valuation.pe_at_floor": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG prints only ONE P/E (post-issue, at cap); no website prints the value at the floor price"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.ronw_weighted_3y": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG prints a single-year RoNW; the 3-year WEIGHTED average is a different metric and appears only in the advertisement"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.shares_at_floor": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.shares_at_cap": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.fresh_shares_at_floor": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.fresh_shares_at_cap": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.ofs_shares": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.total_shares_at_floor": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.total_shares_at_cap": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "a share COUNT at a specific price point; websites publish the rupee issue size, never the share split at floor vs cap"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_valuation.pe_not_ascertainable_reason": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "reason text printed only alongside a null PE in the document"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoters.name": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "OBSERVED 2026-09-08 on a live CG IPO page: \"Company Promoters: <names>\". An earlier draft called this document-only; a real fetch disproved it"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "OBSERVED 2026-09-08 on a live CG IPO page: \"Company Promoters: <names>\". An earlier draft called this document-only; a real fetch disproved it"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoters.waca": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "basis-for-offer-price table only"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoters.is_promoter_group": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "capital-structure table only"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_intermediaries.role": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E1–E6"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E1–E6"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E1–E6"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_intermediaries.name": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E1–E6"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E1–E6"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E1–E6"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_risk_factors.seq": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "risk factors exist only in the filing"
         }
       },
       "na": [
@@ -246,37 +4417,1022 @@
       ],
       "unit": "keep"
     },
-    "subscriptions.retail_subscription": {
-      "class": "X",
+    "ipo_risk_factors.heading": {
+      "class": "D",
+      "documentType": "RHP",
       "rank": {
         "MAINBOARD": [
-          "NSE",
-          "BSE",
-          "CHITTORGARH"
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
         ]
       },
       "capability": {
-        "NSE": {
-          "capable": true,
-          "reason": "NSE's bidding-detail API returns the retail-category subscription multiple live during the bid window"
-        },
-        "BSE": {
-          "capable": true,
-          "reason": "BSE's bidding-detail API returns the same live figure"
-        },
-        "CHITTORGARH": {
-          "capable": true,
-          "reason": "CG mirrors the exchange live subscription figures during the bid window"
-        },
         "DOC": {
-          "capable": false,
-          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+          "capable": true,
+          "reason": "risk factors exist only in the filing"
         }
       },
       "na": [
         "TENDER",
         "BUYBACK"
       ],
+      "unit": "keep"
+    },
+    "brlm_track_record.brlm_name": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "brlm_track_record.as_of_date": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "historical, never moves"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "brlm_track_record.issues_3y": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "brlm_track_record.closed_below_issue_price": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "only the advertisement prints it. CG has lead-manager performance pages that MIGHT serve as rank 2 - unverified and unscraped, listed as a candidate in A.3, not as a rank"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoters.shares_held": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "capital-structure table only"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoters.waca_last_year": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "basis-for-offer-price table only"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_intermediaries.sebi_reg_no": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "SEBI registration number printed only in the intermediaries section"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_intermediaries.contact_person": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "named only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_intermediaries.phone": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "named only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_intermediaries.email": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "named only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_intermediaries.grievance_email": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "named only in the filing"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_risk_factors.body": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "risk factors exist only in the filing"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_risk_factors.kpis": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "concentration KPIs exist only in the filing"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoter_acquisition_ranges.period": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the WACA 1y/18m/3y table exists only in the filing"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoter_acquisition_ranges.waca": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the WACA 1y/18m/3y table exists only in the filing"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoter_acquisition_ranges.cap_multiple": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the WACA 1y/18m/3y table exists only in the filing"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoter_acquisition_ranges.price_low": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the WACA 1y/18m/3y table exists only in the filing"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "promoter_acquisition_ranges.price_high": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the WACA 1y/18m/3y table exists only in the filing"
+        }
+      },
+      "na": [
+        "INVITS",
+        "REITS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.company_name": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.is_listed": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.pe_ratio": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.eps": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.diluted_eps": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.ronw": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.nav": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §C9"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.pbv_ratio": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: a real CG page carries both a company-level Price to Book Value row and a peer-table P/BV Ratio column; the 2026-09-08 absence was one page that had not been filled, not a capability limit (F-59)"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CORRECTED 2026-09-09: a real CG page carries both a company-level Price to Book Value row and a peer-table P/BV Ratio column; the 2026-09-08 absence was one page that had not been filled, not a capability limit (F-59)"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "peer_companies.financial_statement_type": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "CG does not print which basis (restated/standalone) the peer figures use"
+        }
+      },
+      "na": [
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "anchor_investors.bid_date": {
+      "class": "T",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "anchor_investors.total_shares_offered": {
+      "class": "D",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "anchor_investors.total_amount_raised": {
+      "class": "D",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "crore"
+    },
+    "anchor_investors.anchor_investors_count": {
+      "class": "D",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "anchor_investors.investor_list": {
+      "class": "D",
+      "rank": {
+        "MAINBOARD": [
+          "DOC"
+        ],
+        "SME_BSE": [
+          "DOC"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "the anchor allocation report IS the exchange filing; there is no separate second publisher of the anchor book"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "documents.filing_date": {
+      "class": "D",
+      "documentType": "PRICE_BAND_AD",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "BSE"
+        ],
+        "SME_NSE": [
+          "DOC"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "historical — never moves; the doc-type healing rule depends on it"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "historical — never moves; the doc-type healing rule depends on it"
+        }
+      },
+      "na": [],
       "unit": "keep"
     },
     "subscriptions.qib_subscription": {
@@ -285,6 +5441,14 @@
         "MAINBOARD": [
           "NSE",
           "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
           "CHITTORGARH"
         ]
       },
@@ -319,6 +5483,14 @@
           "NSE",
           "BSE",
           "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
         ]
       },
       "capability": {
@@ -345,12 +5517,281 @@
       ],
       "unit": "keep"
     },
+    "subscriptions.retail_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE's bidding-detail API returns the retail-category subscription multiple live during the bid window"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE's bidding-detail API returns the same live figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG mirrors the exchange live subscription figures during the bid window"
+        },
+        "DOC": {
+          "capable": false,
+          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.total_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE's bidding-detail API returns the aggregate subscription multiple across all investor categories live during the bid window"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "BSE's bidding-detail API returns the same live figure"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "CG mirrors the exchange live subscription figures during the bid window"
+        },
+        "DOC": {
+          "capable": false,
+          "reason": "no document can carry a live, intra-bid-window figure (spec field-source-resolution.spec.mjs:232-233)"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.employee_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "no document can carry a live figure"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.b_nii_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "no document can carry a live figure"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.s_nii_subscription": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "no document can carry a live figure"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.total_shares_bid": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "no document can carry a live figure"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "subscriptions.shares_offered": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "no document can carry a live figure"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "gmp_records.gmp": {
+      "class": "W",
+      "rank": {
+        "MAINBOARD": [
+          "INVESTORGAIN_GMP",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "INVESTORGAIN_GMP",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "INVESTORGAIN_GMP",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "INVESTORGAIN_GMP": {
+          "capable": true,
+          "reason": "grey market has no official source, ever"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
     "listing_performance.listing_price": {
       "class": "M",
       "rank": {
         "MAINBOARD": [
           "NSE",
           "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
           "CHITTORGARH"
         ]
       },
@@ -370,6 +5811,442 @@
         "DOC": {
           "capable": false,
           "reason": "listing price is post-listing market data — no filing document carries it (spec field-source-resolution.spec.mjs:245)"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "listing_performance.current_price": {
+      "class": "M",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "BSE",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "NSE",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "post-listing market data"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "listing_performance.current_price_bse": {
+      "class": "M",
+      "rank": {
+        "MAINBOARD": [
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": []
+      },
+      "capability": {
+        "BSE": {
+          "capable": true,
+          "reason": "BSE quote by definition"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "listing_performance.current_price_nse": {
+      "class": "M",
+      "rank": {
+        "MAINBOARD": [
+          "NSE"
+        ],
+        "SME_BSE": [],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "NSE quote by definition"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "ipo_demand_graph.price_point": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_demand_graph.is_cut_off": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_demand_graph.cumulative_quantity": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "ipo_demand_graph.exchange": {
+      "class": "X",
+      "rank": {
+        "MAINBOARD": [
+          "NSE",
+          "BSE"
+        ],
+        "SME_BSE": [
+          "BSE"
+        ],
+        "SME_NSE": [
+          "NSE"
+        ]
+      },
+      "capability": {
+        "NSE": {
+          "capable": true,
+          "reason": "live bid book; no document can carry it. Also N/A whenever ipo_details.issue_type = FIXED_PRICE (F-26) — a fixed-price issue has no bid book"
+        },
+        "BSE": {
+          "capable": true,
+          "reason": "ranked in the approved spec (docs/design/field-source-resolution.spec.mjs); capability not separately measured"
+        }
+      },
+      "na": [
+        "RIGHTS",
+        "OFS",
+        "NCD",
+        "INVITS",
+        "REITS",
+        "TENDER",
+        "BUYBACK"
+      ],
+      "unit": "keep"
+    },
+    "registrars.name": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "REG": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "registrars.short_name": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "REG": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "registrars.email": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "REG": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "registrars.phone": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "REG": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "registrars.website": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "REG",
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "REG",
+          "DOC",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "REG",
+          "DOC",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "REG": {
+          "capable": true,
+          "reason": "the registrar itself is authoritative for its own URL"
+        },
+        "DOC": {
+          "capable": true,
+          "reason": "the registrar itself is authoritative for its own URL"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "the registrar itself is authoritative for its own URL"
+        }
+      },
+      "na": [],
+      "unit": "keep"
+    },
+    "registrars.address": {
+      "class": "D",
+      "documentType": "RHP",
+      "rank": {
+        "MAINBOARD": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_BSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ],
+        "SME_NSE": [
+          "DOC",
+          "REG",
+          "CHITTORGARH"
+        ]
+      },
+      "capability": {
+        "DOC": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "REG": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
+        },
+        "CHITTORGARH": {
+          "capable": true,
+          "reason": "sourced per docs/reviews/wp-c-extraction-contract.md §E3"
         }
       },
       "na": [],

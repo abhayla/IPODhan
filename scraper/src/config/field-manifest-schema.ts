@@ -66,7 +66,10 @@ export type FieldManifestEntry = z.infer<typeof fieldManifestEntrySchema>;
 
 export const fieldManifestSchema = z
   .object({
-    version: z.literal(1),
+    // item 3 slice S0b: version 2 is the generated manifest (190 fields, produced by
+    // scripts/generate-field-manifest.mjs from docs/design/field-source-resolution.spec.mjs).
+    // version 1 (the 10 hand-written rows) stays accepted so a revert lands cleanly (card rollback).
+    version: z.union([z.literal(1), z.literal(2)]),
     generatedFrom: z.string().min(1),
     fields: z.record(z.string(), fieldManifestEntrySchema),
   })

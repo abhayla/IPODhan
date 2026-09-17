@@ -100,6 +100,11 @@ SCRAPER_REQUIRED_KEYS=(
   NOTIFIER_URL
   NOTIFIER_KEY
   NOTIFIER_PROJECT
+  # item 3 slice S0b: validateFieldManifestAtStartup (scraper/src/index.ts) reads this flag; presence
+  # is required here so a deploy fails loudly if the staging env file loses the line, the same class
+  # of silent-default-off incident T-251 named above. VALUE is set true only on staging (owner-
+  # approved hand edit, docs/design/stage-3-ledger.md) until the S1 group proof holds on prod.
+  ENABLE_FIELD_MANIFEST
   # T-327 P2-7: same TZ contract as WEB_REQUIRED_KEYS above — the scraper is
   # the process that actually parses NSE/BSE/... date strings, so this is the
   # required key that matters most; see date-string-parsing.ts for why the
