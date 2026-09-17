@@ -37,6 +37,10 @@ export interface FieldSourcePolicy {
   origin: PolicyOrigin;
   /** True when the manifest row has no rank entry for this query's ipoType; `ranks` is then []. */
   na: boolean;
+  /** Sources the manifest marks capable:false for this field, with the manifest's stated reason.
+   *  Distinct from "absent from ranks": an unranked-but-capable source is merely not preferred;
+   *  an incapable source must never be written (S1c). */
+  incapable: Readonly<Record<string, string>>;
 }
 
 /**
@@ -68,14 +72,24 @@ export function resolveFieldSourcePolicy(query: PolicyQuery, deps: PolicyDeps = 
   // deps.overrides is accepted (interface stability for S4) but never consulted in this slice —
   // layer 2 is not built yet, so every resolution today is a registry answer.
 
+  // Built here, where the manifest entry is already in hand — the writer must never load the
+  // manifest a second time (S1c card correction K1: a second config read on the write path is a
+  // second source of truth).
+  const incapable: Record<string, string> = {};
+  for (const [code, capability] of Object.entries(entry.capability ?? {})) {
+    if (capability.capable === false) incapable[code] = capability.reason;
+  }
+
   const ranks = entry.rank[query.ipoType];
   if (!Array.isArray(ranks)) {
     // The manifest has no rank entry for this IPO type — not "source it the MAINBOARD way"
     // (field-plan-generator.ts's generateFieldPlan makes the same call for the same reason).
-    return { ranks: [], documentType: entry.documentType, origin, na: true };
+    // An N/A field still has a capability map — a source that cannot produce this field is
+    // incapable regardless of whether this IPO type ranks anyone at all.
+    return { ranks: [], documentType: entry.documentType, origin, na: true, incapable };
   }
 
-  return { ranks: [...ranks], documentType: entry.documentType, origin, na: false };
+  return { ranks: [...ranks], documentType: entry.documentType, origin, na: false, incapable };
 }
 
 export function policyOriginString(origin: PolicyOrigin): string {

@@ -17,6 +17,13 @@ describe('resolveFieldSourcePolicy -- the real 190-row manifest', () => {
       documentType: 'PRICE_BAND_AD',
       origin: { kind: 'registry', version: 2 },
       na: false,
+      // S1c: the row's capability map travels with the policy (card correction K1). Asserted by
+      // key here; the reason strings themselves are asserted in the S1c cases below.
+      incapable: {
+        BSE: manifest.fields['ipos.issue_size'].capability.BSE.reason,
+        NSE: manifest.fields['ipos.issue_size'].capability.NSE.reason,
+        MONEYCONTROL: manifest.fields['ipos.issue_size'].capability.MONEYCONTROL.reason,
+      },
     });
     expect(policyOriginString(policy.origin)).toBe('registry:2');
   });
@@ -65,5 +72,37 @@ describe('resolveFieldSourcePolicy -- the real 190-row manifest', () => {
     // it with no manifest override) resolves against the real on-disk file, not a fixture.
     const policy = resolveFieldSourcePolicy({ table: 'ipos', column: 'issue_size', ipoType: 'MAINBOARD' });
     expect(policy.origin).toEqual({ kind: 'registry', version: manifest.version });
+  });
+
+  // Item 3 slice S1c: the resolver carries the row's capability map, so the writer never loads
+  // the manifest a second time (card correction K1).
+  it('incapable carries every capable:false source for ipos.issue_size with the manifest reason', () => {
+    const policy = resolveFieldSourcePolicy({ table: 'ipos', column: 'issue_size', ipoType: 'MAINBOARD' }, { manifest });
+
+    expect(Object.keys(policy.incapable).sort()).toEqual(['BSE', 'MONEYCONTROL', 'NSE']);
+    for (const source of ['BSE', 'NSE', 'MONEYCONTROL']) {
+      expect(policy.incapable[source].length).toBeGreaterThan(0);
+      expect(policy.incapable[source]).toBe(manifest.fields['ipos.issue_size'].capability[source].reason);
+    }
+    // CHITTORGARH is capable and ranked -- it must not appear here.
+    expect(policy.incapable).not.toHaveProperty('CHITTORGARH');
+  });
+
+  it('incapable is returned on the N/A path too -- an unranked ipoType does not erase capability', () => {
+    const policy = resolveFieldSourcePolicy({ table: 'ipos', column: 'issue_size', ipoType: 'RIGHTS' }, { manifest });
+
+    expect(policy.na).toBe(true);
+    expect(policy.ranks).toEqual([]);
+    expect(Object.keys(policy.incapable).sort()).toEqual(['BSE', 'MONEYCONTROL', 'NSE']);
+  });
+
+  it('a field whose manifest row marks nobody incapable resolves to an empty map, never undefined', () => {
+    const fieldKey = Object.keys(manifest.fields).find(
+      (key) => !Object.values(manifest.fields[key].capability ?? {}).some((c: any) => c.capable === false)
+    );
+    expect(fieldKey).toBeDefined();
+    const [table, column] = fieldKey!.split('.');
+    const policy = resolveFieldSourcePolicy({ table, column, ipoType: 'MAINBOARD' }, { manifest });
+    expect(policy.incapable).toEqual({});
   });
 });
