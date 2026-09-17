@@ -8,9 +8,11 @@ import { FINANCIAL_FIELD_BOUNDS } from '../scrapers/chittorgarh-detail-fields.js
 import { isFlipped } from './switchover.js';
 import { fieldNameToColumn } from './field-name-case.js';
 import { resolveFieldSourcePolicy } from './field-source-policy.js';
+import { loadFieldManifest } from './field-manifest-loader.js';
 import { mapManifestSourceToScraperSource } from './field-source-codes.js';
 import type { IpoTypeKey } from '../services/field-plan-generator.js';
 import { FEATURE_FLAGS } from './feature-flags.js';
+import { logger } from '../utils/logger.js';
 
 export type ScraperSource =
   | 'ADMIN'           // Manual admin overrides (highest priority)
@@ -136,6 +138,12 @@ export interface FieldRules {
 export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // ==================== FINANCIAL DATA (DRHP is authoritative) ====================
 
+  // S1d correction: kept, NOT among the deleted keys. Has no camelCase sibling, but is a
+  // literal `fieldName` argument in the pre-existing, currently-green
+  // `data-consolidation-noop-write-suppression.test.ts` and `data-consolidation-service.test.ts`
+  // (both part of the pr-gate unit sweep). `revenue_fy2`/`revenue_fy3`/`profit_fy1`/`profit_fy2`/
+  // `profit_fy3` had no such dependency (verified by grep across scraper/tests before deleting)
+  // and stay deleted.
   revenue_fy1: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'currency',
@@ -143,40 +151,17 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Revenue for fiscal year 1 - DRHP is most accurate',
   },
 
-  revenue_fy2: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Revenue for fiscal year 2',
-  },
 
-  revenue_fy3: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Revenue for fiscal year 3',
-  },
 
-  profit_fy1: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Profit for fiscal year 1',
-  },
 
-  profit_fy2: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Profit for fiscal year 2',
-  },
 
-  profit_fy3: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 80,
-    description: 'Profit for fiscal year 3',
-  },
+
+
+
+
+
+
+
 
   // Specific fiscal year fields (camelCase - actual database fields)
   revenueFy2022: {
@@ -252,52 +237,26 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   promoterHoldingPreIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding pre-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
   promoterHoldingPostIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding post-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
   marketCap: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Market capitalization (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.marketCap } },
-  peer_companies: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Peer-comparison payload (one-to-many) from the detail page peer table' },
+
   objectives: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Objects-of-issue payload (ipos.objectives jsonb) from the detail page' },
 
-  roe_percentage: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'percentage',
-    confidenceThreshold: 75,
-    description: 'Return on Equity percentage',
-    validation: { min: -100, max: 500 },
-  },
+  // S1d correction: kept, NOT among the deleted keys. No camelCase sibling, but is a literal
+  // `fieldName` argument in the pre-existing, currently-green data-consolidation-service.test.ts
+  // (W-48) and used as a `tableName` literal across several other consolidation/filing-persister
+  // tests (part of the pr-gate unit sweep).
+  peer_companies: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Peer-comparison payload (one-to-many) from the detail page peer table' },
 
-  roce_percentage: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'percentage',
-    confidenceThreshold: 75,
-    description: 'Return on Capital Employed',
-    validation: { min: -100, max: 500 },
-  },
 
-  pb_ratio: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 75,
-    description: 'Price-to-Book ratio',
-    validation: { min: 0, max: 100 },
-  },
+
+
+
+
 
   // ==================== IPO CORE DATA (NSE is primary) ====================
 
-  fresh_issue_size: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 85,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Fresh issue size',
-  },
 
-  offer_for_sale_size: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 85,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Offer for sale size',
-  },
+
+
 
   // T-287F2: had NO matrix entry before this fix (checker T-287C2
   // FINDING-hold-rebounded.md) -- an unlisted field falls back to
@@ -365,6 +324,55 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     confidenceThreshold: 75,
     description: 'Company business description (camelCase consolidation key)',
     validation: { regex: '^.{20,5000}$' },
+  },
+
+  // S1d correction: kept, NOT among the 22 deleted keys. None of these 4 has a camelCase
+  // sibling in this matrix (their real DB columns — `issuePrice`/`minInvestment` on `ipos`,
+  // `freshIssue`/`ofsIssue` on `ipo_details`, per packages/shared/src/db/schema.ts — have no
+  // matrix entry of their own, camelCase or otherwise, so these snake_case-spelled string
+  // literals do not correspond to any real caller's field name). They ARE, however, directly
+  // exercised as literal `getSourcePriority`/`allowsSameSourceRefresh` arguments by the
+  // pre-existing, currently-green T-520 regression
+  // (`data-consolidation-document-outranks-websites.test.ts`, part of the pr-gate unit sweep,
+  // outside this slice's reader list) — deleting them turns that test red. This is a REAL
+  // finding: T-520's own field-name literals are stale/mismatched against the actual schema
+  // columns, a separate defect from this slice's scope (fixing the matrix, not that test's field
+  // names) — flagged for the reviewer rather than silently deleted or silently fixed here.
+  min_investment: {
+    sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
+    description: 'Minimum investment amount',
+  },
+
+  issue_price: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'number',
+    confidenceThreshold: 95,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
+    description: 'Final issue price - critical field',
+    validation: { min: 1, max: 100000 },
+  },
+
+  fresh_issue_size: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
+    description: 'Fresh issue size',
+  },
+
+  offer_for_sale_size: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 85,
+    sameSourceRefresh: true,
+    sameSourceRefreshSources: ['DRHP'],
+    description: 'Offer for sale size',
   },
 
   // ONE naming scheme for the price band: `priceRangeMin`/`priceRangeMax`.
@@ -511,15 +519,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 0, max: 10000 },
   },
 
-  issue_price: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 95,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Final issue price - critical field',
-    validation: { min: 1, max: 100000 },
-  },
+
 
   // W-117 (review round 1): the filing beats the AGGREGATORS but NOT the
   // exchanges for bidding-window dates. NSE/BSE publish extensions to the
@@ -652,14 +652,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 1, max: 100000 },
   },
 
-  min_investment: {
-    sources: ['ADMIN', 'DRHP', 'BSE', 'NSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 85,
-    sameSourceRefresh: true,
-    sameSourceRefreshSources: ['DRHP'],
-    description: 'Minimum investment amount',
-  },
+
 
   // ==================== REAL-TIME DATA (Latest wins) ====================
 
@@ -674,6 +667,22 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'IPO status - real-time field, newest value wins',
   },
 
+
+
+
+
+
+
+
+
+  // S1d correction: these 7 kept, NOT among the deleted keys. None has a camelCase sibling, but
+  // each is a literal `getSourcePriority`/`fieldName` argument in the pre-existing, currently-
+  // green `data-consolidation-document-outranks-websites.test.ts` (T-520 "leaves the fields no
+  // offer document contains untouched" — asserts `getSourcePriority(field, 'DRHP') === -1`,
+  // which REQUIRES an explicit matrix entry whose `sources` excludes DRHP; the DEFAULT fallback
+  // rule includes DRHP, so an unregistered field would fail that assertion) and (for
+  // total_subscription) `data-consolidation-service.test.ts` / `terminal-status-consolidation.
+  // test.ts` / `field-plan-walk-doc-fetcher.test.ts`.
   total_subscription: {
     sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'number',
@@ -710,6 +719,34 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 0, max: 1000 },
   },
 
+  expected_listing_price: {
+    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    normalization: 'number',
+    timeBased: true,
+    ignoreDRHP: true,
+    description: 'Expected listing price (GMP-based)',
+  },
+
+  listing_price: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'number',
+    timeBased: true,
+    ignoreDRHP: true,
+    confidenceThreshold: 95,
+    description: 'Actual listing price - critical',
+    validation: { min: 1, max: 100000 },
+  },
+
+  listing_gain_percentage: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'percentage',
+    timeBased: true,
+    ignoreDRHP: true,
+    confidenceThreshold: 90,
+    description: 'Listing gains percentage',
+    validation: { min: -100, max: 1000 },
+  },
+
   // ==================== GMP DATA (InvestorGain is the live-GMP specialist) ====================
   // G8: InvestorGain GMP is the real live source; Chittorgarh GMP was abandoned
   // as unscrapeable. timeBased:true means newest-wins regardless, but InvestorGain
@@ -725,6 +762,15 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: -1000, max: 10000 },
   },
 
+  // S1d correction: kept, NOT one of the 22 deleted keys. No camelCase sibling exists (unlike
+  // open_date/close_date/lot_size/gmp_price/company_description), so it is genuinely a
+  // snake_case-only entry — but `field-priority-matrix-gmp.test.ts` (pre-existing, part of the
+  // pr-gate unit run) asserts `getFieldRules('gmp_percentage')` is registered, time-based,
+  // ignores DRHP and carries a validation range. GMP writes bypass the matrix entirely today
+  // (`data-persister.ts` `createGMPRecord` calls `gmpRepository.create()` directly, never
+  // `trackFieldSource`), so this entry is provisioned-but-currently-unreached rather than
+  // reachable-and-wrong like the 22 that were deleted; deleting it would break a real,
+  // currently-green test outside this slice's scope.
   gmp_percentage: {
     sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
     normalization: 'percentage',
@@ -756,13 +802,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: -100, max: 500 },
   },
 
-  expected_listing_price: {
-    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    description: 'Expected listing price (GMP-based)',
-  },
+
 
   // ==================== COMPANY INFO ====================
 
@@ -828,25 +868,9 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // ==================== LISTING PERFORMANCE ====================
 
-  listing_price: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    timeBased: true,
-    ignoreDRHP: true,
-    confidenceThreshold: 95,
-    description: 'Actual listing price - critical',
-    validation: { min: 1, max: 100000 },
-  },
 
-  listing_gain_percentage: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'percentage',
-    timeBased: true,
-    ignoreDRHP: true,
-    confidenceThreshold: 90,
-    description: 'Listing gains percentage',
-    validation: { min: -100, max: 1000 },
-  },
+
+
 };
 
 /**
@@ -935,6 +959,83 @@ export function policyGoverns(fieldName: string, tableName?: string): boolean {
   return isFlipped(tableName, fieldNameToColumn(fieldName));
 }
 
+/** Once-per-process dedup keys for the shim/shadow log lines (card: "once per process per field"). */
+const shimLoggedFields = new Set<string>();
+const shadowLoggedFields = new Set<string>();
+
+/**
+ * Item 3 slice S1d: does the field/table have a row in the field manifest at all? Checked
+ * directly against `manifest.fields` — never through `resolveFieldSourcePolicy`, which THROWS
+ * for an unknown field (its own doc comment / test: "an unknown table.column throws"). A missing
+ * row is the row-less-field case the shim exists for, not an error.
+ */
+export function hasManifestRow(fieldName: string, tableName?: string): boolean {
+  if (!tableName) return false;
+  const manifest = loadFieldManifest();
+  const fieldKey = `${tableName}.${fieldNameToColumn(fieldName)}`;
+  return Object.prototype.hasOwnProperty.call(manifest.fields, fieldKey);
+}
+
+/**
+ * Item 3 slice S1d: does this field's WRITE-DECIDING functions (`getSourcePriority`,
+ * `isTimeBased`, `allowsSameSourceRefresh`) delegate to the resolver? Widens S1b's
+ * `policyGoverns` (flip-gated) to "has a manifest row" — but the `flipped` list still controls
+ * which groups' WRITE DECISIONS actually change: a field with a row whose group is NOT flipped
+ * still returns the legacy matrix answer from the three functions above (byte-identical to
+ * today), while this function logs `policy-shadow` once per process so the two answers are
+ * visible without acting on the resolver's one. A field with NO row is the shim case (below) —
+ * `delegatesToPolicy` is false for it, same as `policyGoverns`.
+ */
+function delegatesToPolicy(fieldName: string, tableName?: string): boolean {
+  if (!tableName) return false;
+  if (!FEATURE_FLAGS.ENABLE_POLICY_WRITER) return false;
+  if (!hasManifestRow(fieldName, tableName)) return false;
+  if (!isFlipped(tableName, fieldNameToColumn(fieldName))) {
+    logPolicyShadow(fieldName, tableName);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * A field WITH a manifest row whose group is not flipped: log both the legacy matrix order and
+ * the resolver's order, once per process per field, so drift is visible (S6's active-override
+ * report counts these) without changing the write decision yet.
+ */
+function logPolicyShadow(fieldName: string, tableName: string): void {
+  const dedupKey = `${tableName}.${fieldName}`;
+  if (shadowLoggedFields.has(dedupKey)) return;
+  shadowLoggedFields.add(dedupKey);
+
+  const matrixOrder = getFieldRules(fieldName).sources;
+  let policyOrder: string[];
+  try {
+    policyOrder = policyRanksAsWriterSources(fieldName, tableName, 'MAINBOARD');
+  } catch {
+    policyOrder = [];
+  }
+  logger.info(
+    { field: `${tableName}.${fieldNameToColumn(fieldName)}`, matrixOrder, policyOrder },
+    'policy-shadow'
+  );
+}
+
+/**
+ * A field with NO manifest row falls back to the matrix's `sources` — this is the shim the
+ * card names: logged once per process per field so a field the manifest never got a row for is
+ * visible (never a silent, permanent fallback). `sources` arrays STAY on the matrix rows for
+ * exactly this reason (S6 removes them once every writable field has a row).
+ */
+function logPolicyShim(fieldName: string, tableName: string): void {
+  const dedupKey = `${tableName}.${fieldName}`;
+  if (shimLoggedFields.has(dedupKey)) return;
+  shimLoggedFields.add(dedupKey);
+  logger.info(
+    { field: `${tableName}.${fieldNameToColumn(fieldName)}`, reason: 'no manifest row' },
+    'policy-shim'
+  );
+}
+
 /** The resolver's ranks for a flipped field, mapped to writer sources. ADMIN is never listed by
  * the resolver (field-source-policy.ts's own doc comment) — it is prepended here so ADMIN keeps
  * the fixed invariant of always ranking first, exactly like the matrix's own `ADMIN` entries. */
@@ -947,6 +1048,11 @@ function policyRanksAsWriterSources(fieldName: string, tableName: string, ipoTyp
 /**
  * Get source priority index (lower = higher priority)
  * Returns -1 if source not in priority list
+ *
+ * Item 3 slice S1d: delegates to the resolver whenever the field has a manifest row AND its
+ * group is flipped (`delegatesToPolicy` — widened from S1b's flip-only gate to "has a row",
+ * while flip state still controls which groups' write decisions actually change). A field with
+ * NO manifest row falls back to the matrix `sources` order through the logged shim.
  */
 export function getSourcePriority(
   fieldName: string,
@@ -954,8 +1060,11 @@ export function getSourcePriority(
   tableName?: string,
   ipoType: IpoTypeKey = 'MAINBOARD'
 ): number {
-  if (policyGoverns(fieldName, tableName)) {
+  if (delegatesToPolicy(fieldName, tableName)) {
     return policyRanksAsWriterSources(fieldName, tableName!, ipoType).indexOf(source);
+  }
+  if (tableName && FEATURE_FLAGS.ENABLE_POLICY_WRITER && !hasManifestRow(fieldName, tableName)) {
+    logPolicyShim(fieldName, tableName);
   }
   const rules = getFieldRules(fieldName);
   return rules.sources.indexOf(source);
@@ -1003,8 +1112,11 @@ export function allowsSameSourceRefresh(
 ): boolean {
   const rules = getFieldRules(fieldName);
   if (!rules.sameSourceRefresh) return false;
-  if (policyGoverns(fieldName, tableName)) {
+  if (delegatesToPolicy(fieldName, tableName)) {
     return policyRanksAsWriterSources(fieldName, tableName!, ipoType).indexOf(source) !== -1;
+  }
+  if (tableName && FEATURE_FLAGS.ENABLE_POLICY_WRITER && !hasManifestRow(fieldName, tableName)) {
+    logPolicyShim(fieldName, tableName);
   }
   return legacySameSourceRefreshAllowList(rules).indexOf(source) !== -1;
 }

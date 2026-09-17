@@ -529,4 +529,52 @@ describe('item 3 S1b: the writer decides a FLIPPED field from resolveFieldSource
       policyTestState.markDocIncapable = false;
     }
   });
+
+  // Item 3 slice S1d: provenance names the configuration. RED on origin/main (20df246e):
+  // trackFieldSource never passes `dataLineage` to trackFieldUpdate at all.
+  it('(xvi) S1d: a policy-path write on ipos.issue_size carries policyOrigin in dataLineage', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipos',
+      incomingData: { issueSize: 54210000000 },
+      existingData: { issueSize: 30850000000, segment: 'MAINBOARD' },
+      source: 'CHITTORGARH',
+      confidence: 80,
+    });
+
+    const { loadFieldManifest } = await import('../../../src/config/field-manifest-loader.js');
+    const manifest = loadFieldManifest();
+
+    expect(mockFieldSourcesRepo.trackFieldUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fieldName: 'issueSize',
+        dataLineage: { policyOrigin: `registry:${manifest.version}` },
+      })
+    );
+  });
+
+  it('(xvii) S1d: a field with NO manifest row (companyDescription\'s manifest key is ipos.company_description, so a synthetic row-less table proves this) carries no policyOrigin', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    // `ipo_financials.market_cap` (camelCase fieldName `marketCap`) has no manifest row at all
+    // (measured 2026-09-18: ipo_financials is the orphaned table the S1d card's Known Gaps
+    // section names) — not flipped either, so this exercises the shim path end-to-end, not just
+    // the policyGoverns/delegatesToPolicy gate.
+    await service.consolidateIPOData({
+      ipoId: 'policy-test',
+      tableName: 'ipo_financials',
+      incomingData: { marketCap: 5000000 },
+      existingData: { segment: 'MAINBOARD' },
+      source: 'NSE',
+      confidence: 80,
+    });
+
+    const call = vi.mocked(mockFieldSourcesRepo.trackFieldUpdate).mock.calls.find(
+      (c) => c[0].fieldName === 'marketCap'
+    );
+    expect(call).toBeDefined();
+    expect(call![0].dataLineage).toBeUndefined();
+  });
 });
