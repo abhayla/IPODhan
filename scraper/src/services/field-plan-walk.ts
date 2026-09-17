@@ -53,6 +53,7 @@ import { normalizeChosen } from './data-consolidation-service.js';
 import { areEquivalent } from './normalization-engine.js';
 import { getFieldRules } from '../config/field-priority-matrix.js';
 import { mapManifestSourceToScraperSource } from '../config/field-source-codes.js';
+import { columnToCamelCase } from '../config/field-name-case.js';
 import {
   resolveFieldSourcePolicy,
   policyOriginString,
@@ -70,11 +71,10 @@ import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
  * the mapper never reads — no throw, no `skipped: true`, just a silent
  * no-op — so `runWrite` below saw `happened: true` for a write that changed
  * nothing, and the plan row was recorded SUPPLIED against a value that was
- * never persisted (review round 1, C1).
+ * never persisted (review round 1, C1). `toCamelFieldName` (this file's own private copy) was
+ * retired in item 3 slice S1b in favour of the shared `columnToCamelCase` (field-name-case.ts) —
+ * byte-identical logic, one place.
  */
-function toCamelFieldName(fieldName: string): string {
-  return fieldName.replace(/_([a-z])/g, (_match, ch: string) => ch.toUpperCase());
-}
 
 /** Which write path a plan row's table takes. */
 const SINGLETON_IPO_TABLES: ReadonlySet<string> = new Set(['ipos', 'ipo']);
@@ -170,8 +170,8 @@ export type ProtectionFilter = (
 /**
  * A real interface, not `Record<string, unknown>` (S1a review CRITICAL-1):
  * an untyped bag let `policyOrigin` be passed at every call site and silently
- * dropped by `recordOutcome`'s SQL — a missing field is now a compile error
- * at every one of `recordAndClassify`'s six call sites.
+ * dropped by `recordOutcome`'s SQL. The field is optional; the guard that it
+ * reaches the SQL is tests/integration/field-plan-walk-resume.integration.test.ts.
  */
 export interface RecordOutcomeCallParams {
   planRowId: string;
@@ -984,7 +984,7 @@ async function runWrite(
   deps: FieldPlanWalkDeps
 ): Promise<WriteVerdict> {
   try {
-    const camelFieldName = toCamelFieldName(plan.fieldName);
+    const camelFieldName = columnToCamelCase(plan.fieldName);
     if (SINGLETON_IPO_TABLES.has(plan.tableName)) {
       // Review round 2, RCA1: never write `{ id, [field]: value }` alone —
       // computeIpoIdentitySlug needs companyName even with a pre-resolved

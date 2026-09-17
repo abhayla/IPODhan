@@ -11,6 +11,7 @@ import * as schema from '../../../packages/shared/src/db/schema';
 import { FieldSourcesRepository } from '../../../packages/shared/src/repositories/field-sources-repository';
 import { DataConflictsRepository } from '../../../packages/shared/src/repositories/data-conflicts-repository';
 import { DataConsolidationOrchestrator } from '../../src/services/data-consolidation-orchestrator';
+import { DataConsolidationService } from '../../src/services/data-consolidation-service';
 import { financialStatementsRowKey } from '../../src/services/child-row-keys';
 import { FEATURE_FLAGS } from '../../src/config/feature-flags';
 
@@ -48,6 +49,8 @@ const noRedis = {
 
 let pool: Pool | null = null;
 let orchestrator: DataConsolidationOrchestrator | null = null;
+let policyService: DataConsolidationService | null = null;
+const POLICY_IPO_ID = '00000000-0000-4000-8000-00000005b1b1';
 
 const savedFlags: Record<string, unknown> = {};
 
@@ -67,10 +70,16 @@ beforeAll(async () => {
   const db = drizzle(pool, { schema });
   await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
   await db.delete(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, IPO_ID));
-  await db.delete(schema.ipos).where(inArray(schema.ipos.id, [IPO_ID]));
+  await db.delete(schema.ipos).where(inArray(schema.ipos.id, [IPO_ID, POLICY_IPO_ID]));
   await db.execute(sql`
     INSERT INTO ipos (id, company_name, slug, category, status, open_date, close_date)
     VALUES (${IPO_ID}::uuid, 'S5B Financials Fixture Ltd.', 's5b-financials-fixture-ltd', 'SME', 'OPEN', '2026-09-08', '2026-09-10')
+  `);
+  // item 3 slice S1b: a MAINBOARD row so ipoTypeForPolicy resolves MAINBOARD without a segment
+  // guess — the resolver's ipos.issue_size MAINBOARD ranks are the ones under test.
+  await db.execute(sql`
+    INSERT INTO ipos (id, company_name, slug, category, status, segment, open_date, close_date, issue_size)
+    VALUES (${POLICY_IPO_ID}::uuid, 'S1b Policy Fixture Ltd.', 's1b-policy-fixture-ltd', 'MAINBOARD', 'OPEN', 'MAINBOARD', '2026-09-08', '2026-09-10', 1400000000)
   `);
 
   orchestrator = new DataConsolidationOrchestrator(
@@ -78,6 +87,10 @@ beforeAll(async () => {
     new FieldSourcesRepository(db as never, noRedis) as never,
     new DataConflictsRepository(db as never, noRedis) as never,
     null
+  );
+  policyService = new DataConsolidationService(
+    new FieldSourcesRepository(db as never, noRedis) as never,
+    new DataConflictsRepository(db as never, noRedis) as never
   );
 }, 30000);
 
@@ -87,7 +100,9 @@ afterAll(async () => {
   const db = drizzle(pool, { schema });
   await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
   await db.delete(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, IPO_ID));
-  await db.delete(schema.ipos).where(inArray(schema.ipos.id, [IPO_ID]));
+  await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, POLICY_IPO_ID));
+  await db.delete(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, POLICY_IPO_ID));
+  await db.delete(schema.ipos).where(inArray(schema.ipos.id, [IPO_ID, POLICY_IPO_ID]));
   await pool.end();
 }, 30000);
 
@@ -97,6 +112,7 @@ beforeEach(async () => {
     'ENABLE_DATA_CONSOLIDATION',
     'ENABLE_SOURCE_TRACKING',
     'CONSOLIDATION_PERCENTAGE',
+    'ENABLE_POLICY_WRITER',
   ]) {
     if (!(k in savedFlags)) savedFlags[k] = (FEATURE_FLAGS as never as Record<string, unknown>)[k];
   }
@@ -107,11 +123,17 @@ beforeEach(async () => {
   // 0 would route every consolidation into the fallback (no resolution, no
   // provenance) — the rollout precondition this flag depends on.
   f.CONSOLIDATION_PERCENTAGE = 100;
+  // item 3 slice S1b: the policy-writer describe block below sets this per-test; default true so
+  // a test that forgets to set it still exercises the flipped path (the byte-identical-off case
+  // is proven explicitly within that describe block instead).
+  f.ENABLE_POLICY_WRITER = true;
 
   if (!pool) return;
   const db = drizzle(pool, { schema });
   await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, IPO_ID));
   await db.delete(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, IPO_ID));
+  await db.delete(schema.fieldSources).where(eq(schema.fieldSources.ipoId, POLICY_IPO_ID));
+  await db.delete(schema.dataConflicts).where(eq(schema.dataConflicts.ipoId, POLICY_IPO_ID));
 });
 
 async function financialProvenance(rowKey: string, fieldName: string) {
@@ -207,5 +229,59 @@ describe.skipIf(!DATABASE_URL)(`consolidatedUpsertChildRows on financial_stateme
         )
       );
     expect(all).toHaveLength(0);
+  });
+});
+
+// item 3 slice S1b — S1b-6: the ipos.issue_size write decision on ipodhan_test with
+// ENABLE_POLICY_WRITER on matches the manifest policy ([DOC, CHITTORGARH] for MAINBOARD), against
+// the REAL DataConsolidationService + REAL Postgres field_sources table (unit tests mock the
+// repository; this proves the SQL round trip too).
+describe.skipIf(!DATABASE_URL)(`DataConsolidationService.consolidateIPOData policy writer (${RUN_LABEL})`, () => {
+  async function policyProvenance() {
+    const db = drizzle(pool!, { schema });
+    const rows = await db
+      .select()
+      .from(schema.fieldSources)
+      .where(
+        and(
+          eq(schema.fieldSources.ipoId, POLICY_IPO_ID),
+          eq(schema.fieldSources.tableName, 'ipos'),
+          eq(schema.fieldSources.fieldName, 'issueSize')
+        )
+      );
+    return rows[0] ?? null;
+  }
+
+  it('CHITTORGARH replaces an UNTRACKED stored ipos.issue_size (the #728 prod class this slice heals)', async () => {
+    const result = await policyService!.consolidateIPOData({
+      ipoId: POLICY_IPO_ID,
+      tableName: 'ipos',
+      incomingData: { issueSize: 1500000000 },
+      existingData: { issueSize: 1400000000, segment: 'MAINBOARD' },
+      source: 'CHITTORGARH',
+      confidence: 80,
+    });
+
+    expect(Number(result.consolidatedData.issueSize)).toBe(1500000000);
+    const provenance = await policyProvenance();
+    expect(provenance).not.toBeNull();
+    expect(provenance!.source).toBe('CHITTORGARH');
+  });
+
+  it('DOC (DRHP write source) replaces a now-tracked CHITTORGARH ipos.issue_size', async () => {
+    const result = await policyService!.consolidateIPOData({
+      ipoId: POLICY_IPO_ID,
+      tableName: 'ipos',
+      incomingData: { issueSize: 1600000000 },
+      existingData: { segment: 'MAINBOARD' },
+      source: 'DRHP',
+      docType: 'PRICE_BAND_AD',
+      confidence: 90,
+    });
+
+    expect(Number(result.consolidatedData.issueSize)).toBe(1600000000);
+    const provenance = await policyProvenance();
+    expect(provenance).not.toBeNull();
+    expect(provenance!.source).toBe('DRHP');
   });
 });

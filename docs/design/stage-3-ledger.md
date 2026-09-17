@@ -7,7 +7,9 @@ production config deploy may run in any evening window, owner-worded).
 
 Cards: `docs/design/build-cards/item-03-s*.md`, one per slice. Gate: `node scripts/check-stage3-dod.mjs
 --slice <id>` runs every card's Definition of Done row and prints PASS/FAIL per row; the supervisor runs
-it (never a worker) and no slice is dispatched until the previous slice's run is all PASS.
+it (never a worker) and no slice is dispatched until the previous slice's run is all PASS. Test-db
+rows need `DATABASE_URL` naming `ipodhan_test` AND `REDIS_URL=redis://localhost:6379` (the
+integration guard throws without it and vitest prints `Tests no tests`).
 
 ## Rows (one per slice; a row is appended, never edited, except the status cell)
 
@@ -19,7 +21,7 @@ it (never a worker) and no slice is dispatched until the previous slice's run is
 | S0c | B | item-03-s0c-source-code-reconciliation.md | #741 | c0a0d5a4 | Tier B Sonnet, PASS-with-minors (card overstated a .refine; corrected) | n/a (no runtime change) | 2026-09-17 15:33 IST, 7/7 PASS (supervisor, merged sha) | item-03 v15 | landed 2026-09-17 15:33 IST |
 | S0d | A | item-03-s0d-scraper-source-enum.md | #742 | 8bb4bc7f | Tier A Opus x2 (round 1 FAIL: nine literal unions; round 2 PASS 6/6) | owed: S0d-7 after the 21:30 window | 2026-09-17 16:18 IST, 7/8 PASS (S0d-7 SKIP), supervisor, merged sha, ipodhan_test | item-03 v16 | merged, staging proof owed |
 | S5 | A | item-03-s5-config-only-deploy.md | #743 | 888f9330 | Tier A Opus PASS, 3 MINOR (MINOR-3 seed guard fixed round 1; MINOR-1/2 accepted as known gaps) | owed: S5-5..S5-7 after the 21:30 window | 2026-09-17 17:31 IST, S5-3/S5-4 PASS on main; S5-1 by hand ALL PASS + CI; S5-2 CI ALL PASS (no symlinks on the laptop); supervisor, 888f9330 | item-03 v17 | merged, staging proof owed |
-| S1a | A | item-03-s1a-resolver.md | | | | | | | queued |
+| S1a | A | item-03-s1a-resolver.md | #745 | 0abf8a37 | Tier A Opus x2: round 1 FAIL (CRITICAL walk origin write no-op) -> fix c7ee046b -> round 2 PASS-with-MINORS | 2026-09-17 18:38 IST, S1a-1/2/4/5 PASS on main (S1a worktree detached at 0abf8a37, ipodhan_test); S1a-3 card regex defect fixed in the S1b PR; staging: S1a-6/7 pending (21:30 window, supervisor fills) | item-03 v18 | merged, staging proof owed |
 | S1b | A | item-03-s1b-writer-adopts-resolver.md | | | | | | | queued |
 | S1c | A | item-03-s1c-refuse-incapable.md | | | | | | | queued |
 | S1d | A | item-03-s1d-matrix-shim-and-provenance.md | | | | | | | queued |
@@ -49,8 +51,8 @@ on staging, run by the supervisor with zero code edits.
   anything listed there. A reviewer finding "reused vs rewritten" is MAJOR.
 - Failing test first on the REAL function (no re-implementation in the test); staging writes only
   through reviewed tools with `--expect-db ipodhan_staging`, never `--allow-prod`.
-- Every merge: `node scripts/ops/merge-if-current.mjs <N>` exit 0, then `gh pr merge <N> --squash`;
-  no pushes to main :50–:05; workflow-file PRs only :00–:05.
+- Every merge: `node scripts/ops/merge-if-current.mjs <N>` exit 0, then `gh pr merge <N> --squash`,
+  the moment review PASS + CI green (owner 2026-09-17: no merge slots during development).
 - PR body carries either the detection-check change or the literal line
   `No detection change: <reason of 20+ characters>` (the recurrence gate greps it verbatim).
 - Reviewers get no scratch worktree: read `gh pr diff`, run tests in the builder's worktree.

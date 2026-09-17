@@ -5,6 +5,12 @@
  */
 
 import { FINANCIAL_FIELD_BOUNDS } from '../scrapers/chittorgarh-detail-fields.js';
+import { isFlipped } from './switchover.js';
+import { fieldNameToColumn } from './field-name-case.js';
+import { resolveFieldSourcePolicy } from './field-source-policy.js';
+import { mapManifestSourceToScraperSource } from './field-source-codes.js';
+import type { IpoTypeKey } from '../services/field-plan-generator.js';
+import { FEATURE_FLAGS } from './feature-flags.js';
 
 export type ScraperSource =
   | 'ADMIN'           // Manual admin overrides (highest priority)
@@ -918,20 +924,64 @@ export function getFieldRules(fieldName: string): FieldRules {
 }
 
 /**
+ * Item 3 slice S1b: does the field's reconciliation group flip to the resolver? False (and the
+ * matrix path runs unchanged) when `ENABLE_POLICY_WRITER` is off, `tableName` is not supplied
+ * (every pre-S1b caller — one-arg calls keep compiling and keep today's behaviour byte-for-byte),
+ * or the field's group is not in `switchover.json`'s `flipped` list.
+ */
+function policyGoverns(fieldName: string, tableName?: string): boolean {
+  if (!tableName) return false;
+  if (!FEATURE_FLAGS.ENABLE_POLICY_WRITER) return false;
+  return isFlipped(tableName, fieldNameToColumn(fieldName));
+}
+
+/** The resolver's ranks for a flipped field, mapped to writer sources. ADMIN is never listed by
+ * the resolver (field-source-policy.ts's own doc comment) — it is prepended here so ADMIN keeps
+ * the fixed invariant of always ranking first, exactly like the matrix's own `ADMIN` entries. */
+function policyRanksAsWriterSources(fieldName: string, tableName: string, ipoType: IpoTypeKey): ScraperSource[] {
+  const policy = resolveFieldSourcePolicy({ table: tableName, column: fieldNameToColumn(fieldName), ipoType });
+  const mapped = policy.ranks.map((code) => mapManifestSourceToScraperSource(code));
+  return ['ADMIN', ...mapped];
+}
+
+/**
  * Get source priority index (lower = higher priority)
  * Returns -1 if source not in priority list
  */
-export function getSourcePriority(fieldName: string, source: ScraperSource): number {
+export function getSourcePriority(
+  fieldName: string,
+  source: ScraperSource,
+  tableName?: string,
+  ipoType: IpoTypeKey = 'MAINBOARD'
+): number {
+  if (policyGoverns(fieldName, tableName)) {
+    return policyRanksAsWriterSources(fieldName, tableName!, ipoType).indexOf(source);
+  }
   const rules = getFieldRules(fieldName);
   return rules.sources.indexOf(source);
 }
 
 /**
  * Check if field is time-based (newest wins)
+ *
+ * Item 3 slice S1b: a flipped field's time-based-ness is still decided by the matrix — the
+ * resolver has no `timeBased` concept (it only ranks sources), so this reads `rules.timeBased`
+ * regardless of `tableName`/flip state. `tableName` is accepted for a uniform four-function
+ * signature (the card's Interfaces block) even though this function does not consult it.
  */
-export function isTimeBased(fieldName: string): boolean {
+export function isTimeBased(fieldName: string, _tableName?: string): boolean {
   const rules = getFieldRules(fieldName);
   return rules.timeBased || false;
+}
+
+/**
+ * The matrix's own same-source-refresh allow list for a field: the narrower
+ * `sameSourceRefreshSources` list when the field sets one, else the field's full ranked
+ * `sources` list (T-278 P3-7 fallback).
+ */
+function legacySameSourceRefreshAllowList(rules: FieldRules): ScraperSource[] {
+  if (rules.sameSourceRefreshSources) return rules.sameSourceRefreshSources;
+  return rules.sources;
 }
 
 /**
@@ -939,12 +989,40 @@ export function isTimeBased(fieldName: string): boolean {
  * values came from `source`? True only when the field opts in via
  * `sameSourceRefresh` AND the matrix lists `source` as authoritative for it,
  * so an unlisted source (priority -1) can never self-refresh.
+ *
+ * Item 3 slice S1b, card finding 5: for a FLIPPED field the allow-list is the resolver's ranks
+ * (`policy.ranks`), not the legacy matrix allow list above — a source the manifest no longer
+ * ranks for this field/table/ipoType must not keep self-refresh authority a stale matrix entry
+ * once granted it.
  */
-export function allowsSameSourceRefresh(fieldName: string, source: ScraperSource): boolean {
+export function allowsSameSourceRefresh(
+  fieldName: string,
+  source: ScraperSource,
+  tableName?: string,
+  ipoType: IpoTypeKey = 'MAINBOARD'
+): boolean {
   const rules = getFieldRules(fieldName);
   if (!rules.sameSourceRefresh) return false;
-  const allowList = rules.sameSourceRefreshSources ?? rules.sources;
-  return allowList.indexOf(source) !== -1;
+  if (policyGoverns(fieldName, tableName)) {
+    return policyRanksAsWriterSources(fieldName, tableName!, ipoType).indexOf(source) !== -1;
+  }
+  return legacySameSourceRefreshAllowList(rules).indexOf(source) !== -1;
+}
+
+/**
+ * M-1 (moved from data-consolidation-service.ts, item 3 slice S1b): may `source` replace a
+ * stored value that has NO provenance row, under the LEGACY matrix rule — only if the matrix
+ * ranks it for this field AND strictly better than the worst source it lists, so an unranked or
+ * bottom-ranked source (e.g. API_FALLBACK for `registrar`) can never silently replace a value
+ * whose origin is unknown. This is the UNFLIPPED path only; `data-consolidation-service.ts`'s
+ * `outranksUntrackedValue` calls this for a field whose group is not flipped (or the flag is
+ * off) and uses the resolver's ranks directly for a flipped one.
+ */
+export function outranksUntrackedByMatrix(fieldName: string, source: ScraperSource): boolean {
+  const rank = getSourcePriority(fieldName, source);
+  if (rank === -1) return false;
+  const worstRank = getFieldRules(fieldName).sources.length - 1;
+  return rank < worstRank;
 }
 
 /**

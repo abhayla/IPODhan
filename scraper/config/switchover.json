@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "groups": {
+    "issue-size": [
+      "ipos.issue_size",
+      "ipo_details.fresh_issue",
+      "ipo_details.ofs_issue",
+      "ipos.price_range_min",
+      "ipos.price_range_max",
+      "ipos.lot_size"
+    ]
+  },
+  "flipped": ["issue-size"],
+  "identityFields": ["ipos.segment", "ipos.listing_exchanges"]
+}
