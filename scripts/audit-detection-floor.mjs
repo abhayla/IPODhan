@@ -36,6 +36,7 @@ import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createUtcPool, installUtcTimestampParsing, assertUtcSession } from './lib/pg-utc.mjs';
 import { istDayIso } from './lib/ist-day.mjs';
+import { mostRecentFieldPlanSlotBoundary, PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS } from './lib/field-plan-slot.mjs';
 import { parseIpowatchListIndex, parseIpowatchDetail, computeOracleCoverageWarning } from './lib/ipowatch-oracle-parser.mjs';
 import {
   checkBlockedAllAge,
@@ -1699,6 +1700,81 @@ async function checkS_pullPlanRank() {
     `0 of ${rows.length} plan rows disagree with policy for their version` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
+// #762 (S8): the RCA class this check closes is "the claim query stops
+// reclaiming a whole non-terminal state and nothing notices" — exactly what
+// happened when claimNextDueField shipped as state='PENDING' only: 12,480
+// NOT_AVAILABLE_YET/CHECK_FAILED rows sat unclaimed on staging with zero
+// PENDING rows anywhere, and no existing check (pull_write_policy,
+// pull_plan_rank — both scoped to RANK correctness, never to whether a row
+// is still being asked at all) would have caught it.
+//
+// review round 1 CRITICAL-1: the first cut used a flat `interval '7 hours'`
+// ("~2 discovery slots") as the staleness threshold. Measured real slot
+// gaps: [150, 180, 210, 900] minutes -- the 17:30 IST -> 08:30 IST overnight
+// gap is 900 minutes (15h) on its own, so TWO consecutive slots can span
+// 18.5h. A flat 7h threshold made every legitimately-waiting row look
+// "stuck" from ~00:30 to ~08:30 IST every single night -- exactly when the
+// nightly floor runs -- which is worse than useless: it cannot tell stuck
+// from overnight, the one thing this check exists to do. Fixed by asking
+// the SLOT question directly (the same predicate the claim query itself
+// uses, via the SAME shared helper — see field-plan-slot.mjs's own header
+// for why it is a second deliberate duplicate, not a copy of a copy): a row
+// is "stuck" when it was ALREADY due at the slot boundary before last (two
+// slot boundaries back) and is still sitting unclaimed now. One slot of lag
+// is normal cadence (a cycle can run mid-slot); two slot boundaries passing
+// with the row still unclaimed means the claim path did not pick it up.
+//
+// review round 1 F7: the first cut also filtered `last_attempt_at IS NOT
+// NULL`, but the claim query (packages/shared's claimNextDueField) treats
+// `last_attempt_at IS NULL` as reclaimable too (a row that reached
+// NOT_AVAILABLE_YET/CHECK_FAILED with no last_attempt_at stamped -- possible
+// from a hand-written repair or a future writer bug). That was the exact
+// blind spot this check exists to close: a null-attempt row was reclaimable
+// but invisible to the check. Fixed by treating NULL as "due since forever"
+// (an unconditional match), never excluded.
+//
+// The SQL below is the same "stuck" definition as the pure, unit-tested
+// isStuckReclaimRow predicate in field-plan-slot.mjs (F6 fix — that
+// predicate is what scripts/tests/field-plan-slot.test.mjs exercises RED
+// and GREEN without a database); kept as SQL here purely for performance
+// (a table-wide client-side filter would defeat the point of the reclaim
+// indexes this same PR adds). PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS is
+// imported from that same module, which is the one place its value (kept
+// equal to FIELD_PLAN_RECLAIM_MAX_ATTEMPTS in
+// ipo-field-plan-repository.ts by hand, pinned by test) lives.
+async function checkS_pullPlanStuckReclaim() {
+  const twoSlotsAgo = mostRecentFieldPlanSlotBoundary(
+    mostRecentFieldPlanSlotBoundary(new Date())
+  );
+  let rows;
+  try {
+    rows = await q(
+      `SELECT id, table_name AS "tableName", row_key AS "rowKey", field_name AS "fieldName",
+              state, attempts, last_attempt_at AS "lastAttemptAt"
+         FROM ipo_field_plan
+        WHERE (
+          (state = 'NOT_AVAILABLE_YET')
+          OR (state = 'CHECK_FAILED' AND attempts < $1)
+        )
+          AND claimed_at IS NULL
+          AND (last_attempt_at IS NULL OR last_attempt_at < $2::timestamptz)`,
+      [PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS, twoSlotsAgo]
+    );
+  } catch (e) {
+    record('pull_plan_stuck_reclaim', 'non-terminal plan rows are still being reclaimed (not stuck)', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const row of rows) {
+    notify('pull_plan_stuck_reclaim', 'P2', `${row.tableName}.${row.fieldName}:${row.id}`,
+      'non-terminal plan row unclaimed for 2+ discovery slots — the claim query may have stopped reclaiming this state',
+      `state=${row.state} attempts=${row.attempts} lastAttemptAt=${row.lastAttemptAt ?? 'null'}`);
+  }
+  record('pull_plan_stuck_reclaim', `${rows.length} non-terminal plan row(s) unclaimed for 2+ discovery slots`,
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    `0 stuck rows expected; found ${rows.length}` + (rows.length ? ` (sample: ${rows.slice(0, MAX_OFFENDERS).map(r => `${r.tableName}.${r.fieldName}`).join('; ')})` : ''));
+}
+
 // ---- (S) item 3 slice S4: PULL-OVERRIDES -- every active field_source_overrides row still holds
 async function checkS_pullOverrides() {
   let manifest;
@@ -1796,6 +1872,7 @@ async function main() {
   checkS_pullPolicy();
   await checkS_pullWritePolicy();
   await checkS_pullPlanRank();
+  await checkS_pullPlanStuckReclaim();
   await checkS_pullOverrides();
 
   const failed = results.filter((r) => r.status === 'FAIL');

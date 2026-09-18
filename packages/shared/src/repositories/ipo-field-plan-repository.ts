@@ -67,6 +67,31 @@ import type * as schema from '../db/schema';
 import { DatabaseError } from '../errors/repository-errors';
 
 /**
+ * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
+ *
+ * Every timestamp column on `ipo_field_plan` (`next_due_at`, `last_attempt_at`,
+ * `claimed_at`, `verify_due_at`, `created_at`, `updated_at`) is a bare
+ * `timestamp` — no `withTimezone`. node-postgres serialises a bound `Date`
+ * OBJECT using the PROCESS's local zone, so on this project's IST machines a
+ * value is stored 5h30m ahead of the instant it represents, while the query it
+ * is compared against uses Postgres `now()` in UTC. The two clocks disagree and
+ * the comparison is silently wrong.
+ *
+ * Measured on ipodhan_test, 2026-09-19, a Date one hour in the future:
+ *   bind the Date object -> stored `2026-09-19 02:12:58`   (WRONG, +5:30)
+ *   bind `.toISOString()` -> stored `2026-09-18 20:42:58`  (correct)
+ *   postgres now() (UTC)  ->        `2026-09-18 19:43:00`
+ * So a row due in an hour read as already due, and "not yet due" rows were
+ * claimed — the five red integration tests this fixes.
+ *
+ * Per `.claude/rules/ist-timezone.md`: timestamps are STORED in UTC and shown
+ * in IST at the edge. This helper is the storage half.
+ */
+function utc(value: Date): string {
+  return value.toISOString();
+}
+
+/**
  * A claim older than this is assumed to belong to a killed walk and is
  * reclaimable. Mirrors `IN_PROGRESS_STALE_MINUTES` in
  * `scraper/src/services/document-state-machine.ts:721` — the same recovery
@@ -78,6 +103,68 @@ export const FIELD_PLAN_CLAIM_STALE_MINUTES = 30;
 /** Per-field backoff between attempts, doubling, capped. */
 export const FIELD_PLAN_BACKOFF_BASE_MINUTES = 15;
 export const FIELD_PLAN_BACKOFF_MAX_MINUTES = 6 * 60;
+
+/**
+ * #762 (S8): how many times a NOT_AVAILABLE_YET / CHECK_FAILED row is
+ * reclaimed by `claimNextDueField` before the re-ask path stops offering it.
+ * Mirrors `NOT_FOUND_MAX_ATTEMPTS` in
+ * `scraper/src/services/document-state-machine.ts:451` — the same "N
+ * transient misses is no longer transient" convention, same shape (a claim
+ * filter, not a state transition). A row at or past this ceiling is simply
+ * never selected here; it is NOT moved to EXHAUSTED by this query (that
+ * would be a `recordOutcome`/state-machine change, out of this fix's scope
+ * per the S8 brief) — it just stops churning through every slot forever.
+ */
+export const FIELD_PLAN_RECLAIM_MAX_ATTEMPTS = 5;
+
+/**
+ * #762 (S8): the daily discovery-slot boundaries the field-plan re-ask keys
+ * its reclaim on, IN MINUTES SINCE IST MIDNIGHT. Deliberately the SAME
+ * values as `DISCOVERY_SLOTS_IST_MINUTES` in
+ * `scraper/src/scheduler/due-step-cycle.ts` — that module cannot be
+ * imported here (scraper depends on @ipodhan/shared, never the reverse;
+ * see `packages/shared/package.json` / `scraper/package.json`), so this is
+ * a deliberate duplicate of the CONSTANT and its pure arithmetic, the same
+ * pattern `scripts/lib/ist-day.mjs` already uses for
+ * `packages/shared/src/utils/ist-day.ts` (plain Node cannot import
+ * TypeScript there; here it is a one-way package dependency instead). A
+ * test in this package pins these values equal to the scraper module's, so
+ * the two can never drift silently.
+ *
+ * NOT a timer: this only ever answers "has a NEW slot begun since X", never
+ * "has N minutes elapsed since X" — the OD-33 / design-doc D12 rule ("no
+ * code path schedules a document fetch by elapsed time") governs this claim
+ * query exactly as it governs the document-fetch scheduler that named it.
+ */
+const FIELD_PLAN_SLOT_IST_MINUTES = [8 * 60 + 30, 11 * 60, 14 * 60, 17 * 60 + 30] as const;
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+
+/**
+ * The most recent slot boundary at-or-before `now`, as an absolute instant
+ * (a `Date`). Pure and clock-injectable — mirrors
+ * `mostRecentDiscoverySlotEpochMinute` in `due-step-cycle.ts` exactly (same
+ * "day index in IST, minutes-of-day in IST, walk the slots" shape), kept
+ * here as its own tiny function so the SQL below can bind ONE timestamp
+ * parameter rather than re-deriving the slot inside the query.
+ */
+export function mostRecentFieldPlanSlotBoundary(now: Date): Date {
+  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
+  const dayIndex = Math.floor(istMs / 86_400_000);
+  const istDate = new Date(istMs);
+  const minutesOfDay = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
+
+  let dueSlotOfDay: number | null = null;
+  for (const slot of FIELD_PLAN_SLOT_IST_MINUTES) {
+    if (minutesOfDay >= slot) dueSlotOfDay = slot;
+  }
+
+  const epochMinute =
+    dueSlotOfDay === null
+      ? (dayIndex - 1) * 1440 + FIELD_PLAN_SLOT_IST_MINUTES[FIELD_PLAN_SLOT_IST_MINUTES.length - 1]
+      : dayIndex * 1440 + dueSlotOfDay;
+
+  return new Date(epochMinute * 60_000 - IST_OFFSET_MINUTES * 60_000);
+}
 
 export type FieldPlanState =
   | 'PENDING'
@@ -128,6 +215,26 @@ export interface ClaimNextDueFieldParams {
   now?: Date;
   /** Override the staleness window (minutes). Defaults to the constant. */
   staleMinutes?: number;
+  /**
+   * #762 (S8) review round 2 CRITICAL fix: row ids this WALK has already
+   * settled this pass (`field-plan-walk.ts`'s `settledThisWalk`), excluded
+   * from every leg so an un-handleable row (a dropped write left PENDING,
+   * or an admin-protection skip that releases without recording — both
+   * re-queue the SAME row immediately) does not starve every OTHER due row
+   * behind it. Before this param existed, `pri = 0` ranked every PENDING
+   * row ahead of every reclaim leg, so a released-but-still-PENDING row was
+   * guaranteed to come back as the claim's answer every single time — the
+   * walk's own `settledThisWalk` re-claim guard then stopped the WHOLE
+   * walk (`stoppedReason = 'NO_DUE_FIELDS'`), discarding every reclaim row
+   * ranked below it. Reviewer repro: one un-handleable PENDING row blocked
+   * all reclaim rows on the IPO; live on staging (180 PENDING rows, 1 IPO,
+   * confirmed live 2026-09-18). Excluding ids here means the SAME row is
+   * never re-offered within one walk; the walk keeps draining until either
+   * the budget or genuinely-no-due-work stops it, exactly as the original
+   * single-branch query's ordering accidentally guaranteed and the
+   * restructure broke.
+   */
+  excludeIds?: string[];
 }
 
 /** What won, and on what evidence (design §2.3 — this is what makes §2.5 work). */
@@ -449,17 +556,84 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
-   * Claim exactly one due plan row, oldest-due first, in ONE statement.
+   * Claim exactly one due plan row, in ONE statement. "Due" is the item-5
+   * build card's four-way OR (`docs/design/build-cards/item-05-ipo-field-plan-table.md:232-237`),
+   * restored here after #762 found it had shipped as a single AND-only
+   * branch (`state = 'PENDING'`) that left NOT_AVAILABLE_YET and
+   * CHECK_FAILED rows — 12,480 of them on staging — permanently unclaimed:
    *
-   * Due = state PENDING, AND its backoff has elapsed (`next_due_at` null or
-   * past), AND it is not held by a live claim (`claimed_at` null or older than
-   * the staleness window — that second arm is what makes a killed walk's row
-   * recoverable rather than stranded forever).
+   *   1. `state = 'PENDING'` — never attempted (unchanged).
+   *   2. `state = 'NOT_AVAILABLE_YET'` AND a new SLOT has begun since
+   *      `last_attempt_at` — the field was asked before its own authoritative
+   *      source had published, so a later slot is worth a re-ask.
+   *   3. `state = 'CHECK_FAILED'` AND a new SLOT has begun since
+   *      `last_attempt_at` — the walk's own comments call this "transient,
+   *      re-asked after backoff" (`field-plan-walk.ts:384, 581`); restored
+   *      the same way as trigger 2, not as a separate mechanism.
+   *   4. `verify_state = 'DUE'` AND `verify_due_at` has passed — §3's
+   *      scheduled re-verification, independent of `state` (a SUPPLIED row
+   *      can still be due for a verify pass). **DEAD CODE as of this fix**:
+   *      nothing in this codebase writes `verify_state` or `verify_due_at`
+   *      yet (§3 has not shipped) — every non-test reference to either
+   *      column today is a schema/migration definition or a read. The
+   *      branch is kept, correctly wired, and reviewed here so §3 does not
+   *      have to touch the claim query again; it will not fire on real data
+   *      until §3 lands the writer. Do not read this branch as active
+   *      re-verification — it is a specified-but-dormant trigger.
+   *   Plus the stale-claim reclaim (`claimed_at` null or older than the
+   *   staleness window), unconditional on which of the four triggers made
+   *   the row due — a crashed walk's claim is released the same way either way.
    *
-   * The inner select orders by `(next_due_at NULLS FIRST)` over
-   * `state = 'PENDING'`, which is the leading-column shape of
-   * `idx_ipo_field_plan_state_next_due`, so the query can use that index
-   * instead of scanning the plan.
+   * Triggers 2 and 3 key on `last_attempt_at` crossing a SLOT boundary
+   * (`mostRecentFieldPlanSlotBoundary`, mirroring
+   * `scraper/src/scheduler/due-step-cycle.ts`'s
+   * `DISCOVERY_SLOTS_IST_MINUTES`), NEVER on `next_due_at` or an elapsed
+   * interval — `next_due_at` is written by `recordOutcome` using
+   * `fieldPlanBackoffMinutes`, a TIMED doubling backoff the design doc
+   * explicitly marks for deletion (`docs/design/data-sourcing-pull-model.md:971`,
+   * OD-21/OD-33/D12: "no code path schedules a document fetch by elapsed
+   * time"). This fix does not touch `recordOutcome` or that column (out of
+   * the S8 brief's scope) — it simply never reads `next_due_at` for triggers
+   * 2/3, so a slot-based reclaim is not blocked by (or dependent on) a
+   * still-running timer the design says should not exist.
+   *
+   * Churn guard (S8, no design-mandated shape existed): trigger 3
+   * (CHECK_FAILED) is bounded by `attempts < FIELD_PLAN_RECLAIM_MAX_ATTEMPTS`
+   * — a row that has failed that many times stops being offered by this
+   * query at all, so a permanently-broken field cannot churn through every
+   * slot forever. This is a claim-time FILTER, never a state transition —
+   * the row is not moved to EXHAUSTED (that is `recordOutcome`'s job and
+   * out of scope here).
+   *
+   * Trigger 2 (NOT_AVAILABLE_YET) is deliberately left WITHOUT an attempts
+   * cap (review round 1, MAJOR-4). A "not available yet" field is, by
+   * definition, waiting on a real external event (a document that has not
+   * published) — the walk's own comment calls this explicit: "the field
+   * keeps being re-asked until the authoritative source answers"
+   * (`field-plan-walk.ts:696` area). Capping it at 5 like CHECK_FAILED would
+   * stop asking a live, pre-listing IPO whether its GMP or listing date has
+   * published yet — the exact case the design protects (a lower-ranked
+   * aggregator can carry a provisional value before the exchange posts the
+   * authoritative one). An uncapped NOT_AVAILABLE_YET is not the same churn
+   * risk as an uncapped CHECK_FAILED: CHECK_FAILED means every source
+   * DISAGREED or errored — a signal the field itself may be broken — while
+   * NOT_AVAILABLE_YET means every source agreed "not yet", which resolves
+   * itself the moment the IPO's lifecycle moves (LISTED/WITHDRAWN) or the
+   * document actually publishes. What stops the churn instead: (a) the
+   * walk's own `settledThisWalk` set already stops ONE walk from re-claiming
+   * a row it just released, bounding in-cycle churn to one attempt per row
+   * per walk; (b) the natural ceiling is the IPO's own lifecycle — once an
+   * IPO is LISTED or WITHDRAWN with a field still NOT_AVAILABLE_YET, that is
+   * a genuinely different, out-of-scope defect (the writer/outcome-recording
+   * path should stop re-asking a closed IPO), not a churn-guard question for
+   * the claim query. This fix does not add that lifecycle gate — flagging it
+   * for the owner/reviewer as the open question MAJOR-4 asked for: should a
+   * closed-IPO NOT_AVAILABLE_YET field eventually cap out, and where (the
+   * claim query, or `recordOutcome` moving it to EXHAUSTED on IPO close)?
+   *
+   * `ORDER BY` additionally ranks a PENDING row (genuinely new work) ahead
+   * of every reclaim trigger via `pri`, so a single walk drains new work
+   * before spending its budget re-asking stale ones.
    *
    * `FOR UPDATE SKIP LOCKED` is the whole point: a concurrent claimer's inner
    * select skips the row this transaction has locked and finds nothing, so it
@@ -469,20 +643,209 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const now = params.now ?? new Date();
     const staleMinutes = params.staleMinutes ?? FIELD_PLAN_CLAIM_STALE_MINUTES;
     const staleBefore = new Date(now.getTime() - staleMinutes * 60_000);
+    const slotBoundary = mostRecentFieldPlanSlotBoundary(now);
     const token = randomUUID();
+    const ipoId = params.ipoId ?? null;
+    const excludeIds = params.excludeIds ?? [];
+    // Drizzle's `sql` tagged template SPREADS a plain JS array interpolated
+    // into it as a comma-separated parameter list (`$1, $2, ...`), never as
+    // a single array-typed bind — `${excludeIds}::uuid[]` therefore compiled
+    // to the syntactically invalid `()::uuid[]` for an empty array (and
+    // `($1)::uuid[]` for one element, also invalid — Postgres needs
+    // `ARRAY[$1]::uuid[]`). Found live: every call in the walk-loop x
+    // claim-query starvation test (review round 2 DoD item A) threw
+    // "syntax error at or near )" the first time excludeIds was actually
+    // exercised end to end — none of round 2's own new tests caught it
+    // because they only ever passed a non-empty excludeIds through the
+    // FIRST claim of a pair, never round-tripped a fresh empty-default call.
+    // Building the literal `ARRAY[...]` expression by hand (guarding the
+    // empty case explicitly, since `sql.join` over zero elements produces
+    // nothing between the brackets) is the correct drizzle idiom for a
+    // dynamic-length array bind.
+    // A FUNCTION, called fresh at each use site — never a single shared
+    // `SQL` fragment object reused directly. Proven live (review round 3):
+    // reusing one `excludeIdsSql` CONST across multiple interpolation
+    // points, however the surrounding query was structured (one giant
+    // template, or `sql.join`-composed per-leg templates that each still
+    // referenced the SAME const), made drizzle-orm 0.44.7 return a row
+    // that plainly violated its own WHERE clause. The identical compiled
+    // SQL text + params sent via a raw `pg.Pool` bypassing drizzle
+    // reproduced CORRECTLY every time — confirming the SQL/params were
+    // never wrong. Calling this as `excludeIdsSql()` — a fresh `SQL`
+    // instance built on every call — combined with `legFilter()` below also
+    // being a fresh-called function (not a fragment built once and reused)
+    // is the combination that reproduced CORRECTLY in the scratch
+    // verification this fix is based on.
+    const excludeIdsSql = () =>
+      excludeIds.length === 0
+        ? sql`ARRAY[]::uuid[]`
+        : sql`ARRAY[${sql.join(
+            excludeIds.map((id) => sql`${id}::uuid`),
+            sql`, `
+          )}]`;
+    const legFilter = () => sql`
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${utc(staleBefore)}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql()}))`;
 
+    // Common filter every leg applies (ipoId scope, stale-claim reclaim,
+    // excludeIds) — built ONCE and composed via `sql.join` into each leg's
+    // own small `sql` fragment, never written inline inside one giant
+    // top-level template literal spanning all 7 legs. Found live (review
+    // round 3): writing all 7 legs' full text directly inside ONE `sql`
+    // template — ~30+ total `${}` interpolations in a single tagged-template
+    // call — made drizzle-orm 0.44.7's query builder return a row that
+    // plainly violated its own WHERE clause (a PENDING row with next_due_at
+    // an hour in the future claimed by the `next_due_at <= now` leg). The
+    // IDENTICAL compiled SQL text + params, sent via a raw `pg.Pool`
+    // bypassing drizzle's builder, returned the CORRECT (empty) result every
+    // time — proving the SQL/params were never wrong, only drizzle's
+    // handling of a template this large. Composing smaller `sql` fragments
+    // per leg and joining them with `sql.join` (the same pattern this file
+    // already uses for `excludeIdsSql`'s own array literal) avoids
+    // whatever internal limit/bug this is. Root cause not fully isolated in
+    // drizzle's source; this restructuring is the decisive, verified fix —
+    // proven correct via the exact scratch reproduction that also proved
+    // the previous inline-template shape was broken.
+    // CRITICAL-2 fix (S8 review round 1): each trigger is its own small,
+    // independently-sargable derived table — `state = <literal>` plus ONE
+    // more predicate against an index that covers it, `LIMIT 1 FOR UPDATE
+    // SKIP LOCKED` inside EACH leg (Postgres refuses FOR UPDATE across a
+    // UNION, so the lock has to happen per-leg, before the union combines
+    // the candidates), then an outer `ORDER BY pri, ord LIMIT 1` picks the
+    // winner. This is the same four-way-OR semantics as before, restated so
+    // the planner can push each condition into an Index Scan instead of
+    // evaluating one giant OR as a Filter over a Seq Scan.
+    //
+    // The `last_attempt_at IS NULL OR last_attempt_at < X` form (and
+    // `next_due_at IS NULL OR ... <= X`) is ALSO split into two legs each
+    // (a NULL leg and a comparison leg) rather than kept as an OR — an OR
+    // inside one leg forces Postgres into a BitmapOr + Recheck + Sort
+    // instead of a plain ordered Index Scan that can stop at the first
+    // match. Measured on ipodhan_staging (read-only EXPLAIN, pure SELECT
+    // form, no write): a REAL Seq Scan over the live 12,554-row backlog
+    // costs 6.135ms — review round 2's MINOR correction to round 1's
+    // "127.9ms" figure, which was measured on a freshly bulk-inserted,
+    // unvacuumed synthetic table and was not representative. The honest,
+    // staging-measured improvement is ~6ms -> ~0.66ms (this form, zero Seq
+    // Scans, proven on ipodhan_test seeded to staging's exact row shape —
+    // see the PR body for both full plans), not 128ms -> 1ms.
+    //
+    // `pri` ranks a PENDING candidate (0) ahead of every reclaim/verify
+    // trigger (1) — genuinely new work drains before a re-ask, same
+    // ordering intent the old single `CASE WHEN state='PENDING'` ORDER BY
+    // expressed, but now on the OUTER (7-row) combine instead of forcing a
+    // sort over the whole table.
+    //
+    // MINOR (review round 2, recorded not fixed): `ord` mixes
+    // `last_attempt_at` (the two reclaim legs) with `verify_due_at` (the
+    // verify leg) into one sort key. The two are not comparable — a
+    // `verify_due_at` earlier than some row's `last_attempt_at` says
+    // nothing about which is "more due". Harmless today only because the
+    // verify leg is DEAD CODE (see trigger 4's own doc comment below —
+    // nothing writes `verify_state`/`verify_due_at` yet, so `verify_due_leg`
+    // never contributes a real candidate); §3 shipping a writer for those
+    // columns would need this fixed (a separate `pri` band, or a
+    // normalized comparable ordering key) before the verify leg's ordering
+    // could be trusted.
+    //
+    // review round 2 CRITICAL fix: `excludeIds` (the walk's own
+    // `settledThisWalk`) is applied to every leg so a row this walk already
+    // took and released (a dropped write left PENDING, or an
+    // admin-protection skip) cannot be handed back as the SAME row forever
+    // — `pri = 0` otherwise guarantees a released PENDING row outranks
+    // every reclaim leg, and the walk's own re-claim guard
+    // (`field-plan-walk.ts`) then stopped the ENTIRE walk on the second
+    // sight of it, discarding every reclaim row ranked below. See
+    // `ClaimNextDueFieldParams.excludeIds`'s own doc comment for the full
+    // mechanism and the live-staging reproduction (180 PENDING rows on one
+    // IPO, first cycle after deploy would have hit this).
+    //
+    // review round 2 MAJOR-2 fix: every bound timestamp below is cast to
+    // `::timestamp` (naive), never `::timestamptz`. All four compared
+    // columns (`next_due_at`, `last_attempt_at`, `claimed_at`,
+    // `verify_due_at`) are `timestamp WITHOUT time zone`; casting the bound
+    // parameter to `::timestamptz` makes Postgres resolve it through the
+    // SESSION timezone before comparing against the naive column — under
+    // `Asia/Kolkata` that silently shifts every bound by 5h30m relative to
+    // `UTC` (measured: `SET TIME ZONE 'UTC'` gives one answer, `SET TIME
+    // ZONE 'Asia/Kolkata'` gives a DIFFERENT one for the identical row —
+    // exactly the class this repo's own CLAUDE.md names as "Timestamps off
+    // by 5h30m"). The production pool already forces `options: '-c
+    // timezone=UTC'` (`packages/shared/src/db/timezone-config.ts`), so this
+    // was latent there, but the SQL itself must not depend on that
+    // guarantee — `::timestamp` is session-TZ-INDEPENDENT (verified: the
+    // same bound Date casts to the identical naive value under both `UTC`
+    // and `Asia/Kolkata` sessions), matching how `parseNaiveTimestampAsUtc`
+    // already reads these same columns back on the SELECT side. A test
+    // pins this under both session timezones.
     try {
+      const legs = [
+        sql`SELECT id, 0 AS pri, next_due_at AS ord FROM (
+              SELECT id, next_due_at FROM ipo_field_plan
+               WHERE state = 'PENDING' AND next_due_at IS NULL${legFilter()}
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) pending_null`,
+        sql`SELECT id, 0 AS pri, next_due_at AS ord FROM (
+              SELECT id, next_due_at FROM ipo_field_plan
+               WHERE state = 'PENDING' AND next_due_at <= ${utc(now)}::timestamp${legFilter()}
+               ORDER BY next_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) pending_due`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at IS NULL${legFilter()}
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) nay_null`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at < ${utc(slotBoundary)}::timestamp${legFilter()}
+               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) nay_due`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND last_attempt_at IS NULL${legFilter()}
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) cf_null`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND last_attempt_at < ${utc(slotBoundary)}::timestamp${legFilter()}
+               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) cf_due`,
+        sql`SELECT id, 1 AS pri, verify_due_at AS ord FROM (
+              SELECT id, verify_due_at FROM ipo_field_plan
+               WHERE verify_state = 'DUE' AND verify_due_at <= ${utc(now)}::timestamp${legFilter()}
+               ORDER BY verify_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) verify_due_leg`,
+      ];
+      const unionedLegs = sql.join(legs, sql` UNION ALL `);
+
+      // review round 3 RCA (recorded so the next reader does not repeat the
+      // investigation): this query briefly APPEARED to return a row that
+      // violated its own WHERE clause during round-3 debugging. Root cause
+      // was NOT the query or drizzle's `db.execute()` — it was the TEST
+      // FIXTURE. drizzle's `timestamp()` column mapper serializes a JS
+      // `Date` via `.toISOString()` before binding
+      // (node_modules/drizzle-orm/pg-core/columns/timestamp.js); binding
+      // that STRING (vs a `Date` OBJECT) to a naive `timestamp` column
+      // shifts it by the local Node process's UTC offset on write — a
+      // node-postgres client-side quirk, reproducible even with the pool's
+      // session forced to UTC. A fixture seeded with `Date.now() - X`
+      // (every pre-existing test in this file) tolerates the shift; one
+      // seeded with `Date.now() + X` (a "not yet due" row) does not — the
+      // shift can turn a future timestamp into a past one. Fixed at the
+      // fixture (`seedRow`'s own doc comment), not here — this query was
+      // proven correct throughout by comparing its exact compiled SQL text
+      // and params, executed via a raw `pg.Pool` bypassing drizzle
+      // entirely, against `this.db.execute()`: identical result once the
+      // fixture bug was accounted for.
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
-        SET claimed_at = ${now}::timestamptz, claim_token = ${token}, updated_at = ${now}::timestamptz
+        SET claimed_at = ${utc(now)}::timestamp, claim_token = ${token}, updated_at = ${utc(now)}::timestamp
         WHERE id = (
-          SELECT id FROM ipo_field_plan
-          WHERE state = 'PENDING'
-            AND (${params.ipoId ?? null}::uuid IS NULL OR ipo_id = ${params.ipoId ?? null}::uuid)
-            AND (next_due_at IS NULL OR next_due_at <= ${now}::timestamptz)
-            AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
-          ORDER BY next_due_at ASC NULLS FIRST
-          FOR UPDATE SKIP LOCKED
+          SELECT id FROM (${unionedLegs}) candidates
+          ORDER BY pri ASC, ord ASC NULLS FIRST
           LIMIT 1
         )
         RETURNING *
@@ -525,7 +888,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
     try {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
-        SET claimed_at = NULL, claim_token = NULL, updated_at = ${now}::timestamptz
+        SET claimed_at = NULL, claim_token = NULL, updated_at = ${utc(now)}::timestamptz
         WHERE id = ${params.planRowId}::uuid
           AND claim_token = ${params.claimToken}
         RETURNING id
@@ -560,7 +923,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       if (!params.writeHappened) {
         const skipResult = await this.db.execute(sql`
           UPDATE ipo_field_plan
-          SET claimed_at = NULL, claim_token = NULL, state = 'PENDING', updated_at = ${now}::timestamptz
+          SET claimed_at = NULL, claim_token = NULL, state = 'PENDING', updated_at = ${utc(now)}::timestamptz
           WHERE id = ${params.planRowId}::uuid
             AND claim_token = ${params.claimToken}
           RETURNING *
@@ -597,10 +960,10 @@ export class IpoFieldPlanRepository extends BaseRepository {
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
             attempts = attempts + 1,
-            last_attempt_at = ${now}::timestamptz,
+            last_attempt_at = ${utc(now)}::timestamptz,
             next_due_at = CASE
               WHEN ${terminal} THEN NULL
-              ELSE ${now}::timestamptz + make_interval(mins =>
+              ELSE ${utc(now)}::timestamptz + make_interval(mins =>
                 LEAST(
                   ${FIELD_PLAN_BACKOFF_MAX_MINUTES},
                   ${FIELD_PLAN_BACKOFF_BASE_MINUTES} * POWER(2, GREATEST(0, attempts))::int
@@ -616,7 +979,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
             chosen_page = CASE WHEN ${hasChosen} THEN ${chosen.page ?? null} ELSE chosen_page END,
             claimed_at = NULL,
             claim_token = NULL,
-            updated_at = ${now}::timestamptz
+            updated_at = ${utc(now)}::timestamptz
         WHERE id = ${params.planRowId}::uuid
           AND claim_token = ${params.claimToken}
         RETURNING *

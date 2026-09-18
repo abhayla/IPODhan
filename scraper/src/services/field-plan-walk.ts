@@ -195,7 +195,7 @@ export interface RecordOutcomeCallParams {
 
 /** The slice of item 5's repository the walk uses. */
 export interface FieldPlanWalkRepository {
-  claimNextDueField(params: { ipoId?: string }): Promise<any | null>;
+  claimNextDueField(params: { ipoId?: string; excludeIds?: string[] }): Promise<any | null>;
   recordOutcome(
     params: RecordOutcomeCallParams
   ): Promise<{ written: boolean; reason?: string; skipped?: boolean }>;
@@ -476,7 +476,19 @@ export async function walkFieldPlanForIPO(
       return result;
     }
 
-    const plan = await deps.fieldPlanRepository.claimNextDueField({ ipoId });
+    // #762 review round 2 CRITICAL fix: exclude ids this walk has ALREADY
+    // settled (released-but-still-due rows -- a dropped write left PENDING,
+    // or an admin-protection skip) so the claim query cannot hand the SAME
+    // row back. Before this, `pri = 0` guaranteed a released PENDING row
+    // outranked every reclaim/verify leg, so the very next claim WAS that
+    // row again -- and the `settledThisWalk.has(plan.id)` branch below then
+    // stopped the WHOLE walk, discarding every other due row on the IPO.
+    // Reproduced live: 180 PENDING rows on one staging IPO would have hit
+    // this on the first cycle after deploy.
+    const plan = await deps.fieldPlanRepository.claimNextDueField({
+      ipoId,
+      excludeIds: Array.from(settledThisWalk),
+    });
     if (!plan) {
       result.stoppedReason = 'NO_DUE_FIELDS';
       return result;
