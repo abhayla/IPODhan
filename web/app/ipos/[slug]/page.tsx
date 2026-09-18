@@ -67,7 +67,6 @@ import {
   type IPOScoreDisplayModel,
 } from '@/lib/adapters/ipo-score-display-adapter';
 import type { IPOScore } from '@/lib/db/types';
-import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { IpoValuationRepository } from '@ipodhan/shared/repositories/ipo-valuation-repository';
 import { PromotersRepository } from '@ipodhan/shared/repositories/promoters-repository';
 import { IpoIntermediariesRepository } from '@ipodhan/shared/repositories/ipo-intermediaries-repository';
@@ -96,14 +95,12 @@ import {
 
 // ==================== CONSTANTS ====================
 
-/**
- * T-328: mirrors HIGH_VALUE_FIELDS in
- * scraper/src/services/cross-source-disagreement-monitor.ts and
- * HIGH_VALUE_LIVE_FIELDS in scraper/src/services/data-consolidation-service.ts
- * — the fields whose unresolved dispute renders the "under verification"
- * marker instead of asserting a HELD value as settled fact.
- */
-const HIGH_VALUE_DISPUTE_FIELDS = new Set(['priceRangeMin', 'priceRangeMax', 'openDate', 'closeDate']);
+// OD-61 (owner, 2026-09-18): T-328's HIGH_VALUE_DISPUTE_FIELDS list lived
+// here and drove an "under verification" marker on the price band and the
+// open/close dates. It is gone: no reader sees a cross-source disagreement.
+// The scraper-side HIGH_VALUE_FIELDS lists it mirrored still exist and still
+// do their job — holding a disputed value back from publication — which is
+// admin-visible work on /admin/conflicts, not a reader-facing signal.
 
 // ==================== TYPES ====================
 
@@ -330,20 +327,14 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
       ? await getSectorAverage(ipo.sector)
       : null;
 
-  // T-328: on a live IPO, an unresolved HIGH_VALUE cross-source disagreement
-  // means the currently-published price band/date is HELD, not settled — the
-  // UI must say so instead of asserting the number as fact (LIFECYCLE-1, no
-  // new tables: reads the existing data_conflicts row the scraper-side HOLD
-  // writes). Only fetched for live IPOs — a CLOSED/LISTED IPO's fields are
-  // never held (see data-consolidation-service.ts HIGH_VALUE_LIVE_FIELDS).
-  const disputedFields: Set<string> =
-    ipo.status === 'UPCOMING' || ipo.status === 'OPEN'
-      ? new Set(
-          (await new DataConflictsRepository(db, redis).findUnresolvedForIPO(ipo.id))
-            .filter((c) => HIGH_VALUE_DISPUTE_FIELDS.has(c.fieldName))
-            .map((c) => c.fieldName)
-        )
-      : new Set<string>();
+  // OD-61 (owner, 2026-09-18): the reader NEVER sees a cross-source
+  // disagreement. T-328 used to read `data_conflicts` here and mark the price
+  // band and the open/close dates "Under verification" on a live IPO; that
+  // query and that marker are both gone. The disagreement still exists and is
+  // still worked — on /admin/conflicts, which is its only surface.
+  //
+  // Deleting the QUERY, not just its rendering, is the point: a value the page
+  // never fetches cannot leak into a payload, a cache key or a future prop.
 
   // ── W-75: extraction-fed tables (filing extractor output). Each load is
   // wrapped so a missing table / empty result never breaks the page; every
@@ -486,8 +477,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
       : 'TBA';
   const minInvestment =
     ipo.lotSize && ipo.priceRangeMax ? ipo.lotSize * Number(ipo.priceRangeMax) : null;
-  const priceBandDisputed = disputedFields.has('priceRangeMin') || disputedFields.has('priceRangeMax');
-  const openCloseDisputed = disputedFields.has('openDate') || disputedFields.has('closeDate');
   const ribbonCells = [
     {
       label: 'Price Band',
@@ -495,7 +484,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         ipo.priceRangeMin || ipo.priceRangeMax
           ? formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)
           : 'TBA',
-      disputed: priceBandDisputed,
     },
     { label: 'Lot Size', value: ipo.lotSize ? `${ipo.lotSize}` : 'TBA' },
     {
@@ -523,7 +511,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
       label: 'Open–Close',
       value: `${fmtShortDate(ipo.openDate)} – ${fmtShortDate(ipo.closeDate)}`,
       mobileHidden: true,
-      disputed: openCloseDisputed,
     },
     { label: 'Listing', value: fmtShortDate(ipo.listingDate) },
   ];
