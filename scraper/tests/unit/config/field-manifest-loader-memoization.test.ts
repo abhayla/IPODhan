@@ -78,6 +78,8 @@ describe('CRITICAL-2: loadFieldManifest memoizes the parsed+validated manifest p
           rank: { MAINBOARD: ['DOC'] },
           capability: { DOC: { capable: true, reason: 'r' } },
           unit: 'crore',
+          // S3b step 1 (issue #775): comparisonFamily is required by the schema now.
+          comparisonFamily: 'MONEY',
         },
       },
     });

@@ -183,6 +183,142 @@ function unitForField(f) {
   return 'keep';
 }
 
+// S3b step 1 (issue #775, docs/design/s3b-verdict-plan.md "Step 1"): the field ->
+// ComparisonFamily mapping, derived from structure in three layers, exactly the way
+// unitForField() above already layers its own answer.
+//
+//   Layer 1 — the amount-columns probe (same AMOUNT_CLASS_BY_KEY map unitForField uses):
+//     CRORE / PER_SHARE / RUPEES_KEPT / SHARE_COUNT -> MONEY
+//     RATIO / PERCENT / MULTIPLE                    -> RATIO
+//   Layer 2 — the schema.ts column DECLARATION LINE (not a byte-window lookahead — see
+//     SCHEMA_DECL_BY_KEY below for why that produced false positives):
+//     date/timestamp -> DATE ; boolean -> BOOLEAN ; jsonb/.array() -> SET-or-ABSTAIN per
+//     ARRAY_FAMILY_DECISIONS (layer 3) ; a *Enum(...) declaration -> IDENTIFIER
+//   Layer 3 — docs/design/comparison-family-decisions.mjs, the small explicit decisions
+//     file for what layers 1 and 2 leave as a human call (text/varchar IDENTITY-vs-
+//     IDENTIFIER, the 11 integer columns the probe does not cover, the enum reason).
+const SCHEMA_TS_PATH = path.join(REPO_ROOT, 'packages', 'shared', 'src', 'db', 'schema.ts');
+const COMPARISON_DECISIONS_PATH = path.join(REPO_ROOT, 'docs', 'design', 'comparison-family-decisions.mjs');
+
+const MONEY_AMOUNT_CLASSES = new Set(['CRORE', 'PER_SHARE', 'RUPEES_KEPT', 'SHARE_COUNT']);
+const RATIO_AMOUNT_CLASSES = new Set(['RATIO', 'PERCENT', 'MULTIPLE']);
+
+let SCHEMA_DECL_BY_KEY = null; // 'table.col' -> 'date'|'timestamp'|'boolean'|'jsonb'|'text'|'varchar'|'char'|'integer'|'numeric'|'bigint'
+let SCHEMA_ENUM_BY_KEY = null; // 'table.col' -> the *Enum identifier name (e.g. 'ipoStatusEnum')
+
+// Parses packages/shared/src/db/schema.ts by walking pgTable(...) blocks and matching each
+// field DECLARATION LINE (`  fieldName: type('column_name'`) at the fields-object's own
+// brace depth (depth === 1). Anchoring to the declaration line, not a byte-window lookahead,
+// is load-bearing: a lookahead mislabelled `credit_of_shares_date` (a plain `date`) and
+// `employee_discount` (a plain `numeric`) as arrays (docs/design/s3b-verdict-plan.md).
+function parseSchemaDeclarations() {
+  if (SCHEMA_DECL_BY_KEY) return;
+  SCHEMA_DECL_BY_KEY = new Map();
+  SCHEMA_ENUM_BY_KEY = new Map();
+
+  const schema = fs.readFileSync(SCHEMA_TS_PATH, 'utf8');
+  const lines = schema.split('\n');
+
+  const tableStartRe = /pgTable\(\s*$/;
+  const tableNameRe = /^\s*'([a-z0-9_]+)'/;
+  const inlineTableRe = /pgTable\('([a-z0-9_]+)',\s*\{/;
+  const declRe = /^\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(date|timestamp|boolean|jsonb|text|varchar|char|integer|numeric|bigint)\(\s*'([a-z0-9_]+)'/;
+  const enumRe = /^\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*([A-Za-z_][A-Za-z0-9_]*Enum)\(\s*'([a-z0-9_]+)'/;
+
+  let currentTable = null;
+  let awaitingTableName = false;
+  let depth = 0;
+  let inFieldsObject = false;
+
+  for (const line of lines) {
+    const inline = line.match(inlineTableRe);
+    if (inline) {
+      currentTable = inline[1];
+      inFieldsObject = true;
+      depth = 1;
+      continue;
+    }
+    if (tableStartRe.test(line)) {
+      awaitingTableName = true;
+      continue;
+    }
+    if (awaitingTableName) {
+      const nm = line.match(tableNameRe);
+      if (nm) {
+        currentTable = nm[1];
+        awaitingTableName = false;
+      }
+      continue;
+    }
+    if (currentTable && !inFieldsObject) {
+      if (/^\s*\{\s*$/.test(line)) {
+        inFieldsObject = true;
+        depth = 1;
+      }
+      continue;
+    }
+    if (inFieldsObject) {
+      for (const ch of line) {
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+      }
+      if (depth <= 0) {
+        inFieldsObject = false;
+        currentTable = null;
+        continue;
+      }
+      const m = line.match(declRe);
+      if (m && depth === 1) SCHEMA_DECL_BY_KEY.set(`${currentTable}.${m[2]}`, m[1]);
+      const e = line.match(enumRe);
+      if (e && depth === 1) SCHEMA_ENUM_BY_KEY.set(`${currentTable}.${e[2]}`, e[1]);
+    }
+  }
+}
+
+let COMPARISON_DECISIONS = null;
+async function loadComparisonDecisions() {
+  if (!COMPARISON_DECISIONS) {
+    COMPARISON_DECISIONS = await import(pathToFileURL(COMPARISON_DECISIONS_PATH).href);
+  }
+  return COMPARISON_DECISIONS;
+}
+
+async function comparisonFamilyForField(f, decisions) {
+  const key = `${f.t}.${f.c}`;
+
+  // Layer 1: the amount-columns probe.
+  const amountCls = amountClassForKey(key);
+  if (MONEY_AMOUNT_CLASSES.has(amountCls)) return 'MONEY';
+  if (RATIO_AMOUNT_CLASSES.has(amountCls)) return 'RATIO';
+
+  // Layer 2: the schema.ts column declaration.
+  parseSchemaDeclarations();
+  const declType = SCHEMA_DECL_BY_KEY.get(key);
+  const enumType = SCHEMA_ENUM_BY_KEY.get(key);
+
+  if (declType === 'date' || declType === 'timestamp') return 'DATE';
+  if (declType === 'boolean') return 'BOOLEAN';
+  if (declType === 'jsonb') {
+    const arr = decisions.ARRAY_FAMILY_DECISIONS[key];
+    if (!arr) throw new Error(`comparisonFamilyForField: jsonb column ${key} has no ARRAY_FAMILY_DECISIONS entry`);
+    return arr.family;
+  }
+
+  // Layer 3: the explicit decisions file, for what layers 1/2 leave as a human call.
+  if (enumType) return decisions.ENUM_FAMILY_DECISION.family;
+
+  const arrDecision = decisions.ARRAY_FAMILY_DECISIONS[key];
+  if (arrDecision) return arrDecision.family; // text[]/.array() columns — declType is 'text', caught here first
+
+  const numDecision = decisions.NUMERIC_FAMILY_DECISIONS[key];
+  if (numDecision) return numDecision.family;
+
+  const textDecision = decisions.TEXT_FAMILY_DECISIONS[key];
+  if (textDecision) return textDecision.family;
+
+  throw new Error(`comparisonFamilyForField: no family resolves for ${key} (declType=${declType ?? 'none'}) — add a Layer 3 decision in docs/design/comparison-family-decisions.mjs`);
+}
+
 function capabilityReasonFallback(f, sourceLabel) {
   // Card adjustment 2: for the 180 non-hand-authored rows, source the reason text from the spec's
   // own capability facts (o.note / o.doc / o.only), never invented. If none apply, the honest,
@@ -219,10 +355,11 @@ function candidatePoolCodes(f) {
   return codes;
 }
 
-export function generateManifest({ F, RESOLVE }) {
+export async function generateManifest({ F, RESOLVE }) {
   const fields = {};
   const skipped = [];
   let fieldCount = 0;
+  const comparisonDecisions = await loadComparisonDecisions();
 
   for (const f of F) {
     if (!SOURCED_CLASSES.has(f.cls)) continue; // C/I: never sourced, no manifest row (item-02 rule)
@@ -293,6 +430,7 @@ export function generateManifest({ F, RESOLVE }) {
     if (f.o.na && f.o.na.length) entry.na = f.o.na;
     else entry.na = [];
     entry.unit = unitForField(f);
+    entry.comparisonFamily = await comparisonFamilyForField(f, comparisonDecisions);
 
     fields[key] = entry;
     fieldCount++;
@@ -340,7 +478,7 @@ async function main() {
   const baseSha = diffIdx >= 0 ? args[diffIdx + 1] : null;
 
   const spec = await loadSpec();
-  const { manifest, skipped, fieldCount } = generateManifest(spec);
+  const { manifest, skipped, fieldCount } = await generateManifest(spec);
 
   for (const line of skipped) console.log(line);
   console.log(`generated: version=${manifest.version} fields=${fieldCount}`);
