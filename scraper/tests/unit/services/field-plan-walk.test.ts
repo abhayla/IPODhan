@@ -1393,6 +1393,13 @@ describe('field-plan walk -- the resolver decides the ask order, not the plan ro
     // `plan.rank1Source`/`rank2Source` (the pre-S1a behaviour), it would ask DOC first and this
     // test would go red. Mutation check M1 (reviewer checklist): temporarily reverting the
     // walk's rank-build back to `plan.rank1Source` must fail this exact assertion.
+    //
+    // S3a (docs/design/s3a-collect-witnesses-plan.md): DOC is CHITTORGARH's rank 2 here, and
+    // CHITTORGARH answers SUPPLIED at rank 1 -- under collect-all, rank 2 is still asked so its
+    // answer can be logged alongside rank 1's, even though only rank 1's value gets written.
+    // `doc` returning NOT_PRINTED WAS the assertion this test used to pin "the resolver's order
+    // wins, not the plan row's" -- that is now pinned by `callOrder[0]` (CHITTORGARH answers
+    // first) instead of by DOC never being called at all.
     const repo = makeRepo([planRow({ rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
     const callOrder: string[] = [];
     const doc = vi.fn(async () => {
@@ -1417,8 +1424,7 @@ describe('field-plan walk -- the resolver decides the ask order, not the plan ro
 
     const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
 
-    expect(callOrder).toEqual(['CHITTORGARH']);
-    expect(doc).not.toHaveBeenCalled();
+    expect(callOrder[0]).toBe('CHITTORGARH');
     expect(result.fieldsSupplied).toBe(1);
     expect(repo.recorded[0].chosen.source).toBe('CHITTORGARH');
     expect(repo.recorded[0].chosen.rank).toBe(1);
@@ -1498,4 +1504,180 @@ describe('field-plan walk -- CRITICAL-1 fix (S4 review round 2): the DEFAULT res
     expect(repo.recorded[0].chosen.source).toBe('CHITTORGARH');
     expect(repo.recorded[0].policyOrigin).toMatch(/^registry:/);
   });
+});
+
+/**
+ * S3a -- collect every witness's answer; still write the rank-1 winner.
+ *
+ * docs/design/s3a-collect-witnesses-plan.md. attemptOneField's rank loop is
+ * find-first today: the SUPPLIED branch RETURNS after rank 1, so a second
+ * capable source is never asked. Consensus (S3b) needs every ranked source's
+ * answer collected in the SAME pass; S3a only adds the collection plus one
+ * log line -- the value written, its source, and every counter on
+ * FieldPlanWalkResult must stay byte-identical to today.
+ */
+describe('field-plan walk -- S3a collects every witness answer (A1)', () => {
+  it('two fetchers both SUPPLIED: both are collected (N=2, both source names), written value is rank 1s', async () => {
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
+    const nse = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: 10 }));
+    const bse = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: 20 }));
+    const infoSpy = vi.spyOn(logger, 'info');
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: nse, BSE: bse } as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    // Both witnesses were actually asked -- this is RED today because the
+    // find-first loop returns after rank 1 and never calls the rank-2 fetcher.
+    expect(nse).toHaveBeenCalledTimes(1);
+    expect(bse).toHaveBeenCalledTimes(1);
+
+    // The written value/source is unchanged: rank 1 (NSE), value 10.
+    expect(result.fieldsSupplied).toBe(1);
+    expect(repo.recorded[0].state).toBe('SUPPLIED');
+    expect(repo.recorded[0].chosen.source).toBe('NSE');
+    expect(repo.recorded[0].chosen.rank).toBe(1);
+
+    // The collection is logged with both source names, N=2.
+    const collectLine = infoSpy.mock.calls.find(
+      (call) => typeof call[1] === 'string' && call[1].includes('collected')
+    );
+    expect(collectLine).toBeDefined();
+    const [meta] = collectLine as any;
+    expect(meta.answers).toHaveLength(2);
+    const sources = meta.answers.map((a: any) => a.source);
+    expect(sources).toEqual(expect.arrayContaining(['NSE', 'BSE']));
+    infoSpy.mockRestore();
+  });
+});
+
+describe('field-plan walk -- S3a a later rank throwing does not flip a supplied field to failure (A2)', () => {
+  it('rank 1 SUPPLIED, rank 2 THROWS: still SETTLED with rank 1s value, recorded state unchanged from the single-source case', async () => {
+    const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
+    const nse = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: 10 }));
+    const bse = vi.fn(async () => {
+      throw new Error('ECONNRESET');
+    });
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      sourceFetchers: { NSE: nse, BSE: bse } as any,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(nse).toHaveBeenCalledTimes(1);
+    expect(bse).toHaveBeenCalledTimes(1);
+
+    // Exactly the single-source-case recorded shape: SUPPLIED, rank 1, no
+    // trace of rank 2's throw in the counters that matter to downstream
+    // consumers.
+    expect(result.fieldsSupplied).toBe(1);
+    expect(result.fieldsCheckFailed).toBe(0);
+    expect(result.fieldsExhausted).toBe(0);
+    expect(repo.recorded).toHaveLength(1);
+    expect(repo.recorded[0].state).toBe('SUPPLIED');
+    expect(repo.recorded[0].chosen.source).toBe('NSE');
+    expect(repo.recorded[0].chosen.rank).toBe(1);
+  });
+});
+
+describe('field-plan walk -- S3a behaviour-neutrality (A3, table-driven over outcome combinations)', () => {
+  type Outcome =
+    | { kind: 'SUPPLIED'; value: unknown }
+    | { kind: 'NOT_PRINTED' }
+    | { kind: 'CHECK_FAILED_TRANSIENT' }
+    | { kind: 'CHECK_FAILED_DEFINITIVE' }
+    | { kind: 'THROW' };
+
+  function fetcherFor(outcome: Outcome): FieldFetcher {
+    switch (outcome.kind) {
+      case 'SUPPLIED':
+        return async () => ({ outcome: 'SUPPLIED', value: outcome.value });
+      case 'NOT_PRINTED':
+        return async () => ({ outcome: 'NOT_PRINTED' });
+      case 'CHECK_FAILED_TRANSIENT':
+        return async () => ({ outcome: 'CHECK_FAILED', reason: 'timeout', transient: true });
+      case 'CHECK_FAILED_DEFINITIVE':
+        return async () => ({ outcome: 'CHECK_FAILED', reason: 'no field in page', transient: false });
+      case 'THROW':
+        return async () => {
+          throw new Error('ECONNRESET');
+        };
+    }
+  }
+
+  const cases: Array<{
+    name: string;
+    rank1: Outcome;
+    rank2: Outcome;
+    expect: { state: string; fieldsSupplied: number; fieldsCheckFailed: number; fieldsExhausted: number; chosenSource?: string };
+  }> = [
+    {
+      name: 'rank1 SUPPLIED, rank2 SUPPLIED -> rank1 wins, SUPPLIED',
+      rank1: { kind: 'SUPPLIED', value: 1 },
+      rank2: { kind: 'SUPPLIED', value: 2 },
+      expect: { state: 'SUPPLIED', fieldsSupplied: 1, fieldsCheckFailed: 0, fieldsExhausted: 0, chosenSource: 'NSE' },
+    },
+    {
+      name: 'rank1 NOT_PRINTED, rank2 SUPPLIED -> rank2 wins, SUPPLIED',
+      rank1: { kind: 'NOT_PRINTED' },
+      rank2: { kind: 'SUPPLIED', value: 2 },
+      expect: { state: 'SUPPLIED', fieldsSupplied: 1, fieldsCheckFailed: 0, fieldsExhausted: 0, chosenSource: 'BSE' },
+    },
+    {
+      name: 'rank1 SUPPLIED, rank2 THROW -> rank1 wins, SUPPLIED (A2 shape)',
+      rank1: { kind: 'SUPPLIED', value: 1 },
+      rank2: { kind: 'THROW' },
+      expect: { state: 'SUPPLIED', fieldsSupplied: 1, fieldsCheckFailed: 0, fieldsExhausted: 0, chosenSource: 'NSE' },
+    },
+    {
+      name: 'rank1 CHECK_FAILED (transient), rank2 SUPPLIED -> rank2 wins, SUPPLIED',
+      rank1: { kind: 'CHECK_FAILED_TRANSIENT' },
+      rank2: { kind: 'SUPPLIED', value: 2 },
+      expect: { state: 'SUPPLIED', fieldsSupplied: 1, fieldsCheckFailed: 0, fieldsExhausted: 0, chosenSource: 'BSE' },
+    },
+    {
+      name: 'rank1 NOT_PRINTED, rank2 NOT_PRINTED -> EXHAUSTED',
+      rank1: { kind: 'NOT_PRINTED' },
+      rank2: { kind: 'NOT_PRINTED' },
+      expect: { state: 'EXHAUSTED', fieldsSupplied: 0, fieldsCheckFailed: 0, fieldsExhausted: 1 },
+    },
+    {
+      name: 'rank1 THROW, rank2 NOT_PRINTED -> CHECK_FAILED (transient present)',
+      rank1: { kind: 'THROW' },
+      rank2: { kind: 'NOT_PRINTED' },
+      expect: { state: 'CHECK_FAILED', fieldsSupplied: 0, fieldsCheckFailed: 1, fieldsExhausted: 0 },
+    },
+    {
+      name: 'rank1 CHECK_FAILED (definitive), rank2 NOT_PRINTED -> EXHAUSTED (both definitive)',
+      rank1: { kind: 'CHECK_FAILED_DEFINITIVE' },
+      rank2: { kind: 'NOT_PRINTED' },
+      expect: { state: 'EXHAUSTED', fieldsSupplied: 0, fieldsCheckFailed: 0, fieldsExhausted: 1 },
+    },
+  ];
+
+  for (const tc of cases) {
+    it(`${tc.name} (find-first-equivalent)`, async () => {
+      const repo = makeRepo([planRow({ rank1Source: 'NSE', rank2Source: 'BSE', rank3Source: null })]);
+      const d = deps({
+        fieldPlanRepository: repo as any,
+        sourceFetchers: {
+          NSE: fetcherFor(tc.rank1),
+          BSE: fetcherFor(tc.rank2),
+        } as any,
+      });
+
+      const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+      expect(result.fieldsSupplied).toBe(tc.expect.fieldsSupplied);
+      expect(result.fieldsCheckFailed).toBe(tc.expect.fieldsCheckFailed);
+      expect(result.fieldsExhausted).toBe(tc.expect.fieldsExhausted);
+      expect(repo.recorded[0].state).toBe(tc.expect.state);
+      if (tc.expect.chosenSource) {
+        expect(repo.recorded[0].chosen.source).toBe(tc.expect.chosenSource);
+      }
+    });
+  }
 });

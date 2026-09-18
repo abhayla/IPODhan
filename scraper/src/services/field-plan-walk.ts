@@ -646,6 +646,26 @@ async function attemptOneField(
    */
   let sawTransientFailure = false;
 
+  /**
+   * S3a (docs/design/s3a-collect-witnesses-plan.md): every SUPPLIED answer in
+   * this pass, in rank order. The rank loop below no longer RETURNS on the
+   * first SUPPLIED answer -- it keeps asking lower ranks so all of them can
+   * be logged together. The WRITE still happens exactly once, with the
+   * lowest-rank SUPPLIED answer, which is exactly what the old find-first
+   * loop returned -- see the `winner` write-out after the loop. The other
+   * answers go nowhere yet: S2's `witnesses` column is filled by S3b, not
+   * here (trap 1: `tryProvisional` overlaps this collection but is NOT
+   * deleted in S3a -- deleting it would change the NOT_AVAILABLE_YET
+   * behaviour, which is a different slice with its own proof).
+   */
+  const suppliedAnswers: Array<{
+    rank: number;
+    source: string;
+    answer: Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }>;
+  }> = [];
+  let winner: { rank: number; source: string; answer: Extract<FieldFetcherAnswer, { outcome: 'SUPPLIED' }> } | null =
+    null;
+
   for (const [rank, source] of ranks) {
     // No source at this rank for this IPO's type (§2.3.5 capability) — not a
     // failure, just nothing to ask here.
@@ -739,6 +759,37 @@ async function attemptOneField(
     // SUPPLIED. The §1 per-field check already ran INSIDE the fetcher (the
     // filing-persister's `check.passed` gate, or the website scraper's own
     // validation) — a plan-level re-check is not this item's job.
+    //
+    // S3a: collect this answer and KEEP GOING instead of writing+returning
+    // here. The first SUPPLIED answer found (lowest rank, loop order) is
+    // still the one written — `winner` is set once and never overwritten —
+    // so the value/source/state recorded below is byte-identical to the old
+    // find-first return. Only lower-ranked witnesses that answer AFTER the
+    // winner is already known are new: they are logged, never written
+    // (S2's `witnesses` column is S3b's job).
+    suppliedAnswers.push({ rank, source, answer });
+    if (!winner) {
+      winner = { rank, source, answer };
+    }
+    continue;
+  }
+
+  if (winner) {
+    if (suppliedAnswers.length > 1) {
+      logger.info(
+        {
+          ipoId,
+          table: plan.tableName,
+          field: plan.fieldName,
+          answers: suppliedAnswers.map((a) => ({ rank: a.rank, source: a.source, outcome: 'SUPPLIED' as const })),
+        },
+        `PASS 3: collected ${suppliedAnswers.length} answers for ${plan.fieldName} [${suppliedAnswers
+          .map((a) => `rank${a.rank}:${a.source}=SUPPLIED`)
+          .join(', ')}]`
+      );
+    }
+
+    const { rank, source, answer } = winner;
     const verdict = await runWrite(ipoId, plan, source, answer, deps);
 
     if (verdict.happened === false) {
