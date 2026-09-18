@@ -193,9 +193,14 @@ const buildFieldPlanWalkOrchestratorMock = vi.fn().mockImplementation(() => ({
   consolidatedUpsertIPO: vi.fn(),
   consolidatedUpsertChildRows: vi.fn(),
 }));
+// S3b-2: hoisted once per cycle alongside the two builders above (document-cycle.ts) — a
+// full-replacement vi.mock needs every export the real module has, or a caller destructuring
+// one this mock omits gets `undefined` and throws when it's invoked as a function.
+const buildFieldPlanWalkWitnessVerdictWriterMock = vi.fn().mockImplementation(() => vi.fn());
 vi.mock('../../../src/services/field-plan-walk-deps.js', () => ({
   buildFieldPlanWalkFetchers: (...args: unknown[]) => buildFieldPlanWalkFetchersMock(...args),
   buildFieldPlanWalkOrchestrator: (...args: unknown[]) => buildFieldPlanWalkOrchestratorMock(...args),
+  buildFieldPlanWalkWitnessVerdictWriter: (...args: unknown[]) => buildFieldPlanWalkWitnessVerdictWriterMock(...args),
   fieldPlanWalkHasFetchers: (fetchers?: Record<string, unknown>) =>
     Object.keys(fetchers ?? buildFieldPlanWalkFetchersMock()).length > 0,
 }));

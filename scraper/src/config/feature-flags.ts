@@ -99,6 +99,20 @@ export const FEATURE_FLAGS = {
   // ==================== CORE FEATURES ====================
 
   /**
+   * S3b-2 (docs/design/s3b2-verdict-writer-plan.md): gates whether the field-plan walk
+   * (field-plan-walk.ts) computes a verdict (CONFIRMED/DISPUTED/UNCONFIRMED/SINGLE_SOURCE/
+   * NO_WITNESS) from the pass's collected witness answers (S3a's `suppliedAnswers`) and writes
+   * `witnesses`/`verdict` (S2's columns) alongside the winning field_sources row. OFF is
+   * byte-identical to today: `trackFieldUpdate` receives no `witnesses`/`verdict`, which leaves
+   * both columns exactly as they were (NULL on insert, unchanged on conflict — see
+   * field-sources-repository.ts's trackFieldUpdate).
+   *
+   * S7 (the nightly check, not yet built) is what gates any flip to true — this slice ships the
+   * writer, never turns it on. Default: false.
+   */
+  ENABLE_VERDICT_WRITER: process.env.ENABLE_VERDICT_WRITER === 'true',
+
+  /**
    * Enable field source tracking
    * When enabled, records which scraper provided each field value
    * Default: false (Phase 0 foundation)

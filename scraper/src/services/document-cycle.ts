@@ -59,6 +59,7 @@ import { createFieldSourceOverridesReader } from '../config/field-source-overrid
 import {
   buildFieldPlanWalkFetchers,
   buildFieldPlanWalkOrchestrator,
+  buildFieldPlanWalkWitnessVerdictWriter,
   fieldPlanWalkHasFetchers,
 } from './field-plan-walk-deps.js';
 import { initStepLedger } from './step-ledger.js';
@@ -1832,6 +1833,9 @@ export async function runDocumentCycle(
         // IPO's walk.
         const fieldPlanOrchestrator = buildFieldPlanWalkOrchestrator();
         const fieldPlanFetchers = buildFieldPlanWalkFetchers();
+        // S3b-2: hoisted once per cycle, same convention as the two builders above — a no-op
+        // unless FEATURE_FLAGS.ENABLE_VERDICT_WRITER is true (field-plan-walk.ts's own guard).
+        const fieldPlanWitnessVerdictWriter = buildFieldPlanWalkWitnessVerdictWriter();
         for (const ipo of candidates) {
           if (now() >= fieldPlanDeadlineMs) {
             logger.warn(
@@ -1857,6 +1861,7 @@ export async function runDocumentCycle(
                 // the real production walk -- the ONLY thing missing was this line; the walk's
                 // default resolver was already override-aware and safe when the table is absent.
                 overrides: fieldSourceOverridesReader,
+                trackWitnessVerdict: fieldPlanWitnessVerdictWriter,
               },
               { deadlineMs: fieldPlanDeadlineMs, now }
             );
