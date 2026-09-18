@@ -611,3 +611,34 @@ test('mode 4: base and HEAD identical -> exit 0, summary says so explicitly', ()
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// Regression, 2026-09-18 (#763): the id extractor was /R-\d+/ with no word
+// boundary, so a prose word ENDING in "R-" plus digits was read as a rule id.
+// A real test header — "implements: #762 (S8) review round 2 CRITICAL +
+// MAJOR-4" — yielded the phantom id "R-4" out of the middle of "MAJOR-4",
+// and mode 3 failed the PR gate for a rule nobody had declared. Live ids are
+// always zero-padded to three digits (188 of 188 in rules.json at the time
+// of this fix), so the boundary-anchored 3-digit form is exact, not a guess.
+test('mode 3 regression: "MAJOR-4" in an implements header is NOT read as rule id R-4', () => {
+  const root = mkFixtureRoot();
+  try {
+    writeFile(root, 'docs/design/rules.json', rulesJson([rule('R-003')]));
+    writeFile(root, 'docs/design/build-cards/item-99-fixture.md', cardBody('R-003'));
+    writeFile(root, 'docs/design/rules-unclaimed.json', JSON.stringify({ unclaimed: {} }));
+    // The exact shape that broke PR #763: a real rule id alongside prose that
+    // contains "MAJOR-4". Only R-003 may be extracted.
+    writeFile(
+      root,
+      'tests/unit/reclaim.test.mjs',
+      IMPLEMENTS_TAG + 'R-003 -- #762 (S8) review round 2 CRITICAL + MAJOR-4\n'
+    );
+
+    const res = runCheck(root);
+    const out = res.stdout + res.stderr;
+    assert.equal(res.status, 0, `expected a clean pass, got exit ${res.status}:\n${out}`);
+    assert.doesNotMatch(out, /R-4\b/, 'phantom id R-4 was extracted from "MAJOR-4"');
+    assert.doesNotMatch(out, /MODE 3/, 'mode 3 fired on a header with no bad rule id');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -141,6 +141,14 @@ function loadUnclaimed(unclaimedPath) {
   return declared;
 }
 
+// A rule id is ALWAYS zero-padded to three digits (rules.json holds 188 of
+// 188 in that form). The boundary matters: the older unanchored /R-\d+/ read
+// the tail of a prose word as an id, so an "implements:" header mentioning
+// "MAJOR-4" yielded the phantom id "R-4" and failed mode 3 on PR #763 for a
+// rule nobody declared. \b on both sides refuses MAJOR-4 and MINOR-2 while
+// still accepting "R-004," and "R-004." in a list.
+const RULE_ID_RE = /\bR-\d{3}\b/g;
+
 // Returns a Map<ruleId, {rel, full}[]> — every rule id claimed by every card,
 // parsed from the generated "## Rules implemented" block (the same block
 // docs/design/apply-rule-ownership.mjs writes and D19 in
@@ -168,7 +176,7 @@ function loadCardClaims(cardsDir) {
     if (nextHeading >= 0) {
       section = section.slice(0, headingMatch[0].length + nextHeading);
     }
-    const ids = section.match(/R-\d+/g) || [];
+    const ids = section.match(RULE_ID_RE) || [];
     const rel = relative(REPO_ROOT, full).split('\\').join('/');
     for (const id of new Set(ids)) {
       if (!claims.has(id)) claims.set(id, []);
@@ -217,7 +225,7 @@ function loadTestDeclarations(testRoots) {
     let match;
     IMPLEMENTS_RE.lastIndex = 0;
     while ((match = IMPLEMENTS_RE.exec(text))) {
-      const ids = match[1].match(/R-\d+/g) || [];
+      const ids = match[1].match(RULE_ID_RE) || [];
       const rel = relative(REPO_ROOT, full).split('\\').join('/');
       for (const id of ids) {
         if (!declares.has(id)) declares.set(id, []);
