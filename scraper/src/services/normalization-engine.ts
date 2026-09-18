@@ -440,7 +440,7 @@ export function normalizeNumber(value: string | number): number {
  *              IPOs (OD-57) -- so the string fallback below was the single
  *              biggest source of false conflicts (#773).
  */
-export type ComparisonFamily = 'MONEY' | 'RATIO' | 'IDENTITY' | 'IDENTIFIER' | 'DATE' | 'SET' | 'BOOLEAN';
+export type ComparisonFamily = 'MONEY' | 'RATIO' | 'IDENTITY' | 'IDENTIFIER' | 'DATE' | 'SET' | 'BOOLEAN' | 'COUNT';
 
 /**
  * #783: the manifest's `comparisonFamily` enum also allows `ABSTAIN`, which is
@@ -523,6 +523,20 @@ export function areEquivalent(
         return foldCompanyIdentity(val1) === foldCompanyIdentity(val2);
       }
       return val1 === val2;
+    }
+
+    if (opts.family === 'COUNT') {
+      // #782: a COUNT is DISCRETE -- it has no rounding, so it gets no tolerance.
+      // MONEY's 0.5% relative tolerance is right for a rupee figure two sources
+      // round differently, and wrong here: 200 vs 201 anchor investors is a real
+      // disagreement, and above ~200 that tolerance swallows an off-by-one
+      // silently (199 vs 200 is exactly 0.0050). Zero is a real count a source
+      // supplied, never an abstention -- the empty() check above already handled
+      // null/undefined/'' (OD-60).
+      const n1 = asNumber(val1);
+      const n2 = asNumber(val2);
+      if (n1 !== null && n2 !== null) return n1 === n2;
+      // Not both numeric -- fall through rather than guess.
     }
 
     if (opts.family === 'BOOLEAN') {

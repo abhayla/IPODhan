@@ -73,10 +73,29 @@ export function computeVerdict(
     return { verdict: 'UNCONFIRMED', witnesses };
   }
 
-  // 2+ real answers on a 2+-capable-source field: compare every answer against the first: any
-  // disagreement makes the whole set DISPUTED (a single dissenting witness is enough — this is
-  // not majority vote).
-  const [first, ...rest] = answers;
-  const allAgree = rest.every((a) => areEquivalent(first.value, a.value, { family }));
-  return { verdict: allAgree ? 'CONFIRMED' : 'DISPUTED', witnesses };
+  // 2+ real answers on a 2+-capable-source field. ALL PAIRS, not every-answer-against-the-first.
+  //
+  // #789: a TOLERANT comparison is NOT TRANSITIVE. MONEY agrees within 0.5% of the larger value,
+  // so a=1000.00, b=1004.99, c=995.01 gives a~b and a~c but NOT b~c -- the outer two differ by
+  // ~1%. A pivot comparison against `first` therefore records CONFIRMED on a set whose members
+  // disagree with each other, and a false CONFIRMED is worse than a DISPUTED: it asserts the
+  // sources checked each other and matched.
+  //
+  // Measured: 17 MAINBOARD fields have 3+ ranked sources with a tolerant family (12 MONEY +
+  // 5 RATIO), including price_range_min/max, lot_size and face_value -- the headline numbers.
+  // Exact-match families (IDENTIFIER/DATE/SET/BOOLEAN) are transitive and unaffected, but
+  // all-pairs is correct for them too, so there is no reason to branch on family here.
+  //
+  // Cost: N*(N-1)/2 comparisons. N is at most 3 (no field ranks more than three sources), so at
+  // most 3 -- the reason a pivot might have been chosen does not exist at this size.
+  //
+  // A single dissenting PAIR is enough: this is agreement, not a majority vote.
+  for (let i = 0; i < answers.length - 1; i += 1) {
+    for (let j = i + 1; j < answers.length; j += 1) {
+      if (!areEquivalent(answers[i].value, answers[j].value, { family })) {
+        return { verdict: 'DISPUTED', witnesses };
+      }
+    }
+  }
+  return { verdict: 'CONFIRMED', witnesses };
 }

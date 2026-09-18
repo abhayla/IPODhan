@@ -824,6 +824,52 @@ describe('areEquivalent — OD-59 family semantics (S1)', () => {
     });
   });
 
+  /**
+   * #782: three count fields (brlm_track_record.issues_3y,
+   * .closed_below_issue_price, anchor_investors.anchor_investors_count) were
+   * mapped to MONEY "for the same tolerant-numeric treatment as SHARE_COUNT".
+   * MONEY agrees within 0.5% RELATIVE, which is right for money -- two sources
+   * genuinely round the same rupee figure differently -- and wrong for a COUNT,
+   * which has no rounding. 200 vs 201 anchor investors is a real disagreement
+   * about a discrete thing.
+   *
+   * Where the borrowed tolerance starts hiding an off-by-one, computed:
+   *     3 vs 4      diff/scale 0.2500  correctly differs
+   *   100 vs 101               0.0099  correctly differs
+   *   199 vs 200               0.0050  PASSES AS EQUAL   <- threshold
+   *  1000 vs 1001              0.0010  PASSES AS EQUAL
+   *
+   * Real maxima today are 17, 4 and 19, so it is safe BY ACCIDENT, not by
+   * design -- a 200+ anchor book is not absurd, and the failure is silent.
+   */
+  describe('COUNT (#782)', () => {
+    it('is exact -- an off-by-one is a disagreement at ANY magnitude', () => {
+      expect(areEquivalent(3, 4, { family: 'COUNT' })).toBe(false);
+      // The cases MONEY's 0.5% would have swallowed:
+      expect(areEquivalent(199, 200, { family: 'COUNT' })).toBe(false);
+      expect(areEquivalent(1000, 1001, { family: 'COUNT' })).toBe(false);
+    });
+
+    it('reads the same count written as a string or a number as one value', () => {
+      expect(areEquivalent('20', 20, { family: 'COUNT' })).toBe(true);
+      expect(areEquivalent('20', '20', { family: 'COUNT' })).toBe(true);
+    });
+
+    // Zero is a real count a source supplied (nobody on the anchor book), never
+    // an abstention -- OD-60's rule that only null/undefined/'' abstain.
+    it('treats zero as a real count, not an abstention', () => {
+      expect(areEquivalent(0, 0, { family: 'COUNT' })).toBe(true);
+      expect(areEquivalent(0, 1, { family: 'COUNT' })).toBe(false);
+      expect(areEquivalent(null, 0, { family: 'COUNT' })).toBe(false);
+    });
+
+    // Contrast, so the difference from MONEY is pinned rather than implied.
+    it('differs from MONEY on exactly the case that motivated it', () => {
+      expect(areEquivalent(199, 200, { family: 'MONEY' })).toBe(true);
+      expect(areEquivalent(199, 200, { family: 'COUNT' })).toBe(false);
+    });
+  });
+
   describe('abstention (OD-60) and backwards compatibility', () => {
     it('treats null against a real value as NOT equivalent', () => {
       expect(areEquivalent(null, 8250000000, { family: 'MONEY' })).toBe(false);

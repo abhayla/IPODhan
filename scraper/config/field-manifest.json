@@ -4670,7 +4670,7 @@
         "BUYBACK"
       ],
       "unit": "keep",
-      "comparisonFamily": "MONEY"
+      "comparisonFamily": "COUNT"
     },
     "brlm_track_record.closed_below_issue_price": {
       "class": "D",
@@ -4702,7 +4702,7 @@
         "BUYBACK"
       ],
       "unit": "keep",
-      "comparisonFamily": "MONEY"
+      "comparisonFamily": "COUNT"
     },
     "promoters.shares_held": {
       "class": "D",
@@ -5540,7 +5540,7 @@
         "BUYBACK"
       ],
       "unit": "keep",
-      "comparisonFamily": "MONEY"
+      "comparisonFamily": "COUNT"
     },
     "anchor_investors.investor_list": {
       "class": "D",
