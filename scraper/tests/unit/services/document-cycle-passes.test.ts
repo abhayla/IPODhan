@@ -229,6 +229,17 @@ const { runDocumentCycle, PURGE_CANDIDATES_SQL } = await import('../../../src/se
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // PIN THE CLOCK TO A WEEKDAY. `runDocumentCycle` consults the IST calendar
+  // gate (document-cycle-calendar-gate.ts), which on a Saturday or Sunday
+  // returns `eligible: 0` and skips every candidate — so on a weekend these
+  // tests asserted the day of the week instead of the behaviour they name,
+  // and the whole file went red with "expected [] to have a length of 2".
+  // Measured 2026-09-19 (a Saturday): 10 failures across this file and
+  // document-cycle-listed-rotation.test.ts, on main, with no code change.
+  // Wednesday 2026-09-16 09:00 IST = 03:30Z — a plain trading day, and inside
+  // market hours so no live-window branch changes either.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-16T03:30:00.000Z'));
   FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = true;
   deriveLifecycleStageMock.mockImplementation(() => 'PRE_OPEN');
   lockAcquireMock.mockResolvedValue({ acquired: true, token: 'tok-1' });
