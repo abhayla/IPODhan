@@ -100,6 +100,38 @@ export function buildFieldPlanWalkOrchestrator(
   ) as unknown as FieldPlanWalkOrchestrator;
 }
 
+/**
+ * S3b-2: the default `trackWitnessVerdict` — the SAME `FieldSourcesRepository.trackFieldUpdate`
+ * every other write path calls (field-sources-repository.ts), never a second writer. A fresh
+ * `FieldSourcesRepository` here (rather than threading `buildFieldPlanWalkOrchestrator`'s own
+ * instance out) matches this file's existing per-builder-function construction style (each
+ * `build*` function opens its own repositories against the SAME `db`/`redis` singletons passed
+ * in — no new Redis client, no new pool).
+ */
+export function buildFieldPlanWalkWitnessVerdictWriter(
+  redis: ReturnType<typeof getRedisClient> = getRedisClient()
+): (input: {
+  ipoId: string;
+  tableName: string;
+  rowKey: string;
+  fieldName: string;
+  source: string;
+  witnesses: Array<{ source: string; value: unknown; at: string; docType?: string }>;
+  verdict: string;
+}) => Promise<unknown> {
+  const fieldSources = new FieldSourcesRepository(db as never, redis as never);
+  return (input) =>
+    fieldSources.trackFieldUpdate({
+      ipoId: input.ipoId,
+      tableName: input.tableName,
+      rowKey: input.rowKey,
+      fieldName: input.fieldName,
+      source: input.source as never,
+      witnesses: input.witnesses,
+      verdict: input.verdict,
+    });
+}
+
 /** `${tableName}.${fieldName}` -> the manifest entry, built once and reused by every lookup below. */
 function manifestFieldEntry(tableName: string, fieldName: string) {
   const manifest = loadFieldManifest();

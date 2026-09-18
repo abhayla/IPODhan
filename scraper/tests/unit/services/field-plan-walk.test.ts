@@ -1,11 +1,12 @@
 // implements: item 6 -- the pull walk over ipo_field_plan (design §2.4, §2.2)
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   walkFieldPlanForIPO,
   type FieldFetcher,
   type FieldPlanWalkDeps,
 } from '../../../src/services/field-plan-walk.js';
 import { logger } from '../../../src/utils/logger.js';
+import { FEATURE_FLAGS } from '../../../src/config/feature-flags.js';
 import {
   fieldResult,
   consolidatedUpsertResultFixture,
@@ -1695,4 +1696,173 @@ describe('field-plan walk -- S3a behaviour-neutrality (A3, table-driven over out
       }
     });
   }
+});
+
+describe('field-plan walk -- S3b-2 the comparator decides, verdict is written (docs/design/s3b2-verdict-writer-plan.md)', () => {
+  afterEach(() => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = false;
+  });
+
+  // DOC's writer-source identity is DRHP (field-source-codes.ts collapses every filing
+  // document-type code to DRHP) -- checkConsolidatorAgreed wants chosenSource: 'DRHP' for a
+  // DOC-sourced write, never the raw manifest code 'DOC' (see the sibling "DOC maps to DRHP"
+  // test above). Every orchestrator stub in this block echoes the MAPPED source, exactly like
+  // that test, rather than relying on makeOrchestrator()'s raw-source echo default.
+  function orchestratorFor(camelFieldName: string, finalValue: unknown, chosenSource: string) {
+    return {
+      consolidatedUpsertIPO: vi.fn(async () => ({
+        ipoId: IPO_ID,
+        isNew: false,
+        locked: true,
+        skipped: false,
+        consolidation: { fieldResults: [fieldResult(camelFieldName, finalValue, chosenSource as never)] },
+      })),
+      consolidatedUpsertChildRows: vi.fn(),
+    };
+  }
+
+  it('flag OFF (default) -- no verdict written, trackWitnessVerdict never called, behaviour byte-identical to S3a', async () => {
+    expect(FEATURE_FLAGS.ENABLE_VERDICT_WRITER).toBe(false);
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'issue_size', rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const doc = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '1000000' }));
+    const chittorgarh = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '1000000' }));
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestratorFor('issueSize', '1000000', 'DRHP') as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chittorgarh } as any,
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    expect(trackWitnessVerdict).not.toHaveBeenCalled();
+  });
+
+  it('flag ON -- two witnesses agreeing on ipos.issue_size (DOC + CHITTORGARH, MONEY family) -> CONFIRMED, witnesses recorded', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'issue_size', rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const doc = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '1000000' }));
+    const chittorgarh = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '1000000' }));
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestratorFor('issueSize', '1000000', 'DRHP') as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chittorgarh } as any,
+      // ipos.issue_size ranks ['DOC', 'CHITTORGARH'] on every segment (manifest, verified) --
+      // capableSourceCount is 2, matching this stub.
+      resolvePolicy: async () => ({ ranks: ['DOC', 'CHITTORGARH'], documentType: undefined, origin: { kind: 'registry' as const, version: 2 }, na: false }),
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    expect(trackWitnessVerdict).toHaveBeenCalledTimes(1);
+    const call = trackWitnessVerdict.mock.calls[0][0] as any;
+    expect(call.verdict).toBe('CONFIRMED');
+    expect(call.fieldName).toBe('issueSize');
+    expect(call.witnesses).toHaveLength(2);
+    expect(call.witnesses.map((w: any) => w.source)).toEqual(expect.arrayContaining(['DOC', 'CHITTORGARH']));
+  });
+
+  it('flag ON -- two witnesses disagreeing on ipos.issue_size -> DISPUTED', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'issue_size', rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const doc = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '1000000' }));
+    const chittorgarh = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '2000000' }));
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestratorFor('issueSize', '1000000', 'DRHP') as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chittorgarh } as any,
+      resolvePolicy: async () => ({ ranks: ['DOC', 'CHITTORGARH'], documentType: undefined, origin: { kind: 'registry' as const, version: 2 }, na: false }),
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    const call = trackWitnessVerdict.mock.calls[0][0] as any;
+    expect(call.verdict).toBe('DISPUTED');
+  });
+
+  it('flag ON -- a single-capable-source field on SME_NSE (listing_performance.current_price_nse) -> SINGLE_SOURCE', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([planRow({ tableName: 'listing_performance', fieldName: 'current_price_nse', rowKey: 'row1', rank1Source: 'NSE', rank2Source: null, rank3Source: null })]);
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const nse = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '105.50' }));
+    const childOrchestrator = {
+      consolidatedUpsertIPO: vi.fn(),
+      consolidatedUpsertChildRows: vi.fn(async () => ({
+        rowsProcessed: 1,
+        rowsUpdated: 1,
+        rowsSkipped: 0,
+        conflictsDetected: 0,
+        rows: [{ rowKey: 'row1', consolidatedData: {}, fieldsProcessed: 1, fieldsUpdated: 1, conflictsDetected: 0, skipped: false, fieldResults: [fieldResult('currentPriceNse', '105.50', 'NSE' as never)] }],
+      })),
+    };
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: childOrchestrator as any,
+      sourceFetchers: { NSE: nse } as any,
+      // manifest: listing_performance.current_price_nse rank.SME_NSE = ['NSE'] -- 1 capable source.
+      resolvePolicy: async () => ({ ranks: ['NSE'], documentType: undefined, origin: { kind: 'registry' as const, version: 2 }, na: false }),
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    const call = trackWitnessVerdict.mock.calls[0][0] as any;
+    expect(call.verdict).toBe('SINGLE_SOURCE');
+    expect(call.witnesses).toHaveLength(1);
+  });
+
+  it('flag ON -- one real answer + the other ranked source abstaining -> UNCONFIRMED, never DISPUTED (OD-60)', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'issue_size', rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const doc = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: '1000000' }));
+    const chittorgarh = vi.fn(async () => ({ outcome: 'NOT_PRINTED' as const }));
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestratorFor('issueSize', '1000000', 'DRHP') as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chittorgarh } as any,
+      resolvePolicy: async () => ({ ranks: ['DOC', 'CHITTORGARH'], documentType: undefined, origin: { kind: 'registry' as const, version: 2 }, na: false }),
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    const call = trackWitnessVerdict.mock.calls[0][0] as any;
+    expect(call.verdict).toBe('UNCONFIRMED');
+    expect(call.verdict).not.toBe('DISPUTED');
+    expect(call.witnesses).toHaveLength(1);
+  });
+
+  it('flag ON -- an ABSTAIN field (ipos.company_description) -> trackWitnessVerdict is NEVER called, no verdict written', async () => {
+    FEATURE_FLAGS.ENABLE_VERDICT_WRITER = true;
+    const repo = makeRepo([planRow({ tableName: 'ipos', fieldName: 'company_description', rank1Source: 'DOC', rank2Source: 'CHITTORGARH', rank3Source: null })]);
+    const trackWitnessVerdict = vi.fn(async () => undefined);
+    const doc = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: 'Some free prose about the company.' }));
+    const chittorgarh = vi.fn(async () => ({ outcome: 'SUPPLIED' as const, value: 'Different free prose.' }));
+    const d = deps({
+      fieldPlanRepository: repo as any,
+      orchestrator: orchestratorFor('companyDescription', 'Some free prose about the company.', 'DRHP') as any,
+      sourceFetchers: { DOC: doc, CHITTORGARH: chittorgarh } as any,
+      // ipos.company_description ranks ['DOC', 'CHITTORGARH'] and is comparisonFamily: 'ABSTAIN'
+      // in the real manifest (verified) -- 2 capable sources, so this would be CONFIRMED/DISPUTED
+      // if ABSTAIN were not filtered before computeVerdict.
+      resolvePolicy: async () => ({ ranks: ['DOC', 'CHITTORGARH'], documentType: undefined, origin: { kind: 'registry' as const, version: 2 }, na: false }),
+      trackWitnessVerdict,
+    });
+
+    const result = await walkFieldPlanForIPO(IPO_ID, d, openBudget());
+
+    expect(result.fieldsSupplied).toBe(1);
+    expect(trackWitnessVerdict).not.toHaveBeenCalled();
+  });
 });

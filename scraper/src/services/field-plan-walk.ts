@@ -62,6 +62,9 @@ import {
   type OverrideReader,
 } from '../config/field-source-policy.js';
 import { resolveIpoTypeKey, type PlanIpo } from './field-plan-generator.js';
+import { loadFieldManifest } from '../config/field-manifest-loader.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { computeVerdict, type Witness, type Verdict } from './witness-verdict.js';
 
 /**
  * `plan.fieldName` is the manifest's raw snake_case key
@@ -284,6 +287,24 @@ export interface FieldPlanWalkDeps {
    * (as every existing test does) bypasses this entirely — this field only affects the DEFAULT path.
    */
   overrides?: OverrideReader;
+  /**
+   * S3b-2 (docs/design/s3b2-verdict-writer-plan.md): writes the computed verdict + witnesses onto
+   * the SAME field_sources row `runWrite` already wrote this pass — a second CALL, not a second
+   * writer (`trackFieldUpdate`, field-sources-repository.ts, stays the single insertion point).
+   * Narrow function dependency (matching `resolvePolicy`'s shape above), not the whole
+   * repository, so a test stubs exactly what it needs. Defaulted (via field-plan-walk-deps.ts) to
+   * `FieldSourcesRepository.trackFieldUpdate`; only ever called when
+   * `FEATURE_FLAGS.ENABLE_VERDICT_WRITER` is true AND the field's `comparisonFamily !== 'ABSTAIN'`.
+   */
+  trackWitnessVerdict?: (input: {
+    ipoId: string;
+    tableName: string;
+    rowKey: string;
+    fieldName: string;
+    source: string;
+    witnesses: Witness[];
+    verdict: Verdict;
+  }) => Promise<unknown>;
 }
 
 /**
@@ -864,6 +885,50 @@ async function attemptOneField(
       });
     }
 
+    // S3b-2: the verdict write is a SECOND call onto the same field_sources row `runWrite` just
+    // wrote (never a second writer — trackWitnessVerdict defaults to the same
+    // FieldSourcesRepository.trackFieldUpdate as everything else). Flag OFF (default) skips this
+    // block entirely — no manifest read, no computeVerdict call, no trackWitnessVerdict call — so
+    // behaviour is byte-identical to before this slice.
+    if (FEATURE_FLAGS.ENABLE_VERDICT_WRITER && deps.trackWitnessVerdict) {
+      const manifestEntry = loadFieldManifest().fields[`${plan.tableName}.${plan.fieldName}`];
+      const family = manifestEntry?.comparisonFamily;
+      // ABSTAIN is filtered out HERE, before computeVerdict — never passed through. ABSTAIN is
+      // deliberately absent from areEquivalent's ComparisonFamily union (#786); a field with no
+      // manifest entry at all (row-less field, matrix-shim path) has no family to filter on
+      // either, so it is treated the same as ABSTAIN: no verdict computed.
+      if (family && family !== 'ABSTAIN') {
+        const witnessAnswers = suppliedAnswers.map((a) => ({
+          rank: a.rank,
+          source: a.source,
+          value: a.answer.value,
+          at: new Date().toISOString(),
+          docType: a.answer.documentType,
+        }));
+        const { verdict: computedVerdict, witnesses } = computeVerdict(
+          witnessAnswers,
+          policy.ranks.length,
+          family
+        );
+        await deps.trackWitnessVerdict({
+          ipoId,
+          tableName: plan.tableName,
+          rowKey: plan.rowKey,
+          // field_sources.fieldName is camelCase (lesson field-sources-field-name-is-camelCase)
+          // — same conversion `runWrite` applies independently for its own write below.
+          fieldName: columnToCamelCase(plan.fieldName),
+          // field_sources.source (the TOP-LEVEL column, distinct from witnesses[].source below)
+          // is the scraper_source Postgres enum, which has no 'DOC' member — same mapping
+          // `runWrite` now applies to its own orchestrator call, for the same reason. Each
+          // WITNESS's own `source` field stays the raw manifest code (a jsonb value, not enum
+          // constrained) — that is what identifies WHICH ranked source answered.
+          source: mapManifestSourceToScraperSource(source),
+          witnesses,
+          verdict: computedVerdict,
+        });
+      }
+    }
+
     result.fieldsSupplied += 1;
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
@@ -1091,6 +1156,17 @@ async function runWrite(
 ): Promise<WriteVerdict> {
   try {
     const camelFieldName = columnToCamelCase(plan.fieldName);
+    // The manifest's `source` vocabulary (DOC, RHP, PRICE_BAND_AD, ...) is wider than the
+    // writer's `ScraperSource` enum — every filing document-type code collapses to DRHP
+    // (field-source-codes.ts; `field_sources.source` is a Postgres enum with no 'DOC' member).
+    // `checkConsolidatorAgreed` below already maps `source` before comparing against
+    // `chosenSource`; the call to the orchestrator itself must pass the SAME mapped value, not
+    // the raw manifest code — a raw 'DOC' passed as `ScraperSource` writes a value Postgres
+    // cannot store under that column, and the provenance write fails silently (caught in
+    // `trackFieldSource`'s own try/catch), which is what made a real DOC-sourced write always
+    // read back as "LOST to a higher-priority source" against the REAL orchestrator (surfaced by
+    // this slice's own real-data proof, docs/design/s3b2-verdict-writer-plan.md).
+    const writerSource = mapManifestSourceToScraperSource(source);
     if (SINGLETON_IPO_TABLES.has(plan.tableName)) {
       // Review round 2, RCA1: never write `{ id, [field]: value }` alone —
       // computeIpoIdentitySlug needs companyName even with a pre-resolved
@@ -1102,7 +1178,7 @@ async function runWrite(
       }
       const r = await deps.orchestrator.consolidatedUpsertIPO(
         { id: ipoId, ...identityFieldsFor(existing), [camelFieldName]: answer.value },
-        source as any,
+        writerSource as any,
         100,
         existing,
         // Review round 3 (MAJOR): the identity fields above are for the lock
@@ -1125,7 +1201,7 @@ async function runWrite(
       ipoId,
       plan.tableName as any,
       [{ rowKey: plan.rowKey, data: { [camelFieldName]: answer.value } }],
-      source as any,
+      writerSource as any,
       answer.documentType
     );
     // A child-row call returns per-row outcomes; the one row we sent is the

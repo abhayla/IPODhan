@@ -41,6 +41,14 @@ export interface TrackFieldUpdateInput {
   previousSource?: ScraperSource | null;
   dataLineage?: Record<string, unknown>;
   updatedBy?: string;
+  /** S3b-2 (docs/design/s3b2-verdict-writer-plan.md): every OTHER witness answer collected this
+   *  pass, besides the winning source/value above. Shape: [{source, value, at, docType?}] — S2's
+   *  column, first populated here. Omitted (undefined) leaves the column untouched on both INSERT
+   *  and UPDATE (flag OFF, or every caller before this slice). */
+  witnesses?: Array<{ source: string; value: unknown; at: string; docType?: string }>;
+  /** S3b-2: CONFIRMED | DISPUTED | UNCONFIRMED | SINGLE_SOURCE | NO_WITNESS — S2's column, first
+   *  populated here. Omitted leaves the column untouched. */
+  verdict?: string;
 }
 
 export interface FieldSourceSummary {
@@ -190,6 +198,12 @@ export class FieldSourcesRepository extends BaseRepository {
             previousValue: input.previousValue || null,
             previousSource: input.previousSource || null,
             dataLineage: input.dataLineage ? (input.dataLineage as unknown) : null,
+            // S3b-2: a fresh INSERT has no prior row to preserve, so an omitted witnesses/verdict
+            // (every caller before this slice, and this slice's flag-OFF path) simply writes NULL
+            // — matching the column's own NULL default (S2's schema comment: "nothing computed
+            // for them").
+            witnesses: input.witnesses ? (input.witnesses as unknown) : null,
+            verdict: input.verdict ?? null,
             updatedAt: new Date(),
             updatedBy: input.updatedBy || 'SYSTEM',
           })
@@ -226,6 +240,16 @@ export class FieldSourcesRepository extends BaseRepository {
               dataLineage: input.dataLineage
                 ? sql`COALESCE(${fieldSources.dataLineage}, '{}'::jsonb) || ${JSON.stringify(input.dataLineage)}::jsonb`
                 : sql`${fieldSources.dataLineage}`,
+              // S3b-2: REPLACE (never merge — witnesses is a fresh snapshot of THIS pass's
+              // answers, not an accumulating log), but only when the caller actually computed
+              // one. Every caller before this slice — and this slice's own flag-OFF path — omits
+              // `witnesses`/`verdict`, so `sql\`${column}\`` (self-reference, not `null`) leaves
+              // the stored value UNCHANGED on conflict. Writing `null` here unconditionally would
+              // ERASE a verdict a previous ON pass had already written, the moment the flag is
+              // flipped off again or a non-verdict caller (filing-persister.ts, chittorgarh-
+              // issue-type-job.ts) updates the SAME row for an unrelated reason.
+              witnesses: input.witnesses ? (input.witnesses as unknown) : sql`${fieldSources.witnesses}`,
+              verdict: input.verdict !== undefined ? input.verdict : sql`${fieldSources.verdict}`,
               updatedAt: new Date(),
               updatedBy: input.updatedBy || 'SYSTEM',
             },
