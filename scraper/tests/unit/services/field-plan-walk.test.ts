@@ -1633,6 +1633,21 @@ describe('field-plan walk -- S3a behaviour-neutrality (A3, table-driven over out
       expect: { state: 'SUPPLIED', fieldsSupplied: 1, fieldsCheckFailed: 0, fieldsExhausted: 0, chosenSource: 'NSE' },
     },
     {
+      // The combination collect-all NEWLY makes reachable, and the one the
+      // first A3 table missed: under find-first the loop RETURNED at rank 1,
+      // so rank 2 was never asked and could not set `sawTransientFailure`.
+      // Now it is asked. `sawTransientFailure` is read only at the "every
+      // rank fell through" fallthrough, which `if (winner)` returns SUPPLIED
+      // before reaching -- so a transient failure AFTER a win must not turn a
+      // supplied field into CHECK_FAILED. Reading the control flow says it
+      // cannot; this asserts it. THROW (A2) exercises a different branch than
+      // CHECK_FAILED, so A2 does not cover this one.
+      name: 'rank1 SUPPLIED, rank2 CHECK_FAILED (transient) -> rank1 wins, SUPPLIED (transient after a win is not a failure)',
+      rank1: { kind: 'SUPPLIED', value: 1 },
+      rank2: { kind: 'CHECK_FAILED_TRANSIENT' },
+      expect: { state: 'SUPPLIED', fieldsSupplied: 1, fieldsCheckFailed: 0, fieldsExhausted: 0, chosenSource: 'NSE' },
+    },
+    {
       name: 'rank1 CHECK_FAILED (transient), rank2 SUPPLIED -> rank2 wins, SUPPLIED',
       rank1: { kind: 'CHECK_FAILED_TRANSIENT' },
       rank2: { kind: 'SUPPLIED', value: 2 },
