@@ -810,6 +810,7 @@ jobs:
           tests/integration/alternative-sources.integration.test.ts
           tests/integration/data-conflicts-repository-hold.integration.test.ts
           tests/integration/db-timezone.integration.test.ts
+          tests/integration/field-sources-witnesses.integration.test.ts
           tests/integration/duplicate-ipo-merge.integration.test.ts
           tests/integration/nse-scraper.integration.test.ts
           tests/integration/oracle-parity.test.ts
