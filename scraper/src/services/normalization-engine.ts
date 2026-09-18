@@ -5,6 +5,10 @@
  */
 
 import type { NormalizationType, FieldRules } from '../config/field-priority-matrix';
+// OD-59's IDENTITY family folds corporate forms before comparing. This is the
+// repo's existing fold (item 12, prod-wired in ipo-identity.ts) — not a second
+// one, so "Pvt Ltd" means here exactly what it means at discovery time.
+import { foldCompanyIdentity } from '@ipodhan/shared/utils/company-identity-fold';
 
 /**
  * Main normalization function
@@ -409,10 +413,107 @@ export function normalizeNumber(value: string | number): number {
 // ==================== EQUIVALENCE CHECKING ====================
 
 /**
+ * OD-59 (owner, 2026-09-18): "agreement is judged on the MEANING of a value,
+ * never on its text." A family says HOW to read the two values before they are
+ * compared. Absent, nothing changes — see the compatibility note on
+ * `areEquivalent` below.
+ *
+ *   MONEY      absolute amounts and share counts. Numeric strings are read as
+ *              numbers, and two values agree within 0.5%, because independent
+ *              sources round the same figure differently (measured: 1,249,970,000
+ *              against 1,250,000,000 is one issue size, not two).
+ *   RATIO      derived figures — pe, eps, ronw, debt_to_equity. NOT 0.5%: a PE of
+ *              24.0 against 24.1 is 0.4% and would pass, but for a ratio that gap
+ *              usually means the sources used different denominators (pre- versus
+ *              post-issue EPS), which is the disagreement most worth catching.
+ *   IDENTITY   names. Compared after folding corporate forms, so "Pvt Ltd" and
+ *              "Private Limited" are one registrar, not two.
+ *   IDENTIFIER ISIN, CIN, symbol. Exact, case-sensitive. There is no
+ *              close-enough for an identifier.
+ */
+export type ComparisonFamily = 'MONEY' | 'RATIO' | 'IDENTITY' | 'IDENTIFIER';
+
+export interface EquivalenceOptions {
+  family?: ComparisonFamily;
+  /** Absolute tolerance for the family-less path. Unchanged default. */
+  tolerance?: number;
+}
+
+/** Money agrees within this fraction of the larger value (OD-59). */
+const MONEY_RELATIVE_TOLERANCE = 0.005;
+/** A ratio is compared at 2 decimal places (OD-59). */
+const RATIO_DECIMAL_PLACES = 2;
+
+/** A string that is entirely a number, so "10.00" can be read as 10. */
+function asNumber(value: any): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  // Deliberately strict: only a bare numeric literal. "10 crore" is NOT a
+  // number here — unit handling belongs to normalisation, before comparison.
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * Check if two normalized values are equivalent
  * Uses tolerance for floating point comparison
+ *
+ * BACKWARDS COMPATIBILITY (load-bearing): the third argument was, and still is,
+ * a bare `tolerance: number`. All seven existing production call sites pass
+ * nothing and are unaffected — the family branches below run ONLY when a caller
+ * opts in with `{ family }`. S3b switches the write path deliberately; until
+ * then this function behaves exactly as it did.
  */
-export function areEquivalent(val1: any, val2: any, tolerance: number = 0.01): boolean {
+export function areEquivalent(
+  val1: any,
+  val2: any,
+  toleranceOrOptions: number | EquivalenceOptions = 0.01
+): boolean {
+  const opts: EquivalenceOptions =
+    typeof toleranceOrOptions === 'number' ? { tolerance: toleranceOrOptions } : toleranceOrOptions;
+  const tolerance = opts.tolerance ?? 0.01;
+
+  // A family is read BEFORE the generic branches: the whole point is that
+  // "10" and "10.00" must not reach the string comparison below.
+  if (opts.family) {
+    // OD-60: only null/undefined/'' abstain. Zero is a value a source genuinely
+    // supplied (ipo_valuation.ofs_shares = 0 on a pure fresh issue).
+    const empty = (v: any) => v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+    if (empty(val1) || empty(val2)) return empty(val1) && empty(val2);
+
+    if (opts.family === 'IDENTIFIER') {
+      return typeof val1 === 'string' && typeof val2 === 'string' ? val1 === val2 : val1 === val2;
+    }
+
+    if (opts.family === 'IDENTITY') {
+      if (typeof val1 === 'string' && typeof val2 === 'string') {
+        return foldCompanyIdentity(val1) === foldCompanyIdentity(val2);
+      }
+      return val1 === val2;
+    }
+
+    const n1 = asNumber(val1);
+    const n2 = asNumber(val2);
+    if (n1 === null || n2 === null) {
+      // Not both numeric — fall through to the generic rules rather than
+      // guessing. A MONEY field holding a string is a normalisation problem,
+      // not a comparison one.
+    } else if (opts.family === 'RATIO') {
+      return n1.toFixed(RATIO_DECIMAL_PLACES) === n2.toFixed(RATIO_DECIMAL_PLACES);
+    } else {
+      // MONEY. Relative to the larger magnitude, so the tolerance means the
+      // same thing at ₹10 and at ₹17,570 crore. Both zero is handled by the
+      // exact check first, so there is no divide-by-zero here.
+      if (n1 === n2) return true;
+      const scale = Math.max(Math.abs(n1), Math.abs(n2));
+      if (scale === 0) return true;
+      return Math.abs(n1 - n2) / scale <= MONEY_RELATIVE_TOLERANCE;
+    }
+  }
+
   // Exact equality
   if (val1 === val2) return true;
 

@@ -599,3 +599,122 @@ describe('areEquivalent — array-valued fields (W-18(ii))', () => {
     expect(areEquivalent([], {})).toBe(false);
   });
 });
+
+/**
+ * S1 — OD-59 family-aware comparison.
+ *
+ * OD-59 (owner, 2026-09-18): "agreement is judged on the MEANING of a value,
+ * never on its text." Numbers compare as numbers, money agrees within 0.5%,
+ * identifiers must match exactly, and names compare after folding corporate
+ * forms ("Pvt Ltd" = "Private Limited").
+ *
+ * `areEquivalent` is the comparison function this repo already uses — seven
+ * production call sites in the live write path. These cases are the FOUR gaps
+ * measured against OD-59 before the change; the other three requirements
+ * (identifiers differing, null abstaining, zero-vs-zero agreeing) already pass
+ * and are asserted below as regression guards.
+ *
+ * The `family` argument is OPT-IN. Every existing caller passes nothing and
+ * keeps today's behaviour exactly; S3b switches the write path deliberately.
+ */
+describe('areEquivalent — OD-59 family semantics (S1)', () => {
+  describe('MONEY: agrees within 0.5%, and reads numeric strings as numbers', () => {
+    // GAP 1 measured: '10' vs '10.00' fell through to the string branch and
+    // compared as text, so the same face value from two sources read as a
+    // disagreement.
+    it('treats the same number written differently as equal', () => {
+      expect(areEquivalent('10', '10.00', { family: 'MONEY' })).toBe(true);
+      expect(areEquivalent('1250', '1250.000', { family: 'MONEY' })).toBe(true);
+    });
+
+    // GAP 2 measured: the tolerance is a FLAT 0.01, not a percentage, so two
+    // sources reporting the same issue size rounded differently were recorded
+    // as disagreeing. This pair is real — it appears in data_conflicts.
+    it('treats a 0.5% rounding difference as agreement', () => {
+      expect(areEquivalent(1249970000, 1250000000, { family: 'MONEY' })).toBe(true);
+    });
+
+    it('treats a difference beyond 0.5% as a real disagreement', () => {
+      // 17,570,000,000 vs 12,967,429,852 — a measured pair, 26% apart.
+      expect(areEquivalent(17570000000, 12967429852, { family: 'MONEY' })).toBe(false);
+    });
+
+    // GAP 3 measured: the typeof gate blocked a string/number pair entirely.
+    it('compares a numeric string against a number', () => {
+      expect(areEquivalent('10', 10, { family: 'MONEY' })).toBe(true);
+      expect(areEquivalent(1250000000, '1249970000', { family: 'MONEY' })).toBe(true);
+    });
+
+    // S0's finding: zero is a REAL value (ipo_valuation.ofs_shares = 0 on a
+    // pure fresh issue). It is never an abstention.
+    it('treats zero against zero as agreement, not two abstentions', () => {
+      expect(areEquivalent(0, 0, { family: 'MONEY' })).toBe(true);
+      expect(areEquivalent('0', 0, { family: 'MONEY' })).toBe(true);
+    });
+
+    it('does not let the percentage tolerance swallow a real zero', () => {
+      // 0 vs 8,250,000,000 is the measured Moneycontrol shape. Not equal.
+      expect(areEquivalent(0, 8250000000, { family: 'MONEY' })).toBe(false);
+    });
+  });
+
+  describe('IDENTITY: folds corporate forms, but identifiers match exactly', () => {
+    // GAP 4 measured: foldCompanyIdentity exists but was never called from the
+    // comparison path, so a formatting difference read as a disagreement.
+    it('treats Pvt Ltd and Private Limited as the same company', () => {
+      expect(
+        areEquivalent('Mudra RTA Ventures Pvt Ltd', 'Mudra RTA Ventures Private Limited', {
+          family: 'IDENTITY',
+        })
+      ).toBe(true);
+    });
+
+    it('still reports two genuinely different names as different', () => {
+      expect(
+        areEquivalent('Mudra RTA Ventures', 'Bigshare Services', { family: 'IDENTITY' })
+      ).toBe(false);
+    });
+
+    // OD-59: "identifiers (ISIN, CIN, symbol) must match EXACTLY" — there is
+    // no close-enough for an identifier.
+    it('compares identifiers exactly, with no folding', () => {
+      expect(areEquivalent('INE001A01036', 'INE002A01018', { family: 'IDENTIFIER' })).toBe(false);
+      expect(areEquivalent('INE001A01036', 'INE001A01036', { family: 'IDENTIFIER' })).toBe(true);
+    });
+
+    it('does not fold or trim an identifier into a false match', () => {
+      expect(areEquivalent('INE001A01036', 'ine001a01036', { family: 'IDENTIFIER' })).toBe(false);
+    });
+  });
+
+  describe('RATIO: exact to 2 decimal places, because 0.5% hides a real gap', () => {
+    // A PE of 24.0 vs 24.1 is 0.4% — inside the money tolerance — but for a
+    // derived ratio that gap usually means the two sources used different
+    // denominators (pre- vs post-issue EPS), which is the disagreement most
+    // worth catching.
+    it('treats PE 24.0 against 24.1 as a disagreement', () => {
+      expect(areEquivalent(24.0, 24.1, { family: 'RATIO' })).toBe(false);
+    });
+
+    it('treats the same ratio written to different precision as equal', () => {
+      expect(areEquivalent(24.1, 24.1, { family: 'RATIO' })).toBe(true);
+      expect(areEquivalent('24.10', 24.1, { family: 'RATIO' })).toBe(true);
+    });
+  });
+
+  describe('abstention (OD-60) and backwards compatibility', () => {
+    it('treats null against a real value as NOT equivalent', () => {
+      expect(areEquivalent(null, 8250000000, { family: 'MONEY' })).toBe(false);
+    });
+
+    // The load-bearing guarantee: the seven existing production callers pass
+    // no family and must behave exactly as before. If this fails, S1 has
+    // changed the live write path, which it must not.
+    it('is unchanged when no family is given', () => {
+      expect(areEquivalent('10', '10.00')).toBe(false);
+      expect(areEquivalent(1249970000, 1250000000)).toBe(false);
+      expect(areEquivalent(['NSE', 'BSE'], ['BSE', 'NSE'])).toBe(true);
+      expect(areEquivalent(0.01, 0.015)).toBe(true);
+    });
+  });
+});
