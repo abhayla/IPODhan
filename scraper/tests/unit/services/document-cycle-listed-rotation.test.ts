@@ -247,6 +247,14 @@ const { runDocumentCycle } = await import('../../../src/services/document-cycle.
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // PIN THE CLOCK TO A WEEKDAY — see the same block in
+  // document-cycle-passes.test.ts. `fakeClock` below drives the per-IPO
+  // "last touched" ordering this file asserts, but it does NOT reach the IST
+  // calendar gate inside runDocumentCycle, which calls `new Date()` itself.
+  // On a Saturday or Sunday that gate returns `eligible: 0` and this file's
+  // rotation assertions all see an empty list. Wednesday 2026-09-16 09:00 IST.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-16T03:30:00.000Z'));
   runIpoMock.mockClear();
   listForIpoSpy.mockImplementation((ipoId: string) => Promise.resolve(fakeStoreListForIpo(ipoId)));
   fakeClock = 0;
