@@ -269,8 +269,14 @@ export function classifyVerdictLeak(routePath, bodyText) {
   // A plain substring match on the raw JSON text (not a parsed-object key walk) so a leak is
   // caught even if the key sits inside a stringified/escaped nested payload — the same
   // "match the text, not a schema" posture SQL_LEAK_PATTERNS above uses.
+  //
+  // The optional `\\?` before each quote is what makes that claim true. A verdict nested inside
+  // a STRINGIFIED payload reaches us as `\"verdict\":`, not `"verdict":` — the escaping quote is
+  // preceded by a backslash. The first version required a bare quote and therefore missed exactly
+  // the nested case its own comment promised to catch; found by calling this function directly
+  // with an escaped fixture rather than trusting the comment. The `?` keeps the bare form matching.
   for (const key of VERDICT_LEAK_KEYS) {
-    if (new RegExp(`["']${key}["']\\s*:`).test(body)) {
+    if (new RegExp(`\\\\?["']${key}\\\\?["']\\s*:`).test(body)) {
       reasons.push(`response body contains a "${key}" JSON key — OD-61 requires this stay admin-only`);
     }
   }

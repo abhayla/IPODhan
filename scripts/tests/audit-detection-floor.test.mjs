@@ -213,6 +213,27 @@ test('(OD-61) FAILS when a public route payload leaks a "witnesses" key', () => 
   assert.equal(r.fail, true);
 });
 
+// Supervisor review, 2026-09-19: `classifyVerdictLeak`'s own comment promised a leak was caught
+// "even if the key sits inside a stringified/escaped nested payload", and it was NOT — the regex
+// required a BARE quote before the key, while a stringified payload delivers `\"verdict\":`. The
+// three cases above all use the bare form, so none of them could have noticed.
+//
+// The fixture is built with JSON.stringify rather than a hand-typed escaped string ON PURPOSE:
+// hand-escaping this through a shell, a heredoc and a template literal is what made the defect
+// hard to see in the first place (every layer ate a backslash). Let the runtime produce the shape
+// the route would actually return.
+test('(OD-61) FAILS when a verdict is nested inside a STRINGIFIED payload (escaped-quote form)', () => {
+  const body = JSON.stringify({ success: true, data: { raw: JSON.stringify({ verdict: 'DISPUTED' }) } });
+  assert.ok(body.includes('\\"verdict\\"'), 'fixture must contain the ESCAPED key form, or it tests nothing');
+  const r = classifyVerdictLeak('/api/ipos/example-co', body);
+  assert.equal(r.fail, true);
+});
+
+test('(OD-61) still matches when there is whitespace before the colon', () => {
+  const r = classifyVerdictLeak('/api/ipos/example-co', '{"data":{"verdict" : "CONFIRMED"}}');
+  assert.equal(r.fail, true);
+});
+
 test('(OD-61) PASSES a clean public payload with neither key (measured baseline, 2026-09-19)', () => {
   const r = classifyVerdictLeak('/api/ipos/example-co', '{"success":true,"data":{"issueSize":1250000000,"companyName":"Example Co"}}');
   assert.equal(r.fail, false);
