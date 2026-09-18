@@ -1651,11 +1651,14 @@ export async function runDocumentCycle(
     // writes, so generating after it would leave every new row unasked until
     // the NEXT cycle. Over the SAME
     // `candidates` the cycle already selected — no new selection logic.
-    // RECONCILED, NEVER REGENERATED: `upsertGeneratedRows` inserts only rows
-    // for (ipo, table, row_key, field) keys that do not already exist
-    // (design §2.3), so a second pass over an IPO whose rows are already
-    // planned writes nothing and mutates nothing. Non-fatal per IPO — one
-    // IPO's plan-generation failure must not stop the rest of the cycle.
+    // RECONCILED, NEVER REGENERATED: `upsertGeneratedRows` inserts rows for
+    // (ipo, table, row_key, field) keys that do not already exist (design
+    // §2.3); since item 3 slice S7 (#732) it ALSO re-ranks an existing
+    // non-SUPPLIED row in place when this cycle's `manifest_version` is
+    // higher than the row's own — a same-version pass over an IPO whose
+    // rows are already planned still writes and mutates nothing. Non-fatal
+    // per IPO — one IPO's plan-generation failure must not stop the rest of
+    // the cycle.
     //
     // Review fix (Tier B, #693): mirrors PASS 2's ceiling exactly rather
     // than inventing a third convention — PASS 3 takes whatever remains of
@@ -1679,7 +1682,7 @@ export async function runDocumentCycle(
         );
       } else {
         const fieldPlanStartedAt = now();
-        const fieldPlanTotals = { ipos: 0, rowsInserted: 0, failed: 0 };
+        const fieldPlanTotals = { ipos: 0, rowsInserted: 0, rowsReranked: 0, failed: 0 };
         for (const ipo of candidates) {
           if (now() - fieldPlanStartedAt >= fieldPlanGenBudgetMs) {
             logger.warn(
@@ -1705,7 +1708,7 @@ export async function runDocumentCycle(
               { overrides: fieldSourceOverridesReader }
             );
             if (rows.length === 0) continue;
-            const { inserted } = await fieldPlanRepository.upsertGeneratedRows(
+            const { inserted, updated } = await fieldPlanRepository.upsertGeneratedRows(
               rows.map((r) => ({
                 ipoId: r.ipoId,
                 tableName: r.tableName,
@@ -1720,6 +1723,7 @@ export async function runDocumentCycle(
             );
             fieldPlanTotals.ipos++;
             fieldPlanTotals.rowsInserted += inserted;
+            fieldPlanTotals.rowsReranked += updated;
           } catch (error) {
             fieldPlanTotals.failed++;
             logger.error(
