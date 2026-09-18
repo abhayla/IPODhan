@@ -430,8 +430,17 @@ export function normalizeNumber(value: string | number): number {
  *              "Private Limited" are one registrar, not two.
  *   IDENTIFIER ISIN, CIN, symbol. Exact, case-sensitive. There is no
  *              close-enough for an identifier.
+ *   DATE       open, close, listing, allotment, refund, credit. Compared as
+ *              CALENDAR DAYS after normalisation, so "15 September 2026",
+ *              "15/09/2026" and "2026-09-15" are one date. The time of day is
+ *              deliberately dropped: two sources recording the same listing
+ *              date with different timestamps agreed about the date, and the
+ *              hour is noise they never agreed on. Dates are the LARGEST
+ *              disagreement family measured -- 12,719 of 28,946 across 44
+ *              IPOs (OD-57) -- so the string fallback below was the single
+ *              biggest source of false conflicts (#773).
  */
-export type ComparisonFamily = 'MONEY' | 'RATIO' | 'IDENTITY' | 'IDENTIFIER';
+export type ComparisonFamily = 'MONEY' | 'RATIO' | 'IDENTITY' | 'IDENTIFIER' | 'DATE';
 
 export interface EquivalenceOptions {
   family?: ComparisonFamily;
@@ -493,6 +502,17 @@ export function areEquivalent(
         return foldCompanyIdentity(val1) === foldCompanyIdentity(val2);
       }
       return val1 === val2;
+    }
+
+    if (opts.family === 'DATE') {
+      // `normalizeDate` returns a canonical YYYY-MM-DD, or null for anything
+      // it cannot read as a date. A null on EITHER side means we do not know
+      // these are dates, so we fall through to the generic rules rather than
+      // guess -- the same shape MONEY uses when a value is not numeric.
+      const d1 = normalizeDate(val1 as string | number | Date);
+      const d2 = normalizeDate(val2 as string | number | Date);
+      if (d1 !== null && d2 !== null) return d1 === d2;
+      // fall through
     }
 
     const n1 = asNumber(val1);
