@@ -196,8 +196,10 @@ describe.skipIf(!DATABASE_URL)(`S4 field-plan walk reason codes, real repository
     expect(row.cause).toContain('UNREGISTERED_SOURCE');
   });
 
-  // ---- 2. FAILED_VALIDATION: the write reached consolidation and LOST to matrix priority ----
-  it('a write that loses to a higher-priority source records FAILED_VALIDATION with the matrix-priority cause', async () => {
+  // ---- 2. LOST_TO_HIGHER_PRIORITY: the write reached consolidation and LOST to matrix priority ----
+  // (#785: this is a HEALTHY outcome -- the value was fine, just outranked -- and must NEVER be
+  // recorded as FAILED_VALIDATION, which OD-62 reserves for a genuine shape-check rejection.)
+  it('a write that loses to a higher-priority source records LOST_TO_HIGHER_PRIORITY with the matrix-priority cause', async () => {
     const id = await seedRow();
 
     const result = await walkFieldPlanForIPO(IPO_ID, deps(losingOrchestrator(), suppliedFetcher), openBudget());
@@ -205,9 +207,45 @@ describe.skipIf(!DATABASE_URL)(`S4 field-plan walk reason codes, real repository
 
     const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
     expect(row.state).toBe('CHECK_FAILED');
-    expect(row.reasonCode).toBe('FAILED_VALIDATION');
+    expect(row.reasonCode).toBe('LOST_TO_HIGHER_PRIORITY');
+    expect(row.reasonCode).not.toBe('FAILED_VALIDATION');
     expect(row.cause).toContain('matrix priority');
   });
+
+  // ---- 2b. COVERAGE_GAP: a transient CHECK_FAILED where a document WAS held and the fetcher WAS
+  // reached, but it returned a real reason (a manifest/config gap) -- #785 defect 2. This must
+  // NEVER fall into SOURCE_UNREACHABLE, which means "the source could not even be asked".
+  it('a transient CHECK_FAILED with a document held records COVERAGE_GAP, not SOURCE_UNREACHABLE', async () => {
+    const id = await seedRow({ rank1Source: 'NSE', rank2Source: null });
+    const transientCheckFailedFetcher: FieldFetcher = async () => ({
+      outcome: 'CHECK_FAILED',
+      reason: 'no documentType in manifest',
+      // transient omitted -> defaults to TRUE per the walk's own doc comment
+    });
+
+    const result = await walkFieldPlanForIPO(
+      IPO_ID,
+      deps(okOrchestrator(), transientCheckFailedFetcher),
+      openBudget()
+    );
+    expect(result.fieldsCheckFailed).toBe(1);
+
+    const [row] = await db.select().from(schema.ipoFieldPlan).where(eq(schema.ipoFieldPlan.id, id));
+    expect(row.state).toBe('CHECK_FAILED');
+    expect(row.reasonCode).toBe('COVERAGE_GAP');
+    expect(row.reasonCode).not.toBe('SOURCE_UNREACHABLE');
+    expect(row.cause).toContain('no documentType in manifest');
+  });
+
+  // ---- 2c. UNCLASSIFIED (unit-level, not here): every real push site in field-plan-walk.ts is
+  // tagged (:NO_FETCHER_REGISTERED, :THROWN:, :CHECK_FAILED:), so there is no live code path
+  // through the actual walk that reaches the UNCLASSIFIED fallback -- fabricating one here would
+  // just be testing a made-up cause string, not real behaviour. The fallback itself (and that it
+  // preserves the raw cause) is pinned directly on the exported `classifyFailure` in
+  // `tests/unit/services/field-plan-walk.test.ts` ("classifyFailure (#785 reason-code remap)").
+  // A THROWN error IS exercised end-to-end via `walkFieldPlanForIPO` below and correctly still
+  // resolves to SOURCE_UNREACHABLE, not UNCLASSIFIED -- see "a field with no fetcher registered
+  // records SOURCE_UNREACHABLE" above and the unit suite's own THROWN case.
 
   // ---- 3. NOT_PUBLISHED_YET: the authoritative source has not printed this field yet ----
   it('NOT_AVAILABLE_YET records NOT_PUBLISHED_YET, and the row stays re-askable (non-terminal)', async () => {
@@ -262,7 +300,15 @@ describe.skipIf(!DATABASE_URL)(`S4 field-plan walk reason codes, real repository
   // scenario's fetcher/orchestrator cannot answer a DIFFERENT field's row as an accidental side effect
   // -- walkFieldPlanForIPO drains every DUE row for the IPO, not just the one a scenario cares about.
   it('every not-supplied terminal state this walk settles writes a reason_code from the named set (never bare null)', async () => {
-    const NAMED_CODES = new Set(['SOURCE_UNREACHABLE', 'EXTRACTION_FAILED', 'FAILED_VALIDATION', 'NOT_PUBLISHED_YET']);
+    const NAMED_CODES = new Set([
+      'SOURCE_UNREACHABLE',
+      'EXTRACTION_FAILED',
+      'FAILED_VALIDATION',
+      'NOT_PUBLISHED_YET',
+      'LOST_TO_HIGHER_PRIORITY',
+      'COVERAGE_GAP',
+      'UNCLASSIFIED',
+    ]);
     const naFetcher: FieldFetcher = async () => ({ outcome: 'NOT_AVAILABLE_YET' });
     const definitiveFailFetcher: FieldFetcher = async () => ({
       outcome: 'CHECK_FAILED',
