@@ -15,13 +15,12 @@ export interface RibbonCell {
   tone?: 'gain' | 'loss';
   /** Hidden on mobile when true (spec D2: mobile shows six priority cells) */
   mobileHidden?: boolean;
-  /**
-   * T-328: true when this cell's value is a HELD, disputed HIGH_VALUE field
-   * on a live IPO (an unresolved cross-source disagreement) — renders a
-   * small "Under verification" marker instead of asserting the number as
-   * settled fact.
-   */
-  disputed?: boolean;
+  // OD-61 (owner, 2026-09-18): there is deliberately NO `disputed` prop.
+  // T-328 added one, and this component rendered an "Under verification"
+  // marker from it — that was a reader seeing a cross-source disagreement,
+  // which OD-61 forbids outright ("keep everything admin only... no user
+  // should see any disagreement"). Disputes live on /admin/conflicts.
+  // Re-adding a dispute signal here needs an owner decision, not a PR.
 }
 
 interface FactRibbonProps {
@@ -50,12 +49,6 @@ export function FactRibbon({ cells }: FactRibbonProps) {
           >
             {cell.value}
           </p>
-          {cell.disputed && (
-            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-              Under verification
-            </p>
-          )}
         </div>
       ))}
     </div>
