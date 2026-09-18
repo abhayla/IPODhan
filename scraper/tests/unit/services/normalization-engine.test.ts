@@ -702,6 +702,65 @@ describe('areEquivalent — OD-59 family semantics (S1)', () => {
     });
   });
 
+  /**
+   * OD-59: "dates compare as dates". OD-57 makes dates a family in their own
+   * right, with the exchange as the tie-break winner.
+   *
+   * Dates are the LARGEST disagreement family in the measured data: 12,719 of
+   * 28,946 across 44 IPOs, against money's 8,938 and names' 6,344. Without
+   * this family the comparator falls through to the string branch below, so
+   * "15 September 2026" and "2026-09-15" -- one date written two ways -- are
+   * recorded as a disagreement. See #773.
+   */
+  describe('DATE (OD-57, OD-59)', () => {
+    it('reads the same day written in different formats as one date', () => {
+      expect(areEquivalent('2026-09-15', '15 September 2026', { family: 'DATE' })).toBe(true);
+      expect(areEquivalent('15/09/2026', '2026-09-15', { family: 'DATE' })).toBe(true);
+      expect(areEquivalent('2026-09-15', new Date('2026-09-15T00:00:00Z'), { family: 'DATE' })).toBe(true);
+    });
+
+    it('separates two genuinely different days', () => {
+      expect(areEquivalent('2026-09-15', '2026-09-16', { family: 'DATE' })).toBe(false);
+    });
+
+    it('compares the DAY, not the time of day', () => {
+      // Two sources record the same listing date with different timestamps.
+      // The day is the value; the hour is noise the sources never agreed on.
+      expect(
+        areEquivalent('2026-09-15T00:00:00Z', '2026-09-15T09:30:00Z', { family: 'DATE' })
+      ).toBe(true);
+    });
+
+    // OD-60: an empty answer abstains, exactly as the other families treat it.
+    it('treats an absent date as an abstention, not a disagreement', () => {
+      expect(areEquivalent(null, '2026-09-15', { family: 'DATE' })).toBe(false);
+      expect(areEquivalent(null, null, { family: 'DATE' })).toBe(true);
+      expect(areEquivalent('', '  ', { family: 'DATE' })).toBe(true);
+    });
+
+    /**
+     * A value that will not parse as a date is NOT silently called equal or
+     * unequal on a guess -- it falls through to the generic rules, the same
+     * way MONEY does when a value is not numeric.
+     *
+     * This is the case that MATTERS, and the first version of this test
+     * missed it: `normalizeDate` returns null for EVERY unparseable value, so
+     * without the `d1 !== null && d2 !== null` guard, "TBA" and "not a date"
+     * -- two genuinely different non-dates -- both become null and compare
+     * EQUAL. That is a false CONFIRMED verdict on the admin queue. A mutation
+     * test that removed the guard passed 96/96 against the weaker assertion.
+     */
+    it('does not call two different unparseable values the same date', () => {
+      expect(areEquivalent('TBA', 'not a date', { family: 'DATE' })).toBe(false);
+      expect(areEquivalent('To be announced', 'TBA', { family: 'DATE' })).toBe(false);
+    });
+
+    it('falls through rather than guessing when a value is not a date', () => {
+      expect(areEquivalent('not a date', 'not a date', { family: 'DATE' })).toBe(true);
+      expect(areEquivalent('not a date', '2026-09-15', { family: 'DATE' })).toBe(false);
+    });
+  });
+
   describe('abstention (OD-60) and backwards compatibility', () => {
     it('treats null against a real value as NOT equivalent', () => {
       expect(areEquivalent(null, 8250000000, { family: 'MONEY' })).toBe(false);
