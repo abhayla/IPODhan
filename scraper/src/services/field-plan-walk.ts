@@ -1035,7 +1035,10 @@ async function tryProvisional(
       if (verdict.happened === false) {
         // The provisional write was dropped. The field is re-asked anyway, so
         // this is noted and abandoned -- never escalated.
-        failures.push(`provisional-rank${rank}:${source}:${verdict.skipReason}`);
+        // TAGGED `:CHECK_FAILED:` like the main loop's push site (#785 review):
+        // a dropped write is a this-pass coverage/config fact, not "the source
+        // could not be asked". Untagged it fell through to UNCLASSIFIED.
+        failures.push(`provisional-rank${rank}:${source}:CHECK_FAILED:${verdict.skipReason}`);
         continue;
       }
       if (verdict.accepted === false) {
@@ -1044,12 +1047,19 @@ async function tryProvisional(
         // as a dropped one -- the ask stays open regardless (this function's
         // whole contract), so a losing provisional value costs nothing but
         // itself.
-        failures.push(`provisional-rank${rank}:${source}:${verdict.reason}`);
+        // TAGGED `:LOST_TO_PRIORITY:` (#785 review): this branch is BY
+        // DEFINITION a priority loss — the comment above says so — which is the
+        // exact thing #785 gave its own code. Untagged it read as UNCLASSIFIED.
+        failures.push(`provisional-rank${rank}:${source}:LOST_TO_PRIORITY:${verdict.reason}`);
         continue;
       }
       return { source, rank };
     } catch (error) {
-      failures.push(`provisional-rank${rank}:${source}:${causeOf(error)}`);
+      // TAGGED `:THROWN:` like the main loop's catch (#785 review): a throw here
+      // is the same socket/timeout/5xx fact. Untagged, a genuine network failure
+      // on the provisional path recorded UNCLASSIFIED instead of
+      // SOURCE_UNREACHABLE — a regression against the pre-#785 behaviour.
+      failures.push(`provisional-rank${rank}:${source}:THROWN:${causeOf(error)}`);
       continue;
     }
   }
@@ -1447,6 +1457,13 @@ export function classifyFailure(failures: readonly string[]): { reasonCode: Fiel
   // even be asked.
   if (cause.includes(':THROWN:')) {
     return { reasonCode: 'SOURCE_UNREACHABLE', cause };
+  }
+  // The provisional path's own priority loss, tagged `:LOST_TO_PRIORITY:`
+  // (#785 review). Same fact as `classifyValidationRejection`'s branch — a
+  // value was produced and a better-ranked source already had one — so it gets
+  // the same code rather than being left to the UNCLASSIFIED fallback.
+  if (cause.includes(':LOST_TO_PRIORITY:')) {
+    return { reasonCode: 'LOST_TO_HIGHER_PRIORITY', cause };
   }
   // Nothing above recognised this shape. Recording it as SOURCE_UNREACHABLE
   // (or any other named code) would be a confident wrong answer that is

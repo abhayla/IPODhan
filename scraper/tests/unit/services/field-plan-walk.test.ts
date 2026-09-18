@@ -1899,6 +1899,35 @@ describe('classifyFailure (#785 reason-code remap)', () => {
     expect(result?.reasonCode).not.toBe('SOURCE_UNREACHABLE');
   });
 
+  /**
+   * Supervisor review of #785. The four cases above cover the MAIN rank loop's
+   * push sites, which are tagged. `tryProvisional` has THREE push sites of its
+   * own and they were left UNTAGGED, so every provisional failure fell to
+   * UNCLASSIFIED — including a thrown error, which the pre-#785 code had
+   * correctly called SOURCE_UNREACHABLE. That is a regression the tests could
+   * not see, because none of them used a `provisional-rank…` cause.
+   *
+   * Found by running the exported classifier against the ACTUAL strings the
+   * push sites build, rather than by reading the classifier.
+   */
+  it('classifies a provisional-path THROWN cause as SOURCE_UNREACHABLE (was UNCLASSIFIED — a regression)', () => {
+    const result = classifyFailure(['provisional-rank2:BSE:THROWN:ECONNRESET']);
+    expect(result?.reasonCode).toBe('SOURCE_UNREACHABLE');
+    expect(result?.reasonCode).not.toBe('UNCLASSIFIED');
+  });
+
+  it('classifies a provisional-path dropped write as COVERAGE_GAP', () => {
+    const result = classifyFailure(['provisional-rank2:BSE:CHECK_FAILED:write dropped by the consolidator']);
+    expect(result?.reasonCode).toBe('COVERAGE_GAP');
+  });
+
+  // This branch is a priority loss BY DEFINITION — its own comment at the push
+  // site says so — so it gets the code #785 created for exactly that fact.
+  it('classifies a provisional-path priority loss as LOST_TO_HIGHER_PRIORITY', () => {
+    const result = classifyFailure(['provisional-rank2:BSE:LOST_TO_PRIORITY:DRHP value kept']);
+    expect(result?.reasonCode).toBe('LOST_TO_HIGHER_PRIORITY');
+  });
+
   it('classifies an untagged/unrecognised cause shape as UNCLASSIFIED, preserving the raw cause', () => {
     const result = classifyFailure(['some future cause shape nothing above recognises']);
     expect(result?.reasonCode).toBe('UNCLASSIFIED');
