@@ -1,0 +1,2 @@
+CREATE INDEX "idx_ipo_field_plan_reclaim_not_available_yet" ON "ipo_field_plan" USING btree ("last_attempt_at") WHERE "ipo_field_plan"."state" = 'NOT_AVAILABLE_YET';--> statement-breakpoint
+CREATE INDEX "idx_ipo_field_plan_reclaim_check_failed" ON "ipo_field_plan" USING btree ("last_attempt_at") WHERE "ipo_field_plan"."state" = 'CHECK_FAILED' AND "ipo_field_plan"."attempts" < 5;

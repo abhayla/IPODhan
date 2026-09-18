@@ -1773,6 +1773,26 @@ export const ipoFieldPlan = pgTable(
     verifyDueIdx: index('idx_ipo_field_plan_verify_due').on(table.verifyDueAt),
     // Reconciliation after a manifest version bump reads by version, not by IPO.
     manifestVersionIdx: index('idx_ipo_field_plan_manifest_version').on(table.manifestVersion),
+    // #762 (S8) CRITICAL-2 fix: the restored reclaim triggers (2 and 3) filter
+    // on `last_attempt_at` under a state-specific WHERE, which
+    // idx_ipo_field_plan_state_next_due (leading column next_due_at) cannot
+    // serve -- that index only helps the PENDING branch. Two partial indexes,
+    // one per reclaimable non-PENDING state, so claimNextDueField's UNION ALL
+    // (packages/shared/src/repositories/ipo-field-plan-repository.ts) gets a
+    // Bitmap/Index Scan on each branch instead of a table-wide Seq Scan.
+    // Partial-index predicates must be IMMUTABLE constants (Postgres cannot
+    // index against a mutable session parameter), so the CHECK_FAILED index's
+    // `attempts < 5` literal must be kept equal to
+    // FIELD_PLAN_RECLAIM_MAX_ATTEMPTS by hand -- there is no way to reference
+    // a TS export from a SQL partial-index predicate. A test in the
+    // repository pins them equal so a change to one without the other fails
+    // CI instead of silently degrading the plan back to a Seq Scan.
+    reclaimNotAvailableYetIdx: index('idx_ipo_field_plan_reclaim_not_available_yet')
+      .on(table.lastAttemptAt)
+      .where(sql`${table.state} = 'NOT_AVAILABLE_YET'`),
+    reclaimCheckFailedIdx: index('idx_ipo_field_plan_reclaim_check_failed')
+      .on(table.lastAttemptAt)
+      .where(sql`${table.state} = 'CHECK_FAILED' AND ${table.attempts} < 5`),
   })
 );
 

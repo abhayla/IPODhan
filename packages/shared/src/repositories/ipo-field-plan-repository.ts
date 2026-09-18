@@ -527,7 +527,14 @@ export class IpoFieldPlanRepository extends BaseRepository {
    *      the same way as trigger 2, not as a separate mechanism.
    *   4. `verify_state = 'DUE'` AND `verify_due_at` has passed — §3's
    *      scheduled re-verification, independent of `state` (a SUPPLIED row
-   *      can still be due for a verify pass).
+   *      can still be due for a verify pass). **DEAD CODE as of this fix**:
+   *      nothing in this codebase writes `verify_state` or `verify_due_at`
+   *      yet (§3 has not shipped) — every non-test reference to either
+   *      column today is a schema/migration definition or a read. The
+   *      branch is kept, correctly wired, and reviewed here so §3 does not
+   *      have to touch the claim query again; it will not fire on real data
+   *      until §3 lands the writer. Do not read this branch as active
+   *      re-verification — it is a specified-but-dormant trigger.
    *   Plus the stale-claim reclaim (`claimed_at` null or older than the
    *   staleness window), unconditional on which of the four triggers made
    *   the row due — a crashed walk's claim is released the same way either way.
@@ -546,15 +553,42 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * still-running timer the design says should not exist.
    *
    * Churn guard (S8, no design-mandated shape existed): trigger 3
-   * (CHECK_FAILED) is additionally bounded by
-   * `attempts < FIELD_PLAN_RECLAIM_MAX_ATTEMPTS` — a row that has failed
-   * that many times stops being offered by this query at all, so a
-   * permanently-broken field cannot churn through every slot forever. This
-   * is a claim-time FILTER, never a state transition — the row is not moved
-   * to EXHAUSTED (that is `recordOutcome`'s job and out of scope here).
+   * (CHECK_FAILED) is bounded by `attempts < FIELD_PLAN_RECLAIM_MAX_ATTEMPTS`
+   * — a row that has failed that many times stops being offered by this
+   * query at all, so a permanently-broken field cannot churn through every
+   * slot forever. This is a claim-time FILTER, never a state transition —
+   * the row is not moved to EXHAUSTED (that is `recordOutcome`'s job and
+   * out of scope here).
+   *
+   * Trigger 2 (NOT_AVAILABLE_YET) is deliberately left WITHOUT an attempts
+   * cap (review round 1, MAJOR-4). A "not available yet" field is, by
+   * definition, waiting on a real external event (a document that has not
+   * published) — the walk's own comment calls this explicit: "the field
+   * keeps being re-asked until the authoritative source answers"
+   * (`field-plan-walk.ts:696` area). Capping it at 5 like CHECK_FAILED would
+   * stop asking a live, pre-listing IPO whether its GMP or listing date has
+   * published yet — the exact case the design protects (a lower-ranked
+   * aggregator can carry a provisional value before the exchange posts the
+   * authoritative one). An uncapped NOT_AVAILABLE_YET is not the same churn
+   * risk as an uncapped CHECK_FAILED: CHECK_FAILED means every source
+   * DISAGREED or errored — a signal the field itself may be broken — while
+   * NOT_AVAILABLE_YET means every source agreed "not yet", which resolves
+   * itself the moment the IPO's lifecycle moves (LISTED/WITHDRAWN) or the
+   * document actually publishes. What stops the churn instead: (a) the
+   * walk's own `settledThisWalk` set already stops ONE walk from re-claiming
+   * a row it just released, bounding in-cycle churn to one attempt per row
+   * per walk; (b) the natural ceiling is the IPO's own lifecycle — once an
+   * IPO is LISTED or WITHDRAWN with a field still NOT_AVAILABLE_YET, that is
+   * a genuinely different, out-of-scope defect (the writer/outcome-recording
+   * path should stop re-asking a closed IPO), not a churn-guard question for
+   * the claim query. This fix does not add that lifecycle gate — flagging it
+   * for the owner/reviewer as the open question MAJOR-4 asked for: should a
+   * closed-IPO NOT_AVAILABLE_YET field eventually cap out, and where (the
+   * claim query, or `recordOutcome` moving it to EXHAUSTED on IPO close)?
+   *
    * `ORDER BY` additionally ranks a PENDING row (genuinely new work) ahead
-   * of every reclaim trigger via `reclaim_rank`, so a single walk drains new
-   * work before spending its budget re-asking stale ones.
+   * of every reclaim trigger via `pri`, so a single walk drains new work
+   * before spending its budget re-asking stale ones.
    *
    * `FOR UPDATE SKIP LOCKED` is the whole point: a concurrent claimer's inner
    * select skips the row this transaction has locked and finds nothing, so it
@@ -566,34 +600,101 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const staleBefore = new Date(now.getTime() - staleMinutes * 60_000);
     const slotBoundary = mostRecentFieldPlanSlotBoundary(now);
     const token = randomUUID();
+    const ipoId = params.ipoId ?? null;
 
+    // CRITICAL-2 fix (S8 review round 1): each trigger is its own small,
+    // independently-sargable derived table — `state = <literal>` plus ONE
+    // more predicate against an index that covers it, `LIMIT 1 FOR UPDATE
+    // SKIP LOCKED` inside EACH leg (Postgres refuses FOR UPDATE across a
+    // UNION, so the lock has to happen per-leg, before the union combines
+    // the candidates), then an outer `ORDER BY pri, ord LIMIT 1` picks the
+    // winner. This is the same four-way-OR semantics as before, restated so
+    // the planner can push each condition into an Index Scan instead of
+    // evaluating one giant OR as a Filter over a Seq Scan.
+    //
+    // The `last_attempt_at IS NULL OR last_attempt_at < X` form (and
+    // `next_due_at IS NULL OR ... <= X`) is ALSO split into two legs each
+    // (a NULL leg and a comparison leg) rather than kept as an OR — an OR
+    // inside one leg forces Postgres into a BitmapOr + Recheck + Sort
+    // instead of a plain ordered Index Scan that can stop at the first
+    // match. Measured on ipodhan_staging (read-only EXPLAIN) and reproduced
+    // on ipodhan_test at the same row volume (12,660 rows, worst case: ALL
+    // of them past the slot boundary, the exact state #762 found staging
+    // in): the single-OR form was a 127.9ms Seq Scan touching every row;
+    // this form is 1.27ms with zero Seq Scans (every leg an Index Scan on
+    // idx_ipo_field_plan_state_next_due, idx_ipo_field_plan_reclaim_*, or
+    // idx_ipo_field_plan_verify_due). See the PR body for the full plan.
+    //
+    // `pri` ranks a PENDING candidate (0) ahead of every reclaim/verify
+    // trigger (1) — genuinely new work drains before a re-ask, same
+    // ordering intent the old single `CASE WHEN state='PENDING'` ORDER BY
+    // expressed, but now on the OUTER (7-row) combine instead of forcing a
+    // sort over the whole table.
     try {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
         SET claimed_at = ${now}::timestamptz, claim_token = ${token}, updated_at = ${now}::timestamptz
         WHERE id = (
-          SELECT id FROM ipo_field_plan
-          WHERE (${params.ipoId ?? null}::uuid IS NULL OR ipo_id = ${params.ipoId ?? null}::uuid)
-            AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
-            AND (
-              (state = 'PENDING' AND (next_due_at IS NULL OR next_due_at <= ${now}::timestamptz))
-              OR (
-                state = 'NOT_AVAILABLE_YET'
-                AND (last_attempt_at IS NULL OR last_attempt_at < ${slotBoundary}::timestamptz)
-              )
-              OR (
-                state = 'CHECK_FAILED'
-                AND (last_attempt_at IS NULL OR last_attempt_at < ${slotBoundary}::timestamptz)
-                AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
-              )
-              OR (verify_state = 'DUE' AND verify_due_at <= ${now}::timestamptz)
-            )
-          ORDER BY
-            CASE WHEN state = 'PENDING' THEN 0 ELSE 1 END,
-            next_due_at ASC NULLS FIRST,
-            last_attempt_at ASC NULLS FIRST,
-            verify_due_at ASC NULLS LAST
-          FOR UPDATE SKIP LOCKED
+          SELECT id FROM (
+            SELECT id, 0 AS pri, next_due_at AS ord FROM (
+              SELECT id, next_due_at FROM ipo_field_plan
+               WHERE state = 'PENDING' AND next_due_at IS NULL
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) pending_null
+            UNION ALL
+            SELECT id, 0 AS pri, next_due_at AS ord FROM (
+              SELECT id, next_due_at FROM ipo_field_plan
+               WHERE state = 'PENDING' AND next_due_at <= ${now}::timestamptz
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+               ORDER BY next_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) pending_due
+            UNION ALL
+            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at IS NULL
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) nay_null
+            UNION ALL
+            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at < ${slotBoundary}::timestamptz
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) nay_due
+            UNION ALL
+            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND last_attempt_at IS NULL
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) cf_null
+            UNION ALL
+            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND last_attempt_at < ${slotBoundary}::timestamptz
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) cf_due
+            UNION ALL
+            SELECT id, 1 AS pri, verify_due_at AS ord FROM (
+              SELECT id, verify_due_at FROM ipo_field_plan
+               WHERE verify_state = 'DUE' AND verify_due_at <= ${now}::timestamptz
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+               ORDER BY verify_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) verify_due_leg
+          ) candidates
+          ORDER BY pri ASC, ord ASC NULLS FIRST
           LIMIT 1
         )
         RETURNING *
