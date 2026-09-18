@@ -761,6 +761,69 @@ describe('areEquivalent — OD-59 family semantics (S1)', () => {
     });
   });
 
+  /**
+   * #783: the manifest's comparisonFamily enum allows 8 values but this
+   * comparator implemented 5, so SET, BOOLEAN and ABSTAIN (24 of 190 fields)
+   * fell straight through to the generic STRING comparison below -- the exact
+   * behaviour OD-59 exists to remove. SET and BOOLEAN are implemented here.
+   *
+   * ABSTAIN is deliberately NOT a branch: it is not an instruction about HOW
+   * to compare, it is an instruction to the verdict writer NOT to compare at
+   * all. Calling areEquivalent with it is a caller bug, and the test below
+   * pins that it is rejected rather than silently treated as "equal".
+   */
+  describe('SET (#783)', () => {
+    it('reads the same members in a different order as one value', () => {
+      expect(areEquivalent(['NSE', 'BSE'], ['BSE', 'NSE'], { family: 'SET' })).toBe(true);
+    });
+
+    it('normalises each element before comparing, like unionSetValues keys them', () => {
+      expect(areEquivalent(['NSE', 'bse'], [' BSE ', 'nse'], { family: 'SET' })).toBe(true);
+    });
+
+    it('separates genuinely different membership', () => {
+      expect(areEquivalent(['NSE'], ['NSE', 'BSE'], { family: 'SET' })).toBe(false);
+      expect(areEquivalent(['NSE'], ['BSE'], { family: 'SET' })).toBe(false);
+    });
+
+    // A duplicate is not a new member: ["NSE","NSE"] is the same SET as ["NSE"].
+    it('ignores duplicates -- it is a set, not a list', () => {
+      expect(areEquivalent(['NSE', 'NSE'], ['NSE'], { family: 'SET' })).toBe(true);
+    });
+
+    it('treats an empty or absent set as an abstention (OD-60)', () => {
+      expect(areEquivalent(null, ['NSE'], { family: 'SET' })).toBe(false);
+      expect(areEquivalent([], [], { family: 'SET' })).toBe(true);
+    });
+
+    // Not both arrays -> do not guess. A SET field holding a scalar is a
+    // normalisation problem, not a comparison one (same shape MONEY uses).
+    it('falls through rather than guessing when a side is not an array', () => {
+      expect(areEquivalent('NSE', ['NSE'], { family: 'SET' })).toBe(false);
+    });
+  });
+
+  describe('BOOLEAN (#783)', () => {
+    it('compares booleans exactly', () => {
+      expect(areEquivalent(true, true, { family: 'BOOLEAN' })).toBe(true);
+      expect(areEquivalent(true, false, { family: 'BOOLEAN' })).toBe(false);
+    });
+
+    // false is a VALUE a source supplied, never an abstention (OD-60's rule
+    // that only null/undefined/'' abstain, never 0 and never false).
+    it('treats false as a real answer, not an abstention', () => {
+      expect(areEquivalent(false, false, { family: 'BOOLEAN' })).toBe(true);
+      expect(areEquivalent(null, false, { family: 'BOOLEAN' })).toBe(false);
+    });
+
+    // The string "true" from a scraped page is the same answer as true.
+    it('reads a stringified boolean as the boolean', () => {
+      expect(areEquivalent('true', true, { family: 'BOOLEAN' })).toBe(true);
+      expect(areEquivalent('false', false, { family: 'BOOLEAN' })).toBe(true);
+      expect(areEquivalent('true', false, { family: 'BOOLEAN' })).toBe(false);
+    });
+  });
+
   describe('abstention (OD-60) and backwards compatibility', () => {
     it('treats null against a real value as NOT equivalent', () => {
       expect(areEquivalent(null, 8250000000, { family: 'MONEY' })).toBe(false);
