@@ -15,7 +15,6 @@ const base = {
   chosenSource: 'DOC',
   chosenDocumentType: 'RHP',
   confirmedAt: new Date('2026-09-06T00:00:00Z'),
-  isStale: false,
 };
 
 describe('FieldProvenanceLine', () => {
@@ -36,14 +35,6 @@ describe('FieldProvenanceLine', () => {
     expect(
       screen.getByText('From the offer document, confirmed 6 September 2026')
     ).toBeInTheDocument();
-  });
-
-  it('says being rechecked, not a false confirmation, when the field is overdue', () => {
-    render(<FieldProvenanceLine provenance={{ ...base, isStale: true }} />);
-    expect(
-      screen.getByText('last confirmed 6 September 2026, being rechecked')
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/^From /)).not.toBeInTheDocument();
   });
 
   it('names the exchange when the exchange is what supplied the number', () => {
@@ -67,13 +58,8 @@ describe('FieldProvenanceLine', () => {
     expect(screen.getByText(/SOMETHING_NEW/)).toBeInTheDocument();
   });
 
-  it('greys the stale line so it reads as a caveat, not as a fact', () => {
-    const { container } = render(<FieldProvenanceLine provenance={{ ...base, isStale: true }} />);
-    expect(container.firstElementChild?.className).toMatch(/text-(gray|slate|neutral)-/);
-  });
-
-  it('carries the marker text the nightly detection check greps for', () => {
+  it('carries the confirmed-date marker text', () => {
     const { container } = render(<FieldProvenanceLine provenance={base} />);
-    expect(container.textContent).toMatch(/confirmed|being rechecked/);
+    expect(container.textContent).toMatch(/confirmed/);
   });
 });

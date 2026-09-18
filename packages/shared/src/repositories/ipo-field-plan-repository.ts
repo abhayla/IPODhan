@@ -70,7 +70,7 @@ import { DatabaseError } from '../errors/repository-errors';
  * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
  *
  * Every timestamp column on `ipo_field_plan` (`next_due_at`, `last_attempt_at`,
- * `claimed_at`, `verify_due_at`, `created_at`, `updated_at`) is a bare
+ * `claimed_at`, `created_at`, `updated_at`) is a bare
  * `timestamp` — no `withTimezone`. node-postgres serialises a bound `Date`
  * OBJECT using the PROCESS's local zone, so on this project's IST machines a
  * value is stored 5h30m ahead of the instant it represents, while the query it
@@ -570,16 +570,12 @@ export class IpoFieldPlanRepository extends BaseRepository {
    *      `last_attempt_at` — the walk's own comments call this "transient,
    *      re-asked after backoff" (`field-plan-walk.ts:384, 581`); restored
    *      the same way as trigger 2, not as a separate mechanism.
-   *   4. `verify_state = 'DUE'` AND `verify_due_at` has passed — §3's
-   *      scheduled re-verification, independent of `state` (a SUPPLIED row
-   *      can still be due for a verify pass). **DEAD CODE as of this fix**:
-   *      nothing in this codebase writes `verify_state` or `verify_due_at`
-   *      yet (§3 has not shipped) — every non-test reference to either
-   *      column today is a schema/migration definition or a read. The
-   *      branch is kept, correctly wired, and reviewed here so §3 does not
-   *      have to touch the claim query again; it will not fire on real data
-   *      until §3 lands the writer. Do not read this branch as active
-   *      re-verification — it is a specified-but-dormant trigger.
+   *   S2 (docs/design/s2-witnesses-plan.md) DROPPED `verify_state` and
+   *   `verify_due_at` from `ipo_field_plan` entirely — the trigger-4 leg
+   *   that read them (`verify_due_leg`, dead code since it was written: this
+   *   codebase never wrote either column) is removed in the same change.
+   *   The consensus model's own re-verification design lives elsewhere now
+   *   (OD-56 supersedes the §3 plan this trigger was reserved for).
    *   Plus the stale-claim reclaim (`claimed_at` null or older than the
    *   staleness window), unconditional on which of the four triggers made
    *   the row due — a crashed walk's claim is released the same way either way.
@@ -737,17 +733,10 @@ export class IpoFieldPlanRepository extends BaseRepository {
     // expressed, but now on the OUTER (7-row) combine instead of forcing a
     // sort over the whole table.
     //
-    // MINOR (review round 2, recorded not fixed): `ord` mixes
-    // `last_attempt_at` (the two reclaim legs) with `verify_due_at` (the
-    // verify leg) into one sort key. The two are not comparable — a
-    // `verify_due_at` earlier than some row's `last_attempt_at` says
-    // nothing about which is "more due". Harmless today only because the
-    // verify leg is DEAD CODE (see trigger 4's own doc comment below —
-    // nothing writes `verify_state`/`verify_due_at` yet, so `verify_due_leg`
-    // never contributes a real candidate); §3 shipping a writer for those
-    // columns would need this fixed (a separate `pri` band, or a
-    // normalized comparable ordering key) before the verify leg's ordering
-    // could be trusted.
+    // MINOR (review round 2, recorded not fixed) — RESOLVED by S2: this used
+    // to note that `ord` mixed `last_attempt_at` with `verify_due_at` across
+    // legs. The verify leg is gone (see above), so `ord` is `last_attempt_at`
+    // or `next_due_at` only — comparable within each `pri` band again.
     //
     // review round 2 CRITICAL fix: `excludeIds` (the walk's own
     // `settledThisWalk`) is applied to every leg so a row this walk already
@@ -762,9 +751,9 @@ export class IpoFieldPlanRepository extends BaseRepository {
     // IPO, first cycle after deploy would have hit this).
     //
     // review round 2 MAJOR-2 fix: every bound timestamp below is cast to
-    // `::timestamp` (naive), never `::timestamptz`. All four compared
-    // columns (`next_due_at`, `last_attempt_at`, `claimed_at`,
-    // `verify_due_at`) are `timestamp WITHOUT time zone`; casting the bound
+    // `::timestamp` (naive), never `::timestamptz`. All three compared
+    // columns (`next_due_at`, `last_attempt_at`, `claimed_at`) are
+    // `timestamp WITHOUT time zone`; casting the bound
     // parameter to `::timestamptz` makes Postgres resolve it through the
     // SESSION timezone before comparing against the naive column — under
     // `Asia/Kolkata` that silently shifts every bound by 5h30m relative to
@@ -813,11 +802,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
                  AND last_attempt_at < ${utc(slotBoundary)}::timestamp${legFilter()}
                ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_due`,
-        sql`SELECT id, 1 AS pri, verify_due_at AS ord FROM (
-              SELECT id, verify_due_at FROM ipo_field_plan
-               WHERE verify_state = 'DUE' AND verify_due_at <= ${utc(now)}::timestamp${legFilter()}
-               ORDER BY verify_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) verify_due_leg`,
+        // verify_due_leg REMOVED in S2 — verify_state/verify_due_at no longer exist on
+        // ipo_field_plan (see the method doc comment above).
       ];
       const unionedLegs = sql.join(legs, sql` UNION ALL `);
 

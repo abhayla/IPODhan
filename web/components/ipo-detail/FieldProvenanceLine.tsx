@@ -19,7 +19,7 @@ export interface FieldProvenanceLineProps {
   /** null renders nothing — see the file header. */
   provenance: Pick<
     FieldProvenance,
-    'chosenSource' | 'chosenDocumentType' | 'confirmedAt' | 'isStale'
+    'chosenSource' | 'chosenDocumentType' | 'confirmedAt'
   > | null;
 }
 
@@ -60,14 +60,6 @@ export function FieldProvenanceLine({ provenance }: FieldProvenanceLineProps) {
   if (!provenance || !provenance.confirmedAt) return null;
 
   const date = readableDate(provenance.confirmedAt);
-
-  if (provenance.isStale) {
-    return (
-      <p className="mt-1 text-xs text-gray-500">
-        last confirmed {date}, being rechecked
-      </p>
-    );
-  }
 
   return (
     <p className="mt-1 text-xs text-gray-600">

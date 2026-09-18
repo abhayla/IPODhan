@@ -345,30 +345,17 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
   });
 
-  it('#762: a verify_state=DUE row is claimed even when its own state is not PENDING (SUPPLIED)', async () => {
-    const now = new Date('2026-09-15T03:30:00.000Z');
-    const id = await seedRow({
-      state: 'SUPPLIED',
-      verifyState: 'DUE',
-      verifyDueAt: new Date(now.getTime() - 60_000),
-    });
-
-    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
-
-    expect(claimed).not.toBeNull();
-    expect(claimed!.id).toBe(id);
-  });
-
-  it('#762: a verify_state=DUE row whose verify_due_at has NOT arrived is not claimed by that branch', async () => {
-    const now = new Date('2026-09-15T03:30:00.000Z');
-    await seedRow({
-      state: 'SUPPLIED',
-      verifyState: 'DUE',
-      verifyDueAt: new Date(now.getTime() + 3_600_000),
-    });
-
-    expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
-  });
+  // The two `verify_state=DUE` trigger-4 tests that used to live here were
+  // removed in S2 (docs/design/s2-witnesses-plan.md): `verify_state` and
+  // `verify_due_at` are DROPPED from `ipo_field_plan`, and the claim query's
+  // `verify_due_leg` (documented as dead code — nothing ever wrote those
+  // columns) is removed in the same change.
+  // NOTE (found this session, filed separately, not an S2 regression): with
+  // the columns still present pre-S2, the first of those two tests already
+  // failed (`expected null not to be null`) on this branch's base commit
+  // (2bdcea47) — a pre-existing bug in the trigger-4 leg or its walk-level
+  // caller, unrelated to S2's schema-only scope. S2 does not fix it; it
+  // removes the dead leg the bug lived in.
 
   it('#762: PENDING (genuinely new work) is claimed before a due reclaim on the same IPO', async () => {
     const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z');
