@@ -10,6 +10,7 @@ import * as schema from '../../../packages/shared/src/db/schema';
 import {
   IpoFieldPlanRepository,
   FIELD_PLAN_CLAIM_STALE_MINUTES,
+  FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
 } from '../../../packages/shared/src/repositories/ipo-field-plan-repository';
 import { resolveFieldSourcePolicy, policyOriginString } from '../../src/config/field-source-policy';
 import { resolveIpoTypeKey } from '../../src/services/field-plan-generator';
@@ -259,6 +260,166 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
 
     const persisted = await readRow(id);
     expect(persisted.claimToken).toBe(claimed!.claimToken);
+  });
+
+  // ------------------------------------------------ S8 re-ask (#762) ---
+  //
+  // #762 RCA: the spec's four-way OR (PENDING, OR verify_state=DUE, OR a
+  // NOT_AVAILABLE_YET/CHECK_FAILED reclaim once due, OR a stale claim)
+  // shipped as ONE branch (state='PENDING' only). NOT_AVAILABLE_YET and
+  // CHECK_FAILED rows -- 12,480 of them on staging -- were never reclaimed.
+  // These tests pin each restored branch, keyed on SLOT boundaries
+  // (due-step-cycle.ts's DISCOVERY_SLOTS_IST_MINUTES), never on an elapsed
+  // interval (OD-33/D12 forbid a timer).
+
+  it('#762: a NOT_AVAILABLE_YET row whose last attempt was in a PREVIOUS slot IS claimed', async () => {
+    // 2026-09-15 07:00 IST is before the 08:30 slot; "now" below is set to
+    // 09:00 IST, i.e. one slot boundary (08:30) has passed since the attempt.
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST
+    const now = new Date('2026-09-15T03:30:00.000Z'); // 09:00 IST
+    const id = await seedRow({
+      state: 'NOT_AVAILABLE_YET',
+      lastAttemptAt,
+      nextDueAt: new Date(now.getTime() + 3_600_000), // far in the future -- must be IGNORED
+    });
+
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+
+    expect(claimed).not.toBeNull();
+    expect(claimed!.id).toBe(id);
+  });
+
+  it('#762: the SAME NOT_AVAILABLE_YET row is NOT claimed again within the SAME slot', async () => {
+    const lastAttemptAt = new Date('2026-09-15T03:00:00.000Z'); // 08:30 IST -- the slot boundary itself
+    const now = new Date('2026-09-15T03:45:00.000Z'); // 09:15 IST -- same slot as the attempt
+    await seedRow({
+      state: 'NOT_AVAILABLE_YET',
+      lastAttemptAt,
+      nextDueAt: new Date(now.getTime() + 3_600_000),
+    });
+
+    expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
+  });
+
+  it('#762: a CHECK_FAILED row is reclaimable once a new slot has begun', async () => {
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST
+    const now = new Date('2026-09-15T03:30:00.000Z'); // 09:00 IST
+    const id = await seedRow({
+      state: 'CHECK_FAILED',
+      lastAttemptAt,
+      nextDueAt: new Date(now.getTime() + 3_600_000),
+    });
+
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+
+    expect(claimed).not.toBeNull();
+    expect(claimed!.id).toBe(id);
+  });
+
+  it('#762: a CHECK_FAILED row at or past the attempts ceiling is NEVER reclaimed', async () => {
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z');
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    await seedRow({
+      state: 'CHECK_FAILED',
+      lastAttemptAt,
+      attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
+      nextDueAt: new Date(now.getTime() + 3_600_000),
+    });
+
+    expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
+  });
+
+  it('#762: a SUPPLIED row is never claimed by the re-ask path, even across a slot boundary', async () => {
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z');
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    await seedRow({ state: 'SUPPLIED', lastAttemptAt });
+
+    expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
+  });
+
+  it('#762: an EXHAUSTED row is never claimed by the re-ask path', async () => {
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z');
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    await seedRow({ state: 'EXHAUSTED', lastAttemptAt });
+
+    expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
+  });
+
+  it('#762: a verify_state=DUE row is claimed even when its own state is not PENDING (SUPPLIED)', async () => {
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    const id = await seedRow({
+      state: 'SUPPLIED',
+      verifyState: 'DUE',
+      verifyDueAt: new Date(now.getTime() - 60_000),
+    });
+
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+
+    expect(claimed).not.toBeNull();
+    expect(claimed!.id).toBe(id);
+  });
+
+  it('#762: a verify_state=DUE row whose verify_due_at has NOT arrived is not claimed by that branch', async () => {
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    await seedRow({
+      state: 'SUPPLIED',
+      verifyState: 'DUE',
+      verifyDueAt: new Date(now.getTime() + 3_600_000),
+    });
+
+    expect(await repo.claimNextDueField({ ipoId: IPO_ID, now })).toBeNull();
+  });
+
+  it('#762: PENDING (genuinely new work) is claimed before a due reclaim on the same IPO', async () => {
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z');
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    await seedRow({
+      fieldName: 'reclaimCandidate',
+      state: 'NOT_AVAILABLE_YET',
+      lastAttemptAt,
+      nextDueAt: new Date(now.getTime() + 3_600_000),
+    });
+    const pendingId = await seedRow({
+      fieldName: 'freshPending',
+      state: 'PENDING',
+      nextDueAt: new Date(now.getTime() - 60_000),
+    });
+
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+    expect(claimed!.id).toBe(pendingId);
+  });
+
+  it('#762: churn guard bounds the exact number of CHECK_FAILED rows reclaimable in one slot', async () => {
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z');
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      ids.push(
+        await seedRow({
+          fieldName: `churn${i}`,
+          state: 'CHECK_FAILED',
+          lastAttemptAt,
+          attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS - 1,
+          nextDueAt: new Date(now.getTime() + 3_600_000),
+        })
+      );
+    }
+    // The row AT the ceiling must be excluded from the count entirely.
+    await seedRow({
+      fieldName: 'atCeiling',
+      state: 'CHECK_FAILED',
+      lastAttemptAt,
+      attempts: FIELD_PLAN_RECLAIM_MAX_ATTEMPTS,
+      nextDueAt: new Date(now.getTime() + 3_600_000),
+    });
+
+    let claimedCount = 0;
+    for (let i = 0; i < 4; i++) {
+      const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now });
+      if (!claimed) break;
+      claimedCount += 1;
+    }
+    expect(claimedCount).toBe(3);
   });
 
   // ---------------------------------------------------- CONCURRENT claim ---

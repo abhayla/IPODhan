@@ -1699,6 +1699,49 @@ async function checkS_pullPlanRank() {
     `0 of ${rows.length} plan rows disagree with policy for their version` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
 }
 
+// #762 (S8): the RCA class this check closes is "the claim query stops
+// reclaiming a whole non-terminal state and nothing notices" — exactly what
+// happened when claimNextDueField shipped as state='PENDING' only: 12,480
+// NOT_AVAILABLE_YET/CHECK_FAILED rows sat unclaimed on staging with zero
+// PENDING rows anywhere, and no existing check (pull_write_policy,
+// pull_plan_rank — both scoped to RANK correctness, never to whether a row
+// is still being asked at all) would have caught it. A row is "stuck" here
+// when it is reclaimable in principle (non-terminal, below the attempts
+// ceiling, unclaimed) but its last attempt is more than TWO slot boundaries
+// old — one slot of lag is normal cadence, two is the claim path not
+// picking it up. Deliberately duplicates FIELD_PLAN_RECLAIM_MAX_ATTEMPTS's
+// VALUE (this script is plain Node, cannot import the TS repository) rather
+// than re-deriving a different number.
+const PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS = 5;
+async function checkS_pullPlanStuckReclaim() {
+  let rows;
+  try {
+    rows = await q(
+      `SELECT id, table_name AS "tableName", row_key AS "rowKey", field_name AS "fieldName",
+              state, attempts, last_attempt_at AS "lastAttemptAt"
+         FROM ipo_field_plan
+        WHERE state IN ('NOT_AVAILABLE_YET', 'CHECK_FAILED')
+          AND attempts < $1
+          AND claimed_at IS NULL
+          AND last_attempt_at IS NOT NULL
+          AND last_attempt_at < now() - interval '7 hours'`, // ~2 discovery slots (08:30/11:00/14:00/17:30 IST)
+      [PULL_PLAN_STUCK_RECLAIM_MAX_ATTEMPTS]
+    );
+  } catch (e) {
+    record('pull_plan_stuck_reclaim', 'non-terminal plan rows are still being reclaimed (not stuck)', 'UNVERIFIABLE',
+      `ipo_field_plan not readable: ${e.message}`);
+    return;
+  }
+  for (const row of rows) {
+    notify('pull_plan_stuck_reclaim', 'P2', `${row.tableName}.${row.fieldName}:${row.id}`,
+      'non-terminal plan row unclaimed for 2+ slots — the claim query may have stopped reclaiming this state',
+      `state=${row.state} attempts=${row.attempts} lastAttemptAt=${row.lastAttemptAt}`);
+  }
+  record('pull_plan_stuck_reclaim', `${rows.length} non-terminal plan row(s) unclaimed for 2+ discovery slots`,
+    rows.length === 0 ? 'PASS' : 'FAIL',
+    `0 stuck rows expected; found ${rows.length}` + (rows.length ? ` (sample: ${rows.slice(0, MAX_OFFENDERS).map(r => `${r.tableName}.${r.fieldName}`).join('; ')})` : ''));
+}
+
 // ---- (S) item 3 slice S4: PULL-OVERRIDES -- every active field_source_overrides row still holds
 async function checkS_pullOverrides() {
   let manifest;
@@ -1796,6 +1839,7 @@ async function main() {
   checkS_pullPolicy();
   await checkS_pullWritePolicy();
   await checkS_pullPlanRank();
+  await checkS_pullPlanStuckReclaim();
   await checkS_pullOverrides();
 
   const failed = results.filter((r) => r.status === 'FAIL');

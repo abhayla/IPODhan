@@ -1,0 +1,14 @@
+{
+  "id": "pull_plan_stuck_reclaim",
+  "designId": "PULL-PLAN-STUCK-RECLAIM",
+  "findingClass": "a non-terminal ipo_field_plan row (NOT_AVAILABLE_YET or CHECK_FAILED) that is reclaimable in principle but has gone 2+ discovery slots unclaimed — the class #762 found: claimNextDueField shipped as state='PENDING' only and left 12,480 such rows permanently unasked with zero PENDING rows anywhere",
+  "whatItAsks": "every non-terminal, below-attempts-ceiling, currently-unclaimed plan row has a last_attempt_at within the last ~2 discovery slots (7h) — a longer gap means the claim query has stopped reclaiming that state",
+  "healthy": "0",
+  "alarmsWhen": "any non-zero",
+  "scope": "phase-1 IPOs, MAINBOARD + SME, prod + staging slots; state IN (NOT_AVAILABLE_YET, CHECK_FAILED), attempts < FIELD_PLAN_RECLAIM_MAX_ATTEMPTS, claimed_at IS NULL",
+  "consumer": "nightly floor-delta (docs/reviews/build-cards/item-03-s6-churn-stop-and-detection.md)",
+  "consumerReason": "a stuck reclaim is a per-cycle structural fact about the claim query, read by row identity each run — the same consumer as pull_plan_rank, which this check is a sibling of",
+  "status": "built (#762 S8)",
+  "sourceDesign": "docs/design/build-cards/item-05-ipo-field-plan-table.md",
+  "section": "checks"
+}

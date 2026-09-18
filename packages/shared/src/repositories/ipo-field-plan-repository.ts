@@ -79,6 +79,68 @@ export const FIELD_PLAN_CLAIM_STALE_MINUTES = 30;
 export const FIELD_PLAN_BACKOFF_BASE_MINUTES = 15;
 export const FIELD_PLAN_BACKOFF_MAX_MINUTES = 6 * 60;
 
+/**
+ * #762 (S8): how many times a NOT_AVAILABLE_YET / CHECK_FAILED row is
+ * reclaimed by `claimNextDueField` before the re-ask path stops offering it.
+ * Mirrors `NOT_FOUND_MAX_ATTEMPTS` in
+ * `scraper/src/services/document-state-machine.ts:451` — the same "N
+ * transient misses is no longer transient" convention, same shape (a claim
+ * filter, not a state transition). A row at or past this ceiling is simply
+ * never selected here; it is NOT moved to EXHAUSTED by this query (that
+ * would be a `recordOutcome`/state-machine change, out of this fix's scope
+ * per the S8 brief) — it just stops churning through every slot forever.
+ */
+export const FIELD_PLAN_RECLAIM_MAX_ATTEMPTS = 5;
+
+/**
+ * #762 (S8): the daily discovery-slot boundaries the field-plan re-ask keys
+ * its reclaim on, IN MINUTES SINCE IST MIDNIGHT. Deliberately the SAME
+ * values as `DISCOVERY_SLOTS_IST_MINUTES` in
+ * `scraper/src/scheduler/due-step-cycle.ts` — that module cannot be
+ * imported here (scraper depends on @ipodhan/shared, never the reverse;
+ * see `packages/shared/package.json` / `scraper/package.json`), so this is
+ * a deliberate duplicate of the CONSTANT and its pure arithmetic, the same
+ * pattern `scripts/lib/ist-day.mjs` already uses for
+ * `packages/shared/src/utils/ist-day.ts` (plain Node cannot import
+ * TypeScript there; here it is a one-way package dependency instead). A
+ * test in this package pins these values equal to the scraper module's, so
+ * the two can never drift silently.
+ *
+ * NOT a timer: this only ever answers "has a NEW slot begun since X", never
+ * "has N minutes elapsed since X" — the OD-33 / design-doc D12 rule ("no
+ * code path schedules a document fetch by elapsed time") governs this claim
+ * query exactly as it governs the document-fetch scheduler that named it.
+ */
+const FIELD_PLAN_SLOT_IST_MINUTES = [8 * 60 + 30, 11 * 60, 14 * 60, 17 * 60 + 30] as const;
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+
+/**
+ * The most recent slot boundary at-or-before `now`, as an absolute instant
+ * (a `Date`). Pure and clock-injectable — mirrors
+ * `mostRecentDiscoverySlotEpochMinute` in `due-step-cycle.ts` exactly (same
+ * "day index in IST, minutes-of-day in IST, walk the slots" shape), kept
+ * here as its own tiny function so the SQL below can bind ONE timestamp
+ * parameter rather than re-deriving the slot inside the query.
+ */
+export function mostRecentFieldPlanSlotBoundary(now: Date): Date {
+  const istMs = now.getTime() + IST_OFFSET_MINUTES * 60_000;
+  const dayIndex = Math.floor(istMs / 86_400_000);
+  const istDate = new Date(istMs);
+  const minutesOfDay = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
+
+  let dueSlotOfDay: number | null = null;
+  for (const slot of FIELD_PLAN_SLOT_IST_MINUTES) {
+    if (minutesOfDay >= slot) dueSlotOfDay = slot;
+  }
+
+  const epochMinute =
+    dueSlotOfDay === null
+      ? (dayIndex - 1) * 1440 + FIELD_PLAN_SLOT_IST_MINUTES[FIELD_PLAN_SLOT_IST_MINUTES.length - 1]
+      : dayIndex * 1440 + dueSlotOfDay;
+
+  return new Date(epochMinute * 60_000 - IST_OFFSET_MINUTES * 60_000);
+}
+
 export type FieldPlanState =
   | 'PENDING'
   | 'SUPPLIED'
@@ -449,17 +511,50 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
-   * Claim exactly one due plan row, oldest-due first, in ONE statement.
+   * Claim exactly one due plan row, in ONE statement. "Due" is the item-5
+   * build card's four-way OR (`docs/design/build-cards/item-05-ipo-field-plan-table.md:232-237`),
+   * restored here after #762 found it had shipped as a single AND-only
+   * branch (`state = 'PENDING'`) that left NOT_AVAILABLE_YET and
+   * CHECK_FAILED rows — 12,480 of them on staging — permanently unclaimed:
    *
-   * Due = state PENDING, AND its backoff has elapsed (`next_due_at` null or
-   * past), AND it is not held by a live claim (`claimed_at` null or older than
-   * the staleness window — that second arm is what makes a killed walk's row
-   * recoverable rather than stranded forever).
+   *   1. `state = 'PENDING'` — never attempted (unchanged).
+   *   2. `state = 'NOT_AVAILABLE_YET'` AND a new SLOT has begun since
+   *      `last_attempt_at` — the field was asked before its own authoritative
+   *      source had published, so a later slot is worth a re-ask.
+   *   3. `state = 'CHECK_FAILED'` AND a new SLOT has begun since
+   *      `last_attempt_at` — the walk's own comments call this "transient,
+   *      re-asked after backoff" (`field-plan-walk.ts:384, 581`); restored
+   *      the same way as trigger 2, not as a separate mechanism.
+   *   4. `verify_state = 'DUE'` AND `verify_due_at` has passed — §3's
+   *      scheduled re-verification, independent of `state` (a SUPPLIED row
+   *      can still be due for a verify pass).
+   *   Plus the stale-claim reclaim (`claimed_at` null or older than the
+   *   staleness window), unconditional on which of the four triggers made
+   *   the row due — a crashed walk's claim is released the same way either way.
    *
-   * The inner select orders by `(next_due_at NULLS FIRST)` over
-   * `state = 'PENDING'`, which is the leading-column shape of
-   * `idx_ipo_field_plan_state_next_due`, so the query can use that index
-   * instead of scanning the plan.
+   * Triggers 2 and 3 key on `last_attempt_at` crossing a SLOT boundary
+   * (`mostRecentFieldPlanSlotBoundary`, mirroring
+   * `scraper/src/scheduler/due-step-cycle.ts`'s
+   * `DISCOVERY_SLOTS_IST_MINUTES`), NEVER on `next_due_at` or an elapsed
+   * interval — `next_due_at` is written by `recordOutcome` using
+   * `fieldPlanBackoffMinutes`, a TIMED doubling backoff the design doc
+   * explicitly marks for deletion (`docs/design/data-sourcing-pull-model.md:971`,
+   * OD-21/OD-33/D12: "no code path schedules a document fetch by elapsed
+   * time"). This fix does not touch `recordOutcome` or that column (out of
+   * the S8 brief's scope) — it simply never reads `next_due_at` for triggers
+   * 2/3, so a slot-based reclaim is not blocked by (or dependent on) a
+   * still-running timer the design says should not exist.
+   *
+   * Churn guard (S8, no design-mandated shape existed): trigger 3
+   * (CHECK_FAILED) is additionally bounded by
+   * `attempts < FIELD_PLAN_RECLAIM_MAX_ATTEMPTS` — a row that has failed
+   * that many times stops being offered by this query at all, so a
+   * permanently-broken field cannot churn through every slot forever. This
+   * is a claim-time FILTER, never a state transition — the row is not moved
+   * to EXHAUSTED (that is `recordOutcome`'s job and out of scope here).
+   * `ORDER BY` additionally ranks a PENDING row (genuinely new work) ahead
+   * of every reclaim trigger via `reclaim_rank`, so a single walk drains new
+   * work before spending its budget re-asking stale ones.
    *
    * `FOR UPDATE SKIP LOCKED` is the whole point: a concurrent claimer's inner
    * select skips the row this transaction has locked and finds nothing, so it
@@ -469,6 +564,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const now = params.now ?? new Date();
     const staleMinutes = params.staleMinutes ?? FIELD_PLAN_CLAIM_STALE_MINUTES;
     const staleBefore = new Date(now.getTime() - staleMinutes * 60_000);
+    const slotBoundary = mostRecentFieldPlanSlotBoundary(now);
     const token = randomUUID();
 
     try {
@@ -477,11 +573,26 @@ export class IpoFieldPlanRepository extends BaseRepository {
         SET claimed_at = ${now}::timestamptz, claim_token = ${token}, updated_at = ${now}::timestamptz
         WHERE id = (
           SELECT id FROM ipo_field_plan
-          WHERE state = 'PENDING'
-            AND (${params.ipoId ?? null}::uuid IS NULL OR ipo_id = ${params.ipoId ?? null}::uuid)
-            AND (next_due_at IS NULL OR next_due_at <= ${now}::timestamptz)
+          WHERE (${params.ipoId ?? null}::uuid IS NULL OR ipo_id = ${params.ipoId ?? null}::uuid)
             AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
-          ORDER BY next_due_at ASC NULLS FIRST
+            AND (
+              (state = 'PENDING' AND (next_due_at IS NULL OR next_due_at <= ${now}::timestamptz))
+              OR (
+                state = 'NOT_AVAILABLE_YET'
+                AND (last_attempt_at IS NULL OR last_attempt_at < ${slotBoundary}::timestamptz)
+              )
+              OR (
+                state = 'CHECK_FAILED'
+                AND (last_attempt_at IS NULL OR last_attempt_at < ${slotBoundary}::timestamptz)
+                AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+              )
+              OR (verify_state = 'DUE' AND verify_due_at <= ${now}::timestamptz)
+            )
+          ORDER BY
+            CASE WHEN state = 'PENDING' THEN 0 ELSE 1 END,
+            next_due_at ASC NULLS FIRST,
+            last_attempt_at ASC NULLS FIRST,
+            verify_due_at ASC NULLS LAST
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         )
