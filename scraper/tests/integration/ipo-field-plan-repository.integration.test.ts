@@ -422,6 +422,143 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     expect(claimedCount).toBe(3);
   });
 
+  // ---------------------------- review round 2 CRITICAL: excludeIds -------
+  //
+  // A released-but-still-PENDING row (a dropped write, or an admin-protection
+  // skip) is immediately re-claimable and `pri = 0` ranks it ahead of every
+  // reclaim/verify leg -- without excludeIds the SAME row comes back forever
+  // and the walk's own re-claim guard then stops the entire walk (see
+  // field-plan-walk.ts's round-2 fix and its own dedicated real-walk-loop
+  // test in field-plan-walk-reclaim-starvation.integration.test.ts, DoD A).
+
+  it('#762 round 2: excludeIds keeps a released PENDING row out of the NEXT claim, returning a genuinely different row', async () => {
+    const stuckId = await seedRow({ fieldName: 'stuckPending', state: 'PENDING', nextDueAt: new Date(Date.now() - 60_000) });
+    const otherId = await seedRow({
+      fieldName: 'reclaimable',
+      state: 'NOT_AVAILABLE_YET',
+      lastAttemptAt: new Date('2026-09-15T01:30:00.000Z'),
+      nextDueAt: new Date('2026-09-16T00:00:00.000Z'),
+    });
+    const now = new Date('2026-09-15T03:30:00.000Z');
+
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now, excludeIds: [stuckId] });
+
+    expect(claimed).not.toBeNull();
+    expect(claimed!.id).toBe(otherId);
+    expect(claimed!.id).not.toBe(stuckId);
+  });
+
+  it('#762 round 2: an empty excludeIds array excludes nothing (a fresh walk claims normally)', async () => {
+    const id = await seedRow({ state: 'PENDING', nextDueAt: new Date(Date.now() - 60_000) });
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, excludeIds: [] });
+    expect(claimed!.id).toBe(id);
+  });
+
+  it('#762 round 2: excludeIds excludes across EVERY leg, not just PENDING (a released reclaim row is also skipped)', async () => {
+    const now = new Date('2026-09-15T03:30:00.000Z');
+    const excludedId = await seedRow({
+      fieldName: 'excludedReclaim',
+      state: 'CHECK_FAILED',
+      lastAttemptAt: new Date('2026-09-15T01:00:00.000Z'),
+      nextDueAt: new Date('2026-09-16T00:00:00.000Z'),
+    });
+    const otherId = await seedRow({
+      fieldName: 'otherReclaim',
+      state: 'CHECK_FAILED',
+      lastAttemptAt: new Date('2026-09-15T01:30:00.000Z'),
+      nextDueAt: new Date('2026-09-16T00:00:00.000Z'),
+    });
+
+    const claimed = await repo.claimNextDueField({ ipoId: IPO_ID, now, excludeIds: [excludedId] });
+    expect(claimed!.id).toBe(otherId);
+  });
+
+  // ---------------------------- review round 2 MAJOR-2: TZ-independence ---
+  //
+  // All four compared timestamp columns are `timestamp WITHOUT time zone`.
+  // Casting the bound JS Date to `::timestamptz` (the round-1 shape) makes
+  // Postgres resolve it through the SESSION timezone before comparing --
+  // under Asia/Kolkata that silently shifts the bound value by 5h30m
+  // relative to UTC. This test runs the SAME claim under both session
+  // timezones and asserts an IDENTICAL result -- proving the query no
+  // longer depends on session TZ state.
+
+  // Each TZ test opens its OWN dedicated pool (makePool(1)) and `.end()`s it
+  // in a `finally`, exactly like the concurrency tests below -- never a
+  // connection borrowed from and released back to the SHARED `pool`/`db`
+  // this whole file's other ~50 tests reuse. A pooled connection's session
+  // `SET TIME ZONE` is NOT reset by `.release()` (found live: this file's
+  // very first version of these two tests leaked an Asia/Kolkata session
+  // back into the pool, which then silently misread every OTHER test's
+  // naive-timestamp comparisons for the rest of the run -- 5 unrelated
+  // tests failed with "expected null, got a row" purely from pool-order
+  // luck, nothing to do with the query itself).
+
+  it('#762 round 2 (MAJOR-2): claim result is IDENTICAL under SET TIME ZONE UTC vs Asia/Kolkata', async () => {
+    const now = new Date('2026-09-15T09:00:00.000Z'); // 14:30 IST -- past the 08:30/11:00/14:00 slots
+    const lastAttemptAt = new Date('2026-09-15T01:30:00.000Z'); // 07:00 IST -- before the 08:30 slot boundary
+    const id = await seedRow({
+      state: 'NOT_AVAILABLE_YET',
+      lastAttemptAt,
+      nextDueAt: new Date(now.getTime() + 3_600_000),
+    });
+
+    const utcPool = makePool(1);
+    try {
+      await utcPool.query("SET TIME ZONE 'UTC'");
+      const utcRepo = new IpoFieldPlanRepository(drizzle(utcPool, { schema }) as never, FAKE_REDIS);
+      const claimedUtc = await utcRepo.claimNextDueField({ ipoId: IPO_ID, now });
+      expect(claimedUtc).not.toBeNull();
+      expect(claimedUtc!.id).toBe(id);
+    } finally {
+      await utcPool.end();
+    }
+
+    // Release it and reclaim the identical row under a SEPARATE, disposable
+    // Asia/Kolkata pool.
+    await db
+      .update(schema.ipoFieldPlan)
+      .set({ claimedAt: null, claimToken: null })
+      .where(eq(schema.ipoFieldPlan.id, id));
+
+    const kolkataPool = makePool(1);
+    try {
+      await kolkataPool.query("SET TIME ZONE 'Asia/Kolkata'");
+      const kolkataRepo = new IpoFieldPlanRepository(drizzle(kolkataPool, { schema }) as never, FAKE_REDIS);
+      const claimedKolkata = await kolkataRepo.claimNextDueField({ ipoId: IPO_ID, now });
+      expect(claimedKolkata).not.toBeNull();
+      expect(claimedKolkata!.id).toBe(id);
+    } finally {
+      await kolkataPool.end();
+    }
+  });
+
+  it('#762 round 2 (MAJOR-2): a row just past a slot boundary is reclaimed identically under both session timezones (the exact skew the round-1 bug would have hit)', async () => {
+    const now = new Date('2026-09-15T03:31:00.000Z'); // 09:01 IST -- one minute past the 08:30 slot boundary
+    const lastAttemptAt = new Date('2026-09-15T03:29:00.000Z'); // 08:59 IST -- in the CURRENT slot, not yet due by the slot rule
+    const id = await seedRow({
+      state: 'CHECK_FAILED',
+      attempts: 1,
+      lastAttemptAt,
+      nextDueAt: new Date(now.getTime() + 3_600_000),
+    });
+
+    for (const tz of ['UTC', 'Asia/Kolkata']) {
+      await db.update(schema.ipoFieldPlan).set({ claimedAt: null, claimToken: null }).where(eq(schema.ipoFieldPlan.id, id));
+      const tzPool = makePool(1);
+      try {
+        await tzPool.query(`SET TIME ZONE '${tz}'`);
+        const tzRepo = new IpoFieldPlanRepository(drizzle(tzPool, { schema }) as never, FAKE_REDIS);
+        const claimed = await tzRepo.claimNextDueField({ ipoId: IPO_ID, now });
+        // Assert consistency, not a specific due/not-due answer -- that is
+        // what MAJOR-2 requires: the SAME answer under both TZs.
+        expect(claimed, `tz=${tz}`).toBeNull();
+      } finally {
+        await tzPool.end();
+      }
+    }
+  });
+
   // ---------------------------------------------------- CONCURRENT claim ---
 
   it('THE CLASS: two REAL connections racing the same single due row -- exactly one wins', async () => {

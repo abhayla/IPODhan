@@ -190,6 +190,26 @@ export interface ClaimNextDueFieldParams {
   now?: Date;
   /** Override the staleness window (minutes). Defaults to the constant. */
   staleMinutes?: number;
+  /**
+   * #762 (S8) review round 2 CRITICAL fix: row ids this WALK has already
+   * settled this pass (`field-plan-walk.ts`'s `settledThisWalk`), excluded
+   * from every leg so an un-handleable row (a dropped write left PENDING,
+   * or an admin-protection skip that releases without recording — both
+   * re-queue the SAME row immediately) does not starve every OTHER due row
+   * behind it. Before this param existed, `pri = 0` ranked every PENDING
+   * row ahead of every reclaim leg, so a released-but-still-PENDING row was
+   * guaranteed to come back as the claim's answer every single time — the
+   * walk's own `settledThisWalk` re-claim guard then stopped the WHOLE
+   * walk (`stoppedReason = 'NO_DUE_FIELDS'`), discarding every reclaim row
+   * ranked below it. Reviewer repro: one un-handleable PENDING row blocked
+   * all reclaim rows on the IPO; live on staging (180 PENDING rows, 1 IPO,
+   * confirmed live 2026-09-18). Excluding ids here means the SAME row is
+   * never re-offered within one walk; the walk keeps draining until either
+   * the budget or genuinely-no-due-work stops it, exactly as the original
+   * single-branch query's ordering accidentally guaranteed and the
+   * restructure broke.
+   */
+  excludeIds?: string[];
 }
 
 /** What won, and on what evidence (design §2.3 — this is what makes §2.5 work). */
@@ -601,6 +621,29 @@ export class IpoFieldPlanRepository extends BaseRepository {
     const slotBoundary = mostRecentFieldPlanSlotBoundary(now);
     const token = randomUUID();
     const ipoId = params.ipoId ?? null;
+    const excludeIds = params.excludeIds ?? [];
+    // Drizzle's `sql` tagged template SPREADS a plain JS array interpolated
+    // into it as a comma-separated parameter list (`$1, $2, ...`), never as
+    // a single array-typed bind — `${excludeIds}::uuid[]` therefore compiled
+    // to the syntactically invalid `()::uuid[]` for an empty array (and
+    // `($1)::uuid[]` for one element, also invalid — Postgres needs
+    // `ARRAY[$1]::uuid[]`). Found live: every call in the walk-loop x
+    // claim-query starvation test (review round 2 DoD item A) threw
+    // "syntax error at or near )" the first time excludeIds was actually
+    // exercised end to end — none of round 2's own new tests caught it
+    // because they only ever passed a non-empty excludeIds through the
+    // FIRST claim of a pair, never round-tripped a fresh empty-default call.
+    // Building the literal `ARRAY[...]` expression by hand (guarding the
+    // empty case explicitly, since `sql.join` over zero elements produces
+    // nothing between the brackets) is the correct drizzle idiom for a
+    // dynamic-length array bind.
+    const excludeIdsSql =
+      excludeIds.length === 0
+        ? sql`ARRAY[]::uuid[]`
+        : sql`ARRAY[${sql.join(
+            excludeIds.map((id) => sql`${id}::uuid`),
+            sql`, `
+          )}]`;
 
     // CRITICAL-2 fix (S8 review round 1): each trigger is its own small,
     // independently-sargable derived table — `state = <literal>` plus ONE
@@ -617,38 +660,84 @@ export class IpoFieldPlanRepository extends BaseRepository {
     // (a NULL leg and a comparison leg) rather than kept as an OR — an OR
     // inside one leg forces Postgres into a BitmapOr + Recheck + Sort
     // instead of a plain ordered Index Scan that can stop at the first
-    // match. Measured on ipodhan_staging (read-only EXPLAIN) and reproduced
-    // on ipodhan_test at the same row volume (12,660 rows, worst case: ALL
-    // of them past the slot boundary, the exact state #762 found staging
-    // in): the single-OR form was a 127.9ms Seq Scan touching every row;
-    // this form is 1.27ms with zero Seq Scans (every leg an Index Scan on
-    // idx_ipo_field_plan_state_next_due, idx_ipo_field_plan_reclaim_*, or
-    // idx_ipo_field_plan_verify_due). See the PR body for the full plan.
+    // match. Measured on ipodhan_staging (read-only EXPLAIN, pure SELECT
+    // form, no write): a REAL Seq Scan over the live 12,554-row backlog
+    // costs 6.135ms — review round 2's MINOR correction to round 1's
+    // "127.9ms" figure, which was measured on a freshly bulk-inserted,
+    // unvacuumed synthetic table and was not representative. The honest,
+    // staging-measured improvement is ~6ms -> ~0.66ms (this form, zero Seq
+    // Scans, proven on ipodhan_test seeded to staging's exact row shape —
+    // see the PR body for both full plans), not 128ms -> 1ms.
     //
     // `pri` ranks a PENDING candidate (0) ahead of every reclaim/verify
     // trigger (1) — genuinely new work drains before a re-ask, same
     // ordering intent the old single `CASE WHEN state='PENDING'` ORDER BY
     // expressed, but now on the OUTER (7-row) combine instead of forcing a
     // sort over the whole table.
+    //
+    // MINOR (review round 2, recorded not fixed): `ord` mixes
+    // `last_attempt_at` (the two reclaim legs) with `verify_due_at` (the
+    // verify leg) into one sort key. The two are not comparable — a
+    // `verify_due_at` earlier than some row's `last_attempt_at` says
+    // nothing about which is "more due". Harmless today only because the
+    // verify leg is DEAD CODE (see trigger 4's own doc comment below —
+    // nothing writes `verify_state`/`verify_due_at` yet, so `verify_due_leg`
+    // never contributes a real candidate); §3 shipping a writer for those
+    // columns would need this fixed (a separate `pri` band, or a
+    // normalized comparable ordering key) before the verify leg's ordering
+    // could be trusted.
+    //
+    // review round 2 CRITICAL fix: `excludeIds` (the walk's own
+    // `settledThisWalk`) is applied to every leg so a row this walk already
+    // took and released (a dropped write left PENDING, or an
+    // admin-protection skip) cannot be handed back as the SAME row forever
+    // — `pri = 0` otherwise guarantees a released PENDING row outranks
+    // every reclaim leg, and the walk's own re-claim guard
+    // (`field-plan-walk.ts`) then stopped the ENTIRE walk on the second
+    // sight of it, discarding every reclaim row ranked below. See
+    // `ClaimNextDueFieldParams.excludeIds`'s own doc comment for the full
+    // mechanism and the live-staging reproduction (180 PENDING rows on one
+    // IPO, first cycle after deploy would have hit this).
+    //
+    // review round 2 MAJOR-2 fix: every bound timestamp below is cast to
+    // `::timestamp` (naive), never `::timestamptz`. All four compared
+    // columns (`next_due_at`, `last_attempt_at`, `claimed_at`,
+    // `verify_due_at`) are `timestamp WITHOUT time zone`; casting the bound
+    // parameter to `::timestamptz` makes Postgres resolve it through the
+    // SESSION timezone before comparing against the naive column — under
+    // `Asia/Kolkata` that silently shifts every bound by 5h30m relative to
+    // `UTC` (measured: `SET TIME ZONE 'UTC'` gives one answer, `SET TIME
+    // ZONE 'Asia/Kolkata'` gives a DIFFERENT one for the identical row —
+    // exactly the class this repo's own CLAUDE.md names as "Timestamps off
+    // by 5h30m"). The production pool already forces `options: '-c
+    // timezone=UTC'` (`packages/shared/src/db/timezone-config.ts`), so this
+    // was latent there, but the SQL itself must not depend on that
+    // guarantee — `::timestamp` is session-TZ-INDEPENDENT (verified: the
+    // same bound Date casts to the identical naive value under both `UTC`
+    // and `Asia/Kolkata` sessions), matching how `parseNaiveTimestampAsUtc`
+    // already reads these same columns back on the SELECT side. A test
+    // pins this under both session timezones.
     try {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
-        SET claimed_at = ${now}::timestamptz, claim_token = ${token}, updated_at = ${now}::timestamptz
+        SET claimed_at = ${now}::timestamp, claim_token = ${token}, updated_at = ${now}::timestamp
         WHERE id = (
           SELECT id FROM (
             SELECT id, 0 AS pri, next_due_at AS ord FROM (
               SELECT id, next_due_at FROM ipo_field_plan
                WHERE state = 'PENDING' AND next_due_at IS NULL
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql}))
                ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
             ) pending_null
             UNION ALL
             SELECT id, 0 AS pri, next_due_at AS ord FROM (
               SELECT id, next_due_at FROM ipo_field_plan
-               WHERE state = 'PENDING' AND next_due_at <= ${now}::timestamptz
+               WHERE state = 'PENDING' AND next_due_at <= ${now}::timestamp
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql}))
                ORDER BY next_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
             ) pending_due
             UNION ALL
@@ -656,15 +745,17 @@ export class IpoFieldPlanRepository extends BaseRepository {
               SELECT id, last_attempt_at FROM ipo_field_plan
                WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at IS NULL
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql}))
                ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
             ) nay_null
             UNION ALL
             SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
               SELECT id, last_attempt_at FROM ipo_field_plan
-               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at < ${slotBoundary}::timestamptz
+               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at < ${slotBoundary}::timestamp
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql}))
                ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
             ) nay_due
             UNION ALL
@@ -673,24 +764,27 @@ export class IpoFieldPlanRepository extends BaseRepository {
                WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
                  AND last_attempt_at IS NULL
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql}))
                ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_null
             UNION ALL
             SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
               SELECT id, last_attempt_at FROM ipo_field_plan
                WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
-                 AND last_attempt_at < ${slotBoundary}::timestamptz
+                 AND last_attempt_at < ${slotBoundary}::timestamp
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql}))
                ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
             ) cf_due
             UNION ALL
             SELECT id, 1 AS pri, verify_due_at AS ord FROM (
               SELECT id, verify_due_at FROM ipo_field_plan
-               WHERE verify_state = 'DUE' AND verify_due_at <= ${now}::timestamptz
+               WHERE verify_state = 'DUE' AND verify_due_at <= ${now}::timestamp
                  AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamptz)
+                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql}))
                ORDER BY verify_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
             ) verify_due_leg
           ) candidates

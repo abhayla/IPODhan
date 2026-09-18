@@ -1784,9 +1784,23 @@ export const ipoFieldPlan = pgTable(
     // index against a mutable session parameter), so the CHECK_FAILED index's
     // `attempts < 5` literal must be kept equal to
     // FIELD_PLAN_RECLAIM_MAX_ATTEMPTS by hand -- there is no way to reference
-    // a TS export from a SQL partial-index predicate. A test in the
-    // repository pins them equal so a change to one without the other fails
-    // CI instead of silently degrading the plan back to a Seq Scan.
+    // a TS export from a SQL partial-index predicate. Pinned by
+    // scripts/tests/field-plan-reclaim-max-attempts-pin.test.mjs, which
+    // PARSES this file's real source text and compares it against the real
+    // FIELD_PLAN_RECLAIM_MAX_ATTEMPTS export and the detection check's own
+    // copy (review round 2 MAJOR-1: an earlier version of this comment
+    // claimed such a test already existed here; it did not -- the same
+    // false-guard class MAJOR-3 caught the round before. Never claim a pin
+    // exists without a test that reads the actual source files).
+    //
+    // MINOR (review round 2, recorded not fixed): this migration's
+    // `CREATE INDEX` statements do not use `CONCURRENTLY`, so each takes an
+    // ACCESS EXCLUSIVE lock for its duration. Sub-second at the table's
+    // current size (~12.7k rows, measured), acceptable for this migration,
+    // but undeclared until this note — a future migration on this table at
+    // materially larger scale should use `CONCURRENTLY` (which drizzle-kit
+    // does not generate automatically; it would need hand-editing the
+    // generated SQL, same as any other CONCURRENTLY index in this repo).
     reclaimNotAvailableYetIdx: index('idx_ipo_field_plan_reclaim_not_available_yet')
       .on(table.lastAttemptAt)
       .where(sql`${table.state} = 'NOT_AVAILABLE_YET'`),
