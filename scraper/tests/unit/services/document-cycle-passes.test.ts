@@ -34,7 +34,7 @@ const dbExecuteMock = vi.fn();
 const dbInsertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
 // Item 5 slice s4: hoisted so tests can assert the field-plan pass called
 // (or did not call) the repository, independent of the vi.mock factory.
-const upsertGeneratedRowsMock = vi.fn().mockResolvedValue({ inserted: 0 });
+const upsertGeneratedRowsMock = vi.fn().mockResolvedValue({ inserted: 0, updated: 0 });
 
 // CRITICAL-1 fix (S4 review round 2): document-cycle.ts now builds a FieldSourceOverridesRepository
 // once per cycle for the field-plan generate/walk paths -- it calls db.select()...where()...orderBy()
@@ -1119,7 +1119,7 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
   // indistinguishable from "PASS 2.5 never ran at all".
   it('a cycle that inserts ZERO rows still logs its summary — silence must not be ambiguous', async () => {
     FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
-    upsertGeneratedRowsMock.mockResolvedValue({ inserted: 0 });
+    upsertGeneratedRowsMock.mockResolvedValue({ inserted: 0, updated: 0 });
     const infoSpy = vi.spyOn(logger, 'info');
 
     await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
@@ -1131,12 +1131,64 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
     );
   });
 
+  // Tier A review MAJOR-1: `rowsReranked` is an OPERATOR-FACING number
+  // (signal-ownership R1 -- a count a human reads must not be able to
+  // silently break). Nothing asserted this field at all before this test
+  // (`git grep -rn "rowsReranked" scraper/tests/` returned nothing), which
+  // is exactly how `0 + undefined = NaN` -- pino serializes NaN to `null` --
+  // reached the log line unnoticed: every mock in this suite still returned
+  // the pre-S7 `{ inserted }` shape with no `updated` field.
+  it('rowsReranked accumulates a real number across candidates, never NaN/undefined', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    upsertGeneratedRowsMock
+      .mockResolvedValueOnce({ inserted: 1, updated: 4 })
+      .mockResolvedValueOnce({ inserted: 0, updated: 2 });
+    const infoSpy = vi.spyOn(logger, 'info');
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // Two candidates (ipo-1, ipo-2) -- 4 + 2 = 6, never NaN, never undefined.
+    expect(upsertGeneratedRowsMock).toHaveBeenCalledTimes(2);
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ rowsInserted: 1, rowsReranked: 6, failed: 0 }),
+      expect.stringContaining('PASS 2.5 field-plan generation summary')
+    );
+    const loggedSummary = infoSpy.mock.calls.find(
+      (call) => typeof call[1] === 'string' && call[1].includes('PASS 2.5 field-plan generation summary')
+    )![0] as { rowsReranked: unknown };
+    expect(typeof loggedSummary.rowsReranked).toBe('number');
+    expect(Number.isNaN(loggedSummary.rowsReranked)).toBe(false);
+  });
+
+  // Direct regression test for the `?? 0` guard itself: a caller (or an
+  // un-migrated mock, exactly what four test files still had before this
+  // fix) returning the PRE-S7 shape `{ inserted }` with no `updated` field
+  // must not turn `rowsReranked` into NaN -- which pino would then log as
+  // `null` to an operator (signal-ownership R1). This does not rely on any
+  // OTHER file's mock shape; it feeds the old shape directly.
+  it('a caller/mock still returning the pre-S7 { inserted } shape (no updated) never produces NaN', async () => {
+    FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
+    upsertGeneratedRowsMock
+      .mockResolvedValueOnce({ inserted: 2 } as unknown as { inserted: number; updated: number })
+      .mockResolvedValueOnce({ inserted: 0, updated: 3 });
+    const infoSpy = vi.spyOn(logger, 'info');
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const loggedSummary = infoSpy.mock.calls.find(
+      (call) => typeof call[1] === 'string' && call[1].includes('PASS 2.5 field-plan generation summary')
+    )![0] as { rowsReranked: unknown };
+    expect(typeof loggedSummary.rowsReranked).toBe('number');
+    expect(Number.isNaN(loggedSummary.rowsReranked)).toBe(false);
+    expect(loggedSummary.rowsReranked).toBe(3); // 0 (guarded) + 3, never NaN
+  });
+
   it('one IPO throwing during upsertGeneratedRows does not stop a sibling IPO from getting its rows', async () => {
     FEATURE_FLAGS.ENABLE_FIELD_PLAN = true;
     upsertGeneratedRowsMock.mockImplementationOnce(() => {
       throw new Error('boom -- ipo-1 upsert failed');
     });
-    upsertGeneratedRowsMock.mockResolvedValueOnce({ inserted: 3 });
+    upsertGeneratedRowsMock.mockResolvedValueOnce({ inserted: 3, updated: 0 });
 
     await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
 
@@ -1167,7 +1219,7 @@ describe('Item 5 slice s4 — field-plan generation pass gated by ENABLE_FIELD_P
     const now = () => clock;
     upsertGeneratedRowsMock.mockImplementation(() => {
       clock += 100; // each upsert call "takes" 100ms
-      return Promise.resolve({ inserted: 1 });
+      return Promise.resolve({ inserted: 1, updated: 0 });
     });
 
     // fieldPlanBudgetMs: 150 -- fits candidate 1 (0ms elapsed at its check),

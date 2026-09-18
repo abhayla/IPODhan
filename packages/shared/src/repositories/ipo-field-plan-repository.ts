@@ -188,8 +188,16 @@ export function fieldPlanBackoffMinutes(attemptsAfterThisOne: number): number {
  * `scraper/`, which `packages/shared` cannot import — the caller maps its
  * own `PlannedFieldRow[]` onto this shape). All state is the generator's
  * fresh-row defaults (`PENDING`, zero attempts, nothing chosen) because a
- * row this call inserts is by definition one that did not exist before —
- * `upsertGeneratedRows` never carries an existing row's live state back in.
+ * row this call inserts is by definition one that did not exist before.
+ *
+ * For a row that DID already exist: `upsertGeneratedRows` still never
+ * carries its LIVE state back in (`state`, `attempts`, `next_due_at`,
+ * `claimed_at`, `claim_token`, every `chosen_*` column all keep their
+ * on-disk values) — but since item 3 slice S7 (#732) it DOES refresh that
+ * row's ranking columns (`rank1/2/3Source`, `manifestVersion`,
+ * `policyOrigin`) in place when this row's `manifestVersion` is strictly
+ * higher than what is on disk and the row is not `SUPPLIED`. See
+ * `upsertGeneratedRows`'s own doc comment for the exact contract.
  */
 export interface GeneratedFieldPlanRow {
   ipoId: string;

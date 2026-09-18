@@ -11,9 +11,14 @@ and SME IPOs have plan rows for the fields the version-1 manifest never planned 
 
 ## Serves
 
-- #731: plan rows are never re-ranked when the manifest changes (`ON CONFLICT (ipo_id, table_name,
-  row_key, field_name) DO NOTHING`, `ipo-field-plan-repository.ts:238`); staging has 454 rows / 64
-  IPOs all at version 1 with 192 issue-size-family rows carrying `rank2 = BSE` (hand-off state).
+- #731: plan rows were never re-ranked when the manifest changes (`ON CONFLICT (ipo_id, table_name,
+  row_key, field_name) DO NOTHING`, `ipo-field-plan-repository.ts:238` — this row describes the state
+  at the time this slice was written); staging has 454 rows / 64 IPOs all at version 1 with 192
+  issue-size-family rows carrying `rank2 = BSE` (hand-off state). Item 3 slice S7 (#732) later
+  narrowed the `DO NOTHING` to `DO UPDATE`, so ORDINARY generator cycles now re-rank a non-SUPPLIED
+  row in place on a version increase — this tool (S2) remains the one-time/occasional catch-up for
+  rows that are stale RIGHT NOW (written before S7 shipped, or belonging to an IPO the generator has
+  stopped cycling), not a duplicate of what S7 does per cycle going forward.
 - §4b finding 13: the DB guard must be a schema check (table + `manifest_version` column present),
   and prod lacks the table until #713 lands.
 - Defect-fix contract item 4 (existing bad rows repaired by a re-runnable tool) and item 5

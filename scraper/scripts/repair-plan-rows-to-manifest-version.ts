@@ -1,10 +1,23 @@
 /**
  * Item 3, slice S2 (#731). Re-rank every non-terminal `ipo_field_plan` row
  * whose `manifest_version` is older than the current registry to the current
- * policy, and plan the SME rows the version-1 manifest never planned (the
- * generator's `ON CONFLICT ... DO NOTHING` insert never revisits a row once
- * it exists, so a manifest bump alone never re-ranks anything -- this tool
- * is the reconciliation step).
+ * policy, and plan the SME rows the version-1 manifest never planned.
+ *
+ * WHY THIS TOOL STILL EXISTS AFTER S7 (#732): before S7, the generator's
+ * insert was `ON CONFLICT ... DO NOTHING`, which never revisited a row once
+ * it existed -- a manifest bump alone never re-ranked anything, ever, for
+ * any row, at any time. S7 narrowed that to `ON CONFLICT ... DO UPDATE`,
+ * which re-ranks a non-SUPPLIED row IN PLACE the next time the generator
+ * runs it through `upsertGeneratedRows` with a strictly higher version --
+ * so FROM S7 ONWARD, ordinary generator cycles keep the plan reconciled
+ * without this tool's help. This tool is still what fixes rows that are
+ * ALREADY stale RIGHT NOW (every row written before the deploy that shipped
+ * S7, or any row belonging to an IPO the generator has stopped cycling --
+ * e.g. one that fell out of the live window) -- a one-time or occasional
+ * backfill, never a replacement for the generator's own per-cycle write
+ * path. Do not read this tool as a sign that S7's reconciliation is
+ * missing or broken; it is the catch-up pass for staleness that predates
+ * S7 or that S7's own cycle boundary has not reached yet.
  *
  * INDEPENDENT TIER A REVIEW FIX ROUND (fixer, this commit): the guard logic
  * below is now `run(deps)`, driven entirely through injected dependencies --
@@ -63,9 +76,15 @@
  *      `manifest_version` and `policy_origin` to match.
  *   2. `upsertGeneratedRows` -- for every IPO with at least one stale row,
  *      insert the rows the CURRENT manifest plans for that IPO's type that
- *      the table lacks entirely (the SME rows). `ON CONFLICT ... DO NOTHING`
- *      means this can never touch an existing row -- it only adds rows that
- *      truly do not exist yet.
+ *      the table lacks entirely (the SME rows). Since item 3 slice S7
+ *      (#732) that method's own `ON CONFLICT` also re-ranks an existing
+ *      non-SUPPLIED row on a version increase -- but this call site never
+ *      exercises that branch: every row it submits comes from the
+ *      MISSING-key set this tool itself computed (a key with NO row in the
+ *      table at all), so it can never hit a conflict here. This phase still
+ *      only ever adds rows that truly do not exist yet; re-ranking the
+ *      stale rows that DO already exist is entirely `updateRanksForVersion`'s
+ *      job, above.
  *
  * `--expect-db <name>` is MANDATORY. Refuses unless `ipo_field_plan` AND its
  * `manifest_version` column actually exist (a schema query against
@@ -106,10 +125,14 @@ const TOOL = 'repair-plan-rows-to-manifest-version';
  * statement is the actual risk on a table this size (measured: ~13,500
  * candidate insert tuples on staging). Chunking is not a transaction
  * substitute -- it is what makes a single statement bounded. Each chunk
- * commits through `ON CONFLICT ... DO NOTHING` / `WHERE state <> 'SUPPLIED'`,
- * both idempotent, so a mid-run failure leaves a safely resumable partial
- * state rather than a giant in-flight statement; re-running the tool finds
- * only the remaining stale/missing rows (MAJOR-6).
+ * commits through `updateRanksForVersion`'s `WHERE state <> 'SUPPLIED'` /
+ * `upsertGeneratedRows`'s conflict handling (item 3 slice S7, #732: `ON
+ * CONFLICT ... DO UPDATE ... WHERE state <> 'SUPPLIED' AND manifest_version
+ * < EXCLUDED.manifest_version` -- though this tool's own insert phase only
+ * ever submits keys it already confirmed are missing, so it never exercises
+ * the UPDATE branch), both idempotent, so a mid-run failure leaves a safely
+ * resumable partial state rather than a giant in-flight statement;
+ * re-running the tool finds only the remaining stale/missing rows (MAJOR-6).
  */
 const WRITE_CHUNK_SIZE = 300;
 

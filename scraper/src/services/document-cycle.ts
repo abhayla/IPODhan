@@ -1723,7 +1723,12 @@ export async function runDocumentCycle(
             );
             fieldPlanTotals.ipos++;
             fieldPlanTotals.rowsInserted += inserted;
-            fieldPlanTotals.rowsReranked += updated;
+            // `?? 0` guards a caller/mock still returning the pre-S7 shape
+            // `{ inserted }` with no `updated` -- without it this becomes
+            // `0 + undefined = NaN`, which pino serializes as `null` in the
+            // operator-facing summary (signal-ownership R1: a number an
+            // operator reads must not be able to silently break).
+            fieldPlanTotals.rowsReranked += updated ?? 0;
           } catch (error) {
             fieldPlanTotals.failed++;
             logger.error(
