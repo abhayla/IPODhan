@@ -58,7 +58,7 @@ import {
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
   checkIssueSizeSegmentFloor, checkIssueSizeSharesConsistency,
   checkLotBandSebiWindow, checkCorporateActionShape,
-  classifyRouteResponse, classifyConflictNoiseRatio, checkFreshnessPerType,
+  classifyRouteResponse, classifyVerdictLeak, classifyConflictNoiseRatio, checkFreshnessPerType,
   checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo, checkSegmentHasProvenance, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
@@ -550,6 +550,12 @@ async function checkE() {
   const sampleId = id || '00000000-0000-0000-0000-000000000000';
 
   const offenders = [];
+  // S7 OD-61 half (docs/design/s7-consensus-check-plan.md): reuses this SAME loop's
+  // already-fetched response text -- see classifyVerdictLeak's own header comment for why a
+  // second sweep is not built. Admin routes are excluded by the EXISTING publicRoutes filter
+  // above (adminRoutes = startsWith('/api/admin/')), named here explicitly per the plan rather
+  // than relying on that filter silently.
+  const verdictLeakOffenders = [];
   let unreachable = 0;
   for (const route of publicRoutes) {
     const path = fillRouteParams(route, sampleSlug, sampleId);
@@ -560,6 +566,8 @@ async function checkE() {
       const text = await res.text();
       const cls = classifyRouteResponse(path, res.status, text);
       if (cls.fail) offenders.push(`${path} — ${cls.reasons.join('; ')}`);
+      const verdictCls = classifyVerdictLeak(path, text);
+      if (verdictCls.fail) verdictLeakOffenders.push(`${path} — ${verdictCls.reasons.join('; ')}`);
     } catch (e) {
       unreachable++;
     }
@@ -573,6 +581,13 @@ async function checkE() {
   const status = offenders.length > 0 ? 'FAIL' : unreachable > 0 ? 'UNVERIFIABLE' : 'PASS';
   record('e_route_sweep', `every web/app/api/** public route (${publicRoutes.length} enumerated, ${adminRoutes.length} admin routes skipped) returns non-5xx with no SQL/stack leak`,
     status, `${offenders.length} failing, ${unreachable} unreachable (of ${publicRoutes.length})` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join(' | ')}` : ''));
+
+  for (const o of verdictLeakOffenders) notify('e_verdict_leak_sweep', 'P1', o.split(' — ')[0], `Public API route leaks a consensus verdict: ${o.split(' — ')[0]}`, o);
+  const verdictLeakStatus = verdictLeakOffenders.length > 0 ? 'FAIL' : unreachable > 0 ? 'UNVERIFIABLE' : 'PASS';
+  record('e_verdict_leak_sweep',
+    `every web/app/api/** public route (${publicRoutes.length} enumerated, ${adminRoutes.length} admin routes excluded by design — OD-61) carries no "verdict" or "witnesses" JSON key`,
+    verdictLeakStatus,
+    `${verdictLeakOffenders.length} leaking, ${unreachable} unreachable (of ${publicRoutes.length})` + (verdictLeakOffenders.length ? `: ${verdictLeakOffenders.slice(0, MAX_OFFENDERS).join(' | ')}` : ''));
 }
 
 // ---- (e2): #350 — an unknown IPO slug must 404, never resolve to a

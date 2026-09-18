@@ -253,6 +253,30 @@ export function classifyRouteResponse(routePath, status, bodyText) {
   return { routePath, fail: reasons.length > 0, reasons };
 }
 
+// ---- (e, OD-61 half): no PUBLIC route payload carries a verdict or a second value --------------
+// S7 (docs/design/s7-consensus-check-plan.md) half 2. The owner's words: "keep everything admin
+// only... no user should not see any disagreement." Reuses the SAME e_route_sweep loop and the
+// SAME already-fetched response text checkE() has in hand at the classifyRouteResponse call site
+// -- a second enumeration/fetch would drift out of sync with the first and double the outbound
+// traffic against a box that serves production (the plan's own "REUSE, measured" section).
+// MEASURED 2026-09-19: zero occurrences of "verdict"/"witnesses" in web/app/api/** today, so this
+// starts GREEN; the mutation test is adding either key to a public serializer and watching it fail.
+const VERDICT_LEAK_KEYS = ['verdict', 'witnesses'];
+
+export function classifyVerdictLeak(routePath, bodyText) {
+  const reasons = [];
+  const body = bodyText || '';
+  // A plain substring match on the raw JSON text (not a parsed-object key walk) so a leak is
+  // caught even if the key sits inside a stringified/escaped nested payload — the same
+  // "match the text, not a schema" posture SQL_LEAK_PATTERNS above uses.
+  for (const key of VERDICT_LEAK_KEYS) {
+    if (new RegExp(`["']${key}["']\\s*:`).test(body)) {
+      reasons.push(`response body contains a "${key}" JSON key — OD-61 requires this stay admin-only`);
+    }
+  }
+  return { routePath, fail: reasons.length > 0, reasons };
+}
+
 // ---- (f): conflict noise ratio ----------------------------------------------
 
 export function classifyConflictNoiseRatio(unresolvedTotal, noiseCount) {
