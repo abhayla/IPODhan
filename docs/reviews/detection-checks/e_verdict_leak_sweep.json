@@ -1,0 +1,14 @@
+{
+  "id": "e_verdict_leak_sweep",
+  "findingClass": "a public API route (web/app/api/**, excluding /api/admin/**) serves a \"verdict\" or \"witnesses\" JSON key -- OD-61: consensus disagreement must stay admin-only, never visible to a reader",
+  "failThreshold": "any enumerated public web/app/api/** route's response body contains a quoted \"verdict\" or \"witnesses\" key",
+  "severity": "P1",
+  "unverifiableWhen": "any enumerated public route is unreachable (shares the e_route_sweep loop's coverage -- a sweep with holes and no failures is BLIND, not green)",
+  "sourceTask": "S7 (docs/design/s7-consensus-check-plan.md) half 2, OD-61 (\"keep everything admin only... no user should not see any disagreement\")",
+  "scope": "every web/app/api/** route NOT under /api/admin/** (admin routes excluded by design -- disputes live on the admin surface)",
+  "consumer": "nightly detection-floor gate (scripts/audit-detection-floor.mjs --gate)",
+  "consumerReason": "reuses the existing e_route_sweep enumeration+fetch loop in the SAME script -- a second sweep script would drift out of sync with the route list and double outbound traffic against a box that serves production",
+  "auditScript": "scripts/audit-detection-floor.mjs --gate (checkE, inside the e_route_sweep loop)",
+  "selfTest": "scripts/tests/audit-detection-floor.test.mjs (OD-61 verdict-leak cases)",
+  "section": "checks"
+}

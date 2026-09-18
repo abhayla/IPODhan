@@ -22,6 +22,7 @@
     "audit:prod": "node scripts/audit-prod.mjs",
     "audit:schema-drift": "npx tsx scripts/assert-schema-drift.ts",
     "audit:row-key-constraints": "npx tsx scripts/assert-row-key-constraints.ts",
+    "audit:consensus-verdict": "npx tsx scripts/audit-consensus-verdict.ts",
     "audit:coverage": "node scripts/audit-ipo-coverage.mjs --gate",
     "audit:substance": "node scripts/audit-substance-plausibility.mjs --gate",
     "audit:data": "npm run audit:coverage && npm run audit:prod",
