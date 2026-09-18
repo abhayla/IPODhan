@@ -89,4 +89,74 @@ describe('computeVerdict', () => {
     const r2 = computeVerdict(answers, 2, 'MONEY');
     expect(r1).toEqual(r2);
   });
+
+  /**
+   * #789: MONEY agrees within 0.5% of the LARGER value, and a tolerant
+   * comparison is NOT TRANSITIVE. Comparing every answer against the FIRST one
+   * therefore does not mean "they all agree":
+   *
+   *   a=1000.000  b=1004.990  c=995.010
+   *   a~b true    a~c true    b~c FALSE   (b and c differ by ~1%)
+   *
+   * Under a pivot comparison that set reads CONFIRMED while two of its three
+   * sources disagree. A false CONFIRMED is worse than a DISPUTED: it asserts
+   * the sources checked each other and matched.
+   *
+   * 17 MAINBOARD fields have 3+ ranked sources with a tolerant family
+   * (12 MONEY + 5 RATIO), including price_range_min/max, lot_size and
+   * face_value -- the headline numbers on the site.
+   *
+   * Deliberately uses the non-transitive triple, not three equal values:
+   * three equal values pass a pivot implementation too and prove nothing.
+   */
+  it('#789: three MONEY witnesses where the OUTER TWO disagree are DISPUTED, not CONFIRMED', () => {
+    const answers = [
+      { rank: 1, source: 'DOC', value: '1000.00', at: '2026-09-19T10:00:00.000Z' },
+      { rank: 2, source: 'CHITTORGARH', value: '1004.99', at: '2026-09-19T10:01:00.000Z' },
+      { rank: 3, source: 'BSE', value: '995.01', at: '2026-09-19T10:02:00.000Z' },
+    ];
+    // Each outer value IS within 0.5% of the pivot, so a pivot comparison says CONFIRMED.
+    expect(computeVerdict(answers, 3, 'MONEY').verdict).toBe('DISPUTED');
+  });
+
+  it('#789: the pivot order must not change the verdict', () => {
+    const a = { rank: 1, source: 'DOC', value: '1004.99', at: '2026-09-19T10:00:00.000Z' };
+    const b = { rank: 2, source: 'CHITTORGARH', value: '995.01', at: '2026-09-19T10:01:00.000Z' };
+    const c = { rank: 3, source: 'BSE', value: '1000.00', at: '2026-09-19T10:02:00.000Z' };
+    // Same three values, the disagreeing pair first. A correct implementation is order-independent.
+    expect(computeVerdict([a, b, c], 3, 'MONEY').verdict).toBe('DISPUTED');
+    expect(computeVerdict([c, a, b], 3, 'MONEY').verdict).toBe('DISPUTED');
+  });
+
+  /**
+   * #789, the NON-ADJACENT case. The triple above happens to put the
+   * disagreeing pair next to each other, so an "adjacent pairs only"
+   * implementation passes it -- a mutation proved exactly that (10/10 green
+   * with the inner loop capped at i+1). This orders the SAME three values so
+   * the only disagreeing pair is FIRST and LAST:
+   *
+   *   995.01 , 1000.00 , 1004.99
+   *   adjacent: 995.01~1000.00 ok, 1000.00~1004.99 ok
+   *   non-adjacent: 995.01 vs 1004.99 -> ~1% apart, DISAGREE
+   *
+   * Only a genuine all-pairs comparison catches this.
+   */
+  it('#789: catches a disagreeing pair that is NOT adjacent (first vs last)', () => {
+    const answers = [
+      { rank: 1, source: 'BSE', value: '995.01', at: '2026-09-19T10:00:00.000Z' },
+      { rank: 2, source: 'DOC', value: '1000.00', at: '2026-09-19T10:01:00.000Z' },
+      { rank: 3, source: 'CHITTORGARH', value: '1004.99', at: '2026-09-19T10:02:00.000Z' },
+    ];
+    expect(computeVerdict(answers, 3, 'MONEY').verdict).toBe('DISPUTED');
+  });
+
+  it('#789: three witnesses that genuinely all agree are still CONFIRMED', () => {
+    const answers = [
+      { rank: 1, source: 'DOC', value: '1000.00', at: '2026-09-19T10:00:00.000Z' },
+      { rank: 2, source: 'CHITTORGARH', value: '1000.50', at: '2026-09-19T10:01:00.000Z' },
+      { rank: 3, source: 'BSE', value: '1001.00', at: '2026-09-19T10:02:00.000Z' },
+    ];
+    // Every PAIR is within 0.5% here, so the fix must not over-correct into DISPUTED.
+    expect(computeVerdict(answers, 3, 'MONEY').verdict).toBe('CONFIRMED');
+  });
 });

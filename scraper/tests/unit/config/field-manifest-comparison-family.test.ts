@@ -17,7 +17,30 @@ import path from 'path';
 
 const MANIFEST_PATH = path.join(__dirname, '../../../config/field-manifest.json');
 
-const VALID_FAMILIES = new Set(['MONEY', 'RATIO', 'IDENTITY', 'IDENTIFIER', 'DATE', 'BOOLEAN', 'SET', 'ABSTAIN']);
+/**
+ * READ from the manifest schema, never hardcoded.
+ *
+ * #782 caught this the hard way: adding the COUNT family updated the schema
+ * enum and the comparator union (the #786 parity test forces those two to move
+ * together) but NOT this constant, and two tests here failed on a change that
+ * was correct. A hardcoded copy of a list that lives elsewhere is a THIRD
+ * definition of one concept — the exact drift class #783 was filed about, and
+ * this file's own header says it reads the real manifest "so a drifted
+ * committed file is caught here, not silently accepted". It should hold itself
+ * to that too.
+ */
+const SCHEMA_PATH = path.join(__dirname, '../../../src/config/field-manifest-schema.ts');
+function validFamilies(): Set<string> {
+  const src = fs.readFileSync(SCHEMA_PATH, 'utf-8');
+  const m = src.match(/comparisonFamily:\s*z\.enum\(\[([^\]]+)\]\)/);
+  if (!m) throw new Error('could not find the comparisonFamily z.enum in field-manifest-schema.ts');
+  const found = new Set([...m[1].matchAll(/'([A-Z_]+)'/g)].map((x) => x[1]));
+  // Guards the guard: if the regex stops matching, an empty set would make
+  // every "is a known family" assertion below pass vacuously.
+  if (found.size < 8) throw new Error(`parsed only ${found.size} families from the schema enum`);
+  return found;
+}
+const VALID_FAMILIES = validFamilies();
 
 function loadManifest(): { fields: Record<string, any> } {
   return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'));

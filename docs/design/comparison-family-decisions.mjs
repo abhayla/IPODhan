@@ -92,9 +92,9 @@ export const NUMERIC_FAMILY_DECISIONS = {
   'ipo_details.retail_max_allottees': { family: 'MONEY', reason: 'a count of allottees — same tolerant-numeric treatment as the probe\'s SHARE_COUNT class' },
   'financial_statements.fiscal_year': { family: 'IDENTIFIER', reason: 'a calendar year (e.g. 2024) — exact match is correct; a 0.5% MONEY tolerance on a year is meaningless and would mask a genuinely wrong year' },
   'ipo_risk_factors.seq': { family: 'IDENTIFIER', reason: 'a display-order integer, not an amount (schema.ts comment: "re-derived from array position on every write and no longer load-bearing for identity") — exact match, no tolerance' },
-  'brlm_track_record.issues_3y': { family: 'MONEY', reason: 'a count of issues brought out in the last 3 years — same tolerant-numeric treatment as the probe\'s SHARE_COUNT class' },
-  'brlm_track_record.closed_below_issue_price': { family: 'MONEY', reason: 'a count of issues that closed below their issue price — same tolerant-numeric treatment as the probe\'s SHARE_COUNT class' },
-  'anchor_investors.anchor_investors_count': { family: 'MONEY', reason: 'a count of anchor investors — same tolerant-numeric treatment as the probe\'s SHARE_COUNT class' },
+  'brlm_track_record.issues_3y': { family: 'COUNT', reason: 'a DISCRETE count, not a money amount (#782): the MONEY family 0.5% relative tolerance swallows an off-by-one above ~200 (199 vs 200 is exactly 0.0050), and a count has no rounding to tolerate' },
+  'brlm_track_record.closed_below_issue_price': { family: 'COUNT', reason: 'a DISCRETE count, not a money amount (#782): the MONEY family 0.5% relative tolerance swallows an off-by-one above ~200 (199 vs 200 is exactly 0.0050), and a count has no rounding to tolerate' },
+  'anchor_investors.anchor_investors_count': { family: 'COUNT', reason: 'a DISCRETE count, not a money amount (#782): the MONEY family 0.5% relative tolerance swallows an off-by-one above ~200 (199 vs 200 is exactly 0.0050), and a count has no rounding to tolerate' },
 };
 
 // ---- (a) plain text/varchar fields: IDENTITY vs IDENTIFIER (42 fields) ----

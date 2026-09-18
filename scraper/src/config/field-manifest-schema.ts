@@ -65,7 +65,7 @@ export const fieldManifestEntrySchema = z
     // never hand-assigned. ABSTAIN is a real family, not an omission: it marks fields (free
     // prose, structured lists of objects) that opt OUT of consensus entirely rather than being
     // marked permanently DISPUTED on formatting/ordering noise.
-    comparisonFamily: z.enum(['MONEY', 'RATIO', 'IDENTITY', 'IDENTIFIER', 'DATE', 'BOOLEAN', 'SET', 'ABSTAIN']),
+    comparisonFamily: z.enum(['MONEY', 'RATIO', 'IDENTITY', 'IDENTIFIER', 'DATE', 'BOOLEAN', 'SET', 'COUNT', 'ABSTAIN']),
   })
   .strict();
 
