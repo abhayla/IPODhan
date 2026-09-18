@@ -7,21 +7,21 @@
  * (`scraper/src/services/field-plan-repository.ts`) and is not importable from
  * `web/`; this is a small read-only twin, not a reuse of that one.
  *
- * STALE IS `now > verify_due_at`, PER FIELD. Not a global "stale after N days"
- * constant — the card closed that fork after measuring what a constant would
- * do: at three days a LISTED IPO's issue price reads "being rechecked" forever,
- * three days after listing, because nothing re-reads a final price and nothing
- * should. Whatever sets `verify_due_at` already knows a GMP is due in hours and
- * a settled issue price is never due again, so a NULL due date means settled,
- * not stale.
+ * S2 (docs/design/s2-witnesses-plan.md) DROPPED `verify_due_at` and its four
+ * sibling verify* columns from `ipo_field_plan` — 13,512/13,512 plan rows had
+ * verify_due_at NULL, no scraper write path ever populated any of the five,
+ * and the re-read loop that would have (item 9) was never built (OD-56
+ * supersedes it). `FieldProvenance.isStale`, whose only input was that
+ * column, is dropped with it — plan's option (a): drop the field, never
+ * hard-code false, which would type-check as a permanently-false input a
+ * later reader would trust.
  *
  * THE CONFIRMATION DATE IS PROVISIONAL, and that is a known gap, not an
  * oversight. `ipo_field_plan` has no column meaning "the date this value was
  * last reconfirmed correct" as distinct from `updated_at`, which any write to
- * the row bumps — a failed re-attempt, an unrelated verify_state change. So the
- * date shown can drift forward on churn the row itself would not call a
- * reconfirmation. The fix is a `chosen_confirmed_at` column in item 5's schema,
- * not a guess here.
+ * the row bumps. So the date shown can drift forward on churn the row itself
+ * would not call a reconfirmation. The fix is a `chosen_confirmed_at` column
+ * in item 5's schema, not a guess here.
  */
 
 import { eq } from 'drizzle-orm';
@@ -42,8 +42,6 @@ export interface FieldProvenance {
   chosenDocumentType: string | null;
   /** PROVISIONAL — see the file header. Null when the row has never been written. */
   confirmedAt: Date | null;
-  /** `now > verify_due_at`. A null due date is settled, never stale. */
-  isStale: boolean;
 }
 
 /** Set by summariseFieldGroup when a block's fields do not share one source. */
@@ -67,14 +65,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
    * A field the plan has not supplied is left out rather than returned with
    * nulls. There is nothing truthful to say about it yet, and an entry with a
    * null source would reach the page as a line that names no source.
-   *
-   * `now` is a parameter so the staleness comparison is testable without
-   * faking the clock.
    */
-  async getIPOProvenanceMap(
-    ipoId: string,
-    now: Date = new Date()
-  ): Promise<Record<string, FieldProvenance>> {
+  async getIPOProvenanceMap(ipoId: string): Promise<Record<string, FieldProvenance>> {
     const rows = await this.getFromCache(
       provenanceCacheKey(ipoId),
       async () =>
@@ -86,7 +78,6 @@ export class IpoFieldPlanRepository extends BaseRepository {
             state: ipoFieldPlan.state,
             chosenSource: ipoFieldPlan.chosenSource,
             chosenDocumentType: ipoFieldPlan.chosenDocumentType,
-            verifyDueAt: ipoFieldPlan.verifyDueAt,
             updatedAt: ipoFieldPlan.updatedAt,
           })
           .from(ipoFieldPlan)
@@ -105,7 +96,6 @@ export class IpoFieldPlanRepository extends BaseRepository {
       // same table.field never collapse onto one entry.
       const rowKey: string = (row.rowKey as string | undefined) ?? '';
       const key = rowKey ? `${row.tableName}.${rowKey}.${row.fieldName}` : `${row.tableName}.${row.fieldName}`;
-      const due = row.verifyDueAt ? new Date(row.verifyDueAt) : null;
       out[key] = {
         key,
         tableName: row.tableName,
@@ -113,7 +103,6 @@ export class IpoFieldPlanRepository extends BaseRepository {
         chosenSource: row.chosenSource,
         chosenDocumentType: row.chosenDocumentType ?? null,
         confirmedAt: row.updatedAt ? new Date(row.updatedAt) : null,
-        isStale: due !== null && now.getTime() > due.getTime(),
       };
     }
     return out;
@@ -152,6 +141,5 @@ export function summariseFieldGroup(
     chosenSource: unanimous ? present[0].chosenSource : MULTIPLE_SOURCES,
     chosenDocumentType: unanimous ? present[0].chosenDocumentType : null,
     confirmedAt: oldest,
-    isStale: present.some((p) => p.isStale),
   };
 }

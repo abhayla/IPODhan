@@ -1492,6 +1492,17 @@ export const fieldSources = pgTable(
     // Data lineage (structured metadata)
     dataLineage: jsonb('data_lineage'), // {method: 'API'|'SCRAPE', endpoint: '/xyz', confidence: 95}
 
+    // S2 (docs/design/s2-witnesses-plan.md): the OTHER answers seen for this field, besides
+    // the winning source/value above. jsonb, not a row per witness, because
+    // unique_field_source_per_ipo below makes one row per (ipo, table, rowKey, field) BY
+    // CONSTRUCTION — a witness table would need to widen or drop that constraint, which is
+    // exactly the guarantee S2 was written to keep. Shape: [{source, value, at, docType?}].
+    witnesses: jsonb('witnesses'),
+    // S2: the consensus verdict for this field — CONFIRMED | DISPUTED | UNCONFIRMED |
+    // SINGLE_SOURCE | NO_WITNESS. Nullable: every row written before this slice predates the
+    // model, and a NOT NULL default would assert a verdict nothing computed for them.
+    verdict: varchar('verdict', { length: 16 }),
+
     // Timestamps
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
     updatedBy: varchar('updated_by', { length: 255 }), // Admin username or 'SYSTEM'
@@ -1743,12 +1754,13 @@ export const ipoFieldPlan = pgTable(
     claimedAt: timestamp('claimed_at'),
     claimToken: varchar('claim_token', { length: 64 }),
 
-    // ---- §3's verification state, scheduled rather than accidental ----
-    verifyDueAt: timestamp('verify_due_at'),
-    verifyState: varchar('verify_state', { length: 32 }),
-    verifySource: varchar('verify_source', { length: 32 }),
-    verifyValue: text('verify_value'),
-    disagreementCount: integer('disagreement_count').default(0).notNull(),
+    // S2 (docs/design/s2-witnesses-plan.md): the five verify* columns that used to live here
+    // (verify_due_at, verify_state, verify_source, verify_value, disagreement_count) are
+    // DROPPED. Measured on staging this session: 13,512/13,512 plan rows had verify_due_at
+    // NULL, verify_state/verify_source/verify_value 0/13,512, disagreement_count > 0 in 0
+    // rows. No scraper write path ever populated them — the re-read loop that would have
+    // (item 9) was never built, and OD-56 supersedes it. Their only reader
+    // (web/lib/repositories/ipo-field-plan-repository.ts) is updated in the same change.
 
     // ---- so the plan is RECONCILED when the manifest changes, never regenerated per cycle ----
     manifestVersion: integer('manifest_version').notNull(),
@@ -1770,7 +1782,7 @@ export const ipoFieldPlan = pgTable(
     ipoIdIdx: index('idx_ipo_field_plan_ipo_id').on(table.ipoId),
     // The walk's driving query: "which rows are due now, oldest first".
     stateNextDueIdx: index('idx_ipo_field_plan_state_next_due').on(table.state, table.nextDueAt),
-    verifyDueIdx: index('idx_ipo_field_plan_verify_due').on(table.verifyDueAt),
+    // idx_ipo_field_plan_verify_due DROPPED in S2 along with verify_due_at (see above).
     // Reconciliation after a manifest version bump reads by version, not by IPO.
     manifestVersionIdx: index('idx_ipo_field_plan_manifest_version').on(table.manifestVersion),
     // #762 (S8) CRITICAL-2 fix: the restored reclaim triggers (2 and 3) filter

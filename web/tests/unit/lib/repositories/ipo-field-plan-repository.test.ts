@@ -2,12 +2,13 @@
  * Item 21 slice 4 — the read side of ipo_field_plan (lane A's item 5 table,
  * on main since 2026-09-11).
  *
- * Stale is `now > verify_due_at`, per field. The card closed that fork on
- * purpose: a single global "stale after N days" constant is wrong at every
- * value it could take. At 3 days a LISTED IPO's issue price would read "being
- * rechecked" forever, three days after listing, because nothing re-reads a
- * final price and nothing should. A NULL verify_due_at means "never due
- * again" — that is not stale, it is settled.
+ * S2 (docs/design/s2-witnesses-plan.md): `verify_due_at` and its four sibling
+ * verify* columns are DROPPED from `ipo_field_plan` — 13,512/13,512 plan rows
+ * had verify_due_at NULL, no scraper write path ever populated them, and the
+ * re-read loop that would have was never built (OD-56 supersedes it). This
+ * repository's `isStale` computation read only that column, so it is dropped
+ * too (plan's option (a): drop the field, never hard-code false — a
+ * permanently-false input is dead logic a later reader would trust).
  *
  * The db is a stub: these guards are about what the repository DOES with rows,
  * and a stub cannot hide a wrong comparison the way a live table with one happy
@@ -20,7 +21,6 @@ import {
 } from '@/lib/repositories/ipo-field-plan-repository';
 
 const IPO = '00000000-0000-4000-8000-000000000001';
-const NOW = new Date('2026-09-11T00:00:00Z');
 
 type Row = Record<string, unknown>;
 
@@ -46,8 +46,6 @@ function row(over: Row = {}): Row {
     state: 'SUPPLIED',
     chosenSource: 'DOC',
     chosenDocumentType: 'RHP',
-    verifyDueAt: new Date('2026-09-20T00:00:00Z'),
-    verifyState: 'CONFIRMED',
     updatedAt: new Date('2026-09-06T00:00:00Z'),
     ...over,
   };
@@ -55,44 +53,36 @@ function row(over: Row = {}): Row {
 
 describe('IpoFieldPlanRepository.getIPOProvenanceMap', () => {
   it('keys by table.column, the same key the manifest and the field groups use', async () => {
-    const map = await makeRepo([row()]).getIPOProvenanceMap(IPO, NOW);
+    const map = await makeRepo([row()]).getIPOProvenanceMap(IPO);
     expect(Object.keys(map)).toEqual(['ipos.issue_size']);
   });
 
   it('carries the source and document type the plan actually chose', async () => {
-    const map = await makeRepo([row()]).getIPOProvenanceMap(IPO, NOW);
+    const map = await makeRepo([row()]).getIPOProvenanceMap(IPO);
     expect(map['ipos.issue_size'].chosenSource).toBe('DOC');
     expect(map['ipos.issue_size'].chosenDocumentType).toBe('RHP');
   });
 
-  it('is not stale while verify_due_at is in the future', async () => {
-    const map = await makeRepo([row()]).getIPOProvenanceMap(IPO, NOW);
-    expect(map['ipos.issue_size'].isStale).toBe(false);
-  });
-
-  it('is stale once now has passed verify_due_at', async () => {
-    const rows = [row({ verifyDueAt: new Date('2026-09-10T23:59:00Z') })];
-    const map = await makeRepo(rows).getIPOProvenanceMap(IPO, NOW);
-    expect(map['ipos.issue_size'].isStale).toBe(true);
-  });
-
-  it('treats a NULL verify_due_at as settled, never as stale', async () => {
-    const map = await makeRepo([row({ verifyDueAt: null })]).getIPOProvenanceMap(IPO, NOW);
-    expect(map['ipos.issue_size'].isStale).toBe(false);
+  it('T3: the returned provenance carries no isStale key at all — the field is dropped, not hard-coded false', async () => {
+    const map = await makeRepo([row()]).getIPOProvenanceMap(IPO);
+    expect('isStale' in map['ipos.issue_size']).toBe(false);
+    expect(Object.keys(map['ipos.issue_size']).sort()).toEqual(
+      ['chosenDocumentType', 'chosenSource', 'confirmedAt', 'fieldName', 'key', 'tableName'].sort()
+    );
   });
 
   it('drops a field the plan has not supplied — there is nothing truthful to say about it', async () => {
     const rows = [row({ state: 'PENDING', chosenSource: null, chosenDocumentType: null })];
-    expect(await makeRepo(rows).getIPOProvenanceMap(IPO, NOW)).toEqual({});
+    expect(await makeRepo(rows).getIPOProvenanceMap(IPO)).toEqual({});
   });
 
   it('drops a row whose state is SUPPLIED but which names no source — the same silence', async () => {
     const rows = [row({ chosenSource: null })];
-    expect(await makeRepo(rows).getIPOProvenanceMap(IPO, NOW)).toEqual({});
+    expect(await makeRepo(rows).getIPOProvenanceMap(IPO)).toEqual({});
   });
 
   it('returns an empty map rather than throwing when the IPO has no plan rows at all', async () => {
-    expect(await makeRepo([]).getIPOProvenanceMap(IPO, NOW)).toEqual({});
+    expect(await makeRepo([]).getIPOProvenanceMap(IPO)).toEqual({});
   });
 
   it('keeps two rows for the same table.field distinct when they carry different row keys — a multi-row table (e.g. financial_statements per fiscal year) must not collapse onto one key', async () => {
@@ -112,7 +102,7 @@ describe('IpoFieldPlanRepository.getIPOProvenanceMap', () => {
         updatedAt: new Date('2026-09-05T00:00:00Z'),
       }),
     ];
-    const map = await makeRepo(rows).getIPOProvenanceMap(IPO, NOW);
+    const map = await makeRepo(rows).getIPOProvenanceMap(IPO);
     const keys = Object.keys(map).sort();
     expect(keys).toEqual(['financial_statements.FY2024.revenue', 'financial_statements.FY2025.revenue']);
     expect(map['financial_statements.FY2024.revenue'].chosenSource).toBe('DOC');
@@ -120,7 +110,7 @@ describe('IpoFieldPlanRepository.getIPOProvenanceMap', () => {
   });
 
   it('resolves a singleton field (row_key "") exactly as before, keyed table.field with no row-key segment', async () => {
-    const map = await makeRepo([row({ rowKey: '' })]).getIPOProvenanceMap(IPO, NOW);
+    const map = await makeRepo([row({ rowKey: '' })]).getIPOProvenanceMap(IPO);
     expect(Object.keys(map)).toEqual(['ipos.issue_size']);
     expect(map['ipos.issue_size'].chosenSource).toBe('DOC');
   });
@@ -134,7 +124,6 @@ describe('summariseFieldGroup — one line under a block that shows several fiel
     chosenSource: 'DOC',
     chosenDocumentType: 'RHP',
     confirmedAt: new Date('2026-09-06T00:00:00Z'),
-    isStale: false,
   };
   const older = { ...fresh, key: 'ipo_details.fresh_issue', fieldName: 'fresh_issue', confirmedAt: new Date('2026-08-28T00:00:00Z') };
   const map = { [fresh.key]: fresh, [older.key]: older };
@@ -144,9 +133,9 @@ describe('summariseFieldGroup — one line under a block that shows several fiel
     expect(got?.confirmedAt).toEqual(new Date('2026-08-28T00:00:00Z'));
   });
 
-  it('is stale when ANY field in the block is stale, never only when all of them are', () => {
-    const withStale = { ...map, [older.key]: { ...older, isStale: true } };
-    expect(summariseFieldGroup(withStale, [fresh.key, older.key])?.isStale).toBe(true);
+  it('the summarised line carries no isStale key either', () => {
+    const got = summariseFieldGroup(map, [fresh.key, older.key]);
+    expect(got && 'isStale' in got).toBe(false);
   });
 
   it('names the source only when every field in the block agrees', () => {
