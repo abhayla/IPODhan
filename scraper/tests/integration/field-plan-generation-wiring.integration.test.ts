@@ -82,9 +82,9 @@ async function runGenerationPass(
   repo: IpoFieldPlanRepository,
   ipo: PlanIpo,
   manifest = loadFieldManifest()
-): Promise<{ inserted: number }> {
+): Promise<{ inserted: number; updated: number }> {
   const rows = generateFieldPlan(ipo, manifest);
-  if (rows.length === 0) return { inserted: 0 };
+  if (rows.length === 0) return { inserted: 0, updated: 0 };
   return repo.upsertGeneratedRows(
     rows.map((r) => ({
       ipoId: r.ipoId,
@@ -252,44 +252,71 @@ describe.skipIf(!DATABASE_URL)(`field-plan generation wiring (${RUN_LABEL})`, ()
     }
   );
 
-  it('a manifest_version change reconciles (adds the new row) rather than duplicating existing ones', async () => {
-    const manifest = loadFieldManifest();
-    const ipo: PlanIpo = { id: MAINBOARD_IPO_ID, segment: 'MAINBOARD', listingExchanges: ['NSE', 'BSE'] };
+  it(
+    'a manifest_version change reconciles: adds the new row AND re-ranks the existing ones ' +
+      'in place, without duplicating any (item 3 slice S7, #732)',
+    async () => {
+      const manifest = loadFieldManifest();
+      const ipo: PlanIpo = { id: MAINBOARD_IPO_ID, segment: 'MAINBOARD', listingExchanges: ['NSE', 'BSE'] };
 
-    const first = await runGenerationPass(repo, ipo, manifest);
-    expect(first.inserted).toBeGreaterThan(0);
-    const beforeCount = (await rowsFor(MAINBOARD_IPO_ID)).length;
+      const first = await runGenerationPass(repo, ipo, manifest);
+      expect(first.inserted).toBeGreaterThan(0);
+      const beforeRows = await rowsFor(MAINBOARD_IPO_ID);
+      const beforeCount = beforeRows.length;
+      const beforeIds = new Set(beforeRows.map((r) => r.id));
+      const originalRowBefore = beforeRows.find(
+        (r) => r.tableName === 'ipos' && r.fieldName === 'issue_size'
+      )!;
 
-    const bumpedManifest = {
-      ...manifest,
-      version: manifest.version + 1,
-      fields: {
-        ...manifest.fields,
-        'ipo_details.s4_reconcile_probe_field': {
-          rank: { MAINBOARD: ['DOC'] },
+      const bumpedManifest = {
+        ...manifest,
+        version: manifest.version + 1,
+        fields: {
+          ...manifest.fields,
+          'ipo_details.s4_reconcile_probe_field': {
+            rank: { MAINBOARD: ['DOC'] },
+          },
         },
-      },
-    } as unknown as typeof manifest;
+      } as unknown as typeof manifest;
 
-    const second = await runGenerationPass(repo, ipo, bumpedManifest);
-    // Exactly one new row: the probe field. Every field already planned
-    // under the OLD manifest version still exists at that (ipo, table,
-    // row_key, field) key, so the conflict target skips all of them.
-    expect(second.inserted).toBe(1);
+      const second = await runGenerationPass(repo, ipo, bumpedManifest);
+      // Exactly one new row: the probe field. Every field already planned
+      // under the OLD manifest version still exists at that (ipo, table,
+      // row_key, field) key, so the conflict target never inserts a SECOND
+      // row for any of them -- the no-duplicates guarantee this test
+      // protects. Since item 3 slice S7 (#732) those existing rows are no
+      // longer left alone at their stale version: the same conflict that
+      // used to no-op now re-ranks each of them to the bumped version (their
+      // ranks are unchanged here because the bump did not touch any
+      // existing field's rank array, only added a new field).
+      expect(second.inserted).toBe(1);
+      expect(second.updated).toBe(beforeCount);
 
-    const afterRows = await rowsFor(MAINBOARD_IPO_ID);
-    expect(afterRows.length).toBe(beforeCount + 1);
-    const probeRow = afterRows.find(
-      (r) => r.tableName === 'ipo_details' && r.fieldName === 's4_reconcile_probe_field'
-    );
-    expect(probeRow).toBeDefined();
-    expect(probeRow!.manifestVersion).toBe(bumpedManifest.version);
+      const afterRows = await rowsFor(MAINBOARD_IPO_ID);
+      // Row count rose by exactly 1 (the new probe field) -- no duplicates
+      // were created for any of the beforeCount rows that got re-ranked.
+      expect(afterRows.length).toBe(beforeCount + 1);
+      expect(afterRows.filter((r) => beforeIds.has(r.id)).length).toBe(beforeCount);
 
-    // The old rows are untouched -- still stamped with the ORIGINAL manifest
-    // version, not silently bumped to match the new one.
-    const originalRow = afterRows.find((r) => r.tableName === 'ipos' && r.fieldName === 'issue_size');
-    expect(originalRow!.manifestVersion).toBe(manifest.version);
-  });
+      const probeRow = afterRows.find(
+        (r) => r.tableName === 'ipo_details' && r.fieldName === 's4_reconcile_probe_field'
+      );
+      expect(probeRow).toBeDefined();
+      expect(probeRow!.manifestVersion).toBe(bumpedManifest.version);
+
+      // The pre-existing row is re-ranked IN PLACE -- same row id, ranks
+      // unchanged (the bump did not touch this field's rank array), but its
+      // manifest_version now matches the bump.
+      const originalRowAfter = afterRows.find(
+        (r) => r.tableName === 'ipos' && r.fieldName === 'issue_size'
+      )!;
+      expect(originalRowAfter.id).toBe(originalRowBefore.id);
+      expect(originalRowAfter.rank1Source).toBe(originalRowBefore.rank1Source);
+      expect(originalRowAfter.rank2Source).toBe(originalRowBefore.rank2Source);
+      expect(originalRowAfter.rank3Source).toBe(originalRowBefore.rank3Source);
+      expect(originalRowAfter.manifestVersion).toBe(bumpedManifest.version);
+    }
+  );
 
   it('an empty generator result (flag semantics: nothing to plan) writes zero rows', async () => {
     // Mirrors the flag-OFF caller behaviour: the document-cycle pass is
