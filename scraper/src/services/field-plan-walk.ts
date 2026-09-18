@@ -717,8 +717,12 @@ async function attemptOneField(
     } catch (error) {
       // TRANSIENT: a throw is a socket, a timeout, a 503 -- this minute's
       // fact, not the field's. Never an abandoned claim either: falling out
-      // of the walk here would strand `claimed_at`.
-      failures.push(`rank${rank}:${source}:${causeOf(error)}`);
+      // of the walk here would strand `claimed_at`. Tagged `:THROWN:` so
+      // `classifyFailure` (#785) can tell "the source could not even be
+      // asked" apart from a transient CHECK_FAILED reason string, which
+      // shares the same `rank<N>:<source>:...` shape but means something
+      // different (the source WAS reached and answered).
+      failures.push(`rank${rank}:${source}:THROWN:${causeOf(error)}`);
       sawTransientFailure = true;
       continue;
     }
@@ -732,7 +736,10 @@ async function attemptOneField(
       // `transient` defaults to TRUE when the fetcher does not say: see the
       // field's doc comment for why the two mistakes are not symmetric.
       const isTransient = answer.transient !== false;
-      failures.push(`rank${rank}:${source}:${answer.reason}${isTransient ? '' : ' (definitive)'}`);
+      // Tagged `:CHECK_FAILED:` (definitive suffix unchanged) so a transient
+      // instance is unambiguously distinguishable from a thrown error above
+      // (#785) — both otherwise share the same `rank<N>:<source>:...` shape.
+      failures.push(`rank${rank}:${source}:CHECK_FAILED:${answer.reason}${isTransient ? '' : ' (definitive)'}`);
       if (isTransient) sawTransientFailure = true;
       continue;
     }
@@ -1360,24 +1367,42 @@ function countsOf(r: FieldPlanWalkResult) {
 }
 
 /**
- * OD-62's reason codes (S4, #779): why a plan row did not end SUPPLIED.
+ * OD-62's reason codes (S4, #779; remapped #785): why a plan row did not end SUPPLIED.
  *
  * `SOURCE_UNREACHABLE` — the source could not even be asked: no fetcher
  *   registered for it, or the ask itself threw (socket/timeout/5xx). A fact
  *   about this minute/this deployment, not about the field.
  * `EXTRACTION_FAILED` — a document was held and read, but the field could
  *   not be gotten out of it: a DEFINITIVE CHECK_FAILED (`transient: false`).
- * `FAILED_VALIDATION` — a value WAS produced and reached consolidation, but
- *   a rule (the field-priority matrix or a validation rule) rejected it in
- *   favour of a different source's value.
+ * `FAILED_VALIDATION` — a value was read but FAILED ITS SHAPE CHECK (OD-62,
+ *   verbatim) — e.g. a 7-digit phone number, a CIN that is not 21 characters.
+ *   The value itself was bad. NEVER assigned to a priority loss — see
+ *   `LOST_TO_HIGHER_PRIORITY` below. `field_extraction_failures.ruleId`
+ *   already exists for the shape-check path this code names.
  * `NOT_PUBLISHED_YET` — the authoritative source has not printed this field
  *   yet (NOT_AVAILABLE_YET); not a failure at all, just not time yet.
+ * `LOST_TO_HIGHER_PRIORITY` (#785) — a value WAS produced, reached
+ *   consolidation, and was FINE, but the field-priority matrix kept a
+ *   different source's value instead. A healthy, expected outcome — the
+ *   system working as designed — never something to "fix".
+ * `COVERAGE_GAP` (#785) — a TRANSIENT CHECK_FAILED where a document WAS held
+ *   and the fetcher WAS reached, but it returned a real reason (e.g. "no
+ *   documentType in manifest", "no document provenance"). A config/manifest
+ *   gap, not a network/deployment fact — resolves with a manifest fix, not
+ *   by waiting for the network to recover.
+ * `UNCLASSIFIED` (#785) — the cause did not match any named shape above. The
+ *   raw cause is still recorded in `cause`, so this is a VISIBLE, countable
+ *   gap rather than a confident wrong answer silently defaulted into one of
+ *   the other codes.
  */
 export const FIELD_PLAN_REASON_CODES = [
   'SOURCE_UNREACHABLE',
   'EXTRACTION_FAILED',
   'FAILED_VALIDATION',
   'NOT_PUBLISHED_YET',
+  'LOST_TO_HIGHER_PRIORITY',
+  'COVERAGE_GAP',
+  'UNCLASSIFIED',
 ] as const;
 export type FieldPlanReasonCode = (typeof FIELD_PLAN_REASON_CODES)[number];
 
@@ -1389,8 +1414,14 @@ export type FieldPlanReasonCode = (typeof FIELD_PLAN_REASON_CODES)[number];
  * recent attempt — the one that decided the fallthrough — is the one whose
  * cause is kept. Returns `null` when `failures` is empty (the EXHAUSTED
  * fallthrough on an all-NOT_PRINTED pass pushes nothing).
+ *
+ * Exported for unit testing the UNCLASSIFIED fallback directly (#785) — no
+ * live push site in this file currently produces an untagged cause (every
+ * real shape is tagged `:NO_FETCHER_REGISTERED`, `:THROWN:` or
+ * `:CHECK_FAILED:`), so the fallback is deliberately tested at this level
+ * rather than contorting the integration test to fabricate an impossible one.
  */
-function classifyFailure(failures: readonly string[]): { reasonCode: FieldPlanReasonCode; cause: string } | null {
+export function classifyFailure(failures: readonly string[]): { reasonCode: FieldPlanReasonCode; cause: string } | null {
   const cause = failures[failures.length - 1];
   if (cause === undefined) return null;
 
@@ -1403,21 +1434,43 @@ function classifyFailure(failures: readonly string[]): { reasonCode: FieldPlanRe
   if (cause.endsWith(' (definitive)')) {
     return { reasonCode: 'EXTRACTION_FAILED', cause };
   }
-  // Every other CHECK_FAILED cause pushed by the rank loop or `tryProvisional`
-  // (a thrown error's message, or a transient CHECK_FAILED reason with no
-  // document held — e.g. "no documentType in manifest", "no document
-  // provenance") is this-minute/coverage-gap in nature: the source could not
-  // be asked or answered definitively, so it reads as unreachable rather than
-  // as an extraction failure or a validation rejection.
-  return { reasonCode: 'SOURCE_UNREACHABLE', cause };
+  // A transient CHECK_FAILED is tagged `:CHECK_FAILED:` at the push site
+  // (#785) — a document WAS held and the fetcher WAS reached; it just could
+  // not resolve the field from what it found (a manifest/config gap, e.g.
+  // "no documentType in manifest"). This is NOT the same fact as "the
+  // source could not be asked" (a throw, or NO_FETCHER_REGISTERED).
+  if (cause.includes(':CHECK_FAILED:')) {
+    return { reasonCode: 'COVERAGE_GAP', cause };
+  }
+  // A thrown error's cause is tagged `:THROWN:` at the push site (#785) — a
+  // genuine this-minute fact: socket, timeout, 5xx — the source could not
+  // even be asked.
+  if (cause.includes(':THROWN:')) {
+    return { reasonCode: 'SOURCE_UNREACHABLE', cause };
+  }
+  // Nothing above recognised this shape. Recording it as SOURCE_UNREACHABLE
+  // (or any other named code) would be a confident wrong answer that is
+  // invisible forever; UNCLASSIFIED keeps the raw cause and makes the gap
+  // countable (#785 defect 2's "visible gap" fix).
+  return { reasonCode: 'UNCLASSIFIED', cause };
 }
 
 /**
- * The write REACHED consolidation but a rule (the field-priority matrix)
- * rejected it in favour of a different source's already-stored value — see
- * `checkConsolidatorAgreed`'s `reason` string, always of this shape.
+ * The write REACHED consolidation but was NOT accepted. Two different facts
+ * share this codepath and must never share a reason code (#785):
+ *
+ *   - the field-priority matrix kept a DIFFERENT source's value instead —
+ *     the value itself was FINE, just outranked. `LOST_TO_HIGHER_PRIORITY`.
+ *   - a genuine shape-check rejected the value itself. `FAILED_VALIDATION`,
+ *     exactly as OD-62 defines it. `checkConsolidatorAgreed`'s `reason`
+ *     string for a priority loss always contains "matrix priority" (see the
+ *     fixture at `consolidatedUpsertResultFixture`/`checkConsolidatorAgreed`)
+ *     — anything else on this path is treated as a shape-check rejection.
  */
 function classifyValidationRejection(reason: string): { reasonCode: FieldPlanReasonCode; cause: string } {
+  if (reason.includes('matrix priority')) {
+    return { reasonCode: 'LOST_TO_HIGHER_PRIORITY', cause: reason };
+  }
   return { reasonCode: 'FAILED_VALIDATION', cause: reason };
 }
 

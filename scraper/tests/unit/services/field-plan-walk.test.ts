@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   walkFieldPlanForIPO,
+  classifyFailure,
   type FieldFetcher,
   type FieldPlanWalkDeps,
 } from '../../../src/services/field-plan-walk.js';
@@ -1864,5 +1865,51 @@ describe('field-plan walk -- S3b-2 the comparator decides, verdict is written (d
 
     expect(result.fieldsSupplied).toBe(1);
     expect(trackWitnessVerdict).not.toHaveBeenCalled();
+  });
+});
+
+// #785: classifyFailure's reason-code remap, unit-tested directly on the exported classifier.
+// Every real push site in field-plan-walk.ts now tags its cause (:NO_FETCHER_REGISTERED,
+// :THROWN:, :CHECK_FAILED:) -- these unit tests exercise the classifier's own boundaries,
+// including the UNCLASSIFIED fallback no live code path currently reaches.
+describe('classifyFailure (#785 reason-code remap)', () => {
+  it('returns null for an empty failures array (the all-NOT_PRINTED EXHAUSTED fallthrough)', () => {
+    expect(classifyFailure([])).toBeNull();
+  });
+
+  it('classifies a NO_FETCHER_REGISTERED cause as SOURCE_UNREACHABLE', () => {
+    const result = classifyFailure(['rank1:GHOST:NO_FETCHER_REGISTERED']);
+    expect(result?.reasonCode).toBe('SOURCE_UNREACHABLE');
+  });
+
+  it('classifies a thrown-error cause as SOURCE_UNREACHABLE', () => {
+    const result = classifyFailure(['rank1:NSE:THROWN:socket hang up']);
+    expect(result?.reasonCode).toBe('SOURCE_UNREACHABLE');
+    expect(result?.cause).toBe('rank1:NSE:THROWN:socket hang up');
+  });
+
+  it('classifies a definitive CHECK_FAILED as EXTRACTION_FAILED', () => {
+    const result = classifyFailure(['rank1:NSE:CHECK_FAILED:field not present in the held RHP (definitive)']);
+    expect(result?.reasonCode).toBe('EXTRACTION_FAILED');
+  });
+
+  it('classifies a transient CHECK_FAILED (document held, real reason) as COVERAGE_GAP, not SOURCE_UNREACHABLE', () => {
+    const result = classifyFailure(['rank1:NSE:CHECK_FAILED:no documentType in manifest']);
+    expect(result?.reasonCode).toBe('COVERAGE_GAP');
+    expect(result?.reasonCode).not.toBe('SOURCE_UNREACHABLE');
+  });
+
+  it('classifies an untagged/unrecognised cause shape as UNCLASSIFIED, preserving the raw cause', () => {
+    const result = classifyFailure(['some future cause shape nothing above recognises']);
+    expect(result?.reasonCode).toBe('UNCLASSIFIED');
+    expect(result?.cause).toBe('some future cause shape nothing above recognises');
+  });
+
+  it('classifies using only the LAST entry when failures holds several ranks worth of causes', () => {
+    const result = classifyFailure([
+      'rank1:NSE:THROWN:timeout',
+      'rank2:BSE:CHECK_FAILED:no document provenance',
+    ]);
+    expect(result?.reasonCode).toBe('COVERAGE_GAP');
   });
 });
