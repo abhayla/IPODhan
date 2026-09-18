@@ -1769,6 +1769,19 @@ export const ipoFieldPlan = pgTable(
     // 'registry:<version>' | 'override:<id>' (S4); null on rows written before this slice.
     policyOrigin: varchar('policy_origin', { length: 64 }),
 
+    // ---- why the field could not be supplied (S4, #779) ----
+    // The walk already computes a precise per-rank cause in `failures[]`
+    // (scraper/src/services/field-plan-walk.ts) — it was logged and thrown
+    // away. These two columns persist it going forward. BOTH nullable,
+    // deliberately: pre-S4 rows genuinely have no reason (their causes were
+    // logged and are gone — back-filling them would be fabricated evidence,
+    // #776 made the same argument for `verdict`), and a SUPPLIED/EXHAUSTED-
+    // from-a-definitive-no row may also have nothing to record here.
+    // `reasonCode` is the classification (one of OD-62's codes); `cause` is
+    // the raw evidence string the classification was derived from.
+    reasonCode: varchar('reason_code', { length: 32 }),
+    cause: text('cause'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

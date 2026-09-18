@@ -191,6 +191,10 @@ export interface RecordOutcomeCallParams {
   };
   /** 'registry:<version>' | 'override:<id>' — see `RecordOutcomeParams` in the shared repository. */
   policyOrigin?: string | null;
+  /** S4 (#779): the classification of why this attempt did not end SUPPLIED — see `classifyFailure`. */
+  reasonCode?: string | null;
+  /** S4 (#779): the raw cause the classification was derived from. */
+  cause?: string | null;
 }
 
 /** The slice of item 5's repository the walk uses. */
@@ -753,6 +757,8 @@ async function attemptOneField(
         policyOrigin,
         writeHappened: true,
         state: 'NOT_AVAILABLE_YET',
+        reasonCode: 'NOT_PUBLISHED_YET',
+        cause: `rank${rank}:${source}:NOT_AVAILABLE_YET`,
       });
     }
 
@@ -846,12 +852,15 @@ async function attemptOneField(
         },
         'PASS 3: the write reached the consolidator but LOST to a higher-priority source — CHECK_FAILED, re-asked after backoff, NOT recorded as SUPPLIED'
       );
+      const rejection = classifyValidationRejection(verdict.reason);
       return recordAndClassify(deps, result, {
         planRowId: plan.id,
         claimToken: plan.claimToken,
         policyOrigin,
         writeHappened: true,
         state: 'CHECK_FAILED',
+        reasonCode: rejection.reasonCode,
+        cause: rejection.cause,
       });
     }
 
@@ -882,12 +891,15 @@ async function attemptOneField(
       { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
       'PASS 3: every rank failed for this field, at least one TRANSIENTLY — CHECK_FAILED, re-asked after backoff (NOT retired)'
     );
+    const classified = classifyFailure(failures);
     return recordAndClassify(deps, result, {
       planRowId: plan.id,
       claimToken: plan.claimToken,
       policyOrigin,
       writeHappened: true,
       state: 'CHECK_FAILED',
+      reasonCode: classified?.reasonCode ?? null,
+      cause: classified?.cause ?? null,
     });
   }
 
@@ -900,12 +912,18 @@ async function attemptOneField(
     { ipoId, table: plan.tableName, rowKey: plan.rowKey, field: plan.fieldName, failures },
     'PASS 3: every rank gave a DEFINITIVE no for this field — EXHAUSTED (the stored value is kept, never blanked)'
   );
+  // `failures` may be empty here (every rank answered NOT_PRINTED, which
+  // pushes nothing) or may hold a definitive CHECK_FAILED cause — either
+  // way `classifyFailure` returns the right thing: null, or EXTRACTION_FAILED.
+  const exhaustedCause = classifyFailure(failures);
   return recordAndClassify(deps, result, {
     planRowId: plan.id,
     claimToken: plan.claimToken,
     policyOrigin,
     writeHappened: true,
     state: 'EXHAUSTED',
+    reasonCode: exhaustedCause?.reasonCode ?? null,
+    cause: exhaustedCause?.cause ?? null,
   });
 }
 
@@ -1263,6 +1281,68 @@ function countsOf(r: FieldPlanWalkResult) {
     outcomesRefused: r.outcomesRefused,
     outcomesFailed: r.outcomesFailed,
   };
+}
+
+/**
+ * OD-62's reason codes (S4, #779): why a plan row did not end SUPPLIED.
+ *
+ * `SOURCE_UNREACHABLE` — the source could not even be asked: no fetcher
+ *   registered for it, or the ask itself threw (socket/timeout/5xx). A fact
+ *   about this minute/this deployment, not about the field.
+ * `EXTRACTION_FAILED` — a document was held and read, but the field could
+ *   not be gotten out of it: a DEFINITIVE CHECK_FAILED (`transient: false`).
+ * `FAILED_VALIDATION` — a value WAS produced and reached consolidation, but
+ *   a rule (the field-priority matrix or a validation rule) rejected it in
+ *   favour of a different source's value.
+ * `NOT_PUBLISHED_YET` — the authoritative source has not printed this field
+ *   yet (NOT_AVAILABLE_YET); not a failure at all, just not time yet.
+ */
+export const FIELD_PLAN_REASON_CODES = [
+  'SOURCE_UNREACHABLE',
+  'EXTRACTION_FAILED',
+  'FAILED_VALIDATION',
+  'NOT_PUBLISHED_YET',
+] as const;
+export type FieldPlanReasonCode = (typeof FIELD_PLAN_REASON_CODES)[number];
+
+/**
+ * Classify the LAST entry of `failures[]` — the most recent (highest-rank)
+ * cause tried this pass. The array can hold several ranks' worth of
+ * different causes (a timeout on rank 1, a definitive CHECK_FAILED on rank
+ * 2); the reason code records one classification per row, so the most
+ * recent attempt — the one that decided the fallthrough — is the one whose
+ * cause is kept. Returns `null` when `failures` is empty (the EXHAUSTED
+ * fallthrough on an all-NOT_PRINTED pass pushes nothing).
+ */
+function classifyFailure(failures: readonly string[]): { reasonCode: FieldPlanReasonCode; cause: string } | null {
+  const cause = failures[failures.length - 1];
+  if (cause === undefined) return null;
+
+  if (cause.includes(':NO_FETCHER_REGISTERED')) {
+    return { reasonCode: 'SOURCE_UNREACHABLE', cause };
+  }
+  // A definitive CHECK_FAILED is tagged by the walk's own `isTransient`
+  // branch above (` (definitive)` suffix) — a document was held and read,
+  // and the field genuinely was not extractable from it.
+  if (cause.endsWith(' (definitive)')) {
+    return { reasonCode: 'EXTRACTION_FAILED', cause };
+  }
+  // Every other CHECK_FAILED cause pushed by the rank loop or `tryProvisional`
+  // (a thrown error's message, or a transient CHECK_FAILED reason with no
+  // document held — e.g. "no documentType in manifest", "no document
+  // provenance") is this-minute/coverage-gap in nature: the source could not
+  // be asked or answered definitively, so it reads as unreachable rather than
+  // as an extraction failure or a validation rejection.
+  return { reasonCode: 'SOURCE_UNREACHABLE', cause };
+}
+
+/**
+ * The write REACHED consolidation but a rule (the field-priority matrix)
+ * rejected it in favour of a different source's already-stored value — see
+ * `checkConsolidatorAgreed`'s `reason` string, always of this shape.
+ */
+function classifyValidationRejection(reason: string): { reasonCode: FieldPlanReasonCode; cause: string } {
+  return { reasonCode: 'FAILED_VALIDATION', cause: reason };
 }
 
 /** Failures carry their cause, wrapped ones included (signal-ownership R6). */

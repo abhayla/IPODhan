@@ -204,6 +204,10 @@ export interface IpoFieldPlanRow {
   claimToken: string | null;
   manifestVersion: number;
   policyOrigin: string | null;
+  /** S4 (#779): the classification of why a not-supplied state was reached. NULL on pre-S4 rows. */
+  reasonCode: string | null;
+  /** S4 (#779): the raw cause the classification was derived from. NULL on pre-S4 rows. */
+  cause: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -269,6 +273,16 @@ export interface RecordOutcomeParams {
    * skipped branch, where no ranks were walked) leaves the column as-is.
    */
   policyOrigin?: string | null;
+  /**
+   * S4 (#779): the classification of why this attempt did not end SUPPLIED —
+   * one of OD-62's codes, or omitted/null on a branch that computed none
+   * (SUPPLIED itself, or an EXHAUSTED settled on a NOT_PRINTED answer that
+   * never entered `failures[]`). Provided alongside `cause`, or not at all —
+   * see `recordOutcome`'s doc comment for why they are written together.
+   */
+  reasonCode?: string | null;
+  /** S4 (#779): the raw cause string the classification above was derived from. */
+  cause?: string | null;
   now?: Date;
 }
 
@@ -938,6 +952,11 @@ export class IpoFieldPlanRepository extends BaseRepository {
       const hasChosen = params.chosen !== undefined;
       const chosen = params.chosen ?? {};
       const hasPolicyOrigin = params.policyOrigin !== undefined;
+      // S4 (#779): same all-or-nothing-per-field CASE pattern as policy_origin
+      // above -- omitted (undefined) leaves the column exactly as it was
+      // (SUPPLIED writes neither), provided (even null) replaces it.
+      const hasReasonCode = params.reasonCode !== undefined;
+      const hasCause = params.cause !== undefined;
 
       // A real attempt: count it, stamp it, and schedule the next one unless
       // the state is terminal. `attempts + 1` is computed in SQL from the
@@ -957,6 +976,8 @@ export class IpoFieldPlanRepository extends BaseRepository {
               )
             END,
             policy_origin = CASE WHEN ${hasPolicyOrigin} THEN ${params.policyOrigin ?? null} ELSE policy_origin END,
+            reason_code = CASE WHEN ${hasReasonCode} THEN ${params.reasonCode ?? null} ELSE reason_code END,
+            cause = CASE WHEN ${hasCause} THEN ${params.cause ?? null} ELSE cause END,
             chosen_source = CASE WHEN ${hasChosen} THEN ${chosen.source ?? null} ELSE chosen_source END,
             chosen_rank = CASE WHEN ${hasChosen} THEN ${chosen.rank ?? null} ELSE chosen_rank END,
             chosen_document_id = CASE WHEN ${hasChosen} THEN ${chosen.documentId ?? null}::uuid ELSE chosen_document_id END,
@@ -1039,6 +1060,8 @@ function mapRow(raw: Record<string, unknown>): IpoFieldPlanRow {
     claimToken: (raw.claim_token as string) ?? null,
     manifestVersion: raw.manifest_version as number,
     policyOrigin: (raw.policy_origin as string) ?? null,
+    reasonCode: (raw.reason_code as string) ?? null,
+    cause: (raw.cause as string) ?? null,
     createdAt: date(raw.created_at) as Date,
     updatedAt: date(raw.updated_at) as Date,
   };

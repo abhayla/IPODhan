@@ -805,6 +805,7 @@ jobs:
           tests/integration/field-plan-walk-reclaim-starvation.integration.test.ts
           tests/integration/field-plan-generation-wiring.integration.test.ts
           tests/integration/field-plan-walk-real-writer.integration.test.ts
+          tests/integration/field-plan-walk-reason-codes.integration.test.ts
           tests/integration/normalizer-sql-agreement.integration.test.ts
           tests/integration/derived-key-recompute-guard.integration.test.ts
           tests/integration/alternative-sources.integration.test.ts
