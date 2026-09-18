@@ -60,6 +60,12 @@ export const fieldManifestEntrySchema = z
     ),
     na: z.array(z.string()).optional(),
     unit: z.enum(['rupee', 'crore', 'keep']),
+    // S3b step 1 (issue #775): how the OD-59 comparator reads two witnesses' values before
+    // deciding CONFIRMED/DISPUTED. Derived from structure (scripts/generate-field-manifest.mjs),
+    // never hand-assigned. ABSTAIN is a real family, not an omission: it marks fields (free
+    // prose, structured lists of objects) that opt OUT of consensus entirely rather than being
+    // marked permanently DISPUTED on formatting/ordering noise.
+    comparisonFamily: z.enum(['MONEY', 'RATIO', 'IDENTITY', 'IDENTIFIER', 'DATE', 'BOOLEAN', 'SET', 'ABSTAIN']),
   })
   .strict();
 

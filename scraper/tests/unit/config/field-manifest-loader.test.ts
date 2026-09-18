@@ -35,6 +35,8 @@ function baseField() {
       BSE: { capable: true, reason: 'bse reason' },
     },
     unit: 'crore' as const,
+    // S3b step 1 (issue #775): comparisonFamily is required by the schema now.
+    comparisonFamily: 'MONEY' as const,
   };
 }
 

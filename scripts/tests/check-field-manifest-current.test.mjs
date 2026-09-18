@@ -60,7 +60,7 @@ test('case 2: a one-character hand edit makes --check fail, naming the field (vi
   // never write to a file another CI step or a developer's working tree depends on.
   const { generateManifest, resolvedPlanDiff } = await import(pathToFileURL(GENERATOR).href);
   const spec = await import(pathToFileURL(SPEC_PATH).href);
-  const { manifest } = generateManifest(spec);
+  const { manifest } = await generateManifest(spec);
 
   const mutated = JSON.parse(JSON.stringify(manifest));
   const key = 'ipos.issue_size';
@@ -94,7 +94,7 @@ const KNOWN_CORRECTIONS = {
 test('case 3: the generator reproduces all 10 v1 rows exactly (rank/capability/unit/na)', async () => {
   const { generateManifest } = await import(pathToFileURL(GENERATOR).href);
   const spec = await import(pathToFileURL(SPEC_PATH).href);
-  const { manifest } = generateManifest(spec);
+  const { manifest } = await generateManifest(spec);
 
   const mismatches = [];
   for (const [key, original] of Object.entries(ORIGINAL_V1_ROWS)) {

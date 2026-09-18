@@ -41,7 +41,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipos.company_name": {
       "class": "D",
@@ -81,7 +82,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipos.issue_size": {
       "class": "D",
@@ -124,7 +126,8 @@
         }
       },
       "na": [],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "ipos.lot_size": {
       "class": "D",
@@ -171,7 +174,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipos.open_date": {
       "class": "T",
@@ -205,7 +209,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "ipos.close_date": {
       "class": "T",
@@ -239,7 +244,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "ipos.listing_date": {
       "class": "T",
@@ -273,7 +279,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "ipos.status": {
       "class": "T",
@@ -307,7 +314,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipos.registrar": {
       "class": "D",
@@ -348,7 +356,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipos.sector": {
       "class": "D",
@@ -378,7 +387,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipos.price_range_min": {
       "class": "D",
@@ -423,7 +433,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipos.price_range_max": {
       "class": "D",
@@ -468,7 +479,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipos.listing_exchanges": {
       "class": "T",
@@ -502,7 +514,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "SET"
     },
     "ipos.face_value": {
       "class": "D",
@@ -546,7 +559,8 @@
         "INVITS",
         "REITS"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipos.allotment_date": {
       "class": "T",
@@ -580,7 +594,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "ipos.company_description": {
       "class": "D",
@@ -610,7 +625,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipos.lead_managers": {
       "class": "D",
@@ -651,7 +667,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "SET"
     },
     "ipos.isin": {
       "class": "D",
@@ -692,7 +709,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipos.segment": {
       "class": "D",
@@ -736,7 +754,8 @@
         "INVITS",
         "REITS"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipos.offering_type": {
       "class": "D",
@@ -772,7 +791,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipos.objectives": {
       "class": "D",
@@ -807,7 +827,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipos.company_website": {
       "class": "D",
@@ -837,7 +858,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipos.cin": {
       "class": "D",
@@ -860,7 +882,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.company_description": {
       "class": "D",
@@ -890,7 +913,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_details.issue_type": {
       "class": "D",
@@ -926,7 +950,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.fresh_issue": {
       "class": "D",
@@ -975,7 +1000,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.ofs_issue": {
       "class": "D",
@@ -1023,7 +1049,8 @@
         "RIGHTS",
         "NCD"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.face_value": {
       "class": "D",
@@ -1062,7 +1089,8 @@
         "INVITS",
         "REITS"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.basis_of_allotment_date": {
       "class": "T",
@@ -1096,7 +1124,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "ipo_details.initiation_of_refunds_date": {
       "class": "T",
@@ -1130,7 +1159,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "ipo_details.credit_of_shares_date": {
       "class": "T",
@@ -1164,7 +1194,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "ipo_details.exchanges": {
       "class": "D",
@@ -1205,7 +1236,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "SET"
     },
     "ipo_details.compliance_officer": {
       "class": "D",
@@ -1228,7 +1260,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipo_details.compliance_officer_phone": {
       "class": "D",
@@ -1251,7 +1284,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.compliance_officer_email": {
       "class": "D",
@@ -1274,7 +1308,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.upi_cutoff_time": {
       "class": "D",
@@ -1310,7 +1345,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.designated_exchange": {
       "class": "D",
@@ -1333,7 +1369,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipo_details.lot_multiple": {
       "class": "D",
@@ -1369,7 +1406,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "ipo_details.allocation_pct": {
       "class": "D",
@@ -1392,7 +1430,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_details.pre_ipo_placement": {
       "class": "D",
@@ -1421,7 +1460,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "BOOLEAN"
     },
     "ipo_details.bid_windows": {
       "class": "D",
@@ -1457,7 +1497,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_details.promoter_shares_held": {
       "class": "D",
@@ -1484,7 +1525,8 @@
         "REITS",
         "NCD"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.sebi_regulation_cited": {
       "class": "D",
@@ -1507,7 +1549,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_details.promoter_group_transactions_since_drhp": {
       "class": "D",
@@ -1538,7 +1581,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_details.cut_off_price": {
       "class": "D",
@@ -1561,7 +1605,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.min_investment": {
       "class": "D",
@@ -1585,7 +1630,8 @@
         }
       },
       "na": [],
-      "unit": "rupee"
+      "unit": "rupee",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.isin": {
       "class": "D",
@@ -1626,7 +1672,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.registrar_link": {
       "class": "D",
@@ -1649,7 +1696,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.lead_managers": {
       "class": "D",
@@ -1685,7 +1733,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "SET"
     },
     "ipo_details.company_address": {
       "class": "D",
@@ -1708,7 +1757,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipo_details.company_phone": {
       "class": "D",
@@ -1731,7 +1781,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.company_email": {
       "class": "D",
@@ -1754,7 +1805,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.company_city": {
       "class": "D",
@@ -1777,7 +1829,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipo_details.company_state": {
       "class": "D",
@@ -1800,7 +1853,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipo_details.company_pincode": {
       "class": "D",
@@ -1823,7 +1877,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_details.qib_shares_offered": {
       "class": "D",
@@ -1852,7 +1907,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.nii_shares_offered": {
       "class": "D",
@@ -1881,7 +1937,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.retail_shares_offered": {
       "class": "D",
@@ -1910,7 +1967,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.retail_max_allottees": {
       "class": "D",
@@ -1939,7 +1997,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.employee_shares_offered": {
       "class": "D",
@@ -1968,7 +2027,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.anchor_shares_offered": {
       "class": "D",
@@ -1997,7 +2057,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.max_retail_subscription": {
       "class": "D",
@@ -2026,7 +2087,8 @@
         }
       },
       "na": [],
-      "unit": "rupee"
+      "unit": "rupee",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.max_employee_subscription": {
       "class": "D",
@@ -2055,7 +2117,8 @@
         }
       },
       "na": [],
-      "unit": "rupee"
+      "unit": "rupee",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.employee_discount": {
       "class": "D",
@@ -2084,7 +2147,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.sponsor_banks": {
       "class": "D",
@@ -2125,7 +2189,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "SET"
     },
     "ipo_details.tick_size": {
       "class": "D",
@@ -2166,7 +2231,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_details.ipo_market_timings": {
       "class": "D",
@@ -2207,7 +2273,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_details.category_details": {
       "class": "D",
@@ -2236,7 +2303,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_details.sub_categories_upi": {
       "class": "D",
@@ -2265,7 +2333,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "SET"
     },
     "financial_data.revenue_fy2022": {
       "class": "D",
@@ -2301,7 +2370,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.revenue_fy2023": {
       "class": "D",
@@ -2337,7 +2407,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.revenue_fy2024": {
       "class": "D",
@@ -2373,7 +2444,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.profit_fy2022": {
       "class": "D",
@@ -2409,7 +2481,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.profit_fy2023": {
       "class": "D",
@@ -2445,7 +2518,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.profit_fy2024": {
       "class": "D",
@@ -2481,7 +2555,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.net_worth": {
       "class": "D",
@@ -2517,7 +2592,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.eps": {
       "class": "D",
@@ -2553,7 +2629,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.roe": {
       "class": "D",
@@ -2588,7 +2665,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.debt_to_equity": {
       "class": "D",
@@ -2623,7 +2701,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.reserves_and_surplus": {
       "class": "D",
@@ -2659,7 +2738,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.total_assets": {
       "class": "D",
@@ -2695,7 +2775,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.total_borrowing": {
       "class": "D",
@@ -2731,7 +2812,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.promoter_holding_pre_issue": {
       "class": "D",
@@ -2767,7 +2849,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.promoter_holding_post_issue": {
       "class": "D",
@@ -2803,7 +2886,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.market_cap": {
       "class": "D",
@@ -2839,7 +2923,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.pre_ipo_eps": {
       "class": "D",
@@ -2875,7 +2960,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.post_ipo_eps": {
       "class": "D",
@@ -2911,7 +2997,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.ronw": {
       "class": "D",
@@ -2947,7 +3034,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.pe_ratio": {
       "class": "D",
@@ -2976,7 +3064,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.ebitda_fy2022": {
       "class": "D",
@@ -3012,7 +3101,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.ebitda_fy2023": {
       "class": "D",
@@ -3048,7 +3138,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.ebitda_fy2024": {
       "class": "D",
@@ -3084,7 +3175,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.total_income_fy2022": {
       "class": "D",
@@ -3120,7 +3212,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.total_income_fy2023": {
       "class": "D",
@@ -3156,7 +3249,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.total_income_fy2024": {
       "class": "D",
@@ -3192,7 +3286,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_data.current_ratio": {
       "class": "D",
@@ -3221,7 +3316,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.quick_ratio": {
       "class": "D",
@@ -3250,7 +3346,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_data.inventory_turnover": {
       "class": "D",
@@ -3279,7 +3376,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_statements.fiscal_year": {
       "class": "D",
@@ -3314,7 +3412,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "financial_statements.revenue": {
       "class": "D",
@@ -3358,7 +3457,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.total_income": {
       "class": "D",
@@ -3393,7 +3493,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.ebitda": {
       "class": "D",
@@ -3428,7 +3529,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.pat": {
       "class": "D",
@@ -3463,7 +3565,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.net_worth": {
       "class": "D",
@@ -3498,7 +3601,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.basis": {
       "class": "D",
@@ -3533,7 +3637,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "financial_statements.unit": {
       "class": "D",
@@ -3568,7 +3673,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "financial_statements.eps_basic": {
       "class": "D",
@@ -3596,7 +3702,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.eps_diluted": {
       "class": "D",
@@ -3624,7 +3731,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.op_cash_flow": {
       "class": "D",
@@ -3652,7 +3760,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "financial_statements.dscr": {
       "class": "D",
@@ -3680,7 +3789,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "financial_statements.rent_expense": {
       "class": "D",
@@ -3708,7 +3818,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.price_floor": {
       "class": "D",
@@ -3757,7 +3868,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.price_cap": {
       "class": "D",
@@ -3806,7 +3918,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.mcap_at_cap": {
       "class": "D",
@@ -3844,7 +3957,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.pe_at_cap": {
       "class": "D",
@@ -3882,7 +3996,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "ipo_valuation.mcap_at_floor": {
       "class": "D",
@@ -3913,7 +4028,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.pe_at_floor": {
       "class": "D",
@@ -3944,7 +4060,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "ipo_valuation.ronw_weighted_3y": {
       "class": "D",
@@ -3975,7 +4092,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "ipo_valuation.shares_at_floor": {
       "class": "D",
@@ -4006,7 +4124,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.shares_at_cap": {
       "class": "D",
@@ -4037,7 +4156,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.fresh_shares_at_floor": {
       "class": "D",
@@ -4068,7 +4188,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.fresh_shares_at_cap": {
       "class": "D",
@@ -4099,7 +4220,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.ofs_shares": {
       "class": "D",
@@ -4130,7 +4252,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.total_shares_at_floor": {
       "class": "D",
@@ -4161,7 +4284,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.total_shares_at_cap": {
       "class": "D",
@@ -4192,7 +4316,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_valuation.pe_not_ascertainable_reason": {
       "class": "D",
@@ -4223,7 +4348,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "promoters.name": {
       "class": "D",
@@ -4259,7 +4385,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "promoters.waca": {
       "class": "D",
@@ -4288,7 +4415,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "promoters.is_promoter_group": {
       "class": "D",
@@ -4317,7 +4445,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "BOOLEAN"
     },
     "ipo_intermediaries.role": {
       "class": "D",
@@ -4353,7 +4482,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_intermediaries.name": {
       "class": "D",
@@ -4389,7 +4519,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipo_risk_factors.seq": {
       "class": "D",
@@ -4415,7 +4546,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_risk_factors.heading": {
       "class": "D",
@@ -4441,7 +4573,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "brlm_track_record.brlm_name": {
       "class": "D",
@@ -4472,7 +4605,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "brlm_track_record.as_of_date": {
       "class": "D",
@@ -4503,7 +4637,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "brlm_track_record.issues_3y": {
       "class": "D",
@@ -4534,7 +4669,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "brlm_track_record.closed_below_issue_price": {
       "class": "D",
@@ -4565,7 +4701,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "promoters.shares_held": {
       "class": "D",
@@ -4594,7 +4731,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "promoters.waca_last_year": {
       "class": "D",
@@ -4623,7 +4761,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_intermediaries.sebi_reg_no": {
       "class": "D",
@@ -4646,7 +4785,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_intermediaries.contact_person": {
       "class": "D",
@@ -4669,7 +4809,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "ipo_intermediaries.phone": {
       "class": "D",
@@ -4692,7 +4833,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_intermediaries.email": {
       "class": "D",
@@ -4715,7 +4857,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_intermediaries.grievance_email": {
       "class": "D",
@@ -4738,7 +4881,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "ipo_risk_factors.body": {
       "class": "D",
@@ -4764,7 +4908,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "ipo_risk_factors.kpis": {
       "class": "D",
@@ -4790,7 +4935,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "promoter_acquisition_ranges.period": {
       "class": "D",
@@ -4819,7 +4965,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "promoter_acquisition_ranges.waca": {
       "class": "D",
@@ -4848,7 +4995,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "promoter_acquisition_ranges.cap_multiple": {
       "class": "D",
@@ -4877,7 +5025,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "promoter_acquisition_ranges.price_low": {
       "class": "D",
@@ -4906,7 +5055,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "promoter_acquisition_ranges.price_high": {
       "class": "D",
@@ -4935,7 +5085,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "peer_companies.company_name": {
       "class": "D",
@@ -4971,7 +5122,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "peer_companies.is_listed": {
       "class": "D",
@@ -5007,7 +5159,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "BOOLEAN"
     },
     "peer_companies.pe_ratio": {
       "class": "D",
@@ -5043,7 +5196,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "peer_companies.eps": {
       "class": "D",
@@ -5079,7 +5233,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "peer_companies.diluted_eps": {
       "class": "D",
@@ -5115,7 +5270,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "peer_companies.ronw": {
       "class": "D",
@@ -5151,7 +5307,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "peer_companies.nav": {
       "class": "D",
@@ -5187,7 +5344,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "peer_companies.pbv_ratio": {
       "class": "D",
@@ -5223,7 +5381,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "peer_companies.financial_statement_type": {
       "class": "D",
@@ -5252,7 +5411,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "anchor_investors.bid_date": {
       "class": "T",
@@ -5292,7 +5452,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "anchor_investors.total_shares_offered": {
       "class": "D",
@@ -5320,7 +5481,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "anchor_investors.total_amount_raised": {
       "class": "D",
@@ -5348,7 +5510,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "crore"
+      "unit": "crore",
+      "comparisonFamily": "MONEY"
     },
     "anchor_investors.anchor_investors_count": {
       "class": "D",
@@ -5376,7 +5539,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "anchor_investors.investor_list": {
       "class": "D",
@@ -5404,7 +5568,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "ABSTAIN"
     },
     "documents.filing_date": {
       "class": "D",
@@ -5433,7 +5598,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "DATE"
     },
     "subscriptions.qib_subscription": {
       "class": "X",
@@ -5474,7 +5640,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "subscriptions.nii_subscription": {
       "class": "X",
@@ -5515,7 +5682,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "subscriptions.retail_subscription": {
       "class": "X",
@@ -5556,7 +5724,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "subscriptions.total_subscription": {
       "class": "X",
@@ -5597,7 +5766,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "subscriptions.employee_subscription": {
       "class": "X",
@@ -5627,7 +5797,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "subscriptions.b_nii_subscription": {
       "class": "X",
@@ -5657,7 +5828,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "subscriptions.s_nii_subscription": {
       "class": "X",
@@ -5687,7 +5859,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "RATIO"
     },
     "subscriptions.total_shares_bid": {
       "class": "X",
@@ -5717,7 +5890,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "subscriptions.shares_offered": {
       "class": "X",
@@ -5747,7 +5921,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "gmp_records.gmp": {
       "class": "W",
@@ -5776,7 +5951,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "listing_performance.listing_price": {
       "class": "M",
@@ -5814,7 +5990,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "listing_performance.current_price": {
       "class": "M",
@@ -5848,7 +6025,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "listing_performance.current_price_bse": {
       "class": "M",
@@ -5868,7 +6046,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "listing_performance.current_price_nse": {
       "class": "M",
@@ -5888,7 +6067,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_demand_graph.price_point": {
       "class": "X",
@@ -5923,7 +6103,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_demand_graph.is_cut_off": {
       "class": "X",
@@ -5958,7 +6139,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "BOOLEAN"
     },
     "ipo_demand_graph.cumulative_quantity": {
       "class": "X",
@@ -5993,7 +6175,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "MONEY"
     },
     "ipo_demand_graph.exchange": {
       "class": "X",
@@ -6028,7 +6211,8 @@
         "TENDER",
         "BUYBACK"
       ],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "registrars.name": {
       "class": "D",
@@ -6065,7 +6249,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "registrars.short_name": {
       "class": "D",
@@ -6102,7 +6287,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     },
     "registrars.email": {
       "class": "D",
@@ -6139,7 +6325,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "registrars.phone": {
       "class": "D",
@@ -6176,7 +6363,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "registrars.website": {
       "class": "D",
@@ -6213,7 +6401,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTIFIER"
     },
     "registrars.address": {
       "class": "D",
@@ -6250,7 +6439,8 @@
         }
       },
       "na": [],
-      "unit": "keep"
+      "unit": "keep",
+      "comparisonFamily": "IDENTITY"
     }
   }
 }
