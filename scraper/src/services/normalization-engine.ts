@@ -440,7 +440,17 @@ export function normalizeNumber(value: string | number): number {
  *              IPOs (OD-57) -- so the string fallback below was the single
  *              biggest source of false conflicts (#773).
  */
-export type ComparisonFamily = 'MONEY' | 'RATIO' | 'IDENTITY' | 'IDENTIFIER' | 'DATE';
+export type ComparisonFamily = 'MONEY' | 'RATIO' | 'IDENTITY' | 'IDENTIFIER' | 'DATE' | 'SET' | 'BOOLEAN';
+
+/**
+ * #783: the manifest's `comparisonFamily` enum also allows `ABSTAIN`, which is
+ * deliberately NOT in this union. ABSTAIN is not an instruction about HOW to
+ * compare two values -- it is an instruction to the VERDICT WRITER not to
+ * compare them at all (free prose and structured object lists, 14 fields).
+ * There is no sensible `areEquivalent(a, b, { family: 'ABSTAIN' })`, so the
+ * type refuses it and the writer must filter those fields out before reaching
+ * this function.
+ */
 
 export interface EquivalenceOptions {
   family?: ComparisonFamily;
@@ -452,6 +462,17 @@ export interface EquivalenceOptions {
 const MONEY_RELATIVE_TOLERANCE = 0.005;
 /** A ratio is compared at 2 decimal places (OD-59). */
 const RATIO_DECIMAL_PLACES = 2;
+
+/**
+ * The key one SET member is compared by. Deliberately the SAME shape
+ * `unionSetValues` (data-consolidation-service.ts) uses to decide whether an
+ * incoming member is already present: lower-cased and trimmed for a string,
+ * structural otherwise. Two definitions of "the same member" would let the
+ * writer union two values the comparator had just called different.
+ */
+export function setMemberKey(v: any): string {
+  return typeof v === 'string' ? v.toLowerCase().trim() : JSON.stringify(v);
+}
 
 /** A string that is entirely a number, so "10.00" can be read as 10. */
 function asNumber(value: any): number | null {
@@ -502,6 +523,39 @@ export function areEquivalent(
         return foldCompanyIdentity(val1) === foldCompanyIdentity(val2);
       }
       return val1 === val2;
+    }
+
+    if (opts.family === 'BOOLEAN') {
+      // A scraped page yields the STRING "true"; the same answer as `true`.
+      // `false` is a real answer a source supplied, never an abstention --
+      // the empty() check above already handled null/undefined/'' (OD-60).
+      const asBool = (v: any): boolean | null => {
+        if (typeof v === 'boolean') return v;
+        if (typeof v === 'string') {
+          const t = v.trim().toLowerCase();
+          if (t === 'true') return true;
+          if (t === 'false') return false;
+        }
+        return null;
+      };
+      const b1 = asBool(val1);
+      const b2 = asBool(val2);
+      if (b1 !== null && b2 !== null) return b1 === b2;
+      // Neither readable as a boolean -- fall through rather than guess.
+    }
+
+    if (opts.family === 'SET') {
+      // Order is not meaning: ['NSE','BSE'] and ['BSE','NSE'] are one answer.
+      // A duplicate is not a new member either -- it is a SET, not a list.
+      if (Array.isArray(val1) && Array.isArray(val2)) {
+        const k1 = new Set(val1.map(setMemberKey));
+        const k2 = new Set(val2.map(setMemberKey));
+        if (k1.size !== k2.size) return false;
+        for (const k of k1) if (!k2.has(k)) return false;
+        return true;
+      }
+      // Not both arrays: a SET field holding a scalar is a normalisation
+      // problem, not a comparison one. Fall through, never guess.
     }
 
     if (opts.family === 'DATE') {
