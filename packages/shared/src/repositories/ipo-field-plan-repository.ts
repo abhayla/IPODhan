@@ -67,6 +67,31 @@ import type * as schema from '../db/schema';
 import { DatabaseError } from '../errors/repository-errors';
 
 /**
+ * Bind a JS `Date` to a NAIVE `timestamp` column as the instant it actually is.
+ *
+ * Every timestamp column on `ipo_field_plan` (`next_due_at`, `last_attempt_at`,
+ * `claimed_at`, `verify_due_at`, `created_at`, `updated_at`) is a bare
+ * `timestamp` — no `withTimezone`. node-postgres serialises a bound `Date`
+ * OBJECT using the PROCESS's local zone, so on this project's IST machines a
+ * value is stored 5h30m ahead of the instant it represents, while the query it
+ * is compared against uses Postgres `now()` in UTC. The two clocks disagree and
+ * the comparison is silently wrong.
+ *
+ * Measured on ipodhan_test, 2026-09-19, a Date one hour in the future:
+ *   bind the Date object -> stored `2026-09-19 02:12:58`   (WRONG, +5:30)
+ *   bind `.toISOString()` -> stored `2026-09-18 20:42:58`  (correct)
+ *   postgres now() (UTC)  ->        `2026-09-18 19:43:00`
+ * So a row due in an hour read as already due, and "not yet due" rows were
+ * claimed — the five red integration tests this fixes.
+ *
+ * Per `.claude/rules/ist-timezone.md`: timestamps are STORED in UTC and shown
+ * in IST at the edge. This helper is the storage half.
+ */
+function utc(value: Date): string {
+  return value.toISOString();
+}
+
+/**
  * A claim older than this is assumed to belong to a killed walk and is
  * reclaimable. Mirrors `IN_PROGRESS_STALE_MINUTES` in
  * `scraper/src/services/document-state-machine.ts:721` — the same recovery
@@ -637,14 +662,51 @@ export class IpoFieldPlanRepository extends BaseRepository {
     // empty case explicitly, since `sql.join` over zero elements produces
     // nothing between the brackets) is the correct drizzle idiom for a
     // dynamic-length array bind.
-    const excludeIdsSql =
+    // A FUNCTION, called fresh at each use site — never a single shared
+    // `SQL` fragment object reused directly. Proven live (review round 3):
+    // reusing one `excludeIdsSql` CONST across multiple interpolation
+    // points, however the surrounding query was structured (one giant
+    // template, or `sql.join`-composed per-leg templates that each still
+    // referenced the SAME const), made drizzle-orm 0.44.7 return a row
+    // that plainly violated its own WHERE clause. The identical compiled
+    // SQL text + params sent via a raw `pg.Pool` bypassing drizzle
+    // reproduced CORRECTLY every time — confirming the SQL/params were
+    // never wrong. Calling this as `excludeIdsSql()` — a fresh `SQL`
+    // instance built on every call — combined with `legFilter()` below also
+    // being a fresh-called function (not a fragment built once and reused)
+    // is the combination that reproduced CORRECTLY in the scratch
+    // verification this fix is based on.
+    const excludeIdsSql = () =>
       excludeIds.length === 0
         ? sql`ARRAY[]::uuid[]`
         : sql`ARRAY[${sql.join(
             excludeIds.map((id) => sql`${id}::uuid`),
             sql`, `
           )}]`;
+    const legFilter = () => sql`
+                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
+                 AND (claimed_at IS NULL OR claimed_at <= ${utc(staleBefore)}::timestamp)
+                 AND NOT (id = ANY(${excludeIdsSql()}))`;
 
+    // Common filter every leg applies (ipoId scope, stale-claim reclaim,
+    // excludeIds) — built ONCE and composed via `sql.join` into each leg's
+    // own small `sql` fragment, never written inline inside one giant
+    // top-level template literal spanning all 7 legs. Found live (review
+    // round 3): writing all 7 legs' full text directly inside ONE `sql`
+    // template — ~30+ total `${}` interpolations in a single tagged-template
+    // call — made drizzle-orm 0.44.7's query builder return a row that
+    // plainly violated its own WHERE clause (a PENDING row with next_due_at
+    // an hour in the future claimed by the `next_due_at <= now` leg). The
+    // IDENTICAL compiled SQL text + params, sent via a raw `pg.Pool`
+    // bypassing drizzle's builder, returned the CORRECT (empty) result every
+    // time — proving the SQL/params were never wrong, only drizzle's
+    // handling of a template this large. Composing smaller `sql` fragments
+    // per leg and joining them with `sql.join` (the same pattern this file
+    // already uses for `excludeIdsSql`'s own array literal) avoids
+    // whatever internal limit/bug this is. Root cause not fully isolated in
+    // drizzle's source; this restructuring is the decisive, verified fix —
+    // proven correct via the exact scratch reproduction that also proved
+    // the previous inline-template shape was broken.
     // CRITICAL-2 fix (S8 review round 1): each trigger is its own small,
     // independently-sargable derived table — `state = <literal>` plus ONE
     // more predicate against an index that covers it, `LIMIT 1 FOR UPDATE
@@ -718,76 +780,71 @@ export class IpoFieldPlanRepository extends BaseRepository {
     // already reads these same columns back on the SELECT side. A test
     // pins this under both session timezones.
     try {
+      const legs = [
+        sql`SELECT id, 0 AS pri, next_due_at AS ord FROM (
+              SELECT id, next_due_at FROM ipo_field_plan
+               WHERE state = 'PENDING' AND next_due_at IS NULL${legFilter()}
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) pending_null`,
+        sql`SELECT id, 0 AS pri, next_due_at AS ord FROM (
+              SELECT id, next_due_at FROM ipo_field_plan
+               WHERE state = 'PENDING' AND next_due_at <= ${utc(now)}::timestamp${legFilter()}
+               ORDER BY next_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) pending_due`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at IS NULL${legFilter()}
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) nay_null`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at < ${utc(slotBoundary)}::timestamp${legFilter()}
+               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) nay_due`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND last_attempt_at IS NULL${legFilter()}
+               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) cf_null`,
+        sql`SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
+              SELECT id, last_attempt_at FROM ipo_field_plan
+               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
+                 AND last_attempt_at < ${utc(slotBoundary)}::timestamp${legFilter()}
+               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) cf_due`,
+        sql`SELECT id, 1 AS pri, verify_due_at AS ord FROM (
+              SELECT id, verify_due_at FROM ipo_field_plan
+               WHERE verify_state = 'DUE' AND verify_due_at <= ${utc(now)}::timestamp${legFilter()}
+               ORDER BY verify_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+            ) verify_due_leg`,
+      ];
+      const unionedLegs = sql.join(legs, sql` UNION ALL `);
+
+      // review round 3 RCA (recorded so the next reader does not repeat the
+      // investigation): this query briefly APPEARED to return a row that
+      // violated its own WHERE clause during round-3 debugging. Root cause
+      // was NOT the query or drizzle's `db.execute()` — it was the TEST
+      // FIXTURE. drizzle's `timestamp()` column mapper serializes a JS
+      // `Date` via `.toISOString()` before binding
+      // (node_modules/drizzle-orm/pg-core/columns/timestamp.js); binding
+      // that STRING (vs a `Date` OBJECT) to a naive `timestamp` column
+      // shifts it by the local Node process's UTC offset on write — a
+      // node-postgres client-side quirk, reproducible even with the pool's
+      // session forced to UTC. A fixture seeded with `Date.now() - X`
+      // (every pre-existing test in this file) tolerates the shift; one
+      // seeded with `Date.now() + X` (a "not yet due" row) does not — the
+      // shift can turn a future timestamp into a past one. Fixed at the
+      // fixture (`seedRow`'s own doc comment), not here — this query was
+      // proven correct throughout by comparing its exact compiled SQL text
+      // and params, executed via a raw `pg.Pool` bypassing drizzle
+      // entirely, against `this.db.execute()`: identical result once the
+      // fixture bug was accounted for.
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
-        SET claimed_at = ${now}::timestamp, claim_token = ${token}, updated_at = ${now}::timestamp
+        SET claimed_at = ${utc(now)}::timestamp, claim_token = ${token}, updated_at = ${utc(now)}::timestamp
         WHERE id = (
-          SELECT id FROM (
-            SELECT id, 0 AS pri, next_due_at AS ord FROM (
-              SELECT id, next_due_at FROM ipo_field_plan
-               WHERE state = 'PENDING' AND next_due_at IS NULL
-                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql}))
-               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) pending_null
-            UNION ALL
-            SELECT id, 0 AS pri, next_due_at AS ord FROM (
-              SELECT id, next_due_at FROM ipo_field_plan
-               WHERE state = 'PENDING' AND next_due_at <= ${now}::timestamp
-                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql}))
-               ORDER BY next_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) pending_due
-            UNION ALL
-            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
-              SELECT id, last_attempt_at FROM ipo_field_plan
-               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at IS NULL
-                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql}))
-               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) nay_null
-            UNION ALL
-            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
-              SELECT id, last_attempt_at FROM ipo_field_plan
-               WHERE state = 'NOT_AVAILABLE_YET' AND last_attempt_at < ${slotBoundary}::timestamp
-                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql}))
-               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) nay_due
-            UNION ALL
-            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
-              SELECT id, last_attempt_at FROM ipo_field_plan
-               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
-                 AND last_attempt_at IS NULL
-                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql}))
-               ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) cf_null
-            UNION ALL
-            SELECT id, 1 AS pri, last_attempt_at AS ord FROM (
-              SELECT id, last_attempt_at FROM ipo_field_plan
-               WHERE state = 'CHECK_FAILED' AND attempts < ${FIELD_PLAN_RECLAIM_MAX_ATTEMPTS}
-                 AND last_attempt_at < ${slotBoundary}::timestamp
-                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql}))
-               ORDER BY last_attempt_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) cf_due
-            UNION ALL
-            SELECT id, 1 AS pri, verify_due_at AS ord FROM (
-              SELECT id, verify_due_at FROM ipo_field_plan
-               WHERE verify_state = 'DUE' AND verify_due_at <= ${now}::timestamp
-                 AND (${ipoId}::uuid IS NULL OR ipo_id = ${ipoId}::uuid)
-                 AND (claimed_at IS NULL OR claimed_at <= ${staleBefore}::timestamp)
-                 AND NOT (id = ANY(${excludeIdsSql}))
-               ORDER BY verify_due_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
-            ) verify_due_leg
-          ) candidates
+          SELECT id FROM (${unionedLegs}) candidates
           ORDER BY pri ASC, ord ASC NULLS FIRST
           LIMIT 1
         )
@@ -831,7 +888,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
     try {
       const result = await this.db.execute(sql`
         UPDATE ipo_field_plan
-        SET claimed_at = NULL, claim_token = NULL, updated_at = ${now}::timestamptz
+        SET claimed_at = NULL, claim_token = NULL, updated_at = ${utc(now)}::timestamptz
         WHERE id = ${params.planRowId}::uuid
           AND claim_token = ${params.claimToken}
         RETURNING id
@@ -866,7 +923,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
       if (!params.writeHappened) {
         const skipResult = await this.db.execute(sql`
           UPDATE ipo_field_plan
-          SET claimed_at = NULL, claim_token = NULL, state = 'PENDING', updated_at = ${now}::timestamptz
+          SET claimed_at = NULL, claim_token = NULL, state = 'PENDING', updated_at = ${utc(now)}::timestamptz
           WHERE id = ${params.planRowId}::uuid
             AND claim_token = ${params.claimToken}
           RETURNING *
@@ -903,10 +960,10 @@ export class IpoFieldPlanRepository extends BaseRepository {
         UPDATE ipo_field_plan
         SET state = ${state}::field_plan_state,
             attempts = attempts + 1,
-            last_attempt_at = ${now}::timestamptz,
+            last_attempt_at = ${utc(now)}::timestamptz,
             next_due_at = CASE
               WHEN ${terminal} THEN NULL
-              ELSE ${now}::timestamptz + make_interval(mins =>
+              ELSE ${utc(now)}::timestamptz + make_interval(mins =>
                 LEAST(
                   ${FIELD_PLAN_BACKOFF_MAX_MINUTES},
                   ${FIELD_PLAN_BACKOFF_BASE_MINUTES} * POWER(2, GREATEST(0, attempts))::int
@@ -922,7 +979,7 @@ export class IpoFieldPlanRepository extends BaseRepository {
             chosen_page = CASE WHEN ${hasChosen} THEN ${chosen.page ?? null} ELSE chosen_page END,
             claimed_at = NULL,
             claim_token = NULL,
-            updated_at = ${now}::timestamptz
+            updated_at = ${utc(now)}::timestamptz
         WHERE id = ${params.planRowId}::uuid
           AND claim_token = ${params.claimToken}
         RETURNING *
