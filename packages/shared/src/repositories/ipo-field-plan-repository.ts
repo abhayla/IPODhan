@@ -42,16 +42,20 @@
  * Item 5 slice s4 adds `upsertGeneratedRows` — the write path that lets the
  * generator's pure output (`generateFieldPlan`, field-plan-generator.ts)
  * actually reach the table. Design §2.3: "the plan is reconciled when the
- * manifest changes, never regenerated per cycle." `INSERT ... ON CONFLICT
- * (ipo_id, table_name, row_key, field_name) DO NOTHING` is what makes that
- * true structurally rather than by caller discipline — a second pass over
- * an IPO whose rows already exist inserts zero rows and updates NOTHING,
- * because `DO NOTHING` never touches the conflicting row at all (not even
- * `updated_at`). A row appears only for a (ipo, table, row_key, field)
- * combination that is not already in the table — which is exactly what
- * happens on its own when `manifest_version` changes and the generator
- * plans a field under a NEW key it did not plan before, and is exactly
- * what must NOT happen for a key it already planned.
+ * manifest changes, never regenerated per cycle." A row appears for a NEW
+ * (ipo, table, row_key, field) combination — which is exactly what happens
+ * on its own when `manifest_version` changes and the generator plans a
+ * field under a key it did not plan before — never a duplicate for a key
+ * that already exists.
+ *
+ * Item 3 slice S7 (#732) narrowed that reconciliation: `INSERT ... ON
+ * CONFLICT (ipo_id, table_name, row_key, field_name) DO UPDATE` now
+ * re-ranks an EXISTING row's `rank1_source` / `rank2_source` / `rank3_source`
+ * / `manifest_version` / `policy_origin` in place when the incoming version
+ * is strictly higher and the row is not `SUPPLIED` — see the method's own
+ * doc comment for the exact contract. Every other column (`state`,
+ * `attempts`, `next_due_at`, `claimed_at`, `claim_token`, every `chosen_*`
+ * column) is still never carried back in by this call.
  */
 
 import { sql } from 'drizzle-orm';
@@ -184,8 +188,16 @@ export function fieldPlanBackoffMinutes(attemptsAfterThisOne: number): number {
  * `scraper/`, which `packages/shared` cannot import — the caller maps its
  * own `PlannedFieldRow[]` onto this shape). All state is the generator's
  * fresh-row defaults (`PENDING`, zero attempts, nothing chosen) because a
- * row this call inserts is by definition one that did not exist before —
- * `upsertGeneratedRows` never carries an existing row's live state back in.
+ * row this call inserts is by definition one that did not exist before.
+ *
+ * For a row that DID already exist: `upsertGeneratedRows` still never
+ * carries its LIVE state back in (`state`, `attempts`, `next_due_at`,
+ * `claimed_at`, `claim_token`, every `chosen_*` column all keep their
+ * on-disk values) — but since item 3 slice S7 (#732) it DOES refresh that
+ * row's ranking columns (`rank1/2/3Source`, `manifestVersion`,
+ * `policyOrigin`) in place when this row's `manifestVersion` is strictly
+ * higher than what is on disk and the row is not `SUPPLIED`. See
+ * `upsertGeneratedRows`'s own doc comment for the exact contract.
  */
 export interface GeneratedFieldPlanRow {
   ipoId: string;
@@ -201,8 +213,17 @@ export interface GeneratedFieldPlanRow {
 }
 
 export interface UpsertGeneratedRowsResult {
-  /** How many NEW rows this call actually inserted (never counts a conflict). */
+  /** How many NEW rows this call actually inserted — never counts a re-rank. */
   inserted: number;
+  /**
+   * How many EXISTING rows this call re-ranked in place (item 3 slice S7,
+   * #732) because the incoming `manifest_version` was strictly higher than
+   * the row's own and the row was not `SUPPLIED`. Distinct from `inserted`
+   * so a caller that only ever meant "new rows" (the S2 repair tool's
+   * missing-row phase, which by construction never hits a conflict) keeps
+   * reading the same number it always did.
+   */
+  updated: number;
 }
 
 /**
@@ -253,25 +274,45 @@ export class IpoFieldPlanRepository extends BaseRepository {
   }
 
   /**
-   * Insert the generator's rows for one IPO, RECONCILED never REGENERATED.
+   * Insert the generator's rows for one IPO, RECONCILED never REGENERATED —
+   * and, since item 3 slice S7 (#732), RE-RANKED on a version increase
+   * rather than left stale forever.
    *
-   * `ON CONFLICT (ipo_id, table_name, row_key, field_name) DO NOTHING` is the
-   * whole mechanism: a row already at that key is left completely alone —
-   * `state`, `attempts`, `next_due_at`, `claimed_at`, every chosen_* column,
-   * and `updated_at` all keep their live values, because `DO NOTHING` means
-   * Postgres never executes an UPDATE against the conflicting row. A second
-   * pass over the same IPO with an unchanged manifest therefore inserts
-   * nothing new (every key already exists) and mutates nothing old. A
+   * `ON CONFLICT (ipo_id, table_name, row_key, field_name) DO UPDATE` now
+   * fires when a row already exists at that key, but the UPDATE's own `SET`
+   * list and `WHERE` clause narrow it to exactly one thing: refresh the
+   * ranking columns (`rank1_source`, `rank2_source`, `rank3_source`,
+   * `manifest_version`, `policy_origin`, `updated_at`) when, and ONLY when,
+   * the incoming row carries a STRICTLY HIGHER `manifest_version` than the
+   * row already on disk, AND that row has not already been `SUPPLIED`.
+   * Every other column — `state`, `attempts`, `next_due_at`, `claimed_at`,
+   * `claim_token`, every `chosen_*` column — is absent from the `SET` list,
+   * so Postgres leaves it byte-for-byte as it was; this DELIBERATELY narrows
+   * the prior "never carries an existing row's live state back in" contract
+   * to "never carries live state EXCEPT the ranks, and only forward". A
+   * SUPPLIED row is still never touched — the ask was already answered, and
+   * rewriting its ranks would misrepresent how that answer was actually
+   * sourced. A same-version re-run changes nothing (the `<` comparison is
+   * false), so the insert stays idempotent per cycle exactly as before. A
    * `manifest_version` bump that adds a field under a key not previously
-   * planned inserts exactly that new row — reconciliation, not regeneration,
-   * falls out of the conflict target rather than being decided by the
-   * caller.
+   * planned still inserts exactly that new row.
+   *
+   * The `xmax = 0` trick in `RETURNING` is the ONLY reliable way to tell an
+   * INSERT from an UPDATE out of one `INSERT ... ON CONFLICT` statement:
+   * `xmax` is the system column holding the deleting/locking transaction id
+   * for a row version, which is 0 for a version a fresh INSERT just created
+   * and non-zero for a version an UPDATE just superseded. Getting this
+   * wrong makes `inserted` silently start counting updates too — every
+   * caller (`document-cycle.ts` PASS 2.5's cycle summary,
+   * `repair-plan-rows-to-manifest-version.ts`'s operator-facing "inserted N
+   * rows" line) trusts that number, so `inserted` counts ONLY genuine
+   * inserts and `updated` is returned alongside it, never folded in.
    *
    * Empty input is a no-op (an IPO's type key produced zero rows, or the
    * caller was already given an empty array) — never a wasted round trip.
    */
   async upsertGeneratedRows(rows: GeneratedFieldPlanRow[]): Promise<UpsertGeneratedRowsResult> {
-    if (rows.length === 0) return { inserted: 0 };
+    if (rows.length === 0) return { inserted: 0, updated: 0 };
 
     try {
       const values = sql.join(
@@ -288,12 +329,22 @@ export class IpoFieldPlanRepository extends BaseRepository {
           rank1_source, rank2_source, rank3_source, manifest_version, policy_origin
         )
         VALUES ${values}
-        ON CONFLICT (ipo_id, table_name, row_key, field_name) DO NOTHING
-        RETURNING id
+        ON CONFLICT (ipo_id, table_name, row_key, field_name) DO UPDATE
+          SET rank1_source     = EXCLUDED.rank1_source,
+              rank2_source     = EXCLUDED.rank2_source,
+              rank3_source     = EXCLUDED.rank3_source,
+              manifest_version = EXCLUDED.manifest_version,
+              policy_origin    = EXCLUDED.policy_origin,
+              updated_at       = now()
+          WHERE ipo_field_plan.state <> 'SUPPLIED'
+            AND ipo_field_plan.manifest_version < EXCLUDED.manifest_version
+        RETURNING id, (xmax = 0) AS inserted
       `);
 
-      const inserted = ((result as unknown as { rows: unknown[] }).rows ?? []).length;
-      return { inserted };
+      const returned = (result as unknown as { rows: { inserted: boolean }[] }).rows ?? [];
+      const inserted = returned.filter((r) => r.inserted === true).length;
+      const updated = returned.filter((r) => r.inserted === false).length;
+      return { inserted, updated };
     } catch (error) {
       throw new DatabaseError(
         `Failed to upsert generated field plan rows${rows[0] ? ` for IPO ${rows[0].ipoId}` : ''}`,

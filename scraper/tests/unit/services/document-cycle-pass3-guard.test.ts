@@ -68,7 +68,7 @@ vi.mock('@ipodhan/shared', () => ({
     // Item 5 s4's PASS 2.5 constructs the SAME class from the SAME barrel,
     // so the mock must answer for the generation path too or every test in
     // this file dies at import time rather than on an assertion.
-    upsertGeneratedRows: vi.fn().mockResolvedValue({ inserted: 0 }),
+    upsertGeneratedRows: vi.fn().mockResolvedValue({ inserted: 0, updated: 0 }),
   })),
 }));
 

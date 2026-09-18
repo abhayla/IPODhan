@@ -965,4 +965,217 @@ describe.skipIf(!DATABASE_URL)(`ipo_field_plan repository (${RUN_LABEL})`, () =>
     });
   });
 
+  describe('S7 (#732) -- upsertGeneratedRows re-ranks an existing row on a manifest version bump', () => {
+    const manifest = loadFieldManifest();
+    const CURRENT_VERSION = manifest.version;
+
+    it('an existing non-terminal v1 row (rank2=BSE) re-planned at the current version becomes rank2=CHITTORGARH, SAME row id, live-state columns unchanged', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'BSE',
+        rank3Source: null,
+        manifestVersion: 1,
+        state: 'PENDING',
+        attempts: 0,
+      });
+      await db
+        .update(schema.ipos)
+        .set({ segment: 'SME', listingExchanges: ['NSE'] })
+        .where(eq(schema.ipos.id, IPO_ID));
+
+      const before = await readRow(id);
+      expect(before.nextDueAt).not.toBeNull();
+
+      const ipoType = resolveIpoTypeKey({ segment: 'SME', listingExchanges: ['NSE'] });
+      const policy = resolveFieldSourcePolicy(
+        { table: 'ipo_details', column: 'face_value', ipoType },
+        { manifest }
+      );
+      expect(policy.ranks).toEqual(['DOC', 'CHITTORGARH']);
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: policy.ranks[0] ?? null,
+          rank2Source: policy.ranks[1] ?? null,
+          rank3Source: policy.ranks[2] ?? null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: policyOriginString(policy.origin),
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(1);
+
+      const after = await readRow(id);
+      expect(after.id).toBe(id);
+      expect(after.rank1Source).toBe('DOC');
+      expect(after.rank2Source).toBe('CHITTORGARH');
+      expect(after.rank3Source).toBeNull();
+      expect(after.manifestVersion).toBe(CURRENT_VERSION);
+      expect(after.state).toBe('PENDING');
+      expect(after.attempts).toBe(0);
+      expect(after.nextDueAt?.getTime()).toBe(before.nextDueAt?.getTime());
+      expect(after.claimedAt).toBeNull();
+
+      await db
+        .update(schema.ipos)
+        .set({ segment: null, listingExchanges: null })
+        .where(eq(schema.ipos.id, IPO_ID));
+    });
+
+    it('a SUPPLIED v1 row re-planned at the current version is completely unchanged', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'BSE',
+        rank3Source: null,
+        manifestVersion: 1,
+        state: 'SUPPLIED',
+        chosenSource: 'BSE',
+        chosenRank: 2,
+      });
+      const before = await readRow(id);
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'DOC',
+          rank2Source: 'CHITTORGARH',
+          rank3Source: null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: `registry:${CURRENT_VERSION}`,
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(0);
+
+      const after = await readRow(id);
+      expect(after).toEqual(before);
+    });
+
+    it('a same-version re-run changes nothing and reports inserted:0, updated:0', async () => {
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'BSE',
+        rank3Source: null,
+        manifestVersion: CURRENT_VERSION,
+        state: 'PENDING',
+      });
+      const before = await readRow(id);
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'DOC',
+          rank2Source: 'BSE',
+          rank3Source: null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: `registry:${CURRENT_VERSION}`,
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(0);
+
+      const after = await readRow(id);
+      expect(after).toEqual(before);
+    });
+
+    it('a genuinely new key still inserts, reporting inserted:1, updated:0', async () => {
+      const before = await db
+        .select()
+        .from(schema.ipoFieldPlan)
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.fieldName, 'face_value')));
+      expect(before.length).toBe(0);
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'DOC',
+          rank2Source: 'NSE',
+          rank3Source: null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: `registry:${CURRENT_VERSION}`,
+        },
+      ]);
+      expect(inserted).toBe(1);
+      expect(updated).toBe(0);
+
+      const after = await db
+        .select()
+        .from(schema.ipoFieldPlan)
+        .where(and(eq(schema.ipoFieldPlan.ipoId, IPO_ID), eq(schema.ipoFieldPlan.fieldName, 'face_value')));
+      expect(after.length).toBe(1);
+      expect(after[0].rank2Source).toBe('NSE');
+    });
+
+    it('live-state protection: attempts/claimed_at/chosen_* on a non-terminal row survive a version-bump re-rank untouched, only ranks change', async () => {
+      const claimedAt = new Date(Date.now() - 5 * 60_000);
+      const id = await seedRow({
+        fieldName: 'face_value',
+        rank1Source: 'DOC',
+        rank2Source: 'BSE',
+        rank3Source: null,
+        manifestVersion: 1,
+        state: 'CHECK_FAILED',
+        attempts: 3,
+        claimedAt,
+        claimToken: 'fixture-claim-token',
+        chosenSource: 'BSE',
+        chosenRank: 2,
+        
+        chosenDocumentId: DOCUMENT_ID,
+      });
+      const before = await readRow(id);
+      expect(before.attempts).toBe(3);
+      expect(before.claimedAt).not.toBeNull();
+      expect(before.chosenSource).toBe('BSE');
+      expect(before.chosenRank).toBe(2);
+
+      const { inserted, updated } = await repo.upsertGeneratedRows([
+        {
+          ipoId: IPO_ID,
+          tableName: 'ipo_details',
+          rowKey: '',
+          fieldName: 'face_value',
+          rank1Source: 'DOC',
+          rank2Source: 'CHITTORGARH',
+          rank3Source: null,
+          manifestVersion: CURRENT_VERSION,
+          policyOrigin: `registry:${CURRENT_VERSION}`,
+        },
+      ]);
+      expect(inserted).toBe(0);
+      expect(updated).toBe(1);
+
+      const after = await readRow(id);
+      expect(after.id).toBe(id);
+      expect(after.rank1Source).toBe('DOC');
+      expect(after.rank2Source).toBe('CHITTORGARH');
+      expect(after.manifestVersion).toBe(CURRENT_VERSION);
+      // Live-state columns: byte-for-byte untouched.
+      expect(after.state).toBe('CHECK_FAILED');
+      expect(after.attempts).toBe(3);
+      expect(after.claimedAt?.getTime()).toBe(claimedAt.getTime());
+      expect(after.claimToken).toBe('fixture-claim-token');
+      expect(after.chosenSource).toBe('BSE');
+      expect(after.chosenRank).toBe(2);
+      
+      expect(after.chosenDocumentId).toBe(DOCUMENT_ID);
+    });
+  });
+
 });

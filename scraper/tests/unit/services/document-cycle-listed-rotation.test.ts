@@ -44,7 +44,7 @@ vi.mock('@ipodhan/shared', () => ({
     findByIpo: vi.fn().mockResolvedValue([]),
   })),
   IpoFieldPlanRepository: vi.fn().mockImplementation(() => ({
-    upsertGeneratedRows: vi.fn().mockResolvedValue({ inserted: 0 }),
+    upsertGeneratedRows: vi.fn().mockResolvedValue({ inserted: 0, updated: 0 }),
   })),
 }));
 
