@@ -138,7 +138,10 @@ test('the real gate is red on the current tree with one real card\'s Status line
   const target = path.join(CARDS_DIR, 'item-32-card-status-lines.md');
   const original = fs.readFileSync(target, 'utf8');
   try {
-    const stripped = original.replace(/^Status: .+\n\n/m, '');
+    // \r?\n twice over: git's core.autocrlf normalizes checked-out .md files to CRLF on
+    // Windows, so a checkout made AFTER this file was committed (as opposed to the same
+    // session that authored it) can hold \r\n where this was first written against \n.
+    const stripped = original.replace(/^Status: .+\r?\n\r?\n/m, '');
     assert.notEqual(stripped, original, 'fixture setup: expected to find and strip a Status line');
     fs.writeFileSync(target, stripped, 'utf8');
     const redResult = runGate();

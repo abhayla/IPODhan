@@ -1,7 +1,20 @@
 // Walk the delta contract's Definition of Done, and PROVE each item rather than asserting it.
+//
+//   node docs/design/check-dod.mjs            root = process.cwd()
+//   node docs/design/check-dod.mjs <path>     root = <path>
+// EXIT: 0 every DoD item proven · 1 at least one item not proven · 2 the check itself broke
 import fs from 'node:fs';
+import path from 'node:path';
 import { execSync } from 'node:child_process';
-process.chdir('D:/Abhay/Ventures/IPODhan-IPODhan-pullmodel-delta');
+
+const root = process.argv[2] ? path.resolve(process.argv[2]) : process.cwd();
+// Running against the wrong directory is worse than not running: every item reads as
+// unproven and the report is noise. Refuse instead of reporting a false failure.
+if (!fs.existsSync(path.join(root, 'docs/design/data-sourcing-pull-model.md'))) {
+  console.error(`check-dod: ${root} is not an IPODhan checkout (no docs/design/data-sourcing-pull-model.md). Pass the repo root as the first argument.`);
+  process.exit(2);
+}
+process.chdir(root);
 
 const sh = (c) => { try { return execSync(c, { encoding: 'utf8' }).trim(); } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); } };
 const exit = (c) => { try { execSync(c, { stdio: 'pipe' }); return 0; } catch (e) { return e.status; } };
@@ -13,7 +26,12 @@ const unclaimed = JSON.parse(fs.readFileSync('docs/design/rules-unclaimed.json',
 const cards = fs.readdirSync('docs/design/build-cards').filter((f) => /^item-\d+-.*\.md$/.test(f));
 const walks = fs.readdirSync('docs/design/walkthroughs').filter((f) => f.endsWith('.md'));
 
+// The card count and the OD-row count were literals (22, 52) frozen at this DoD's authoring
+// time (2026-09-09). Both are counts this repository keeps moving legitimately as later items
+// land, so the DoD item is restated as "the count matches the register", read from the tree,
+// never typed from memory (OD-18).
 const odRows = (design.slice(design.indexOf('### 0.0.1'), design.indexOf('### 0.0.2')).match(/^\| OD-\d+ \|/gm) || []).length;
+const odRegisterRows = (design.match(/^\| OD-\d+ \|/gm) || []).length;
 const newSections = ['### 2.11', '### 4.5', '### 4.6', '### 6.6', '### 7.4', '### 7.5', '### 7.6', '### 8.5', '#### 2.2.1'];
 const liveRules = rules.rules.filter((r) => !r.retired);
 const claimed = new Set();
@@ -25,9 +43,9 @@ for (const f of cards) {
 const orphans = liveRules.filter((r) => !claimed.has(r.id) && !(r.id in unclaimed.unclaimed));
 
 const ITEMS = [
-  ['OD-27..OD-52 in 0.0.1, OD-23 superseded, O-12/O-13 moved',
-   odRows === 52 && design.includes('SUPERSEDED by OD-32') && !/^\| O-12 \|/m.test(design) && !/^\| O-13 \|/m.test(design),
-   `${odRows} OD rows; OD-23 marked superseded; O-12/O-13 no longer in the fork table`],
+  ['0.0.1 OD rows match the design\'s own OD-N register, OD-23 superseded, O-12/O-13 moved',
+   odRows === odRegisterRows && design.includes('SUPERSEDED by OD-32') && !/^\| O-12 \|/m.test(design) && !/^\| O-13 \|/m.test(design),
+   `${odRows} rows in 0.0.1, ${odRegisterRows} OD-N rows in the whole document; OD-23 marked superseded; O-12/O-13 no longer in the fork table`],
   ['The new sections exist',
    newSections.every((h) => design.includes('\n' + h)),
    newSections.filter((h) => design.includes('\n' + h)).length + ' of ' + newSections.length + ' present'],
@@ -37,8 +55,8 @@ const ITEMS = [
   ['Every new check is MUTATION-TESTED, red then green',
    exit('node docs/design/check-mutations.test.mjs') === 0,
    sh('node docs/design/check-mutations.test.mjs').split('\n').filter((l) => /caught/.test(l)).join(' ')],
-  ['22 cards, 13 headings each, card gate green',
-   cards.length === 22 && exit('node docs/design/check-build-cards.mjs --gate') === 0,
+  ['Every build card carries 13 headings, a Status line, and the card gate is green',
+   cards.length > 0 && exit('node docs/design/check-build-cards.mjs --gate') === 0,
    cards.length + ' cards; card gate exit ' + exit('node docs/design/check-build-cards.mjs --gate')],
   ['Items 19, 20, 21 added (and 22, deliberately)',
    [19, 20, 21, 22].every((n) => cards.some((f) => f.startsWith('item-' + n + '-'))),

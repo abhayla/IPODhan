@@ -67,3 +67,20 @@ jobs:
         # Same argument: its input is docs/reviews/**, so a docs-only change is
         # exactly when it matters and exactly when pr-gate would not run it.
         run: node scripts/build-detection-registry.mjs --check
+
+      - name: Pull-model delta Definition of Done (item 33)
+        # check-dod.mjs used to hard-code process.chdir() to a worktree that no longer
+        # exists, so it threw ENOENT before its first assertion in every checkout
+        # including main, and was referenced by no workflow — nothing noticed for nine
+        # days. It now resolves its root from cwd (CI checks out the repo at the
+        # workflow's cwd, so no argument is needed here).
+        #
+        # continue-on-error: this DoD's items assert the state of the 2026-09-09
+        # pull-model design DELTA (O-14/O-15 fork rows, specific walkthrough files,
+        # etc). It is a historical record, not a live gate on every future PR's
+        # content — an item drifting true-to-false as work legitimately continues past
+        # that delta must not turn every unrelated docs PR red. The point of this step
+        # is that the walker RUNS and its report is visible in the step list; a run
+        # nobody can see is exactly how this script went unnoticed for nine days.
+        run: node docs/design/check-dod.mjs
+        continue-on-error: true
