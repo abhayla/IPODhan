@@ -1,0 +1,15 @@
+{
+  "class_id": "an abstention recorded as a disagreement",
+  "feature": "data_conflicts write path; any queue whose rows are meant to carry a human judgement call",
+  "symptom": "a comparison writes a queue row whenever two sources are not equal, without first asking whether both sources actually SUPPLIED a value. One side null is not a disagreement, it is an absence, and it needs a different remedy (fetch it, or record why it is missing) from a real value-vs-value conflict (decide which is right). The same shape covers a source compared against ITSELF across time: the pair is not two sources, so the row cannot be a source conflict, it is churn. Universal shape: a queue that filters on `a <> b` rather than on `a IS NOT NULL AND b IS NOT NULL AND a <> b` will fill with rows nobody can action, and its size stops carrying information. The tell: the queue grows far faster than the number of genuinely ambiguous facts in the domain, and its rows are dominated by one source or one null side.",
+  "first_seen": "2026-09-20 — issue #818, measured read-only on ipodhan_staging at 00:11 IST. 28,120 open admin-queue rows across 268 IPOs. Of the 14,140 data_conflicts rows: 13,850 (97.9%) had one side null, 133 (0.9%) held identical values, and only 157 (1.1%) were a true value-vs-value disagreement. 12,152 of the 14,140 (86%) were CHITTORGARH compared against CHITTORGARH — one source against its own earlier value. 14,134 of 14,140 (99.96%) sat on IPOs already CLOSED or LISTED, where no reader outcome depends on the answer. Separately, 9,104 of the 13,980 ipo_field_plan absence rows (65%) carried a null reason_code, so the cause of the absence was never recorded",
+  "fix_prs": "none yet. The measurement is the finding; the remedy splits by class rather than draining a single queue — abstentions and self-comparisons should not be written as conflicts at all, closed/listed rows carry no reader outcome, and unclassified absences need reason_code populated before the remainder is sortable. Related: #762 (12,480 plan rows parked in non-terminal states with no re-queue path) appears to describe the same absence population from the other end",
+  "detection_check": "none yet. A check on this class asserts the queue's COMPOSITION, not its size: the share of open rows that are true value-vs-value disagreements on a live IPO should dominate, and a queue where abstentions or self-comparisons exceed a threshold is reporting a write-path defect rather than a backlog. Note that scripts/ops/admin-queue-size.mjs (item 35) reports the open COUNT grouped by IPO, which is exactly the number this class makes uninformative — a count of 28,120 and a count of 157 would read the same way to it",
+  "status": "unguarded",
+  "spec_ref": [
+    "§2.5",
+    "§2.11",
+    "§3",
+    "§3.4"
+  ]
+}
