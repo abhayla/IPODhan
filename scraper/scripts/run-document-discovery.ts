@@ -74,6 +74,7 @@ import {
 import { readback } from './readback-document-state.js';
 import { NetworkCounter } from '../src/utils/network-counter.js';
 import { deriveLifecycleStage } from '../src/scheduler/stage-reconciler.js';
+import { heldStatesSqlList } from '../src/services/document-state-machine.js';
 import { configureUtcTimestampParsing } from '@ipodhan/shared/db';
 
 // GitHub #28: `options: '-c timezone=UTC'` on each Pool below pins the
@@ -264,6 +265,16 @@ export async function resolveIposFromSelectors(
         openDate: row.openDate,
         hasRhpOnFile: row.hasRhpOnFile,
         offeringType: row.offeringType,
+        // Item 24 round 2 (M1): see document-cycle.ts. This script is a manual
+        // single-IPO run, so its channel is stderr rather than the cycle log, but
+        // the clause must have a consumer HERE too - an operator running it
+        // against a stalled issue is exactly who needs to be told why.
+      }, {
+        onUnresolved: (report) =>
+          console.error(
+            '[run-document-discovery] ' + String(report.companyName ?? report.id) +
+              ': no usable promotion signal - ' + report.reason
+          ),
       }),
       dbStatus: row.status,
       closeDate: row.closeDate ?? '',
@@ -296,7 +307,7 @@ async function makeDbIposSelectorQuery(databaseUrl: string): Promise<{
                      SELECT 1 FROM document_fetch_state r
                       WHERE r.ipo_id = i.id
                         AND r.doc_type = 'RHP'
-                        AND r.state IN ('FOUND', 'EXTRACTED', 'EXTRACT_FAILED')
+                        AND r.state IN (${sql.raw(heldStatesSqlList())})
                    ) AS has_rhp_on_file
             FROM ipos i
             WHERE i.symbol = ${selector} OR i.company_name ILIKE ${'%' + selector + '%'}

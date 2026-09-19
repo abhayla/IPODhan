@@ -228,8 +228,26 @@ export const SUPERSEDED_BY: Partial<Record<DocumentType, DocumentType[]>> = {
   RHP: ['DRHP'],
 };
 
-/** States that mean "we hold this document". */
-const HELD_STATES: DocumentFetchStateValue[] = ['FOUND', 'EXTRACTED', 'EXTRACT_FAILED'];
+/**
+ * States that mean "we hold this document".
+ *
+ * Item 24 round 2 (N1): EXPORTED, because the same three states were written out
+ * by hand as an inline SQL string list in two query files with no import - the
+ * `one-concept-several-definitions` class. A state added here but forgotten in a
+ * query makes that query silently narrower than the rule it claims to implement.
+ * Both queries now build their `IN (...)` from `heldStatesSqlList()` below.
+ */
+export const HELD_STATES: DocumentFetchStateValue[] = ['FOUND', 'EXTRACTED', 'EXTRACT_FAILED'];
+
+/**
+ * `HELD_STATES` as the body of a SQL `IN (...)` list: `'FOUND', 'EXTRACTED', ...`.
+ *
+ * Safe to interpolate: the values are a module-level literal array of enum
+ * members, never user input, and every one is a bare identifier-shaped token.
+ */
+export function heldStatesSqlList(): string {
+  return HELD_STATES.map((state) => `'${state}'`).join(', ');
+}
 
 /** Types made moot by a document this IPO already holds (F-3). */
 export function supersededTypes(rows: StateRow[]): DocumentType[] {

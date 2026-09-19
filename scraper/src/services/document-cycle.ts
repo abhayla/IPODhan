@@ -41,7 +41,13 @@ import {
   resetRegistrarDocumentHostsCache,
 } from './company-host-source.js';
 import { deriveLifecycleStage } from '../scheduler/stage-reconciler.js';
-import { isInLiveWindow, CYCLE_BUDGET, planIpoCycle, type IssueShape } from './document-state-machine.js';
+import {
+  isInLiveWindow,
+  CYCLE_BUDGET,
+  planIpoCycle,
+  heldStatesSqlList,
+  type IssueShape,
+} from './document-state-machine.js';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import {
   decidePurge,
@@ -954,7 +960,7 @@ export const CANDIDATE_IPOS_SQL = `
              SELECT 1 FROM document_fetch_state r
               WHERE r.ipo_id = i.id
                 AND r.doc_type = 'RHP'
-                AND r.state IN ('FOUND', 'EXTRACTED', 'EXTRACT_FAILED')
+                AND r.state IN (${heldStatesSqlList()})
            ) AS has_rhp_on_file
       FROM ipos i
       LEFT JOIN (
@@ -1032,6 +1038,19 @@ export async function loadCandidateIpos(deps: {
         openDate: (r.open_date as Date | string | null) ?? null,
         hasRhpOnFile: r.has_rhp_on_file === true,
         offeringType: (r.offering_type as string | null) ?? null,
+        // Item 24 round 2 (M1): the rule's final clause - an issue with no usable
+        // promotion signal must be VISIBLE, never silently stalled - shipped in
+        // round 1 with ZERO production callers, so in production it was still
+        // silently stalled. Wired to the real logger here, at the live call site.
+        // WARN, not INFO: a live issue whose stage can never advance means no
+        // pre-open document will ever be fetched for it, which is the class of
+        // defect this whole change exists to remove.
+      }, {
+        onUnresolved: (report) =>
+          logger.warn(
+            { ipoId: report.id, companyName: report.companyName, reason: report.reason },
+            '[document-cycle] UPCOMING issue has no usable promotion signal - its stage cannot advance (item 24 #795)'
+          ),
       }),
       bseIpoNo: r.bse_ipo_no === null || r.bse_ipo_no === undefined ? null : Number(r.bse_ipo_no),
       companyWebsite: (r.company_website as string | null) ?? null,

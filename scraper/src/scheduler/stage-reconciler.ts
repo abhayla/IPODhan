@@ -200,16 +200,62 @@ export interface DeriveLifecycleStageOptions {
   onUnresolved?: (report: UnresolvedStageReport) => void;
 }
 
+/** IST is UTC+05:30, fixed - India has no daylight saving. */
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 /**
- * Days from `today` until `openDate`, or null when the date is absent or
- * unparseable. Null-safe by construction: every caller treats null as
+ * The IST CALENDAR DAY an instant falls on, as a day number (days since epoch).
+ *
+ * Item 24 round 2 (M3): round 1 floored a raw millisecond delta between an
+ * `open_date` parsed as UTC midnight and a wall-clock `new Date()`. That makes
+ * the window drift by hour of day - measured, `open=2026-09-27` gave PRE_OPEN at
+ * 23:30 IST and UPCOMING at 05:30 IST: a 7-vs-8-day window depending on when the
+ * cycle happened to run. `.claude/rules/ist-timezone.md` requires every window to
+ * be reasoned about in IST calendar days, so both sides are reduced to an IST
+ * civil date first and the difference taken in whole days.
+ *
+ * Shifting the instant by +05:30 and reading its UTC day number gives exactly the
+ * IST civil day, with no host-timezone dependency - the host is UTC on the VPS
+ * and IST on a laptop, and this returns the same answer on both.
+ */
+function istDayNumber(instant: Date): number {
+  return Math.floor((instant.getTime() + IST_OFFSET_MS) / MS_PER_DAY);
+}
+
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/**
+ * Whole IST calendar days from `today` until `openDate`, or null when the date is
+ * absent or unparseable. Null-safe by construction: every caller treats null as
  * "no signal", never as 0.
+ *
+ * A DATE-ONLY value (`YYYY-MM-DD`, which is what the `ipos.open_date` column
+ * carries) is already an IST calendar date - the Indian market date the exchange
+ * published - so it is read as a calendar date directly. Parsing it as a UTC
+ * instant and then shifting it into IST would move it a day.
  */
 function daysUntil(openDate: string | Date | null | undefined, today: Date): number | null {
   if (openDate === null || openDate === undefined || openDate === '') return null;
+
+  const todayDay = istDayNumber(today);
+
+  if (typeof openDate === 'string') {
+    const m = DATE_ONLY.exec(openDate.trim());
+    if (m) {
+      const civil = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      if (Number.isNaN(civil)) return null;
+      // No IST offset on this side, deliberately: `civil` is already the civil
+      // date, not an instant. (Adding one would in fact be harmless here — a UTC
+      // midnight plus 5h30m never crosses a day boundary, verified over 4000
+      // consecutive dates — but omitting it is what makes the intent readable.)
+      return Math.floor(civil / MS_PER_DAY) - todayDay;
+    }
+  }
+
   const d = openDate instanceof Date ? openDate : new Date(openDate);
   if (Number.isNaN(d.getTime())) return null;
-  return Math.floor((d.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  return istDayNumber(d) - todayDay;
 }
 
 /**
@@ -249,16 +295,46 @@ export function deriveLifecycleStage(
   if (status === 'OPEN') return 'OPEN';
   if (status !== 'UPCOMING') return 'UPCOMING';
 
+  const today = opts.today ?? new Date();
+  const days = daysUntil(row.openDate, today);
+
   // An issue that can never file a price band ad is never sent hunting one.
   // Checked FIRST, so no later signal can promote a non-IPO type.
-  if (!isBandBearingOfferingType(row.offeringType)) return 'UPCOMING';
+  //
+  // Round 2 (M2): this used to return here, BEFORE the report block, so a
+  // non-band-bearing issue with no usable signal produced zero reports - as
+  // invisible as the bug this change exists to remove. It is now reported with a
+  // DISTINCT reason, because the operator's response differs: a band-bearing row
+  // with no signal is missing data someone should go and get, while this one will
+  // never advance BY DESIGN and needs no chasing at all. One shared reason would
+  // turn a correct decision into alert noise, which is how real alerts get
+  // ignored (the W-40 lesson).
+  if (!isBandBearingOfferingType(row.offeringType)) {
+    if (days === null && row.hasRhpOnFile !== true) {
+      opts.onUnresolved?.({
+        id: row.id,
+        companyName: row.companyName,
+        reason:
+          'UPCOMING with an offering type that cannot file a price band advertisement (' +
+          String(row.offeringType ?? 'IPO') +
+          ') and no open_date - it will never advance past UPCOMING, by design, so no pre-open document is ever hunted',
+      });
+    }
+    return 'UPCOMING';
+  }
 
-  const today = opts.today ?? new Date();
-
-  // Signal 1 — the issue opens soon. The strongest signal, and one the
+  // Signal 1 - the issue opens soon. The strongest signal, and one the
   // document pipeline cannot suppress: open_date comes from the exchange board.
-  const days = daysUntil(row.openDate, today);
-  if (days !== null && days <= PRE_OPEN_WINDOW_DAYS) return 'PRE_OPEN';
+  //
+  // Round 2 (C2): the window has a LOWER bound. Round 1 tested only
+  // `days <= PRE_OPEN_WINDOW_DAYS`, which a NEGATIVE `days` also satisfies - so
+  // any row stuck at status='UPCOMING' with an open_date already in the past
+  // promoted forever (verified: past 90d and past 1900d both promoted). That is
+  // not self-limiting: NOT_YET_FILED retries every 30 minutes and has NO attempt
+  // cap - unlike NOT_FOUND, capped at NOT_FOUND_MAX_ATTEMPTS = 5 - and never
+  // escalates to BLOCKED_ALL, because it is explicitly not a failure. Unbounded
+  // fetch attempts against a stale row is the cost of omitting this `days >= 0`.
+  if (days !== null && days >= 0 && days <= PRE_OPEN_WINDOW_DAYS) return 'PRE_OPEN';
 
   // Signal 2 — an RHP is on file. A proxy for pre-open, never the only signal:
   // the RHP is filed at the same stage the band ad is.
@@ -303,12 +379,28 @@ export function dueFetchKindsForStage(stage: LifecycleStage): FetchKind[] {
  */
 export function planStageReconciliation(
   rows: ReconcilerIpoRow[],
-  opts: { today?: Date; staleClosedDays?: number } = {}
+  opts: {
+    today?: Date;
+    staleClosedDays?: number;
+    /**
+     * Item 24 round 2 (M1): surfaced to the caller so the JOB - which writes the
+     * pipeline-step ledger - can log a row that cannot advance. Without it the
+     * load-bearing final clause of the rule had no production consumer at all.
+     */
+    onUnresolved?: (report: UnresolvedStageReport) => void;
+  } = {}
 ): StagePlan[] {
   const today = opts.today ?? new Date();
   const staleClosedDays = opts.staleClosedDays ?? DEFAULT_STALE_CLOSED_DAYS;
   return rows.map((row) => {
-    const stage = deriveLifecycleStage(row);
+    // Item 24 round 2 (C1): `opts` MUST be threaded here. Round 1 called
+    // `deriveLifecycleStage(row)` bare, so the injected `today` was accepted for
+    // the stale-CLOSED check below and SILENTLY DROPPED for the stage call, which
+    // fell back to `new Date()`. Combined with a job query that selected none of
+    // the new columns, this job recorded UPCOMING in the step ledger while the
+    // document cycle fetched PRE_OPEN documents for the SAME IPO at the SAME
+    // instant - two subsystems disagreeing about one row.
+    const stage = deriveLifecycleStage(row, { today, onUnresolved: opts.onUnresolved });
     const staleClosed = isStaleClosedWithoutListing(row, today, staleClosedDays);
     const due = staleClosed
       ? []
