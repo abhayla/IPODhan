@@ -910,6 +910,19 @@ jobs:
       - name: Run config-only deploy release-link test suite (item 3 S5, symlink-only on Linux)
         run: bash scripts/tests/deploy-linux-config-link.test.sh
 
+      # #793: the config-link suite above proves the SYMLINK is built; this one
+      # proves a deploy REFUSES when the file behind that link does not satisfy
+      # the schema the same deploy just shipped. On 2026-09-19 that combination
+      # killed the staging scraper for six hours while the deploy reported
+      # success, so the gate is only worth having if it is run.
+      - name: Run deployed-config preflight test suite (#793 M1)
+        run: bash scripts/tests/deploy-linux-config-preflight.test.sh
+
+      # #793 M2: the consumer for the wake log. 18 wake-failed lines sat unread
+      # in /var/log/ipodhan-scraper-wake-staging.log during that outage.
+      - name: Run wake-log delta test suite (#793 M2, signal-ownership R3)
+        run: node --test scripts/tests/wake-delta.test.mjs
+
       # Item 7 slice 1: scripts/scraper-wake.sh replaced pm2's --cron-restart,
       # which was the only thing bounding a hung scraper on prod. Both of the
       # wrapper's guards fail SILENTLY - a lock-skip that stops printing its

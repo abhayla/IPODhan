@@ -1,0 +1,8 @@
+2026-09-19T02:03:51Z scraper-wake: wake-starting: job=data, lock ipodhan:scraper:lock is free; starting a cycle under a 7200s hung-process ceiling (OD-55)
+2026-09-19T02:03:57Z scraper-wake: wake-complete: the cycle finished cleanly well inside the ceiling. elapsed=6s ceiling=7200s
+2026-09-19T02:33:45Z scraper-wake: wake-starting: job=data, lock ipodhan:scraper:lock is free; starting a cycle under a 7200s hung-process ceiling (OD-55)
+2026-09-19T02:33:51Z scraper-wake: wake-failed: the cycle exited non-zero on its own (NOT the ceiling - the ceiling exits 124). elapsed=6s exit=1
+2026-09-19T02:44:57Z scraper-wake: wake-starting: job=data, lock ipodhan:scraper:lock is free; starting a cycle under a 7200s hung-process ceiling (OD-55)
+2026-09-19T02:45:01Z scraper-wake: wake-failed: the cycle exited non-zero on its own (NOT the ceiling - the ceiling exits 124). elapsed=4s exit=1
+2026-09-19T03:15:02Z scraper-wake: wake-skipped: job=data - a cycle is already running and holds the lock; this occurrence is skipped, not queued and not killed. lock_key=ipodhan:scraper:lock lock_ttl=1800
+2026-09-19T03:45:06Z scraper-wake: wake-failed: the cycle exited non-zero on its own (NOT the ceiling - the ceiling exits 124). elapsed=5s exit=1

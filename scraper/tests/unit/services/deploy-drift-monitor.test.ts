@@ -195,20 +195,25 @@ describe('checkDeployDrift', () => {
     expect(await redis.get('deploy-drift:state:prod')).toBeNull();
   });
 
-  it('returns an empty result set (no alert) when mainSha cannot be resolved', async () => {
+  it('returns an empty result set and raises no SHA-DRIFT alert when mainSha cannot be resolved', async () => {
     const redis = makeRedis();
     const getServedSha = vi.fn(async () => OTHER_SHA);
 
     const results = await checkDeployDrift({
       getMainSha: async () => null,
       getServedSha,
+      // #793: the config/code lineage check runs even without a main sha (both
+      // of ITS shas are box-local), so it is pinned to "cannot tell" here to
+      // keep this test about the sha-drift path alone. That the lineage check
+      // still runs when origin is unreachable is asserted in
+      // deploy-drift-monitor-config-lineage.test.ts.
+      getConfigSha: async () => null,
       redis,
       notify,
     });
 
     expect(results).toEqual([]);
     expect(notify).not.toHaveBeenCalled();
-    expect(getServedSha).not.toHaveBeenCalled();
   });
 
   describe('real-value sha lengths (8-char served vs 40-char main)', () => {

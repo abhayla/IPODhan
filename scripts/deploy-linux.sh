@@ -1837,6 +1837,7 @@ restart_pm2() {
   # W-111/W-112: PYTHON_BIN pins the auto-persist PDF/OCR extractor to the
   # deploy-managed venv (setup_python_venv() above) instead of whatever
   # `python`/`python3` happens to resolve on PATH.
+  preflight_deployed_config "$RELEASE_DIR"
   preflight_scraper_wake "$RELEASE_DIR/scripts/scraper-wake.sh"
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   # W-178 round 2: see resume_scraper()'s comment above — default-expand
@@ -1871,6 +1872,69 @@ restart_pm2() {
 # hours later (a PATH edit, an uninstalled coreutils, a pruned release dir), and
 # any failure INSIDE the cycle once it starts - this proves the wrapper can
 # start, never that a cycle will succeed.
+# --- Deployed-config preflight: a config the deployed schema refuses must not
+# --- ship as a GREEN deploy (#793) --------------------------------------------
+# Several files under <release>/scraper/config/ are SYMLINKS into
+# $ROOT/shared/config/$SLOT/ (step 5.1 above), and this script deliberately
+# NEVER overwrites an existing shared file - only scripts/ops/deploy-config.sh
+# does, as a separate manual step. So a single commit can ship a TIGHTER
+# validator on the code path while the VALUE it validates stays at an older
+# config-deploy sha, and the loader then refuses at process start.
+#
+# That is exactly the 2026-09-19 staging outage: b5614cc7 made
+# `comparisonFamily` a required enum in field-manifest-schema.ts AND added it to
+# the repo manifest in one commit; staging deployed the code, the shared
+# manifest stayed a day old, all 190 fields failed validation, and the scraper
+# died in 4-6 seconds every 30 minutes for six hours while the deploy reported
+# SUCCESS - because the deploy's gate checks served sha, migrations and row
+# counts, none of which require the scraper process to start.
+#
+# Same shape and same reason as preflight_scraper_wake() below: the failure
+# happens at RUN time, long after pm2 has forked and returned 0, so it is
+# checked HERE at DEPLOY time while someone is watching. It runs the scraper's
+# OWN loaders against the DEPLOYED files (resolved through the symlink), so this
+# verdict and the process-start verdict come from the same code and cannot drift.
+#
+# FAIL CLOSED: a missing node, a missing tsx, a missing script or a crash is a
+# FAILED GATE, not a skip. A gate that silently skips is the bug being fixed.
+#
+# WHAT IT CANNOT CATCH: a shared config edited AFTER this moment, and any
+# failure inside a cycle once it starts.
+preflight_deployed_config() {
+  local release_dir="$1"
+  local script="$release_dir/scraper/src/scripts/validate-deployed-config.ts"
+
+  if (( DRY_RUN )); then
+    log "[dry-run] would run deployed-config preflight: $script"
+    return 0
+  fi
+
+  if [ ! -f "$script" ]; then
+    fatal "deployed-config preflight: $script is missing from the release — the gate that proves the scraper can load its config cannot run. Refusing to finish the deploy."
+  fi
+
+  local node_bin tsx_bin
+  node_bin="${SCRAPER_NODE_BIN:-$(command -v node 2>/dev/null || true)}"
+  if [ -z "$node_bin" ] || [ ! -x "$node_bin" ]; then
+    fatal "deployed-config preflight: cannot find an executable node (PATH=$PATH). Refusing to finish the deploy rather than skipping the gate."
+  fi
+  # resolve_bin() already knows where npm workspace hoisting puts a binary, and
+  # exits 1 with its own FATAL line when it is genuinely absent.
+  tsx_bin="$(resolve_bin "$release_dir" tsx/dist/cli.mjs)"
+
+  local out
+  if out="$( cd "$release_dir/scraper" && TZ=UTC DEPLOY_SLOT="$SLOT" "$node_bin" "$tsx_bin" "$script" --release-dir "$release_dir" 2>&1 )"; then
+    log "deployed-config preflight OK: $(printf '%s' "$out" | tail -n1)"
+    return 0
+  fi
+
+  # Print the loader's OWN error text before failing (signal-ownership R6) - a
+  # bare "config preflight failed" would send the operator to a log on a box
+  # they may not have open, to read the line that is already right here.
+  printf '%s\n' "$out" >&2
+  fatal "deployed-config preflight FAILED: the DEPLOYED config does not satisfy the DEPLOYED schema (see the loader's own error above). The scraper would crash at process start, every cycle, while this deploy reported success. Run 'scripts/ops/deploy-config.sh --slot $SLOT --sha $SHA' to ship the config this code expects. Refusing to finish the deploy."
+}
+
 preflight_scraper_wake() {
   local wake_script="$1"
 
