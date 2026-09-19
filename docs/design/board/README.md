@@ -43,3 +43,19 @@ checklist non-optional:
 Fail-open everywhere: any error exits 0 and appends one line to
 `~/.claude/.board-owed-guard.errors.log`. It never fires outside an IPODhan checkout.
 Self-tests: `python ~/.claude/hooks/tests/board-owed-guard.test.py`.
+
+**Live copy vs. versioned copy.** The hook that actually runs is the user-level file at
+`~/.claude/hooks/board-owed-guard.py` (wired in `~/.claude/settings.json`, outside this repo by
+design — user-level hooks are not checked in). `hooks/board-owed-guard.py` and
+`hooks/tests/board-owed-guard.test.py` in this directory are the versioned mirror: how the
+mechanism is reviewed, diffed and PR'd. When the live copy changes, copy it here in the same
+change so the two never drift.
+
+**Tier A review lesson (2026-09-19): the guard parses statements, not text.** The first version
+matched a merge pattern against the raw command STRING, so a comment, an `echo`, or a `grep`
+mentioning `gh pr merge` or `merge-if-current.mjs` armed the marker — proven live, during the
+review itself, by the reviewer's own probe commands. The fix splits the command into statements
+(on `;`, `&&`, `||`, `|`, `(`, and newlines) and only matches a statement that IS the merge
+invocation, never one that mentions it. The same round also stopped a FAILED merge attempt from
+arming the marker (a merge that never happened owes nothing) and added flags-before-the-PR-number
+parsing and a `session_id` on each marker record.
