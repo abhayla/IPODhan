@@ -1,0 +1,99 @@
+# Item 25 — a required Spec-deviation block in the pull request template
+
+Status: NOT STARTED
+
+Model: Sonnet.
+
+Core: the deviation class is declared on the pull request that carries it, in a block a reviewer
+cannot miss — Proof: open a draft PR from a branch using the edited template and read the rendered
+body back, confirming the block appears pre-filled with the four fields and an unticked default.
+
+Proof: the rendered body of one real pull request shows the Spec-deviation block with its four
+fields; `Class: none` is present and is a valid answer.
+
+Class: none — mechanism, not a deviation.
+
+## Purpose
+
+Every pull request states its deviation class, so a class-2 or class-3 departure cannot reach a
+reviewer looking exactly like a class-1 correction.
+
+## Serves
+
+`docs/design/spec-deviation-guideline.md` §8 mechanism 3 and `.claude/rules/spec-adherence.md`
+(process MUST 6). Measured 2026-09-19: `.github/pull_request_template.md` carries a Summary, a Test
+plan and one checklist line about live bugs, and nothing about the design at all — so all fourteen
+catalogued deviations passed through a template that never asked.
+
+## Files
+
+| Path | State | Change |
+|---|---|---|
+| `.github/pull_request_template.md` | exists | adds the Spec-deviation block after `## Test plan`, before `## Checklist` |
+| `docs/design/spec-deviation-guideline.md` | exists | §8 row 3 gains the literal block text, so the template and the guideline cannot drift apart silently |
+
+## Schema
+
+No schema change.
+
+## Interfaces
+
+No new interface. The block, complete and verbatim:
+
+```
+## Spec deviation
+
+<!-- Required. `.claude/rules/spec-adherence.md` decides the class in 30 seconds. -->
+
+- **Class:** none / 1 (card defect) / 2 (minor) / 3 (major — this PR must not exist yet)
+- **Spec section:** <the section of docs/design/data-sourcing-pull-model.md this touches, or n/a>
+- **IPOs proven on (class 2 only):** <two differing IPOs per type touched, by name, registrar and date; or `unproven for type X`>
+- **Card corrected in this PR:** yes / no / n/a
+```
+
+## Feature flag
+
+No flag. A markdown template is applied by GitHub when a PR is opened; there is nothing to enable
+per slot. Rollback is reverting the commit, which affects only PRs opened afterwards.
+
+## Tests
+
+No unit test — the artefact is a markdown file GitHub renders, and a test asserting that a file
+contains the string a test put there proves nothing.
+
+The check that earns its place is in the same change and is a real assertion:
+`scripts/tests/pr-template-deviation-block.test.mjs` (NEW) asserts that
+`.github/pull_request_template.md` contains all four field labels and the four class values, and is
+red before the change because the block does not exist. Its value is that a later edit that quietly
+drops a field goes red rather than unnoticed.
+
+## Detection
+
+`No detection change: this item edits a markdown template GitHub renders when a PR is opened; it changes no write path, no audit input, and no runtime behaviour a nightly check could observe.`
+
+## Staging proof
+
+Not a pipeline change, so there is no staging cycle to read. The proof is the rendered body of the
+first pull request opened after the merge, which shows the block pre-filled with its four fields —
+read back from the PR, not asserted from the file.
+
+## Rollback
+
+Revert the commit. No data is written and no PR already opened is altered.
+
+## Tier, budget and cost
+
+Tier C — a template edit plus a shape test; CI and the self-check are the gate.
+Budget: 15 min wall-clock, 30 tool calls. One review round expected.
+
+## Rules implemented
+
+No numbered design rule. This item implements a rule about how we work
+(`docs/design/spec-deviation-guideline.md` §8), which §8.5(b) declares in
+`docs/design/rules-unclaimed.json` rather than claiming from a build item.
+
+## Known gaps
+
+Does NOT enforce the block. A PR author may delete it, leave it blank, or write `Class: none` on a
+class-3 change, and nothing fails. That enforcement is option C in the guideline's §8, and by the
+owner's decision it is built at the FIRST deviation that slips past this template, not now.

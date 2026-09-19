@@ -172,6 +172,30 @@ invented to fill a gap, and a rank never rests on a plausible-sounding sentence.
 Check **D15** enforces the appendix half of this: every rank of every field in Appendix A.1 carries an
 evidence reference that resolves to a file that exists.
 
+### 0.0.4 How this design is deviated from
+
+This document is the SSOT. Code follows it; a change to what the system does goes into this document
+first, or into it in the same pull request. The process for departing from it is
+`docs/design/spec-deviation-guideline.md`, with the 30-second version in
+`.claude/rules/spec-adherence.md`. Owner decisions, 2026-09-19. Three classes:
+
+- **Class 1 — card defect.** The card or this document asserts a fact about the codebase that is
+  false. Build to the stated intent, correct the card in the same pull request, name it in the PR's
+  Spec-deviation block. Not a deviation. If the false claim means the intent cannot be met, class 3.
+- **Class 2 — minor.** It changes what the pipeline ATTEMPTS, not what it publishes or stores
+  differently, and it falls inside what this document already calls configuration (§7.6), a
+  validation rule (§5.3) or a per-type exception (§1.11). Allowed only on proof across two differing
+  IPOs of every type it touches, with thin types written as `unproven for type X`, confirmed by an
+  independent reviewer on a different model, and written into §1.11 or §7.6 in the same PR.
+- **Class 3 — major.** Stops and goes to the owner. Any decision with an `OD-` id, anything a reader
+  or admin sees, any source or precedence change, any owner-stated number, the schema or an enum, a
+  production data repair, anything §7.2 lists as not cleanly reversible, a dropped scope, a relaxed
+  Definition of Done, a paid call, or a second deviation on the same requirement.
+
+**OD-24's "record `O-nn`, mark PROVISIONAL, continue on the recommendation" applies ONLY to class-3
+items that §7.2 lists as reversible behind a flag with no stored value rewritten.** Every other
+class-3 item waits for the owner's word before code.
+
 ---
 
 ## 0. What is true today, measured
