@@ -14,9 +14,16 @@
  * @param {string} ledgerMarkdown  raw contents of docs/design/stage-3-ledger.md
  * @returns {{ ok: boolean, doneCards: number, violations: Array<{card: string, reason: string}> }}
  */
-export function checkLedgerRowsForDoneCards(cardStatusByFile, ledgerMarkdown) {
+export function checkLedgerRowsForDoneCards(cardStatusByFile, ledgerMarkdown, cardPrefix = 'item-03-') {
+  // Scope: only the cards THIS ledger claims to cover. docs/design/stage-3-ledger.md is the
+  // stage 3 ("one source table") ledger and carries rows for item-03 slices only, so a DONE
+  // card from another item (item-24, item-30) is not a violation of it -- it is outside its
+  // scope. Without this filter the item exits 1 on main the day it merges, and a gate that is
+  // red on main is a gate everyone learns to ignore (#821 is exactly that, for
+  // check-stage3-dod.mjs). A general "every DONE card is recorded somewhere" check needs a
+  // register that claims that job; this is not it.
   const doneCards = Object.entries(cardStatusByFile)
-    .filter(([, statusLine]) => /\bDONE\b/.test(statusLine))
+    .filter(([file, statusLine]) => file.startsWith(cardPrefix) && /\bDONE\b/.test(statusLine))
     .map(([file]) => file);
 
   // Table rows only: lines starting with "|", strip a trailing \r (CRLF source), skip the

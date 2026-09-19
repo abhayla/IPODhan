@@ -77,3 +77,34 @@ test('a DONE-with-caveats status line ("DONE ... proof owed") still counts as DO
 
   assert.equal(result.ok, false, 'DONE-with-a-caveat is still DONE; an empty ledger row must still fail');
 });
+
+test('SCOPE: a DONE card outside the ledger prefix is not a violation of THIS ledger', () => {
+  // item-24 and item-30 are DONE build items with no row in the stage 3 ledger, because that
+  // ledger covers stage 3 slices only. Before the prefix filter this pair made the check exit 1
+  // on main the day it merged (supervisor run, 2026-09-20: 2 violations, both "no ledger row").
+  const cardStatusByFile = {
+    'item-03-s1d-matrix-shim-and-provenance.md': 'Status: DONE 2026-09-17 PRs #753',
+    'item-24-stage-gate-deadlock.md': 'Status: DONE 2026-09-18 PRs #700',
+    'item-30-ipo-type-table.md': 'Status: DONE 2026-09-19 PRs #811',
+  };
+  const ledger =
+    HEADER +
+    '| S1d | A | item-03-s1d-matrix-shim-and-provenance.md | #753 | a2c3bdeb | Tier A | proof | gate | item-03 | landed |\r\n';
+
+  const result = checkLedgerRowsForDoneCards(cardStatusByFile, ledger);
+
+  assert.equal(result.ok, true, 'only item-03 cards are in this ledger\u2019s scope');
+  assert.equal(result.doneCards, 1, 'the two out-of-scope DONE cards are not counted');
+  assert.deepEqual(result.violations, []);
+});
+
+test('SCOPE is a parameter: a caller may widen the prefix and then the same pair DOES fail', () => {
+  const cardStatusByFile = {
+    'item-24-stage-gate-deadlock.md': 'Status: DONE 2026-09-18 PRs #700',
+  };
+  const result = checkLedgerRowsForDoneCards(cardStatusByFile, HEADER, 'item-');
+
+  assert.equal(result.ok, false, 'widening the prefix brings the card back into scope');
+  assert.equal(result.violations.length, 1);
+  assert.match(result.violations[0].reason, /no ledger row/);
+});
