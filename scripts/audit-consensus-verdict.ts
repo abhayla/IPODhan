@@ -131,6 +131,62 @@ export function expectedVerdictForRow(
  * Walk a fetched row set and report mismatches BY IDENTITY. `writtenCount` distinguishes
  * "0 verdicts written" (WRITER_DORMANT) from "N verdicts written, M mismatched".
  */
+/**
+ * #794: the exit decision, split out of `main` so it is testable without a database.
+ *
+ * WRITER_DORMANT is a TERMINAL PASS, not a step on the way to FATAL. Before this split,
+ * the dormant branch printed its line and then fell through to the unconditional
+ * `mismatches.length > 0` FATAL, so with `ENABLE_VERDICT_WRITER` off - its state in
+ * EVERY environment - the check exited 1 with a mismatch count exactly equal to its
+ * eligible population (6715 of 6715, staging, 2026-09-19). A gate whose only possible
+ * output is FATAL carries no information: it cannot tell "the writer is off" (expected)
+ * from "the writer is on and computing wrong verdicts", which is the one case it exists
+ * to catch. Re-derivation against an empty column is not a mismatch; it is the
+ * documented dormant state.
+ *
+ * The FATAL path is unchanged for the case that matters: verdicts ARE being written and
+ * at least one disagrees with re-derivation.
+ */
+export function decideExit(input: {
+  mismatches: Mismatch[];
+  writtenCount: number;
+  eligibleCount: number;
+}): { code: 0 | 1; status: 'PASS' | 'FAIL'; detail: string } {
+  const { mismatches, writtenCount, eligibleCount } = input;
+
+  if (writtenCount === 0) {
+    return {
+      code: 0,
+      status: 'PASS',
+      detail:
+        eligibleCount === 0
+          ? 'WRITER_DORMANT: 0 eligible field_sources rows exist yet'
+          : `WRITER_DORMANT: ${eligibleCount} eligible row(s), 0 carry a verdict (ENABLE_VERDICT_WRITER is off). ` +
+            `Re-derivation differs on ${mismatches.length}, which is the dormant state, not a defect. ` +
+            'This check goes FAIL only once verdicts are actually written.',
+    };
+  }
+
+  if (mismatches.length > 0) {
+    return {
+      code: 1,
+      status: 'FAIL',
+      detail:
+        `${mismatches.length} mismatch(es) of ${eligibleCount} eligible row(s) (${writtenCount} written): ` +
+        mismatches
+          .slice(0, 8)
+          .map((m) => `[${m.companyName}/${m.ipoId}] ${m.tableName}.${m.fieldName} (${m.reason})`)
+          .join('; '),
+    };
+  }
+
+  return {
+    code: 0,
+    status: 'PASS',
+    detail: `0 mismatches across ${eligibleCount} eligible row(s) (${writtenCount} written)`,
+  };
+}
+
 export function auditRows(
   rows: FieldSourceRow[],
   manifest: ReturnType<typeof loadFieldManifest>
@@ -235,10 +291,10 @@ async function main() {
       console.log(`${writtenCount} of ${eligibleCount} eligible row(s) carry a written verdict.`);
     }
 
-    if (mismatches.length > 0) {
-      const detail = `${mismatches.length} mismatch(es) of ${eligibleCount} eligible row(s) (${writtenCount} written): ` +
-        mismatches.slice(0, 8).map((m) => `[${m.companyName}/${m.ipoId}] ${m.tableName}.${m.fieldName} (${m.reason})`).join('; ');
-      record('s7_consensus_verdict', 'FAIL', detail);
+    const decision = decideExit({ mismatches, writtenCount, eligibleCount });
+    record('s7_consensus_verdict', decision.status, decision.detail);
+
+    if (decision.code === 1) {
       console.error(`FATAL: ${mismatches.length} verdict mismatch(es), by identity (ipo / table / field):`);
       for (const m of mismatches) {
         console.error(`  [${m.companyName} / ${m.ipoId}] ${m.tableName}.${m.fieldName}: ${m.reason}`);
@@ -246,11 +302,7 @@ async function main() {
       process.exit(1);
     }
 
-    record('s7_consensus_verdict', 'PASS',
-      eligibleCount === 0
-        ? 'WRITER_DORMANT: 0 eligible field_sources rows exist yet'
-        : `0 mismatches across ${eligibleCount} eligible row(s) (${writtenCount} written, ${eligibleCount - writtenCount} still null/dormant${writtenCount === 0 ? ' -- WRITER_DORMANT' : ''})`);
-    console.log(`OK: 0 verdict mismatches across ${eligibleCount} eligible row(s) (${writtenCount} written, ${eligibleCount - writtenCount} still null/dormant).`);
+    console.log(`OK: ${decision.detail}`);
     process.exit(0);
   } catch (error) {
     console.error(`FATAL: consensus verdict check itself failed: ${error instanceof Error ? error.message : String(error)}`);
