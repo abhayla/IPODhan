@@ -5,5 +5,6 @@
   "first_seen": "Aug 2026 (GitHub #28, refresh-calendar.ts + packages/shared/db fixed); recurred Sep 2026 on `repair-dates-and-leadmanagers-t299.ts` / `repair-subscription-regressions-t299.ts` (review-gap round, this PR)",
   "fix_prs": "this PR (`options: '-c timezone=UTC'` + `configureUtcTimestampParsing()` on both scripts)",
   "detection_check": "not one of the three sanctioned check types (no `SUBSTANCE_CHECKS` key, no `audit-detection-floor.mjs` `record()` id, no `audit-ipo-coverage.mjs` invariant) — guarded only by `scraper/tests/unit/scripts/pool-utc-pin.test.ts`, a source-level scan asserting every `new Pool(` site in `scraper/scripts/**` is within 5 lines of a `timezone=UTC` marker",
-  "status": "unguarded"
+  "status": "unguarded",
+  "spec_ref": []
 }

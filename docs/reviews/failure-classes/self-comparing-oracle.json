@@ -5,5 +5,6 @@
   "first_seen": "GitHub #199 (T-297 discovery-coverage meta-analysis), scoped 2026-09-07",
   "fix_prs": "T-472: `a_b_live_conflict` re-pointed at ipowatch.in (non-ingested) and extended to 6 fields (openDate, closeDate, priceRangeMin, priceRangeMax, lotSize, issueSize; rupee fields at 1% tolerance)",
   "detection_check": "`a_b_live_conflict` (`scripts/audit-detection-floor.mjs`, `checkA_B()`)",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

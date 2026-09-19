@@ -5,5 +5,6 @@
   "first_seen": "walk W-145",
   "fix_prs": "`violatesSmeSingleExchange` / `collapseSmeExchanges` — write-time invariant in the consolidation service and orchestrator",
   "detection_check": "none in `substance-checks.mjs`/`audit-*.mjs` — the guard runs only on the write path; no audit check independently re-verifies stored SME rows for a two-exchange value",
-  "status": "unguarded"
+  "status": "unguarded",
+  "spec_ref": []
 }

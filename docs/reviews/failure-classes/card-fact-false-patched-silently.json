@@ -5,6 +5,8 @@
   "first_seen": "2026-09-09 to 2026-09-19: 12 of 14 catalogued deviations, including PR #678 (flag `ENABLE_FIELD_PLAN` did not exist), PR #745 (`buildFieldPlanWalkDeps` did not exist) and PR #758 (a `NO_FETCHER` state impossible because `field_plan_state` is a PostgreSQL enum that does not contain it — that one made the card's intent unbuildable and scope was dropped). Of 148 issues filed since 2026-09-09, 12 name a spec or card defect: 6 assumed something that does not exist, 3 were silent, 2 were wrong against the data.",
   "fix_prs": "this PR (spec §0.0.4, `.claude/rules/spec-adherence.md`, `docs/design/spec-deviation-guideline.md` class 1) — the class is named and the correction is made mandatory in the same PR as the build",
   "detection_check": "none yet — the PR-template Spec-deviation block (build item 31) is the first mechanism that would surface it, and it is not built; the guideline's enforcement option C (a CI gate that fails a PR whose Spec-deviation block is missing) is deliberately deferred to the first deviation that slips past option B",
-  "spec_ref": ["§0.0.4"],
+  "spec_ref": [
+    "§0.0.4"
+  ],
   "status": "unguarded"
 }

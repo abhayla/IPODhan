@@ -5,5 +5,6 @@
   "first_seen": "2026-09-06 (rotation-stall-null-fetch-state; live on prod, 4 IPOs: madhur-knit-crafts, hy-tech-engineers, augmont-enterprises, tempsens-instruments); round 2 2026-09-06 (staging, ESDS Software Solution + Priority Jewels stuck 2+ days)",
   "fix_prs": "`runIpo`'s rotation-stamp guard (`document-discovery-runner.ts`) for shape 1 — guarantees a `document_fetch_state` row is written on every visit, including a `plan.skipIpo` with no prior history and an exception thrown mid-fetch, both of which previously left zero rows written. Shape 2: `runDocumentCycle`'s budget-trip loop now reserves up to `listedCap` LISTED slots (mirroring the existing WITHDRAWN/POSTPONED purge reservation) so `runIpo` — and therefore the rotation stamp — still runs for LISTED rows even when the live backlog burns the whole discovery budget every cycle (`listedReserved`/`listedProcessedAfterBudget` in the cycle summary/log)",
   "detection_check": "`listed_rotation_stall` (`scripts/lib/document-state-checks.mjs`, wired in `scripts/audit-detection-floor.mjs`) — two shapes in the same check",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

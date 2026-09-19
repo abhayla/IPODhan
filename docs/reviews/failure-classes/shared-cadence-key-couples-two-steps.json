@@ -6,5 +6,6 @@
   "fix_prs": "#569 (each step gets its own cadence key and stamps on its own result; the fill is additionally gated by its own isCatchUpCadenceDue so it cannot run more often than its interval)",
   "detection_check": "scraper/tests/unit/index-issue-type-fill-wiring.test.ts - asserts ISSUE_TYPE_FILL_CADENCE_KEY exists, that `if (cgOk && fillOk)` is absent as a STATEMENT, and that the two stamps are separate. Mutation-checked: restoring the coupled key turns it red. NOT a runtime check - the cost of this class is external HTTP traffic, which no in-repo signal observes; the guard is therefore source-level and the real control is the design rule below.",
   "status": "guarded",
-  "rule": "A cadence/retry key belongs to exactly ONE step. If two steps share a branch, they get two keys. Stamping a shared key on the AND of both results means the cheaper step's failure sets the expensive step's retry rate - and an outbound fetch against a third party is the most expensive thing in that pair."
+  "rule": "A cadence/retry key belongs to exactly ONE step. If two steps share a branch, they get two keys. Stamping a shared key on the AND of both results means the cheaper step's failure sets the expensive step's retry rate - and an outbound fetch against a third party is the most expensive thing in that pair.",
+  "spec_ref": []
 }

@@ -5,5 +5,6 @@
   "first_seen": "T-282 (root cause); filed as discovery gap by T-297 D9 (issue #193)",
   "fix_prs": "this PR (`assert_rollout_flags_live()` in `scripts/assert-env-keys.sh`, reading `// LIVE-GATE` / `// PROD-REQUIRED-TRUE` markers straight off `scraper/src/config/feature-flags.ts` — no hand-duplicated flag list; prod slot only; `ALLOW_ZERO_FLAGS` escape hatch for a deliberate ramp-down)",
   "detection_check": "not one of the three sanctioned check types (no `SUBSTANCE_CHECKS` key, no `audit-detection-floor.mjs` `record()` id, no `audit-ipo-coverage.mjs` invariant) — this is a deploy-time config gate, not a DB-row audit check; guarded by `scripts/tests/assert-env-keys.test.sh`'s rollout-liveness cases (mutation-proof: reverting `assert_rollout_flags_live()` fails the suite, per the T-285 P3-1 lesson); registered in `docs/reviews/detection-checks.json` under `notCoveredByThisManifest` (deploy-time, not the nightly DB audit)",
-  "status": "guarded"
+  "status": "guarded",
+  "spec_ref": []
 }

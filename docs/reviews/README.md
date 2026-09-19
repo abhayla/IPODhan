@@ -10,8 +10,14 @@ loop depends on.
 
 - A detection check lives at `docs/reviews/detection-checks/<id>.json`, carrying its normal fields
   plus `"section": "checks"` or `"section": "notCoveredByThisManifest"`.
-- A failure class lives at `docs/reviews/failure-classes/<slug>.json`, carrying the seven table
-  columns (`class_id`, `feature`, `symptom`, `first_seen`, `fix_prs`, `detection_check`, `status`).
+- A failure class lives at `docs/reviews/failure-classes/<slug>.json`, carrying the eight table
+  columns (`class_id`, `feature`, `symptom`, `first_seen`, `fix_prs`, `detection_check`, `status`,
+  `spec_ref`). `spec_ref` is an array of the spec sections the class touches (e.g. `["§2.5"]`), or
+  `[]` for a class that touches no part of the pull model — never a missing key, because a missing
+  key and a deliberate "none" must not read identically. Every section named is validated against
+  the real heading list of `docs/design/data-sourcing-pull-model.md`; a reference to a section that
+  does not exist (e.g. a renumbered or invented section) makes the generator refuse, naming the file
+  and the bad reference.
 
 To add or edit either:
 

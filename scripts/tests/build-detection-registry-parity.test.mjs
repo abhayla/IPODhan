@@ -32,13 +32,19 @@ function originMainRef() {
   }
 }
 
+// The column count is NOT hard-coded: this test compares failure-classes.md across two
+// versions of the repository (local vs origin/main) that can legitimately have a different
+// column count from each other (this PR adds an 8th, spec_ref) — a fixed literal here is
+// exactly the "second definition of the shape that drifts" trap item 34 exists to close on
+// the generator side. Any row width with at least class_id + one more column is accepted;
+// only the first cell (class_id) is read.
 function parseFailureClassRows(text) {
   const rows = [];
   for (const line of text.split('\n')) {
     if (!line.startsWith('|')) continue;
     if (!line.trim().endsWith('|')) continue;
     const cells = line.split('|').slice(1, -1).map((c) => c.trim());
-    if (cells.length !== 7) continue;
+    if (cells.length < 2) continue;
     if (cells[0] === 'class_id') continue;
     if (/^-+$/.test(cells[0])) continue;
     rows.push(cells[0]);
