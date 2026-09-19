@@ -1,0 +1,202 @@
+{
+ "stamp": "2026-09-18 11:15 IST",
+ "now": {
+  "Landed": "All 13 slices merged AND live on staging (main = staging = 9c20b4d0). 9 of 15 rows now proven, including the whole config-deploy chain on the real server.",
+  "Now": "Staging was deployed this morning with the capped manual button rather than waiting for the 13:30 window. The config-only deploy — the thing three review rounds were spent on — now works on the real box: it ran from a release directory with no environment variable set, and the running scraper confirmed it loaded that exact manifest. Three remaining proofs are blocked for a measurable reason, not a failure: the walk only picks up rows marked PENDING and staging currently has none.",
+  "Next": "Two things wait on the owner, both live-database writes: S2’s repair run (recommended), and flipping rows to PENDING to unblock the last proofs (NOT recommended — it would mean arranging the input for our own proof). No production deploy is scheduled."
+ },
+ "slices": [
+  {
+   "id": "STEP 1",
+   "what": "12 build cards, ledger, DoD gate script",
+   "tier": "C",
+   "pr": "#734",
+   "sha": "ec6b8eb5",
+   "review": "none (docs)",
+   "proof": "n/a",
+   "gate": "cards 33/0",
+   "state": "landed",
+   "status": "landed 13:08"
+  },
+  {
+   "id": "S0a",
+   "what": "spec repair: reasons on the 37 two-source fields, D21 green",
+   "tier": "C",
+   "pr": "#737",
+   "sha": "a8ba7e2b",
+   "review": "none (C)",
+   "proof": "n/a",
+   "gate": "7/7 PASS",
+   "state": "landed",
+   "status": "landed 13:27"
+  },
+  {
+   "id": "S0b",
+   "what": "registry generated from the spec: 190 fields, version 2, CI drift check",
+   "tier": "B",
+   "pr": "#738",
+   "sha": "5f57aa66",
+   "review": "Sonnet + Opus (2nd occurrence)",
+   "proof": "PROVEN: start-up line version=2 fields=190",
+   "gate": "6/8 + staging",
+   "state": "landed",
+   "status": "landed 22:2x"
+  },
+  {
+   "id": "S0c",
+   "what": "one map from manifest source codes to writer sources (REG, API_FALLBACK)",
+   "tier": "B",
+   "pr": "#741",
+   "sha": "c0a0d5a4",
+   "review": "Sonnet, PASS-with-minors",
+   "proof": "n/a (no runtime change)",
+   "gate": "7/7 PASS",
+   "state": "landed",
+   "status": "landed 15:33"
+  },
+  {
+   "id": "S0d",
+   "what": "widen the scraper_source pg enum with INVESTORGAIN_GMP and REG (#740); inserted 2026-09-17",
+   "tier": "A",
+   "pr": "#742",
+   "sha": "8bb4bc7f",
+   "review": "Opus x2: FAIL then PASS (6/6 closed)",
+   "proof": "PROVEN: enum has INVESTORGAIN_GMP + REG",
+   "gate": "8/8",
+   "state": "landed",
+   "status": "landed 22:2x"
+  },
+  {
+   "id": "S5",
+   "what": "config-only deploy path under shared/config/&lt;slot&gt;",
+   "tier": "A",
+   "pr": "#743",
+   "sha": "888f9330",
+   "review": "Opus PASS, 3 MINOR (seed guard fixed)",
+   "proof": "PROVEN on the box 09:11: S5-5 symlink, S5-6 CONFIG_SHA = 9c20b4d0 (was the placeholder \"release\"), S5-7 log line written",
+   "gate": "S5-3/4 local only",
+   "state": "landed",
+   "status": "landed 09:11"
+  },
+  {
+   "id": "S5b",
+   "what": "fix #748: the config deploy runs from a release directory",
+   "tier": "A",
+   "pr": "#750",
+   "sha": "45366fc2",
+   "review": "2 independent Opus reviews, 3 rounds: round 1 FAIL (made nothing succeed), round 2 red on CI, fresh reviewer split the verdict (production PASS-with-MINORS, test suite FAIL), round 3 test-only",
+   "proof": "PROVEN: the config deploy ran FROM a release directory with no env var set — \"repo-root: using /var/www/ipodhan/repo (server default)\" → \"deployed: staging\"; exec bit live (-rwxrwxr-x); the scraper then logged config_sha=9c20b4d0 at startup",
+   "gate": "all 7 CI jobs green; merge gate PASS; supervisor mutation turns 4 assertions red",
+   "state": "landed",
+   "status": "landed 09:11"
+  },
+  {
+   "id": "S1a",
+   "what": "the one resolver, read by generator and walk",
+   "tier": "A",
+   "pr": "#745",
+   "sha": "0abf8a37",
+   "review": "Opus x2: FAIL (walk origin write was a no-op) then PASS, 2 MINOR",
+   "proof": "PROVEN: 8778 rows at v2, all with policy_origin; walk 3 MATCH / 0 mismatch",
+   "gate": "S1a-1..7 PASS (S1a-7 query corrected)",
+   "state": "landed",
+   "status": "landed 22:2x"
+  },
+  {
+   "id": "S1b",
+   "what": "writer adopts the resolver behind a flag; tableName threaded; untracked rule",
+   "tier": "A",
+   "pr": "#746",
+   "sha": "e0f6fc06",
+   "review": "Opus PASS-with-MINORS; MAJOR closed, mutations reproduced by the supervisor",
+   "proof": "PROVEN: 0 BSE issueSize writes since the deploy; mismatches=0",
+   "gate": "S1b-1..8 PASS",
+   "state": "landed",
+   "status": "landed 22:2x"
+  },
+  {
+   "id": "S1c",
+   "what": "incapable sources refused with a logged reason",
+   "tier": "A",
+   "pr": "#747",
+   "sha": "20df246e",
+   "review": "Opus",
+   "proof": "refusal proven by a real-DB test run green AND red; 0 live refusals (nothing wrong offered)",
+   "gate": "S1c-1..6",
+   "state": "landed",
+   "status": "landed 22:2x"
+  },
+  {
+   "id": "S1d",
+   "what": "matrix keeps normalization only; logged fallback; provenance origin",
+   "tier": "A",
+   "pr": "#753",
+   "sha": "a2c3bdeb",
+   "review": "Tier A Opus: FAIL (3 CRITICAL + 1 MAJOR the pr-gate missed) -> fix round; supervisor reproduced every finding and both mutations",
+   "proof": "BLOCKED, not failing: the walk claims only state=PENDING and staging has ZERO such rows (12,480 rows are past due but in other states)",
+   "gate": "full suite 4443 passed / 0 failed (was 1 failed); all 7 CI jobs green",
+   "state": "merged",
+   "status": "merged, staging proof owed"
+  },
+  {
+   "id": "S2",
+   "what": "re-rank plan rows on version bump (#731); SME rows",
+   "tier": "A",
+   "pr": "#757",
+   "sha": "286c26d4",
+   "review": "Tier A Opus: FAIL (2 CRITICAL) -> fix round; supervisor measured the blast radius worse than the review and proved the gate + a guard mutation itself",
+   "proof": "owed: the staging repair run — 482 rows / 71 IPOs — NEEDS THE OWNER’S WORD",
+   "gate": "unit 12 -> 27, guard mutation now red; full suite 4471; all 7 CI jobs green",
+   "state": "merged",
+   "status": "merged, repair run owed"
+  },
+  {
+   "id": "S3",
+   "what": "live test drives the real writer in CI (#732)",
+   "tier": "B",
+   "pr": "#756",
+   "sha": "9da8183b",
+   "review": "Tier B + supervisor mutation; found 3 real bugs on first contact with real data",
+   "proof": "BLOCKED, not failing: the walk claims only state=PENDING and staging has ZERO such rows (12,480 rows are past due but in other states)",
+   "gate": "6 CI jobs green; coverage gate confirms the run-list line",
+   "state": "landed",
+   "status": "landed 02:01"
+  },
+  {
+   "id": "S4",
+   "what": "override table + CLI + PULL-OVERRIDES check",
+   "tier": "A",
+   "pr": "#760",
+   "sha": "9c20b4d0",
+   "review": "Tier A Opus: FAIL (the layer had zero production callers) -> wired into walk+generator+cycle; 4 MAJORs closed; a final CI type-check red fixed",
+   "proof": "BLOCKED, not failing: the walk claims only state=PENDING and staging has ZERO such rows (12,480 rows are past due but in other states)",
+   "gate": "override test 3 passed on ipodhan_test; full suite 4511; all 7 CI jobs green",
+   "state": "merged",
+   "status": "merged, proof owed"
+  },
+  {
+   "id": "S6",
+   "what": "NO_FETCHER once; PULL-POLICY / PULL-WRITE / PULL-PLAN-RANK checks",
+   "tier": "B",
+   "pr": "#758",
+   "sha": "516ed8f4",
+   "review": "Tier B + supervisor mutation; churn-stop half correctly stopped, needs a migration (#759)",
+   "proof": "checks proven red on a planted violation, green when clean",
+   "gate": "",
+   "state": "merged",
+   "status": "merged, detection half only"
+  },
+  {
+   "id": "Swap Test",
+   "what": "stage acceptance: both paths on staging, zero code edits",
+   "tier": "-",
+   "pr": "",
+   "sha": "",
+   "review": "supervisor",
+   "proof": "both paths unblocked in principle; neither executed on staging",
+   "gate": "",
+   "state": "queued",
+   "status": "NOT RUN"
+  }
+ ]
+}
