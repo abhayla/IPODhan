@@ -777,6 +777,26 @@ jobs:
         # keep gating a drift that no longer exists.
         run: npx tsx --test scripts/tests/known-gated-registry-invalidation.test.ts
 
+      - name: scripts/tests suite (#800 - files that existed and nothing ran)
+        # Three of four scripts/tests/*.test.ts were named in NO workflow: they
+        # existed, passed locally, and a regression in the script they cover would
+        # have merged green. Found while fixing #794, where the consensus check
+        # could only ever exit FATAL and no test caught it - because the tests were
+        # never run.
+        #
+        # tsx, not bare `node --test`: these are TypeScript and import through the
+        # @ipodhan/shared path alias. Bare node gives "Cannot use import statement
+        # outside a module", which reads as a broken test rather than a wrong runner.
+        #
+        # assert-schema-drift.test.ts is deliberately NOT here: it refuses without a
+        # live DATABASE_URL ("FATAL: set DATABASE_URL or TEST_DATABASE_URL to a
+        # throwaway scratch Postgres"). It belongs in a job that provisions a
+        # database, not this one - adding it here would make the gate red on every
+        # PR, which is how a gate gets ignored. Tracked in #800.
+        run: |
+          npx tsx --test scripts/tests/audit-consensus-verdict.test.ts
+          npx tsx --test scripts/tests/known-gated-type-drift.test.ts
+
       - name: Run the document-state integration tests
         # THIS LIST IS GATED. Every file under scraper/tests/integration/ must
         # appear here or in scripts/ci/integration-test-exclusions.json with a
